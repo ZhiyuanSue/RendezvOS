@@ -3,9 +3,9 @@
 		"use":true ,
 		"features":[
 
-		] ,
-		"ARCH":"aarch32" ,
-		"CROSS_COMPLIER":"aarch64-none-elf-"
+		],
+		"ARCH":"riscv32",
+		"CROSS_COMPLIER":"riscv32-unknown-elf-"
 		},
 	"modules":{
 		"helloworld":

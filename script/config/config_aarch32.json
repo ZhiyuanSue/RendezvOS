@@ -2,18 +2,31 @@
 	"kernel":{
 		"use":true ,
 		"features":[
-
-		]
+		],
+		"ARCH":"aarch32",
+		"CROSS_COMPLIER":"arm-none-eabi-"
 		},
 	"modules":{
-		"early_print":
+		"helloworld":
 		{
 			"use":true ,
 			"features":[
+                "HELLO"
 			],
 			"depend_module":[
 			] ,
 			"path":"./modules/early_print"
-		}
+		},
+        "test":
+        {
+            "use":true ,
+            "features":[
+                "TEST"
+            ],
+            "depend_module":[
+                "helloworld"
+            ],
+            "path":"./modules/test"
+        }
 	}
 }

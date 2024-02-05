@@ -2,18 +2,32 @@
 	"kernel":{
 		"use":true ,
 		"features":[
-
-		]
+			
+		],
+		"ARCH":"x86_64",
+		"CROSS_COMPLIER":""
 		},
 	"modules":{
-		"early_print":
+		"helloworld":
 		{
 			"use":true ,
 			"features":[
+                "HELLO"
 			],
 			"depend_module":[
 			] ,
 			"path":"./modules/early_print"
-		}
+		},
+        "test":
+        {
+            "use":true ,
+            "features":[
+                "TEST"
+            ],
+            "depend_module":[
+                "helloworld"
+            ],
+            "path":"./modules/test"
+        }
 	}
 }
