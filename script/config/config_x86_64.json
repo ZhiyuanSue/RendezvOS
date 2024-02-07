@@ -16,7 +16,7 @@
 			],
 			"depend_module":[
 			] ,
-			"path":"./modules/early_print"
+			"path":"modules/helloworld"
 		},
         "test":
         {
@@ -27,7 +27,7 @@
             "depend_module":[
                 "helloworld"
             ],
-            "path":"./modules/test"
+            "path":"modules/test"
         }
 	}
 }
