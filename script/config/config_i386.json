@@ -1,11 +1,18 @@
 {
 	"kernel":{
 		"use":true ,
-		"features":[
+		"ARCH":"i386" ,
+		"CROSS_COMPLIER":"",
+        "DBG":false,
+        "CFLAGS":[
+            "-m32"
+        ],
+        "features":[
 
 		],
-		"ARCH":"i386" ,
-		"CROSS_COMPLIER":""
+        "LDFLAGS":[
+            "-m elf_i386"
+        ]
 		},
 	"modules":{
 		"helloworld":

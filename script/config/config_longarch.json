@@ -1,11 +1,18 @@
 {
 	"kernel":{
 		"use":true ,
-		"features":[
+		"ARCH":"longarch",
+		"CROSS_COMPLIER":"",
+        "DBG":false,
+        "CFLAGS":[
+
+        ],
+        "features":[
 
 		],
-		"ARCH":"longarch",
-		"CROSS_COMPLIER":""
+        "LDFLAGS":[
+            
+        ]
 		},
 	"modules":{
 		"helloworld":

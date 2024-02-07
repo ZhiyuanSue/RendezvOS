@@ -1,11 +1,20 @@
 {
 	"kernel":{
 		"use":true ,
-		"features":[
+		"ARCH":"riscv64",
+		"CROSS_COMPLIER":"riscv64-unknown-elf-",
+        "DBG":false,
+        "CFLAGS":[
+            "-march=rv64gc",
+            "-mabi=lp64d",
+            "-mcmodel=medany"
+        ],
+        "features":[
 
 		],
-		"ARCH":"riscv32",
-		"CROSS_COMPLIER":"riscv64-unknown-elf-"
+        "LDFLAGS":[
+            
+        ]
 		},
 	"modules":{
 		"helloworld":

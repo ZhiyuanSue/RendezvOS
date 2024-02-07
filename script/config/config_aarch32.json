@@ -1,10 +1,17 @@
 {
 	"kernel":{
 		"use":true ,
-		"features":[
-		],
 		"ARCH":"aarch32",
-		"CROSS_COMPLIER":"arm-none-eabi-"
+		"CROSS_COMPLIER":"arm-none-eabi-",
+        "DBG":false,
+        "CFLAGS":[
+
+        ],
+        "features":[
+		],
+        "LDFLAGS":[
+            
+        ]
 		},
 	"modules":{
 		"helloworld":

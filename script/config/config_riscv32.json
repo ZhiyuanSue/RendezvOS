@@ -1,11 +1,18 @@
 {
 	"kernel":{
 		"use":true ,
-		"features":[
+		"ARCH":"riscv32",
+		"CROSS_COMPLIER":"riscv32-unknown-elf-",
+        "DBG":false,
+        "CFLAGS":[
+
+        ],
+        "features":[
 
 		],
-		"ARCH":"riscv32",
-		"CROSS_COMPLIER":"riscv32-unknown-elf-"
+        "LDFLAGS":[
+            
+        ]
 		},
 	"modules":{
 		"helloworld":

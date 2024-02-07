@@ -1,11 +1,18 @@
 {
 	"kernel":{
 		"use":true ,
-		"features":[
+		"ARCH":"x86_64",
+		"CROSS_COMPLIER":"",
+        "DBG":false,
+        "CFLAGS":[
+
+        ],
+        "features":[
 			
 		],
-		"ARCH":"x86_64",
-		"CROSS_COMPLIER":""
+        "LDFLAGS":[
+            
+        ]
 		},
 	"modules":{
 		"helloworld":

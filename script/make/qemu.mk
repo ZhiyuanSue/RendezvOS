@@ -4,19 +4,19 @@
 
 SMP	?= 4
 
-Qemulator	:= qemu-system-$(SRCARCH)
+Qemulator	:= qemu-system-$(ARCH)
 QemuFlags	:= -kernel $(Target) -smp $(SMP)
-ifeq ($(SRCARCH), x86_64)
+ifeq ($(ARCH), x86_64)
 	QemuFlags	+= -machine q35
 	# QemuFlags	+= -nographic	#in qemu , don't use this option
 	# QemuFlags	+= -numa
-else ifeq ($(SRCARCH), i386)
+else ifeq ($(ARCH), i386)
 	QemuFlags	+= -machine q35
 	# QemuFlags	+= -nographic	#in qemu , don't use this option
 	# QemuFlags	+= -numa
-else ifeq ($(SRCARCH), aarch64)
+else ifeq ($(ARCH), aarch64)
     QemuFlags	+= -kernel $(Target)
-else ifeq ($(SRCARCH), riscv64)
+else ifeq ($(ARCH), riscv64)
     QemuFlags	+= -kernel $(Target)
 	QemuFlags	+= -nographic -machine virt -bios default
 else

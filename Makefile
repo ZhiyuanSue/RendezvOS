@@ -32,4 +32,5 @@ have_config:
 config:
 	@python3 $(SCRIPT_CONFIG_DIR)/configure.py ${ROOT_DIR} ${SCRIPT_CONFIG_DIR} ${CONFIG}
 clean:
+	rm $(ROOT_DIR)/Makefile.env
 	rm $(BUILD)/*.o
