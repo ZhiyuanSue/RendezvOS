@@ -8,6 +8,7 @@
 
         ],
         "features":[
+            "_AARCH32_"
 		],
         "LDFLAGS":[
             

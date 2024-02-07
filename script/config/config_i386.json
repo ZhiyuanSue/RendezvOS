@@ -8,7 +8,7 @@
             "-m32"
         ],
         "features":[
-
+            "_I386_"
 		],
         "LDFLAGS":[
             "-m elf_i386"

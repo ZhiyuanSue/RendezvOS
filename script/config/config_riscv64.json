@@ -10,7 +10,7 @@
             "-mcmodel=medany"
         ],
         "features":[
-
+            "_RISCV64_"
 		],
         "LDFLAGS":[
             

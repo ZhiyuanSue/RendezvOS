@@ -12,6 +12,7 @@ target_config_arch_list=[
     'riscv64',
     'x86_64'
 ]
+usable_module_list={}
 
 def configure_kernel(kernel_config,root_dir):
     # ==== ==== ==== ==== ==== ==== ==== ==== #
@@ -109,6 +110,7 @@ def configure_module(module_name,module_config,root_dir):
     use_module_config=module_config['use']
     if use_module_config==False:
         return
+    usable_module_list[module_name]=[]
     # test weather the target module dir exist
     if 'path' not in module_config.keys():
         print("Error: the ",module_name," module must have a 'path' attribute")
@@ -118,10 +120,53 @@ def configure_module(module_name,module_config,root_dir):
     if os.path.isdir(target_module_dir)==False:
         print("ERROR:no such a module dir exist:",target_module_dir)
         exit(2)
-    # target_config_file_path=os.path.join()
+    # add the module config file
+    target_config_file_path=os.path.join(target_module_dir,target_config_file_name)
+    
+    module_config_str=""
+    
+    # FEATURES
+    if 'features' in module_config.keys():
+        feature_module_config=module_config['features']
+        module_config_str = module_config_str + "CFLAGS\t+=\t"
+        for feature in feature_module_config:
+            module_config_str =module_config_str + ' -D ' + feature
+            usable_module_list[module_name].append(feature)
+        module_config_str = module_config_str + '\n'
+    
+    # check the depend modules and add the configs of depend modules into this module
+    if 'depend_module' in module_config.keys():
+        depend_module_config=module_config['depend_module']
+        module_config_str = module_config_str + "CFLAGS\t+=\t"
+        for deps in depend_module_config:
+            if deps not in usable_module_list.keys():
+                print("the module ",module_name, " depends on the ",deps,",but this module not exist or not usable,please check" )
+                exit(1)
+            for deps_feature in usable_module_list[deps]:
+                module_config_str =module_config_str + ' -D ' + deps_feature
+                usable_module_list[module_name].append(deps_feature)
+        module_config_str = module_config_str + '\n'
+        
+    # write the configs into makefile.env
+    target_config_file_path=os.path.join(target_module_dir,target_config_file_name)
+    target_config_file=open(target_config_file_path,'w')
+    target_config_file.write(module_config_str)
+    target_config_file.close()
 
 def configure_modules(module_configs,root_dir):
     # we have to add a makefile.env under modules dir
+    modules_dir=os.path.join(root_dir,"modules")
+    if os.path.isdir(modules_dir)==False:
+        print("Warning:no 'modules' dir")
+        return
+    kernel_config_str="modules\t:=\t"
+    for module_name in module_configs:
+        kernel_config_str=kernel_config_str+module_name+' '
+    
+    target_config_file_path=os.path.join(modules_dir,target_config_file_name)
+    target_config_file=open(target_config_file_path,'w')
+    target_config_file.write(kernel_config_str)
+    target_config_file.close()
     pass
 
 def configure(config_file):
