@@ -1,7 +1,13 @@
 .DS_Store
+**/.DS_Store
+.DS_Store?
+**/*.o
+*.o
+/obj/
+/bin/
+/build/
 .vscode
 .vscode/*
-*.o
 *.bin
 *.a
 *.gz
