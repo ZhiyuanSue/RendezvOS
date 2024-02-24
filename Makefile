@@ -27,10 +27,10 @@ endif
 
 export ARCH KERNELVERSION ROOT_DIR BUILD INCLUDE_DIR CC LD AR CFLAGS ARFLAGS LDFLAGS LIBS DBG
 
-# include $(SCRIPT_MAKE_DIR)/qemu.mk
+include $(SCRIPT_MAKE_DIR)/qemu.mk
 .PHONY:all
 
-all: have_config init kernel modules
+all: init have_config kernel modules
 	@echo "have config file"
 	$(MAKE) -C $(ARCH_DIR)
 	$(MAKE) -C $(MODULES_DIR)
@@ -50,6 +50,7 @@ config:
 mrproper: clean
 	@echo "rm all Makefile.env"
 	@rm -f $(shell find $(ROOT_DIR) -name Makefile.env) 
+	@rm -rf $(BUILD)/*
 
 clean:
 	@echo "rm all obj file under build"

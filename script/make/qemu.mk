@@ -15,12 +15,17 @@ else ifeq ($(ARCH), i386)
 	# QemuFlags	+= -nographic	#in qemu , don't use this option
 	# QemuFlags	+= -numa
 else ifeq ($(ARCH), aarch64)
-    QemuFlags	+= -kernel $(Target)
+    QemuFlags	+=
+else ifeq ($(ARCH), aarch32)
+    QemuFlags	+=
 else ifeq ($(ARCH), riscv64)
-    QemuFlags	+= -kernel $(Target)
+    QemuFlags	+=
 	QemuFlags	+= -nographic -machine virt -bios default
-else
-	echo "ERROR:The ARCH must be one of the 'x86_64' 'i386' 'aarch64' 'arm64' 'riscv64'"
+else ifeq ($(ARCH), riscv32)
+    QemuFlags	+=
+	QemuFlags	+= -nographic -machine virt -bios default
+else ifeq ($(ARCH), loongarch)
+    QemuFlags	+=
 endif
 
 ifeq ($(DBG), true)
