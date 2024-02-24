@@ -1,8 +1,8 @@
 {
 	"kernel":{
 		"use":true ,
-		"ARCH":"longarch",
-		"CROSS_COMPLIER":"",
+		"ARCH":"loongarch64",
+		"CROSS_COMPLIER":"loongarch64-unknown-elf-",
         "DBG":false,
         "CFLAGS":[
 

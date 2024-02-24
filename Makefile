@@ -1,3 +1,4 @@
+-include ./Makefile.env
 ROOT_DIR	= $(shell pwd)
 BUILD	?=	$(ROOT_DIR)/build
 CONFIG_FILE	:=	$(ROOT_DIR)/Makefile.env
