@@ -2,10 +2,11 @@
 	"kernel":{
 		"use":true ,
 		"ARCH":"riscv32",
-		"CROSS_COMPLIER":"riscv32-unknown-elf-",
+		"CROSS_COMPLIER":"riscv64-unknown-elf-",
         "DBG":false,
         "CFLAGS":[
-
+            "-march=rv32imac",
+            "-mabi=ilp32"
         ],
         "features":[
             "_RISCV32_"
