@@ -6,6 +6,7 @@ SCRIPT_DIR	:=	$(ROOT_DIR)/script
 SCRIPT_CONFIG_DIR	:=	$(SCRIPT_DIR)/config
 CONFIG	?=	config_x86_64.json
 SCRIPT_MAKE_DIR		:=	$(SCRIPT_DIR)/make
+SCRIPT_LINK_DIR		:=	$(SCRIPT_DIR)/link
 ARCH_DIR	:=	$(ROOT_DIR)/arch
 INCLUDE_DIR	:=	$(ROOT_DIR)/include
 KERNEL_DIR	:=	$(ROOT_DIR)/kernel
@@ -13,6 +14,7 @@ MODULES_DIR	:=	$(ROOT_DIR)/modules
 
 KERNELVERSION=0.1
 
+Linker	:=	$(SCRIPT_CONFIG_DIR)/$(ARCH)_linker.ld
 CC	:=$(CROSS_COMPLIER)gcc
 LD	:=$(CROSS_COMPLIER)ld
 AR	:=$(CROSS_COMPLIER)ar
@@ -31,10 +33,11 @@ include $(SCRIPT_MAKE_DIR)/qemu.mk
 .PHONY:all
 
 all: init have_config kernel modules
-	$(MAKE) -C $(MODULES_DIR)
-	$(MAKE) -C $(ARCH_DIR)
-	$(MAKE) -C $(KERNEL_DIR)
+	@$(MAKE) -C $(ARCH_DIR)
+	@$(MAKE) -C $(KERNEL_DIR)
+	@$(MAKE) -C $(MODULES_DIR)
 	@echo "LD	" $(KERNEL)
+	@${LD} ${LDFLAGS} -o $@ $(wildcard $(BUILD)/*.o) $(LIBS)
 init:clean
 	@$(shell if [ ! -d $(BUILD) ];then mkdir $(BUILD); fi)
 have_config:
