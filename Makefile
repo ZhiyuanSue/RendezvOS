@@ -25,15 +25,14 @@ ifeq ($(DBG), true)
 	CFLAGS	+= --verbose
 endif
 
-export ARCH KERNELVERSION ROOT_DIR BUILD INCLUDE_DIR CC LD AR CFLAGS ARFLAGS LDFLAGS LIBS DBG
+export ARCH KERNELVERSION ROOT_DIR BUILD SCRIPT_MAKE_DIR INCLUDE_DIR CC LD AR CFLAGS ARFLAGS LDFLAGS LIBS DBG
 
 include $(SCRIPT_MAKE_DIR)/qemu.mk
 .PHONY:all
 
 all: init have_config kernel modules
-	@echo "have config file"
-	$(MAKE) -C $(ARCH_DIR)
 	$(MAKE) -C $(MODULES_DIR)
+	$(MAKE) -C $(ARCH_DIR)
 	$(MAKE) -C $(KERNEL_DIR)
 	@echo "LD	" $(KERNEL)
 init:clean
