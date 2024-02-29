@@ -26,6 +26,8 @@ ifeq ($(DBG), true)
 	CFLAGS	+= -g
 	CFLAGS	+= --verbose
 endif
+CFLAGS	+= -Wall -O3 -nostdlib -nostdinc
+CFLAGS	+= -fno-stack-protector -fno-builtin -fno-PIC
 CFLAGS	+=	-I $(INCLUDE_DIR)
 
 export ARCH KERNELVERSION ROOT_DIR BUILD SCRIPT_MAKE_DIR INCLUDE_DIR CC LD AR CFLAGS ARFLAGS LDFLAGS LIBS DBG

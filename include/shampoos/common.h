@@ -14,4 +14,5 @@ void parse_device(uintptr_t addr);
 void interrupt_init();
 void power_off(int error_code);
 void cpu_idle();
+
 #endif
