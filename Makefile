@@ -62,3 +62,4 @@ mrproper: clean
 clean:
 	@echo "rm all obj file under build"
 	@rm -f $(shell find $(BUILD) -name *.o)
+	@rm -f $(shell find $(ROOT_DIR) -name *.d)

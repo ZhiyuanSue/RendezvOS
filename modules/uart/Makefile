@@ -1,6 +1,6 @@
-include ${ROOT_DIR}/Makefile.env
+include $(SCRIPT_MAKE_DIR)/build.mk
 modules= $(shell find ./* -maxdepth 0 -type d)
-all: $(modules) ${OBJECTS}
+all: init $(modules) ${OBJECTS}
 	@for mod in $(modules); do $(MAKE) -C $$mod; done
 
 -include *.d
