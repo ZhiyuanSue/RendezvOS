@@ -32,13 +32,13 @@ export ARCH KERNELVERSION ROOT_DIR BUILD SCRIPT_MAKE_DIR INCLUDE_DIR CC LD AR CF
 include $(SCRIPT_MAKE_DIR)/qemu.mk
 .PHONY:all
 
-all: init have_config kernel modules
+all:  init have_config kernel modules
 	@$(MAKE) -C $(ARCH_DIR) all
 	@$(MAKE) -C $(KERNEL_DIR) all
 	@$(MAKE) -C $(MODULES_DIR) all
 	@echo "LD	" $(KERNEL)
 	@${LD} ${LDFLAGS} -o $@ $(wildcard $(BUILD)/*.o) $(LIBS)
-init:clean
+init:
 	@$(shell if [ ! -d $(BUILD) ];then mkdir $(BUILD); fi)
 have_config:
 	@if [ ! -f ${CONFIG_FILE} ]; \
