@@ -37,6 +37,15 @@
                 "helloworld"
             ],
             "path":"modules/test"
+        },
+        "uart":
+        {
+            "use":true ,
+            "features":[
+            ],
+            "depend_module":[
+            ],
+            "path":"modules/uart"
         }
 	}
 }
