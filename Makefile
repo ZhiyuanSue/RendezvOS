@@ -46,6 +46,8 @@ have_config:
 		& exit 2; \
 		fi
 
+run:qemu
+
 config:
 	@python3 $(SCRIPT_CONFIG_DIR)/configure.py ${ROOT_DIR} ${SCRIPT_CONFIG_DIR} $(SCRIPT_CONFIG_DIR)/${CONFIG}
 
