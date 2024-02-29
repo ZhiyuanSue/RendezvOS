@@ -2,12 +2,7 @@ include $(SCRIPT_MAKE_DIR)/build.mk
 modules= $(shell find ./* -maxdepth 0 -type d)
 
 all: init $(modules) ${OBJECTS}
-	@echo "CC	${BUILD}/boot.o"
 	@for mod in $(modules); do $(MAKE) -C $$mod all; done
-
-${BUILD}/boot.o: ./boot.s $(modules)
-	@echo "CC	${BUILD}/boot.o"
-	@$(CC) $(CFLAGS) -o $@ -c $<
 
 ${BUILD}/%.o: ./%.c $(modules)
 	@echo "CC	"$@

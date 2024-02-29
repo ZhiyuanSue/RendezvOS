@@ -33,9 +33,9 @@ include $(SCRIPT_MAKE_DIR)/qemu.mk
 .PHONY:all
 
 all: init have_config kernel modules
-	@$(MAKE) -C $(ARCH_DIR)
-	@$(MAKE) -C $(KERNEL_DIR)
-	@$(MAKE) -C $(MODULES_DIR)
+	@$(MAKE) -C $(ARCH_DIR) all
+	@$(MAKE) -C $(KERNEL_DIR) all
+	@$(MAKE) -C $(MODULES_DIR) all
 	@echo "LD	" $(KERNEL)
 	@${LD} ${LDFLAGS} -o $@ $(wildcard $(BUILD)/*.o) $(LIBS)
 init:clean
