@@ -11,7 +11,8 @@ ARCH_DIR	:=	$(ROOT_DIR)/arch
 INCLUDE_DIR	:=	$(ROOT_DIR)/include
 KERNEL_DIR	:=	$(ROOT_DIR)/kernel
 MODULES_DIR	:=	$(ROOT_DIR)/modules
-Target		:=	$(BUILD)/kernel.elf
+Target_ELF		:=	$(BUILD)/kernel.elf
+Target_BIN	:=	$(BUILD)/kernel.bin
 
 KERNELVERSION=0.1
 
@@ -36,16 +37,20 @@ export ARCH KERNELVERSION ROOT_DIR BUILD SCRIPT_MAKE_DIR INCLUDE_DIR CC LD AR CF
 include $(SCRIPT_MAKE_DIR)/qemu.mk
 .PHONY:all
 
-all:  init have_config $(Target)
+all:  init have_config $(Target_BIN)
 
 build_objs:
 	@$(MAKE) -C $(ARCH_DIR) all
 	@$(MAKE) -C $(KERNEL_DIR) all
 	@$(MAKE) -C $(MODULES_DIR) all
 	
-$(Target): build_objs
-	@echo "LD	" $(Target)
+$(Target_ELF): build_objs
+	@echo "LD	" $(Target_ELF)
 	@${LD} ${LDFLAGS} -o $@ $(shell find $(BUILD) -name *.o)
+
+$(Target_BIN):	$(Target_ELF)
+	@echo "COYP	" $(Target_BIN)
+	@$(OBJCOPY)	-O binary -S $(Target_ELF) $(Target_BIN)
 
 # @${LD} ${LDFLAGS} -o $@ $(wildcard $(BUILD)/*.o) $(LIBS)
 

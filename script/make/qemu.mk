@@ -5,7 +5,7 @@
 SMP	?= 4
 
 Qemulator	:= qemu-system-$(ARCH)
-QemuFlags	:= -kernel $(Target) -smp $(SMP)
+QemuFlags	:= -kernel $(Target_BIN) -smp $(SMP)
 ifeq ($(ARCH), x86_64)
 	QemuFlags	+= -machine q35
 	# QemuFlags	+= -nographic	#in qemu , don't use this option

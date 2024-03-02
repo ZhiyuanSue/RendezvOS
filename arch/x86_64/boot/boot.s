@@ -1,8 +1,9 @@
     .section .boot
     .global _start
     .align 8
+
 _start:
-	jmp entry
+	jmp _entry
 _entry:
     /*set sp*/
 
