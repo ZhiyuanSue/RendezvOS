@@ -37,16 +37,15 @@ include $(SCRIPT_MAKE_DIR)/qemu.mk
 .PHONY:all
 
 all:  init have_config $(Target)
-	
-$(Target): build_objs
-	@echo "LD	" $(Target)
-	@echo $(shell find $(BUILD) -name *.o)
-	@${LD} ${LDFLAGS} -o $@ $(shell find $(BUILD) -name *.o)
 
 build_objs:
 	@$(MAKE) -C $(ARCH_DIR) all
 	@$(MAKE) -C $(KERNEL_DIR) all
 	@$(MAKE) -C $(MODULES_DIR) all
+	
+$(Target): build_objs
+	@echo "LD	" $(Target)
+	@${LD} ${LDFLAGS} -o $@ $(shell find $(BUILD) -name *.o)
 
 # @${LD} ${LDFLAGS} -o $@ $(wildcard $(BUILD)/*.o) $(LIBS)
 

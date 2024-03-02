@@ -1,5 +1,6 @@
 #include "multiboot2_tag.h"
-    .global .boot
+    .section .boot
+    .global _start
     .align 8
 _start:
 	jmp multiboot_entry
