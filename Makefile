@@ -11,6 +11,7 @@ ARCH_DIR	:=	$(ROOT_DIR)/arch
 INCLUDE_DIR	:=	$(ROOT_DIR)/include
 KERNEL_DIR	:=	$(ROOT_DIR)/kernel
 MODULES_DIR	:=	$(ROOT_DIR)/modules
+Target		:=	$(BUILD)/kernel.elf
 
 KERNELVERSION=0.1
 
@@ -35,12 +36,20 @@ export ARCH KERNELVERSION ROOT_DIR BUILD SCRIPT_MAKE_DIR INCLUDE_DIR CC LD AR CF
 include $(SCRIPT_MAKE_DIR)/qemu.mk
 .PHONY:all
 
-all:  init have_config kernel modules
+all:  init have_config $(Target)
+	
+$(Target): build_objs
+	@echo "LD	" $(Target)
+	@echo $(shell find $(BUILD) -name *.o)
+	@${LD} ${LDFLAGS} -o $@ $(shell find $(BUILD) -name *.o)
+
+build_objs:
 	@$(MAKE) -C $(ARCH_DIR) all
 	@$(MAKE) -C $(KERNEL_DIR) all
 	@$(MAKE) -C $(MODULES_DIR) all
-	@echo "LD	" $(KERNEL)
-	@${LD} ${LDFLAGS} -o $@ $(wildcard $(BUILD)/*.o) $(LIBS)
+
+# @${LD} ${LDFLAGS} -o $@ $(wildcard $(BUILD)/*.o) $(LIBS)
+
 init:
 	@$(shell if [ ! -d $(BUILD) ];then mkdir $(BUILD); fi)
 have_config:
