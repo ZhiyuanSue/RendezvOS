@@ -4,6 +4,10 @@
 
 _start:
 	jmp _entry
+multiboot_header:
+    .long
+
+multiboot_header_end:
 _entry:
     /*set sp*/
 
