@@ -1,9 +1,9 @@
 	.section .boot
-	.global _start
+	.global _entry
 	.align 4
-
-_start:
-	jmp _entry
+.code 32
+_entry:
+	jmp multiboot_entry
 multiboot_header:
 	.long	0x1BADB002	/*magic*/
 	.long	0x00010002	/*flags,only memory info and load address infos*/
@@ -11,7 +11,7 @@ multiboot_header:
 multiboot_header_address:	/*we use bin file, not elf file,so those are all need*/
 	.long	multiboot_header
 multiboot_load_address:
-	.long	_start
+	.long	_entry
 multiboot_load_end_address:
 	.long	_edata
 multiboot_bss_end_address:
@@ -19,15 +19,18 @@ multiboot_bss_end_address:
 multiboot_entry_address:
 	.long	_entry
 multiboot_header_end:
-_entry:
+multiboot_entry:
 	/*set sp*/
-
+	mov sp
 	/*push into the function call stack*/
 
 	/*check magic*/
 
 	/*save infomation and call main*/
-	call cmain
+	call start_arch
 	jmp hlt
 hlt:
 	jmp hlt
+
+.code 64
+
