@@ -1,9 +1,9 @@
-ENTRY(_entry)
+ENTRY(_start)
 OUTPUT_FORMAT(elf64-x86-64)
 OUTPUT_ARCH(i386:x86-64)
 SECTIONS {
 	. = 0x100000;
-	_entry= .
+	_start= .
 	.text : 
 	{
 		*(.boot)
@@ -15,5 +15,10 @@ SECTIONS {
 		*(.data)
 	}
 	_edata = .;
+	.bss :
+	{
+		(.boot_stack)
+		*(.bss)
+	}
 	_end = .;
 }

@@ -3,7 +3,7 @@
 	.align 4
 .code 32
 _start:
-	jmp _entry
+	jmp multiboot_entry
 multiboot_header:
 	.long	0x1BADB002	/*magic*/
 	.long	0x00010002	/*flags,only memory info and load address infos*/
@@ -17,9 +17,9 @@ multiboot_load_end_address:
 multiboot_bss_end_address:
 	.long	_end
 multiboot_entry_address:
-	.long	_entry
+	.long	multiboot_entry
 multiboot_header_end:
-_entry:
+multiboot_entry:
 	/*set sp*/
 
 	/*push into the function call stack*/
