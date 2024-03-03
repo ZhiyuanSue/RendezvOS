@@ -25,8 +25,8 @@ multiboot_entry:
 	cli
 	/*set sp*/
 	mov $(boot_stack+0x10000),%esp
-	/*push into the function call stack*/
-
+	/*store the multiboot info*/
+	
 	/*check magic*/
 
 	/*save infomation and call main*/
@@ -35,7 +35,11 @@ multiboot_entry:
 hlt:
 	jmp hlt
 
+	.global multiboot_info_struct
+multiboot_info_struct:
+	.long 0
 .code64
 
-	
+stack_field:
+	.align 0x10000
 	.comm boot_stack,0x10000

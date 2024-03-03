@@ -1,7 +1,7 @@
 	.section .boot
 	.global _start
 	.align 4
-.code 32
+.code32
 _start:
 	jmp multiboot_entry
 multiboot_header:

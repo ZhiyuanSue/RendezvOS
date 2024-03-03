@@ -32,6 +32,10 @@ CFLAGS	+= -Wall -O3 -nostdlib -nostdinc
 CFLAGS	+= -fno-stack-protector -fno-builtin -fno-PIC
 CFLAGS	+=	-I $(INCLUDE_DIR)
 
+LDFLAGS	+=	-T $(SCRIPT_LINK_DIR)/$(ARCH)_linker.ld
+
+ARFLAGS	+=	-rcs
+
 export ARCH KERNELVERSION ROOT_DIR BUILD SCRIPT_MAKE_DIR INCLUDE_DIR CC LD AR CFLAGS ARFLAGS LDFLAGS LIBS DBG
 
 include $(SCRIPT_MAKE_DIR)/qemu.mk
