@@ -7,4 +7,4 @@ all: init $(modules) ${OBJECTS}
 -include *.d
 ${BUILD}/%.o: ./%.c $(modules)
 	@echo "CC	"$@
-	@$(CC) $(CFLAGS) -o $@ -c $< -MD -MF $*.d -MP
+	$(CC) $(CFLAGS) -o $@ -c $< -MD -MF $*.d -MP

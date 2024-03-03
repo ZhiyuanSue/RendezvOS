@@ -7,36 +7,36 @@
  *  I rewrite it all according to this document
  */
 struct sbiret {
-    long error;
-    long value;
+	long error;
+	long value;
 };
 
 enum SBI_ERROR_TYPES{
-    SBI_SUCCESS                 =   0,
-    SBI_ERR_FAILED              =   -1,
-    SBI_ERR_NOT_SUPPORTED       =   -2,
-    SBI_ERR_INVALID_PARAM       =   -3,
-    SBI_ERR_DENIED              =   -4,
-    SBI_ERR_INVALID_ADDRESS     =   -5,
-    SBI_ERR_ALREADY_AVAILABLE   =   -6,
-    SBI_ERR_ALREADY_STARTED     =   -7,
-    SBI_ERR_ALREADY_STOPPED     =   -8,
-    SBI_ERR_NO_SHMEM            =   -9,
+	SBI_SUCCESS					=   0,
+	SBI_ERR_FAILED				=   -1,
+	SBI_ERR_NOT_SUPPORTED		=   -2,
+	SBI_ERR_INVALID_PARAM		=   -3,
+	SBI_ERR_DENIED				=   -4,
+	SBI_ERR_INVALID_ADDRESS		=   -5,
+	SBI_ERR_ALREADY_AVAILABLE	=   -6,
+	SBI_ERR_ALREADY_STARTED		=   -7,
+	SBI_ERR_ALREADY_STOPPED		=   -8,
+	SBI_ERR_NO_SHMEM			=   -9,
 };
 enum SBI_EXT_ID{
 #ifdef _SBI_LEGANCY_
-    /*
-     * For the v0.1 version SBI, some funcitons are defined with different ext id  
-     */
-    SBI_LEGANCY_EXT_SET_TIMER               =   0x00,
-    SBI_LEGANCY_EXT_CONSOLE_PUTCHAR         =   0x01,
-    SBI_LEGANCY_EXT_CONSOLE_GETCHAR         =   0x02,
-    SBI_LEGANCY_EXT_CLEAR_IPI               =   0x03,
-    SBI_LEGANCY_EXT_SEND_IPI                =   0x04,
-    SBI_LEGANCY_EXT_REMOTE_FENCE_I          =   0x05,
-    SBI_LEGANCY_EXT_REMOTE_SFENCE_VMA       =   0x06,
-    SBI_LEGANCY_EXT_REMOTE_SFENCE_VMA_ASID  =   0x07,
-    SBI_LEGANCY_EXT_SHUTDOWN                =   0x08,
+	/*
+	* For the v0.1 version SBI, some funcitons are defined with different ext id  
+	*/
+	SBI_LEGANCY_EXT_SET_TIMER				=   0x00,
+	SBI_LEGANCY_EXT_CONSOLE_PUTCHAR			=   0x01,
+	SBI_LEGANCY_EXT_CONSOLE_GETCHAR			=   0x02,
+	SBI_LEGANCY_EXT_CLEAR_IPI				=   0x03,
+	SBI_LEGANCY_EXT_SEND_IPI				=   0x04,
+	SBI_LEGANCY_EXT_REMOTE_FENCE_I			=   0x05,
+	SBI_LEGANCY_EXT_REMOTE_SFENCE_VMA		=   0x06,
+	SBI_LEGANCY_EXT_REMOTE_SFENCE_VMA_ASID	=   0x07,
+	SBI_LEGANCY_EXT_SHUTDOWN				=   0x08,
 #endif
     SBI_BASE_EXT    =   0x10,
     SBI_CPPC_EXT    =   0x43505043,

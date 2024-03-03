@@ -4,20 +4,20 @@ import json
 
 target_config_file_name="Makefile.env"
 target_config_arch_list=[
-    'aarch32',
-    'aarch64',
-    'i386',
-    'longarch',
-    'riscv32',
-    'riscv64',
-    'x86_64'
+	'aarch32',
+	'aarch64',
+	'i386',
+	'longarch',
+	'riscv32',
+	'riscv64',
+	'x86_64'
 ]
 usable_module_list={}
 
 def configure_kernel(kernel_config,root_dir):
-    # ==== ==== ==== ==== ==== ==== ==== ==== #
-    # deal with the kernel configs
-    
+	# ==== ==== ==== ==== ==== ==== ==== ==== #
+	# deal with the kernel configs
+	
     kernel_config_str=""
     
     # the kernel config must be used

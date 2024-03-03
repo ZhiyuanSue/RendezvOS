@@ -49,7 +49,7 @@ $(Target_ELF): build_objs
 	@${LD} ${LDFLAGS} -o $@ $(shell find $(BUILD) -name *.o)
 
 $(Target_BIN):	$(Target_ELF)
-	@echo "COYP	" $(Target_BIN)
+	@echo "COPY	" $(Target_BIN)
 	@$(OBJCOPY)	-O binary -S $(Target_ELF) $(Target_BIN)
 
 # @${LD} ${LDFLAGS} -o $@ $(wildcard $(BUILD)/*.o) $(LIBS)
@@ -64,7 +64,7 @@ have_config:
 
 run:qemu
 
-config:
+config: clean
 	@python3 $(SCRIPT_CONFIG_DIR)/configure.py ${ROOT_DIR} ${SCRIPT_CONFIG_DIR} $(SCRIPT_CONFIG_DIR)/${CONFIG}
 
 mrproper: clean

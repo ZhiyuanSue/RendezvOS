@@ -4,7 +4,7 @@ module	:= x86_64
 ifeq ($(ARCH), x86_64)
 	module = x86_64
 else ifeq ($(ARCH), i386)
-	module = x86_64
+	module = i386
 else ifeq ($(ARCH), aarch32)
 	module = aarch32
 else ifeq ($(ARCH), aarch64)
