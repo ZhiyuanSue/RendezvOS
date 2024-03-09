@@ -5,6 +5,8 @@
 .code32
 _start:
 	jmp multiboot_entry
+	/* Align 32 bits boundary. */
+	.align  4
 multiboot_header:
 	.long	0x1BADB002	/*magic*/
 	.long	0x00010002	/*flags,only memory info and load address infos*/
@@ -31,12 +33,10 @@ multiboot_entry:
 	/*store the multiboot info*/
 	movl	%ebp,multiboot_info_struct
 	/*check magic*/
-	cmp		%eax,0x2BADB002
-	jnz 	hlt
-	jmp		x86_32_entry
+	call 	cmain
 	jmp 	hlt
 hlt:
-	jmp 	hlt
+	call 	cpu_idle
 
 x86_32_entry:
 	call 	cmain

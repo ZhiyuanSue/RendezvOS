@@ -43,7 +43,7 @@ multiboot_entry:
 	call	cmain
 	jmp		hlt
 hlt:
-	call cpu_idle
+	call	cpu_idle
 .section .data
 	.global multiboot_info_struct
 multiboot_info_struct:
