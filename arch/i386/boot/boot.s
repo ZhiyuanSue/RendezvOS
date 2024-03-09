@@ -5,7 +5,7 @@
 _start:
 	jmp multiboot_entry
 	/* Align 32 bits boundary. */
-    .align  4
+	.align  4
 multiboot_header:
 	.long	0x1BADB002	/*magic*/
 	.long	0x00010002	/*flags,only memory info and load address infos*/
@@ -22,16 +22,16 @@ multiboot_entry_address:
 	.long	multiboot_entry
 multiboot_entry_display:
 	.long 0
-    .long 1024
-    .long 768
-    .long 32
+	.long 1024
+	.long 768
+	.long 32
 multiboot_header_end:
 multiboot_entry:
 	/*set sp*/
 	movl 	$(boot_stack+0x10000),%esp
 	/*clear the flag register*/
 	pushl	$0
-    popf
+	popf
 	/*store the multiboot info*/
 	movl	%ebp,multiboot_info_struct
 	

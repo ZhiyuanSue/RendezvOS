@@ -43,25 +43,25 @@ struct multiboot_framebuffer{
 	u32 framebuffer_width;
 	u32 framebuffer_height;
 	u8 	framebuffer_bpp;
-#define MULTIBOOT_FRAMEBUFFER_TYPE_INDEXED 0
-#define MULTIBOOT_FRAMEBUFFER_TYPE_RGB     1
-#define MULTIBOOT_FRAMEBUFFER_TYPE_EGA_TEXT     2
+#define MULTIBOOT_FRAMEBUFFER_TYPE_INDEXED		0
+#define MULTIBOOT_FRAMEBUFFER_TYPE_RGB			1
+#define MULTIBOOT_FRAMEBUFFER_TYPE_EGA_TEXT		2
 	u8 framebuffer_type;
 	union
 	{
 		struct
 		{
-    		u32 framebuffer_palette_addr;
-    		u16 framebuffer_palette_num_colors;
-    	};
-    	struct
-    	{
-    		u8 framebuffer_red_field_position;
-    		u8 framebuffer_red_mask_size;
-    		u8 framebuffer_green_field_position;
-    		u8 framebuffer_green_mask_size;
-    		u8 framebuffer_blue_field_position;
-    		u8 framebuffer_blue_mask_size;
+			u32 framebuffer_palette_addr;
+			u16 framebuffer_palette_num_colors;
+		};
+		struct
+		{
+			u8 framebuffer_red_field_position;
+			u8 framebuffer_red_mask_size;
+			u8 framebuffer_green_field_position;
+			u8 framebuffer_green_mask_size;
+			u8 framebuffer_blue_field_position;
+			u8 framebuffer_blue_mask_size;
 		};
 	};
 }__attribute__((packed));

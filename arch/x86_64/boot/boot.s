@@ -27,7 +27,7 @@ multiboot_entry:
 	movl 	$(boot_stack+0x10000),%esp
 	/*clear the flag register*/
 	pushl	$0
-    popf
+	popf
 	/*store the multiboot info*/
 	movl	%ebp,multiboot_info_struct
 	/*check magic*/

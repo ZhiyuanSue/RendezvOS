@@ -3,5 +3,5 @@
 
 void cpu_idle()
 {
-    while(1);
+	while(1);
 }

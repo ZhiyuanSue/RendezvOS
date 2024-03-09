@@ -4,5 +4,5 @@ extern u32 multiboot_info_struct;
 
 void cpu_idle()
 {
-    while(1);
+	while(1);
 }

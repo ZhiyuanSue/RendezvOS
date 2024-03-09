@@ -4,26 +4,26 @@
 #include <shampoos/stdbool.h>
 
 typedef struct UART_16550A_regs{
-    union
-    {
-        volatile u_int8_t RHR;
-        volatile u_int8_t THR;
-        volatile u_int8_t DLL;
-    };
-    union{
-        volatile u_int8_t IER;
-        volatile u_int8_t DLM;
-    };
-    union 
-    {
-        volatile u_int8_t FCR;
-        volatile u_int8_t ISR;
-    };
-    volatile u_int8_t LCR;
-    volatile u_int8_t MCR;
-    volatile u_int8_t LSR;
-    volatile u_int8_t MSR;
-    volatile u_int8_t SPR;
+	union
+	{
+		volatile u_int8_t RHR;
+		volatile u_int8_t THR;
+	volatile u_int8_t DLL;
+	};
+	union{
+		volatile u_int8_t IER;
+		volatile u_int8_t DLM;
+	};
+	union 
+	{
+		volatile u_int8_t FCR;
+		volatile u_int8_t ISR;
+	};
+	volatile u_int8_t LCR;
+	volatile u_int8_t MCR;
+	volatile u_int8_t LSR;
+	volatile u_int8_t MSR;
+	volatile u_int8_t SPR;
 }UART_16550A;
 /* At the beginning, the states are
  * IER = 0
@@ -49,19 +49,19 @@ void uart_16550A_close();
 
 
 #if _I386_ || _X86_64_
-    #include <shampoos/io.h>
-    #include <shampoos/stddef.h>
-    #define uart_write_reg(reg_name,data)   \
-        outb(_X86_16550A_COM1_BASE_+offsetof(UART_16550A,reg_name) ,data)
-    #define uart_read_reg(reg_name) \
-        inb(_X86_16550A_COM1_BASE_+offsetof(UART_16550A,reg_name))
+	#include <shampoos/io.h>
+	#include <shampoos/stddef.h>
+	#define uart_write_reg(reg_name,data)   \
+		outb(_X86_16550A_COM1_BASE_+offsetof(UART_16550A,reg_name) ,data)
+	#define uart_read_reg(reg_name) \
+		inb(_X86_16550A_COM1_BASE_+offsetof(UART_16550A,reg_name))
 
 #elif _RISCV64_
-    #define _VIRT_BASE_COM0_ 0x10000000UL
-    #define uart_write_reg(reg_name,data)   \
-        ((((UART_16550A*)_VIRT_BASE_COM0_)->reg_name=data))
-    #define uart_read_reg(reg_name) \
-        (((UART_16550A*)_VIRT_BASE_COM0_)->reg_name)
+	#define _VIRT_BASE_COM0_ 0x10000000UL
+	#define uart_write_reg(reg_name,data)   \
+		((((UART_16550A*)_VIRT_BASE_COM0_)->reg_name=data))
+	#define uart_read_reg(reg_name) \
+		(((UART_16550A*)_VIRT_BASE_COM0_)->reg_name)
 
 #endif
 
