@@ -22,23 +22,39 @@ multiboot_entry_address:
 multiboot_header_end:
 multiboot_entry:
 	/*disable interrupt*/
-	cli
-	/*set sp*/
-	mov $(boot_stack+0x10000),%esp
-	/*store the multiboot info*/
 	
+	/*set sp*/
+	movl 	$(boot_stack+0x10000),%esp
+	/*clear the flag register*/
+	pushl	$0
+    popf
+	/*store the multiboot info*/
+	movl	%ebp,multiboot_info_struct
 	/*check magic*/
-
-	/*save infomation and call main*/
-	call cmain
-	jmp hlt
+	cmp		%eax,0x2BADB002
+	jnz 	hlt
+	jmp		x86_32_entry
+	jmp 	hlt
 hlt:
-	jmp hlt
+	jmp 	hlt
 
+x86_32_entry:
+	call 	cmain
+	
+/* some infomation under 32 bit*/	
+	.section .data
 	.global multiboot_info_struct
 multiboot_info_struct:
 	.long 0
+multiboot_error_magic:
+	.asciz "ERROR MAGIC NUM"
+multiboot_hello:
+	.asciz "HELLO SHAMPOOS"
+
+
+
 .code64
+x86_64_entry:
 
 stack_field:
 	.align 0x10000

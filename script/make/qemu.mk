@@ -12,7 +12,7 @@ ifeq ($(ARCH), x86_64)
 	# QemuFlags	+= -numa
 else ifeq ($(ARCH), i386)
 	QemuFlags	+= -machine q35
-	# QemuFlags	+= -nographic	#in qemu , don't use this option
+	QemuFlags	+= -nographic	#in qemu , don't use this option
 	# QemuFlags	+= -numa
 else ifeq ($(ARCH), aarch64)
 	QemuFlags	+=
