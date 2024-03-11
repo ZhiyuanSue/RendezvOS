@@ -33,13 +33,26 @@ multiboot_entry:
 	/*store the multiboot info*/
 	movl	%ebp,multiboot_info_struct
 	/*check magic*/
-	call 	cmain
+
+	/*check CPUID whether it support*/
+load_page_table:
+
+enable_pae:
+	/*enable_pae*/
+
+enable_lme:
+	/*enable_lme*/
+
+
+enable_pg:
+	/*enable_pg*/
+
+	call	cmain
 	jmp 	hlt
 hlt:
 	call 	cpu_idle
 
-x86_32_entry:
-	call 	cmain
+
 	
 /* some infomation under 32 bit*/	
 	.section .data
@@ -55,7 +68,8 @@ multiboot_hello:
 
 .code64
 x86_64_entry:
-
+	call 	cmain
+	jmp 	hlt
 stack_field:
 	.align 0x10000
 	.comm boot_stack,0x10000

@@ -38,10 +38,11 @@ ARFLAGS	+=	-rcs
 
 export ARCH KERNELVERSION ROOT_DIR BUILD SCRIPT_MAKE_DIR INCLUDE_DIR CC LD AR CFLAGS ARFLAGS LDFLAGS LIBS DBG
 
+all:  init have_config $(Target_BIN)
+
 include $(SCRIPT_MAKE_DIR)/qemu.mk
 .PHONY:all
 
-all:  init have_config $(Target_BIN)
 
 build_objs:
 	@$(MAKE) -C $(ARCH_DIR) all
