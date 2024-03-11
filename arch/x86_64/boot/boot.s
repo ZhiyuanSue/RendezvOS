@@ -34,8 +34,15 @@ multiboot_entry:
 	movl	%ebp,multiboot_info_struct
 	/*check magic*/
 
-	/*check CPUID whether it support*/
-load_page_table:
+	/*check CPUID whether it support IA-32e mode*/
+cpuid_check:
+
+calculate_kernel_pages:
+
+change_kernel_page_table:
+
+load_kernel_page_table:
+
 
 enable_pae:
 	/*enable_pae*/
@@ -55,7 +62,7 @@ hlt:
 
 	
 /* some infomation under 32 bit*/	
-	.section .data
+	.section .boot.data
 	.global multiboot_info_struct
 multiboot_info_struct:
 	.long 0
@@ -63,13 +70,16 @@ multiboot_error_magic:
 	.asciz "ERROR MAGIC NUM"
 multiboot_hello:
 	.asciz "HELLO SHAMPOOS"
-
-
+	
+	.section .boot_page
+	.align 0x1000
+boot_page_table_PML4:
+	.zero 8*512
 
 .code64
 x86_64_entry:
 	call 	cmain
 	jmp 	hlt
 stack_field:
-	.align 0x10000
+	.align 0x1000
 	.comm boot_stack,0x10000

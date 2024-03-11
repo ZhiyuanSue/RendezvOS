@@ -3,6 +3,7 @@ OUTPUT_FORMAT("elf64-littleriscv")
 ENTRY(_start)
 SECTIONS{
     . = 0x80200000;
+	_kstart = .;
     .text : {
         *(.boot)
         *(.text)

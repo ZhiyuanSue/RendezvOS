@@ -3,6 +3,7 @@ OUTPUT_FORMAT(elf64-x86-64)
 OUTPUT_ARCH(i386:x86-64)
 SECTIONS {
 	. = 0x100000;
+	_kstart = .;
 	.text : 
 	{
 		*(.boot)
@@ -16,6 +17,7 @@ SECTIONS {
 	_edata = .;
 	.bss :
 	{
+		*(.boot_page)
 		*(.boot_stack)
 		*(.bss)
 	}
