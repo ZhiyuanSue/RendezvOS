@@ -3,49 +3,49 @@
 		"use":true ,
 		"ARCH":"riscv64",
 		"CROSS_COMPLIER":"riscv64-unknown-elf-",
-        "DBG":false,
-        "CFLAGS":[
-            "-march=rv64gc",
-            "-mabi=lp64d",
-            "-mcmodel=medany"
-        ],
-        "features":[
-            "_RISCV64_"
+		"DBG":false,
+		"CFLAGS":[
+			"-march=rv64gc",
+			"-mabi=lp64d",
+			"-mcmodel=medany"
 		],
-        "LDFLAGS":[
-            
-        ]
+		"features":[
+			"_RISCV64_"
+		],
+		"LDFLAGS":[
+			
+		]
 		},
 	"modules":{
 		"helloworld":
 		{
 			"use":true ,
 			"features":[
-                "HELLO"
+				"HELLO"
 			],
 			"depend_module":[
 			] ,
 			"path":"modules/helloworld"
 		},
-        "test":
-        {
-            "use":true ,
-            "features":[
-                "TEST"
-            ],
-            "depend_module":[
-                "helloworld"
-            ],
-            "path":"modules/test"
-        },
-        "uart":
-        {
-            "use":true ,
-            "features":[
-            ],
-            "depend_module":[
-            ],
-            "path":"modules/uart"
-        }
+		"test":
+		{
+		"use":true ,
+			"features":[
+				"TEST"
+			],
+			"depend_module":[
+				"helloworld"
+			],
+			"path":"modules/test"
+		},
+		"uart":
+		{
+			"use":true ,
+			"features":[
+			],
+			"depend_module":[
+			],
+			"path":"modules/uart"
+		}
 	}
 }

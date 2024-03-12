@@ -3,47 +3,47 @@
 		"use":true ,
 		"ARCH":"loongarch64",
 		"CROSS_COMPLIER":"loongarch64-unknown-elf-",
-        "DBG":false,
-        "CFLAGS":[
+		"DBG":false,
+		"CFLAGS":[
 
-        ],
-        "features":[
-            "_LONGARCH_"
 		],
-        "LDFLAGS":[
-            
-        ]
+		"features":[
+			"_LONGARCH_"
+		],
+		"LDFLAGS":[
+			
+		]
 		},
 	"modules":{
 		"helloworld":
 		{
 			"use":true ,
 			"features":[
-                "HELLO"
+				"HELLO"
 			],
 			"depend_module":[
 			] ,
 			"path":"modules/helloworld"
 		},
-        "test":
-        {
-            "use":true ,
-            "features":[
-                "TEST"
-            ],
-            "depend_module":[
-                "helloworld"
-            ],
-            "path":"modules/test"
-        },
-        "uart":
-        {
-            "use":true ,
-            "features":[
-            ],
-            "depend_module":[
-            ],
-            "path":"modules/uart"
-        }
+		"test":
+		{
+			"use":true ,
+			"features":[
+				"TEST"
+			],
+			"depend_module":[
+				"helloworld"
+			],
+			"path":"modules/test"
+		},
+		"uart":
+		{
+			"use":true ,
+			"features":[
+			],
+			"depend_module":[
+			],
+			"path":"modules/uart"
+		}
 	}
 }

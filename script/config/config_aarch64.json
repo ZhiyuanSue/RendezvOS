@@ -3,47 +3,47 @@
 		"use":true ,
 		"ARCH":"aarch64" ,
 		"CROSS_COMPLIER":"aarch64-none-elf-",
-        "DBG":false,
-        "CFLAGS":[
+		"DBG":false,
+		"CFLAGS":[
 
-        ],
-        "features":[
-            "_AARCH64_"
+		],
+		"features":[
+			"_AARCH64_"
 		] ,
-        "LDFLAGS":[
-            
-        ]
+		"LDFLAGS":[
+			
+		]
 		},
 	"modules":{
 		"helloworld":
 		{
 			"use":true ,
 			"features":[
-                "HELLO"
+				"HELLO"
 			],
 			"depend_module":[
 			] ,
 			"path":"modules/helloworld"
 		},
-        "test":
-        {
-            "use":true ,
-            "features":[
-                "TEST"
-            ],
-            "depend_module":[
-                "helloworld"
-            ],
-            "path":"modules/test"
-        },
-        "uart":
-        {
-            "use":true ,
-            "features":[
-            ],
-            "depend_module":[
-            ],
-            "path":"modules/uart"
-        }
+		"test":
+		{
+			"use":true ,
+			"features":[
+				"TEST"
+			],
+			"depend_module":[
+				"helloworld"
+			],
+			"path":"modules/test"
+		},
+		"uart":
+		{
+			"use":true ,
+			"features":[
+			],
+			"depend_module":[
+			],
+			"path":"modules/uart"
+		}
 	}
 }
