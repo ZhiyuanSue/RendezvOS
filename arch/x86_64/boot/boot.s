@@ -12,21 +12,21 @@ multiboot_header:
 	.long	0x00010002	/*flags,only memory info and load address infos*/
 	.long	-(0x1BADB002+0x00010002)   /*checksum*/
 multiboot_header_address:	/*we use bin file, not elf file,so those are all need*/
-	.long	multiboot_header
+	.long	multiboot_header - 0xffffffff80000000
 multiboot_load_address:
-	.long	_start
+	.long	_start - 0xffffffff80000000
 multiboot_load_end_address:
-	.long	_edata
+	.long	_edata - 0xffffffff80000000
 multiboot_bss_end_address:
-	.long	_end
+	.long	_end - 0xffffffff80000000
 multiboot_entry_address:
-	.long	multiboot_entry
+	.long	multiboot_entry - 0xffffffff80000000
 multiboot_header_end:
 multiboot_entry:
 	/*disable interrupt*/
 	
 	/*set sp*/
-	movl 	$(boot_stack+0x10000),%esp
+	movl 	$(boot_stack + 0x10000 - 0xffffffff80000000),%esp
 	/*clear the flag register*/
 	pushl	$0
 	popf
@@ -79,9 +79,11 @@ multiboot_hello:
 	.section .boot_page
 	.align 0x1000
 boot_page_table_PML4:
-	.quad boot_page_table_directory_ptr - kernel_virt_offset
+	.quad boot_page_table_directory_ptr - 0xffffffff80000000
 	.zero 8*510
-	.quad boot_page_table_directory_ptr - kernel_virt_offset
+	.quad boot_page_table_directory_ptr - 0xffffffff80000000
+
+	.global boot_page_table_directory_ptr
 boot_page_table_directory_ptr:
 	.quad 0	/*TODO*/
 	.zero 8*511
