@@ -1,7 +1,7 @@
 	.section .boot
 	.global _start
 	.align 4
-
+	.set	kernel_virt_offset,0xffffffff80000000
 .code32
 _start:
 	jmp multiboot_entry
@@ -12,21 +12,21 @@ multiboot_header:
 	.long	0x00010002	/*flags,only memory info and load address infos*/
 	.long	-(0x1BADB002+0x00010002)   /*checksum*/
 multiboot_header_address:	/*we use bin file, not elf file,so those are all need*/
-	.long	multiboot_header - 0xffffffff80000000
+	.long	multiboot_header - kernel_virt_offset
 multiboot_load_address:
-	.long	_start - 0xffffffff80000000
+	.long	_start - kernel_virt_offset
 multiboot_load_end_address:
-	.long	_edata - 0xffffffff80000000
+	.long	_edata - kernel_virt_offset
 multiboot_bss_end_address:
-	.long	_end - 0xffffffff80000000
+	.long	_end - kernel_virt_offset
 multiboot_entry_address:
-	.long	multiboot_entry - 0xffffffff80000000
+	.long	multiboot_entry - kernel_virt_offset
 multiboot_header_end:
 multiboot_entry:
 	/*disable interrupt*/
 	
 	/*set sp*/
-	movl 	$(boot_stack + 0x10000 - 0xffffffff80000000),%esp
+	movl 	$(boot_stack + 0x10000 - kernel_virt_offset),%esp
 	/*clear the flag register*/
 	pushl	$0
 	popf
@@ -79,9 +79,9 @@ multiboot_hello:
 	.section .boot_page
 	.align 0x1000
 boot_page_table_PML4:
-	.quad boot_page_table_directory_ptr - 0xffffffff80000000
+	.quad boot_page_table_directory_ptr - kernel_virt_offset
 	.zero 8*510
-	.quad boot_page_table_directory_ptr - 0xffffffff80000000
+	.quad boot_page_table_directory_ptr - kernel_virt_offset
 
 	.global boot_page_table_directory_ptr
 boot_page_table_directory_ptr:
