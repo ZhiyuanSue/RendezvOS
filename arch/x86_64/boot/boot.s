@@ -36,6 +36,11 @@ multiboot_entry:
 
 	/*check CPUID whether it support IA-32e mode*/
 cpuid_check:
+	movl	$0x80000001,%eax	/*check the CPUID */
+	cpuid	/*EDX.LM[bit29] and EDX.Page1GB[bit26] must be support*/
+
+	movl	$0x80000008,%eax	/*check the CPUID*/
+	cpuid	/*EAX[7:0] (I think is al) means phy address width, and EAX[15:8] means linear address width*/
 
 calculate_kernel_pages:
 
@@ -74,7 +79,12 @@ multiboot_hello:
 	.section .boot_page
 	.align 0x1000
 boot_page_table_PML4:
-	.zero 8*512
+	.quad boot_page_table_directory_ptr - kernel_virt_offset
+	.zero 8*510
+	.quad boot_page_table_directory_ptr - kernel_virt_offset
+boot_page_table_directory_ptr:
+	.quad 0	/*TODO*/
+	.zero 8*511
 
 .code64
 x86_64_entry:
