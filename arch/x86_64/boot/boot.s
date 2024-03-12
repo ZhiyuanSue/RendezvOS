@@ -2,6 +2,7 @@
 	.global _start
 	.align 4
 	.set	kernel_virt_offset,0xffffffff80000000
+	.set	boot_stack_size,0x10000
 .code32
 _start:
 	jmp multiboot_entry
@@ -26,7 +27,7 @@ multiboot_entry:
 	/*disable interrupt*/
 	
 	/*set sp*/
-	movl 	$(boot_stack + 0x10000 - kernel_virt_offset),%esp
+	movl 	$(boot_stack + boot_stack_size - kernel_virt_offset),%esp
 	/*clear the flag register*/
 	pushl	$0
 	popf
@@ -94,4 +95,4 @@ x86_64_entry:
 	jmp 	hlt
 stack_field:
 	.align 0x1000
-	.comm boot_stack,0x10000
+	.comm boot_stack,boot_stack_size
