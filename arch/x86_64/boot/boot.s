@@ -30,13 +30,15 @@ multiboot_header_end:
 multiboot_entry:
 	/*disable interrupt*/
 	
+	/*store the multiboot magic*/
+	movl	%eax,setup_info
+	/*store the %ebx*/
+	movl	%ebx,setup_info+4
 	/*set sp*/
 	movl 	$(boot_stack + boot_stack_size - kernel_virt_offset),%esp
 	/*clear the flag register*/
 	pushl	$0
 	popf
-	/*store the multiboot info*/
-	movl	%ebp,setup_info
 	/*check magic*/
 
 	/*check CPUID whether it support IA-32e mode*/
@@ -49,6 +51,11 @@ cpuid_check:
 
 	movl	$0x80000008,%eax	/*check the CPUID*/
 	cpuid	/*EAX[7:0] (I think is al) means phy address width, and EAX[15:8] means linear address width*/
+	movl	$0,%ebx
+	movb	%al,%bl
+	movl	%ebx,setup_info+8
+	movb	%ah,%bl
+	movl	%ebx,setup_info+12
 
 calculate_kernel_pages:
 
@@ -79,7 +86,10 @@ ERROR_CPUID:
 	.section .boot.data
 	.global setup_info
 setup_info:
-	.long 0
+	.long 0	/* multiboot magic */
+	.long 0	/* multiboot info struct ptr */
+	.long 0	/* phy addr width */
+	.long 0	/* linear addr width*/
 multiboot_error_magic:
 	.asciz "ERROR MAGIC NUM"
 multiboot_hello:
