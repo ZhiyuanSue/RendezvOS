@@ -70,9 +70,13 @@ calculate_kernel_pages:
 	/*calculate the lower*/
 	movl	$(_kstart-kernel_virt_offset),%eax
 	andl	$align_bit32_not_2m_minus_1,%eax
+change_kernel_page_table_loop:
+	movl	%eax,%ecx
 	
 change_kernel_page_table:
-
+	addl	$align_2m,%eax
+	cmp	%eax,%ebx
+	jb	change_kernel_page_table_loop
 load_kernel_page_table:
 
 
