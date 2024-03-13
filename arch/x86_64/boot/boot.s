@@ -1,17 +1,21 @@
 	.section .boot
 	.global _start
 	.align 4
+/* some definations */
 	.set	kernel_virt_offset,0xffffffff80000000
 	.set	boot_stack_size,0x10000
+	.set	multiboot_header_magic,0x1BADB002
+	.set	multiboot_header_flag_addr,0x00000002
+	.set	multiboot_header_flag_vbe,0x00010000
 .code32
 _start:
 	jmp multiboot_entry
 	/* Align 32 bits boundary. */
 	.align  4
 multiboot_header:
-	.long	0x1BADB002	/*magic*/
-	.long	0x00010002	/*flags,only memory info and load address infos*/
-	.long	-(0x1BADB002+0x00010002)   /*checksum*/
+	.long	multiboot_header_magic	/*magic*/
+	.long	multiboot_header_flag_addr | multiboot_header_flag_vbe	/*flags,only memory info and load address infos*/
+	.long	-(multiboot_header_magic + multiboot_header_flag_addr | multiboot_header_flag_vbe )   /*checksum*/
 multiboot_header_address:	/*we use bin file, not elf file,so those are all need*/
 	.long	multiboot_header - kernel_virt_offset
 multiboot_load_address:
@@ -32,13 +36,16 @@ multiboot_entry:
 	pushl	$0
 	popf
 	/*store the multiboot info*/
-	movl	%ebp,multiboot_info_struct
+	movl	%ebp,setup_info
 	/*check magic*/
 
 	/*check CPUID whether it support IA-32e mode*/
 cpuid_check:
 	movl	$0x80000001,%eax	/*check the CPUID */
-	cpuid	/*EDX.LM[bit29] and EDX.Page1GB[bit26] must be support*/
+	cpuid	/*EDX.LM[bit29] must be support*/
+	andl	$(1<<29),%edx
+	cmp	$0,%edx
+	je	ERROR_CPUID
 
 	movl	$0x80000008,%eax	/*check the CPUID*/
 	cpuid	/*EAX[7:0] (I think is al) means phy address width, and EAX[15:8] means linear address width*/
@@ -64,13 +71,14 @@ enable_pg:
 	jmp 	hlt
 hlt:
 	call 	cpu_idle
-
+ERROR_CPUID:
+	jmp hlt
 
 	
 /* some infomation under 32 bit*/	
 	.section .boot.data
-	.global multiboot_info_struct
-multiboot_info_struct:
+	.global setup_info
+setup_info:
 	.long 0
 multiboot_error_magic:
 	.asciz "ERROR MAGIC NUM"
