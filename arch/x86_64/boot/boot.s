@@ -7,6 +7,9 @@
 	.set	multiboot_header_magic,0x1BADB002
 	.set	multiboot_header_flag_addr,0x00000002
 	.set	multiboot_header_flag_vbe,0x00010000
+	.set	align_2m,0x200000
+	.set	align_2m_minus_1,0x1fffff
+	.set	align_bit32_not_2m_minus_1,0xffe00000
 .code32
 _start:
 	jmp multiboot_entry
@@ -58,7 +61,16 @@ cpuid_check:
 	movl	%ebx,setup_info+12
 
 calculate_kernel_pages:
-
+	/*calculate the upper*/
+	movl	$(_end-kernel_virt_offset),%eax	
+	addl	$align_2m_minus_1,%eax
+	andl	$align_bit32_not_2m_minus_1,%eax
+	movl	%eax,%ebx
+	
+	/*calculate the lower*/
+	movl	$(_kstart-kernel_virt_offset),%eax
+	andl	$align_bit32_not_2m_minus_1,%eax
+	
 change_kernel_page_table:
 
 load_kernel_page_table:
@@ -104,8 +116,7 @@ boot_page_table_PML4:
 
 	.global boot_page_table_directory_ptr
 boot_page_table_directory_ptr:
-	.quad 0	/*TODO*/
-	.zero 8*511
+	.zero 8*512
 
 .code64
 x86_64_entry:
