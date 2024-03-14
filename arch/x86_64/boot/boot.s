@@ -10,6 +10,10 @@
 	.set	align_2m,0x200000
 	.set	align_2m_minus_1,0x1fffff
 	.set	align_bit32_not_2m_minus_1,0xffe00000
+	.set	CR0_PG,0x80000000
+	.set	CR4_PGE_OR_PAE,0xa0
+	.set	IA32_EFER_bits,0x901
+	.set	IA32_EFER_addr,0xC0000080
 .code32
 _start:
 	jmp multiboot_entry
@@ -70,26 +74,39 @@ calculate_kernel_pages:
 	/*calculate the lower*/
 	movl	$(_kstart-kernel_virt_offset),%eax
 	andl	$align_bit32_not_2m_minus_1,%eax
+	movl	$0,%edx
 change_kernel_page_table_loop:
-	movl	%eax,%ecx
-	
+	movl	%eax,%ecx	/*store the eax to ecx*/
+	andl	$align_bit32_not_2m_minus_1,%eax	/*for the phy addr must not below 1GB,so and this mask is possible*/
+	orl		$0x183,%eax
+	movl	%eax,(%edx)
+	addl	$8,%edx	/*add a quad position*/
 change_kernel_page_table:
+	movl	%ecx,%eax
 	addl	$align_2m,%eax
 	cmp	%eax,%ebx
 	jb	change_kernel_page_table_loop
 load_kernel_page_table:
-
+	lea		(boot_page_table_PML4-kernel_virt_offset),%eax
+	movl	%eax,%cr3
 
 enable_pae:
 	/*enable_pae*/
-
+	movl	%cr4,%eax
+	orl		$CR4_PGE_OR_PAE,%eax
+	movl	%eax,%cr4
 enable_lme:
 	/*enable_lme*/
-
+	movl	$IA32_EFER_addr,%ecx
+	movl	$0,%edx	/*edx is 0*/
+	movl	$IA32_EFER_bits,%eax /*IA32_EFER.SCE[bit0] and IA32_EFER.LMR[bit8] and IA32_EFER.NXE[bit11] should be set*/
+	wrmsr
 
 enable_pg:
 	/*enable_pg*/
-
+	movl	%cr0,%eax
+	orl		$CR0_PG,%eax
+	movl	%eax,%cr4
 	call	cmain
 	jmp 	hlt
 hlt:
@@ -130,9 +147,9 @@ boot_page_table_PML4:
 		bit 62:52:ignore
 		bit 63:XD,disable-execute
 	*/
-	.quad boot_page_table_directory_ptr - kernel_virt_offset
+	.quad (boot_page_table_directory_ptr - kernel_virt_offset)
 	.zero 8*510
-	.quad boot_page_table_directory_ptr - kernel_virt_offset
+	.quad (boot_page_table_directory_ptr - kernel_virt_offset)
 	
 	.global boot_page_table_directory_ptr
 boot_page_table_directory_ptr:
@@ -153,7 +170,7 @@ boot_page_table_directory_ptr:
 		bit 63:XD,disable-execute
 	*/
 	.zero 8*511
-	.quad boot_page_table_directory - kernel_virt_offset
+	.quad (boot_page_table_directory - kernel_virt_offset)
 
 	.global boot_page_table_directory
 boot_page_table_directory:
@@ -167,7 +184,7 @@ boot_page_table_directory:
 		bit 5:A,0
 		bit 6:Dirty
 		bit 7:must be 1
-		bit 8:global,can be set 0
+		bit 8:global,set to 1 to enable the global page cache
 		bit 11 - 9:ignore
 		bit 12:PAT,memory type 
 		bit 20 - 13:ignore
