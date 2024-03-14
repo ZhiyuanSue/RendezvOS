@@ -99,7 +99,7 @@ enable_lme:
 	/*enable_lme*/
 	movl	$IA32_EFER_addr,%ecx
 	rdmsr
-	movl	$IA32_EFER_bits,%eax /*IA32_EFER.SCE[bit0] and IA32_EFER.LMR[bit8] and IA32_EFER.NXE[bit11] should be set*/
+	orl	$IA32_EFER_bits,%eax /*IA32_EFER.SCE[bit0] and IA32_EFER.LMR[bit8] and IA32_EFER.NXE[bit11] should be set*/
 	wrmsr
 
 enable_pg:
@@ -107,6 +107,7 @@ enable_pg:
 	movl	%cr0,%eax
 	orl		$CR0_PG,%eax
 	movl	%eax,%cr0
+	call	cmain
 long_jmp_to_64:
 	lgdtl	tmp_gdt_desc-kernel_virt_offset
 	ljmp	$0x08,$(x86_64_entry-kernel_virt_offset)
@@ -131,7 +132,7 @@ multiboot_error_magic:
 multiboot_hello:
 	.asciz "HELLO SHAMPOOS"
 	
-	.align 16
+	.align 8
 tmp_gdt:
 	.quad 0x0	# 0x00: null
 	.quad ((1<<(32+12)) | (1<<(32+21)) | (1<<(32+15)) | (1<<(32+11)) | (1<<(32+10)) | (1<<(32+9)))	
@@ -167,9 +168,9 @@ boot_page_table_PML4:
 		bit 62:52:ignore
 		bit 63:XD,disable-execute
 	*/
-	.quad (boot_page_table_directory_ptr - kernel_virt_offset) + 0x3
+	.quad	boot_page_table_directory_ptr - kernel_virt_offset + 0x3
 	.zero 8*510
-	.quad (boot_page_table_directory_ptr - kernel_virt_offset) + 0x3
+	.quad	boot_page_table_directory_ptr - kernel_virt_offset + 0x3
 	
 	.global boot_page_table_directory_ptr
 boot_page_table_directory_ptr:
@@ -189,7 +190,12 @@ boot_page_table_directory_ptr:
 		bit 62:52:ignore
 		bit 63:XD,disable-execute
 	*/
-	.zero 8*511
+	/*
+		please remember one thing, current addr is 0x100000+offset
+		so the first entry of pdpt table must also set to the pd
+	*/
+	.quad (boot_page_table_directory - kernel_virt_offset) + 0x3
+	.zero 8*510
 	.quad (boot_page_table_directory - kernel_virt_offset) + 0x3
 
 	.global boot_page_table_directory
