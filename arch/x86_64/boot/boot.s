@@ -38,9 +38,9 @@ multiboot_entry:
 	/*disable interrupt*/
 	
 	/*store the multiboot magic*/
-	movl	%eax,setup_info
+	movl	%eax,(setup_info - kernel_virt_offset)
 	/*store the %ebx*/
-	movl	%ebx,setup_info+4
+	movl	%ebx,(setup_info + 4 - kernel_virt_offset)
 	/*set sp*/
 	movl 	$(boot_stack + boot_stack_size - kernel_virt_offset),%esp
 	/*clear the flag register*/
@@ -60,9 +60,9 @@ cpuid_check:
 	cpuid	/*EAX[7:0] (I think is al) means phy address width, and EAX[15:8] means linear address width*/
 	movl	$0,%ebx
 	movb	%al,%bl
-	movl	%ebx,setup_info+8
+	movl	%ebx,(setup_info + 8 - kernel_virt_offset)
 	movb	%ah,%bl
-	movl	%ebx,setup_info+12
+	movl	%ebx,(setup_info + 12 - kernel_virt_offset)
 
 calculate_kernel_pages:
 	/*calculate the upper*/
@@ -74,7 +74,7 @@ calculate_kernel_pages:
 	/*calculate the lower*/
 	movl	$(_kstart-kernel_virt_offset),%eax
 	andl	$align_bit32_not_2m_minus_1,%eax
-	movl	$0,%edx
+	movl	$(boot_page_table_directory-kernel_virt_offset),%edx
 change_kernel_page_table_loop:
 	movl	%eax,%ecx	/*store the eax to ecx*/
 	andl	$align_bit32_not_2m_minus_1,%eax	/*for the phy addr must not below 1GB,so and this mask is possible*/
@@ -87,7 +87,7 @@ change_kernel_page_table:
 	cmp	%eax,%ebx
 	jb	change_kernel_page_table_loop
 load_kernel_page_table:
-	lea		(boot_page_table_PML4-kernel_virt_offset),%eax
+	movl	$(boot_page_table_PML4-kernel_virt_offset),%eax
 	movl	%eax,%cr3
 
 enable_pae:
@@ -106,7 +106,7 @@ enable_pg:
 	/*enable_pg*/
 	movl	%cr0,%eax
 	orl		$CR0_PG,%eax
-	movl	%eax,%cr4
+	movl	%eax,%cr0
 long_jmp_to_64:
 	lgdtl	tmp_gdt_desc-kernel_virt_offset
 	ljmp	$0x08,$(x86_64_entry-kernel_virt_offset)
@@ -167,9 +167,9 @@ boot_page_table_PML4:
 		bit 62:52:ignore
 		bit 63:XD,disable-execute
 	*/
-	.quad (boot_page_table_directory_ptr - kernel_virt_offset)
+	.quad (boot_page_table_directory_ptr - kernel_virt_offset) + 0x3
 	.zero 8*510
-	.quad (boot_page_table_directory_ptr - kernel_virt_offset)
+	.quad (boot_page_table_directory_ptr - kernel_virt_offset) + 0x3
 	
 	.global boot_page_table_directory_ptr
 boot_page_table_directory_ptr:
@@ -190,7 +190,7 @@ boot_page_table_directory_ptr:
 		bit 63:XD,disable-execute
 	*/
 	.zero 8*511
-	.quad (boot_page_table_directory - kernel_virt_offset)
+	.quad (boot_page_table_directory - kernel_virt_offset) + 0x3
 
 	.global boot_page_table_directory
 boot_page_table_directory:

@@ -15,12 +15,12 @@ SECTIONS {
 	. =ALIGN(4K);
 	.data :
 	{
+		*(.boot_page)
 		*(.data)
 	}
 	_edata = .;
 	.bss :
 	{
-		*(.boot_page)
 		*(.boot_stack)
 		*(.bss)
 	}
