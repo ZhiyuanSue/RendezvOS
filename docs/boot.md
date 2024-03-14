@@ -40,6 +40,10 @@ https://www.gnu.org/software/grub/manual/multiboot/multiboot.html
 为了能够到达IA-32e paging
 需要先开启PAE和LME，然后再开启PG，这是固定的要求
 
+一个很不幸的事情是，必须先查看cpuid是否支持1GB的大分页，然而我的平台上显示他并不支持
+所以只能用2m的分页，但是，2m分页可能无法容纳整个内核的大小，因此，需要根据内核的上下限，去设计到底有多少内核空间被映射进来。并修改页表。
+
+
 
 # riscv64
 

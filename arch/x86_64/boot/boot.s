@@ -98,7 +98,7 @@ enable_pae:
 enable_lme:
 	/*enable_lme*/
 	movl	$IA32_EFER_addr,%ecx
-	movl	$0,%edx	/*edx is 0*/
+	rdmsr
 	movl	$IA32_EFER_bits,%eax /*IA32_EFER.SCE[bit0] and IA32_EFER.LMR[bit8] and IA32_EFER.NXE[bit11] should be set*/
 	wrmsr
 
@@ -107,6 +107,9 @@ enable_pg:
 	movl	%cr0,%eax
 	orl		$CR0_PG,%eax
 	movl	%eax,%cr4
+long_jmp_to_64:
+	lgdtl	tmp_gdt_desc-kernel_virt_offset
+	ljmp	$0x08,$(x86_64_entry-kernel_virt_offset)
 	call	cmain
 	jmp 	hlt
 hlt:
@@ -128,6 +131,23 @@ multiboot_error_magic:
 multiboot_hello:
 	.asciz "HELLO SHAMPOOS"
 	
+	.align 16
+tmp_gdt:
+	.quad 0x0	# 0x00: null
+	.quad ((1<<(32+12)) | (1<<(32+21)) | (1<<(32+15)) | (1<<(32+11)) | (1<<(32+10)) | (1<<(32+9)))	
+	/*
+		bit 44 means a system segment
+		bit 53 means a long mode
+		bit 43 means a code segment
+		bit 42 means a coherant segment
+		bit 41 means R/W
+		bit 47 means P(present)
+		DPL=0
+	*/
+tmp_gdt_desc:
+	.short	( . - tmp_gdt - 1)
+	.quad	tmp_gdt - kernel_virt_offset
+
 	.section .boot_page
 	.align 0x1000
 boot_page_table_PML4:
