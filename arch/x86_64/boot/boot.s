@@ -114,14 +114,78 @@ multiboot_hello:
 	.section .boot_page
 	.align 0x1000
 boot_page_table_PML4:
+	/*
+		PML4_entry reference a pdpt 
+		bit 0:present,must be 1
+		bit 1:R/W,must be 1
+		bit 2:U/S,must be 0
+		bit 3:PWT,0
+		bit 4:PCD,0
+		bit 5:A,0
+		bit 6:ignore
+		bit 7:must 0
+		bit 11 - 8:ignore
+		bit M-1 - 12:4k align addr 
+		bit 51 - M:must be 0
+		bit 62:52:ignore
+		bit 63:XD,disable-execute
+	*/
 	.quad boot_page_table_directory_ptr - kernel_virt_offset
 	.zero 8*510
 	.quad boot_page_table_directory_ptr - kernel_virt_offset
-
+	
 	.global boot_page_table_directory_ptr
 boot_page_table_directory_ptr:
-	.zero 8*512
+	/*
+		PDPT_entry
+		bit 0:present,must be 1
+		bit 1:R/W,must be 1
+		bit 2:U/S,must be 0
+		bit 3:PWT,0
+		bit 4:PCD,0
+		bit 5:A,0
+		bit 6:ignore
+		bit 7:must 0
+		bit 11 - 8:ignore
+		bit M-1 - 12:4k align addr 
+		bit 51 - M:must be 0
+		bit 62:52:ignore
+		bit 63:XD,disable-execute
+	*/
+	.zero 8*511
+	.quad boot_page_table_directory - kernel_virt_offset
 
+	.global boot_page_table_directory
+boot_page_table_directory:
+	/*
+		PD_entry
+		bit 0:present,must be 1
+		bit 1:R/W,must be 1
+		bit 2:U/S,must be 0
+		bit 3:PWT,0
+		bit 4:PCD,0
+		bit 5:A,0
+		bit 6:Dirty
+		bit 7:must be 1
+		bit 8:global,can be set 0
+		bit 11 - 9:ignore
+		bit 12:PAT,memory type 
+		bit 20 - 13:ignore
+		bit M-1 - 21:4k align addr 
+		bit 51 - M:must be 0
+		bit 58 - 52:ignored
+		bit 62 - 59:protection key
+		bit 63:XD,disable-execute
+	*/
+	.zero 8*512
+	/*
+		the start pos is 1111 1111 1111 1111 1111 1111 1111 1111 1000 0000 0000 0000 0000 0000 0000 0000 b
+		and the first  | 1...              1 | is pre 1 bits 
+		and the                             |1111 1111 1| is the PML4 addr, which will find the last entry of PDPT
+		and then                                       |111 1111 1| is the PDPT addr, which will find the last entry of PDE
+		and find the boot_page_table_directory,and set this entry's PS bit 
+		and we don't think the kernel might need more then 1GB space on shampoos
+	*/
 .code64
 x86_64_entry:
 	call 	cmain
