@@ -85,7 +85,7 @@ change_kernel_page_table:
 	movl	%ecx,%eax
 	addl	$align_2m,%eax
 	cmp	%eax,%ebx
-	jb	change_kernel_page_table_loop
+	jge	change_kernel_page_table_loop
 load_kernel_page_table:
 	movl	$(boot_page_table_PML4-kernel_virt_offset),%eax
 	movl	%eax,%cr3
@@ -135,7 +135,7 @@ tmp_gdt:
 	.quad 0x0	# 0x00: null
 	.quad ((1<<(32+12)) | (1<<(32+21)) | (1<<(32+15)) | (1<<(32+11)) | (1<<(32+10)) | (1<<(32+9)))	
 	/*
-		bit 44 means a system segment
+		bit 44 means a code or data segment,and if it's a system segment,must be cleared
 		bit 53 means a long mode
 		bit 43 means a code segment
 		bit 42 means a coherant segment
@@ -227,8 +227,10 @@ boot_page_table_directory:
 		and find the boot_page_table_directory,and set this entry's PS bit 
 		and we don't think the kernel might need more then 1GB space on shampoos
 	*/
+	.align 0x200000
 .code64
 x86_64_entry:
+	call	cmain
 	ljmp	set_segments
 set_segments:
 
