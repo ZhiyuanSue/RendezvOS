@@ -2,7 +2,7 @@
 	.global _start
 	.align 4
 /* some definations */
-	.set	kernel_virt_offset,0xffffffff80000000
+	.set	kernel_virt_offset,0xffffffffc0000000
 	.set	boot_stack_size,0x10000
 	.set	multiboot_header_magic,0x1BADB002
 	.set	multiboot_header_flag_addr,0x00000002
@@ -167,7 +167,7 @@ boot_page_table_PML4:
 		bit 63:XD,disable-execute
 	*/
 	.quad	boot_page_table_directory_ptr - kernel_virt_offset + 0x3
-	.zero 8*510
+	.zero	8*510
 	.quad	boot_page_table_directory_ptr - kernel_virt_offset + 0x3
 	
 	.global boot_page_table_directory_ptr
@@ -192,9 +192,9 @@ boot_page_table_directory_ptr:
 		please remember one thing, current addr is 0x100000+offset
 		so the first entry of pdpt table must also set to the pd
 	*/
-	.quad (boot_page_table_directory - kernel_virt_offset) + 0x3
-	.zero 8*510
-	.quad (boot_page_table_directory - kernel_virt_offset) + 0x3
+	.quad	boot_page_table_directory - kernel_virt_offset + 0x3
+	.zero	8*510
+	.quad	boot_page_table_directory - kernel_virt_offset + 0x3
 
 	.global boot_page_table_directory
 boot_page_table_directory:
@@ -220,15 +220,16 @@ boot_page_table_directory:
 	*/
 	.zero 8*512
 	/*
-		the start pos is 1111 1111 1111 1111 1111 1111 1111 1111 1000 0000 0000 0000 0000 0000 0000 0000 b
+		the start pos is 1111 1111 1111 1111 1111 1111 1111 1111 1100 0000 0000 0000 0000 0000 0000 0000 b
 		and the first  | 1...              1 | is pre 1 bits 
 		and the                             |1111 1111 1| is the PML4 addr, which will find the last entry of PDPT
-		and then                                       |111 1111 1| is the PDPT addr, which will find the last entry of PDE
+		and then                                       |111 1111 11| is the PDPT addr, which will find the last entry of PDE
 		and find the boot_page_table_directory,and set this entry's PS bit 
 		and we don't think the kernel might need more then 1GB space on shampoos
 	*/
 .code64
 x86_64_entry:
+	ljmp	set_segments
 set_segments:
 
 set_new_stack:
