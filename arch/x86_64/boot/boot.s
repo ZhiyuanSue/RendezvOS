@@ -229,8 +229,14 @@ boot_page_table_directory:
 	*/
 .code64
 x86_64_entry:
-	call 	cmain
-	jmp 	hlt
+set_segments:
+
+set_new_stack:
+
+clean_tmp_page_table:
+
+	call	cmain
+	jmp	hlt
 stack_field:
 	.align 0x1000
 	.comm boot_stack,boot_stack_size
