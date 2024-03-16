@@ -107,11 +107,9 @@ enable_pg:
 	movl	%cr0,%eax
 	orl		$CR0_PG,%eax
 	movl	%eax,%cr0
-	call	cmain
 long_jmp_to_64:
 	lgdtl	tmp_gdt_desc-kernel_virt_offset
 	ljmp	$0x08,$(x86_64_entry-kernel_virt_offset)
-	call	cmain
 	jmp 	hlt
 hlt:
 	call 	cpu_idle

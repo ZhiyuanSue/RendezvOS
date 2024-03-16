@@ -16,6 +16,7 @@ SECTIONS {
 	.data :
 	{
 		*(.boot_page)
+		*(.boot.data)
 		*(.data)
 	}
 	_edata = .;
