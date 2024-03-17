@@ -1,6 +1,3 @@
-	.section .boot
-	.global _start
-	.align 4
 /* some definations */
 	.set	kernel_virt_offset,0xffffffffc0000000
 	.set	boot_stack_size,0x10000
@@ -14,6 +11,12 @@
 	.set	CR4_PGE_OR_PAE,0xa0
 	.set	IA32_EFER_bits,0x901
 	.set	IA32_EFER_addr,0xC0000080
+
+
+/*code under 32bit*/
+	.section .boot
+	.global _start
+	.align 4
 .code32
 _start:
 	jmp multiboot_entry
@@ -117,6 +120,28 @@ ERROR_CPUID:
 	jmp hlt
 
 	
+/*code under 64bit*/
+	.section .boot_64
+.code64
+x86_64_entry:
+	movabs	$(set_segments),%rax
+	jmp	*%rax
+set_segments:
+	xor	%rax,%rax
+	movw	%ax,%ds
+	movw	%ax,%ss
+	movw	%ax,%fs
+	movw	%ax,%gs
+set_new_stack:
+	movq	$(boot_stack+boot_stack_size),%rsp
+clean_tmp_page_table:
+	movq	%rax,(boot_page_table_PML4)
+	movq	%rax,(boot_page_table_directory_ptr)
+run_main:
+	call	cmain
+	jmp	hlt
+
+
 /* some infomation under 32 bit*/	
 	.section .boot.data
 	.global setup_info
@@ -147,6 +172,9 @@ tmp_gdt_desc:
 	.short	( . - tmp_gdt - 1)
 	.quad	tmp_gdt - kernel_virt_offset
 
+
+
+/**/
 	.section .boot_page
 	.align 0x1000
 boot_page_table_PML4:
@@ -227,26 +255,7 @@ boot_page_table_directory:
 		and find the boot_page_table_directory,and set this entry's PS bit 
 		and we don't think the kernel might need more then 1GB space on shampoos
 	*/
-	.align 0x200000
-	.section .boot_64
-.code64
-x86_64_entry:
-	movabs	$(set_segments),%rax
-	jmp	*%rax
-set_segments:
-	xor	%rax,%rax
-	movw	%ax,%ds
-	movw	%ax,%ss
-	movw	%ax,%fs
-	movw	%ax,%gs
-set_new_stack:
-	movq	$(boot_stack+boot_stack_size),%rsp
-clean_tmp_page_table:
-	movq	%rax,(boot_page_table_PML4)
-	movq	%rax,(boot_page_table_directory_ptr)
-run_main:
-	call	cmain
-	jmp	hlt
+	/*stack*/
 stack_field:
 	.align 0x1000
 	.comm boot_stack,boot_stack_size
