@@ -138,6 +138,7 @@ clean_tmp_page_table:
 	movq	%rax,(boot_page_table_PML4)
 	movq	%rax,(boot_page_table_directory_ptr)
 run_main:
+	mov	$(setup_info),%rdi
 	call	cmain
 	jmp	hlt
 

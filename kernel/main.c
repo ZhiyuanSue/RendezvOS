@@ -1,6 +1,6 @@
 #include <shampoos/common.h>
 #include <driver/uart/uart_16550A.h>
-void cmain(){
+void cmain(struct setup_info* arch_setup_info){
 	uart_16550A_open();
 	uart_16550A_putc('\n');
 	uart_16550A_putc('S');
@@ -12,4 +12,5 @@ void cmain(){
 	uart_16550A_putc('O');
 	uart_16550A_putc('S');
 	uart_16550A_putc('\n');
+	start_arch(arch_setup_info);
 }

@@ -9,7 +9,23 @@
 #include <shampoos/stdarg.h>
 #include <shampoos/stddef.h>
 
-void start_arch (uintptr_t magic, uintptr_t addr);
+#if defined _AARCH32_
+#include <arch/aarch32/arch_common.h>
+#elif defined _AARCH64_
+#include <arch/aarch64/arch_common.h>
+#elif defined _I386_
+#include <arch/i386/arch_common.h>
+#elif defined _LOONGARCH_
+#include <arch/loongarch/arch_common.h>
+#elif defined _RISCV32_
+#include <arch/riscv32/arch_common.h>
+#elif defined _RISCV64_
+#include <arch/riscv64/arch_common.h>
+#elif defined _X86_64_
+#include <arch/x86_64/arch_common.h>
+#endif
+
+void start_arch (struct setup_info* arch_setup_info);
 void parse_device(uintptr_t addr);
 void interrupt_init();
 void power_off(int error_code);
