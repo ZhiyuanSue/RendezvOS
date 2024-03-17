@@ -168,7 +168,7 @@ boot_page_table_PML4:
 	*/
 	.quad	boot_page_table_directory_ptr - kernel_virt_offset + 0x3
 	.zero	8*510
-	.quad	boot_page_table_directory_ptr - kernel_virt_offset + 0x3
+	.quad	boot_page_table_directory_ptr - kernel_virt_offset + 0x7
 	
 	.global boot_page_table_directory_ptr
 boot_page_table_directory_ptr:
@@ -228,14 +228,19 @@ boot_page_table_directory:
 		and we don't think the kernel might need more then 1GB space on shampoos
 	*/
 	.align 0x200000
+	.section .boot_64
 .code64
 x86_64_entry:
-	call	cmain
-	ljmp	set_segments
+	movabs	$(set_segments),%rax
+	jmp	*%rax
 set_segments:
-
+	xor	%rax,%rax
+	movw	%ax,%ds
+	movw	%ax,%ss
+	movw	%ax,%fs
+	movw	%ax,%gs
 set_new_stack:
-
+	movq	$(boot_stack+boot_stack_size),%rsp
 clean_tmp_page_table:
 
 	call	cmain

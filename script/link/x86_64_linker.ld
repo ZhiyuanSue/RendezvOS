@@ -10,6 +10,7 @@ SECTIONS {
 	.text : 
 	{
 		*(.boot)
+		*(.boot_64)
 		*(.text)
 	}
 	. =ALIGN(4K);
