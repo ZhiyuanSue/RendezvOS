@@ -242,7 +242,9 @@ set_segments:
 set_new_stack:
 	movq	$(boot_stack+boot_stack_size),%rsp
 clean_tmp_page_table:
-
+	movq	%rax,(boot_page_table_PML4)
+	movq	%rax,(boot_page_table_directory_ptr)
+run_main:
 	call	cmain
 	jmp	hlt
 stack_field:
