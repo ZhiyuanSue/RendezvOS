@@ -1,5 +1,104 @@
 #include <shampoos/types.h>
 #include <modules/log/log.h>
 
-struct log_buffer_desc LOG_BUF[LOG_BUFFER_SIZE];
+struct log_buffer LOG_BUFFER;
+
+void log_init(void* log_buffer_addr,void (*write_log)(u_int8_t ch))
+{
+	LOG_BUFFER.write_log=write_log;
+	for(int i=0;i<LOG_BUFFER_SIZE;++i)
+	{
+		LOG_BUFFER.LOG_BUF[i].start_addr=log_buffer_addr+i*LOG_BUFFER_SINGLE_SIZE;
+		LOG_BUFFER.LOG_BUF[i].length=LOG_BUFFER_SINGLE_SIZE;
+	}
+	LOG_BUFFER.cur_buffer_idx=0;
+	LOG_BUFFER.cur_buffer_offset=0;
+}
+void itoa (char *buf, int base, int d)
+{
+    char *p = buf;
+    char *p1, *p2;
+    unsigned long ud = d;
+    int divisor = 10;
+    if (base == 'd' && d < 0)
+    {
+        *p++ = '-';
+        buf++;
+        ud = -d;
+    }
+    else if (base == 'x')
+        divisor = 16;
+    do
+    {
+        int remainder = ud % divisor;
+        *p++ = (remainder < 10) ? remainder + '0' : remainder + 'a' - 10;
+    }
+    while (ud /= divisor);
+
+    *p = 0;
+  
+    p1 = buf;
+    p2 = p - 1;
+    while (p1 < p2)
+    {
+        char tmp = *p1;
+        *p1 = *p2;
+        *p2 = tmp;
+        p1++;
+        p2--;
+    }
+}
+void printk (const char *format, ...)
+{
+    char **arg = (char **) &format;
+    u_int8_t c;
+    char buf[20];
+    arg++;
+    while ((c = *format++) != 0)
+    {
+        if (c != '%')
+            LOG_BUFFER.write_log(c);
+        else
+        {
+            char *p, *p2;
+            int pad0 = 0, pad = 0;
+            c = *format++;
+            if (c == '0')
+            {
+                pad0 = 1;
+                c = *format++;
+            }
+            if (c >= '0' && c <= '9')
+            {
+                pad = c - '0';
+                c = *format++;
+            }
+            switch (c)
+            {
+            case 'd':
+            case 'u':
+            case 'x':
+                itoa (buf, c, *((int *) arg++));
+                p = buf;
+                goto string;
+                break;
+            case 's':
+                p = *arg++;
+                if (! p)
+                    p = "(null)";
+            string:
+                for (p2 = p; *p2; p2++);
+                for (; p2 < p + pad; p2++)
+                    LOG_BUFFER.write_log(pad0 ? '0' : ' ');
+                while (*p)
+                    LOG_BUFFER.write_log(*p++);
+                break;
+            default:
+                LOG_BUFFER.write_log(*((int *) arg++));
+                break;
+            }
+        }
+    }
+}
+
 
