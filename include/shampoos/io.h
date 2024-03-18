@@ -2,7 +2,7 @@
 #define _SHAMPOOS_IO_H_
 #include <shampoos/types.h>
 
-#if _I386_ || _X86_64_
+#if _X86_64_
 #define _X86_16550A_COM1_BASE_  0x3F8   /*actually using early serial ouput we just need one serial port*/
 #define _X86_16550A_COM2_BASE_  0x2F8
 static inline u_int8_t  inb(u_int16_t port) __attribute__((always_inline));

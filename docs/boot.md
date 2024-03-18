@@ -16,7 +16,7 @@ https://stefano-garzarella.github.io/posts/2019-08-23-qemu-linux-kernel-pvh/
 对于相关协议，可以看
 https://xenbits.xen.org/docs/unstable/misc/pvh.html
 
-对于i386和x86_64上面的引导，我仍然使用multiboot1，因为他确实可以很好的引导32位的代码，当然我想这不是决定性的解决方案，决定性的问题在于，我应该使用bin文件而不是elf文件格式来作为加载的内核镜像。
+对于x86_64上面的引导，我仍然使用multiboot1，因为他确实可以很好的引导32位的代码，当然我想这不是决定性的解决方案，决定性的问题在于，我应该使用bin文件而不是elf文件格式来作为加载的内核镜像。
 
 ## 生成bin文件并加载
 直接使用elf文件无法加载

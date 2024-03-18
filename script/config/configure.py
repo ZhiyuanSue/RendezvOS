@@ -4,11 +4,8 @@ import json
 
 target_config_file_name="Makefile.env"
 target_config_arch_list=[
-	'aarch32',
 	'aarch64',
-	'i386',
 	'longarch',
-	'riscv32',
 	'riscv64',
 	'x86_64'
 ]
@@ -34,7 +31,7 @@ def configure_kernel(kernel_config,root_dir):
 		exit(1)
 	ARCH_kernel_config=kernel_config['ARCH']
 	if ARCH_kernel_config not in target_config_arch_list:
-		print("Error:the ARCH must be one of aarch32,aarch64,i386,longarch,riscv32,riscv64,x86_64")
+		print("Error:the ARCH must be one of aarch64,longarch,riscv64,x86_64")
 		exit(1)
 	kernel_config_str = kernel_config_str + "ARCH\t:=\t" + ARCH_kernel_config + "\n"
 		
@@ -82,15 +79,9 @@ def configure_kernel(kernel_config,root_dir):
 	# ==== ==== ==== ==== ==== ==== ==== ==== #
 	# the previous keys is used for all kind of archs
 	# but if the arch need some special keys, add it here
-	if ARCH_kernel_config=="aarch32":
-		pass
-	elif ARCH_kernel_config=="aarch64":
-		pass
-	elif ARCH_kernel_config=="i386":
+	if ARCH_kernel_config=="aarch64":
 		pass
 	elif ARCH_kernel_config=="longarch":
-		pass
-	elif ARCH_kernel_config=="riscv32":
 		pass
 	elif ARCH_kernel_config=="riscv64":
 		pass

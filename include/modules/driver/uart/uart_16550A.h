@@ -48,7 +48,7 @@ u_int8_t uart_16550A_getc();
 void uart_16550A_close();
 
 
-#if _I386_ || _X86_64_
+#if _X86_64_
 	#include <shampoos/io.h>
 	#include <shampoos/stddef.h>
 	#define uart_write_reg(reg_name,data)   \

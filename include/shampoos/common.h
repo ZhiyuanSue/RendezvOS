@@ -9,16 +9,10 @@
 #include <shampoos/stdarg.h>
 #include <shampoos/stddef.h>
 
-#if defined _AARCH32_
-#include <arch/aarch32/arch_common.h>
-#elif defined _AARCH64_
+#ifdef _AARCH64_
 #include <arch/aarch64/arch_common.h>
-#elif defined _I386_
-#include <arch/i386/arch_common.h>
 #elif defined _LOONGARCH_
 #include <arch/loongarch/arch_common.h>
-#elif defined _RISCV32_
-#include <arch/riscv32/arch_common.h>
 #elif defined _RISCV64_
 #include <arch/riscv64/arch_common.h>
 #elif defined _X86_64_

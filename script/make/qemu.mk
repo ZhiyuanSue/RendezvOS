@@ -10,18 +10,9 @@ ifeq ($(ARCH), x86_64)
 	QemuFlags	+= -machine q35
 	QemuFlags	+= -nographic	#in qemu , don't use this option
 	# QemuFlags	+= -numa
-else ifeq ($(ARCH), i386)
-	QemuFlags	+= -machine q35
-	QemuFlags	+= -nographic	#in qemu , don't use this option
-	# QemuFlags	+= -numa
 else ifeq ($(ARCH), aarch64)
 	QemuFlags	+=
-else ifeq ($(ARCH), aarch32)
-	QemuFlags	+=
 else ifeq ($(ARCH), riscv64)
-	QemuFlags	+=
-	QemuFlags	+= -nographic -machine virt -bios default
-else ifeq ($(ARCH), riscv32)
 	QemuFlags	+=
 	QemuFlags	+= -nographic -machine virt -bios default
 else ifeq ($(ARCH), loongarch)
