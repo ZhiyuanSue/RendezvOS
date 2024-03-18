@@ -5,7 +5,7 @@
  */
 
 #include <shampoos/common.h>
-#include <driver/uart/uart_16550A.h>
+#include <modules/uart/uart_16550A.h>
 
 /*The following functions are just used for early print*/
 void uart_16550A_open()

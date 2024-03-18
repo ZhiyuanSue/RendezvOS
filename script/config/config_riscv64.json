@@ -57,6 +57,22 @@
 			"depend_module":[
 			],
 			"path":"modules/uart"
+		},
+		"acpi":
+		{
+			"use":true ,
+			"features":[
+
+			],
+			"depend_module":[],
+			"path":"modules/acpi"
+		},
+		"dtb":
+		{
+			"use":true,
+			"features":[],
+			"depend_module":[],
+			"path":"modules/dtb"
 		}
 	}
 }

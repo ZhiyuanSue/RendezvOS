@@ -1,5 +1,5 @@
 #include <shampoos/common.h>
-#include <driver/uart/uart_16550A.h>
+#include <modules/uart/uart_16550A.h>
 void cmain(struct setup_info* arch_setup_info){
 	uart_16550A_open();
 	uart_16550A_putc('\n');
