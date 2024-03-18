@@ -8,7 +8,6 @@ struct setup_info{
 	u32	phy_addr_width;
 	u32	vir_addr_width;
 	u64 log_buffer_addr;
-	u32 log_buffer_size;
 } __attribute__((packed));
 
 #endif

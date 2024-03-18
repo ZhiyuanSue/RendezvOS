@@ -11,7 +11,6 @@
 	.set	CR4_PGE_OR_PAE,0xa0
 	.set	IA32_EFER_bits,0x901
 	.set	IA32_EFER_addr,0xC0000080
-	.set	LOG_BUF_SIZE,0x10
 
 /*code under 32bit*/
 	.section .boot
@@ -153,7 +152,6 @@ setup_info:
 	.long 0	/* phy addr width */
 	.long 0	/* linear addr width*/
 	.quad log_buffer /*log buffer position*/
-	.long LOG_BUF_SIZE	/*record the log buffer size*/
 multiboot_error_magic:
 	.asciz "ERROR MAGIC NUM"
 multiboot_hello:

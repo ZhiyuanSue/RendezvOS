@@ -49,14 +49,14 @@
 			],
 			"path":"modules/test"
 		},
-		"uart":
+		"driver":
 		{
 			"use":true ,
 			"features":[
 			],
 			"depend_module":[
 			],
-			"path":"modules/uart"
+			"path":"modules/driver"
 		},
 		"acpi":
 		{
