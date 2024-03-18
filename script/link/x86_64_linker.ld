@@ -16,7 +16,8 @@ SECTIONS {
 	. =ALIGN(4K);
 	.data :
 	{
-		*(.boot_page)
+		*(.boot.page)
+		*(.boot.log)
 		*(.boot.data)
 		*(.data)
 	}

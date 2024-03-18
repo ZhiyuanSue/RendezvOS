@@ -25,6 +25,17 @@
 			] ,
 			"path":"modules/helloworld"
 		},
+		"log":
+		{
+			"use":true ,
+			"features":[
+				"LOG"
+			],
+			"depend_module":[
+
+			],
+			"path":"modules/log"
+		},
 		"test":
 		{
 			"use":true ,
