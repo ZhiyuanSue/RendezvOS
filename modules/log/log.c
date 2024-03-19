@@ -3,7 +3,7 @@
 
 struct log_buffer LOG_BUFFER;
 
-void log_init(void* log_buffer_addr,void (*write_log)(u_int8_t ch))
+void log_init(void* log_buffer_addr,int log_level,void (*write_log)(u_int8_t ch))
 {
 	write_log('\n');
 	LOG_BUFFER.write_log=write_log;
@@ -12,6 +12,7 @@ void log_init(void* log_buffer_addr,void (*write_log)(u_int8_t ch))
 		LOG_BUFFER.LOG_BUF[i].start_addr=log_buffer_addr+i*LOG_BUFFER_SINGLE_SIZE;
 		LOG_BUFFER.LOG_BUF[i].length=LOG_BUFFER_SINGLE_SIZE;
 	}
+	LOG_BUFFER.log_level=log_level;
 	LOG_BUFFER.cur_buffer_idx=0;
 	LOG_BUFFER.cur_buffer_offset=0;
 }
@@ -101,12 +102,15 @@ void log_print(char* buffer,const char *format, va_list arg_list)
     }
 }
 
-void printk (const char *format, ...)
+void printk (const char *format,int log_level, ...)
 {
-	va_list arg_list;
-	va_start(arg_list,format);
+	if(log_level<=LOG_BUFFER.log_level&&LOG_BUFFER.write_log)
+	{
+		va_list arg_list;
+		va_start(arg_list,log_level);
 
-	log_print(LOG_BUFFER.LOG_BUF[LOG_BUFFER.cur_buffer_idx].start_addr+LOG_BUFFER.cur_buffer_offset,format,arg_list);
-    
-	va_end(arg_list);
+		log_print(LOG_BUFFER.LOG_BUF[LOG_BUFFER.cur_buffer_idx].start_addr+LOG_BUFFER.cur_buffer_offset,format,arg_list);
+		
+		va_end(arg_list);
+	}
 }
