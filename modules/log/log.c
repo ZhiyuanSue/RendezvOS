@@ -5,6 +5,7 @@ struct log_buffer LOG_BUFFER;
 
 void log_init(void* log_buffer_addr,void (*write_log)(u_int8_t ch))
 {
+	write_log('\n');
 	LOG_BUFFER.write_log=write_log;
 	for(int i=0;i<LOG_BUFFER_SIZE;++i)
 	{
@@ -48,12 +49,11 @@ void itoa (char *buf, int base, int d)
         p2--;
     }
 }
-void printk (const char *format, ...)
+
+void log_print(char* buffer,const char *format, va_list arg_list)
 {
-    char **arg = (char **) &format;
     u_int8_t c;
     char buf[20];
-    arg++;
     while ((c = *format++) != 0)
     {
         if (c != '%')
@@ -78,12 +78,13 @@ void printk (const char *format, ...)
             case 'd':
             case 'u':
             case 'x':
-                itoa (buf, c, *((int *) arg++));
+				int d=va_arg(arg_list,int32_t);
+                itoa (buf, c, d);
                 p = buf;
                 goto string;
                 break;
             case 's':
-                p = *arg++;
+                p = va_arg(arg_list,char*);
                 if (! p)
                     p = "(null)";
             string:
@@ -94,11 +95,18 @@ void printk (const char *format, ...)
                     LOG_BUFFER.write_log(*p++);
                 break;
             default:
-                LOG_BUFFER.write_log(*((int *) arg++));
                 break;
             }
         }
     }
 }
 
+void printk (const char *format, ...)
+{
+	va_list arg_list;
+	va_start(arg_list,format);
 
+	log_print(LOG_BUFFER.LOG_BUF[LOG_BUFFER.cur_buffer_idx].start_addr+LOG_BUFFER.cur_buffer_offset,format,arg_list);
+    
+	va_end(arg_list);
+}
