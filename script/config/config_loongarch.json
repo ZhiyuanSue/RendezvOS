@@ -29,7 +29,8 @@
 		{
 			"use":true ,
 			"features":[
-				"LOG"
+				"LOG",
+				"_LOG_INFO_"
 			],
 			"depend_module":[
 

@@ -2,6 +2,27 @@
 #include <modules/log/log.h>
 
 struct log_buffer LOG_BUFFER;
+#ifdef _LOG_OFF_
+int log_level=LOG_OFF;
+#elif defined _LOG_EMERG_
+int log_level=LOG_EMERG;
+#elif defined _LOG_ALERT_
+int log_level=LOG_ALERT;
+#elif defined _LOG_CRIT_
+int log_level=LOG_CRIT;
+#elif defined _LOG_ERROR_
+int log_level=LOG_ERROR;
+#elif defined _LOG_WARNING_
+int log_level=LOG_WARNING;
+#elif defined _LOG_NOTICE_
+int log_level=LOG_NOTICE;
+#elif defined _LOG_INFO_
+int log_level=LOG_INFO;
+#elif defined _LOG_DEBUG_
+int log_level=LOG_DEBUG;
+#else
+int log_level=LOG_OFF;
+#endif
 
 void log_init(void* log_buffer_addr,int log_level,void (*write_log)(u_int8_t ch))
 {
