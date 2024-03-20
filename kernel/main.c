@@ -7,12 +7,8 @@ extern int log_level;
 
 void cmain(struct setup_info* arch_setup_info){
 	uart_16550A_open();
-	char* test_s="string ok";
 	log_init((void*)(arch_setup_info->log_buffer_addr),log_level,&uart_16550A_putc);
-	print("ShamPoOS\n");
-	pr_info("test printk s %s\n",test_s);
-	pr_debug("test printk x %x\n",0xffffffffc0001234);
-	pr_error("test printk x %x\n",23456);
-	pr_warn("test printk u %u\n",34567);
+	pr_info("ShamPoOS\n");
+
 	start_arch(arch_setup_info);
 }

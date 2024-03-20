@@ -5,7 +5,7 @@
 #ifndef _ACPI_TABLE_H_
 #define _ACPI_TABLE_H_
 #include <shampoos/types.h>
-#include <acpi/acpi_defs.h>
+#include <modules/acpi/acpi_defs.h>
 
 /*
  * I have to tell this line of pack is necessary.
