@@ -39,88 +39,88 @@ void log_init(void* log_buffer_addr,int log_level,void (*write_log)(u_int8_t ch)
 }
 void itoa (char *buf, int base, int d)
 {
-    char *p = buf;
-    char *p1, *p2;
-    unsigned long ud = d;
-    int divisor = 10;
-    if (base == 'd' && d < 0)
-    {
-        *p++ = '-';
-        buf++;
-        ud = -d;
-    }
-    else if (base == 'x')
-        divisor = 16;
-    do
-    {
-        int remainder = ud % divisor;
-        *p++ = (remainder < 10) ? remainder + '0' : remainder + 'a' - 10;
-    }
-    while (ud /= divisor);
+	char *p = buf;
+	char *p1, *p2;
+	unsigned long ud = d;
+	int divisor = 10;
+	if (base == 'd' && d < 0)
+	{
+		*p++ = '-';
+		buf++;
+		ud = -d;
+	}
+	else if (base == 'x')
+		divisor = 16;
+	do
+	{
+		int remainder = ud % divisor;
+		*p++ = (remainder < 10) ? remainder + '0' : remainder + 'a' - 10;
+	}
+	while (ud /= divisor);
 
-    *p = 0;
-  
-    p1 = buf;
-    p2 = p - 1;
-    while (p1 < p2)
-    {
-        char tmp = *p1;
-        *p1 = *p2;
-        *p2 = tmp;
-        p1++;
-        p2--;
-    }
+	*p = 0;
+	
+	p1 = buf;
+	p2 = p - 1;
+	while (p1 < p2)
+	{
+		char tmp = *p1;
+		*p1 = *p2;
+		*p2 = tmp;
+		p1++;
+		p2--;
+	}
 }
 
 void log_print(char* buffer,const char *format, va_list arg_list)
 {
-    u_int8_t c;
-    char buf[20];
-    while ((c = *format++) != 0)
-    {
-        if (c != '%')
-            LOG_BUFFER.write_log(c);
-        else
-        {
-            char *p, *p2;
-            int pad0 = 0, pad = 0;
-            c = *format++;
-            if (c == '0')
-            {
-                pad0 = 1;
-                c = *format++;
-            }
-            if (c >= '0' && c <= '9')
-            {
-                pad = c - '0';
-                c = *format++;
-            }
-            switch (c)
-            {
-            case 'd':
-            case 'u':
-            case 'x':
+	u_int8_t c;
+	char buf[20];
+	while ((c = *format++) != 0)
+	{
+		if (c != '%')
+			LOG_BUFFER.write_log(c);
+		else
+		{
+			char *p, *p2;
+			int pad0 = 0, pad = 0;
+			c = *format++;
+			if (c == '0')
+			{
+				pad0 = 1;
+				c = *format++;
+			}
+			if (c >= '0' && c <= '9')
+			{
+				pad = c - '0';
+				c = *format++;
+			}
+			switch (c)
+			{
+			case 'd':
+			case 'u':
+			case 'x':
 				int d=va_arg(arg_list,int32_t);
-                itoa (buf, c, d);
-                p = buf;
-                goto string;
-                break;
-            case 's':
-                p = va_arg(arg_list,char*);
-                if (! p)
-                    p = "(null)";
-            string:
-                for (p2 = p; *p2; p2++);
-                for (; p2 < p + pad; p2++)
-                    LOG_BUFFER.write_log(pad0 ? '0' : ' ');
-                while (*p)
-                    LOG_BUFFER.write_log(*p++);
-                break;
-            default:
-                break;
-            }
-        }
-    }
+				itoa (buf, c, d);
+				p = buf;
+				goto string;
+				break;
+			case 's':
+				p = va_arg(arg_list,char*);
+				if (! p)
+					p = "(null)";
+			string:
+				for (p2 = p; *p2; p2++);
+				for (; p2 < p + pad; p2++)
+					LOG_BUFFER.write_log(pad0 ? '0' : ' ');
+				while (*p)
+					LOG_BUFFER.write_log(*p++);
+				break;
+			default:
+				break;
+			}
+		}
+	}
 }
 
 void printk (const char *format,int log_level, ...)
