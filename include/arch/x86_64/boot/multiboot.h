@@ -5,50 +5,50 @@
 
 struct multiboot_mem{
 	u32	mem_lower;
-	u32 mem_upper;
+	u32	mem_upper;
 }__attribute__((packed));
 
 struct multiboot_mods{
-	u32 mods_count;
-	u32 mods_addr;
+	u32	mods_count;
+	u32	mods_addr;
 }__attribute__((packed));
 
 struct multiboot_mmap{
-	u32 mmap_length;
+	u32	mmap_length;
 	u32	mmap_addr;
 }__attribute__((packed));
 
 struct multiboot_drivers{
-	u32 drives_length;
-	u32 drives_addr;
+	u32	drives_length;
+	u32	drives_addr;
 }__attribute__((packed));
 
 struct multiboot_vbe{
-	u32 vbe_control_info;
-	u32 vbe_mode_info;
-	u16 vbe_mode;
-	u16 vbe_interface_seg;
-	u16 vbe_interface_off;
-	u16 vbe_interface_len;
+	u32	vbe_control_info;
+	u32	vbe_mode_info;
+	u16	vbe_mode;
+	u16	vbe_interface_seg;
+	u16	vbe_interface_off;
+	u16	vbe_interface_len;
 }__attribute__((packed));
 
 struct multiboot_color
 {
-	u8 red;
-	u8 green;
-	u8 blue;
+	u8	red;
+	u8	green;
+	u8	blue;
 };
 
 struct multiboot_framebuffer{
-	u64 framebuffer_addr;
-	u32 framebuffer_pitch;
-	u32 framebuffer_width;
-	u32 framebuffer_height;
+	u64	framebuffer_addr;
+	u32	framebuffer_pitch;
+	u32	framebuffer_width;
+	u32	framebuffer_height;
 	u8 	framebuffer_bpp;
 #define MULTIBOOT_FRAMEBUFFER_TYPE_INDEXED		0
 #define MULTIBOOT_FRAMEBUFFER_TYPE_RGB			1
 #define MULTIBOOT_FRAMEBUFFER_TYPE_EGA_TEXT		2
-	u8 framebuffer_type;
+	u8	framebuffer_type;
 	union
 	{
 		struct
