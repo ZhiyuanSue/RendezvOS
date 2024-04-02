@@ -18,9 +18,11 @@
 #include <arch/riscv64/arch_common.h>
 #elif defined _X86_64_
 #include <arch/x86_64/arch_common.h>
+#else	/*for default config is x86_64*/
+#include <arch/x86_64/arch_common.h>
 #endif
 
-void start_arch (struct setup_info* arch_setup_info);
+int	start_arch (struct setup_info* arch_setup_info);
 void parse_device(uintptr_t addr);
 void interrupt_init();
 void power_off(int error_code);

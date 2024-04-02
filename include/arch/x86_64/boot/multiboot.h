@@ -84,6 +84,4 @@ struct multiboot_info{
 	struct multiboot_framebuffer	framebuffer;
 }__attribute__((packed));
 
-
-
 #endif

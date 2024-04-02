@@ -2,6 +2,8 @@
 #define _ARCH_SETUP_H_
 #include <shampoos/types.h>
 
+#define KERNEL_VIRT_OFFSET 0xffffffffc0000000
+
 struct setup_info{
 	u32	multiboot_magic;
 	u32	multiboot_info_struct_ptr;
