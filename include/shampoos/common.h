@@ -8,6 +8,7 @@
 #include <shampoos/error.h>
 #include <shampoos/stdarg.h>
 #include <shampoos/stddef.h>
+#include <shampoos/list.h>
 
 #ifdef _AARCH64_
 #include <arch/aarch64/arch_common.h>
