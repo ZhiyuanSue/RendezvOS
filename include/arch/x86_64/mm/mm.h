@@ -5,4 +5,5 @@
 #define KERNEL_PHY_TO_VIRT(phy_addr) (phy_addr+_SHAMPOOS_KERNEL_OFFSET_)
 #define KERNEL_VIRT_TO_PHY(virt_addr) (virt_addr-_SHAMPOOS_KERNEL_OFFSET_)
 #endif
+#include "pmm.h"
 #endif

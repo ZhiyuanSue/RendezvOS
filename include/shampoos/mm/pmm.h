@@ -21,4 +21,6 @@ struct pmm_region{
 	u64		length;
 };
 
+void pmm_init(struct setup_info* arch_setup_info);
+
 #endif

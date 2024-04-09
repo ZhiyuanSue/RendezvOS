@@ -9,6 +9,10 @@ void cmain(struct setup_info* arch_setup_info){
 	log_init((void*)(arch_setup_info->log_buffer_addr),log_level,&uart_16550A_putc);
 	pr_info("ShamPoOS\n");
 
-	if(!start_arch(arch_setup_info))
+	if(start_arch(arch_setup_info))
+	{
+		pr_error("error start arch\n");
 		return;
+	}
+	pmm_init(arch_setup_info);
 }
