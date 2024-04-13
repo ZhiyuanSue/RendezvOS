@@ -4,11 +4,11 @@
 #include <arch/x86_64/io.h>
 #include <arch/x86_64/io_port.h>
 
-inline	void	arch_shutdown(){
+static inline	void	arch_shutdown(){
 	/*have no idea*/
 }
 
-inline	void	arch_reset()
+static inline	void	arch_reset()
 {
 	outb(_X86_INIT_REGISTER_,1);
 }

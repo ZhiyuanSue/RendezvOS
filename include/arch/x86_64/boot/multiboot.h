@@ -69,6 +69,20 @@ struct multiboot_framebuffer{
 }__attribute__((packed));
 
 struct multiboot_info{
+#define	MULTIBOOT_INFO_FLAG_MEM	(1<<0)
+#define	MULTIBOOT_INFO_FLAG_BOOT_DEVICE	(1<<1)
+#define	MULTIBOOT_INFO_FLAG_CMD	(1<<2)
+#define	MULTIBOOT_INFO_FLAG_MOD	(1<<3)
+#define	MULTIBOOT_INFO_FLAG_BYTE_28_TYPE1	(1<<4)
+#define	MULTIBOOT_INFO_FLAG_BYTE_28_TYPE2	(1<<5)
+#define	MULTIBOOT_INFO_FLAG_MMAP	(1<<6)
+#define	MULTIBOOT_INFO_FLAG_DRIVER	(1<<7)
+#define	MULTIBOOT_INFO_FLAG_CFG_TABLE	(1<<8)
+#define	MULTIBOOT_INFO_FLAG_BOOTLOADER_NAME	(1<<9)
+#define	MULTIBOOT_INFO_FLAG_APM_TBALE	(1<<10)
+#define	MULTIBOOT_INFO_FLAG_VBE	(1<<11)
+#define	MULTIBOOT_INFO_FLAG_FRAMEBUFFER	(1<<12)
+#define	MULTIBOOT_INFO_FLAG_CHECK(flags,flag)	((flags & flag))
 	u32								flags;
 	struct multiboot_mem 			mem;
 	u32								boot_device;

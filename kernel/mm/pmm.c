@@ -2,7 +2,7 @@
 #include <shampoos/mm/pmm.h>
 
 void pmm_init(struct setup_info* arch_setup_info){
-	pr_info("start pmm init");
+	pr_info("start pmm init\n");
 	arch_init_pmm(arch_setup_info);
 }
 u64	pmm_alloc(size_t page_frame_number)
