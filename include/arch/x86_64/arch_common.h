@@ -3,5 +3,6 @@
 #include "boot/arch_setup.h"
 #include "boot/multiboot.h"
 #include "mm/mm.h"
+#include "power_ctrl.h"
 
 #endif

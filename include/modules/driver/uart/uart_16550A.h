@@ -49,7 +49,8 @@ void uart_16550A_close();
 
 
 #if _X86_64_
-	#include <shampoos/io.h>
+	#include <arch/x86_64/io.h>
+	#include <arch/x86_64/io_port.h>
 	#include <shampoos/stddef.h>
 	#define uart_write_reg(reg_name,data)   \
 		outb(_X86_16550A_COM1_BASE_+offsetof(UART_16550A,reg_name) ,data)
