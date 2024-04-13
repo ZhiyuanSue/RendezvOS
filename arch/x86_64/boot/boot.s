@@ -37,6 +37,7 @@ multiboot_entry_address:
 	.long	multiboot_entry - kernel_virt_offset
 multiboot_header_end:
 multiboot_entry:
+bsp_entry:
 	/*disable interrupt*/
 	
 	/*store the multiboot magic*/
@@ -139,7 +140,12 @@ clean_tmp_page_table:
 run_main:
 	mov	$(setup_info),%rdi
 	call	cmain
+	hlt
 	jmp	hlt
+
+ap_entry:
+	jmp hlt
+
 
 
 /* some infomation under 32 bit*/	

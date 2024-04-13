@@ -5,7 +5,7 @@
 #include <arch/x86_64/io_port.h>
 
 inline	void	arch_shutdown(){
-	outw(_X86_POWER_MANAGEMENT_CONTROL_,0xA000);
+	/*have no idea*/
 }
 
 inline	void	arch_reset()
