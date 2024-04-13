@@ -6,4 +6,7 @@
 #define KERNEL_VIRT_TO_PHY(virt_addr) (virt_addr-_SHAMPOOS_KERNEL_OFFSET_)
 #endif
 #include "pmm.h"
+
+/*TODO:add some of the memory functions like memcpy/memset, etc.*/
+
 #endif

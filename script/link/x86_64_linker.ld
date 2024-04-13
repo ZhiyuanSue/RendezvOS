@@ -19,12 +19,12 @@ SECTIONS {
 		*(.boot.page)
 		*(.boot.log)
 		*(.boot.data)
+		*(.boot_stack)
 		*(.data)
 	}
 	_edata = .;
 	.bss :
 	{
-		*(.boot_stack)
 		*(.bss)
 	}
 	_end = .;

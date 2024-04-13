@@ -21,10 +21,16 @@ void arch_init_pmm(struct setup_info* arch_setup_info)
 			((u64)mmap-KERNEL_VIRT_OFFSET) < (add_ptr+length-KERNEL_VIRT_OFFSET);
 			mmap = (struct multiboot_mmap_entry*)((u64)mmap + mmap->size + sizeof(mmap->size)))
 		{
-			pr_info("size is 0x%x, base_phy_addr is 0x%x, length = 0x%x, type = 0x%x\n"	\
+			// if( mmap->addr+mmap->len<=BIOS_MEM_UPPER && mmap->type != 1)
+			// 	;
+			// else{
+				pr_info("Aviable Mem:size is 0x%x, base_phy_addr is 0x%x, length = 0x%x, type = 0x%x\n"	\
 					,mmap->size,mmap->addr,mmap->len,mmap->type);
+			// }
+			
 		}
-		
+		/*You need to check whether the kernel have been load all successfully*/
+		/*And reserve the memory of the 0-1M*/
 	}
 	return;
 }

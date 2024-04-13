@@ -8,6 +8,7 @@
 #include <arch/x86_64/boot/arch_setup.h>
 #include <modules/log/log.h>
 
+
 void arch_init_pmm(struct setup_info* arch_setup_info);
 
 #endif
