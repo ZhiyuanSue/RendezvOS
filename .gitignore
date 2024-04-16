@@ -15,4 +15,4 @@
 *.env
 *.d
 *.swp
-./include/modules/modules.h
+include/modules/modules.h

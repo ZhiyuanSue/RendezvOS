@@ -1,6 +1,0 @@
-#include "log/log.h"
-#include "helloworld/helloworld.h"
-#include "test/test.h"
-#include "driver/driver.h"
-#include "acpi/acpi.h"
-#include "dtb/dtb.h"
