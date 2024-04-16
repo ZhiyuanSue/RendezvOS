@@ -10,6 +10,8 @@ target_config_arch_list=[
 	'x86_64'
 ]
 usable_module_list={}
+module_features=[]
+kernel_features=[]
 
 def configure_kernel(kernel_config,root_dir):
 	# ==== ==== ==== ==== ==== ==== ==== ==== #
@@ -62,13 +64,7 @@ def configure_kernel(kernel_config,root_dir):
 			kernel_config_str = kernel_config_str + CFLAGS + ' '
 		kernel_config_str = kernel_config_str + '\n'
 		
-	# FEATURES
-	if 'features' in kernel_config.keys() :
-		features_kernel_config=kernel_config['features']
-		kernel_config_str = kernel_config_str + "CFLAGS\t+=\t"
-		for feature in features_kernel_config:
-			kernel_config_str = kernel_config_str + ' -D ' + feature
-		kernel_config_str = kernel_config_str + '\n'
+	
 	# LDFLAGS
 	if 'LDFLAGS' in kernel_config.keys():
 		LDFLAGS_kernel_config=kernel_config['LDFLAGS']
@@ -90,6 +86,37 @@ def configure_kernel(kernel_config,root_dir):
 	# ==== ==== ==== ==== ==== ==== ==== ==== #
 	# write the configs into makefile.env
 	target_config_file_path=os.path.join(root_dir,target_config_file_name)
+	target_config_file=open(target_config_file_path,'w')
+	target_config_file.write(kernel_config_str)
+	target_config_file.close()
+
+	# FEATURES
+	if 'features' in kernel_config.keys() :
+		features_kernel_config=kernel_config['features']
+		for feature in features_kernel_config:
+			kernel_features.append(feature)
+
+def configure_kernel_feature(kernel_config,root_dir):
+	# FEATURES
+	kernel_config_str = ""
+	if 'features' in kernel_config.keys() :
+		features_kernel_config=kernel_config['features']
+		kernel_config_str = kernel_config_str + "CFLAGS\t+=\t"
+		for feature in features_kernel_config:
+			kernel_config_str = kernel_config_str + ' -D ' + feature
+
+		for feature in module_features:
+			kernel_config_str = kernel_config_str + ' -D ' + feature
+		kernel_config_str = kernel_config_str + '\n'
+	# ==== ==== ==== ==== ==== ==== ==== ==== #
+	# write the configs into kernel/makefile.env
+	target_config_file_path=os.path.join(root_dir,"kernel",target_config_file_name)
+	target_config_file=open(target_config_file_path,'w')
+	target_config_file.write(kernel_config_str)
+	target_config_file.close()
+	# ==== ==== ==== ==== ==== ==== ==== ==== #
+	# write the configs into arch/makefile.env
+	target_config_file_path=os.path.join(root_dir,"arch",target_config_file_name)
 	target_config_file=open(target_config_file_path,'w')
 	target_config_file.write(kernel_config_str)
 	target_config_file.close()
@@ -123,6 +150,7 @@ def configure_module(module_name,module_config,root_dir):
 		for feature in feature_module_config:
 			module_config_str =module_config_str + ' -D ' + feature
 			usable_module_list[module_name].append(feature)
+			module_features.append(feature)
 		module_config_str = module_config_str + '\n'
 		
 	# check the depend modules and add the configs of depend modules into this module
@@ -136,6 +164,8 @@ def configure_module(module_name,module_config,root_dir):
 			for deps_feature in usable_module_list[deps]:
 				module_config_str =module_config_str + ' -D ' + deps_feature
 				usable_module_list[module_name].append(deps_feature)
+		for feature in kernel_features:
+			module_config_str = module_config_str + ' -D '+ feature
 		module_config_str = module_config_str + '\n'
 			
 	# write the configs into makefile.env
@@ -180,6 +210,7 @@ def configure(config_file):
 			print("Error:the kernel configs must exist")
 			exit(1)
 		kernel_config=config_json['kernel']
+		configure_kernel(kernel_config,root_dir)
 			
 		# starting config the modules
 		if 'modules' not in config_json.keys():
@@ -191,8 +222,8 @@ def configure(config_file):
 		for module_name,module_config in module_configs.items():
 			# print(module_name,module_config)
 			configure_module(module_name,module_config,root_dir)
-		#config kernel
-		configure_kernel(kernel_config,root_dir)
+		#config kernel feature
+		configure_kernel_feature(kernel_config,root_dir)
 				
 					
 
