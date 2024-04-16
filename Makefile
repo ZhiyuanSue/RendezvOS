@@ -76,6 +76,7 @@ mrproper: clean
 	@echo "rm all Makefile.env"
 	@rm -f $(shell find $(ROOT_DIR) -name Makefile.env) 
 	@rm -rf $(BUILD)/*
+	@rm $(ROOT_DIR)/modules/modules.h
 
 clean:	init
 	@echo "rm all obj file under build"

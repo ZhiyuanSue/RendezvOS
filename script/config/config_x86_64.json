@@ -8,23 +8,15 @@
 
 		],
 		"features":[
-			"_X86_64_"
+			"_X86_64_",
+			"SMP"
 		],
 		"LDFLAGS":[
 			
 		]
 		},
 	"modules":{
-		"helloworld":
-		{
-			"use":true ,
-			"features":[
-				"HELLO"
-			],
-			"depend_module":[
-			] ,
-			"path":"modules/helloworld"
-		},
+		
 		"log":
 		{
 			"use":true ,
@@ -37,6 +29,17 @@
 			],
 			"path":"modules/log"
 		},
+		"helloworld":
+		{
+			"use":true ,
+			"features":[
+				"HELLO"
+			],
+			"depend_module":[
+				"log"
+			] ,
+			"path":"modules/helloworld"
+		},
 		"test":
 		{
 			"use":true ,
@@ -44,7 +47,8 @@
 				"TEST"
 			],
 			"depend_module":[
-				"helloworld"
+				"helloworld",
+				"log"
 			],
 			"path":"modules/test"
 		},

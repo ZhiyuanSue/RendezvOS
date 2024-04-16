@@ -10,6 +10,7 @@ target_config_arch_list=[
 	'x86_64'
 ]
 usable_module_list={}
+module_features=[]
 
 def configure_kernel(kernel_config,root_dir):
 	# ==== ==== ==== ==== ==== ==== ==== ==== #
@@ -151,14 +152,20 @@ def configure_modules(module_configs,root_dir):
 		print("Warning:no 'modules' dir")
 		return
 	kernel_config_str="modules\t:=\t"
+	modules_header_file_str=""
 	for module_name in module_configs:
 		kernel_config_str=kernel_config_str+module_name+' '
+		modules_header_file_str=modules_header_file_str+"#include \""+module_name+"/"+module_name+".h\"\n"
 		
 	target_config_file_path=os.path.join(modules_dir,target_config_file_name)
 	target_config_file=open(target_config_file_path,'w')
 	target_config_file.write(kernel_config_str)
 	target_config_file.close()
-	pass
+	
+	modules_header_file_path=os.path.join(root_dir,"include","modules","modules.h")
+	modules_header_file=open(modules_header_file_path,'w')
+	modules_header_file.write(modules_header_file_str)
+	modules_header_file.close()
 
 def configure(config_file):
 	script_config_dir=sys.argv[2]
@@ -175,8 +182,6 @@ def configure(config_file):
 			exit(1)
 		kernel_config=config_json['kernel']
 			
-		configure_kernel(kernel_config,root_dir)
-			
 		# starting config the modules
 		if 'modules' not in config_json.keys():
 			# the config file have no modules is reasonable
@@ -187,6 +192,8 @@ def configure(config_file):
 		for module_name,module_config in module_configs.items():
 			# print(module_name,module_config)
 			configure_module(module_name,module_config,root_dir)
+		#config kernel
+		configure_kernel(kernel_config,root_dir)
 				
 					
 

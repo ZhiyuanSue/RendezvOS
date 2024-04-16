@@ -22,6 +22,7 @@
 #else	/*for default config is x86_64*/
 #include <arch/x86_64/arch_common.h>
 #endif
+#include <modules/modules.h>
 
 int	start_arch (struct setup_info* arch_setup_info);
 void parse_device(uintptr_t addr);

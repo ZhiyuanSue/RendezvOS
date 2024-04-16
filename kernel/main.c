@@ -19,5 +19,6 @@ void cmain(struct setup_info* arch_setup_info){
 	pmm_init(arch_setup_info);
 	/*TODO:after we init the pmm module, we can alloc some pages for stack,and no more boot stack*/
 
+	start_smp();
 	arch_shutdown();
 }
