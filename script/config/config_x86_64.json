@@ -64,15 +64,17 @@
 		{
 			"use":true ,
 			"features":[
-
+				"ACPI"
 			],
 			"depend_module":[],
 			"path":"modules/acpi"
 		},
 		"dtb":
 		{
-			"use":true,
-			"features":[],
+			"use":false,
+			"features":[
+				"DTB"
+			],
 			"depend_module":[],
 			"path":"modules/dtb"
 		}

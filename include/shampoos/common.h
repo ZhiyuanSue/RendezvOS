@@ -23,6 +23,9 @@
 #include <arch/x86_64/arch_common.h>
 #endif
 #include <modules/modules.h>
+#ifdef SMP
+#include <shampoos/smp.h>
+#endif
 
 int	start_arch (struct setup_info* arch_setup_info);
 void parse_device(uintptr_t addr);

@@ -2,7 +2,5 @@
 
 void hello_world()
 {
-#ifdef HELLO
 	pr_info("Shampoos");
-#endif
 }
