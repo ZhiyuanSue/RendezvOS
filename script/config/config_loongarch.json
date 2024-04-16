@@ -15,16 +15,6 @@
 		]
 		},
 	"modules":{
-		"helloworld":
-		{
-			"use":true ,
-			"features":[
-				"HELLO"
-			],
-			"depend_module":[
-			] ,
-			"path":"modules/helloworld"
-		},
 		"log":
 		{
 			"use":true ,
@@ -36,6 +26,16 @@
 
 			],
 			"path":"modules/log"
+		},
+		"helloworld":
+		{
+			"use":true ,
+			"features":[
+				"HELLO"
+			],
+			"depend_module":[
+			] ,
+			"path":"modules/helloworld"
 		},
 		"test":
 		{

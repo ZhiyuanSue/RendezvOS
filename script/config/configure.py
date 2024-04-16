@@ -10,7 +10,6 @@ target_config_arch_list=[
 	'x86_64'
 ]
 usable_module_list={}
-module_features=[]
 
 def configure_kernel(kernel_config,root_dir):
 	# ==== ==== ==== ==== ==== ==== ==== ==== #
