@@ -2,6 +2,8 @@
 #include <shampoos/mm/pmm.h>
 #include <modules/log/log.h>
 
+struct buddy_zone Total_Zone;
+
 void pmm_init(struct setup_info* arch_setup_info){
 	pr_info("start pmm init\n");
 	arch_init_pmm(arch_setup_info);

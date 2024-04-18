@@ -44,6 +44,17 @@ bsp_entry:
 	movl	%eax,(setup_info - kernel_virt_offset)
 	/*store the %ebx*/
 	movl	%ebx,(setup_info + 4 - kernel_virt_offset)
+	/*as we have set the stack at bss section, we must clear it first*/
+clear_bss_start:
+	movl	$(_bss_start-kernel_virt_offset),%eax
+	movl	$(_bss_end-kernel_virt_offset),%ebx
+clear_bss:
+	cmp		%eax,%ebx
+	jg		set_sp
+	movl	$0,(%eax)
+	add		$1,%eax
+	jmp		clear_bss
+set_sp:
 	/*set sp*/
 	movl 	$(boot_stack + boot_stack_size - kernel_virt_offset),%esp
 	/*clear the flag register*/

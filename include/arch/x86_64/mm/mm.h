@@ -6,7 +6,10 @@
 #define KERNEL_VIRT_TO_PHY(virt_addr) (virt_addr-_SHAMPOOS_KERNEL_OFFSET_)
 #endif
 #include "pmm.h"
+#include <shampoos/stddef.h>
 
-/*TODO:add some of the memory functions like memcpy/memset, etc.*/
+
+void *memset(void *str, int c, size_t n);
+void *memcpy(void *str1, const void *str2, size_t n);
 
 #endif

@@ -3,6 +3,8 @@
 #include <modules/log/log.h>
 
 extern int log_level;
+extern char _bss_start,_bss_end;
+
 
 void cmain(struct setup_info* arch_setup_info){
 	if(arch_setup_info==NULL)
@@ -12,7 +14,6 @@ void cmain(struct setup_info* arch_setup_info){
 #ifdef HELLO
 	hello_world();
 #endif
-
 	if(start_arch(arch_setup_info))
 	{
 		pr_error("error start arch\n");

@@ -13,7 +13,7 @@ SECTIONS {
 		*(.boot_64)
 		*(.text)
 	}
-	. =ALIGN(4K);
+	. = ALIGN(4K);
 	.data :
 	{
 		*(.boot.page)
@@ -23,9 +23,12 @@ SECTIONS {
 		*(.data)
 	}
 	_edata = .;
+	. = ALIGN(4K);
+	_bss_start = .;
 	.bss :
 	{
 		*(.bss)
 	}
+	_bss_end = .;
 	_end = .;
 }

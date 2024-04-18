@@ -17,6 +17,5 @@ int start_arch (struct setup_info* arch_setup_info)
 		pr_info("no input cmdline\n");
 	}
 
-	/*TODO:clean the bss segment*/
 	return 0;
 }
