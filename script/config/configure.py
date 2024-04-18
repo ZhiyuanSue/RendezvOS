@@ -182,7 +182,13 @@ def configure_modules(module_configs,root_dir):
 		return
 	kernel_config_str="modules\t:=\t"
 	modules_header_file_str=""
-	for module_name in module_configs:
+	for module_name,module_config in module_configs.items():
+		if 'use' not in module_config.keys():
+			print("Error: the ",module_name," module must have a 'use' attribute")
+			exit(1)
+		use_module_config=module_config['use']
+		if use_module_config==False:
+			continue
 		kernel_config_str=kernel_config_str+module_name+' '
 		modules_header_file_str=modules_header_file_str+"#include \""+module_name+"/"+module_name+".h\"\n"
 		
