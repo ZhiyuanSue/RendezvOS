@@ -5,11 +5,15 @@ void pmm_init(struct setup_info* arch_setup_info){
 	pr_info("start pmm init\n");
 	arch_init_pmm(arch_setup_info);
 }
-u64	pmm_alloc(size_t page_frame_number)
+u64	pmm_alloc(size_t page_number)
 {
 
 }
-void	pmm_free(u64 start_addr,size_t page_frame_number)
+u64 pmm_free_one(u64 page_address)
+{
+
+}
+u64 pmm_free(u64 page_address,size_t page_number)
 {
 	
 }
