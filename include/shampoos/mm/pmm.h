@@ -3,6 +3,7 @@
 
 #include <shampoos/types.h>
 #include <shampoos/stddef.h>
+#include <shampoos/list.h>
 
 #ifdef _AARCH64_
 #include <arch/aarch64/mm/pmm.h>
@@ -21,6 +22,11 @@ struct pmm_region{
 	u64		length;
 };
 
+struct page_frame{
+	u64		have_alloc;
+	struct	list_entry list_node;
+	u64		page_address;
+}__attribute__((packed));
 void pmm_init(struct setup_info* arch_setup_info);
 
 #endif

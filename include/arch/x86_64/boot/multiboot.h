@@ -18,11 +18,11 @@ struct multiboot_mmap_entry
 	u32	size;
 	u64	addr;
 	u64	len;
-#define MULTIBOOT_MEMORY_AVAILABLE              1
-#define MULTIBOOT_MEMORY_RESERVED               2
-#define MULTIBOOT_MEMORY_ACPI_RECLAIMABLE       3
-#define MULTIBOOT_MEMORY_NVS                    4
-#define MULTIBOOT_MEMORY_BADRAM                 5
+#define MULTIBOOT_MEMORY_AVAILABLE				1
+#define MULTIBOOT_MEMORY_RESERVED				2
+#define MULTIBOOT_MEMORY_ACPI_RECLAIMABLE		3
+#define MULTIBOOT_MEMORY_NVS					4
+#define MULTIBOOT_MEMORY_BADRAM					5
 	u32	type;
 } __attribute__((packed));
 

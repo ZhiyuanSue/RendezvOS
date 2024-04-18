@@ -13,7 +13,7 @@ void uart_16550A_open()
 	/*set 115200*/
 
 	/*
-		Baud rate   DLM		DLL
+		Baud rate	DLM		DLL
 		50			09H		00H
 		75			06H		00H
 		110			04H		17H

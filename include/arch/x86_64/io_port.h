@@ -2,7 +2,7 @@
 #define _SHAMPOOS_X86_64_IO_PORT_H_
 
 /*define some of the ports in X86_64 here*/
-#define	_X86_16550A_COM1_BASE_	0x3F8   /*actually using early serial ouput we just need one serial port*/
+#define	_X86_16550A_COM1_BASE_	0x3F8	/*actually using early serial ouput we just need one serial port*/
 #define	_X86_16550A_COM2_BASE_	0x2F8
 
 #define	_X86_INIT_REGISTER_	0x92

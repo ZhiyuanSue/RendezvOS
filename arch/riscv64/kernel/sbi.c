@@ -23,8 +23,8 @@ struct sbiret sbi_ecall(int eid,
 		:"+r"(a0),"+r"(a1)
 		:"r" (a2), "r" (a3), "r" (a4), "r" (a5), "r" (a6), "r" (a7)
 		:"memory");
-	ret.error   =   a0;
-	ret.value   =   a1;
+	ret.error	=	a0;
+	ret.value	=	a1;
 	return ret;
 }
 
