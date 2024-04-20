@@ -12,7 +12,7 @@ void arch_init_pmm(struct setup_info* arch_setup_info)
 		pr_info("the mem lower is 0x%x ,the upper is 0x%x\n",mtb_info->mem.mem_lower,mtb_info->mem.mem_upper);
 	}else{
 		pr_info("no mem info\n");
-		arch_shutdown();
+		goto arch_init_pmm_error;
 	}
 	if(MULTIBOOT_INFO_FLAG_CHECK(mtb_info->flags,MULTIBOOT_INFO_FLAG_MMAP))
 	{
@@ -60,14 +60,19 @@ void arch_init_pmm(struct setup_info* arch_setup_info)
 				
 			}
 		}
-		/*You need to check whether the kernel have been load all successfully*/
+		/*You need to check whether the kernel have been loaded all successfully*/
 		if(!can_load_kernel)
 		{
 			pr_info("cannot load kernel\n");
-			arch_shutdown();
-			return;	/*seems unreachable*/
+			goto arch_init_pmm_error;
 		}
-		/*And reserve the memory of the 0-1M*/
+		
+	}
+	else{
+		pr_info("no mem info\n");
+		goto arch_init_pmm_error;
 	}
 	return;
+arch_init_pmm_error:
+	arch_shutdown();
 }
