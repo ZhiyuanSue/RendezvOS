@@ -40,6 +40,7 @@ void arch_init_pmm(struct setup_info* arch_setup_info)
 	bool can_record_buddy=false;
 	u64 buddy_record_pages=0;
 		/*how many pages that must be used to maintain the buddy, we use static alloc*/
+	u64	buddy_entries_per_bucket[BUDDY_MAXORDER];
 	u64	buddy_start_addr=0;
 
 	if( !MULTIBOOT_INFO_FLAG_CHECK(mtb_info->flags,MULTIBOOT_INFO_FLAG_MEM) || \
@@ -50,7 +51,8 @@ void arch_init_pmm(struct setup_info* arch_setup_info)
 	}
 	pr_info("the mem lower is 0x%x ,the upper is 0x%x\n",mtb_info->mem.mem_lower,mtb_info->mem.mem_upper);
 	
-
+	for(int order=0;order<BUDDY_MAXORDER;++order)
+		buddy_entries_per_bucket[order]=0;
 	for(mmap = (struct multiboot_mmap_entry*)add_ptr;
 		((u64)mmap) < (add_ptr+length);
 		mmap = (struct multiboot_mmap_entry*)((u64)mmap + mmap->size + sizeof(mmap->size)))
@@ -65,6 +67,14 @@ void arch_init_pmm(struct setup_info* arch_setup_info)
 			if(check_region(&sec_start_addr,&sec_end_addr))
 				can_load_kernel=true;
 			total_avaliable_memory+=sec_end_addr-sec_start_addr;
+			/*calculate the buddy entries per bucket*/
+			for(int order=0;order<BUDDY_MAXORDER;++order)
+			{
+				u64 size_in_this_order=(PAGE_SIZE<<order);
+				buddy_entries_per_bucket[order]+= \
+					( ROUND_DOWN(sec_end_addr,size_in_this_order) \
+					-ROUND_UP(sec_start_addr,size_in_this_order) )/size_in_this_order;
+			}
 		}
 	}
 	/*You need to check whether the kernel have been loaded all successfully*/
@@ -74,13 +84,16 @@ void arch_init_pmm(struct setup_info* arch_setup_info)
 		goto arch_init_pmm_error;
 	}
 	/*calculate and static alloc the pmm data struct 
-	* remember,we must find a avaliable phy region that is large enough to place those management data
+	* remember,we must find an avaliable phy region that is large enough to place those management data
 	* if we cannot find one , another error
 	*/
 	pr_info("total avaliable memory are 0x%x\n",total_avaliable_memory);
-	for(u64 order=0;order<BUDDY_MAXORDER;++order)
+	for(int order=0;order<BUDDY_MAXORDER;++order)
 	{
-
+		u64 entries_total_size=buddy_entries_per_bucket[order]*sizeof(struct page_frame);
+		pr_info("buddy entries in bucket %d total 0x%x entries, need 0x%x space\n",order,buddy_entries_per_bucket[order],entries_total_size);
+		buddy_record_pages+=ROUND_UP(entries_total_size,PAGE_SIZE)/PAGE_SIZE;
+		pr_info("this bucket need buddy record pages is 0x%x\n",ROUND_UP(entries_total_size,PAGE_SIZE)/PAGE_SIZE);
 	}
 	pr_info("total buddy record pages is 0x%x\n",buddy_record_pages);
 	for(mmap = (struct multiboot_mmap_entry*)add_ptr;
@@ -100,6 +113,7 @@ void arch_init_pmm(struct setup_info* arch_setup_info)
 			}
 		}
 	}
+	pr_info("buddy start addr is 0x%x\n",buddy_start_addr);
 	if(!can_record_buddy)
 	{
 		pr_info("have no space record buddy\n");
