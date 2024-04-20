@@ -21,8 +21,9 @@ void arch_init_pmm(struct setup_info* arch_setup_info)
 		u64	kernel_end_phy_addr=(u64)(&_end) & KERNEL_VIRT_OFFSET_MASK;
 		u64 add_ptr = mtb_info->mmap.mmap_addr + KERNEL_VIRT_OFFSET;
 		u64 length = mtb_info->mmap.mmap_length;
+		bool can_load_kernel=false;
+
 		pr_info("multiboot have mmap with mmap_addr 0x%x map_length 0x%x\n",add_ptr,length);
-		mmap = (struct multiboot_mmap_entry*)add_ptr;
 		for(mmap = (struct multiboot_mmap_entry*)add_ptr;
 			((u64)mmap) < (add_ptr+length);
 			mmap = (struct multiboot_mmap_entry*)((u64)mmap + mmap->size + sizeof(mmap->size)))
@@ -35,49 +36,36 @@ void arch_init_pmm(struct setup_info* arch_setup_info)
 				u64 sec_start_addr=mmap->addr;
 				u64 sec_end_addr=sec_start_addr+mmap->len;
 						/*remember, this end is not reachable,[ sec_end_addr , sec_end_addr ) */
-				u64 usable_start_addr=0;
-				u64 usable_end_addr=0;
 				pr_info("start 0x%x,end 0x%x\n",sec_start_addr,sec_end_addr);
-				/*
-				 * the physical memory layout now is 
-				 * 0 - BIOS_MEM_UPPER, bios part and we don't use it.
-				 * BIOS_MEM_UPPE - _end,kernel part
+				
+				/*the end must bigger then BIOS_MEM_UPPER*/
+				if(sec_start_addr<BIOS_MEM_UPPER)
+					sec_start_addr=BIOS_MEM_UPPER;
+				/* as we set the memeory layout 
+				 * the 1 - BIOS_MEM_UPPER is bios.
+				 * the BIOS_MEM_UPPER - _end is kernel
+				 * so no need to check some cases,such as the split, etc.
 				 * */
-				if(sec_start_addr <= BIOS_MEM_UPPER)
+				if(sec_start_addr<=BIOS_MEM_UPPER \
+						&& sec_end_addr >= kernel_end_phy_addr)
 				{
-					if(sec_end_addr <= BIOS_MEM_UPPER ){
-						;/*do nothing*/
-					}
-					else{
-						if(sec_end_addr < kernel_end_phy_addr)
-						{
-							pr_info("the kernel cannot load all, exit\n");
-							arch_shutdown();
-						}
-						else{
-							usable_start_addr = kernel_end_phy_addr;
-							usable_end_addr = sec_end_addr;
-						}
-					}
+					can_load_kernel=true;
+					sec_start_addr=kernel_end_phy_addr;
 				}
-				else	/*the end must >= BIOS_MEM_UPPER */
-				{
-					pr_info("the kernel cannot load all,exit\n");
-					arch_shutdown();
-				}
-				if(usable_start_addr && usable_end_addr)
-				{
-					pr_info("usable start addr 0x%x,usable end addr 0x%x\n",usable_start_addr,usable_end_addr);
-				}
-				else{
-					pr_info("this section not usable\n");
-				}
-
-
+				/* as we decided the section start and end, just build pmm modules
+				 * here we need to find the size of the entry
+				 * */
+				pr_info("avaliable section is start 0x%x end 0x%x\n",sec_start_addr,sec_end_addr);
 
 			}
 		}
 		/*You need to check whether the kernel have been load all successfully*/
+		if(!can_load_kernel)
+		{
+			pr_info("cannot load kernel\n");
+			arch_shutdown();
+			return;	/*seems unreachable*/
+		}
 		/*And reserve the memory of the 0-1M*/
 	}
 	return;
