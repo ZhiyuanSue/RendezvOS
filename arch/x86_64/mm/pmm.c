@@ -37,8 +37,10 @@ void arch_init_pmm(struct setup_info* arch_setup_info)
 	u64 length = mtb_info->mmap.mmap_length;
 	bool can_load_kernel=false;
 	u64	total_avaliable_memory=0;
+	bool can_record_buddy=false;
 	u64 buddy_record_pages=0;
 		/*how many pages that must be used to maintain the buddy, we use static alloc*/
+	u64	buddy_start_addr=0;
 
 	if( !MULTIBOOT_INFO_FLAG_CHECK(mtb_info->flags,MULTIBOOT_INFO_FLAG_MEM) || \
 	 !MULTIBOOT_INFO_FLAG_CHECK(mtb_info->flags,MULTIBOOT_INFO_FLAG_MMAP))
@@ -53,11 +55,10 @@ void arch_init_pmm(struct setup_info* arch_setup_info)
 		((u64)mmap) < (add_ptr+length);
 		mmap = (struct multiboot_mmap_entry*)((u64)mmap + mmap->size + sizeof(mmap->size)))
 	{
-		if( mmap->addr+mmap->len<=BIOS_MEM_UPPER || mmap->type != MULTIBOOT_MEMORY_AVAILABLE )
-			;
-		else{
-			/*pr_info("Aviable Mem:size is 0x%x, base_phy_addr is 0x%x, length = 0x%x, type = 0x%x\n"	\
+		/*pr_info("Aviable Mem:size is 0x%x, base_phy_addr is 0x%x, length = 0x%x, type = 0x%x\n"	\
 				,mmap->size,mmap->addr,mmap->len,mmap->type);*/
+		if( mmap->addr+mmap->len>BIOS_MEM_UPPER && mmap->type == MULTIBOOT_MEMORY_AVAILABLE )
+		{
 			u64 sec_start_addr=mmap->addr;
 			u64 sec_end_addr=sec_start_addr+mmap->len;
 					/*remember, this end is not reachable,[ sec_end_addr , sec_end_addr ) */
@@ -77,7 +78,38 @@ void arch_init_pmm(struct setup_info* arch_setup_info)
 	* if we cannot find one , another error
 	*/
 	pr_info("total avaliable memory are 0x%x\n",total_avaliable_memory);
-	
+	for(u64 order=0;order<BUDDY_MAXORDER;++order)
+	{
+
+	}
+	pr_info("total buddy record pages is 0x%x\n",buddy_record_pages);
+	for(mmap = (struct multiboot_mmap_entry*)add_ptr;
+		((u64)mmap) < (add_ptr+length);
+		mmap = (struct multiboot_mmap_entry*)((u64)mmap + mmap->size + sizeof(mmap->size)))
+	{
+		if( mmap->addr+mmap->len>BIOS_MEM_UPPER && mmap->type == MULTIBOOT_MEMORY_AVAILABLE )
+		{
+			u64 sec_start_addr=mmap->addr;
+			u64 sec_end_addr=sec_start_addr+mmap->len;
+			check_region(&sec_start_addr,&sec_end_addr);
+			if(sec_end_addr-sec_start_addr > buddy_record_pages* PAGE_SIZE)
+			{
+				can_record_buddy=true;
+				buddy_start_addr=sec_start_addr;
+				break;
+			}
+		}
+	}
+	if(!can_record_buddy)
+	{
+		pr_info("have no space record buddy\n");
+		goto arch_init_pmm_error;
+	}
+	/*finish calculate ,and map those buddy pages using buddy start addr and buddy record pages*/
+
+	/*generate the buddy record ptr*/
+
+	/*generate the buddy record*/
 	return;
 arch_init_pmm_error:
 	arch_shutdown();
