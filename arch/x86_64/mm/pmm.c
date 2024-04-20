@@ -7,7 +7,6 @@ void arch_init_pmm(struct setup_info* arch_setup_info)
 {
 	struct multiboot_info* mtb_info = \
 		GET_MULTIBOOT_INFO(arch_setup_info);
-	pr_info("mtb info addr is %x\n",(u64)mtb_info);
 	if( MULTIBOOT_INFO_FLAG_CHECK(mtb_info->flags,MULTIBOOT_INFO_FLAG_MEM) )
 	{
 		pr_info("the mem lower is 0x%x ,the upper is 0x%x\n",mtb_info->mem.mem_lower,mtb_info->mem.mem_upper);
@@ -55,8 +54,10 @@ void arch_init_pmm(struct setup_info* arch_setup_info)
 				/* as we decided the section start and end, just build pmm modules
 				 * here we need to find the size of the entry
 				 * */
+				sec_start_addr=ROUND_UP(sec_start_addr,PAGE_SIZE);
+				sec_end_addr=ROUND_DOWN(sec_end_addr,PAGE_SIZE);
 				pr_info("avaliable section is start 0x%x end 0x%x\n",sec_start_addr,sec_end_addr);
-
+				
 			}
 		}
 		/*You need to check whether the kernel have been load all successfully*/
