@@ -1,5 +1,13 @@
 #include <shampoos/common.h>
 #include <shampoos/error.h>
+static void start_fp()
+{
+	
+}
+static void start_simd()
+{
+
+}
 int start_arch (struct setup_info* arch_setup_info)
 {
 	u32 mtb_magic=arch_setup_info->multiboot_magic;
@@ -16,6 +24,7 @@ int start_arch (struct setup_info* arch_setup_info)
 	else{
 		pr_info("no input cmdline\n");
 	}
-
+	start_fp();
+	start_simd();
 	return 0;
 }
