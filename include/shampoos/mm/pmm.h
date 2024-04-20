@@ -17,6 +17,15 @@
 #include <arch/x86_64/mm/pmm.h>
 #endif
 
+#define PAGE_SIZE	0x1000
+#define MIDDLE_PAGE_SIZE	0x200000
+#define HUGE_PAGE_SIZE	0x40000000
+
+#define ROUND_UP(x,align)	((x+(align-1)) & ~(align-1))
+#define ROUND_DOWN(x,align)	(x & ~(align-1))
+
+#define	ALIGNED(x,align)	((x & (align-1))==0)
+
 typedef u64 addr_t;
 #define BUDDY_MAXORDER	9
 /*for buddy in linux, this number is 10, but I think the page table will map a 2Mb page, which need the order 9*/
