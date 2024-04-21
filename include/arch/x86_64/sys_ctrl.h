@@ -91,7 +91,29 @@ static void inline set_cr4_bit(u64 cr4_bit){
 #define	XCR0_ZMM_HI256	(1<<6)
 #define	XCR0_HI16_ZMM	(1<<7)
 #define	XCR0_PKRU	(1<<9)
-
+static void inline set_xcr(u32 xcr_number,u64 xcr_value)
+{
+	u32 xcr_low = (u32)xcr_value;
+	u32 xcr_high = (u32)(xcr_value >> 32);
+	asm volatile(
+		"xsetbv"
+		:
+		:"a"(xcr_low),"c"(xcr_number),"d"(xcr_high)
+	);
+}
+static u64 inline get_xcr(u32 xcr_number)
+{
+	u64 xcr_value;
+	u32	xcr_high;
+	u32 xcr_low;
+	asm volatile(
+		"xgetbv"
+		:"=a"(xcr_low),"=d"(xcr_high)
+		:"c"(xcr_number)
+	);
+	xcr_value=(((u64)xcr_high)<<32)|xcr_low;
+	return xcr_value;
+}
 
 #define	MXCSR_IE	(1<<0)
 #define	MXCSR_DE	(1<<1)

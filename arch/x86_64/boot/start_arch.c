@@ -13,6 +13,7 @@ static void start_simd()
 {
 	struct cpuid_result tmp_result;
 	u32 cpuid_func;
+	u64 xcr_value;
 	cpuid_func=0x01;
 	/*use cpuid to check the simd support or not*/
 	tmp_result=cpuid(cpuid_func);
@@ -21,7 +22,15 @@ static void start_simd()
 		((tmp_result.ecx) & ( (1<<0)|(1<<9) )) 
 		)
 	{
-		pr_info("have simd feature\n");
+		pr_info("have simd feature,starting...\n");
+		if((tmp_result.ecx) & (1<<26))
+		{
+			pr_info("support xcr0\n");
+			/*to enable the xcr0, must set the cr4 osxsave*/
+			set_cr4_bit(CR4_OSXSAVE);
+			xcr_value=get_xcr(0);
+			set_xcr(0, xcr_value | XCR0_X87 | XCR0_SSE | XCR0_AVX);
+		}
 		/*set osfxsr : cr4 bit 9*/
 		set_cr4_bit(CR4_OSFXSR);
 		/*set osxmmexcpt flag: cr4 bit 10*/
