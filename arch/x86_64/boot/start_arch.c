@@ -18,13 +18,18 @@ static void start_simd()
 		)
 	{
 		pr_info("have simd feature\n");
+		/*set osfxsr : cr4 bit 9*/
+		
+		/*set osxmmexcpt flag: cr4 bit 10*/
+
+		/*set the mask bit and flags in mxcsr register*/
 	}
 	else{
 		goto start_simd_fail;
 	}
 	return;
 start_simd_fail:
-	pr_info("start simd fail\n");
+	pr_error("start simd fail\n");
 }
 int start_arch (struct setup_info* arch_setup_info)
 {
