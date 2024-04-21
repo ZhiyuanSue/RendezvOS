@@ -3,10 +3,10 @@
 #include <arch/x86_64/boot/arch_setup.h>
 #include <arch/x86_64/power_ctrl.h>
 extern char _end;	/*the kernel end virt addr*/
+static const u64 kernel_end_phy_addr = (u64)(&_end) & KERNEL_VIRT_OFFSET_MASK;
 bool check_region(u64* sec_start_addr,u64* sec_end_addr)
 {
 	bool can_load_kernel=false;
-	u64	kernel_end_phy_addr=(u64)(&_end) & KERNEL_VIRT_OFFSET_MASK;
 	/*the end must bigger then BIOS_MEM_UPPER*/
 	if((*sec_start_addr)<BIOS_MEM_UPPER)
 		*sec_start_addr=BIOS_MEM_UPPER;
@@ -42,6 +42,7 @@ void arch_init_pmm(struct setup_info* arch_setup_info)
 		/*how many pages that must be used to maintain the buddy, we use static alloc*/
 	u64	buddy_entries_per_bucket[BUDDY_MAXORDER];
 	u64	buddy_start_addr=0;
+	u64 kernel_end_phy_addr_round_up=0;
 
 	if( !MULTIBOOT_INFO_FLAG_CHECK(mtb_info->flags,MULTIBOOT_INFO_FLAG_MEM) || \
 	 !MULTIBOOT_INFO_FLAG_CHECK(mtb_info->flags,MULTIBOOT_INFO_FLAG_MMAP))
@@ -120,7 +121,12 @@ void arch_init_pmm(struct setup_info* arch_setup_info)
 		goto arch_init_pmm_error;
 	}
 	/*finish calculate ,and map those buddy pages using buddy start addr and buddy record pages*/
-
+	/* calculate the upper alignment of the _end, and judge,
+	 * consider that we might have more then one region,
+	 * so the buddy_start_addr might not next the physical position of kernel_end_phy_addr
+	 */
+	kernel_end_phy_addr_round_up=ROUND_UP(kernel_end_phy_addr,MIDDLE_PAGE_SIZE);
+	
 	/*generate the buddy record ptr*/
 
 	/*generate the buddy record*/
