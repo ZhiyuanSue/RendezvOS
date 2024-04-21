@@ -1,9 +1,13 @@
 #include <arch/x86_64/sys_ctrl.h>
 #include <shampoos/common.h>
 #include <shampoos/error.h>
+static void enable_cache()
+{
+}
 static void start_fp()
 {
-	
+	set_cr0_bit(CR0_MP);
+	set_cr0_bit(CR0_NE);
 }
 static void start_simd()
 {
@@ -19,10 +23,12 @@ static void start_simd()
 	{
 		pr_info("have simd feature\n");
 		/*set osfxsr : cr4 bit 9*/
-		
+		set_cr4_bit(CR4_OSFXSR);
 		/*set osxmmexcpt flag: cr4 bit 10*/
-
+		set_cr4_bit(CR4_OSXMMEXCPT);
 		/*set the mask bit and flags in mxcsr register*/
+		//set_mxcsr( MXCSR_IE|MXCSR_DE|MXCSR_ZE|MXCSR_OE|MXCSR_UE|MXCSR_PE|	\
+		//		MXCSR_IM|MXCSR_DM|MXCSR_ZM|MXCSR_OM|MXCSR_UM|MXCSR_PM );
 	}
 	else{
 		goto start_simd_fail;
@@ -47,6 +53,7 @@ int start_arch (struct setup_info* arch_setup_info)
 	else{
 		pr_info("no input cmdline\n");
 	}
+	enable_cache();
 	start_fp();
 	start_simd();
 	return 0;

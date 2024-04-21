@@ -91,3 +91,36 @@ static void inline set_cr4_bit(u64 cr4_bit){
 #define	XCR0_ZMM_HI256	(1<<6)
 #define	XCR0_HI16_ZMM	(1<<7)
 #define	XCR0_PKRU	(1<<9)
+
+
+#define	MXCSR_IE	(1<<0)
+#define	MXCSR_DE	(1<<1)
+#define	MXCSR_ZE	(1<<2)
+#define	MXCSR_OE	(1<<3)
+#define	MXCSR_UE	(1<<4)
+#define	MXCSR_PE	(1<<5)
+#define	MXCSR_DAZ	(1<<6)
+#define	MXCSR_IM	(1<<7)
+#define	MXCSR_DM	(1<<8)
+#define	MXCSR_ZM	(1<<9)
+#define	MXCSR_OM	(1<<10)
+#define	MXCSR_UM	(1<<11)
+#define	MXCSR_PM	(1<<12)
+#define	MXCSR_FZ	(1<<16)
+static void inline set_mxcsr(u32 mxcsr_value)	/*not bits*/
+{
+	asm volatile(
+		"ldmxcsr	%0"
+		:
+		:"m"(mxcsr_value)
+	);
+}
+static u32 inline get_mxcsr()
+{
+	u32	mxcsr_tmp;
+	asm volatile(
+		"stmxcsr	%0"
+		:"=m"(mxcsr_tmp)
+	);
+	return mxcsr_tmp;
+}
