@@ -1,5 +1,5 @@
-#ifndef _SHAMPOOS_MM_H_
-#define _SHAMPOOS_MM_H_
+#ifndef _SHAMPOOS_ARCH_MM_H_
+#define _SHAMPOOS_ARCH_MM_H_
 
 #include "pmm.h"
 #include <shampoos/stddef.h>
