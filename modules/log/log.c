@@ -37,7 +37,7 @@ void log_init(void* log_buffer_addr,int log_level,void (*write_log)(u_int8_t ch)
 	LOG_BUFFER.cur_buffer_idx=0;
 	LOG_BUFFER.cur_buffer_offset=0;
 }
-void itoa (char *buf, int base, int d)
+void itoa (char *buf, int base, i64 d)
 {
 	char *p = buf;
 	char *p1, *p2;
@@ -100,7 +100,7 @@ void log_print(char* buffer,const char *format, va_list arg_list)
 			case 'd':
 			case 'u':
 			case 'x':
-				int d=va_arg(arg_list,int32_t);
+				i64 d=va_arg(arg_list,int64_t);
 				itoa (buf, c, d);
 				p = buf;
 				goto string;

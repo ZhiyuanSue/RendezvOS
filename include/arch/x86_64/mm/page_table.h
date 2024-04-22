@@ -9,7 +9,7 @@ typedef u64 pt_entry;
 #define	PT(addr)	((addr>>12) & mask_9_bit)
 
 /*mask of MAXPHYADDR*/
-#define	MAXPHYADDR_mask(m)	((1<<m)-1)
+#define	MAXPHYADDR_mask(m)	((((u64)1)<<m)-1)
 
 /*some bit of cr3*/
 #define	CR3_PWT	(1<<3)
@@ -25,7 +25,7 @@ typedef u64 pt_entry;
 #define	PML4E_PCD	(1<<4)
 #define	PML4E_A	(1<<5)
 #define	PML4E_PS	(1<<7)
-#define	PML4E_ADDR(addr,m)	(((addr<<12)>>12) & MAXPHYADDR_mask(m))
+#define	PML4E_ADDR(addr,m)	(((addr>>12)<<12) & MAXPHYADDR_mask(m))
 #define	PML4E_XD	(1<<63)
 
 /*some bit of PDPT*/

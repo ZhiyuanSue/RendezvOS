@@ -130,24 +130,18 @@ void arch_init_pmm(struct setup_info* arch_setup_info)
 	 * consider that we might have more then one region,
 	 * so the buddy_start_addr might not next the physical position of kernel_end_phy_addr
 	 */
-	kernel_end_phy_addr_round_up=ROUND_UP(kernel_end_phy_addr,MIDDLE_PAGE_SIZE);
-	buddy_end_addr=buddy_start_addr+buddy_record_pages*PAGE_SIZE;
-	if(kernel_end_phy_addr_round_up>=buddy_start_addr)
-	{
-		buddy_start_addr=kernel_end_phy_addr_round_up;
-	}
-	u32 maxphyaddr_width=arch_setup_info->phy_addr_width;
+	kernel_end_phy_addr_round_up = ROUND_UP(kernel_end_phy_addr,MIDDLE_PAGE_SIZE);
+	buddy_end_addr = buddy_start_addr+buddy_record_pages*PAGE_SIZE;
+	if(kernel_end_phy_addr_round_up >= buddy_start_addr)
+		buddy_start_addr = kernel_end_phy_addr_round_up;
 	pr_info("buddy end addr is 0x%x\n",buddy_end_addr);
-	for(;buddy_start_addr<buddy_end_addr;buddy_start_addr+=MIDDLE_PAGE_SIZE)
+	for(; buddy_start_addr < buddy_end_addr ; buddy_start_addr += MIDDLE_PAGE_SIZE)
 	{
 		/*As pmm and vmm part is not usable now, we still use boot page table*/
-		pt_entry*	entry=&boot_page_table_directory;
-		u64	buddy_start_round_down_2m = ROUND_DOWN(buddy_start_addr,MIDDLE_PAGE_SIZE);
+		pt_entry*	entry	=	&boot_page_table_directory;
+		u64	buddy_start_round_down_2m	=	ROUND_DOWN(buddy_start_addr,MIDDLE_PAGE_SIZE);
 		u32 index	=	PDT(KERNEL_PHY_TO_VIRT(buddy_start_round_down_2m));
-		entry[index]	=	PDE_ADDR_2M(buddy_start_round_down_2m,maxphyaddr_width) | PDE_P | PDE_RW ;
-		pr_info("1:%x\n",(buddy_start_round_down_2m>>21));
-		pr_info("2:%x\n",(buddy_start_round_down_2m>>21)<<21);
-		pr_info("3:%x %d\n",MAXPHYADDR_mask(maxphyaddr_width),maxphyaddr_width);
+		entry[index]	=	PDE_ADDR_2M(buddy_start_round_down_2m,arch_setup_info->phy_addr_width) | PDE_P | PDE_RW ;
 		pr_info("buddy_start_round_down_2m 0x%x index 0x%x entry 0x%x\n",buddy_start_round_down_2m,index,entry[index]);
 	}
 	/*generate the buddy record ptr*/
