@@ -42,7 +42,7 @@ void arch_init_pmm(struct setup_info* arch_setup_info)
 	bool can_record_buddy=false;
 	u64 buddy_record_pages=0;
 		/*how many pages that must be used to maintain the buddy, we use static alloc*/
-	u64	buddy_entries_per_bucket[BUDDY_MAXORDER];
+	u64	buddy_entries_per_bucket[BUDDY_MAXORDER],buddy_pages_per_bucket[BUDDY_MAXORDER];
 	u64	buddy_start_addr=0,buddy_end_addr=0;
 	u64 kernel_end_phy_addr_round_up=0;
 
@@ -56,7 +56,7 @@ void arch_init_pmm(struct setup_info* arch_setup_info)
 	
 	kernel_end_phy_addr = (u64)(&_end) & KERNEL_VIRT_OFFSET_MASK;
 	for(int order=0;order<BUDDY_MAXORDER;++order)
-		buddy_entries_per_bucket[order]=0;
+		buddy_entries_per_bucket[order]=buddy_pages_per_bucket[order]=0;
 	for(mmap = (struct multiboot_mmap_entry*)add_ptr;
 		((u64)mmap) < (add_ptr+length);
 		mmap = (struct multiboot_mmap_entry*)((u64)mmap + mmap->size + sizeof(mmap->size)))
@@ -94,12 +94,13 @@ void arch_init_pmm(struct setup_info* arch_setup_info)
 	pr_info("total avaliable memory are 0x%x\n",total_avaliable_memory);
 	for(int order=0;order<BUDDY_MAXORDER;++order)
 	{
-		u64 entries_total_size=buddy_entries_per_bucket[order]*sizeof(struct page_frame);
+		u64 entries_total_size	=	buddy_entries_per_bucket[order]*sizeof(struct page_frame);
 		pr_info("buddy entries in bucket %d total 0x%x entries, need 0x%x space\n", \
 			order,buddy_entries_per_bucket[order],entries_total_size);
-		buddy_record_pages+=ROUND_UP(entries_total_size,PAGE_SIZE)/PAGE_SIZE;
+		buddy_pages_per_bucket[order]	=	ROUND_UP(entries_total_size,PAGE_SIZE)/PAGE_SIZE;
+		buddy_record_pages	+=	buddy_pages_per_bucket[order];
 		pr_info("this bucket need buddy record pages is 0x%x\n", \
-			ROUND_UP(entries_total_size,PAGE_SIZE)/PAGE_SIZE);
+			buddy_pages_per_bucket[order]);
 	}
 	pr_info("total buddy record pages is 0x%x\n",buddy_record_pages);
 	for(mmap = (struct multiboot_mmap_entry*)add_ptr;
