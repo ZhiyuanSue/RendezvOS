@@ -46,7 +46,7 @@ static void inline set_cr3_bit(u64 cr3_bit){
 	asm volatile (
 		"movq %%cr3,%0;"
 		"orq %1,%0;"
-		"movq %0,%%cr0;"
+		"movq %0,%%cr3;"
 		:"=&r"(cr3_tmp)
 		:"r"(cr3_bit)
 	);
@@ -74,9 +74,9 @@ static void inline set_cr3_bit(u64 cr3_bit){
 static void inline set_cr4_bit(u64 cr4_bit){
 	u64 cr4_tmp;
 	asm volatile (
-		"movq %%cr0,%0;"
+		"movq %%cr4,%0;"
 		"orq %1,%0;"
-		"movq %0,%%cr0;"
+		"movq %0,%%cr4;"
 		:"=&r"(cr4_tmp)
 		:"r"(cr4_bit)
 	);

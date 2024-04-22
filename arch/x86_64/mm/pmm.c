@@ -3,11 +3,13 @@
 #include <arch/x86_64/boot/arch_setup.h>
 #include <arch/x86_64/power_ctrl.h>
 extern char _end;	/*the kernel end virt addr*/
-static const u64 kernel_end_phy_addr = (u64)(&_end) & KERNEL_VIRT_OFFSET_MASK;
+static u64 kernel_end_phy_addr; 
 bool check_region(u64* sec_start_addr,u64* sec_end_addr)
 {
 	bool can_load_kernel=false;
 	/*the end must bigger then BIOS_MEM_UPPER*/
+	kernel_end_phy_addr = (u64)(&_end) & KERNEL_VIRT_OFFSET_MASK;
+	pr_info("the kernel end phy addr is %x\n",kernel_end_phy_addr);
 	if((*sec_start_addr)<BIOS_MEM_UPPER)
 		*sec_start_addr=BIOS_MEM_UPPER;
 	/* as we set the memeory layout 

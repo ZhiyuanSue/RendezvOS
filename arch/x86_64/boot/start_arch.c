@@ -23,21 +23,20 @@ static void start_simd()
 		)
 	{
 		pr_info("have simd feature,starting...\n");
-		if((tmp_result.ecx) & (1<<26))
-		{
-			pr_info("support xcr0\n");
-			/*to enable the xcr0, must set the cr4 osxsave*/
-			set_cr4_bit(CR4_OSXSAVE);
-			xcr_value=get_xcr(0);
-			set_xcr(0, xcr_value | XCR0_X87 | XCR0_SSE | XCR0_AVX);
-		}
 		/*set osfxsr : cr4 bit 9*/
 		set_cr4_bit(CR4_OSFXSR);
 		/*set osxmmexcpt flag: cr4 bit 10*/
 		set_cr4_bit(CR4_OSXMMEXCPT);
 		/*set the mask bit and flags in mxcsr register*/
-		//set_mxcsr( MXCSR_IE|MXCSR_DE|MXCSR_ZE|MXCSR_OE|MXCSR_UE|MXCSR_PE|	\
-		//		MXCSR_IM|MXCSR_DM|MXCSR_ZM|MXCSR_OM|MXCSR_UM|MXCSR_PM );
+		set_mxcsr( MXCSR_IM|MXCSR_DM|MXCSR_ZM|MXCSR_OM|MXCSR_UM|MXCSR_PM );
+		/*the following codes seems useless for enable sse,emmm*/
+		if((tmp_result.ecx) & (1<<26))
+		{
+			/*to enable the xcr0, must set the cr4 osxsave*/
+			set_cr4_bit(CR4_OSXSAVE);
+			xcr_value=get_xcr(0);
+			set_xcr(0, xcr_value | XCR0_X87 | XCR0_SSE | XCR0_AVX);
+		}
 	}
 	else{
 		goto start_simd_fail;
