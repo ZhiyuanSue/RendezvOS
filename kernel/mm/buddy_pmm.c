@@ -2,7 +2,6 @@
 #include <shampoos/mm/pmm.h>
 #include <modules/log/log.h>
 
-struct buddy_zone Total_Zone;
 
 void pmm_init(struct setup_info* arch_setup_info){
 	pr_info("start pmm init\n");
@@ -20,3 +19,10 @@ u64 pmm_free(u64 page_address,size_t page_number)
 {
 
 }
+struct	pmm	buddy_pmm = {
+	.zone_header=NULL,
+	.pmm_init=pmm_init,
+	.pmm_alloc=pmm_alloc,
+	.pmm_free_one=pmm_free_one,
+	.pmm_free=pmm_free
+};

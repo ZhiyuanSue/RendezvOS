@@ -11,7 +11,7 @@ SECTIONS {
 	{
 		*(.boot)
 		*(.boot_64)
-		*(.text)
+		*(.text .text.*)
 	}
 	. = ALIGN(4K);
 	.data :
@@ -20,14 +20,14 @@ SECTIONS {
 		*(.boot.log)
 		*(.boot.data)
 		*(.boot_stack)
-		*(.data)
+		*(.data .data.*)
 	}
 	_edata = .;
 	. = ALIGN(4K);
 	_bss_start = .;
 	.bss :
 	{
-		*(.bss)
+		*(.bss .bss.*)
 	}
 	_bss_end = .;
 	_end = .;

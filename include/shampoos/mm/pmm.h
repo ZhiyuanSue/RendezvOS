@@ -51,6 +51,14 @@ struct buddy_zone{
 	addr_t	high_addr;
 };
 
+struct pmm{
+	struct	list_entry	zone_header;
+	void (*pmm_init)(struct setup_info* arch_setup_info);
+	u64	(*pmm_alloc)(size_t page_number);
+	u64 (*pmm_free_one)(u64 page_address);
+	u64 (*pmm_free)(u64 page_address,size_t page_number);
+};
+
 void pmm_init(struct setup_info* arch_setup_info);
 u64	pmm_alloc(size_t page_number);
 u64 pmm_free_one(u64 page_address);

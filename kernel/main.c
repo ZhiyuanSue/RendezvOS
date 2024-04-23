@@ -2,9 +2,9 @@
 #include <modules/driver/uart/uart_16550A.h>
 #include <modules/log/log.h>
 
-extern int log_level;
-extern char _bss_start,_bss_end;
-
+extern	int log_level;
+extern	char _bss_start,_bss_end;
+extern	struct	pmm	buddy_pmm;
 
 void cmain(struct setup_info* arch_setup_info){
 	if(arch_setup_info==NULL)
@@ -19,7 +19,7 @@ void cmain(struct setup_info* arch_setup_info){
 		pr_error("error start arch\n");
 		return;
 	}
-	pmm_init(arch_setup_info);
+	buddy_pmm.pmm_init(arch_setup_info);
 	/*TODO:after we init the pmm module, we can alloc some pages for stack,and no more boot stack*/
 
 	start_smp();
