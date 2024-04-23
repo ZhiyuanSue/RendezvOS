@@ -35,6 +35,7 @@ typedef u64 pt_entry;
 #define	PDPTE_PWT	(1<<3)
 #define	PDPTE_PCD	(1<<4)
 #define	PDPTE_A	(1<<5)
+#define PDPTE_D	(1<<6)
 #define	PDPTE_PS	(1<<7)
 #define	PDPTE_G	(1<<8)	/*1G huge page only*/
 #define	PDPTE_ADDR(addr,m)	(((addr>>12)<<12) & MAXPHYADDR_mask(m))
@@ -50,6 +51,7 @@ typedef u64 pt_entry;
 #define	PDE_PWT	(1<<3)
 #define	PDE_PCD	(1<<4)
 #define	PDE_A	(1<<5)
+#define PDE_D	(1<<6)
 #define	PDE_PS	(1<<7)
 #define	PDE_G	(1<<8)	/*2m huge page only*/
 #define	PDE_ADDR(addr,m)	(((addr>>12)<<12) & MAXPHYADDR_mask(m))

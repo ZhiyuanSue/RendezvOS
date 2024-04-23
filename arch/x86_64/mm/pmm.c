@@ -154,7 +154,7 @@ void arch_init_pmm(struct setup_info* arch_setup_info)
 		pt_entry*	entry	=	&boot_page_table_directory;
 		u64	buddy_start_round_down_2m	=	ROUND_DOWN(buddy_map_start_addr,MIDDLE_PAGE_SIZE);
 		u32 index	=	PDT(KERNEL_PHY_TO_VIRT(buddy_start_round_down_2m));
-		entry[index]	=	PDE_ADDR_2M(buddy_start_round_down_2m,arch_setup_info->phy_addr_width) | PDE_P | PDE_RW ;
+		entry[index]	=	PDE_ADDR_2M(buddy_start_round_down_2m,arch_setup_info->phy_addr_width) | PDE_P | PDE_RW | PDE_G | PDE_PS;
 		pr_info("buddy_start_round_down_2m 0x%x index 0x%x entry 0x%x\n",buddy_start_round_down_2m,index,entry[index]);
 	}
 	/*generate the buddy bucket*/
@@ -200,9 +200,10 @@ void arch_init_pmm(struct setup_info* arch_setup_info)
 					start_in_this_order+=size_in_this_order,index++)
 				{
 					// pr_info("test 5 %x %x\n",start_in_this_order,index);
-					// tmp_frame[index].page_address=start_in_this_order;
-					// tmp_frame[index].flags=PAGE_FRAME_UNALLOCED;
+					tmp_frame[index].page_address=start_in_this_order;
+					tmp_frame[index].flags=PAGE_FRAME_UNALLOCED;
 				}
+				// pr_info("test 6\n");
 			}
 		}
 	}
