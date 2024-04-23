@@ -31,6 +31,7 @@ typedef u64 addr_t;
 /*for buddy in linux, this number is 10, but I think the page table will map a 2Mb page, which need the order 9*/
 
 struct page_frame{
+#define PAGE_FRAME_UNALLOCED	(0)
 #define	PAGE_FRAME_ALLOCED	(1<<0)
 	u64		flags;
 	struct	list_entry list_node;
@@ -42,17 +43,20 @@ struct buddy_bucket{
 	u64		nr_pages;
 	struct page_frame*	frames;
 	struct buddy_zone*	zone;
+	struct list_entry	bucket_list_head;
 };
 
 struct buddy_zone{
-	struct	list_entry zone_node;	/*There might have more than one zone*/
 	struct	buddy_bucket	buckets[BUDDY_MAXORDER];
-	addr_t	low_addr;	/*record the high and low addr of this zone ,which is need by the free*/
-	addr_t	high_addr;
+};
+enum zone_type{
+	ZONE_NORMAL,
+	ZONE_NR_MAX
 };
 
 struct pmm{
-	struct	list_entry	zone_header;
+	struct	buddy_zone	mem_zone[ZONE_NR_MAX];
+	u64	kernel_phy_end;
 	void (*pmm_init)(struct setup_info* arch_setup_info);
 	u64	(*pmm_alloc)(size_t page_number);
 	u64 (*pmm_free_one)(u64 page_address);

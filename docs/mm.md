@@ -48,3 +48,14 @@
 
 # pmm内存的layout
 
+high address
+	-- - -- - -- - -- -
+	buddy static part
+	-- - -- - -- - -- - _end ROUND_UP 4K
+	empty
+	-- - -- - -- - -- -	_end
+	kernel
+	-- - -- - -- - -- - 0x100000
+	bios part	:we cannot use
+	-- - -- - -- - -- - 0x0
+low address
