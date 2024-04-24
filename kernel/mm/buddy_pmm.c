@@ -9,7 +9,7 @@ void pmm_init(struct setup_info* arch_setup_info){
 	pr_info("start pmm init\n");
 	arch_init_pmm(arch_setup_info);
 }
-u64 pmm_alloc_zone(size_t page_number,int zone_number)
+u32 pmm_alloc_zone(size_t page_number,int zone_number)
 {
 	struct buddy_zone* mem_zone=&buddy_pmm.zone[zone_number];
 	int	alloc_order=0, tmp_order;
@@ -24,9 +24,9 @@ u64 pmm_alloc_zone(size_t page_number,int zone_number)
 			break;
 		}
 	}
-
+	return PPN(buddy_pmm.avaliable_phy_addr_end);
 }
-u64	pmm_alloc(size_t page_number)
+u32	pmm_alloc(size_t page_number)
 {
 	return pmm_alloc_zone(page_number,ZONE_NORMAL);
 }
