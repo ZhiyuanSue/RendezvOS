@@ -63,11 +63,13 @@ struct buddy_zone{
 };
 enum zone_type{
 	ZONE_NORMAL,
+	ZONE_DMA,
 	ZONE_NR_MAX
 };
 
 struct pmm{
-	struct	buddy_bucket buckets[BUDDY_MAXORDER];
+	struct	buddy_bucket buckets[BUDDY_MAXORDER+1];
+	struct	buddy_zone	zone[ZONE_NR_MAX];
 	u64	avaliable_phy_addr_end;
 	void (*pmm_init)(struct setup_info* arch_setup_info);
 	u64	(*pmm_alloc)(size_t page_number);
