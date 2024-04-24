@@ -42,12 +42,11 @@ typedef u64 addr_t;
 struct page_frame{
 #define	PAGE_FRAME_ALLOCED	(1<<0)
 #define	PAGE_FRAME_AVALIABLE	(1<<1)
-	u64		flags:8;
-	u64		prev_ppn:28;
-	u64		next_ppn:28;
+	u64		flags:4;
+	u64		prev:30;
+	u64		next:30;
 	/*
-	* currently the phy addr is 40 bit width and the phy ppn is 28 bit width max
-	* maybe at some case,the phy addr might larger than 1024GB,but it's too far for this kernel
+	* the kernel data must in 1G field, so 30 bit plus the kernel_virt_offset is necessary
 	*/
 }__attribute__((packed));
 
@@ -59,14 +58,10 @@ struct buddy_bucket{
 struct buddy_zone{
 	u64		zone_upper_addr;
 	u64		zone_lower_addr;
-	struct {
-		u64		head_prev_ppn;
-		u64		head_next_ppn;
-	} zone_head[BUDDY_MAXORDER];
+	struct page_frame avaliable_zone_head[BUDDY_MAXORDER+1];
+	struct page_frame*	zone_head_frame[BUDDY_MAXORDER+1];
 };
 enum zone_type{
-#define DMA_ZONE_MAX	0x1000000
-	ZONE_DMA,
 	ZONE_NORMAL,
 	ZONE_NR_MAX
 };
@@ -85,5 +80,39 @@ void pmm_init(struct setup_info* arch_setup_info);
 u64	pmm_alloc(size_t page_number);
 u64 pmm_free_one(u64 page_address);
 u64 pmm_free(u64 page_address,size_t page_number);
+
+static inline void __frame_list_add(struct page_frame *new_node,
+		struct page_frame *prev,
+		struct page_frame *next)
+{
+	next->prev=KERNEL_VIRT_TO_PHY((u64)new_node);
+	new_node->next=KERNEL_VIRT_TO_PHY((u64)next);
+	new_node->prev=KERNEL_VIRT_TO_PHY((u64)prev);
+	prev->next=KERNEL_VIRT_TO_PHY((u64)new_node);
+}
+static inline void frame_list_add_head(struct page_frame *new_node,struct page_frame *head)
+{
+	__frame_list_add(new_node,head,(struct page_frame*)KERNEL_PHY_TO_VIRT(head->next));
+}
+static inline void frame_list_add_tail(struct page_frame *new_node,struct page_frame *head)
+{
+	__frame_list_add(new_node,(struct page_frame*)KERNEL_PHY_TO_VIRT(head->prev),head);
+}
+static inline void __frame_list_del(struct page_frame *prev,struct page_frame *next)
+{
+	prev->next=KERNEL_VIRT_TO_PHY((u64)next);
+	next->prev=KERNEL_VIRT_TO_PHY((u64)prev);
+}
+/*here our module shoule node indepedent of the whole kernel,so we cannot realize the list_del in linux*/
+static inline void frame_list_del_init(struct page_frame *node)
+{
+	__frame_list_del((struct page_frame*)KERNEL_PHY_TO_VIRT(node->prev),(struct page_frame*)KERNEL_PHY_TO_VIRT(node->next));
+	node->prev=KERNEL_VIRT_TO_PHY((u64)node);
+	node->next=KERNEL_VIRT_TO_PHY((u64)node);
+}
+static inline void frame_list_del(struct page_frame *node)
+{
+	frame_list_del_init(node);
+}
 
 #endif

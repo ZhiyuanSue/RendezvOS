@@ -57,7 +57,25 @@ void arch_init_pmm(struct setup_info* arch_setup_info)
 	kernel_phy_start=KERNEL_VIRT_TO_PHY((u64)(&_start));
 	kernel_phy_end=KERNEL_VIRT_TO_PHY((u64)(&_end));
 	buddy_phy_start=ROUND_UP(kernel_phy_end,PAGE_SIZE);
-	buddy_pmm.avaliable_phy_addr_end = ROUND_DOWN(((u64)(mtb_info->mem.mem_upper)) << 10 , MIDDLE_PAGE_SIZE);
+
+	buddy_pmm.avaliable_phy_addr_end = 0;
+	
+	for(mmap = (struct multiboot_mmap_entry*)add_ptr;
+		((u64)mmap) < (add_ptr+length);
+		mmap = (struct multiboot_mmap_entry*)((u64)mmap + mmap->size + sizeof(mmap->size)))
+	{
+		if( mmap->addr+mmap->len>BIOS_MEM_UPPER && mmap->type == MULTIBOOT_MEMORY_AVAILABLE )
+		{
+			pr_info("Aviable Mem:size is 0x%x, base_phy_addr is 0x%x, length = 0x%x, type = 0x%x\n"	\
+				,mmap->size,mmap->addr,mmap->len,mmap->type);
+			u64 sec_start_addr=mmap->addr;
+			u64 sec_end_addr=sec_start_addr+mmap->len;
+					/*remember, this end is not reachable,[ sec_end_addr , sec_end_addr ) */
+			if(sec_end_addr>buddy_pmm.avaliable_phy_addr_end)
+				buddy_pmm.avaliable_phy_addr_end=sec_end_addr;
+		}
+	}
+	
 	for(int order=0;order<=BUDDY_MAXORDER;++order)
 		entry_per_bucket[order]=pages_per_bucket[order]=0;
 	/*calculate how mach the buddy data need*/
@@ -73,8 +91,6 @@ void arch_init_pmm(struct setup_info* arch_setup_info)
 		((u64)mmap) < (add_ptr+length);
 		mmap = (struct multiboot_mmap_entry*)((u64)mmap + mmap->size + sizeof(mmap->size)))
 	{
-		/*pr_info("Aviable Mem:size is 0x%x, base_phy_addr is 0x%x, length = 0x%x, type = 0x%x\n"	\
-				,mmap->size,mmap->addr,mmap->len,mmap->type);*/
 		if( mmap->addr+mmap->len>BIOS_MEM_UPPER && mmap->type == MULTIBOOT_MEMORY_AVAILABLE )
 		{
 			u64 sec_start_addr=mmap->addr;
@@ -121,33 +137,45 @@ void arch_init_pmm(struct setup_info* arch_setup_info)
 				{
 					u32 index=IDX_FROM_PPN(order,PPN(addr_iter));
 					pages[index].flags |= PAGE_FRAME_AVALIABLE;
-					pages[index].prev_ppn=pages[index].next_ppn=PPN(addr_iter);
+					pages[index].prev=pages[index].next=KERNEL_VIRT_TO_PHY((u64)&(pages[index]));
 				}
 			}
 		}
 	}
-	/*
-		calculate the DMA zone part
-		we assign the 0-16M part as DMA part,but we have to deal with some of the error
-		it might be adjusted then
-	*/
-	if( buddy_pmm.avaliable_phy_addr_end < 2*DMA_ZONE_MAX || buddy_phy_end*2 > DMA_ZONE_MAX)
-		pr_error("have no enough memory for alloc DMA ZONE, please check\n");
-	/*link the list*/
-	for(int order=0;order<=BUDDY_MAXORDER;++order)
+	/*init the zones,remember there might have more then one zone*/
+	for(int mem_zone=0;mem_zone<ZONE_NR_MAX;++mem_zone)
 	{
-		u64 size_in_this_order=(PAGE_SIZE<<order);
-		for(u64 addr_iter=0;	\
-			addr_iter<buddy_pmm.avaliable_phy_addr_end;	\
-			addr_iter+=size_in_this_order)
+		struct buddy_zone* zone=&buddy_pmm.zone[mem_zone];
+		switch (mem_zone)
 		{
-			u32 index=IDX_FROM_PPN(order,PPN(addr_iter));
-			struct page_frame* page=&buddy_pmm.buckets[order].pages[index];
-			if(addr_iter<DMA_ZONE_MAX){
-
-			}
-			else{	/*zone normal*/
-
+		case ZONE_NORMAL:
+			zone->zone_lower_addr=0;
+			zone->zone_upper_addr=buddy_pmm.avaliable_phy_addr_end;
+			break;
+		default:
+			break;
+		}
+		for(int order=0;order<=BUDDY_MAXORDER;++order)
+		{
+			zone->zone_head_frame[order]=	\
+				&buddy_pmm.buckets[order].pages[IDX_FROM_PPN(order,PPN(zone->zone_lower_addr))];
+			zone->avaliable_zone_head[order].prev=KERNEL_VIRT_TO_PHY((u64)&(zone->avaliable_zone_head[order]));
+			zone->avaliable_zone_head[order].next=KERNEL_VIRT_TO_PHY((u64)&(zone->avaliable_zone_head[order]));
+		}
+	}
+	/*link the list*/
+	for(u64 addr_iter=0;	\
+		addr_iter<buddy_pmm.avaliable_phy_addr_end;	\
+		addr_iter+=(PAGE_SIZE<<BUDDY_MAXORDER))
+	{
+		u32 index=IDX_FROM_PPN(BUDDY_MAXORDER,PPN(addr_iter));
+		struct page_frame* page=&buddy_pmm.buckets[BUDDY_MAXORDER].pages[index];
+		if( page->flags & PAGE_FRAME_AVALIABLE)
+		{
+			if(	addr_iter >= buddy_pmm.zone[ZONE_NORMAL].zone_lower_addr &&
+				addr_iter < buddy_pmm.zone[ZONE_NORMAL].zone_upper_addr)
+			{	/*zone normal*/
+				frame_list_add_head(page,&buddy_pmm.zone[ZONE_NORMAL].avaliable_zone_head[BUDDY_MAXORDER]);	
 			}
 		}
 	}
