@@ -13,7 +13,7 @@ static	u64 buddy_phy_start=0,buddy_phy_end=0;
 static	void	calculate_bucket_space(u64	adjusted_phy_mem_end)
 {
 	/*we promised that this phy mem end is 2m aligned*/
-	for(int order=1;order<=BUDDY_MAXORDER;++order)
+	for(int order=0;order<=BUDDY_MAXORDER;++order)
 	{
 		u64 size_in_this_order=(PAGE_SIZE<<order);
 		entry_per_bucket[order]=adjusted_phy_mem_end/size_in_this_order;
@@ -34,7 +34,7 @@ static	void	try_map_buddy_data_space(u32 m_width)
 		u64	buddy_start_round_down_2m	=	ROUND_DOWN(buddy_phy_start_addr,MIDDLE_PAGE_SIZE);
 		u32 index	=	PDT(KERNEL_PHY_TO_VIRT(buddy_start_round_down_2m));
 		entry[index]	=	PDE_ADDR_2M(buddy_start_round_down_2m,m_width) | PDE_P | PDE_RW | PDE_G | PDE_PS;
-		pr_info("buddy_start_round_down_2m 0x%x index 0x%x entry 0x%x\n",buddy_start_round_down_2m,index,entry[index]);
+		pr_info("buddy map 2m pages 0x%x index 0x%x entry 0x%x\n",buddy_start_round_down_2m,index,entry[index]);
 	}
 }
 void arch_init_pmm(struct setup_info* arch_setup_info)
@@ -58,11 +58,11 @@ void arch_init_pmm(struct setup_info* arch_setup_info)
 	kernel_phy_end=KERNEL_VIRT_TO_PHY((u64)(&_end));
 	buddy_phy_start=ROUND_UP(kernel_phy_end,PAGE_SIZE);
 	buddy_pmm.avaliable_phy_addr_end = ROUND_DOWN(((u64)(mtb_info->mem.mem_upper)) << 10 , MIDDLE_PAGE_SIZE);
-	for(int order=1;order<=BUDDY_MAXORDER;++order)
+	for(int order=0;order<=BUDDY_MAXORDER;++order)
 		entry_per_bucket[order]=pages_per_bucket[order]=0;
 	/*calculate how mach the buddy data need*/
 	calculate_bucket_space(buddy_pmm.avaliable_phy_addr_end);
-	for(int order=1;order<=BUDDY_MAXORDER;++order)
+	for(int order=0;order<=BUDDY_MAXORDER;++order)
 		buddy_total_pages += pages_per_bucket[order];
 	buddy_phy_end = buddy_phy_start + buddy_total_pages * PAGE_SIZE;
 	pr_info("buddy start 0x%x end 0x%x\n",buddy_phy_start,buddy_phy_end);
@@ -94,7 +94,7 @@ void arch_init_pmm(struct setup_info* arch_setup_info)
 	try_map_buddy_data_space(arch_setup_info->phy_addr_width);
 
 	/*generate the buddy bucket*/
-	for(int order=1;order<=BUDDY_MAXORDER;++order)
+	for(int order=0;order<=BUDDY_MAXORDER;++order)
 	{
 		buddy_pmm.buckets[order].order=order;
 		buddy_pmm.buckets[order].pages=(struct page_frame*)KERNEL_PHY_TO_VIRT(buddy_phy_start);
@@ -113,20 +113,45 @@ void arch_init_pmm(struct setup_info* arch_setup_info)
 				sec_start_addr=buddy_phy_end;
 			sec_start_addr=ROUND_UP(sec_start_addr,MIDDLE_PAGE_SIZE);
 			sec_end_addr=ROUND_DOWN(sec_end_addr,MIDDLE_PAGE_SIZE);
-			for(int order=1;order<=BUDDY_MAXORDER;++order)
+			for(int order=0;order<=BUDDY_MAXORDER;++order)
 			{
 				u64 size_in_this_order=(PAGE_SIZE<<order);
 				struct page_frame* pages=buddy_pmm.buckets[order].pages;
 				for(u64 addr_iter=sec_start_addr;addr_iter<sec_end_addr;addr_iter+=size_in_this_order)
 				{
-					int index=addr_iter>>(order+12);
+					u32 index=IDX_FROM_PPN(order,PPN(addr_iter));
 					pages[index].flags |= PAGE_FRAME_AVALIABLE;
+					pages[index].prev_ppn=pages[index].next_ppn=PPN(addr_iter);
 				}
 			}
 		}
 	}
+	/*
+		calculate the DMA zone part
+		we assign the 0-16M part as DMA part,but we have to deal with some of the error
+		it might be adjusted then
+	*/
+	if( buddy_pmm.avaliable_phy_addr_end < 2*DMA_ZONE_MAX || buddy_phy_end*2 > DMA_ZONE_MAX)
+		pr_error("have no enough memory for alloc DMA ZONE, please check\n");
 	/*link the list*/
+	for(int order=0;order<=BUDDY_MAXORDER;++order)
+	{
+		u64 size_in_this_order=(PAGE_SIZE<<order);
+		for(u64 addr_iter=0;	\
+			addr_iter<buddy_pmm.avaliable_phy_addr_end;	\
+			addr_iter+=size_in_this_order)
+		{
+			u32 index=IDX_FROM_PPN(order,PPN(addr_iter));
+			struct page_frame* page=&buddy_pmm.buckets[order].pages[index];
+			if(addr_iter<DMA_ZONE_MAX){
 
+			}
+			else{	/*zone normal*/
+
+			}
+		}
+	}
+	
 	/*check the buddy data*/
 
 	return;

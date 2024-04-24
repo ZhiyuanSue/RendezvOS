@@ -31,6 +31,9 @@
 #define	ALIGNED(x,align)	((x & (align-1))==0)
 
 #define	PPN(addr)	(addr>>12)
+#define IDX_FROM_PPN(order,ppn)	(ppn>>order)
+#define	PPN_FROM_IDX(order,idx)	(idx<<order)
+#define BUCKET_FRAME_FROM_PPN(bucket,ppn)	(bucket.pages[IDX_FROM_PPN(ppn)])
 
 typedef u64 addr_t;
 #define BUDDY_MAXORDER	9
@@ -62,8 +65,9 @@ struct buddy_zone{
 	} zone_head[BUDDY_MAXORDER];
 };
 enum zone_type{
-	ZONE_NORMAL,
+#define DMA_ZONE_MAX	0x1000000
 	ZONE_DMA,
+	ZONE_NORMAL,
 	ZONE_NR_MAX
 };
 
