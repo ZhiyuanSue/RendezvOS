@@ -57,13 +57,10 @@ u32 pmm_alloc_zone(size_t page_number,int zone_number)
 	*/
 	while(tmp_order>alloc_order)
 	{
-		pr_info("the order is %d\n",tmp_order);
 		avaliable_header=(struct page_frame *)GET_AVALI_HEAD_PTR(zone_number,tmp_order);
 		header=GET_HEAD_PTR(zone_number,tmp_order);
-		if(frame_list_empty(avaliable_header)){
-			pr_info("no node in this frame_list %d\n",tmp_order);
+		if(frame_list_empty(avaliable_header))
 			return -ENOMEM;
-		}
 		del_node=(struct page_frame*)KERNEL_PHY_TO_VIRT((u64)(avaliable_header->next));
 		
 		index=((u64)(&del_node)-(u64)(&header))/sizeof(struct page_frame);
@@ -74,10 +71,8 @@ u32 pmm_alloc_zone(size_t page_number,int zone_number)
 
 		if((left_child->flags & PAGE_FRAME_ALLOCED) || \
 				(right_child->flags & PAGE_FRAME_ALLOCED) )
-		{
-			pr_info("the childs have already alloced,internel error\n");
 			return -ENOMEM;
-		}
+
 		frame_list_del_init(del_node);
 		del_node->flags |= PAGE_FRAME_ALLOCED;
 		frame_list_add_head(left_child,child_order_avaliable_header);
@@ -89,7 +84,6 @@ u32 pmm_alloc_zone(size_t page_number,int zone_number)
 	avaliable_header=(struct page_frame *)GET_AVALI_HEAD_PTR(zone_number,tmp_order);
 	header=(struct page_frame *)GET_HEAD_PTR(zone_number,tmp_order);
 	if(frame_list_empty(header)){
-		pr_info("no node\n");
 		return -ENOMEM;
 	}
 	del_node=(struct page_frame*)KERNEL_PHY_TO_VIRT((u64)(avaliable_header->next));
@@ -97,16 +91,15 @@ u32 pmm_alloc_zone(size_t page_number,int zone_number)
 	pr_info("index is %d\n",index);
 	frame_list_del_init(del_node);
 	del_node->flags |= PAGE_FRAME_ALLOCED;
-
-	while(tmp_order>=0)
+	while(tmp_order>0)
 	{
+		pr_info("tmp_order is %d\n",tmp_order);
 		child_order_header=(struct page_frame *)GET_HEAD_PTR(zone_number,tmp_order-1);
 		left_child=&child_order_header[index<<1];
 		right_child=&child_order_header[(index<<1)+1];
 		if((left_child->flags & PAGE_FRAME_ALLOCED) || \
 				(right_child->flags & PAGE_FRAME_ALLOCED) )
 		{
-			pr_info("inner error 1\n");
 			return -ENOMEM;
 		}
 		left_child->flags |= PAGE_FRAME_ALLOCED;

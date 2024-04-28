@@ -114,7 +114,7 @@ void arch_init_pmm(struct setup_info* arch_setup_info)
 	{
 		buddy_pmm.buckets[order].order=order;
 		buddy_pmm.buckets[order].pages=(struct page_frame*)KERNEL_PHY_TO_VIRT(buddy_phy_start);
-		buddy_phy_start+=pages_per_bucket[order];
+		buddy_phy_start+=pages_per_bucket[order]*PAGE_SIZE;
 	}
 	for(mmap = (struct multiboot_mmap_entry*)add_ptr;
 		((u64)mmap) < (add_ptr+length);
@@ -145,7 +145,7 @@ void arch_init_pmm(struct setup_info* arch_setup_info)
 	/*init the zones,remember there might have more then one zone*/
 	for(int mem_zone=0;mem_zone<ZONE_NR_MAX;++mem_zone)
 	{
-		struct buddy_zone* zone=&buddy_pmm.zone[mem_zone];
+		struct buddy_zone* zone=&(buddy_pmm.zone[mem_zone]);
 		switch (mem_zone)
 		{
 		case ZONE_NORMAL:
@@ -158,7 +158,7 @@ void arch_init_pmm(struct setup_info* arch_setup_info)
 		for(int order=0;order<=BUDDY_MAXORDER;++order)
 		{
 			zone->zone_head_frame[order]=	\
-				&buddy_pmm.buckets[order].pages[IDX_FROM_PPN(order,PPN(zone->zone_lower_addr))];
+				&(buddy_pmm.buckets[order].pages[IDX_FROM_PPN(order,PPN(zone->zone_lower_addr))]);
 			zone->avaliable_zone_head[order].prev=KERNEL_VIRT_TO_PHY((u64)&(zone->avaliable_zone_head[order]));
 			zone->avaliable_zone_head[order].next=KERNEL_VIRT_TO_PHY((u64)&(zone->avaliable_zone_head[order]));
 		}
@@ -169,13 +169,13 @@ void arch_init_pmm(struct setup_info* arch_setup_info)
 		addr_iter+=(PAGE_SIZE<<BUDDY_MAXORDER))
 	{
 		u32 index=IDX_FROM_PPN(BUDDY_MAXORDER,PPN(addr_iter));
-		struct page_frame* page=&buddy_pmm.buckets[BUDDY_MAXORDER].pages[index];
+		struct page_frame* page=&(buddy_pmm.buckets[BUDDY_MAXORDER].pages[index]);
 		if( page->flags & PAGE_FRAME_AVALIABLE)
 		{
 			if(	addr_iter >= buddy_pmm.zone[ZONE_NORMAL].zone_lower_addr &&
 				addr_iter < buddy_pmm.zone[ZONE_NORMAL].zone_upper_addr)
 			{	/*zone normal*/
-				frame_list_add_head(page,&buddy_pmm.zone[ZONE_NORMAL].avaliable_zone_head[BUDDY_MAXORDER]);	
+				frame_list_add_head(page,&(buddy_pmm.zone[ZONE_NORMAL].avaliable_zone_head[BUDDY_MAXORDER]));	
 			}
 		}
 	}
