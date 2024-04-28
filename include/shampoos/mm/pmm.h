@@ -76,7 +76,7 @@ struct pmm{
 	u64 (*pmm_free)(u32 ppn,size_t page_number);
 };
 #define	GET_AVALI_HEAD_PTR(zone_n,order)	(&(buddy_pmm.zone[zone_n].avaliable_zone_head[order]))
-#define	GET_HEAD_PTR(zone_n,order)	(&(buddy_pmm.zone[zone_n].zone_head_frame[order]))
+#define	GET_HEAD_PTR(zone_n,order)	(buddy_pmm.zone[zone_n].zone_head_frame[order])
 
 void pmm_init(struct setup_info* arch_setup_info);
 u32	pmm_alloc(size_t page_number);

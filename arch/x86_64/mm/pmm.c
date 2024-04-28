@@ -137,7 +137,7 @@ void arch_init_pmm(struct setup_info* arch_setup_info)
 				{
 					u32 index=IDX_FROM_PPN(order,PPN(addr_iter));
 					pages[index].flags |= PAGE_FRAME_AVALIABLE;
-					pages[index].prev=pages[index].next=KERNEL_VIRT_TO_PHY((u64)&(pages[index]));
+					pages[index].prev=pages[index].next=KERNEL_VIRT_TO_PHY((u64)(&(pages[index])));
 				}
 			}
 		}
