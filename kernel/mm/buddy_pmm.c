@@ -11,9 +11,11 @@ void pmm_init(struct setup_info* arch_setup_info){
 }
 u32 pmm_alloc_zone(size_t page_number,int zone_number)
 {
-	struct buddy_zone* mem_zone=&buddy_pmm.zone[zone_number];
 	int	alloc_order=0, tmp_order;
 	bool find_an_order=false;
+	struct page_frame *avaliable_header=NULL,*header=NULL,*del_node=NULL;
+	struct page_frame *child_order_header=NULL,*left_child=NULL,*right_child=NULL;
+	int index=0;
 	
 	if(page_number > (1<<BUDDY_MAXORDER))
 		return -ENOMEM;
@@ -28,11 +30,12 @@ u32 pmm_alloc_zone(size_t page_number,int zone_number)
 			break;
 		}
 	}
+	pr_info("alloc order is %d\n",alloc_order);
 	tmp_order=alloc_order;
 	/*first,try to find an order have at least one node to alloc*/
 	while(tmp_order<=BUDDY_MAXORDER)
 	{
-		struct page_frame* header=&(buddy_pmm.zone[zone_number].avaliable_zone_head[tmp_order]);
+		struct page_frame* header=GET_AVALI_HEAD_PTR(zone_number,tmp_order);
 		if(frame_list_empty(header)){
 			tmp_order++;
 		}
@@ -42,19 +45,67 @@ u32 pmm_alloc_zone(size_t page_number,int zone_number)
 		}
 	}
 	if(!find_an_order)
+	{
+		pr_info("not find an order\n");
 		return -ENOMEM;
+	}
 	/*second, if the order is bigger, split it*/
+	/*
+	* in step 1 ,the alloc_order must >= 0, and if tmp_order == 0, cannot run into while
+	* so tmp_order-1 >= 0, and it have a child list
+	*/
 	while(tmp_order>alloc_order)
 	{
-		struct page_frame* header=&(buddy_pmm.zone[zone_number].avaliable_zone_head[tmp_order]);
-		struct page_frame* split_node=(struct page_frame*)KERNEL_PHY_TO_VIRT((u64)header);
-		frame_list_del_init(split_node);
-		int index=split_node-buddy_pmm.zone[zone_number].zone_head_frame[tmp_order];
+		avaliable_header=(struct page_frame *)GET_AVALI_HEAD_PTR(zone_number,tmp_order);
+		header=(struct page_frame *)GET_HEAD_PTR(zone_number,tmp_order);
+		if(frame_list_empty(header)){
+			return -ENOMEM;
+		}
+		del_node=(struct page_frame*)KERNEL_PHY_TO_VIRT((u64)(avaliable_header->next));
+		
+		index=del_node-header;
+		child_order_header=(struct page_frame *)GET_HEAD_PTR(zone_number,tmp_order-1);
+		left_child=&child_order_header[index<<1];
+		right_child=&child_order_header[(index<<1)+1];
+
+		if(!(left_child->flags & PAGE_FRAME_ALLOCED) || !(right_child->flags & PAGE_FRAME_ALLOCED) )
+			return -ENOMEM;
+
+		frame_list_del_init(del_node);
+		del_node->flags |= PAGE_FRAME_ALLOCED;
+		frame_list_add_head(left_child,child_order_header);
+		frame_list_add_head(right_child,child_order_header);
+
+		tmp_order-=1;
 	}
 	/*third,try to del the node at the head of the alloc order list*/
+	avaliable_header=(struct page_frame *)GET_AVALI_HEAD_PTR(zone_number,tmp_order);
+	header=(struct page_frame *)GET_HEAD_PTR(zone_number,tmp_order);
+	if(frame_list_empty(header)){
+		return -ENOMEM;
+	}
+	del_node=(struct page_frame*)KERNEL_PHY_TO_VIRT((u64)(avaliable_header->next));
+	index=del_node-header;
+	pr_info("index is %d\n",index);
+	frame_list_del_init(del_node);
+	del_node->flags |= PAGE_FRAME_ALLOCED;
 
-
-	return PPN(buddy_pmm.avaliable_phy_addr_end);
+	while(tmp_order>=0)
+	{
+		child_order_header=(struct page_frame *)GET_HEAD_PTR(zone_number,tmp_order-1);
+		left_child=&child_order_header[index<<1];
+		right_child=&child_order_header[(index<<1)+1];
+		if(!(left_child->flags & PAGE_FRAME_ALLOCED) || !(right_child->flags & PAGE_FRAME_ALLOCED) )
+		{
+			pr_info("inner error 1\n");
+			return -ENOMEM;
+		}
+		left_child->flags |= PAGE_FRAME_ALLOCED;
+		right_child->flags |= PAGE_FRAME_ALLOCED;
+		tmp_order--;
+	}
+	pr_info("alloc order is %d\n",alloc_order);
+	return PPN_FROM_IDX(alloc_order,index);
 }
 u32	pmm_alloc(size_t page_number)
 {
