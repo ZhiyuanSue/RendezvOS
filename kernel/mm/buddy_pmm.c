@@ -15,7 +15,7 @@ u32 pmm_alloc_zone(size_t page_number,int zone_number)
 	bool find_an_order=false;
 	struct page_frame *avaliable_header=NULL,*header=NULL,*del_node=NULL;
 	struct page_frame *child_order_header=NULL,*left_child=NULL,*right_child=NULL;
-	int index=0;
+	u64 index=0;
 	
 	if(page_number > (1<<BUDDY_MAXORDER))
 		return -ENOMEM;
@@ -49,6 +49,7 @@ u32 pmm_alloc_zone(size_t page_number,int zone_number)
 		pr_info("not find an order\n");
 		return -ENOMEM;
 	}
+	pr_info("find %d order\n",tmp_order);
 	/*second, if the order is bigger, split it*/
 	/*
 	* in step 1 ,the alloc_order must >= 0, and if tmp_order == 0, cannot run into while
@@ -63,7 +64,7 @@ u32 pmm_alloc_zone(size_t page_number,int zone_number)
 		}
 		del_node=(struct page_frame*)KERNEL_PHY_TO_VIRT((u64)(avaliable_header->next));
 		
-		index=del_node-header;
+		index=((u64)(&del_node)-(u64)(&header))/sizeof(struct page_frame);
 		child_order_header=(struct page_frame *)GET_HEAD_PTR(zone_number,tmp_order-1);
 		left_child=&child_order_header[index<<1];
 		right_child=&child_order_header[(index<<1)+1];
@@ -85,7 +86,7 @@ u32 pmm_alloc_zone(size_t page_number,int zone_number)
 		return -ENOMEM;
 	}
 	del_node=(struct page_frame*)KERNEL_PHY_TO_VIRT((u64)(avaliable_header->next));
-	index=del_node-header;
+	index=((u64)(&del_node)-(u64)(&header))/sizeof(struct page_frame);
 	pr_info("index is %d\n",index);
 	frame_list_del_init(del_node);
 	del_node->flags |= PAGE_FRAME_ALLOCED;
