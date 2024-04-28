@@ -120,7 +120,7 @@ static inline bool frame_list_empty(struct page_frame *head)
 {
 	u64 next_virt_addr=KERNEL_PHY_TO_VIRT((u64)(head->next));
 	u64	prev_virt_addr=KERNEL_PHY_TO_VIRT((u64)(head->prev));
-	if(((u64)&head)==next_virt_addr &&((u64)&head)==prev_virt_addr)
+	if(((u64)head)==next_virt_addr &&((u64)head)==prev_virt_addr)
 		return true;
 	return false;
 }

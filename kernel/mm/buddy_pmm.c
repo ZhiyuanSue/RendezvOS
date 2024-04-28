@@ -59,7 +59,7 @@ u32 pmm_alloc_zone(size_t page_number,int zone_number)
 	{
 		avaliable_header=(struct page_frame *)GET_AVALI_HEAD_PTR(zone_number,tmp_order);
 		header=(struct page_frame *)GET_HEAD_PTR(zone_number,tmp_order);
-		if(frame_list_empty(header)){
+		if(frame_list_empty(avaliable_header)){
 			return -ENOMEM;
 		}
 		del_node=(struct page_frame*)KERNEL_PHY_TO_VIRT((u64)(avaliable_header->next));
