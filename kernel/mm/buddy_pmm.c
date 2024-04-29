@@ -113,7 +113,7 @@ u32	pmm_alloc(size_t page_number)
 {
 	return pmm_alloc_zone(page_number,ZONE_NORMAL);
 }
-static bool inline ppn_inrange(u32 ppn)
+static bool inline ppn_inrange(u32 ppn,int* zone_number)
 {
 	struct buddy_zone mem_zone;
 	bool ppn_inrange=false;
@@ -122,7 +122,10 @@ static bool inline ppn_inrange(u32 ppn)
 		mem_zone=buddy_pmm.zone[zone_n];
 		if( PPN(mem_zone.zone_lower_addr)<=ppn &&	\
 			PPN(mem_zone.zone_upper_addr)> ppn)
+		{
+			*zone_number=zone_n;
 			ppn_inrange=true;
+		}
 	}
 	return ppn_inrange;
 }
@@ -135,7 +138,7 @@ int pmm_free_one(u32 ppn)
 	struct buddy_zone mem_zone;
 	
 	/*judge whether this ppn is in the range of this zone*/
-	if(ppn_inrange(ppn)==false)
+	if(ppn_inrange(ppn,&zone_number)==false)
 	{
 		pr_error("this ppn is illegal\n");
 		return -ENOMEM;
@@ -169,11 +172,16 @@ int pmm_free_one(u32 ppn)
 }
 int pmm_free(u32 ppn,size_t page_number)
 {
-	bool ppn_inrange=false;
 	int alloc_order=0;
 	int free_one_result=0;
+	int	zone_number=0;
 	if(ppn==-ENOMEM)
 		return -ENOMEM;
+	if(ppn_inrange(ppn,&zone_number)==false)
+	{
+		pr_error("this ppn is illegal\n");
+		return -ENOMEM;
+	}
 	for(int order=0;order<=BUDDY_MAXORDER;++order){
 		u64 size_in_this_order=(1<<order);
 		if(size_in_this_order>=page_number){
