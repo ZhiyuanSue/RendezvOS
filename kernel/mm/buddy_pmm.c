@@ -30,7 +30,6 @@ u32 pmm_alloc_zone(size_t page_number,int zone_number)
 			break;
 		}
 	}
-	pr_info("alloc order is %d\n",alloc_order);
 	tmp_order=alloc_order;
 	/*first,try to find an order have at least one node to alloc*/
 	while(tmp_order<=BUDDY_MAXORDER)
@@ -49,7 +48,6 @@ u32 pmm_alloc_zone(size_t page_number,int zone_number)
 		pr_info("not find an order\n");
 		return -ENOMEM;
 	}
-	pr_info("find %d order\n",tmp_order);
 	/*second, if the order is bigger, split it*/
 	/*
 	* in step 1 ,the alloc_order must >= 0, and if tmp_order == 0, cannot run into while
@@ -62,8 +60,7 @@ u32 pmm_alloc_zone(size_t page_number,int zone_number)
 		if(frame_list_empty(avaliable_header))
 			return -ENOMEM;
 		del_node=(struct page_frame*)KERNEL_PHY_TO_VIRT((u64)(avaliable_header->next));
-		
-		index=((u64)(&del_node)-(u64)(&header))/sizeof(struct page_frame);
+		index=((u64)del_node-(u64)header)/sizeof(struct page_frame);
 		child_order_avaliable_header=(struct page_frame*)GET_AVALI_HEAD_PTR(zone_number,tmp_order-1);
 		child_order_header=GET_HEAD_PTR(zone_number,tmp_order-1);
 		left_child=&child_order_header[index<<1];
@@ -87,13 +84,11 @@ u32 pmm_alloc_zone(size_t page_number,int zone_number)
 		return -ENOMEM;
 	}
 	del_node=(struct page_frame*)KERNEL_PHY_TO_VIRT((u64)(avaliable_header->next));
-	index=((u64)(&del_node)-(u64)(&header))/sizeof(struct page_frame);
-	pr_info("index is %d\n",index);
+	index=((u64)del_node-(u64)header)/sizeof(struct page_frame);
 	frame_list_del_init(del_node);
 	del_node->flags |= PAGE_FRAME_ALLOCED;
 	while(tmp_order>0)
 	{
-		pr_info("tmp_order is %d\n",tmp_order);
 		child_order_header=(struct page_frame *)GET_HEAD_PTR(zone_number,tmp_order-1);
 		left_child=&child_order_header[index<<1];
 		right_child=&child_order_header[(index<<1)+1];
@@ -106,7 +101,6 @@ u32 pmm_alloc_zone(size_t page_number,int zone_number)
 		right_child->flags |= PAGE_FRAME_ALLOCED;
 		tmp_order--;
 	}
-	pr_info("alloc order is %d\n",alloc_order);
 	return PPN_FROM_IDX(alloc_order,index);
 }
 u32	pmm_alloc(size_t page_number)
