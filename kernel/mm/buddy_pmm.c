@@ -114,13 +114,48 @@ u32	pmm_alloc(size_t page_number)
 {
 	return pmm_alloc_zone(page_number,ZONE_NORMAL);
 }
-u64 pmm_free_one(u32 ppn)
+int pmm_free_one(u32 ppn)
 {
+	u64 index;
+	bool ppn_inrange=false;
+	/*judge whether this ppn is in the range of this zone*/
+	for(int zone_n=0;zone_n<ZONE_NR_MAX;++zone_n)
+	{
+		struct buddy_zone mem_zone=buddy_pmm.zone[zone_n];
+		if( PPN(mem_zone.zone_lower_addr)<=ppn &&	\
+			PPN(mem_zone.zone_upper_addr)> ppn)
+			ppn_inrange=true;
+	}
+	if(ppn_inrange==false)
+	{
+		pr_error("this ppn is illegal\n");
+		return -ENOMEM;
+	}
+	/*try to insert the node and try to merge*/
 
+	while(1)
+	{
+		index=IDX_FROM_PPN(0,ppn);
+		/*if buddy is not empty ,stop merge*/
+	}
 }
-u64 pmm_free(u32 ppn,size_t page_number)
+int pmm_free(u32 ppn,size_t page_number)
 {
-
+	bool ppn_inrange=false;
+	/*judge whether this ppn is in the range of this zone*/
+	for(int zone_n=0;zone_n<ZONE_NR_MAX;++zone_n)
+	{
+		struct buddy_zone mem_zone=buddy_pmm.zone[zone_n];
+		if( PPN(mem_zone.zone_lower_addr)<=ppn &&	\
+			PPN(mem_zone.zone_upper_addr)> ppn)
+			ppn_inrange=true;
+	}
+	if(ppn_inrange==false)
+	{
+		pr_error("this ppn is illegal\n");
+		return -ENOMEM;
+	}
+	return 0;
 }
 struct	pmm	buddy_pmm = {
 	.pmm_init=pmm_init,
