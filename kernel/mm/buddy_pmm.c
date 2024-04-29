@@ -20,7 +20,6 @@ u32 pmm_alloc_zone(size_t page_number,int zone_number)
 	if(page_number > (1<<BUDDY_MAXORDER))
 		return -ENOMEM;
 	/*have we used too many physical memory*/
-	pr_debug("we have 0x%x pages memory to alloc\n",buddy_pmm.zone[zone_number].zone_total_avaliable_pages);
 	if(buddy_pmm.zone[zone_number].zone_total_avaliable_pages<=0)
 	{
 		pr_error("this zone have no memory to alloc\n");
@@ -114,46 +113,77 @@ u32	pmm_alloc(size_t page_number)
 {
 	return pmm_alloc_zone(page_number,ZONE_NORMAL);
 }
-int pmm_free_one(u32 ppn)
+static bool inline ppn_inrange(u32 ppn)
 {
-	u64 index;
+	struct buddy_zone mem_zone;
 	bool ppn_inrange=false;
-	/*judge whether this ppn is in the range of this zone*/
 	for(int zone_n=0;zone_n<ZONE_NR_MAX;++zone_n)
 	{
-		struct buddy_zone mem_zone=buddy_pmm.zone[zone_n];
+		mem_zone=buddy_pmm.zone[zone_n];
 		if( PPN(mem_zone.zone_lower_addr)<=ppn &&	\
 			PPN(mem_zone.zone_upper_addr)> ppn)
 			ppn_inrange=true;
 	}
-	if(ppn_inrange==false)
+	return ppn_inrange;
+}
+int pmm_free_one(u32 ppn)
+{
+	u64 index,buddy_index;
+	int tmp_order=0,zone_number=0;
+	struct page_frame *avaliable_header=NULL, *header=NULL,*insert_node=NULL;
+	struct page_frame *buddy_node=NULL;
+	struct buddy_zone mem_zone;
+	
+	/*judge whether this ppn is in the range of this zone*/
+	if(ppn_inrange(ppn)==false)
 	{
 		pr_error("this ppn is illegal\n");
 		return -ENOMEM;
 	}
 	/*try to insert the node and try to merge*/
 
-	while(1)
+	while(tmp_order<=BUDDY_MAXORDER)
 	{
-		index=IDX_FROM_PPN(0,ppn);
-		/*if buddy is not empty ,stop merge*/
+		index=IDX_FROM_PPN(tmp_order,ppn);
+		avaliable_header=(struct page_frame*)GET_AVALI_HEAD_PTR(zone_number,tmp_order);
+		header=GET_HEAD_PTR(zone_number,tmp_order);
+		buddy_index=(index>>1)<<1;
+		buddy_index=(buddy_index==index)? \
+			(buddy_index+1)	:	\
+			(buddy_index);
+		buddy_node=&(header[buddy_index]);
+		insert_node=&(header[index]);
+		insert_node->flags &= ~PAGE_FRAME_ALLOCED;
+		/*if buddy is not empty ,stop merge,and insert current node into the avaliable list*/
+		if(buddy_node->flags & PAGE_FRAME_ALLOCED){
+			frame_list_add_head(insert_node,avaliable_header);
+			break;
+		}
+		/*else try merge*/
+		frame_list_del_init(buddy_node);
+		tmp_order++;
 	}
+	mem_zone=buddy_pmm.zone[zone_number];
+	mem_zone.zone_total_avaliable_pages++;
+	return 0;
 }
 int pmm_free(u32 ppn,size_t page_number)
 {
 	bool ppn_inrange=false;
-	/*judge whether this ppn is in the range of this zone*/
-	for(int zone_n=0;zone_n<ZONE_NR_MAX;++zone_n)
-	{
-		struct buddy_zone mem_zone=buddy_pmm.zone[zone_n];
-		if( PPN(mem_zone.zone_lower_addr)<=ppn &&	\
-			PPN(mem_zone.zone_upper_addr)> ppn)
-			ppn_inrange=true;
-	}
-	if(ppn_inrange==false)
-	{
-		pr_error("this ppn is illegal\n");
+	int alloc_order=0;
+	int free_one_result=0;
+	if(ppn==-ENOMEM)
 		return -ENOMEM;
+	for(int order=0;order<=BUDDY_MAXORDER;++order){
+		u64 size_in_this_order=(1<<order);
+		if(size_in_this_order>=page_number){
+			alloc_order=order;
+			break;
+		}
+	}
+	for(int page_count=0;page_count<(1<<alloc_order);page_count++){
+		if(!(free_one_result=pmm_free_one(ppn+page_count)))
+			return free_one_result;
 	}
 	return 0;
 }
