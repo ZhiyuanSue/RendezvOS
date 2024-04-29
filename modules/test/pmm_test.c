@@ -10,7 +10,7 @@ void pmm_test(void)
 		alloc_ppn = pmm_alloc(i*2+3);
 		if(alloc_ppn!=-ENOMEM)
 		{
-			pr_info("alloc ppn 0x%x\n",alloc_ppn);
+			pr_debug("try to get %x pages ,and alloc ppn 0x%x\n",i*2+3,alloc_ppn);
 		}
 		else
 			pr_error("alloc error\n");

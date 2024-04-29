@@ -20,7 +20,13 @@ u32 pmm_alloc_zone(size_t page_number,int zone_number)
 	if(page_number > (1<<BUDDY_MAXORDER))
 		return -ENOMEM;
 	/*have we used too many physical memory*/
-	/*TODO:if so ,we need to swap the memory*/
+	pr_debug("we have 0x%x pages memory to alloc\n",buddy_pmm.zone[zone_number].zone_total_avaliable_pages);
+	if(buddy_pmm.zone[zone_number].zone_total_avaliable_pages<=0)
+	{
+		pr_error("this zone have no memory to alloc\n");
+		/*TODO:if so ,we need to swap the memory*/
+		return -ENOMEM;
+	}
 
 	/*calculate the upper 2^n size*/
 	for(int order=0;order<=BUDDY_MAXORDER;++order){
@@ -80,9 +86,9 @@ u32 pmm_alloc_zone(size_t page_number,int zone_number)
 	/*third,try to del the node at the head of the alloc order list*/
 	avaliable_header=(struct page_frame *)GET_AVALI_HEAD_PTR(zone_number,tmp_order);
 	header=(struct page_frame *)GET_HEAD_PTR(zone_number,tmp_order);
-	if(frame_list_empty(header)){
+	if(frame_list_empty(header))
 		return -ENOMEM;
-	}
+
 	del_node=(struct page_frame*)KERNEL_PHY_TO_VIRT((u64)(avaliable_header->next));
 	index=((u64)del_node-(u64)header)/sizeof(struct page_frame);
 	frame_list_del_init(del_node);
@@ -94,13 +100,14 @@ u32 pmm_alloc_zone(size_t page_number,int zone_number)
 		right_child=&child_order_header[(index<<1)+1];
 		if((left_child->flags & PAGE_FRAME_ALLOCED) || \
 				(right_child->flags & PAGE_FRAME_ALLOCED) )
-		{
 			return -ENOMEM;
-		}
+
 		left_child->flags |= PAGE_FRAME_ALLOCED;
 		right_child->flags |= PAGE_FRAME_ALLOCED;
 		tmp_order--;
 	}
+	buddy_pmm.zone[zone_number].zone_total_avaliable_pages-=1<<alloc_order;
+	pr_debug("we alloced %x pages and have 0x%x pages after alloc\n",1<<alloc_order,buddy_pmm.zone[zone_number].zone_total_avaliable_pages);
 	return PPN_FROM_IDX(alloc_order,index);
 }
 u32	pmm_alloc(size_t page_number)

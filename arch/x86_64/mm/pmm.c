@@ -79,6 +79,7 @@ void arch_init_pmm(struct setup_info* arch_setup_info)
 	for(int order=0;order<=BUDDY_MAXORDER;++order)
 		entry_per_bucket[order]=pages_per_bucket[order]=0;
 	/*calculate how mach the buddy data need*/
+	buddy_pmm.avaliable_phy_addr_end=ROUND_DOWN(buddy_pmm.avaliable_phy_addr_end,MIDDLE_PAGE_SIZE);
 	calculate_bucket_space(buddy_pmm.avaliable_phy_addr_end);
 	for(int order=0;order<=BUDDY_MAXORDER;++order)
 		buddy_total_pages += pages_per_bucket[order];
@@ -151,6 +152,7 @@ void arch_init_pmm(struct setup_info* arch_setup_info)
 		case ZONE_NORMAL:
 			zone->zone_lower_addr=0;
 			zone->zone_upper_addr=buddy_pmm.avaliable_phy_addr_end;
+			pr_info("avaliable phy addr end 0x%x\n",zone->zone_upper_addr);
 			break;
 		default:
 			break;
@@ -161,6 +163,24 @@ void arch_init_pmm(struct setup_info* arch_setup_info)
 				&(buddy_pmm.buckets[order].pages[IDX_FROM_PPN(order,PPN(zone->zone_lower_addr))]);
 			zone->avaliable_zone_head[order].prev=KERNEL_VIRT_TO_PHY((u64)&(zone->avaliable_zone_head[order]));
 			zone->avaliable_zone_head[order].next=KERNEL_VIRT_TO_PHY((u64)&(zone->avaliable_zone_head[order]));
+			zone->zone_total_pages=zone->zone_total_avaliable_pages=0;
+			
+		}
+		for(u64 addr_iter=0;	\
+			addr_iter<buddy_pmm.avaliable_phy_addr_end;	\
+			addr_iter+=(PAGE_SIZE<<BUDDY_MAXORDER))
+		{
+			u32 index=IDX_FROM_PPN(BUDDY_MAXORDER,PPN(addr_iter));
+			struct page_frame* page=&(buddy_pmm.buckets[BUDDY_MAXORDER].pages[index]);
+			if( page->flags & PAGE_FRAME_AVALIABLE)
+			{
+				if(	addr_iter >= buddy_pmm.zone[ZONE_NORMAL].zone_lower_addr &&
+					addr_iter < buddy_pmm.zone[ZONE_NORMAL].zone_upper_addr)
+				{
+					buddy_pmm.zone[ZONE_NORMAL].zone_total_avaliable_pages+=1<<BUDDY_MAXORDER;
+				}
+			}
+			buddy_pmm.zone[ZONE_NORMAL].zone_total_pages+=1<<BUDDY_MAXORDER;
 		}
 	}
 	/*link the list*/

@@ -58,6 +58,8 @@ struct buddy_bucket{
 struct buddy_zone{
 	u64		zone_upper_addr;
 	u64		zone_lower_addr;
+	int		zone_total_pages;
+	int		zone_total_avaliable_pages;
 	struct page_frame avaliable_zone_head[BUDDY_MAXORDER+1];
 	struct page_frame*	zone_head_frame[BUDDY_MAXORDER+1];
 };
