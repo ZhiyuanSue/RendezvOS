@@ -177,7 +177,7 @@ int pmm_free_one(u32 ppn)
 		}
 		insert_node->flags &= ~PAGE_FRAME_ALLOCED;
 		/*if buddy is not empty ,stop merge,and insert current node into the avaliable list*/
-		if(buddy_node->flags & PAGE_FRAME_ALLOCED){
+		if(buddy_node->flags & PAGE_FRAME_ALLOCED || tmp_order==BUDDY_MAXORDER){
 			frame_list_add_head(insert_node,avaliable_header);
 			break;
 		}
