@@ -9,6 +9,18 @@ void pmm_init(struct setup_info* arch_setup_info){
 	pr_info("start pmm init\n");
 	arch_init_pmm(arch_setup_info);
 }
+static inline int calculate_alloc_order(size_t page_number)
+{
+	int	alloc_order=0;
+	for(int order=0;order<=BUDDY_MAXORDER;++order){
+		u64 size_in_this_order=(1<<order);
+		if(size_in_this_order>=page_number){
+			alloc_order=order;
+			break;
+		}
+	}
+	return alloc_order;
+}
 static inline u32 mark_childs(int zone_number,int order,u64 index)
 {
 	struct page_frame* header=GET_HEAD_PTR(zone_number,order);
@@ -43,13 +55,7 @@ u32 pmm_alloc_zone(size_t page_number,int zone_number)
 	}
 
 	/*calculate the upper 2^n size*/
-	for(int order=0;order<=BUDDY_MAXORDER;++order){
-		u64 size_in_this_order=(1<<order);
-		if(size_in_this_order>=page_number){
-			alloc_order=order;
-			break;
-		}
-	}
+	alloc_order=calculate_alloc_order(page_number);
 	tmp_order=alloc_order;
 	/*first,try to find an order have at least one node to alloc*/
 	while(tmp_order<=BUDDY_MAXORDER)
@@ -108,7 +114,8 @@ u32 pmm_alloc_zone(size_t page_number,int zone_number)
 	frame_list_del_init(del_node);
 
 	/*Forth,mark all the child node alloced*/
-	mark_childs(zone_number,tmp_order,index);
+	if(mark_childs(zone_number,tmp_order,index))
+		return -ENOMEM;
 
 	buddy_pmm.zone[zone_number].zone_total_avaliable_pages-=1<<alloc_order;
 	pr_debug("we alloced %x pages and have 0x%x pages after alloc\n",1<<alloc_order,buddy_pmm.zone[zone_number].zone_total_avaliable_pages);
@@ -192,13 +199,7 @@ int pmm_free(u32 ppn,size_t page_number)
 		pr_error("this ppn is illegal\n");
 		return -ENOMEM;
 	}
-	for(int order=0;order<=BUDDY_MAXORDER;++order){
-		u64 size_in_this_order=(1<<order);
-		if(size_in_this_order>=page_number){
-			alloc_order=order;
-			break;
-		}
-	}
+	alloc_order=calculate_alloc_order(page_number);
 	for(int page_count=0;page_count<(1<<alloc_order);page_count++){
 		if((free_one_result=pmm_free_one(ppn+page_count)))
 			return free_one_result;
