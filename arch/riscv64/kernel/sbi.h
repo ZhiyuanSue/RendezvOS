@@ -1,7 +1,7 @@
 #ifndef _RISCV64_SBI_H_
 #define _RISCV64_SBI_H_
 
-#include <shampoos/types.h>
+#include <common/types.h>
 /*
  *  See https://github.com/riscv-non-isa/riscv-sbi-doc/blob/master/riscv-sbi.adoc
  *  I rewrite it all according to this document

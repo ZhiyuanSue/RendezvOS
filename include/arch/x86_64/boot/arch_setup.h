@@ -1,6 +1,6 @@
 #ifndef _ARCH_SETUP_H_
 #define _ARCH_SETUP_H_
-#include <shampoos/types.h>
+#include <common/types.h>
 
 #define KERNEL_VIRT_OFFSET 0xffffffffc0000000
 #define	BIOS_MEM_UPPER	0x100000

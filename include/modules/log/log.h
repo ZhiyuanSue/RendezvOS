@@ -1,9 +1,8 @@
 #ifndef _SHAMPOOS_LOG_H_
 #define _SHAMPOOS_LOG_H_
-#include <shampoos/types.h>
+#include <common/types.h>
 #include <shampoos/list.h>
-#include <shampoos/stdlib.h>
-#include <shampoos/stdarg.h>
+#include <common/stdarg.h>
 #define LOG_BUFFER_SIZE 0x10
 #define LOG_BUFFER_SINGLE_SIZE	0x1000
 enum log_level{

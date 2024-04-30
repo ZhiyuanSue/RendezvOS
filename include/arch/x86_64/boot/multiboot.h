@@ -1,6 +1,6 @@
 #ifndef _SHAMPOOS_MULTIBOOT_
 #define _SHAMPOOS_MULTIBOOT_
-#include <shampoos/types.h>
+#include <common/types.h>
 #define MULTIBOOT_MAGIC 0x2BADB002
 
 struct multiboot_mem{

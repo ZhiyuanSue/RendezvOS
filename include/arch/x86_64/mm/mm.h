@@ -2,7 +2,7 @@
 #define _SHAMPOOS_ARCH_MM_H_
 
 #include "pmm.h"
-#include <shampoos/stddef.h>
+#include <common/stddef.h>
 
 
 void *memset(void *str, int c, size_t n);

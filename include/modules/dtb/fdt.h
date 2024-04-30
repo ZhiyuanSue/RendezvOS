@@ -1,6 +1,6 @@
 #ifndef _SHAMPOOS_FDT_H_
 #define _SHAMPOOS_FDT_H_
-#include <shampoos/types.h>
+#include <common/types.h>
 /*
  * For the devicetree specification,the version are all 17 from 0.1-0.4(the current version)
  */

@@ -1,4 +1,3 @@
-#include <shampoos/list.h>
 #include <shampoos/mm/pmm.h>
 #include <modules/log/log.h>
 #include <shampoos/error.h>

@@ -1,6 +1,6 @@
 #ifndef _SHAMPOOS_X86_64_IO_H_
 #define _SHAMPOOS_X86_64_IO_H_
-#include <shampoos/types.h>
+#include <common/types.h>
 
 static inline u_int8_t  inb(u_int16_t port) __attribute__((always_inline));
 static inline u_int16_t inw(u_int16_t port) __attribute__((always_inline));

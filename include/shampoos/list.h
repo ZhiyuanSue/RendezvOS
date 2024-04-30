@@ -1,7 +1,7 @@
 #ifndef _SHAMPOOS_LIST_H_
 #define _SHAMPOOS_LIST_H_
-#include <shampoos/types.h>
-#include <shampoos/stdbool.h>
+#include <common/types.h>
+#include <common/stdbool.h>
 
 /* is a simple copy of the linux list.h, just for fun,don't too strict*/
 struct list_entry{

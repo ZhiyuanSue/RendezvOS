@@ -1,4 +1,4 @@
-#include <shampoos/types.h>
+#include <common/types.h>
 
 struct desc_selector{
 	u16 rpl:2;

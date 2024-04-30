@@ -1,9 +1,9 @@
 #ifndef _SHAMPOOS_PMM_H_
 #define _SHAMPOOS_PMM_H_
 
-#include <shampoos/types.h>
-#include <shampoos/stddef.h>
-#include <shampoos/list.h>
+#include <common/types.h>
+#include <common/stddef.h>
+#include <common/stdbool.h>
 
 #ifdef _AARCH64_
 #include <arch/aarch64/mm/pmm.h>

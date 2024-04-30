@@ -1,7 +1,7 @@
 #ifndef _UART_16550A_H_
 #define _UART_16550A_H_
-#include <shampoos/stdbool.h>
-#include <shampoos/types.h>
+#include <common/stdbool.h>
+#include <common/types.h>
 
 typedef struct UART_16550A_regs{
 	union
@@ -51,7 +51,7 @@ void uart_16550A_close();
 #if _X86_64_
 	#include <arch/x86_64/io.h>
 	#include <arch/x86_64/io_port.h>
-	#include <shampoos/stddef.h>
+	#include <common/stddef.h>
 	#define uart_write_reg(reg_name,data)	\
 		outb(_X86_16550A_COM1_BASE_+offsetof(UART_16550A,reg_name) ,data)
 	#define uart_read_reg(reg_name) \

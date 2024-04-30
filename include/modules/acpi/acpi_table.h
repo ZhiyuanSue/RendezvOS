@@ -4,7 +4,7 @@
  */
 #ifndef _ACPI_TABLE_H_
 #define _ACPI_TABLE_H_
-#include <shampoos/types.h>
+#include <common/types.h>
 #include <modules/acpi/acpi_defs.h>
 
 /*

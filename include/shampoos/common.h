@@ -1,12 +1,13 @@
 #ifndef _SHAMPOOS_COMMON_H_
 #define _SHAMPOOS_COMMON_H_
 #define _K_KERNEL_
+#include <common/types.h>
+#include <common/stdarg.h>
+#include <common/stddef.h>
+
 #include <shampoos/limits.h>
-#include <shampoos/types.h>
 #include <shampoos/stdio.h>
 #include <shampoos/error.h>
-#include <shampoos/stdarg.h>
-#include <shampoos/stddef.h>
 #include <shampoos/list.h>
 #include <shampoos/mm/pmm.h>
 

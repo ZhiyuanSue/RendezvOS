@@ -1,6 +1,6 @@
 #ifndef _SHAMPOOS_ARCH_PAGE_TABLE_H_
 #define _SHAMPOOS_ARCH_PAGE_TABLE_H_
-#include <shampoos/types.h>
+#include <common/types.h>
 typedef u64 pt_entry;
 #define	mask_9_bit	0x1ff
 #define	PML4(addr)	((addr>>39) & mask_9_bit)

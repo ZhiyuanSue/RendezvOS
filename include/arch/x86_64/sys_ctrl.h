@@ -1,4 +1,4 @@
-#include <shampoos/types.h>
+#include <common/types.h>
 /*cpuid*/
 struct cpuid_result
 {

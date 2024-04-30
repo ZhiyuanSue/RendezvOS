@@ -1,4 +1,4 @@
-#include <shampoos/types.h>
+#include <common/types.h>
 #include <modules/log/log.h>
 
 struct log_buffer LOG_BUFFER;
