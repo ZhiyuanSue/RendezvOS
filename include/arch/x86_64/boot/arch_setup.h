@@ -16,4 +16,5 @@ struct setup_info{
 #define	GET_MULTIBOOT_INFO(setup_info)	\
 	((struct multiboot_info*)(arch_setup_info->multiboot_info_struct_ptr+KERNEL_VIRT_OFFSET))
 
+int	start_arch (struct setup_info* arch_setup_info);
 #endif

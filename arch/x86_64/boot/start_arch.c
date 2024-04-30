@@ -1,6 +1,8 @@
 #include <arch/x86_64/sys_ctrl.h>
-#include <shampoos/common.h>
+#include <arch/x86_64/boot/arch_setup.h>
+#include <arch/x86_64/boot/multiboot.h>
 #include <shampoos/error.h>
+#include <modules/log/log.h>
 static void enable_cache()
 {
 }

@@ -4,7 +4,6 @@
  * and 16550A is totally compatible with 8250 of intel
  */
 
-#include <shampoos/common.h>
 #include <modules/driver/uart/uart_16550A.h>
 
 /*The following functions are just used for early print*/

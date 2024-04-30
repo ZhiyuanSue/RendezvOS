@@ -166,15 +166,13 @@ int pmm_free_one(u32 ppn)
 			(buddy_index);
 		buddy_node=&(header[buddy_index]);
 		insert_node=&(header[index]);
-		if((!tmp_order) &&	\
-			(insert_node->flags & PAGE_FRAME_ALLOCED))
-		{
-			/* if this node is original not alloced,
-			 * just ignore and not add avaliable_pages
-			 * we only count the order is 0 page
-			 */
+		/* if this node is original not alloced,
+		 * just ignore and not add avaliable_pages
+		 * we only count the order is 0 page
+		 */
+		if((!tmp_order) && (insert_node->flags & PAGE_FRAME_ALLOCED))	
 			buddy_pmm.zone[zone_number].zone_total_avaliable_pages++;
-		}
+		
 		insert_node->flags &= ~PAGE_FRAME_ALLOCED;
 		/*if buddy is not empty ,stop merge,and insert current node into the avaliable list*/
 		if(buddy_node->flags & PAGE_FRAME_ALLOCED || tmp_order==BUDDY_MAXORDER){

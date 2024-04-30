@@ -1,7 +1,7 @@
 #ifndef _UART_16550A_H_
 #define _UART_16550A_H_
-#include <shampoos/common.h>
 #include <shampoos/stdbool.h>
+#include <shampoos/types.h>
 
 typedef struct UART_16550A_regs{
 	union

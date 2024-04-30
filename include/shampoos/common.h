@@ -26,7 +26,6 @@
 #include <shampoos/smp.h>
 #endif
 
-int	start_arch (struct setup_info* arch_setup_info);
 void parse_device(uintptr_t addr);
 void interrupt_init();
 void cpu_idle();
