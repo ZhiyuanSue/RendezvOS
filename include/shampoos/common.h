@@ -4,7 +4,6 @@
 #include <shampoos/limits.h>
 #include <shampoos/types.h>
 #include <shampoos/stdio.h>
-#include <shampoos/string.h>
 #include <shampoos/error.h>
 #include <shampoos/stdarg.h>
 #include <shampoos/stddef.h>
@@ -30,7 +29,6 @@
 int	start_arch (struct setup_info* arch_setup_info);
 void parse_device(uintptr_t addr);
 void interrupt_init();
-void power_off(int error_code);
 void cpu_idle();
 
 #endif

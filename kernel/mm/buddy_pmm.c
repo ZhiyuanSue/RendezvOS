@@ -9,6 +9,21 @@ void pmm_init(struct setup_info* arch_setup_info){
 	pr_info("start pmm init\n");
 	arch_init_pmm(arch_setup_info);
 }
+static inline u32 mark_childs(int zone_number,int order,u64 index)
+{
+	struct page_frame* header=GET_HEAD_PTR(zone_number,order);
+	struct page_frame* del_node=&(header[index]);
+	if(order<0)
+		return 0;
+	if(del_node->flags & PAGE_FRAME_ALLOCED)
+		return -ENOMEM;
+	del_node->flags |= PAGE_FRAME_ALLOCED;
+	if(mark_childs(zone_number,order-1,index<<1))
+		return -ENOMEM;
+	if(mark_childs(zone_number,order-1,(index<<1)+1))
+		return -ENOMEM;
+	return 0;
+}
 u32 pmm_alloc_zone(size_t page_number,int zone_number)
 {
 	int	alloc_order=0, tmp_order;
@@ -91,20 +106,10 @@ u32 pmm_alloc_zone(size_t page_number,int zone_number)
 	del_node=(struct page_frame*)KERNEL_PHY_TO_VIRT((u64)(avaliable_header->next));
 	index=((u64)del_node-(u64)header)/sizeof(struct page_frame);
 	frame_list_del_init(del_node);
-	del_node->flags |= PAGE_FRAME_ALLOCED;
-	while(tmp_order>0)
-	{
-		child_order_header=(struct page_frame *)GET_HEAD_PTR(zone_number,tmp_order-1);
-		left_child=&child_order_header[index<<1];
-		right_child=&child_order_header[(index<<1)+1];
-		if((left_child->flags & PAGE_FRAME_ALLOCED) || \
-				(right_child->flags & PAGE_FRAME_ALLOCED) )
-			return -ENOMEM;
 
-		left_child->flags |= PAGE_FRAME_ALLOCED;
-		right_child->flags |= PAGE_FRAME_ALLOCED;
-		tmp_order--;
-	}
+	/*Forth,mark all the child node alloced*/
+	mark_childs(zone_number,tmp_order,index);
+
 	buddy_pmm.zone[zone_number].zone_total_avaliable_pages-=1<<alloc_order;
 	pr_debug("we alloced %x pages and have 0x%x pages after alloc\n",1<<alloc_order,buddy_pmm.zone[zone_number].zone_total_avaliable_pages);
 	return PPN_FROM_IDX(alloc_order,index);
@@ -135,7 +140,6 @@ int pmm_free_one(u32 ppn)
 	int tmp_order=0,zone_number=0;
 	struct page_frame *avaliable_header=NULL, *header=NULL,*insert_node=NULL;
 	struct page_frame *buddy_node=NULL;
-	struct buddy_zone mem_zone;
 	
 	/*judge whether this ppn is in the range of this zone*/
 	if(ppn_inrange(ppn,&zone_number)==false)
@@ -144,7 +148,6 @@ int pmm_free_one(u32 ppn)
 		return -ENOMEM;
 	}
 	/*try to insert the node and try to merge*/
-
 	while(tmp_order<=BUDDY_MAXORDER)
 	{
 		index=IDX_FROM_PPN(tmp_order,ppn);
@@ -156,6 +159,15 @@ int pmm_free_one(u32 ppn)
 			(buddy_index);
 		buddy_node=&(header[buddy_index]);
 		insert_node=&(header[index]);
+		if((!tmp_order) &&	\
+			(insert_node->flags & PAGE_FRAME_ALLOCED))
+		{
+			/* if this node is original not alloced,
+			 * just ignore and not add avaliable_pages
+			 * we only count the order is 0 page
+			 */
+			buddy_pmm.zone[zone_number].zone_total_avaliable_pages++;
+		}
 		insert_node->flags &= ~PAGE_FRAME_ALLOCED;
 		/*if buddy is not empty ,stop merge,and insert current node into the avaliable list*/
 		if(buddy_node->flags & PAGE_FRAME_ALLOCED){
@@ -166,8 +178,6 @@ int pmm_free_one(u32 ppn)
 		frame_list_del_init(buddy_node);
 		tmp_order++;
 	}
-	mem_zone=buddy_pmm.zone[zone_number];
-	mem_zone.zone_total_avaliable_pages++;
 	return 0;
 }
 int pmm_free(u32 ppn,size_t page_number)
@@ -190,9 +200,10 @@ int pmm_free(u32 ppn,size_t page_number)
 		}
 	}
 	for(int page_count=0;page_count<(1<<alloc_order);page_count++){
-		if(!(free_one_result=pmm_free_one(ppn+page_count)))
+		if((free_one_result=pmm_free_one(ppn+page_count)))
 			return free_one_result;
 	}
+	pr_debug("after free we have 0x%x pages\n",buddy_pmm.zone[zone_number].zone_total_avaliable_pages);
 	return 0;
 }
 struct	pmm	buddy_pmm = {
