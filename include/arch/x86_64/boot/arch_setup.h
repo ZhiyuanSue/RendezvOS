@@ -1,5 +1,5 @@
-#ifndef _ARCH_SETUP_H_
-#define _ARCH_SETUP_H_
+#ifndef _SHAMPOOS_ARCH_SETUP_H_
+#define _SHAMPOOS_ARCH_SETUP_H_
 #include <common/types.h>
 
 #define KERNEL_VIRT_OFFSET 0xffffffffc0000000

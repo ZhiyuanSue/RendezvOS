@@ -1,4 +1,11 @@
+#ifndef	_SHAMPOOS_X86_DESC_H_
+#define _SHAMPOOS_X86_DESC_H_
 #include <common/types.h>
+
+struct desc_table_reg_desc{
+	u16	limit;
+	u64	base_addr;
+}__attribute__ ((packed));
 
 struct desc_selector{
 	u16 rpl:2;
@@ -7,7 +14,7 @@ struct desc_selector{
 };
 
 /* segment descriptors */
-struct segdesc {
+struct seg_desc {
 	u32 limit_15_0 : 16;			// low bits of segment limit
 	u32 base_address_15_0 : 16;		// low bits of segment base address
 	u32 base_address_23_16 : 8;		// middle bits of segment base address
@@ -22,3 +29,7 @@ struct segdesc {
 	u32 g : 1;						// granularity: limit scaled by 4K when set
 	u32 base_address_31_24 : 8;		// high bits of segment base address
 };
+struct idt_gate_desc{
+	u64	idt[2];
+};
+#endif

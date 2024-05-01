@@ -1027,3 +1027,8 @@ trap_vec:
 	.quad	trap_253
 	.quad	trap_254
 	.quad	trap_255
+
+	.section	.data.trap.idt
+	.global	idt
+idt:
+	.zero	16*256

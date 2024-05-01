@@ -1,4 +1,7 @@
+#ifndef	_SHAMPOOS_X86_SYS_CTRL_H_
+#define _SHAMPOOS_X86_SYS_CTRL_H_
 #include <common/types.h>
+#include <arch/x86_64/desc.h>
 /*cpuid*/
 struct cpuid_result
 {
@@ -146,3 +149,13 @@ static u32 inline get_mxcsr()
 	);
 	return mxcsr_tmp;
 }
+static void inline lidt(struct desc_table_reg_desc* desc)
+{
+	asm volatile(
+		"lidt	(%0)"
+		:
+		:"r"(desc)
+		:"memory"
+	);
+}
+#endif

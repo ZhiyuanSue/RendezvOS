@@ -15,6 +15,11 @@ def gen_vec():
 	string+="trap_vec:\n"
 	for index in range(0,vec_len):
 		string+="\t.quad\ttrap_"+str(index)+"\n"
+	string+="\n"
+	string+="\t.section\t.data.trap.idt\n"
+	string+="\t.global\tidt\n"
+	string+="idt:\n"
+	string+="\t.zero\t16*256\n"
 	with open(vec_file_name,"w") as file:
 		file.write(string)
 

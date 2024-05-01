@@ -1,6 +1,7 @@
 #include <arch/x86_64/sys_ctrl.h>
 #include <arch/x86_64/boot/arch_setup.h>
 #include <arch/x86_64/boot/multiboot.h>
+#include <arch/x86_64/trap.h>
 #include <shampoos/error.h>
 #include <modules/log/log.h>
 static void enable_cache()
@@ -63,6 +64,7 @@ int start_arch (struct setup_info* arch_setup_info)
 	else{
 		pr_info("no input cmdline\n");
 	}
+	init_idt();
 	enable_cache();
 	start_fp();
 	start_simd();
