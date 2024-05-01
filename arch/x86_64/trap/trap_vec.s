@@ -1030,5 +1030,6 @@ trap_vec:
 
 	.section	.data.trap.idt
 	.global	idt
+	.align	0x10
 idt:
 	.zero	16*256

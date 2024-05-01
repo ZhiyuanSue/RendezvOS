@@ -18,6 +18,7 @@ def gen_vec():
 	string+="\n"
 	string+="\t.section\t.data.trap.idt\n"
 	string+="\t.global\tidt\n"
+	string+="\t.align\t0x10\n"
 	string+="idt:\n"
 	string+="\t.zero\t16*256\n"
 	with open(vec_file_name,"w") as file:
