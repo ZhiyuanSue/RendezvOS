@@ -12,6 +12,7 @@ SECTIONS {
 		*(.boot)
 		*(.boot_64)
 		*(.text .text.*)
+		*(.trap .trap.*)
 	}
 	. = ALIGN(4K);
 	.data :
