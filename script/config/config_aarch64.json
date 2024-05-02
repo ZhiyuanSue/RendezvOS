@@ -8,7 +8,8 @@
 
 		],
 		"features":[
-			"_AARCH64_"
+			"_AARCH64_",
+			"SMP"
 		] ,
 		"LDFLAGS":[
 			
@@ -34,6 +35,7 @@
 				"HELLO"
 			],
 			"depend_module":[
+				"log"
 			] ,
 			"path":"modules/helloworld"
 		},
@@ -44,7 +46,8 @@
 				"TEST"
 			],
 			"depend_module":[
-				"helloworld"
+				"helloworld",
+				"log"
 			],
 			"path":"modules/test"
 		},
@@ -59,9 +62,9 @@
 		},
 		"acpi":
 		{
-			"use":true ,
+			"use":false ,
 			"features":[
-
+				"ACPI"
 			],
 			"depend_module":[],
 			"path":"modules/acpi"
@@ -69,7 +72,9 @@
 		"dtb":
 		{
 			"use":true,
-			"features":[],
+			"features":[
+				"DTB"
+			],
 			"depend_module":[],
 			"path":"modules/dtb"
 		}

@@ -149,7 +149,7 @@ static u32 inline get_mxcsr()
 	);
 	return mxcsr_tmp;
 }
-static void inline lidt(struct desc_table_reg_desc* desc)
+static void inline lidt(struct pseudo_descriptor* desc)
 {
 	asm volatile(
 		"lidt	(%0)"

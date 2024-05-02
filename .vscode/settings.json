@@ -1,0 +1,20 @@
+{
+	"files.associations": {
+		"uart_16550a.h": "c",
+		"log.h": "c",
+		"common.h": "c",
+		"arch_common.h": "c",
+		"multiboot.h": "c",
+		"list.h": "c",
+		"stdbool.h": "c",
+		"pmm.h": "c",
+		"arch_setup.h": "c",
+		"error.h": "c",
+		"types.h": "c",
+		"smp.h": "c",
+		"mm.h": "c",
+		"sys_ctrl.h": "c",
+		"stdlib.h": "c",
+		"trap.h": "c"
+	}
+}

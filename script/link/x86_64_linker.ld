@@ -15,6 +15,7 @@ SECTIONS {
 		*(.trap .trap.*)
 	}
 	. = ALIGN(4K);
+	_sdata = .;
 	.data :
 	{
 		*(.boot.page)

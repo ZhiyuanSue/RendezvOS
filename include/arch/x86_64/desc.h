@@ -2,7 +2,7 @@
 #define _SHAMPOOS_X86_DESC_H_
 #include <common/types.h>
 
-struct desc_table_reg_desc{
+struct pseudo_descriptor{
 	u16	limit;
 	u64	base_addr;
 }__attribute__ ((packed));
