@@ -5,7 +5,8 @@
 #include <arch/x86_64/io_port.h>
 
 static inline	void	arch_shutdown(){
-	/*have no idea*/
+	/*have no idea,maybe it works*/
+	outw(_X86_POWER_SHUTDOWN_,0x2000);
 }
 
 static inline	void	arch_reset()

@@ -11,4 +11,6 @@
 #define	_X86_POWER_MANAGEMENT_ENABLE_	0x802	/*0x802 and 0x803 is the enable registers, two bytes*/
 #define _X86_POWER_MANAGEMENT_CONTROL_	0x804	/*0x804 and 0x805 is the ctrl registers,two bytes*/
 
+#define _X86_POWER_SHUTDOWN_	0x604
+
 #endif
