@@ -31,7 +31,7 @@ const char* trap_name_string[ARCH_USED_TRAP_NUM+2]={
 };
 void	init_idt(void)
 {
-	struct desc_table_reg_desc idtr_desc;
+	struct pseudo_descriptor idtr_desc;
 	idtr_desc.limit=IDT_LIMIT-1;
 	idtr_desc.base_addr=(u64)(&idt);
 	for(int i=0;i<IDT_LIMIT;++i)
