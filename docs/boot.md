@@ -56,3 +56,4 @@ https://www.gnu.org/software/grub/manual/multiboot/multiboot.html
 # riscv64
 
 # arm64
+当我试图在aarch64下直接qemu启动的时候，他会自动的运行到0x40080000

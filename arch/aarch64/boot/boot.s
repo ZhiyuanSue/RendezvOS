@@ -1,3 +1,6 @@
+/* some definations */
+	.set	kernel_virt_offset,0xffff000000000000
+	
 
 	.section	.boot
 _start:
@@ -11,7 +14,6 @@ setup_info:
 	.quad	log_buffer
 
 	.section .boot.log
-	.align 0x1000
 	.global log_buffer
 log_buffer:
 	.zero 0x10000
