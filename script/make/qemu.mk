@@ -11,7 +11,8 @@ ifeq ($(ARCH), x86_64)
 	QemuFlags	+= -nographic	#in qemu , don't use this option
 	# QemuFlags	+= -numa
 else ifeq ($(ARCH), aarch64)
-	QemuFlags	+=
+	QemuFlags	+= -cpu cortex-A72
+	QemuFlags	+= -bios virt
 else ifeq ($(ARCH), riscv64)
 	QemuFlags	+=
 	QemuFlags	+= -nographic -machine virt -bios default
