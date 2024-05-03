@@ -17,8 +17,21 @@ _boot_header:
 	.long	0x644d5241
 	.long	0
 _entry:
+	/*save some info:x0(dtb),mpidr_el1*/
 	adr x4,setup_info
 	str	x0,[x4]
+
+	/*switch to el1*/
+
+	/*init some page table info*/
+
+	/*init mmu and some registers*/
+
+	/*clear bss segment*/
+
+	/*set boot stack pointer*/
+
+	/*call cmain*/
 	b _start
 
 
