@@ -2,8 +2,8 @@ ENTRY(_start)
 OUTPUT_ARCH("aarch64")
 OUTPUT_FORMAT("elf64-littleaarch64")
 SECTIONS {
-	kernel_virt_offset = 0xffff000000000000
-	kernel_start_offset = 0x40080000
+	kernel_virt_offset = 0xffff800000000000 ;
+	kernel_start_offset = 0x40080000 ;
 	. = kernel_virt_offset + kernel_start_offset;
 	_kstart = .;
 	_start = .;
@@ -16,7 +16,7 @@ SECTIONS {
 	_sdata = .;
 	.data :
 	{
-		*(.boot.log)
+		*(.boot.log .boot.data)
 		*(.data .data.*)
 	}
 	_edata = .;

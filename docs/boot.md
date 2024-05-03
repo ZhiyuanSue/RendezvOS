@@ -57,3 +57,8 @@ https://www.gnu.org/software/grub/manual/multiboot/multiboot.html
 
 # arm64
 当我试图在aarch64下直接qemu启动的时候，他会自动的运行到0x40080000
+但是这是qemu的布局，和x86这种有巨大历史包袱的东西不同（我没听说过x86在1M这个分界上的处理会有什么不同的做法，毕竟都是需要进入保护模式的），arm可能根据板子的不同加载到不同的地址。
+
+还有就是跟启动协议相关的部分，我找到了这个。
+https://mjmwired.net/kernel/Documentation/zh_CN/arm64/booting.txt
+虽然我们并不是一个linux，但是出于通用的约定（并且他并不复杂）我决定按照这个方式去实现我的内核。

@@ -88,6 +88,12 @@ void arch_init_pmm(struct setup_info* arch_setup_info)
 	/*check whether the kernel can put in all*/
 	/*try to check an avaliable region to place the kernel and buddy data*/
 
+	/*as the buddy_node is presented by 30bits, it must be put less than 1G,check it*/
+	if(buddy_phy_end>BUDDY_MAX_PHY_END)
+	{
+		pr_error("we cannot manager toooo many memory!\n");
+		goto arch_init_pmm_error;
+	}
 	for(mmap = (struct multiboot_mmap_entry*)add_ptr;
 		((u64)mmap) < (add_ptr+length);
 		mmap = (struct multiboot_mmap_entry*)((u64)mmap + mmap->size + sizeof(mmap->size)))

@@ -15,6 +15,8 @@
 #define KERNEL_VIRT_TO_PHY(virt_addr) (virt_addr-_SHAMPOOS_KERNEL_OFFSET_)
 #endif
 
+#define BUDDY_MAX_PHY_END	0x40000000
+
 #include <arch/x86_64/boot/multiboot.h>
 #include <arch/x86_64/boot/arch_setup.h>
 
