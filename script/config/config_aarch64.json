@@ -12,7 +12,7 @@
 			"SMP"
 		] ,
 		"LDFLAGS":[
-			
+			"--no-warn-rwx-segments"
 		]
 		},
 	"modules":{

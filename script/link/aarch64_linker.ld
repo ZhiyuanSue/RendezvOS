@@ -16,7 +16,9 @@ SECTIONS {
 	_sdata = .;
 	.data :
 	{
-		*(.boot.log .boot.data)
+		*(.boot.log)
+		*(.boot.data)
+		*(.boot.stack)
 		*(.data .data.*)
 	}
 	_edata = .;

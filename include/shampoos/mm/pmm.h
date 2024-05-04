@@ -70,19 +70,15 @@ enum zone_type{
 };
 
 struct pmm{
-	struct	buddy_bucket buckets[BUDDY_MAXORDER+1];
-	struct	buddy_zone	zone[ZONE_NR_MAX];
-	u64	avaliable_phy_addr_end;
 	void (*pmm_init)(struct setup_info* arch_setup_info);
 	u32	(*pmm_alloc)(size_t page_number);
 	int (*pmm_free)(u32 ppn,size_t page_number);
+	struct	buddy_bucket buckets[BUDDY_MAXORDER+1];
+	struct	buddy_zone	zone[ZONE_NR_MAX];
+	u64	avaliable_phy_addr_end;
 };
 #define	GET_AVALI_HEAD_PTR(zone_n,order)	(&(buddy_pmm.zone[zone_n].avaliable_zone_head[order]))
 #define	GET_HEAD_PTR(zone_n,order)	(buddy_pmm.zone[zone_n].zone_head_frame[order])
-
-void pmm_init(struct setup_info* arch_setup_info);
-u32	pmm_alloc(size_t page_number);
-int pmm_free(u32 ppn,size_t page_number);
 
 static inline void __frame_list_add(struct page_frame *new_node,
 		struct page_frame *prev,
