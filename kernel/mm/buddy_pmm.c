@@ -22,16 +22,14 @@ static inline int calculate_alloc_order(size_t page_number)
 }
 static inline u32 mark_childs(int zone_number,int order,u64 index)
 {
-	struct page_frame* header=GET_HEAD_PTR(zone_number,order);
-	struct page_frame* del_node=&(header[index]);
+	struct page_frame* del_node=&(GET_HEAD_PTR(zone_number,order)[index]);
 	if(order<0)
 		return 0;
 	if(del_node->flags & PAGE_FRAME_ALLOCED)
 		return -ENOMEM;
 	del_node->flags |= PAGE_FRAME_ALLOCED;
-	if(mark_childs(zone_number,order-1,index<<1))
-		return -ENOMEM;
-	if(mark_childs(zone_number,order-1,(index<<1)+1))
+	if(mark_childs(zone_number,order-1,index<<1) || \
+		mark_childs(zone_number,order-1,(index<<1)+1))
 		return -ENOMEM;
 	return 0;
 }
@@ -45,25 +43,16 @@ u32 pmm_alloc_zone(size_t page_number,int zone_number)
 	
 	if(page_number > (1<<BUDDY_MAXORDER))
 		return -ENOMEM;
-	/*have we used too many physical memory*/
-	if(buddy_pmm.zone[zone_number].zone_total_avaliable_pages<=0)
-	{
-		pr_error("this zone have no memory to alloc\n");
-		/*TODO:if so ,we need to swap the memory*/
-		return -ENOMEM;
-	}
 
 	/*calculate the upper 2^n size*/
 	alloc_order=calculate_alloc_order(page_number);
 	tmp_order=alloc_order;
 	/*first,try to find an order have at least one node to alloc*/
-	while(tmp_order<=BUDDY_MAXORDER)
+	for(;tmp_order<=BUDDY_MAXORDER;tmp_order++)
 	{
 		struct page_frame* header=GET_AVALI_HEAD_PTR(zone_number,tmp_order);
-		if(frame_list_empty(header)){
-			tmp_order++;
-		}
-		else{
+		if(!frame_list_empty(header))
+		{
 			find_an_order=true;
 			break;
 		}
@@ -122,7 +111,17 @@ u32 pmm_alloc_zone(size_t page_number,int zone_number)
 }
 u32	pmm_alloc(size_t page_number)
 {
-	return pmm_alloc_zone(page_number,ZONE_NORMAL);
+	int zone_number = ZONE_NORMAL;
+	/*have we used too many physical memory*/
+	if(page_number<0)
+		return 0;
+	if(buddy_pmm.zone[zone_number].zone_total_avaliable_pages<page_number)
+	{
+		pr_error("this zone have no memory to alloc\n");
+		/*TODO:if so ,we need to swap the memory*/
+		return -ENOMEM;
+	}
+	return pmm_alloc_zone(page_number,zone_number);
 }
 static bool inline ppn_inrange(u32 ppn,int* zone_number)
 {
@@ -140,19 +139,13 @@ static bool inline ppn_inrange(u32 ppn,int* zone_number)
 	}
 	return ppn_inrange;
 }
-int pmm_free_one(u32 ppn)
+static int pmm_free_one(u32 ppn)
 {
 	u64 index,buddy_index;
 	int tmp_order=0,zone_number=0;
 	struct page_frame *avaliable_header=NULL, *header=NULL,*insert_node=NULL;
 	struct page_frame *buddy_node=NULL;
 	
-	/*judge whether this ppn is in the range of this zone*/
-	if(ppn_inrange(ppn,&zone_number)==false)
-	{
-		pr_error("this ppn is illegal\n");
-		return -ENOMEM;
-	}
 	/*try to insert the node and try to merge*/
 	while(tmp_order<=BUDDY_MAXORDER)
 	{
@@ -170,15 +163,7 @@ int pmm_free_one(u32 ppn)
 		 * we only count the order is 0 page
 		 */
 		if((!tmp_order) && (insert_node->flags & PAGE_FRAME_ALLOCED))
-		{
-			/*check whether this page is shared, and if it is shared,just check*/
-			if(insert_node->flags & PAGE_FRAME_SHARED)
-			{
-				/*TODO*/
-				;
-			}
 			buddy_pmm.zone[zone_number].zone_total_avaliable_pages++;
-		}
 		
 		insert_node->flags &= ~PAGE_FRAME_ALLOCED;
 		/*if buddy is not empty ,stop merge,and insert current node into the avaliable list*/
@@ -199,13 +184,22 @@ int pmm_free(u32 ppn,size_t page_number)
 	int	zone_number=0;
 	if(ppn==-ENOMEM)
 		return -ENOMEM;
-	if(ppn_inrange(ppn,&zone_number)==false)
-	{
-		pr_error("this ppn is illegal\n");
-		return -ENOMEM;
-	}
+	
 	alloc_order=calculate_alloc_order(page_number);
 	for(int page_count=0;page_count<(1<<alloc_order);page_count++){
+		if(ppn_inrange(ppn+page_count,&zone_number)==false)
+		{
+			pr_error("this ppn is illegal\n");
+			return -ENOMEM;
+		}
+		/*check whether this page is shared, and if it is shared,just check*/
+		struct page_frame *header=GET_HEAD_PTR(zone_number,0);
+		struct page_frame *insert_node=&(header[ppn+page_count]);
+		if(insert_node->flags & PAGE_FRAME_SHARED)
+		{
+			/*TODO*/
+			;
+		}
 		if((free_one_result=pmm_free_one(ppn+page_count)))
 			return free_one_result;
 	}
@@ -215,6 +209,5 @@ int pmm_free(u32 ppn,size_t page_number)
 struct	pmm	buddy_pmm = {
 	.pmm_init=pmm_init,
 	.pmm_alloc=pmm_alloc,
-	.pmm_free_one=pmm_free_one,
 	.pmm_free=pmm_free
 };
