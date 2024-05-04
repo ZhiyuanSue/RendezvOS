@@ -42,6 +42,7 @@ typedef u64 addr_t;
 struct page_frame{
 #define	PAGE_FRAME_ALLOCED	(1<<0)
 #define	PAGE_FRAME_AVALIABLE	(1<<1)
+#define	PAGE_FRAME_SHARED	(1<<2)	/*used to record this page frame is shared*/
 	u64		flags:4;
 	u64		prev:30;
 	u64		next:30;
