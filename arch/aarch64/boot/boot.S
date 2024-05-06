@@ -4,6 +4,9 @@
 #define	CurrentEL_EL1	0x4
 #define	CurrentEL_EL2	0x8
 #define	CurrentEL_EL3	0xC
+#define	SCTLR_EL1_M	0x1
+#define	SCTLR_EL1_I	(1<<12)
+#define	SCTLR_EL1_C	(1<<2)
 /* some definations */
 
 	.section	.boot
@@ -31,7 +34,7 @@ _entry:
 	/*prepare some page table*/
 	bl	prepare_page_table
 	/*init mmu and some registers*/
-
+	bl	init_mmu
 	/*clear bss segment*/
 
 	/*set boot stack pointer*/
@@ -68,6 +71,19 @@ prepare_page_table:
 
 	.global init_mmu
 init_mmu:
+	/*fill in x0 and x1 the page table,fill in the x2 with the target tcr*/
+
+	/*fill in ttbr0 and 1,and fill in the tcr_el1*/
+	msr	TTBR0_EL1,x0
+	msr	TTBR1_EL1,x1
+	msr	TCR_EL1,x2
+	isb
+	mrs	x0,SCTLR_EL1
+	mov x0,#SCTLR_EL1_M
+	orr x0,x0,#SCTLR_EL1_C
+	orr	x0,x0,#SCTLR_EL1_I
+	msr	SCTLR_EL1,x0
+	isb
 	ret
 
 	.section .boot.data
@@ -79,6 +95,9 @@ setup_info:
 	.quad	0	/*x2,reserved*/
 	.quad	0	/*x3,reserved*/
 	.quad	log_buffer
+
+	.section .boot.page
+	/*we just use 48bit page and the 4K*/
 
 	.section .boot.log
 	.global log_buffer
