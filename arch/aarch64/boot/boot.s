@@ -1,7 +1,6 @@
 /* some definations */
 	.set	kernel_virt_offset,0xffff800000000000
 
-
 	.section	.boot
 	.global	_start
 _start:
@@ -19,10 +18,12 @@ _boot_header:
 _entry:
 	/*save some info:x0(dtb),mpidr_el1*/
 	adr x4,setup_info
-	str	x0,[x4]
-
+	stp	x0,x1,[x4]
+	add x4,x4,#16
+	stp x2,x3,[x4]
 	/*switch to el1*/
-
+	mrs x0,CurrentEL
+	
 	/*init some page table info*/
 
 	/*init mmu and some registers*/

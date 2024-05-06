@@ -18,6 +18,9 @@ struct boot_header{
 
 struct setup_info{
 	u64	dtb_ptr;
+	u64 res_x1;
+	u64 res_x2;
+	u64 res_x3;
 	u64 log_buffer_addr;
 } __attribute__((packed));
 
