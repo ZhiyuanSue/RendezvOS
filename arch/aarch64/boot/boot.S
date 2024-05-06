@@ -1,4 +1,5 @@
 #define	kernel_virt_offset	0xffff800000000000
+#define	boot_stack_size	0x10000
 #define	CurrentEL_EL0	0x0
 #define	CurrentEL_EL1	0x4
 #define	CurrentEL_EL2	0x8
@@ -38,6 +39,7 @@ _entry:
 	/*call cmain*/
 	b _start
 
+
 	.global	drop_to_el1
 drop_to_el1:
 	/*switch to el1*/
@@ -45,18 +47,19 @@ drop_to_el1:
 	cmp	x0,#CurrentEL_EL3
 	b.ne	EL2_setup	
 EL3_setup:
-	
+	/*TODO:set EL3*/
 EL2_setup:
-	cmp	x0,#CurrentEL_EL1
+	cmp	x0,#CurrentEL_EL2
 	b.ne	EL1_setup
-	/*set SPSR*/
+	/*TODO:set SPSR*/
 
-	/*set LR to ELR*/
-	mov	ELR,X30
+	/*TODO:set LR to ELR*/
+	
 	/*eret*/
 	eret
 EL1_setup:
 	ret
+
 
 	.global prepare_page_table
 prepare_page_table:
@@ -71,10 +74,16 @@ init_mmu:
 	.align	4	/*2^4=16*/
 	.global setup_info
 setup_info:
-	.quad	0
+	.quad	0	/*x0,for dtb*/
+	.quad	0	/*x1,reserved*/
+	.quad	0	/*x2,reserved*/
+	.quad	0	/*x3,reserved*/
 	.quad	log_buffer
 
 	.section .boot.log
 	.global log_buffer
 log_buffer:
 	.zero 0x10000
+stack_field:
+	.align 12	/*2^12=4096*/
+	.zero boot_stack_size

@@ -16,3 +16,4 @@
 *.d
 *.swp
 include/modules/modules.h
+*.log

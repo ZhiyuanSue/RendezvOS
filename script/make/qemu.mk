@@ -2,10 +2,11 @@
 #	qemu
 #  ---------
 
-SMP	?= 4
+SMP	?= 1
 
 Qemulator	:= qemu-system-$(ARCH)
 QemuFlags	:= -kernel $(Target_BIN) -smp $(SMP)
+QemuFlags	+= -D qemu.log -d in_asm,int,pcall,cpu_reset,guest_errors
 ifeq ($(ARCH), x86_64)
 	QemuFlags	+= -machine q35
 	QemuFlags	+= -nographic	#in qemu , don't use this option
