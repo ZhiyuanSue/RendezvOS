@@ -4,6 +4,8 @@ SRC		:=$(wildcard ./*.c)
 OBJECTS	:=$(patsubst %.c,$(BUILD)/%.o,$(notdir $(SRC)))
 SRC		+=$(wildcard ./*.s)
 OBJECTS	+=$(patsubst %.s,$(BUILD)/%.o,$(notdir $(SRC)))
+SRC		+=$(wildcard ./*.S)
+OBJECTS	+=$(patsubst %.S,$(BUILD)/%.o,$(notdir $(SRC)))
 
 export BUILD
 

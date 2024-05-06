@@ -1,16 +1,16 @@
+#define	kernel_virt_offset 0xffffffffc0000000
+#define	boot_stack_size	0x10000
+#define	multiboot_header_magic	0x1BADB002
+#define	multiboot_header_flag_addr	0x00000002
+#define	multiboot_header_flag_vbe	0x00010000
+#define	align_2m	0x200000
+#define	align_2m_minus_1	0x1fffff
+#define	align_bit32_not_2m_minus_1	0xffe00000
+#define	CR4_PGE_OR_PAE	0xa0
+#define	IA32_EFER_bits	0x901
+#define	IA32_EFER_addr	0xC0000080
+#define	CR0_PG 0x80000000
 /* some definations */
-	.set	kernel_virt_offset,0xffffffffc0000000
-	.set	boot_stack_size,0x10000
-	.set	multiboot_header_magic,0x1BADB002
-	.set	multiboot_header_flag_addr,0x00000002
-	.set	multiboot_header_flag_vbe,0x00010000
-	.set	align_2m,0x200000
-	.set	align_2m_minus_1,0x1fffff
-	.set	align_bit32_not_2m_minus_1,0xffe00000
-	.set	CR0_PG,0x80000000
-	.set	CR4_PGE_OR_PAE,0xa0
-	.set	IA32_EFER_bits,0x901
-	.set	IA32_EFER_addr,0xC0000080
 
 /*code under 32bit*/
 	.section .boot

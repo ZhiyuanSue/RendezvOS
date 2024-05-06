@@ -6,7 +6,7 @@ all: init $(modules) ${OBJECTS}
 	@-rm *.d
 
 -include *.d
-${BUILD}/boot.o: ./boot.s $(modules)
+${BUILD}/boot.o: ./boot.S $(modules)
 	@echo "CC	${BUILD}/boot.o"
 	@$(CC) $(CFLAGS) -o $@ -c $<
 
