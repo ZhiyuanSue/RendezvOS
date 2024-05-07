@@ -1,4 +1,5 @@
-
+#ifndef	_SHAMPOOS_X86_SYS_CTRL_DEF_H_
+#define	_SHAMPOOS_X86_SYS_CTRL_DEF_H_
 /*CR0*/
 #define CR0_PE	(1<<0)
 #define CR0_MP	(1<<1)
@@ -60,3 +61,11 @@
 #define	MXCSR_UM	(1<<11)
 #define	MXCSR_PM	(1<<12)
 #define	MXCSR_FZ	(1<<16)
+
+/*IA32_EFER*/
+#define	IA32_EFER_addr	0xC0000080
+#define	IA32_EFER_SCE	(1<<0)
+#define	IA32_EFER_LMR	(1<<8)
+#define	IA32_EFER_NXE	(1<<11)
+
+#endif

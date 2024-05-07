@@ -6,8 +6,6 @@
 #define	align_2m	0x200000
 #define	align_2m_minus_1	0x1fffff
 #define	align_bit32_not_2m_minus_1	0xffe00000
-#define	IA32_EFER_bits	0x901
-#define	IA32_EFER_addr	0xC0000080
 #include	<arch/x86_64/sys_ctrl_def.h>
 /* some definations */
 
@@ -112,7 +110,8 @@ enable_lme:
 	/*enable_lme*/
 	movl	$IA32_EFER_addr,%ecx
 	rdmsr
-	orl	$IA32_EFER_bits,%eax /*IA32_EFER.SCE[bit0] and IA32_EFER.LMR[bit8] and IA32_EFER.NXE[bit11] should be set*/
+	orl	$(IA32_EFER_SCE | IA32_EFER_LMR | IA32_EFER_NXE),%eax
+	/*IA32_EFER.SCE[bit0] and IA32_EFER.LMR[bit8] and IA32_EFER.NXE[bit11] should be set*/
 	wrmsr
 
 enable_pg:
