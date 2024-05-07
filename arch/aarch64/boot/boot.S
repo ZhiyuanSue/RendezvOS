@@ -1,12 +1,42 @@
 #define	kernel_virt_offset	0xffff800000000000
 #define	boot_stack_size	0x10000
+/*CurrentEL*/
 #define	CurrentEL_EL0	0x0
 #define	CurrentEL_EL1	0x4
 #define	CurrentEL_EL2	0x8
 #define	CurrentEL_EL3	0xC
+/*SCTLR_EL1*/
 #define	SCTLR_EL1_M	0x1
 #define	SCTLR_EL1_I	(1<<12)
 #define	SCTLR_EL1_C	(1<<2)
+/*TCR_EL1*/
+#define	TCR_EL1_ORGN0_NON_CACHE	0
+#define	TCR_EL1_ORGN0_WB_RA_WA_CACHE	(1<<10)
+#define	TCR_EL1_ORGN0_WT_RA_NO_WA_CACHE	(1<<11)
+#define	TCR_EL1_ORGN0_WB_RA_NO_WA_CACHE	(0x3<<10)
+
+#define	TCR_EL1_IRGN0_NON_CACHE	0
+#define	TCR_EL1_IRGN0_WB_RA_WA_CACHE	(1<<8)
+#define	TCR_EL1_IRGN0_WT_RA_NO_WA_CACHE	(1<<9)
+#define	TCR_EL1_IRGN0_WB_RA_NO_WA_CACHE	(0x3<<8)
+
+#define	TCR_EL1_ORGN1_NON_CACHE	0
+#define	TCR_EL1_ORGN1_WB_RA_WA_CACHE	(1<<26)
+#define	TCR_EL1_ORGN1_WT_RA_NO_WA_CACHE	(1<<27)
+#define	TCR_EL1_ORGN1_WB_RA_NO_WA_CACHE	(0x3<<26)
+
+#define	TCR_EL1_IRGN1_NON_CACHE	0
+#define	TCR_EL1_IRGN1_WB_RA_WA_CACHE	(1<<24)
+#define	TCR_EL1_IRGN1_WT_RA_NO_WA_CACHE	(1<<25)
+#define	TCR_EL1_IRGN1_WB_RA_NO_WA_CACHE	(0x3<<24)
+
+#define	TCR_EL1_SH0_NON_CACHE	0
+#define	TCR_EL1_SH0_OUTER_SHARED_CACHE	(1<<13)
+#define	TCR_EL1_SH0_INNER_SHARED_CACHE	(0x3<<12)
+
+#define	TCR_EL1_TG0_
+
+
 /* some definations */
 
 	.section	.boot
@@ -98,6 +128,11 @@ setup_info:
 
 	.section .boot.page
 	/*we just use 48bit page and the 4K*/
+L0_table:
+
+L1_table:
+
+L2_table:
 
 	.section .boot.log
 	.global log_buffer

@@ -6,10 +6,9 @@
 #define	align_2m	0x200000
 #define	align_2m_minus_1	0x1fffff
 #define	align_bit32_not_2m_minus_1	0xffe00000
-#define	CR4_PGE_OR_PAE	0xa0
 #define	IA32_EFER_bits	0x901
 #define	IA32_EFER_addr	0xC0000080
-#define	CR0_PG 0x80000000
+#include	<arch/x86_64/sys_ctrl_def.h>
 /* some definations */
 
 /*code under 32bit*/
@@ -107,7 +106,7 @@ load_kernel_page_table:
 enable_pae:
 	/*enable_pae*/
 	movl	%cr4,%eax
-	orl		$CR4_PGE_OR_PAE,%eax
+	orl		$(CR4_PGE | CR4_PAE),%eax
 	movl	%eax,%cr4
 enable_lme:
 	/*enable_lme*/
