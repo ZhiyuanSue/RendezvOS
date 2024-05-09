@@ -44,5 +44,28 @@
 #define	TCR_EL1_TG1_64KB	(0x3<<30)
 
 #define	TCR_EL1_IPS_32bit	(0)
+#define TCR_EL1_IPS_36bit	(1<<32)
+#define	TCR_EL1_IPS_40bit	(1<<33)
+#define TCR_EL1_IPS_42bit	(0x3<<32)
+#define	TCR_EL1_IPS_44bit	(1<<34)
+#define	TCR_EL1_IPS_48bit	(0x5<<32)
+#define	TCR_EL1_IPS_52bit	(0x6<<32)
+
+#define	TCR_EL1_TBI1_IGN	(1<<38)
+#define	TCR_EL1_TBI1_USED	(0)
+
+#define	TCR_EL1_TBI0_IGN	(1<<37)
+#define	TCR_EL1_TBI0_USED	(0)
+
+#define	TCR_EL1_AS	(1<<36)
+
+#define	TCR_EL1_EPD1_ENABLE_WALK	(0)
+#define	TCR_EL1_EPD1_DISABLE_WALK	(1<<23)
+
+#define	TCR_EL1_EPD0_ENABLE_WALK	(0)
+#define	TCR_EL1_EPD0_DISABLE_WALK	(1<<7)
+
+#define	TCR_EL1_T1SZ_MASK	(0x3f<<16)
+#define	TCR_EL1_T0SZ_MASK	(0x3f)
 
 #endif
