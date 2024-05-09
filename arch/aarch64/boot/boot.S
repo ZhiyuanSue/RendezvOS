@@ -69,10 +69,11 @@ prepare_page_table:
 init_mmu:
 	/*fill in x0 and x1 the page table,fill in the x2 with the target tcr*/
 	mrs	x2,TCR_EL1
-	orr	x2,x2,#TCR_EL1_IPS_48bit
+	mov x4,#TCR_EL1_IPS_48bit
+	orr	x2,x2,x4
 	/*set ttbr0*/
-	orr x2,x2,#TCR_EL1_EPD0_ENABLE_WALK
-	orr	x2,x2,#TCR_EL1_TG0_4KB
+	/*orr x2,x2,#TCR_EL1_EPD0_ENABLE_WALK*/ /*for it's 0*/
+	/*orr	x2,x2,#TCR_EL1_TG0_4KB*/	/*for it's 0*/
 	orr x2,x2,#TCR_EL1_SH0_INNER_SHARED_CACHE
 	orr x2,x2,#TCR_EL1_ORGN0_WB_RA_WA_CACHE
 	orr x2,x2,#TCR_EL1_IRGN0_WB_RA_WA_CACHE
@@ -80,7 +81,7 @@ init_mmu:
 	orr x2,x2,x4
 
 	/*set ttbr1*/
-	orr x2,x2,#TCR_EL1_EPD1_ENABLE_WALK
+	/*orr x2,x2,#TCR_EL1_EPD1_ENABLE_WALK*/	/*for it's 0*/
 	orr	x2,x2,#TCR_EL1_TG1_4KB
 	orr x2,x2,#TCR_EL1_SH1_INNER_SHARED_CACHE
 	orr x2,x2,#TCR_EL1_ORGN1_WB_RA_WA_CACHE
