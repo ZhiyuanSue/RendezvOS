@@ -47,6 +47,7 @@
 #define	TCR_EL1_TG1_16KB	(1<<30)
 #define	TCR_EL1_TG1_64KB	(0x3<<30)
 
+#define TCR_EL1_IPS_MASK	(0x7<<32)
 #define	TCR_EL1_IPS_32bit	0
 #define TCR_EL1_IPS_36bit	(1<<32)
 #define	TCR_EL1_IPS_40bit	(1<<33)
@@ -71,5 +72,7 @@
 
 #define	TCR_EL1_T1SZ_MASK	(0x3f<<16)
 #define	TCR_EL1_T0SZ_MASK	(0x3f)
+
+#define	ID_AA64MMFR0_EL1_PARANGE_MASK	(0xf)
 
 #endif

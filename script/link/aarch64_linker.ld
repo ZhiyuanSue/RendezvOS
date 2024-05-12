@@ -16,8 +16,8 @@ SECTIONS {
 	_sdata = .;
 	.data :
 	{
-		
 		*(.boot.data)
+		. = ALIGN(4K);
 		*(.boot.page)
 		*(.boot.log)
 		*(.data .data.*)

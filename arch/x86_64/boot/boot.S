@@ -7,6 +7,7 @@
 #define	align_2m_minus_1	0x1fffff
 #define	align_bit32_not_2m_minus_1	0xffe00000
 #include	<arch/x86_64/sys_ctrl_def.h>
+#include	<arch/x86_64/mm/page_table_def.h>
 /* some definations */
 
 /*code under 32bit*/
@@ -89,7 +90,7 @@ calculate_kernel_pages:
 change_kernel_page_table_loop:
 	movl	%eax,%ecx	/*store the eax to ecx*/
 	andl	$align_bit32_not_2m_minus_1,%eax	/*for the phy addr must not below 1GB,so and this mask is possible*/
-	orl		$0x183,%eax
+	orl		$( PDE_P | PDE_RW | PDE_PS | PDE_G),%eax
 	movl	%eax,(%edx)
 	addl	$8,%edx	/*add a quad position*/
 change_kernel_page_table:
@@ -211,9 +212,9 @@ boot_page_table_PML4:
 		bit 62:52:ignore
 		bit 63:XD,disable-execute
 	*/
-	.quad	boot_page_table_directory_ptr - kernel_virt_offset + 0x3
+	.quad	boot_page_table_directory_ptr - kernel_virt_offset + ( PML4E_P | PML4E_RW )
 	.zero	8*510
-	.quad	boot_page_table_directory_ptr - kernel_virt_offset + 0x7
+	.quad	boot_page_table_directory_ptr - kernel_virt_offset + ( PML4E_P | PML4E_RW | PML4E_US)
 	
 	.global boot_page_table_directory_ptr
 boot_page_table_directory_ptr:
@@ -237,9 +238,9 @@ boot_page_table_directory_ptr:
 		please remember one thing, current addr is 0x100000+offset
 		so the first entry of pdpt table must also set to the pd
 	*/
-	.quad	boot_page_table_directory - kernel_virt_offset + 0x3
+	.quad	boot_page_table_directory - kernel_virt_offset + (PDPTE_P | PDPTE_RW)
 	.zero	8*510
-	.quad	boot_page_table_directory - kernel_virt_offset + 0x3
+	.quad	boot_page_table_directory - kernel_virt_offset + (PDPTE_P | PDPTE_RW)
 
 	.global boot_page_table_directory
 boot_page_table_directory:

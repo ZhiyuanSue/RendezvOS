@@ -69,7 +69,11 @@ prepare_page_table:
 init_mmu:
 	/*fill in x0 and x1 the page table,fill in the x2 with the target tcr*/
 	mrs	x2,TCR_EL1
-	mov x4,#TCR_EL1_IPS_48bit
+	mrs x4,ID_AA64MMFR0_EL1
+	and x4,x4,#ID_AA64MMFR0_EL1_PARANGE_MASK	/*support the usable phyaddr*/
+	lsl	x4,x4,#32
+	and	x4,x4,#TCR_EL1_IPS_MASK
+	//mov x4,#TCR_EL1_IPS_48bit
 	orr	x2,x2,x4
 	/*set ttbr0*/
 	/*orr x2,x2,#TCR_EL1_EPD0_ENABLE_WALK*/ /*for it's 0*/
@@ -103,7 +107,7 @@ init_mmu:
 	ret
 
 	.section .boot.data
-	.align	4	/*2^4=16*/
+	.p2align	4	/*2^4=16*/
 	.global setup_info
 setup_info:
 	.quad	0	/*x0,for dtb*/
@@ -113,17 +117,19 @@ setup_info:
 	.quad	log_buffer
 
 	.section .boot.page
+	.p2align	12	/*2^12=4K*/
 	/*we just use 48bit page and the 4K*/
 L0_table:
-
+	.zero 8*512
 L1_table:
-
+	.zero 8*512
 L2_table:
+	.zero 8*512
 
 	.section .boot.log
 	.global log_buffer
 log_buffer:
 	.zero 0x10000
 stack_field:
-	.align 12	/*2^12=4096*/
+	.p2align 12	/*2^12=4096*/
 	.zero boot_stack_size

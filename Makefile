@@ -81,3 +81,4 @@ mrproper: clean
 clean:	init
 	@echo "rm all obj file under build"
 	@-rm -f $(shell find $(BUILD) -name *.o)
+	@-rm ./qemu.log
