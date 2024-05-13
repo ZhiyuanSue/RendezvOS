@@ -128,6 +128,20 @@ fill_in_entry_loop:
 	cmp	x0,x4
 	b.lt	#finish_fill_in_entry_loop
 
+	/*store the addr of the x0*/
+	mov	x1,x0
+	/*x0 store the entry num*/
+	lsl	x0,x0,#34
+	lsr	x0,x0,#21
+	/*write in the L1_table addr*/
+	and	x1,x1,#PT_DESC_TABLE_ADDR_MASK
+	/*TODO:set L2_table entry's attr(table)*/
+	orr	x1,x1,#PT_DESC_V
+
+	/*write in L1_table entry to L0_table*/
+	lsl	x0,x0,#8
+	str	x1,[x7,x0]
+
 	add x0,x0,#align_2m
 	b	fill_in_entry_loop
 
