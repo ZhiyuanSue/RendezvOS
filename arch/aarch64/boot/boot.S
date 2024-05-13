@@ -62,7 +62,7 @@ EL1_setup:
 
 	.global prepare_page_table
 prepare_page_table:
-
+	
 	ret
 
 	.global init_mmu
@@ -94,6 +94,8 @@ init_mmu:
 	orr	x2,x2,x4
 	
 	/*fill in ttbr0 and 1,and fill in the tcr_el1*/
+	adr	x0,#L0_table
+	adr x1,#L0_table
 	msr	TTBR0_EL1,x0
 	msr	TTBR1_EL1,x1
 	msr	TCR_EL1,x2
