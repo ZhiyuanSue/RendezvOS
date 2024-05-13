@@ -34,11 +34,11 @@ _entry:
 	/*init mmu and some registers*/
 	bl	init_mmu
 	/*clear bss segment*/
-
+	bl	clear_bss
 	/*set boot stack pointer*/
 
 	/*call cmain*/
-	b _start
+	b Error
 
 
 	.global	drop_to_el1
@@ -225,6 +225,29 @@ init_mmu:
 	msr	SCTLR_EL1,x0
 	isb
 	ret
+
+	.global	clear_bss
+clear_bss:
+	adr	x0,#_bss_start
+	adr	x1,#_bss_end
+	mov	x2,#0
+	mov x3,x2
+	mov	x4,#0x10
+clear_bss_loop:
+	cmp	x1,x0
+	b.ls	finish_clear_bss_loop_1
+	stp	x2,x3,[x0]
+	add	x0,x0,x4
+	b	clear_bss_loop
+
+finish_clear_bss_loop_1:
+	cmp	x0,x1
+	b.eq	finish_clear_bss_loop_2
+	str	x2,[x0]
+finish_clear_bss_loop_2:
+	ret
+
+/*======data======*/	
 
 	.section .boot.data
 	.p2align	4	/*2^4=16*/
