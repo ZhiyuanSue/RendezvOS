@@ -1,8 +1,10 @@
 #define	kernel_virt_offset	0xffff800000000000
 #define	boot_stack_size	0x10000
-
+#define	align_2m	0x200000
+#define	align_2m_minus_1	0x1fffff
+#define	align_not_2m_minus_1	0xffffffffffe00000
 #include <arch/aarch64/sys_ctrl_def.h>
-
+#include <arch/aarch64/mm/page_table_def.h>
 /* some definations */
 
 	.section	.boot
@@ -62,6 +64,94 @@ EL1_setup:
 
 	.global prepare_page_table
 prepare_page_table:
+	/*calculate the address region*/
+	/*x1 record the (align-1), x2 record the ~(align-1)*/
+	mov	x1,#align_2m
+	sub	x1,x1,#1
+	mvn	x2,x1
+	/*round down start and store in x3*/
+	adr	x3,#_start
+	and	x3,x3,x2
+	/*round up start and store in x4*/
+	adr	x4,#_end
+	add	x4,x4,x1
+	and x4,x4,x2
+
+	adr	x5,#L0_table
+	adr	x6,#L1_table
+	adr	x7,#L2_table
+	/*we assume the start and end is in the same 1GB region,so check*/
+	mov x0,x3
+	lsr	x0,x0,#30
+	mov x1,x4
+	lsr	x1,x1,#30
+	cmp	x0,x1
+	b.ne	Error
+	/*======first identity mapping======*/
+	/*update L0_table and L1_table*/
+	/*======L0======*/
+	/*x0 store the entry num*/
+	mov	x0,x3
+	lsl	x0,x0,#16
+	lsr	x0,x0,#39
+	/*write in the L1_table addr*/
+	mov	x1,x6
+	and	x1,x1,#PT_DESC_TABLE_ADDR_MASK
+	/*TODO:set L1_table entry's attr(table)*/
+	orr	x1,x1,#PT_DESC_V
+	orr	x1,x1,#PT_DESC_BLOCK_OR_TABLE
+
+
+	/*write in L1_table entry to L0_table*/
+	lsl	x0,x0,#8
+	str	x1,[x5,x0]
+	/*======L1======*/
+	/*x0 store the entry num*/
+	mov	x0,x3
+	lsl	x0,x0,#25
+	lsr	x0,x0,#30
+	/*write in the L1_table addr*/
+	mov	x1,x7
+	and	x1,x1,#PT_DESC_TABLE_ADDR_MASK
+	/*TODO:set L2_table entry's attr(table)*/
+	orr	x1,x1,#PT_DESC_V
+	orr	x1,x1,#PT_DESC_BLOCK_OR_TABLE
+
+
+	/*write in L1_table entry to L0_table*/
+	lsl	x0,x0,#8
+	str	x1,[x6,x0]
+
+	/*======loop and add entries into the L2 block======*/
+	mov	x0,x3
+fill_in_entry_loop:
+	cmp	x0,x4
+	b.lt	#finish_fill_in_entry_loop
+
+	add x0,x0,#align_2m
+	b	fill_in_entry_loop
+
+finish_fill_in_entry_loop:
+
+	/*======second map to the real virtual addr=======*/
+	/*as kernel_virt_offset is 0xffff800000000000, so we just need to update L0_table*/
+	/*x0 store the entry num*/
+	mov	x0,x3
+	mov	x2,#kernel_virt_offset
+	add x0,x0,x2
+	lsl	x0,x0,#16
+	lsr	x0,x0,#39
+	/*write in the L1_table addr*/
+	mov	x1,x6
+	and	x1,x1,#PT_DESC_TABLE_ADDR_MASK
+	/*TODO:set L1_table entry's attr(table)*/
+	orr	x1,x1,#PT_DESC_V
+	orr	x1,x1,#PT_DESC_BLOCK_OR_TABLE
+
+
+	/*write in L1_table entry to L0_table*/
+	lsl	x0,x0,#8
+	str	x1,[x5,x0]
 	
 	ret
 
@@ -127,6 +217,9 @@ L1_table:
 	.zero 8*512
 L2_table:
 	.zero 8*512
+
+Error:
+	b	Error
 
 	.section .boot.log
 	.global log_buffer
