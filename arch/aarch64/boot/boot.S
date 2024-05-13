@@ -93,7 +93,7 @@ prepare_page_table:
 	/*x0 store the entry num*/
 	mov	x0,x3
 	lsl	x0,x0,#16
-	lsr	x0,x0,#39
+	lsr	x0,x0,#55
 	/*write in the L1_table addr*/
 	mov	x1,x6
 	and	x1,x1,#PT_DESC_TABLE_ADDR_MASK
@@ -103,13 +103,13 @@ prepare_page_table:
 
 
 	/*write in L1_table entry to L0_table*/
-	lsl	x0,x0,#8
+	lsl	x0,x0,#3
 	str	x1,[x5,x0]
 	/*======L1======*/
 	/*x0 store the entry num*/
 	mov	x0,x3
 	lsl	x0,x0,#25
-	lsr	x0,x0,#30
+	lsr	x0,x0,#55
 	/*write in the L1_table addr*/
 	mov	x1,x7
 	and	x1,x1,#PT_DESC_TABLE_ADDR_MASK
@@ -119,28 +119,29 @@ prepare_page_table:
 
 
 	/*write in L1_table entry to L0_table*/
-	lsl	x0,x0,#8
+	lsl	x0,x0,#3
 	str	x1,[x6,x0]
 
 	/*======loop and add entries into the L2 block======*/
 	mov	x0,x3
 fill_in_entry_loop:
-	cmp	x0,x4
-	b.lt	#finish_fill_in_entry_loop
+	cmp	x4,x0
+	b.ls	#finish_fill_in_entry_loop
 
 	/*store the addr of the x0*/
 	mov	x1,x0
-	/*x0 store the entry num*/
-	lsl	x0,x0,#34
-	lsr	x0,x0,#21
+	mov x2,x0
+	/*x2 store the entry num*/
+	lsl	x2,x2,#34
+	lsr	x2,x2,#55
 	/*write in the L1_table addr*/
 	and	x1,x1,#PT_DESC_TABLE_ADDR_MASK
 	/*TODO:set L2_table entry's attr(table)*/
 	orr	x1,x1,#PT_DESC_V
 
 	/*write in L1_table entry to L0_table*/
-	lsl	x0,x0,#8
-	str	x1,[x7,x0]
+	lsl	x2,x2,#3
+	str	x1,[x7,x2]
 
 	add x0,x0,#align_2m
 	b	fill_in_entry_loop
@@ -154,7 +155,7 @@ finish_fill_in_entry_loop:
 	mov	x2,#kernel_virt_offset
 	add x0,x0,x2
 	lsl	x0,x0,#16
-	lsr	x0,x0,#39
+	lsr	x0,x0,#55
 	/*write in the L1_table addr*/
 	mov	x1,x6
 	and	x1,x1,#PT_DESC_TABLE_ADDR_MASK
@@ -162,9 +163,8 @@ finish_fill_in_entry_loop:
 	orr	x1,x1,#PT_DESC_V
 	orr	x1,x1,#PT_DESC_BLOCK_OR_TABLE
 
-
 	/*write in L1_table entry to L0_table*/
-	lsl	x0,x0,#8
+	lsl	x0,x0,#3
 	str	x1,[x5,x0]
 	
 	ret

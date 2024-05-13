@@ -19,7 +19,7 @@
 #define	PT_DESC_TABLE_ATTR_NSTABLE	(1<<63)
 #define	PT_DESC_TABLE_ATTR_APTABLE_MASK	(0x3<<61)
 #define	PT_DESC_TABLE_ATTR_APTABLE_OFF	(61)
-#define	PT_DESC_TABLE_ATTR_XNTABLE	(1<<60)
+#define	PT_DESC_TABLE_ATTR_UXNTABLE	(1<<60)
 #define	PT_DESC_TABLE_ATTR_PXNTABLE	(1<<59)
 
 /*attribute field of block and page descriptor,which is divided into two part:lower and upper*/
