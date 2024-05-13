@@ -64,6 +64,16 @@ EL1_setup:
 
 	.global prepare_page_table
 prepare_page_table:
+	/*with the example of the qemu*/
+	/*0000 0000 0000 0000 0000 0000 0000 0000 0100 0000 0000 1000 0000 0000 0000 0000*/
+	/*0000 0000 0000 0000 unused*/
+	/*                    0000 0000 0 index of the level0*/
+	/*                               000 0000 01 index of the level1*/
+	/*                                          00 0000 000 index of the level2*/
+	/*1111 1111 1111 1111 1000 0000 0000 0000 0100 0000 0000 1000 0000 0000 0000 0000*/
+	/*1111 1111 1111 1111 unused*/
+	/*                    1000 0000 0 index of the level0*/
+	/*other levels are the same*/
 	/*calculate the address region*/
 	/*x1 record the (align-1), x2 record the ~(align-1)*/
 	mov	x1,#align_2m
@@ -97,9 +107,10 @@ prepare_page_table:
 	/*write in the L1_table addr*/
 	mov	x1,x6
 	and	x1,x1,#PT_DESC_TABLE_ADDR_MASK
-	/*TODO:set L1_table entry's attr(table)*/
+	/*set L1_table entry's attr(table)*/
 	orr	x1,x1,#PT_DESC_V
 	orr	x1,x1,#PT_DESC_BLOCK_OR_TABLE
+	orr	x1,x1,#PT_DESC_ATTR_LOWER_AF
 
 
 	/*write in L1_table entry to L0_table*/
@@ -113,9 +124,10 @@ prepare_page_table:
 	/*write in the L1_table addr*/
 	mov	x1,x7
 	and	x1,x1,#PT_DESC_TABLE_ADDR_MASK
-	/*TODO:set L2_table entry's attr(table)*/
+	/*set L2_table entry's attr(table)*/
 	orr	x1,x1,#PT_DESC_V
 	orr	x1,x1,#PT_DESC_BLOCK_OR_TABLE
+	orr	x1,x1,#PT_DESC_ATTR_LOWER_AF
 
 
 	/*write in L1_table entry to L0_table*/
@@ -136,8 +148,9 @@ fill_in_entry_loop:
 	lsr	x2,x2,#55
 	/*write in the L1_table addr*/
 	and	x1,x1,#PT_DESC_TABLE_ADDR_MASK
-	/*TODO:set L2_table entry's attr(table)*/
+	/*set L2_table entry's attr(table)*/
 	orr	x1,x1,#PT_DESC_V
+	orr	x1,x1,#PT_DESC_ATTR_LOWER_AF
 
 	/*write in L1_table entry to L0_table*/
 	lsl	x2,x2,#3
@@ -159,9 +172,10 @@ finish_fill_in_entry_loop:
 	/*write in the L1_table addr*/
 	mov	x1,x6
 	and	x1,x1,#PT_DESC_TABLE_ADDR_MASK
-	/*TODO:set L1_table entry's attr(table)*/
+	/*set L1_table entry's attr(table)*/
 	orr	x1,x1,#PT_DESC_V
 	orr	x1,x1,#PT_DESC_BLOCK_OR_TABLE
+	orr	x1,x1,#PT_DESC_ATTR_LOWER_AF
 
 	/*write in L1_table entry to L0_table*/
 	lsl	x0,x0,#3

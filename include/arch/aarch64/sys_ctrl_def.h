@@ -75,4 +75,6 @@
 
 #define	ID_AA64MMFR0_EL1_PARANGE_MASK	(0xf)
 
+/*MAIR*/
+#define	MAIR_EL1_
 #endif
