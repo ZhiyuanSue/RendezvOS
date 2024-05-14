@@ -36,9 +36,11 @@ _entry:
 	/*clear bss segment*/
 	bl	clear_bss
 	/*set boot stack pointer*/
-
+	bl	set_stack
 	/*call cmain*/
-	b Error
+	adr	x0,#setup_info
+	bl	cmain
+	b	Error
 
 
 	.global	drop_to_el1
@@ -252,6 +254,18 @@ finish_clear_bss_loop_1:
 	b.eq	finish_clear_bss_loop_2
 	str	x2,[x0]
 finish_clear_bss_loop_2:
+	ret
+
+	.global	set_stack
+set_stack:
+	/*select sp*/
+	mrs	x0,SPSel
+	orr	x0,x0,#SPSEL_SP_ELx
+	msr	SPSel,x0
+	/*set sp*/
+	adr	x0,#boot_stack
+	add	x0,x0,#boot_stack_size
+	mov	x0,sp
 	ret
 
 /*======data======*/	
