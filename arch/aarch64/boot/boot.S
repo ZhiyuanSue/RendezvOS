@@ -224,6 +224,13 @@ init_mmu:
 	orr	x0,x0,#SCTLR_EL1_I
 	msr	SCTLR_EL1,x0
 	isb
+
+	adr	x0,#jmp_to_upper_addr
+	mov	x1,#kernel_virt_offset
+	add	x0,x0,x1
+	add	lr,lr,x1
+	br	x0
+jmp_to_upper_addr:	
 	ret
 
 	.global	clear_bss
@@ -278,4 +285,4 @@ log_buffer:
 	.zero 0x10000
 stack_field:
 	.p2align 12	/*2^12=4096*/
-	.zero boot_stack_size
+	.comm boot_stack,boot_stack_size
