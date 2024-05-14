@@ -55,6 +55,7 @@
 		{
 			"use":true ,
 			"features":[
+				"UART_PL011"
 			],
 			"depend_module":[
 			],

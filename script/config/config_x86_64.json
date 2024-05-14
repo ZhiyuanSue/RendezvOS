@@ -55,6 +55,7 @@
 		{
 			"use":true ,
 			"features":[
+				"UART_16550A"
 			],
 			"depend_module":[
 			],
