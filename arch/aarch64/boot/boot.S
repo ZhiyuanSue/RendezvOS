@@ -87,7 +87,7 @@ prepare_page_table:
 	/*round down start and store in x3*/
 	adr	x3,#_start
 	and	x3,x3,x2
-	/*round up start and store in x4*/
+	/*round up end and store in x4*/
 	adr	x4,#_end
 	add	x4,x4,x1
 	and x4,x4,x2
@@ -165,7 +165,7 @@ fill_in_entry_loop:
 	b	fill_in_entry_loop
 
 finish_fill_in_entry_loop:
-	/*map some necessary range,like the pl011 uart,and now the x0 is the end of the kernel(round up)*/
+	/*======map some necessary range,like the pl011 uart,and now the x0 is the end of the kernel(round up)======*/
 	/*map the 2m range*/
 	adr	x1,#L3_table
 	mov x2,x0
