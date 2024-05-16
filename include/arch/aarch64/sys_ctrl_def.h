@@ -80,5 +80,14 @@
 
 /*SPSel*/
 #define	SPSEL_SP_ELx	(1)
-/*SP*/
+
+/*CPACR_EL1*/
+#define	CPACR_EL1_TTA	(1<<28)
+#define	CPACR_EL1_FPEN_TRAP_EL0	(1<<20)
+#define	CPACR_EL1_FPEN_TRAP_EL0_EL1	(1<<21)	/*the same with 0b00*/
+#define	CPACR_EL1_FPEN_NONE	(0x3<<20)
+
+#define	CPACR_EL1_ZEN_TRAP_EL0	(1<<16)
+#define	CPACR_EL1_ZEN_TRAP_EL0_EL1	(1<<17)	/*the same with 0b00*/
+#define	CPACR_EL1_ZEN_TRAP_NONE	(0x3<<16)	
 #endif

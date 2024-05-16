@@ -34,6 +34,8 @@ _entry:
 	bl	prepare_page_table
 	/*init mmu and some registers*/
 	bl	init_mmu
+	/*enable fp*/
+	bl	enable_fp
 	/*clear bss segment*/
 	bl	clear_bss
 	/*set boot stack pointer*/
@@ -258,6 +260,13 @@ init_mmu:
 	add	lr,lr,x1
 	br	x0
 jmp_to_upper_addr:	
+	ret
+
+	.global	enable_fp
+enable_fp:
+	mrs	x0,CPACR_EL1
+	orr	x0,x0,#CPACR_EL1_FPEN_NONE
+	msr	CPACR_EL1,x0
 	ret
 
 	.global	clear_bss
