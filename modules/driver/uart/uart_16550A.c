@@ -1,3 +1,4 @@
+#ifdef	_UART_16550A_
 /*
  * The Qemu virt device use 16550A, so we have to build an uart driver of 16550A
  * You can also visit http://byterunner.com/16550.html
@@ -49,5 +50,7 @@ u_int8_t uart_16550A_getc()
 }
 void uart_16550A_close()
 {
-	
+
 }
+
+#endif

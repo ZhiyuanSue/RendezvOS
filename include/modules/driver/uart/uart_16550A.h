@@ -64,14 +64,6 @@ void uart_16550A_close();
 	#define uart_read_reg(reg_name) \
 		(((UART_16550A*)_VIRT_BASE_COM0_)->reg_name)
 
-#elif defined _AARCH64_
-	#define _VIRT_BASE_COM0_ 0x9000000UL
-	#define uart_write_reg(reg_name,data)	\
-		((((UART_16550A*)_VIRT_BASE_COM0_)->reg_name=data))
-	#define uart_read_reg(reg_name) \
-		(((UART_16550A*)_VIRT_BASE_COM0_)->reg_name)
-
-
 #endif
 
 #endif

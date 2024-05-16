@@ -5,6 +5,7 @@
 #define	align_not_2m_minus_1	0xffffffffffe00000
 #include <arch/aarch64/sys_ctrl_def.h>
 #include <arch/aarch64/mm/page_table_def.h>
+#include <common/platform/aarch64_qemu_virt.h>
 /* some definations */
 
 	.section	.boot
@@ -40,7 +41,7 @@ _entry:
 	/*call cmain*/
 	adr	x0,#setup_info
 	bl	cmain
-	b	Error
+	b	boot_Error
 
 
 	.global	drop_to_el1
@@ -98,7 +99,7 @@ prepare_page_table:
 	mov x1,x4
 	lsr	x1,x1,#30
 	cmp	x0,x1
-	b.ne	Error
+	b.ne	boot_Error
 	/*======first identity mapping======*/
 	/*update L0_table and L1_table*/
 	/*======L0======*/
@@ -162,7 +163,31 @@ fill_in_entry_loop:
 	b	fill_in_entry_loop
 
 finish_fill_in_entry_loop:
+	/*map some necessary range,like the pl011 uart,and now the x0 is the end of the kernel(round up)*/
+	/*map the 2m range*/
+	adr	x1,#L3_table
+	mov x2,x0
+	lsl	x2,x2,#34
+	lsr	x2,x2,#55
+	and	x1,x1,#PT_DESC_TABLE_ADDR_MASK
+	orr	x1,x1,#PT_DESC_V
+	orr	x1,x1,#PT_DESC_BLOCK_OR_TABLE
+	orr	x1,x1,#PT_DESC_ATTR_LOWER_AF
+	lsl	x2,x2,#3
+	str	x1,[x7,x2]
+	/*map the 4k range*/
+	mov	x1,#QEMU_VIRT_PL011_BASE_ADDR
+	mov x2,x0
+	adr	x0,#L3_table
+	lsl	x2,x2,#43
+	lsr	x2,x2,#55
+	and	x1,x1,#PT_DESC_TABLE_ADDR_MASK
+	orr	x1,x1,#PT_DESC_V
+	orr	x1,x1,#PT_DESC_PAGE
+	orr	x1,x1,#PT_DESC_ATTR_LOWER_AF
 
+	lsl	x2,x2,#3
+	str	x1,[x0,x2]
 	/*======second map to the real virtual addr=======*/
 	/*as kernel_virt_offset is 0xffff800000000000, so we just need to update L0_table*/
 	/*x0 store the entry num*/
@@ -289,9 +314,11 @@ L1_table:
 	.zero 8*512
 L2_table:
 	.zero 8*512
+L3_table:
+	.zero 8*512
 
-Error:
-	b	Error
+boot_Error:
+	b	boot_Error
 
 	.section .boot.log
 	.global log_buffer

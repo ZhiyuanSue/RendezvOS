@@ -1,10 +1,10 @@
 #include	<modules/driver/driver.h>
 
-void uart_open(){
+void uart_open(void* base_addr){
 #ifdef _UART_16550A_
 	uart_16550A_open();
 #elif defined	_UART_PL011_
-	uart_pl011_open();
+	uart_pl011_open(base_addr);
 #endif
 }
 

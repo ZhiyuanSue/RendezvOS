@@ -4,12 +4,15 @@
 
 extern	int log_level;
 extern	char _bss_start,_bss_end;
+extern	char _end;
 extern	struct	pmm	buddy_pmm;
 
 void cmain(struct setup_info* arch_setup_info){
 	if(arch_setup_info==NULL)
 		return;
-	uart_open();
+	uart_open(&_end);
+	printk("s",0);
+	printk("\n",0);
 	log_init((void*)(arch_setup_info->log_buffer_addr),log_level,&uart_putc);
 #ifdef HELLO
 	hello_world();
