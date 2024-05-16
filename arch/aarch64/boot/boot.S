@@ -265,7 +265,7 @@ set_stack:
 	/*set sp*/
 	adr	x0,#boot_stack
 	add	x0,x0,#boot_stack_size
-	mov	x0,sp
+	mov	sp,x0
 	ret
 
 /*======data======*/	
