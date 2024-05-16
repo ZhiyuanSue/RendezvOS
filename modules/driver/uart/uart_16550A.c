@@ -47,3 +47,7 @@ u_int8_t uart_16550A_getc()
 {
 	return 0;
 }
+void uart_16550A_close()
+{
+	
+}
