@@ -6,14 +6,13 @@
 /*descriptor level 0,1,2*/
 #define	PT_DESC_BLOCK_OR_TABLE	(1<<1)
 /*table*/
-#define	PT_DESC_TABLE_ADDR_MASK	(0xfffffffff000)
+#define	PT_DESC_ADDR_MASK	(0xfffffffff000)
 /*block,no L0 block*/
 #define	PT_DESC_L1_BLOCK_ADDR_MASK	(0xffffc0000000)
 #define	PT_DESC_L2_BLOCK_ADDR_MASK	(0xffffffe00000)
 
 /*descriptor level 3*/
 #define	PT_DESC_PAGE	(1<<1)
-#define	PT_DESC_PAGE_ADDR_MASK	(0xfffffffff000)
 
 /*attribute field of table descriptor*/
 #define	PT_DESC_TABLE_ATTR_NSTABLE	(1<<63)
