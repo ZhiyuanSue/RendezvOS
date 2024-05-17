@@ -3,8 +3,9 @@
 #include <modules/log/log.h>
 #include <arch/x86_64/boot/arch_setup.h>
 #include <arch/x86_64/power_ctrl.h>
+#include <arch/x86_64/mm/vmm.h>
 extern char _start,_end;	/*the kernel end virt addr*/
-extern pt_entry boot_page_table_PML4,boot_page_table_directory_ptr,boot_page_table_directory;
+extern u64 boot_page_table_PML4,boot_page_table_directory_ptr,boot_page_table_directory;
 extern struct pmm buddy_pmm;
 
 static	u64	entry_per_bucket[BUDDY_MAXORDER+1], pages_per_bucket[BUDDY_MAXORDER+1];
@@ -30,11 +31,13 @@ static	void	try_map_buddy_data_space(u32 m_width)
 	for(; buddy_phy_start_addr < buddy_phy_end ; buddy_phy_start_addr += MIDDLE_PAGE_SIZE)
 	{
 		/*As pmm and vmm part is not usable now, we still use boot page table*/
-		pt_entry*	entry	=	&boot_page_table_directory;
 		u64	buddy_start_round_down_2m	=	ROUND_DOWN(buddy_phy_start_addr,MIDDLE_PAGE_SIZE);
-		u32 index	=	PDT(KERNEL_PHY_TO_VIRT(buddy_start_round_down_2m));
-		entry[index]	=	PDE_ADDR_2M(buddy_start_round_down_2m,m_width) | PDE_P | PDE_RW | PDE_G | PDE_PS;
-		pr_info("buddy map 2m pages 0x%x index 0x%x entry 0x%x\n",buddy_start_round_down_2m,index,entry[index]);
+		arch_set_L2_entry_huge(
+			buddy_start_round_down_2m,
+			KERNEL_PHY_TO_VIRT(buddy_start_round_down_2m),
+			&boot_page_table_directory,
+			(PDE_P | PDE_RW | PDE_G | PDE_PS)
+		);
 	}
 }
 void arch_init_pmm(struct setup_info* arch_setup_info)

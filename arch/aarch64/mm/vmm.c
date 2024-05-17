@@ -8,7 +8,15 @@ void	inline	arch_set_L1_entry(u64 ppn,u64 vpn,u64* pt_addr,u64 flags)
 {
 	pt_addr[(vpn<<25)>>55]=(ppn&PT_DESC_ADDR_MASK) | flags;
 }
+void	inline	arch_set_L1_entry_huge(u64 ppn,u64 vpn,u64* pt_addr,u64 flags)
+{
+	pt_addr[(vpn<<25)>>55]=(ppn&PT_DESC_ADDR_MASK) | flags;
+}
 void	inline	arch_set_L2_entry(u64 ppn,u64 vpn,u64* pt_addr,u64 flags)
+{
+	pt_addr[(vpn<<34)>>55]=(ppn&PT_DESC_ADDR_MASK) | flags;
+}
+void	inline	arch_set_L2_entry_huge(u64 ppn,u64 vpn,u64* pt_addr,u64 flags)
 {
 	pt_addr[(vpn<<34)>>55]=(ppn&PT_DESC_ADDR_MASK) | flags;
 }

@@ -1,5 +1,9 @@
 #ifndef _SHAMPOOS_ARCH_PAGE_TABLE_DEF_H_
 #define _SHAMPOOS_ARCH_PAGE_TABLE_DEF_H_
+
+/*mask of MAXPHYADDR*/
+#define	MAXPHYADDR_mask(m)	(((1ULL)<<m)-1)
+
 /*some bit of PML4E*/
 #define	PML4E_P	(1<<0)
 #define	PML4E_RW	(1<<1)

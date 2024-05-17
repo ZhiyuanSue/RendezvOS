@@ -2,15 +2,12 @@
 #define _SHAMPOOS_ARCH_PAGE_TABLE_H_
 #include <common/types.h>
 #include "page_table_def.h"
-typedef u64 pt_entry;
 #define	mask_9_bit	0x1ff
 #define	PML4(addr)	((addr>>39) & mask_9_bit)
 #define PDPT(addr)	((addr>>30) & mask_9_bit)
 #define PDT(addr)	((addr>>21) & mask_9_bit)
 #define	PT(addr)	((addr>>12) & mask_9_bit)
 
-/*mask of MAXPHYADDR*/
-#define	MAXPHYADDR_mask(m)	((((u64)1)<<m)-1)
 
 /*some bit of cr3*/
 #define	CR3_PWT	(1<<3)

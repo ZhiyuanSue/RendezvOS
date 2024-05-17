@@ -5,6 +5,7 @@
 #include <arch/x86_64/trap.h>
 #include <shampoos/error.h>
 #include <modules/log/log.h>
+extern	u32	max_phy_addr_width;
 static void enable_cache()
 {
 }
@@ -59,6 +60,7 @@ int start_arch (struct setup_info* arch_setup_info)
 		return -EPERM;
 	}
 	pr_info("finish check the magic:%x\n",mtb_magic);
+	max_phy_addr_width=arch_setup_info->phy_addr_width;
 	if(!(mtb_info->flags & MULTIBOOT_INFO_FLAG_CMD)){
 		pr_info("cmdline:%s\n",(char*)(mtb_info->cmdline+KERNEL_VIRT_OFFSET));
 	}
