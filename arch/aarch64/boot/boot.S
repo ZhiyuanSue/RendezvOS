@@ -168,27 +168,9 @@ finish_fill_in_entry_loop:
 	orr	x3,x3,#PT_DESC_ATTR_LOWER_AF
 	bl	arch_set_L3_entry
 
-	/*map the 4k range of the first page of dtb*/
-
 	adr	x1,#setup_info
-	ldr	x4,[x1,0x28]
 	add	x4,x4,#align_4k
 	str	x4,[x1,0x28]
-	str	x4,[x1,0x38]
-
-	ldr	x0,[x1]
-	mov	x1,x4
-	adr	x2,#L3_table
-	mov	x3,#PT_DESC_V
-	orr	x3,x3,#PT_DESC_PAGE
-	orr	x3,x3,#PT_DESC_ATTR_LOWER_AF
-	bl	arch_set_L3_entry
-
-	adr	x1,#setup_info
-	ldr	x4,[x1,0x28]
-	add	x4,x4,#align_4k
-	str	x4,[x1,0x28]
-	
 	/*======second map to the real virtual addr=======*/
 	/*as kernel_virt_offset is 0xffff800000000000, so we just need to update L0_table*/
 
@@ -312,12 +294,16 @@ setup_info:
 	.section .boot.page
 	.p2align	12	/*2^12=4K*/
 	/*we just use 48bit page and the 4K*/
+	.global	L0_table
 L0_table:
 	.zero 8*512
+	.global	L1_table
 L1_table:
 	.zero 8*512
+	.global	L2_table
 L2_table:
 	.zero 8*512
+	.global	L3_table
 L3_table:
 	.zero 8*512
 
