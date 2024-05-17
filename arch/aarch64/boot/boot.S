@@ -110,15 +110,16 @@ prepare_page_table:
 	adr	x0,#L1_table
 	and	x0,x0,#PT_DESC_TABLE_ADDR_MASK
 	/*set L1_table entry's attr(table)*/
-	orr	x0,x0,#PT_DESC_V
-	orr	x0,x0,#PT_DESC_BLOCK_OR_TABLE
-	orr	x0,x0,#PT_DESC_ATTR_LOWER_AF
+	mov	x3,#PT_DESC_V
+	orr	x3,x3,#PT_DESC_BLOCK_OR_TABLE
+	orr	x3,x3,#PT_DESC_ATTR_LOWER_AF
+	orr	x0,x0,x3
 
 
 	/*write in L1_table entry to L0_table*/
-	adr	x3,#L0_table
+	adr	x2,#L0_table
 	lsl	x1,x1,#3
-	str	x0,[x3,x1]
+	str	x0,[x2,x1]
 	/*======L1======*/
 	/*x0 store the entry num*/
 	mov	x1,x6
@@ -128,38 +129,38 @@ prepare_page_table:
 	adr	x0,#L2_table
 	and	x0,x0,#PT_DESC_TABLE_ADDR_MASK
 	/*set L2_table entry's attr(table)*/
-	orr	x0,x0,#PT_DESC_V
-	orr	x0,x0,#PT_DESC_BLOCK_OR_TABLE
-	orr	x0,x0,#PT_DESC_ATTR_LOWER_AF
+	mov	x3,#PT_DESC_V
+	orr	x3,x3,#PT_DESC_BLOCK_OR_TABLE
+	orr	x3,x3,#PT_DESC_ATTR_LOWER_AF
+	orr	x0,x0,x3
 
 
 	/*write in L1_table entry to L0_table*/
-	adr	x3,#L1_table
+	adr	x2,#L1_table
 	lsl	x1,x1,#3
-	str	x0,[x3,x1]
+	str	x0,[x2,x1]
 
 	/*======loop and add entries into the L2 block======*/
 	mov	x4,x6
 fill_in_entry_loop:
 	cmp	x7,x4
 	b.ls	#finish_fill_in_entry_loop
-
-	/*store the addr of the x0*/
-	mov	x1,x4
-	mov x2,x4
-	/*x2 store the entry num*/
-	lsl	x2,x2,#34
-	lsr	x2,x2,#55
+	/*x1 store the entry num*/
+	mov x1,x4
+	lsl	x1,x1,#34
+	lsr	x1,x1,#55
 	/*write in the L1_table addr*/
-	and	x1,x1,#PT_DESC_TABLE_ADDR_MASK
+	mov	x0,x4
+	and	x0,x0,#PT_DESC_TABLE_ADDR_MASK
 	/*set L2_table entry's attr(table)*/
-	orr	x1,x1,#PT_DESC_V
-	orr	x1,x1,#PT_DESC_ATTR_LOWER_AF
+	mov	x3,#PT_DESC_V
+	orr	x3,x3,#PT_DESC_ATTR_LOWER_AF
+	orr	x0,x0,x3
 
 	/*write in L1_table entry to L0_table*/
-	adr	x3,#L2_table
-	lsl	x2,x2,#3
-	str	x1,[x3,x2]
+	adr	x2,#L2_table
+	lsl	x1,x1,#3
+	str	x0,[x2,x1]
 
 	add x4,x4,#align_2m
 	b	fill_in_entry_loop
@@ -171,30 +172,32 @@ finish_fill_in_entry_loop:
 	str	x4,[x1,0x28]
 	/*======map some necessary range,like the pl011 uart,and now the x4 is the end of the kernel(round up)======*/
 	/*map the 2m range*/
-	adr	x1,#L3_table
-	mov x2,x4
-	lsl	x2,x2,#34
-	lsr	x2,x2,#55
-	and	x1,x1,#PT_DESC_TABLE_ADDR_MASK
-	orr	x1,x1,#PT_DESC_V
-	orr	x1,x1,#PT_DESC_BLOCK_OR_TABLE
-	orr	x1,x1,#PT_DESC_ATTR_LOWER_AF
-	adr	x3,#L2_table
-	lsl	x2,x2,#3
-	str	x1,[x3,x2]
-	/*map the 4k range of the pl011*/
-	mov	x1,#QEMU_VIRT_PL011_BASE_ADDR
-	mov x2,x4
+	mov x1,x4
+	lsl	x1,x1,#34
+	lsr	x1,x1,#55
 	adr	x0,#L3_table
-	lsl	x2,x2,#43
-	lsr	x2,x2,#55
-	and	x1,x1,#PT_DESC_TABLE_ADDR_MASK
-	orr	x1,x1,#PT_DESC_V
-	orr	x1,x1,#PT_DESC_PAGE
-	orr	x1,x1,#PT_DESC_ATTR_LOWER_AF
+	and	x0,x0,#PT_DESC_TABLE_ADDR_MASK
+	mov	x3,#PT_DESC_V
+	orr	x3,x3,#PT_DESC_BLOCK_OR_TABLE
+	orr	x3,x3,#PT_DESC_ATTR_LOWER_AF
+	orr	x0,x0,x3
+	adr	x2,#L2_table
+	lsl	x1,x1,#3
+	str	x0,[x2,x1]
+	/*map the 4k range of the pl011*/
+	mov x1,x4
+	lsl	x1,x1,#43
+	lsr	x1,x1,#55
+	mov	x0,#QEMU_VIRT_PL011_BASE_ADDR
+	and	x0,x0,#PT_DESC_TABLE_ADDR_MASK
+	mov	x3,#PT_DESC_V
+	orr	x3,x3,#PT_DESC_PAGE
+	orr	x3,x3,#PT_DESC_ATTR_LOWER_AF
+	orr	x0,x0,x3
 
-	lsl	x2,x2,#3
-	str	x1,[x0,x2]
+	adr	x2,#L3_table
+	lsl	x1,x1,#3
+	str	x0,[x2,x1]
 	/*map the 4k range of the first page of dtb*/
 
 	adr	x1,#setup_info
@@ -204,23 +207,24 @@ finish_fill_in_entry_loop:
 	/*======second map to the real virtual addr=======*/
 	/*as kernel_virt_offset is 0xffff800000000000, so we just need to update L0_table*/
 	/*x0 store the entry num*/
-	mov	x0,x6
+	mov	x1,x6
 	mov	x2,#kernel_virt_offset
-	add x0,x0,x2
-	lsl	x0,x0,#16
-	lsr	x0,x0,#55
+	add x1,x1,x2
+	lsl	x1,x1,#16
+	lsr	x1,x1,#55
 	/*write in the L1_table addr*/
-	adr	x1,#L1_table
-	and	x1,x1,#PT_DESC_TABLE_ADDR_MASK
+	adr	x0,#L1_table
+	and	x0,x0,#PT_DESC_TABLE_ADDR_MASK
 	/*set L1_table entry's attr(table)*/
-	orr	x1,x1,#PT_DESC_V
-	orr	x1,x1,#PT_DESC_BLOCK_OR_TABLE
-	orr	x1,x1,#PT_DESC_ATTR_LOWER_AF
+	mov x3,#PT_DESC_V
+	orr	x3,x3,#PT_DESC_BLOCK_OR_TABLE
+	orr	x3,x3,#PT_DESC_ATTR_LOWER_AF
+	orr	x0,x0,x3
 
 	/*write in L1_table entry to L0_table*/
-	adr	x3,#L0_table
-	lsl	x0,x0,#3
-	str	x1,[x3,x0]
+	adr	x2,#L0_table
+	lsl	x1,x1,#3
+	str	x0,[x2,x1]
 	
 	ret
 
