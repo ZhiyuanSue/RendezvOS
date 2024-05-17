@@ -33,7 +33,10 @@ int	start_arch (struct setup_info* arch_setup_info)
 	pr_info("map end addr is 0x%x\n",arch_setup_info->map_end_virt_addr);
 	pr_info("uart addr is 0x%x\n",arch_setup_info->boot_uart_base_addr);
 	struct fdt_header* dtb_header_ptr = (struct fdt_header*)arch_setup_info->boot_dtb_header_base_addr;
+	/*Hint:dtb header is big-endian*/
 	pr_info("dtb length is 0x%x\n",dtb_header_ptr->totalsize);
+	pr_info("dtb magic is 0x%x\n",dtb_header_ptr->magic);
+	pr_info("dtb reserved memory 0x%x\n",dtb_header_ptr->off_mem_rsvmap);
 	
 	return 0;
 }
