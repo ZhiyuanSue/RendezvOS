@@ -1,5 +1,6 @@
 #define	kernel_virt_offset	0xffff800000000000
 #define	boot_stack_size	0x10000
+#define	align_4k	0x1000
 #define	align_2m	0x200000
 #define	align_2m_minus_1	0x1fffff
 #define	align_not_2m_minus_1	0xffffffffffe00000
@@ -165,6 +166,10 @@ fill_in_entry_loop:
 	b	fill_in_entry_loop
 
 finish_fill_in_entry_loop:
+	adr	x1,#setup_info
+	mov	x2,#kernel_virt_offset
+	add	x0,x0,x2
+	str	x0,[x1,0x28]
 	/*======map some necessary range,like the pl011 uart,and now the x0 is the end of the kernel(round up)======*/
 	/*map the 2m range*/
 	adr	x1,#L3_table
@@ -177,7 +182,7 @@ finish_fill_in_entry_loop:
 	orr	x1,x1,#PT_DESC_ATTR_LOWER_AF
 	lsl	x2,x2,#3
 	str	x1,[x7,x2]
-	/*map the 4k range*/
+	/*map the 4k range of the pl011*/
 	mov	x1,#QEMU_VIRT_PL011_BASE_ADDR
 	mov x2,x0
 	adr	x0,#L3_table
@@ -190,6 +195,12 @@ finish_fill_in_entry_loop:
 
 	lsl	x2,x2,#3
 	str	x1,[x0,x2]
+	/*map the 4k range of the first page of dtb*/
+
+	adr	x1,#setup_info
+	ldr	x0,[x1,0x28]
+	add	x0,x0,#align_4k
+	str	x0,[x1,0x28]
 	/*======second map to the real virtual addr=======*/
 	/*as kernel_virt_offset is 0xffff800000000000, so we just need to update L0_table*/
 	/*x0 store the entry num*/
@@ -313,6 +324,7 @@ setup_info:
 	.quad	0	/*x2,reserved*/
 	.quad	0	/*x3,reserved*/
 	.quad	log_buffer
+	.quad	0	/*the map address end*/
 
 	.section .boot.page
 	.p2align	12	/*2^12=4K*/

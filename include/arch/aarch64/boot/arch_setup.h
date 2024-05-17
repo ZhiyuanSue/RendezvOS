@@ -22,6 +22,7 @@ struct setup_info{
 	u64 res_x2;
 	u64 res_x3;
 	u64 log_buffer_addr;
+	u64	map_end_phy_addr;
 } __attribute__((packed));
 
 int	start_arch (struct setup_info* arch_setup_info);

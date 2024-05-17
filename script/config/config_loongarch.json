@@ -63,14 +63,18 @@
 			"features":[
 
 			],
-			"depend_module":[],
+			"depend_module":[
+				"log"
+			],
 			"path":"modules/acpi"
 		},
 		"dtb":
 		{
 			"use":true,
 			"features":[],
-			"depend_module":[],
+			"depend_module":[
+				"log"
+			],
 			"path":"modules/dtb"
 		}
 	}

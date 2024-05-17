@@ -67,7 +67,9 @@
 			"features":[
 				"ACPI"
 			],
-			"depend_module":[],
+			"depend_module":[
+				"log"
+			],
 			"path":"modules/acpi"
 		},
 		"dtb":
@@ -76,7 +78,9 @@
 			"features":[
 				"DTB"
 			],
-			"depend_module":[],
+			"depend_module":[
+				"log"
+			],
 			"path":"modules/dtb"
 		}
 	}
