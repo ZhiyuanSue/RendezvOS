@@ -10,6 +10,7 @@ extern	struct	pmm	buddy_pmm;
 void cmain(struct setup_info* arch_setup_info){
 	if(arch_setup_info==NULL)
 		return;
+	/*for mmio way, we map the uart after the rount up pos of end,for x86,use io port*/
 	uart_open((void*)ROUND_UP((u64)(&_end),MIDDLE_PAGE_SIZE));
 	log_init((void*)(arch_setup_info->log_buffer_addr),log_level,&uart_putc);
 #ifdef HELLO

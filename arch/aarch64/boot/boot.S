@@ -146,6 +146,7 @@ finish_fill_in_entry_loop:
 	mov	x2,#kernel_virt_offset
 	add	x4,x4,x2
 	str	x4,[x1,0x28]
+	str	x4,[x1,0x30]
 	/*======map some necessary range,like the pl011 uart,and now the x4 is the end of the kernel(round up)======*/
 	/*map the 2m range*/
 
@@ -170,9 +171,24 @@ finish_fill_in_entry_loop:
 	/*map the 4k range of the first page of dtb*/
 
 	adr	x1,#setup_info
-	ldr	x0,[x1,0x28]
-	add	x0,x0,#align_4k
-	str	x0,[x1,0x28]
+	ldr	x4,[x1,0x28]
+	add	x4,x4,#align_4k
+	str	x4,[x1,0x28]
+	str	x4,[x1,0x38]
+
+	ldr	x0,[x1]
+	mov	x1,x4
+	adr	x2,#L3_table
+	mov	x3,#PT_DESC_V
+	orr	x3,x3,#PT_DESC_PAGE
+	orr	x3,x3,#PT_DESC_ATTR_LOWER_AF
+	bl	arch_set_L3_entry
+
+	adr	x1,#setup_info
+	ldr	x4,[x1,0x28]
+	add	x4,x4,#align_4k
+	str	x4,[x1,0x28]
+	
 	/*======second map to the real virtual addr=======*/
 	/*as kernel_virt_offset is 0xffff800000000000, so we just need to update L0_table*/
 

@@ -3,5 +3,4 @@
 #include	"fdt.h"
 
 
-
 #endif
