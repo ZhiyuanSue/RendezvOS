@@ -5,6 +5,7 @@
 #include <modules/log/log.h>
 #include <modules/dtb/dtb.h>
 #include <common/mm.h>
+#include <common/endianness.h>
 extern	u64	L2_table;
 static void map_dtb(struct setup_info* arch_setup_info)
 {
@@ -34,9 +35,9 @@ int	start_arch (struct setup_info* arch_setup_info)
 	pr_info("uart addr is 0x%x\n",arch_setup_info->boot_uart_base_addr);
 	struct fdt_header* dtb_header_ptr = (struct fdt_header*)arch_setup_info->boot_dtb_header_base_addr;
 	/*Hint:dtb header is big-endian*/
-	pr_info("dtb length is 0x%x\n",dtb_header_ptr->totalsize);
-	pr_info("dtb magic is 0x%x\n",dtb_header_ptr->magic);
-	pr_info("dtb reserved memory 0x%x\n",dtb_header_ptr->off_mem_rsvmap);
+	pr_info("dtb length is 0x%x\n",SWAP_ENDIANNESS_32(dtb_header_ptr->totalsize));
+	pr_info("dtb magic is 0x%x\n",SWAP_ENDIANNESS_32(dtb_header_ptr->magic));
+	pr_info("dtb reserved memory 0x%x\n",SWAP_ENDIANNESS_32(dtb_header_ptr->off_mem_rsvmap));
 	
 	return 0;
 }
