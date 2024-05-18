@@ -13,12 +13,12 @@
 /*code under 32bit*/
 	.section .boot
 	.global _start
-	.align 4
+	.p2align 2
 .code32
 _start:
 	jmp multiboot_entry
 	/* Align 32 bits boundary. */
-	.align  4
+	.p2align  2
 multiboot_header:
 	.long	multiboot_header_magic	/*magic*/
 	.long	multiboot_header_flag_addr | multiboot_header_flag_vbe	/*flags,only memory info and load address infos*/
@@ -160,7 +160,7 @@ ap_entry:
 
 /* some infomation under 32 bit*/	
 	.section .boot.data
-	.align 4
+	.p2align 2
 	.global setup_info
 setup_info:
 	.long 0	/* multiboot magic */
@@ -173,7 +173,7 @@ multiboot_error_magic:
 multiboot_hello:
 	.asciz "HELLO SHAMPOOS"
 	
-	.align 8
+	.p2align 3
 tmp_gdt:
 	.quad 0x0	# 0x00: null
 	.quad ((1<<(32+12)) | (1<<(32+21)) | (1<<(32+15)) | (1<<(32+11)) | (1<<(32+10)) | (1<<(32+9)))	
@@ -194,7 +194,7 @@ tmp_gdt_desc:
 
 /**/
 	.section .boot.page
-	.align 0x1000
+	.p2align 12
 boot_page_table_PML4:
 	/*
 		PML4_entry reference a pdpt 
@@ -274,11 +274,11 @@ boot_page_table_directory:
 		and we don't think the kernel might need more then 1GB space on shampoos
 	*/
 	.section .boot.log
-	.align 0x1000
+	.p2align 12
 	.global log_buffer
 log_buffer:
 	.zero 0x10000
 	/*stack*/
 stack_field:
-	.align 0x1000
+	.p2align 12
 	.comm boot_stack,boot_stack_size
