@@ -101,7 +101,7 @@ const void *fdt_offset_ptr(const void *fdt, int offset, unsigned int len)
 
 uint32_t fdt_next_tag(const void *fdt, int startoffset, int *nextoffset)
 {
-	const fdt32_t *tagp, *lenp;
+	const uint32_t *tagp, *lenp;
 	uint32_t tag;
 	int offset = startoffset;
 	const char *p;
@@ -110,7 +110,7 @@ uint32_t fdt_next_tag(const void *fdt, int startoffset, int *nextoffset)
 	tagp = fdt_offset_ptr(fdt, offset, FDT_TAGSIZE);
 	if (!tagp)
 		return FDT_END; /* premature end */
-	tag = fdt32_to_cpu(*tagp);
+	tag = SWAP_ENDIANNESS_32(*tagp);
 	offset += FDT_TAGSIZE;
 
 	*nextoffset = -FDT_ERR_BADSTRUCTURE;
@@ -120,20 +120,19 @@ uint32_t fdt_next_tag(const void *fdt, int startoffset, int *nextoffset)
 		do {
 			p = fdt_offset_ptr(fdt, offset++, 1);
 		} while (p && (*p != '\0'));
-		if (fdt_chk_basic() && !p)
+		if (!p)
 			return FDT_END; /* premature end */
 		break;
 
 	case FDT_PROP:
 		lenp = fdt_offset_ptr(fdt, offset, sizeof(*lenp));
-		if (fdt_chk_basic() && !lenp)
+		if (!lenp)
 			return FDT_END; /* premature end */
 		/* skip-name offset, length and value */
 		offset += sizeof(struct fdt_property) - FDT_TAGSIZE
-			+ fdt32_to_cpu(*lenp);
-		if (fdt_chk_version() &&
-		    fdt_version(fdt) < 0x10 && fdt32_to_cpu(*lenp) >= 8 &&
-		    ((offset - fdt32_to_cpu(*lenp)) % 8) != 0)
+			+ SWAP_ENDIANNESS_32(*lenp);
+		if (fdt_version(fdt) < 0x10 && SWAP_ENDIANNESS_32(*lenp) >= 8 &&
+		    ((offset - SWAP_ENDIANNESS_32(*lenp)) % 8) != 0)
 			offset += 4;
 		break;
 
@@ -146,8 +145,7 @@ uint32_t fdt_next_tag(const void *fdt, int startoffset, int *nextoffset)
 		return FDT_END;
 	}
 
-	if (fdt_chk_basic() &&
-	    !fdt_offset_ptr(fdt, startoffset, offset - startoffset))
+	if (!fdt_offset_ptr(fdt, startoffset, offset - startoffset))
 		return FDT_END; /* premature end */
 
 	*nextoffset = FDT_TAGALIGN(offset);

@@ -2,6 +2,10 @@
 #define _SHAMPOOS_LIBFDT_H_
 
 #include    "libfdt_internel.h"
+
+#define FDT_FIRST_SUPPORTED_VERSION	0x02
+#define FDT_LAST_SUPPORTED_VERSION	0x11
+
 /* Error codes: informative error codes */
 #define FDT_ERR_NOTFOUND	1
 	/* FDT_ERR_NOTFOUND: The requested node or property does not exist */
@@ -102,7 +106,7 @@
 /* General functions                                                  */
 /**********************************************************************/
 #define fdt_get_header(fdt, field) \
-	(fdt32_to_cpu(((const struct fdt_header *)(fdt))->field))
+	(SWAP_ENDIANNESS_32(((const struct fdt_header *)(fdt))->field))
 #define fdt_magic(fdt)			(fdt_get_header(fdt, magic))
 #define fdt_totalsize(fdt)		(fdt_get_header(fdt, totalsize))
 #define fdt_off_dt_struct(fdt)		(fdt_get_header(fdt, off_dt_struct))

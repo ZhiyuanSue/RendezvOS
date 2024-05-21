@@ -1,6 +1,6 @@
 #ifndef	_SHAMPOOS_ENDIAN_H_
 #define	_SHAMPOOS_ENDIAN_H_
-
+/*In shampoos we promise we use little endianness*/
 #define	SWAP_ENDIANNESS_16(uint_16)	\
 	((uint_16 & 0x00ff) << 8) +	\
 	((uint_16 & 0xff00) >>8)
