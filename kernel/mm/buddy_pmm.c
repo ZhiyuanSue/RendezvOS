@@ -4,7 +4,7 @@
 
 struct pmm buddy_pmm;
 
-static void pmm_init_zone()
+static void pmm_init_zones()
 {
 	/*init the zones,remember there might have more then one zone*/
 	for(int mem_zone=0;mem_zone<ZONE_NR_MAX;++mem_zone)
@@ -71,7 +71,7 @@ static void pmm_init_zone()
 void pmm_init(struct setup_info* arch_setup_info){
 	pr_info("start pmm init\n");
 	arch_init_pmm(arch_setup_info);
-	pmm_init_zone();
+	pmm_init_zones();
 }
 static inline int calculate_alloc_order(size_t page_number)
 {
