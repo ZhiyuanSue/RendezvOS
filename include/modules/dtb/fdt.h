@@ -4,6 +4,11 @@
 /*
  * For the devicetree specification,the version are all 17 from 0.1-0.4(the current version)
  */
+/*
+	I copied some of the following code from u-boot(https://github.com/u-boot/u-boot)
+	and changed something to let it pass complie
+	2024/5/21
+*/
 struct fdt_header {
 #define	FDT_MAGIC	0xd00dfeed
 	uint32_t magic;

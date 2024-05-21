@@ -24,3 +24,8 @@ The config file, which is read by configure.py, is the config file for the kerne
 if you want to change it ,just see what happened in the configure.py or you can try to build one for yourself.
 
 unlike the toml file in rust, all the configure of shampoos is set in config file ,and no more work for the kernel developer.
+
+## Acknowledgements
+I reused some of the code from some open source projects, so I have to acknoledge them
+	- U-boot(https://github.com/u-boot/u-boot): I reuse the dtb part and some definations of u-boot(and it use GPL2.0)
+	- Linux(https://www.kernel.org/): I reuse the errno part from linux,maybe more,for lost of the common sence of my own might comes from Linux

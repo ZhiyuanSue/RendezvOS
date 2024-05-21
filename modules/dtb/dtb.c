@@ -2,7 +2,9 @@
 #include	<modules/dtb/dtb.h>
 
 /*
-	I copied most of the following code from u-boot,and changed something to let it pass complie
+	I copied most of the following code from u-boot(https://github.com/u-boot/u-boot)
+	and changed something to let it pass complie
+	2024/5/21
 */
 static int check_off_(uint32_t hdrsize, uint32_t totalsize, uint32_t off)
 {
@@ -21,7 +23,7 @@ static int check_block_(uint32_t hdrsize, uint32_t totalsize,
 }
 size_t fdt_header_size(const void *fdt)
 {
-	version = fdt_version(fdt);
+	int version = fdt_version(fdt);
 	if (version <= 1)
 		return FDT_V1_SIZE;
 	else if (version <= 2)
@@ -148,7 +150,7 @@ uint32_t fdt_next_tag(const void *fdt, int startoffset, int *nextoffset)
 	if (!fdt_offset_ptr(fdt, startoffset, offset - startoffset))
 		return FDT_END; /* premature end */
 
-	*nextoffset = FDT_TAGALIGN(offset);
+	*nextoffset = ROUND_UP(offset,FDT_TAGSIZE);
 	return tag;
 }
 

@@ -1,8 +1,11 @@
 #ifndef _SHAMPOOS_LIBFDT_H_
 #define _SHAMPOOS_LIBFDT_H_
 
-#include    "libfdt_internel.h"
-
+/*
+	I copied most of the following code from u-boot(https://github.com/u-boot/u-boot)
+	and changed something to let it pass complie
+	2024/5/21
+*/
 #define FDT_FIRST_SUPPORTED_VERSION	0x02
 #define FDT_LAST_SUPPORTED_VERSION	0x11
 
@@ -118,4 +121,8 @@
 #define fdt_size_dt_strings(fdt)	(fdt_get_header(fdt, size_dt_strings))
 #define fdt_size_dt_struct(fdt)		(fdt_get_header(fdt, size_dt_struct))
 
+static inline const void *fdt_offset_ptr_(const void *fdt, int offset)
+{
+	return (const char *)fdt + fdt_off_dt_struct(fdt) + offset;
+}
 #endif
