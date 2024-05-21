@@ -50,7 +50,7 @@ static void start_simd()
 start_simd_fail:
 	pr_error("start simd fail\n");
 }
-int start_arch (struct setup_info* arch_setup_info)
+int	start_arch (struct setup_info* arch_setup_info)
 {
 	u32 mtb_magic=arch_setup_info->multiboot_magic;
 	struct	multiboot_info*	mtb_info=GET_MULTIBOOT_INFO(arch_setup_info);

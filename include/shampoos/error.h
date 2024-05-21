@@ -1,6 +1,6 @@
 #ifndef _SHAMPOOS_ERROR_H_
 #define _SHAMPOOS_ERROR_H_
-/*I have to tell you that all the definations are copied from the linue error part*/
+/*I have to tell you that all the definations are copied from the linux error part*/
 
 #define EPERM		1  /* Operation not permitted */
 #define ENOENT		2  /* No such file or directory */

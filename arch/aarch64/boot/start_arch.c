@@ -6,6 +6,7 @@
 #include <modules/dtb/dtb.h>
 #include <common/mm.h>
 #include <common/endianness.h>
+#include <shampoos/error.h>
 extern	u64	L2_table;
 static void map_dtb(struct setup_info* arch_setup_info)
 {
@@ -34,6 +35,11 @@ int	start_arch (struct setup_info* arch_setup_info)
 	pr_info("map end addr is 0x%x\n",arch_setup_info->map_end_virt_addr);
 	pr_info("uart addr is 0x%x\n",arch_setup_info->boot_uart_base_addr);
 	struct fdt_header* dtb_header_ptr = (struct fdt_header*)(arch_setup_info->boot_dtb_header_base_addr);
+	if(!fdt_check_header(dtb_header_ptr))
+	{
+		pr_info("check fdt header fail\n");
+		goto start_arch_error;
+	}
 	/*Hint:dtb header is big-endian*/
 	pr_info("dtb length is 0x%x\n",SWAP_ENDIANNESS_32(dtb_header_ptr->totalsize));
 	pr_info("dtb magic is 0x%x\n",SWAP_ENDIANNESS_32(dtb_header_ptr->magic));
@@ -49,4 +55,6 @@ int	start_arch (struct setup_info* arch_setup_info)
 	}
 	
 	return 0;
+start_arch_error:
+	return -EPERM;
 }
