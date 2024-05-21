@@ -59,23 +59,23 @@ int fdt_check_header(const void *fdt)
 		return -FDT_ERR_TRUNCATED;
 
 
-		/* Bounds check structure block */
-		if (fdt_version(fdt) < 17) {
-			if (!check_off_(hdrsize, fdt_totalsize(fdt),
-					fdt_off_dt_struct(fdt)))
-				return -FDT_ERR_TRUNCATED;
-		} else {
-			if (!check_block_(hdrsize, fdt_totalsize(fdt),
-					  fdt_off_dt_struct(fdt),
-					  fdt_size_dt_struct(fdt)))
-				return -FDT_ERR_TRUNCATED;
-		}
-
-		/* Bounds check strings block */
-		if (!check_block_(hdrsize, fdt_totalsize(fdt),
-				  fdt_off_dt_strings(fdt),
-				  fdt_size_dt_strings(fdt)))
+	/* Bounds check structure block */
+	if (fdt_version(fdt) < 17) {
+		if (!check_off_(hdrsize, fdt_totalsize(fdt),
+				fdt_off_dt_struct(fdt)))
 			return -FDT_ERR_TRUNCATED;
+	} else {
+		if (!check_block_(hdrsize, fdt_totalsize(fdt),
+					fdt_off_dt_struct(fdt),
+					fdt_size_dt_struct(fdt)))
+			return -FDT_ERR_TRUNCATED;
+	}
+
+	/* Bounds check strings block */
+	if (!check_block_(hdrsize, fdt_totalsize(fdt),
+				fdt_off_dt_strings(fdt),
+				fdt_size_dt_strings(fdt)))
+		return -FDT_ERR_TRUNCATED;
 
 	return 0;
 }
@@ -153,6 +153,23 @@ uint32_t fdt_next_tag(const void *fdt, int startoffset, int *nextoffset)
 	*nextoffset = ROUND_UP(offset,FDT_TAGSIZE);
 	return tag;
 }
+int fdt_check_node_offset_(const void *fdt, int offset)
+{
+	if ((offset < 0) || (offset % FDT_TAGSIZE)
+	    || (fdt_next_tag(fdt, offset, &offset) != FDT_BEGIN_NODE))
+		return -FDT_ERR_BADOFFSET;
+
+	return offset;
+}
+int fdt_check_prop_offset_(const void *fdt, int offset)
+{
+	if ((offset < 0) || (offset % FDT_TAGSIZE)
+	    || (fdt_next_tag(fdt, offset, &offset) != FDT_PROP))
+		return -FDT_ERR_BADOFFSET;
+
+	return offset;
+}
+
 
 int fdt_next_node(const void *fdt, int offset, int *depth)
 {
