@@ -4,8 +4,24 @@
 /*
 	I copied most of the following code from u-boot,and changed something to let it pass complie
 */
-size_t fdt_header_size_(uint32_t version)
+static int check_off_(uint32_t hdrsize, uint32_t totalsize, uint32_t off)
 {
+	return (off >= hdrsize) && (off <= totalsize);
+}
+static int check_block_(uint32_t hdrsize, uint32_t totalsize,
+			uint32_t base, uint32_t size)
+{
+	if (!check_off_(hdrsize, totalsize, base))
+		return 0; /* block start out of bounds */
+	if ((base + size) < base)
+		return 0; /* overflow */
+	if (!check_off_(hdrsize, totalsize, base + size))
+		return 0; /* block end out of bounds */
+	return 1;
+}
+size_t fdt_header_size(const void *fdt)
+{
+	version = fdt_version(fdt);
 	if (version <= 1)
 		return FDT_V1_SIZE;
 	else if (version <= 2)
@@ -17,6 +33,50 @@ size_t fdt_header_size_(uint32_t version)
 	else
 		return FDT_V17_SIZE;
 }
+int fdt_check_header(const void *fdt)
+{
+	size_t hdrsize;
+
+	if (fdt_magic(fdt) != FDT_MAGIC)
+		return -FDT_ERR_BADMAGIC;
+	if ((fdt_version(fdt) < FDT_FIRST_SUPPORTED_VERSION)
+		|| (fdt_last_comp_version(fdt) >
+		FDT_LAST_SUPPORTED_VERSION))
+		return -FDT_ERR_BADVERSION;
+	if (fdt_version(fdt) < fdt_last_comp_version(fdt))
+		return -FDT_ERR_BADVERSION;
+	hdrsize = fdt_header_size(fdt);
+
+	if ((fdt_totalsize(fdt) < hdrsize)
+		|| (fdt_totalsize(fdt) > INT_MAX))
+		return -FDT_ERR_TRUNCATED;
+
+	/* Bounds check memrsv block */
+	if (!check_off_(hdrsize, fdt_totalsize(fdt),
+			fdt_off_mem_rsvmap(fdt)))
+		return -FDT_ERR_TRUNCATED;
+
+
+		/* Bounds check structure block */
+		if (fdt_version(fdt) < 17) {
+			if (!check_off_(hdrsize, fdt_totalsize(fdt),
+					fdt_off_dt_struct(fdt)))
+				return -FDT_ERR_TRUNCATED;
+		} else {
+			if (!check_block_(hdrsize, fdt_totalsize(fdt),
+					  fdt_off_dt_struct(fdt),
+					  fdt_size_dt_struct(fdt)))
+				return -FDT_ERR_TRUNCATED;
+		}
+
+		/* Bounds check strings block */
+		if (!check_block_(hdrsize, fdt_totalsize(fdt),
+				  fdt_off_dt_strings(fdt),
+				  fdt_size_dt_strings(fdt)))
+			return -FDT_ERR_TRUNCATED;
+
+	return 0;
+}
 
 const void *fdt_offset_ptr(const void *fdt, int offset, unsigned int len)
 {
@@ -26,16 +86,138 @@ const void *fdt_offset_ptr(const void *fdt, int offset, unsigned int len)
 	if (offset < 0)
 		return NULL;
 
-	if (fdt_chk_basic())
-		if ((absoffset < uoffset)
-		    || ((absoffset + len) < absoffset)
-		    || (absoffset + len) > fdt_totalsize(fdt))
-			return NULL;
+	if ((absoffset < uoffset)
+		|| ((absoffset + len) < absoffset)
+		|| (absoffset + len) > fdt_totalsize(fdt))
+		return NULL;
 
-	if (!fdt_chk_version() || fdt_version(fdt) >= 0x11)
+	if (fdt_version(fdt) >= 0x11)
 		if (((uoffset + len) < uoffset)
 		    || ((offset + len) > fdt_size_dt_struct(fdt)))
 			return NULL;
 
 	return fdt_offset_ptr_(fdt, offset);
+}
+
+uint32_t fdt_next_tag(const void *fdt, int startoffset, int *nextoffset)
+{
+	const fdt32_t *tagp, *lenp;
+	uint32_t tag;
+	int offset = startoffset;
+	const char *p;
+
+	*nextoffset = -FDT_ERR_TRUNCATED;
+	tagp = fdt_offset_ptr(fdt, offset, FDT_TAGSIZE);
+	if (!tagp)
+		return FDT_END; /* premature end */
+	tag = fdt32_to_cpu(*tagp);
+	offset += FDT_TAGSIZE;
+
+	*nextoffset = -FDT_ERR_BADSTRUCTURE;
+	switch (tag) {
+	case FDT_BEGIN_NODE:
+		/* skip name */
+		do {
+			p = fdt_offset_ptr(fdt, offset++, 1);
+		} while (p && (*p != '\0'));
+		if (fdt_chk_basic() && !p)
+			return FDT_END; /* premature end */
+		break;
+
+	case FDT_PROP:
+		lenp = fdt_offset_ptr(fdt, offset, sizeof(*lenp));
+		if (fdt_chk_basic() && !lenp)
+			return FDT_END; /* premature end */
+		/* skip-name offset, length and value */
+		offset += sizeof(struct fdt_property) - FDT_TAGSIZE
+			+ fdt32_to_cpu(*lenp);
+		if (fdt_chk_version() &&
+		    fdt_version(fdt) < 0x10 && fdt32_to_cpu(*lenp) >= 8 &&
+		    ((offset - fdt32_to_cpu(*lenp)) % 8) != 0)
+			offset += 4;
+		break;
+
+	case FDT_END:
+	case FDT_END_NODE:
+	case FDT_NOP:
+		break;
+
+	default:
+		return FDT_END;
+	}
+
+	if (fdt_chk_basic() &&
+	    !fdt_offset_ptr(fdt, startoffset, offset - startoffset))
+		return FDT_END; /* premature end */
+
+	*nextoffset = FDT_TAGALIGN(offset);
+	return tag;
+}
+
+int fdt_next_node(const void *fdt, int offset, int *depth)
+{
+	int nextoffset = 0;
+	uint32_t tag;
+
+	if (offset >= 0)
+		if ((nextoffset = fdt_check_node_offset_(fdt, offset)) < 0)
+			return nextoffset;
+
+	do {
+		offset = nextoffset;
+		tag = fdt_next_tag(fdt, offset, &nextoffset);
+
+		switch (tag) {
+		case FDT_PROP:
+		case FDT_NOP:
+			break;
+
+		case FDT_BEGIN_NODE:
+			if (depth)
+				(*depth)++;
+			break;
+
+		case FDT_END_NODE:
+			if (depth && ((--(*depth)) < 0))
+				return nextoffset;
+			break;
+
+		case FDT_END:
+			if ((nextoffset >= 0)
+			    || ((nextoffset == -FDT_ERR_TRUNCATED) && !depth))
+				return -FDT_ERR_NOTFOUND;
+			else
+				return nextoffset;
+		}
+	} while (tag != FDT_BEGIN_NODE);
+
+	return offset;
+}
+
+int fdt_first_subnode(const void *fdt, int offset)
+{
+	int depth = 0;
+
+	offset = fdt_next_node(fdt, offset, &depth);
+	if (offset < 0 || depth != 1)
+		return -FDT_ERR_NOTFOUND;
+
+	return offset;
+}
+
+int fdt_next_subnode(const void *fdt, int offset)
+{
+	int depth = 1;
+
+	/*
+	 * With respect to the parent, the depth of the next subnode will be
+	 * the same as the last.
+	 */
+	do {
+		offset = fdt_next_node(fdt, offset, &depth);
+		if (offset < 0 || depth < 1)
+			return -FDT_ERR_NOTFOUND;
+	} while (depth > 1);
+
+	return offset;
 }
