@@ -105,6 +105,10 @@
 	for (node = fdt_first_subnode(fdt, parent);	\
 	     node >= 0;					\
 	     node = fdt_next_subnode(fdt, node))
+#define fdt_for_each_property_offset(property, fdt, node)	\
+	for (property = fdt_first_property_offset(fdt, node);	\
+	     property >= 0;					\
+	     property = fdt_next_property_offset(fdt, property))
 /**********************************************************************/
 /* General functions                                                  */
 /**********************************************************************/

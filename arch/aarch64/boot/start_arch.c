@@ -57,15 +57,10 @@ int	start_arch (struct setup_info* arch_setup_info)
 	int depth=0;
 	while(node_offset>=0)
 	{
-		int prop_offset=node_offset+FDT_TAGSIZE;
 		pr_info("offset is 0x%x\n",node_offset);
 		char* ch=(char*)dtb_header_ptr + fdt_off_dt_struct(dtb_header_ptr) + node_offset + FDT_TAGSIZE;
 		pr_info("%s\n",ch);
-		while(*ch)
-			ch++;
-		prop_offset=((u64)ch)-(u64)dtb_header_ptr-fdt_off_dt_struct(dtb_header_ptr);
-		// struct fdt_property* prop=(struct fdt_property*)prop_offset;
-		// pr_info("tag:0x%x\n",SWAP_ENDIANNESS_32(prop->tag));
+		
 
 		node_offset=fdt_next_node((void*)dtb_header_ptr,node_offset,&depth);
 	}

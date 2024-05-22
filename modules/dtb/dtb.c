@@ -208,6 +208,31 @@ int fdt_next_node(const void *fdt, int offset, int *depth)
 	return offset;
 }
 
+static int nextprop_(const void *fdt, int offset)
+{
+	uint32_t tag;
+	int nextoffset;
+
+	do {
+		tag = fdt_next_tag(fdt, offset, &nextoffset);
+
+		switch (tag) {
+		case FDT_END:
+			if (nextoffset >= 0)
+				return -FDT_ERR_BADSTRUCTURE;
+			else
+				return nextoffset;
+
+		case FDT_PROP:
+			return offset;
+		}
+		offset = nextoffset;
+	} while (tag == FDT_NOP);
+
+	return -FDT_ERR_NOTFOUND;
+}
+
+
 int fdt_first_subnode(const void *fdt, int offset)
 {
 	int depth = 0;
@@ -234,4 +259,22 @@ int fdt_next_subnode(const void *fdt, int offset)
 	} while (depth > 1);
 
 	return offset;
+}
+
+int fdt_first_property_offset(const void *fdt, int nodeoffset)
+{
+	int offset;
+
+	if ((offset = fdt_check_node_offset_(fdt, nodeoffset)) < 0)
+		return offset;
+
+	return nextprop_(fdt, offset);
+}
+
+int fdt_next_property_offset(const void *fdt, int offset)
+{
+	if ((offset = fdt_check_prop_offset_(fdt, offset)) < 0)
+		return offset;
+
+	return nextprop_(fdt, offset);
 }
