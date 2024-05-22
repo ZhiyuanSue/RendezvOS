@@ -25,6 +25,26 @@ static void map_dtb(struct setup_info* arch_setup_info)
 	arch_setup_info->boot_dtb_header_base_addr=arch_setup_info->dtb_ptr+offset;
 	arch_setup_info->map_end_virt_addr=arch_setup_info->boot_dtb_header_base_addr+MIDDLE_PAGE_SIZE*2;
 }
+static void parse_dtb(void* fdt,int offset,int depth){
+	int property,node;
+	pr_info("offset is 0x%x depth 0x%x\n",offset,depth);
+	char* ch=(char*)fdt + fdt_off_dt_struct(fdt) + offset + FDT_TAGSIZE;
+	for(int i=0;i<depth;++i)
+		pr_info("\t");
+	pr_info("%s\n",ch);
+	fdt_for_each_property_offset(property,fdt,offset)
+	{
+		struct fdt_property* prop=(struct fdt_property*)fdt_offset_ptr(fdt,property,FDT_TAGSIZE);
+		for(int i=0;i<depth;++i)
+			pr_info("\t");
+		pr_info("len:0x%x\t",SWAP_ENDIANNESS_32(prop->len));
+		pr_info("nameoff:0x%x\n",SWAP_ENDIANNESS_32(prop->nameoff));
+	}
+	fdt_for_each_subnode(node,fdt,offset){
+		parse_dtb(fdt,node,depth+1);
+	}
+}
+
 int	start_arch (struct setup_info* arch_setup_info)
 {
 	/*parse the dtb*/
@@ -53,17 +73,8 @@ int	start_arch (struct setup_info* arch_setup_info)
 		struct fdt_reserve_entry* entry = (struct fdt_reserve_entry*)((u64)dtb_header_ptr + off);
 		pr_info("reserve_entry: address 0x%x size: 0x%x\n",entry->address,entry->size);
 	}
-	int node_offset=0;
-	int depth=0;
-	while(node_offset>=0)
-	{
-		pr_info("offset is 0x%x\n",node_offset);
-		char* ch=(char*)dtb_header_ptr + fdt_off_dt_struct(dtb_header_ptr) + node_offset + FDT_TAGSIZE;
-		pr_info("%s\n",ch);
-		
-
-		node_offset=fdt_next_node((void*)dtb_header_ptr,node_offset,&depth);
-	}
+	
+	parse_dtb(dtb_header_ptr,0,0);
 	
 	return 0;
 start_arch_error:
