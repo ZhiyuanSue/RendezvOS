@@ -107,7 +107,6 @@ uint32_t fdt_next_tag(const void *fdt, int startoffset, int *nextoffset)
 	uint32_t tag;
 	int offset = startoffset;
 	const char *p;
-
 	*nextoffset = -FDT_ERR_TRUNCATED;
 	tagp = fdt_offset_ptr(fdt, offset, FDT_TAGSIZE);
 	if (!tagp)
@@ -179,11 +178,9 @@ int fdt_next_node(const void *fdt, int offset, int *depth)
 	if (offset >= 0)
 		if ((nextoffset = fdt_check_node_offset_(fdt, offset)) < 0)
 			return nextoffset;
-
 	do {
 		offset = nextoffset;
 		tag = fdt_next_tag(fdt, offset, &nextoffset);
-
 		switch (tag) {
 		case FDT_PROP:
 		case FDT_NOP:

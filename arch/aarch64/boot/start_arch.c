@@ -35,7 +35,7 @@ int	start_arch (struct setup_info* arch_setup_info)
 	pr_info("map end addr is 0x%x\n",arch_setup_info->map_end_virt_addr);
 	pr_info("uart addr is 0x%x\n",arch_setup_info->boot_uart_base_addr);
 	struct fdt_header* dtb_header_ptr = (struct fdt_header*)(arch_setup_info->boot_dtb_header_base_addr);
-	if(!fdt_check_header(dtb_header_ptr))
+	if(fdt_check_header(dtb_header_ptr))
 	{
 		pr_info("check fdt header fail\n");
 		goto start_arch_error;
@@ -52,6 +52,22 @@ int	start_arch (struct setup_info* arch_setup_info)
 	{
 		struct fdt_reserve_entry* entry = (struct fdt_reserve_entry*)((u64)dtb_header_ptr + off);
 		pr_info("reserve_entry: address 0x%x size: 0x%x\n",entry->address,entry->size);
+	}
+	int node_offset=0;
+	int depth=0;
+	while(node_offset>=0)
+	{
+		int prop_offset=node_offset+FDT_TAGSIZE;
+		pr_info("offset is 0x%x\n",node_offset);
+		char* ch=(char*)dtb_header_ptr + fdt_off_dt_struct(dtb_header_ptr) + node_offset + FDT_TAGSIZE;
+		pr_info("%s\n",ch);
+		while(*ch)
+			ch++;
+		prop_offset=((u64)ch)-(u64)dtb_header_ptr-fdt_off_dt_struct(dtb_header_ptr);
+		// struct fdt_property* prop=(struct fdt_property*)prop_offset;
+		// pr_info("tag:0x%x\n",SWAP_ENDIANNESS_32(prop->tag));
+
+		node_offset=fdt_next_node((void*)dtb_header_ptr,node_offset,&depth);
 	}
 	
 	return 0;
