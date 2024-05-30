@@ -26,8 +26,8 @@ static void map_dtb(struct setup_info* arch_setup_info)
 	arch_setup_info->map_end_virt_addr=arch_setup_info->boot_dtb_header_base_addr+MIDDLE_PAGE_SIZE*2;
 }
 static void parse_dtb(void* fdt,int offset,int depth){
+	/*This function is just an example of how to parse the dtb*/
 	int property,node;
-	pr_info("offset is 0x%x depth 0x%x\n",offset,depth);
 	char* ch=(char*)fdt + fdt_off_dt_struct(fdt) + offset + FDT_TAGSIZE;
 	for(int i=0;i<depth;++i)
 		pr_info("\t");
@@ -35,14 +35,42 @@ static void parse_dtb(void* fdt,int offset,int depth){
 	fdt_for_each_property_offset(property,fdt,offset)
 	{
 		struct fdt_property* prop=(struct fdt_property*)fdt_offset_ptr(fdt,property,FDT_TAGSIZE);
-		for(int i=0;i<depth;++i)
+		for(int i=0;i<depth+1;++i)
 			pr_info("\t");
-		pr_info("%s\t\tlen:0x%x\t",prop->data,SWAP_ENDIANNESS_32(prop->len));
-		pr_info("nameoff:0x%x\t",SWAP_ENDIANNESS_32(prop->nameoff));
-		pr_info("name%s\n",fdt_string(fdt,SWAP_ENDIANNESS_32(prop->nameoff)));
+		pr_info("%s\t:\t",fdt_string(fdt,SWAP_ENDIANNESS_32(prop->nameoff)));
+		/*we just print it as a string, but actually not*/
+		pr_info("%s\n",prop->data);
 	}
 	fdt_for_each_subnode(node,fdt,offset){
 		parse_dtb(fdt,node,depth+1);
+	}
+}
+static void get_dtb_memory(void* fdt,int offset,int depth){
+	/*
+		actually we seems to use something like of_find_node_by_type
+		but now we have no memory to alloc any struct of device_node
+	*/
+	int property,node;
+	char* ch=(char*)fdt + fdt_off_dt_struct(fdt) + offset + FDT_TAGSIZE;
+	const char *device_type_str = "device_type\0";
+	const char *memory_str = "memory\0";
+	const char *reg_str = "reg\n";
+	fdt_for_each_property_offset(property,fdt,offset)
+	{
+		struct fdt_property* prop=(struct fdt_property*)fdt_offset_ptr(fdt,property,FDT_TAGSIZE);
+		const char *s=fdt_string(fdt,SWAP_ENDIANNESS_32(prop->nameoff));
+		const char *data=(const char*)(prop->data);
+		if(!strcmp(s,device_type_str) && !strcmp(data,memory_str)){
+			goto find_memory_node;
+		}
+	}
+	fdt_for_each_subnode(node,fdt,offset){
+		get_dtb_memory(fdt,node,depth+1);
+	}
+find_memory_node:
+	fdt_for_each_property_offset(property,fdt,offset)
+	{
+		;
 	}
 }
 
@@ -50,11 +78,11 @@ int	start_arch (struct setup_info* arch_setup_info)
 {
 	/*parse the dtb*/
 	map_dtb(arch_setup_info);
-	pr_info("dtb addr is 0x%x\n",arch_setup_info->boot_dtb_header_base_addr);
-	pr_info("dtb phy addr is 0x%x\n",arch_setup_info->dtb_ptr);
+	// pr_info("dtb addr is 0x%x\n",arch_setup_info->boot_dtb_header_base_addr);
+	// pr_info("dtb phy addr is 0x%x\n",arch_setup_info->dtb_ptr);
 	/*we need to map the dtb page to a virt address first*/
-	pr_info("map end addr is 0x%x\n",arch_setup_info->map_end_virt_addr);
-	pr_info("uart addr is 0x%x\n",arch_setup_info->boot_uart_base_addr);
+	// pr_info("map end addr is 0x%x\n",arch_setup_info->map_end_virt_addr);
+	// pr_info("uart addr is 0x%x\n",arch_setup_info->boot_uart_base_addr);
 	struct fdt_header* dtb_header_ptr = (struct fdt_header*)(arch_setup_info->boot_dtb_header_base_addr);
 	if(fdt_check_header(dtb_header_ptr))
 	{
@@ -62,11 +90,11 @@ int	start_arch (struct setup_info* arch_setup_info)
 		goto start_arch_error;
 	}
 	/*Hint:dtb header is big-endian*/
-	pr_info("dtb length is 0x%x\n",SWAP_ENDIANNESS_32(dtb_header_ptr->totalsize));
-	pr_info("dtb magic is 0x%x\n",SWAP_ENDIANNESS_32(dtb_header_ptr->magic));
-	pr_info("dtb dt struct off 0x%x\n",SWAP_ENDIANNESS_32(dtb_header_ptr->off_dt_struct));
-	pr_info("dtb dt string off 0x%x\n",SWAP_ENDIANNESS_32(dtb_header_ptr->off_dt_strings));
-	pr_info("dtb reserved memory off 0x%x\n",SWAP_ENDIANNESS_32(dtb_header_ptr->off_mem_rsvmap));
+	// pr_info("dtb length is 0x%x\n",SWAP_ENDIANNESS_32(dtb_header_ptr->totalsize));
+	// pr_info("dtb magic is 0x%x\n",SWAP_ENDIANNESS_32(dtb_header_ptr->magic));
+	// pr_info("dtb dt struct off 0x%x\n",SWAP_ENDIANNESS_32(dtb_header_ptr->off_dt_struct));
+	// pr_info("dtb dt string off 0x%x\n",SWAP_ENDIANNESS_32(dtb_header_ptr->off_dt_strings));
+	// pr_info("dtb reserved memory off 0x%x\n",SWAP_ENDIANNESS_32(dtb_header_ptr->off_mem_rsvmap));
 	for(u64 off = SWAP_ENDIANNESS_32(dtb_header_ptr->off_mem_rsvmap);
 		off < SWAP_ENDIANNESS_32(dtb_header_ptr->off_dt_struct);
 		off += sizeof(struct fdt_reserve_entry) )
@@ -75,7 +103,8 @@ int	start_arch (struct setup_info* arch_setup_info)
 		pr_info("reserve_entry: address 0x%x size: 0x%x\n",entry->address,entry->size);
 	}
 	
-	parse_dtb(dtb_header_ptr,0,0);
+	// parse_dtb(dtb_header_ptr,0,0);
+	get_dtb_memory(dtb_header_ptr,0,0);
 	
 	return 0;
 start_arch_error:
