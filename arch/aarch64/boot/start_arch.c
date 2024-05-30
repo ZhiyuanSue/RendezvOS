@@ -37,8 +37,9 @@ static void parse_dtb(void* fdt,int offset,int depth){
 		struct fdt_property* prop=(struct fdt_property*)fdt_offset_ptr(fdt,property,FDT_TAGSIZE);
 		for(int i=0;i<depth;++i)
 			pr_info("\t");
-		pr_info("len:0x%x\t",SWAP_ENDIANNESS_32(prop->len));
-		pr_info("nameoff:0x%x\n",SWAP_ENDIANNESS_32(prop->nameoff));
+		pr_info("%s\t\tlen:0x%x\t",prop->data,SWAP_ENDIANNESS_32(prop->len));
+		pr_info("nameoff:0x%x\t",SWAP_ENDIANNESS_32(prop->nameoff));
+		pr_info("name%s\n",fdt_string(fdt,SWAP_ENDIANNESS_32(prop->nameoff)));
 	}
 	fdt_for_each_subnode(node,fdt,offset){
 		parse_dtb(fdt,node,depth+1);

@@ -15,5 +15,6 @@ int fdt_first_subnode(const void *fdt, int offset);
 int fdt_next_subnode(const void *fdt, int offset);
 int fdt_first_property_offset(const void *fdt, int nodeoffset);
 int fdt_next_property_offset(const void *fdt, int offset);
+const char *fdt_string(const void *fdt, int stroffset);
 
 #endif

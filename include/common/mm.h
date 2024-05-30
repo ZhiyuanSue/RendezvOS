@@ -14,4 +14,10 @@
 
 #define	ALIGNED(x,align)	((x & (align-1))==0)
 
+#include <common/stddef.h>
+
+void *memset(void *str, int c, size_t n);
+void *memcpy(void *str1, const void *str2, size_t n);
+size_t strlen(const char* str);
+
 #endif

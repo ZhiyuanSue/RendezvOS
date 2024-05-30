@@ -278,3 +278,21 @@ int fdt_next_property_offset(const void *fdt, int offset)
 
 	return nextprop_(fdt, offset);
 }
+const char *fdt_get_string(const void *fdt, int stroffset, int *lenp)
+{
+	const char *s;
+
+	if (stroffset > fdt_size_dt_strings(fdt))
+		return NULL;
+	s = (const char *)fdt + fdt_off_dt_strings(fdt) + stroffset;
+
+	if (lenp)
+		*lenp = strlen(s);
+		
+	return s;
+}
+
+const char *fdt_string(const void *fdt, int stroffset)
+{
+	return fdt_get_string(fdt, stroffset, NULL);
+}
