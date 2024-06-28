@@ -37,9 +37,11 @@ static void parse_dtb(void* fdt,int offset,int depth){
 		struct fdt_property* prop=(struct fdt_property*)fdt_offset_ptr(fdt,property,FDT_TAGSIZE);
 		for(int i=0;i<depth+1;++i)
 			pr_info("\t");
-		pr_info("%s\t:\t",fdt_string(fdt,SWAP_ENDIANNESS_32(prop->nameoff)));
+		const char* property_name=fdt_string(fdt,SWAP_ENDIANNESS_32(prop->nameoff));
+		pr_info("%s\t:\t",property_name);
 		/*we just print it as a string, but actually not*/
-		pr_info("%s\n",prop->data);
+		print_property_value(property_name,prop->data,prop->len);
+		pr_info("\n");
 	}
 	fdt_for_each_subnode(node,fdt,offset){
 		parse_dtb(fdt,node,depth+1);
@@ -103,7 +105,7 @@ int	start_arch (struct setup_info* arch_setup_info)
 		pr_info("reserve_entry: address 0x%x size: 0x%x\n",entry->address,entry->size);
 	}
 	
-	// parse_dtb(dtb_header_ptr,0,0);
+	parse_dtb(dtb_header_ptr,0,0);
 	get_dtb_memory(dtb_header_ptr,0,0);
 	
 	return 0;

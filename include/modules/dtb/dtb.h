@@ -6,6 +6,7 @@
 #include	<common/mm.h>
 #include	"fdt.h"
 #include    "libfdt.h"
+#include 	"property.h"
 
 int fdt_check_header(const void *fdt);
 const void *fdt_offset_ptr(const void *fdt, int offset, unsigned int len);
