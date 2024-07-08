@@ -37,11 +37,13 @@ enum property_type_enum{
 	PROPERTY_TYPE_SPECIFIER_MAP_MASK,
 	PROPERTY_TYPE_SPECIFIER_MAP_PASS_THRU,
 	PROPERTY_TYPE_SPECIFIER_CELLS,
+	PROPERTY_TYPE_OTHER,
 	PROPERTY_TYPE_NUM
 };
 struct property_type{
-	char property_string[20];
+	char property_string[32];
 	int property_type_enum;
 	int value_enum[2];
 };
+enum property_type_enum get_property_type(const char* property_name);
 #endif

@@ -34,5 +34,6 @@ void (*print_property_value_list[7])(void* data,uint32_t len) = {
 };
 
 void print_property_value(const char* property_name,void* data,uint32_t len){
-	
+	enum property_type_enum p_type = get_property_type(property_name);
+    pr_info("%s",property_types[p_type].property_string);
 }
