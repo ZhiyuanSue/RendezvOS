@@ -2,7 +2,7 @@
 	"kernel":{
 		"use":true ,
 		"ARCH":"aarch64" ,
-		"CROSS_COMPLIER":"aarch64-none-elf-",
+		"CROSS_COMPLIER":"aarch64-linux-gnu-",
 		"DBG":false,
 		"CFLAGS":[
 
