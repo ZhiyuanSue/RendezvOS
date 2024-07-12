@@ -1,5 +1,7 @@
 #include <modules/dtb/print_property.h>
+#include <modules/dtb/dtb.h>
 #include <common/endianness.h>
+#include <common/mm.h>
 // As for this file, although the print function for dtb is useless
 // but it logic is the same as that in dtb parse, so it can be reused and used for check
 extern struct property_type property_types[255];
@@ -45,17 +47,19 @@ void print_property_value_prop_encoded_array(enum property_type_enum p_type,void
 	switch (p_type)
 	{
 	case PROPERTY_TYPE_REG:
+	{
 		u32* u32_data=(u32*)data;
 		for(int index=0;index<len;index+=sizeof(u32)*2)
 		{
 			print_property("<");
-			print_property("addr:0x%x",SWAP_ENDIANNESS_32(*u32_data));
+			print_property("addr:0x%x ",SWAP_ENDIANNESS_32(*u32_data));
 			u32_data++;
 			print_property("len:0x%x>",SWAP_ENDIANNESS_32(*u32_data));
 			if(index+sizeof(u32)*2 < len)
 				print_property(" ");
 		}
 		break;
+	}
 	case PROPERTY_TYPE_RANGES:
 		break;
 	case PROPERTY_TYPE_DMA_RANGES:
@@ -84,7 +88,13 @@ void print_property_value_phandle(enum property_type_enum p_type,void* data,uint
 
 }
 void print_property_value_stringlist(enum property_type_enum p_type,void* data,uint32_t len){
-
+	const char* ch_data = (const char*)data;
+	const char* ch_data_end = ch_data + len;
+	while(ch_data + 1 < ch_data_end){
+		print_property("<%s>",ch_data);
+		int str_len = strlen(ch_data);
+		ch_data += str_len + 1;
+	}
 }
 
 void (*print_property_value_list[7])(enum property_type_enum p_type,void* data,uint32_t len) = {
@@ -101,4 +111,26 @@ void print_property_value(const char* property_name,void* data,uint32_t len){
 	enum property_type_enum p_type = get_property_type(property_name);
 	enum property_value_type p_value = property_types[p_type].value_enum[0];
 	print_property_value_list[p_value](p_type,data,SWAP_ENDIANNESS_32(len));
+}
+void parse_print_dtb(void* fdt,int offset,int depth){
+	/*This function is just an example of how to parse the dtb*/
+	int property,node;
+	char* ch=(char*)fdt + fdt_off_dt_struct(fdt) + offset + FDT_TAGSIZE;
+	for(int i=0;i<depth;++i)
+		print_property("\t");
+	print_property("%s\n",ch);
+	fdt_for_each_property_offset(property,fdt,offset)
+	{
+		struct fdt_property* prop=(struct fdt_property*)fdt_offset_ptr(fdt,property,FDT_TAGSIZE);
+		for(int i=0;i<depth+1;++i)
+			print_property("\t");
+		const char* property_name=fdt_string(fdt,SWAP_ENDIANNESS_32(prop->nameoff));
+		print_property("%s\t:\t",property_name);
+		/*we just print it as a string, but actually not*/
+		print_property_value(property_name,prop->data,prop->len);
+		print_property("\n");
+	}
+	fdt_for_each_subnode(node,fdt,offset){
+		parse_print_dtb(fdt,node,depth+1);
+	}
 }

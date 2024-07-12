@@ -100,11 +100,13 @@ void log_print(char* buffer,const char *format, va_list arg_list)
 			case 'd':
 			case 'u':
 			case 'x':
+			{
 				i64 d=va_arg(arg_list,int64_t);
 				itoa (buf, c, d);
 				p = buf;
 				goto string;
 				break;
+			}
 			case 's':
 				p = va_arg(arg_list,char*);
 				if (! p)

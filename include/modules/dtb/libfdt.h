@@ -1,6 +1,6 @@
 #ifndef _SHAMPOOS_LIBFDT_H_
 #define _SHAMPOOS_LIBFDT_H_
-
+#include <common/endianness.h>
 /*
 	I copied most of the following code from u-boot(https://github.com/u-boot/u-boot)
 	and changed something to let it pass complie

@@ -15,5 +15,6 @@ void print_property_value_stringlist(enum property_type_enum p_type,void* data,u
 
 void print_property_value(const char* property_name,void* data,uint32_t len);
 
+void parse_print_dtb(void* fdt,int offset,int depth);
 
 #endif
