@@ -55,6 +55,7 @@ void print_property_value_prop_encoded_array(enum property_type_enum p_type,void
 			print_property("addr:0x%x ",SWAP_ENDIANNESS_32(*u32_data));
 			u32_data++;
 			print_property("len:0x%x>",SWAP_ENDIANNESS_32(*u32_data));
+			u32_data++;
 			if(index+sizeof(u32)*2 < len)
 				print_property(" ");
 		}
@@ -126,7 +127,6 @@ void parse_print_dtb(void* fdt,int offset,int depth){
 			print_property("\t");
 		const char* property_name=fdt_string(fdt,SWAP_ENDIANNESS_32(prop->nameoff));
 		print_property("%s\t:\t",property_name);
-		/*we just print it as a string, but actually not*/
 		print_property_value(property_name,prop->data,prop->len);
 		print_property("\n");
 	}

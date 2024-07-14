@@ -31,9 +31,18 @@ find_memory_node:
 		struct fdt_property* prop=(struct fdt_property*)fdt_offset_ptr(fdt,property,FDT_TAGSIZE);
 		const char *s=fdt_string(fdt,SWAP_ENDIANNESS_32(prop->nameoff));
 		const char *data=(const char*)(prop->data);
+		u_int32_t len=SWAP_ENDIANNESS_32(prop->len);
 		if(!strcmp(s,reg_str)){
-			// find the reg node
 			pr_info("find the reg\n");
+			u32* u32_data=(u32*)data;
+			for(int index=0; index<len ; index+=sizeof(u32)*2)
+			{
+				u32 addr = SWAP_ENDIANNESS_32(*u32_data);
+				u32_data++;
+				u32 len = SWAP_ENDIANNESS_32(*u32_data);
+				u32_data++;
+				pr_info("start addr is %x,len is %x\n",addr,len);
+			}
 		}
 	}
 }
