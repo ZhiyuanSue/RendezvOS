@@ -16,13 +16,10 @@ static void get_dtb_memory(void* fdt,int offset,int depth){
 	{
 		struct fdt_property* prop=(struct fdt_property*)fdt_offset_ptr(fdt,property,FDT_TAGSIZE);
 		const char* property_name=fdt_string(fdt,SWAP_ENDIANNESS_32(prop->nameoff));
-		const char *data=(const char*)(prop->data);
-		pr_info("name %s data %s\n",property_name,data);
-		pr_info("name %d data %d\n",strcmp(property_name,device_type_str),strcmp(data,memory_str));
-		pr_info("name %s %s data %s %s\n",property_name,device_type_str,data,memory_str);
-		// if(!strcmp(property_name,device_type_str) && !strcmp(data,memory_str)){
-		// 	goto find_memory_node;
-		// }
+		const char* data=(const char*)(prop->data);
+		if(!strcmp(property_name,device_type_str) && !strcmp(data,memory_str)){
+		 	goto find_memory_node;
+		}
 	}
 	fdt_for_each_subnode(node,fdt,offset){
 		get_dtb_memory(fdt,node,depth+1);
