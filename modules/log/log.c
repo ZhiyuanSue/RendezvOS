@@ -98,14 +98,25 @@ void log_print(char* buffer,const char *format, va_list arg_list)
 			switch (c)
 			{
 			case 'd':
+			{
+				i32 d=va_arg(arg_list,int32_t);
+				itoa (buf, c, d);
+				p = buf;
+				goto string;
+			}
 			case 'u':
+			{
+				u32 d=va_arg(arg_list,u_int64_t);
+				itoa (buf, c, d);
+				p = buf;
+				goto string;
+			}
 			case 'x':
 			{
 				i64 d=va_arg(arg_list,int64_t);
 				itoa (buf, c, d);
 				p = buf;
 				goto string;
-				break;
 			}
 			case 's':
 				p = va_arg(arg_list,char*);

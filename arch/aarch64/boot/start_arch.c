@@ -37,7 +37,7 @@ int	start_arch (struct setup_info* arch_setup_info)
 		pr_info("check fdt header fail\n");
 		goto start_arch_error;
 	}
-	parse_print_dtb(dtb_header_ptr,0,0);
+	// parse_print_dtb(dtb_header_ptr,0,0);
 	
 	return 0;
 start_arch_error:

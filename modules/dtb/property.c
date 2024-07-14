@@ -1,7 +1,7 @@
 #include <modules/dtb/property.h>
 #include <common/mm.h>
 
-struct property_type property_types[32]={
+struct property_type property_types[PROPERTY_TYPE_NUM]={
 	{""								,	PROPERTY_TYPE_NONE,						{PROPERTY_VALUE_EMPTY}},
 	{"compatible"					,	PROPERTY_TYPE_COMPATIBLE,				{PROPERTY_VALUE_STRINGLIST}},
 	{"model"						,	PROPERTY_TYPE_MODEL,					{PROPERTY_VALUE_STRING}},
