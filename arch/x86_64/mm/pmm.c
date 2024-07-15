@@ -25,9 +25,10 @@ static void calculate_avaliable_phy_addr_end() {
 												sizeof(mmap->size))) {
 		if (mmap->addr + mmap->len > BIOS_MEM_UPPER &&
 			mmap->type == MULTIBOOT_MEMORY_AVAILABLE) {
-			pr_info("Aviable Mem:size is 0x%x, base_phy_addr is 0x%x, length = "
-					"0x%x, type = 0x%x\n",
-					mmap->size, mmap->addr, mmap->len, mmap->type);
+			pr_info(
+				"Aviable Mem:size is 0x%x, base_phy_addr is 0x%x, length = "
+				"0x%x, type = 0x%x\n",
+				mmap->size, mmap->addr, mmap->len, mmap->type);
 			u64 sec_start_addr = mmap->addr;
 			u64 sec_end_addr = sec_start_addr + mmap->len;
 			/*remember, this end is not reachable,[ sec_end_addr , sec_end_addr

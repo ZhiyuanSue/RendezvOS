@@ -26,17 +26,18 @@
 	char signature[8]; /* “RSD PTR ” (Notice that this signature must contain  \
 						  a trailing blank character.) */                          \
 	u8 checksum; /* This is the checksum of the fields defined in the ACPI 1.0     \
-					specification. This includes only the first 20 bytes of                                          \
-					this table, bytes 0 to 19, including the checksum field.                                                     \
+					specification. This includes only the first 20 bytes of        \
+					this table, bytes 0 to 19, including the checksum field.       \
 					 These bytes must sum to zero. */                              \
 	char oemid[6];	  /* An OEM-supplied string that identifies the OEM. */        \
 	u8 revision;	  /* The revision of this structure.                           \
 						  Larger revision numbers are backward compatible to lower \
-						 revision numbers.	  The ACPI version 1.0 revision number of                                      \
-						 this table is zero.	  The ACPI version 1.0 RSDP Structure                                          \
-						 only includes the first 20 bytes of this table, bytes 0   \
-						 to 19.	  It does not include the Length field and beyond.                             \
-						 The current value for this field is 2. */                 \
+						 revision numbers.	  The ACPI version 1.0 revision	  number                                                                       \
+						 of	  this table is zero.	  The ACPI version 1.0 RSDP      \
+						 Structure	  only includes the first 20 bytes of this      \
+						 table,                                                    \
+						 bytes 0	  to 19.	  It does not include the Length	  field                                                                        \
+						 and	  beyond.	  The current value for this field is 2. */                          \
 	u32 rsdt_address; /* 32 bit physical address of the RSDT. */
 /*
  * For acpi version 2.0 RSDP table
@@ -71,9 +72,10 @@ struct acpi_gas {
 #define ACPI_GAS_ID_Generic_Serial_Bus 0x09	 /* GenericSerialBus */
 #define ACPI_GAS_ID_Platform_Comm_Chan                                         \
 	0x0A /* Platform Communications Channel (PCC) */
-#define ACPI_GAS_ID_Platform_Rt_Mech 0x0B /* Platform Runtime Mechanism (PRM)  \
-										   */
-										  /* 0x0C to 0x7E Reserved */
+#define ACPI_GAS_ID_Platform_Rt_Mech                                           \
+	0x0B /* Platform Runtime Mechanism (PRM)                                   \
+		  */
+		 /* 0x0C to 0x7E Reserved */
 #define ACPI_GAS_ID_Functional_Fixed_HW 0x7F /* Functional Fixed Hardware */
 	/* 0x80 to 0xFF OEM Defined */
 	u8 register_bit_width;	/* The size in bits of the given register.
@@ -100,32 +102,32 @@ struct acpi_gas {
 /*
  *	ACPI table header
  */
-#define ACPI_TABLE_HEAD                                                          \
-	char signature[4]; /* The ASCII string representation of the table           \
-						  identifier. */                                         \
-	u32 length;	   /* The length of the table, in bytes, including the header,   \
-					  starting from offset 0.    This field is used to record the                                             \
-					  size of the entire table. */                               \
-	u8 revision;   /* The revision of the structure corresponding to the         \
-					  signature field for this table.   Larger revision numbers                                                       \
-					  are backward compatible to lower revision numbers with the \
-					  same signature.*/                                          \
-	u8 checksum;   /* The entire table, including the checksum field, must add   \
-					  to zero to be considered valid. */                         \
-	char OEMID[6]; /* An OEM-supplied string that identifies the OEM. */         \
-	char OEM_table_ID[8]; /* An OEM-supplied string that the OEM uses to         \
-							 identify the particular data table. This field is                                                                   \
-							 particularly useful when defining a definition      \
-							 block to distinguish definition block functions.    \
-							  The OEM assigns each dissimilar table a new OEM    \
-							 Table ID. */                                        \
-	u32 OEM_revision; /* An OEM-supplied revision number. Larger numbers are     \
-						 assumed to be newer revisions. */                       \
-	u32 Creator_ID;	  /* Vendor ID of utility that created the table.            \
-						  For tables containing Definition Blocks, this is the   \
-						 ID for the ASL Compiler. */                             \
-	u32 Creator_revision; /*Revision of utility that created the table.          \
-							  For tables containing Definition Blocks, this is   \
+#define ACPI_TABLE_HEAD                                                           \
+	char signature[4]; /* The ASCII string representation of the table            \
+						  identifier. */                                          \
+	u32 length;	   /* The length of the table, in bytes, including the header,    \
+					  starting from offset 0.    This field is used to record the \
+					  size of the entire table. */                                \
+	u8 revision;   /* The revision of the structure corresponding to the          \
+					  signature field for this table.   Larger revision numbers   \
+					  are backward compatible to lower revision numbers with the  \
+					  same signature.*/                                           \
+	u8 checksum;   /* The entire table, including the checksum field, must add    \
+					  to zero to be considered valid. */                          \
+	char OEMID[6]; /* An OEM-supplied string that identifies the OEM. */          \
+	char OEM_table_ID[8]; /* An OEM-supplied string that the OEM uses to          \
+							 identify the particular data table. This field is    \
+							 particularly useful when defining a definition       \
+							 block to distinguish definition block functions.     \
+							  The OEM assigns each dissimilar table a new OEM     \
+							 Table ID. */                                         \
+	u32 OEM_revision; /* An OEM-supplied revision number. Larger numbers are      \
+						 assumed to be newer revisions. */                        \
+	u32 Creator_ID;	  /* Vendor ID of utility that created the table.             \
+						  For tables containing Definition Blocks, this is the    \
+						 ID for the ASL Compiler. */                              \
+	u32 Creator_revision; /*Revision of utility that created the table.           \
+							  For tables containing Definition Blocks, this is    \
 							 the revision for the ASL Compiler.*/
 /*Root System Description Tables*/
 struct acpi_table_rsdt {
@@ -143,17 +145,17 @@ struct acpi_table_xsdt {
 
 /*Fixed ACPI Description Table(FADT)*/
 struct acpi_table_fadt {
-	ACPI_TABLE_HEAD						   /* The signature is "FACP",
-														   and the revision is 6 , and it's the major
-											  version,the minor version is at offset 131*/
-						u32 FIRMWARE_CTRL; /* Physical memory address of the
-											  FACS, where OSPM and Firmware
-											  exchange control information. If
-											  the HARDWARE_REDUCED_ACPI flag is
-											  set, and both this field and the
-											  X_FIRMWARE_CTRL field are zero,
-											  there is no FACS available.*/
-	u32 DSDT; /* Physical memory address of the DSDT. */
+	ACPI_TABLE_HEAD		   /* The signature is "FACP",
+										   and the revision is 6 , and it's the major
+							  version,the minor version is at offset 131*/
+		u32 FIRMWARE_CTRL; /* Physical memory address of the
+							  FACS, where OSPM and Firmware
+							  exchange control information. If
+							  the HARDWARE_REDUCED_ACPI flag is
+							  set, and both this field and the
+							  X_FIRMWARE_CTRL field are zero,
+							  there is no FACS available.*/
+	u32 DSDT;			   /* Physical memory address of the DSDT. */
 	u8 reserved1;
 	u8 Preferred_PM_profile; /* OSPM can use this field to set default power
 								management policy parameters during OS
@@ -171,8 +173,8 @@ struct acpi_table_fadt {
 	u16 SCI_INT;	/*System vector the SCI interrupt is wired to in 8259 mode.
 						On systems that do not contain the 8259, this field
 					   contains the Global System interrupt number of the SCI
-					   interrupt.    OSPM is required to treat the ACPI SCI interrupt
-					   as a shareable, level, active low interrupt.*/
+					   interrupt.    OSPM is required to treat the ACPI SCI
+					   interrupt    as a shareable, level, active low interrupt.*/
 	u32 SMI_CMD;	/**/
 	u8 ACPI_ENABLE; /**/
 	u8 ACPI_DISABLE;

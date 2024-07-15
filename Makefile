@@ -71,6 +71,10 @@ run:qemu
 
 config: clean
 	@python3 $(SCRIPT_CONFIG_DIR)/configure.py ${ROOT_DIR} ${SCRIPT_CONFIG_DIR} $(SCRIPT_CONFIG_DIR)/${CONFIG}
+fmt:
+	@find . -name '*.c' -print0 | xargs -0 clang-format -i -style=file
+	@find . -name '*.h' -print0 | xargs -0 clang-format -i -style=file
+	
 
 mrproper: clean
 	@echo "rm all Makefile.env"
