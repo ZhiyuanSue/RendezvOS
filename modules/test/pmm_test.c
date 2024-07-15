@@ -11,34 +11,43 @@ void pmm_test(void)
 	for(int i=0;i<PPN_TEST_CASE_NUM;++i)
 	{
 		alloc_ppn[i] = buddy_pmm.pmm_alloc(i*2+3);
-		if(alloc_ppn[i]!=-ENOMEM)
+		if(alloc_ppn[i]==-ENOMEM)
 		{
-			pr_debug("try to get %x pages ,and alloc ppn 0x%x\n",i*2+3,alloc_ppn[i]);
+			pr_error("alloc error\n");
+			goto pmm_test_error;
 		}
 		else
-			pr_error("alloc error\n");
+			;// pr_debug("try to get %x pages ,and alloc ppn 0x%x\n",i*2+3,alloc_ppn[i]);
 	}
 	for(int i=0;i<PPN_TEST_CASE_NUM;++i)
 	{
-		if(!buddy_pmm.pmm_free(alloc_ppn[i],i*2+3)){
-			pr_debug("free ppn 0x%x success\n",alloc_ppn[i]);
+		if(buddy_pmm.pmm_free(alloc_ppn[i],i*2+3)){
+			pr_error("free error\n");
+			goto pmm_test_error;
 		}
 		else
-			pr_error("free error\n");
+			;//pr_debug("free ppn 0x%x success\n",alloc_ppn[i]);
 	}
 	for(int i=0;i<PPN_TEST_CASE_NUM;++i)
 	{
 		alloc_ppn[i] = buddy_pmm.pmm_alloc(i*2+3);
-		if(alloc_ppn[i]!=-ENOMEM)
-		{
-			pr_debug("try to get %x pages ,and alloc ppn 0x%x\n",i*2+3,alloc_ppn[i]);
-		}
-		else
+		if(alloc_ppn[i]==-ENOMEM)
+		{	
 			pr_error("alloc error\n");
-		if(!buddy_pmm.pmm_free(alloc_ppn[i],i*2+3)){
-			pr_debug("free ppn 0x%x success\n",alloc_ppn[i]);
+			goto pmm_test_error;
 		}
 		else
+			;//pr_debug("try to get %x pages ,and alloc ppn 0x%x\n",i*2+3,alloc_ppn[i]);
+		if(buddy_pmm.pmm_free(alloc_ppn[i],i*2+3)){
 			pr_error("free error\n");
+			goto pmm_test_error;
+		}
+		else
+			;//pr_debug("free ppn 0x%x success\n",alloc_ppn[i]);
 	}
+	pr_info("pmm test pass!\n");
+	return;
+pmm_test_error:
+	pr_error("pmm test error!\n");
+	return;
 }

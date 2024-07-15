@@ -5,7 +5,7 @@
 #include <arch/x86_64/power_ctrl.h>
 #include <arch/x86_64/mm/vmm.h>
 extern char _start,_end;	/*the kernel end virt addr*/
-extern u64 boot_page_table_PML4,boot_page_table_directory_ptr,boot_page_table_directory;
+extern u64 L0_table,L1_table,L2_table;
 extern struct pmm buddy_pmm;
 
 static	u64	entry_per_bucket[BUDDY_MAXORDER+1], pages_per_bucket[BUDDY_MAXORDER+1];
@@ -35,7 +35,7 @@ static	void	try_map_buddy_data_space(u32 m_width)
 		arch_set_L2_entry_huge(
 			buddy_start_round_down_2m,
 			KERNEL_PHY_TO_VIRT(buddy_start_round_down_2m),
-			&boot_page_table_directory,
+			&L2_table,
 			(PDE_P | PDE_RW | PDE_G | PDE_PS)
 		);
 	}
@@ -50,6 +50,9 @@ void arch_init_pmm(struct setup_info* arch_setup_info)
 	u64 buddy_total_pages=0;
 
 	bool can_load_kernel=false;
+	kernel_phy_start=KERNEL_VIRT_TO_PHY((u64)(&_start));
+	kernel_phy_end=KERNEL_VIRT_TO_PHY((u64)(&_end));
+	buddy_phy_start=ROUND_UP(kernel_phy_end,PAGE_SIZE);
 
 	if( !MULTIBOOT_INFO_FLAG_CHECK(mtb_info->flags,MULTIBOOT_INFO_FLAG_MEM) || \
 	 !MULTIBOOT_INFO_FLAG_CHECK(mtb_info->flags,MULTIBOOT_INFO_FLAG_MMAP))
@@ -57,9 +60,6 @@ void arch_init_pmm(struct setup_info* arch_setup_info)
 		pr_info("no mem info\n");
 		goto arch_init_pmm_error;
 	}
-	kernel_phy_start=KERNEL_VIRT_TO_PHY((u64)(&_start));
-	kernel_phy_end=KERNEL_VIRT_TO_PHY((u64)(&_end));
-	buddy_phy_start=ROUND_UP(kernel_phy_end,PAGE_SIZE);
 
 	buddy_pmm.avaliable_phy_addr_end = 0;
 	

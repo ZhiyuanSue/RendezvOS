@@ -171,7 +171,7 @@ u32 pmm_alloc_zone(size_t page_number,int zone_number)
 		return -ENOMEM;
 
 	buddy_pmm.zone[zone_number].zone_total_avaliable_pages-=1<<alloc_order;
-	pr_debug("we alloced %x pages and have 0x%x pages after alloc\n",1<<alloc_order,buddy_pmm.zone[zone_number].zone_total_avaliable_pages);
+	//pr_debug("we alloced %x pages and have 0x%x pages after alloc\n",1<<alloc_order,buddy_pmm.zone[zone_number].zone_total_avaliable_pages);
 	return PPN_FROM_IDX(alloc_order,index);
 }
 u32	pmm_alloc(size_t page_number)
@@ -268,7 +268,7 @@ int pmm_free(u32 ppn,size_t page_number)
 		if((free_one_result=pmm_free_one(ppn+page_count)))
 			return free_one_result;
 	}
-	pr_debug("after free we have 0x%x pages\n",buddy_pmm.zone[zone_number].zone_total_avaliable_pages);
+	//pr_debug("after free we have 0x%x pages\n",buddy_pmm.zone[zone_number].zone_total_avaliable_pages);
 	return 0;
 }
 struct	pmm	buddy_pmm = {

@@ -86,7 +86,7 @@ calculate_kernel_pages:
 	/*calculate the lower*/
 	movl	$(_kstart-kernel_virt_offset),%eax
 	andl	$align_bit32_not_2m_minus_1,%eax
-	movl	$(boot_page_table_directory-kernel_virt_offset),%edx
+	movl	$(L2_table-kernel_virt_offset),%edx
 change_kernel_page_table_loop:
 	movl	%eax,%ecx	/*store the eax to ecx*/
 	andl	$align_bit32_not_2m_minus_1,%eax	/*for the phy addr must not below 1GB,so and this mask is possible*/
@@ -99,7 +99,7 @@ change_kernel_page_table:
 	cmp	%eax,%ebx
 	jge	change_kernel_page_table_loop
 load_kernel_page_table:
-	movl	$(boot_page_table_PML4-kernel_virt_offset),%eax
+	movl	$(L0_table-kernel_virt_offset),%eax
 	movl	%eax,%cr3
 
 enable_pae:
@@ -145,8 +145,8 @@ set_segments:
 set_new_stack:
 	movq	$(boot_stack+boot_stack_size),%rsp
 clean_tmp_page_table:
-	movq	%rax,(boot_page_table_PML4)
-	movq	%rax,(boot_page_table_directory_ptr)
+	movq	%rax,(L0_table)
+	movq	%rax,(L1_table)
 run_main:
 	mov	$(setup_info),%rdi
 	call	cmain
@@ -195,7 +195,7 @@ tmp_gdt_desc:
 /**/
 	.section .boot.page
 	.p2align 12
-boot_page_table_PML4:
+L0_table:
 	/*
 		PML4_entry reference a pdpt 
 		bit 0:present,must be 1
@@ -212,12 +212,12 @@ boot_page_table_PML4:
 		bit 62:52:ignore
 		bit 63:XD,disable-execute
 	*/
-	.quad	boot_page_table_directory_ptr - kernel_virt_offset + ( PML4E_P | PML4E_RW )
+	.quad	L1_table - kernel_virt_offset + ( PML4E_P | PML4E_RW )
 	.zero	8*510
-	.quad	boot_page_table_directory_ptr - kernel_virt_offset + ( PML4E_P | PML4E_RW | PML4E_US)
+	.quad	L1_table - kernel_virt_offset + ( PML4E_P | PML4E_RW | PML4E_US)
 	
-	.global boot_page_table_directory_ptr
-boot_page_table_directory_ptr:
+	.global L1_table
+L1_table:
 	/*
 		PDPT_entry
 		bit 0:present,must be 1
@@ -238,12 +238,12 @@ boot_page_table_directory_ptr:
 		please remember one thing, current addr is 0x100000+offset
 		so the first entry of pdpt table must also set to the pd
 	*/
-	.quad	boot_page_table_directory - kernel_virt_offset + (PDPTE_P | PDPTE_RW)
+	.quad	L2_table - kernel_virt_offset + (PDPTE_P | PDPTE_RW)
 	.zero	8*510
-	.quad	boot_page_table_directory - kernel_virt_offset + (PDPTE_P | PDPTE_RW)
+	.quad	L2_table - kernel_virt_offset + (PDPTE_P | PDPTE_RW)
 
-	.global boot_page_table_directory
-boot_page_table_directory:
+	.global L2_table
+L2_table:
 	/*
 		PD_entry
 		bit 0:present,must be 1
@@ -270,7 +270,7 @@ boot_page_table_directory:
 		and the first  | 1...              1 | is pre 1 bits 
 		and the                             |1111 1111 1| is the PML4 addr, which will find the last entry of PDPT
 		and then                                       |111 1111 11| is the PDPT addr, which will find the last entry of PDE
-		and find the boot_page_table_directory,and set this entry's PS bit 
+		and find the L2_table,and set this entry's PS bit 
 		and we don't think the kernel might need more then 1GB space on shampoos
 	*/
 	.section .boot.log
