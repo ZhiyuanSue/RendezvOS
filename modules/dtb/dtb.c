@@ -1,18 +1,16 @@
-#include	<modules/log/log.h>
-#include	<modules/dtb/dtb.h>
+#include <modules/dtb/dtb.h>
+#include <modules/log/log.h>
 
 /*
-	I copied most of the following code from u-boot(https://github.com/u-boot/u-boot)
-	and changed something to let it pass complie
-	2024/5/21
+	I copied most of the following code from
+   u-boot(https://github.com/u-boot/u-boot) and changed something to let it pass
+   complie 2024/5/21
 */
-static int check_off_(uint32_t hdrsize, uint32_t totalsize, uint32_t off)
-{
+static int check_off_(uint32_t hdrsize, uint32_t totalsize, uint32_t off) {
 	return (off >= hdrsize) && (off <= totalsize);
 }
-static int check_block_(uint32_t hdrsize, uint32_t totalsize,
-			uint32_t base, uint32_t size)
-{
+static int check_block_(uint32_t hdrsize, uint32_t totalsize, uint32_t base,
+						uint32_t size) {
 	if (!check_off_(hdrsize, totalsize, base))
 		return 0; /* block start out of bounds */
 	if ((base + size) < base)
@@ -21,8 +19,7 @@ static int check_block_(uint32_t hdrsize, uint32_t totalsize,
 		return 0; /* block end out of bounds */
 	return 1;
 }
-size_t fdt_header_size(const void *fdt)
-{
+size_t fdt_header_size(const void *fdt) {
 	int version = fdt_version(fdt);
 	if (version <= 1)
 		return FDT_V1_SIZE;
@@ -35,74 +32,63 @@ size_t fdt_header_size(const void *fdt)
 	else
 		return FDT_V17_SIZE;
 }
-int fdt_check_header(const void *fdt)
-{
+int fdt_check_header(const void *fdt) {
 	size_t hdrsize;
 
 	if (fdt_magic(fdt) != FDT_MAGIC)
 		return -FDT_ERR_BADMAGIC;
-	if ((fdt_version(fdt) < FDT_FIRST_SUPPORTED_VERSION)
-		|| (fdt_last_comp_version(fdt) >
-		FDT_LAST_SUPPORTED_VERSION))
+	if ((fdt_version(fdt) < FDT_FIRST_SUPPORTED_VERSION) ||
+		(fdt_last_comp_version(fdt) > FDT_LAST_SUPPORTED_VERSION))
 		return -FDT_ERR_BADVERSION;
 	if (fdt_version(fdt) < fdt_last_comp_version(fdt))
 		return -FDT_ERR_BADVERSION;
 	hdrsize = fdt_header_size(fdt);
 
-	if ((fdt_totalsize(fdt) < hdrsize)
-		|| (fdt_totalsize(fdt) > INT_MAX))
+	if ((fdt_totalsize(fdt) < hdrsize) || (fdt_totalsize(fdt) > INT_MAX))
 		return -FDT_ERR_TRUNCATED;
 
 	/* Bounds check memrsv block */
-	if (!check_off_(hdrsize, fdt_totalsize(fdt),
-			fdt_off_mem_rsvmap(fdt)))
+	if (!check_off_(hdrsize, fdt_totalsize(fdt), fdt_off_mem_rsvmap(fdt)))
 		return -FDT_ERR_TRUNCATED;
-
 
 	/* Bounds check structure block */
 	if (fdt_version(fdt) < 17) {
-		if (!check_off_(hdrsize, fdt_totalsize(fdt),
-				fdt_off_dt_struct(fdt)))
+		if (!check_off_(hdrsize, fdt_totalsize(fdt), fdt_off_dt_struct(fdt)))
 			return -FDT_ERR_TRUNCATED;
 	} else {
-		if (!check_block_(hdrsize, fdt_totalsize(fdt),
-					fdt_off_dt_struct(fdt),
-					fdt_size_dt_struct(fdt)))
+		if (!check_block_(hdrsize, fdt_totalsize(fdt), fdt_off_dt_struct(fdt),
+						  fdt_size_dt_struct(fdt)))
 			return -FDT_ERR_TRUNCATED;
 	}
 
 	/* Bounds check strings block */
-	if (!check_block_(hdrsize, fdt_totalsize(fdt),
-				fdt_off_dt_strings(fdt),
-				fdt_size_dt_strings(fdt)))
+	if (!check_block_(hdrsize, fdt_totalsize(fdt), fdt_off_dt_strings(fdt),
+					  fdt_size_dt_strings(fdt)))
 		return -FDT_ERR_TRUNCATED;
 
 	return 0;
 }
 
-const void *fdt_offset_ptr(const void *fdt, int offset, unsigned int len)
-{
+const void *fdt_offset_ptr(const void *fdt, int offset, unsigned int len) {
 	unsigned int uoffset = offset;
 	unsigned int absoffset = offset + fdt_off_dt_struct(fdt);
 
 	if (offset < 0)
 		return NULL;
 
-	if ((absoffset < uoffset)
-		|| ((absoffset + len) < absoffset)
-		|| (absoffset + len) > fdt_totalsize(fdt))
+	if ((absoffset < uoffset) || ((absoffset + len) < absoffset) ||
+		(absoffset + len) > fdt_totalsize(fdt))
 		return NULL;
 
 	if (fdt_version(fdt) >= 0x11)
-		if (((uoffset + len) < uoffset)
-		    || ((offset + len) > fdt_size_dt_struct(fdt)))
+		if (((uoffset + len) < uoffset) ||
+			((offset + len) > fdt_size_dt_struct(fdt)))
 			return NULL;
 
 	return fdt_offset_ptr_(fdt, offset);
 }
 
-uint32_t fdt_next_tag(const void *fdt, int startoffset, int *nextoffset)
-{
+uint32_t fdt_next_tag(const void *fdt, int startoffset, int *nextoffset) {
 	const uint32_t *tagp, *lenp;
 	uint32_t tag;
 	int offset = startoffset;
@@ -130,10 +116,10 @@ uint32_t fdt_next_tag(const void *fdt, int startoffset, int *nextoffset)
 		if (!lenp)
 			return FDT_END; /* premature end */
 		/* skip-name offset, length and value */
-		offset += sizeof(struct fdt_property) - FDT_TAGSIZE
-			+ SWAP_ENDIANNESS_32(*lenp);
+		offset += sizeof(struct fdt_property) - FDT_TAGSIZE +
+				  SWAP_ENDIANNESS_32(*lenp);
 		if (fdt_version(fdt) < 0x10 && SWAP_ENDIANNESS_32(*lenp) >= 8 &&
-		    ((offset - SWAP_ENDIANNESS_32(*lenp)) % 8) != 0)
+			((offset - SWAP_ENDIANNESS_32(*lenp)) % 8) != 0)
 			offset += 4;
 		break;
 
@@ -149,29 +135,25 @@ uint32_t fdt_next_tag(const void *fdt, int startoffset, int *nextoffset)
 	if (!fdt_offset_ptr(fdt, startoffset, offset - startoffset))
 		return FDT_END; /* premature end */
 
-	*nextoffset = ROUND_UP(offset,FDT_TAGSIZE);
+	*nextoffset = ROUND_UP(offset, FDT_TAGSIZE);
 	return tag;
 }
-int fdt_check_node_offset_(const void *fdt, int offset)
-{
-	if ((offset < 0) || (offset % FDT_TAGSIZE)
-	    || (fdt_next_tag(fdt, offset, &offset) != FDT_BEGIN_NODE))
+int fdt_check_node_offset_(const void *fdt, int offset) {
+	if ((offset < 0) || (offset % FDT_TAGSIZE) ||
+		(fdt_next_tag(fdt, offset, &offset) != FDT_BEGIN_NODE))
 		return -FDT_ERR_BADOFFSET;
 
 	return offset;
 }
-int fdt_check_prop_offset_(const void *fdt, int offset)
-{
-	if ((offset < 0) || (offset % FDT_TAGSIZE)
-	    || (fdt_next_tag(fdt, offset, &offset) != FDT_PROP))
+int fdt_check_prop_offset_(const void *fdt, int offset) {
+	if ((offset < 0) || (offset % FDT_TAGSIZE) ||
+		(fdt_next_tag(fdt, offset, &offset) != FDT_PROP))
 		return -FDT_ERR_BADOFFSET;
 
 	return offset;
 }
 
-
-int fdt_next_node(const void *fdt, int offset, int *depth)
-{
+int fdt_next_node(const void *fdt, int offset, int *depth) {
 	int nextoffset = 0;
 	uint32_t tag;
 
@@ -197,8 +179,8 @@ int fdt_next_node(const void *fdt, int offset, int *depth)
 			break;
 
 		case FDT_END:
-			if ((nextoffset >= 0)
-			    || ((nextoffset == -FDT_ERR_TRUNCATED) && !depth))
+			if ((nextoffset >= 0) ||
+				((nextoffset == -FDT_ERR_TRUNCATED) && !depth))
 				return -FDT_ERR_NOTFOUND;
 			else
 				return nextoffset;
@@ -208,8 +190,7 @@ int fdt_next_node(const void *fdt, int offset, int *depth)
 	return offset;
 }
 
-static int nextprop_(const void *fdt, int offset)
-{
+static int nextprop_(const void *fdt, int offset) {
 	uint32_t tag;
 	int nextoffset;
 
@@ -232,9 +213,7 @@ static int nextprop_(const void *fdt, int offset)
 	return -FDT_ERR_NOTFOUND;
 }
 
-
-int fdt_first_subnode(const void *fdt, int offset)
-{
+int fdt_first_subnode(const void *fdt, int offset) {
 	int depth = 0;
 
 	offset = fdt_next_node(fdt, offset, &depth);
@@ -244,8 +223,7 @@ int fdt_first_subnode(const void *fdt, int offset)
 	return offset;
 }
 
-int fdt_next_subnode(const void *fdt, int offset)
-{
+int fdt_next_subnode(const void *fdt, int offset) {
 	int depth = 1;
 
 	/*
@@ -261,8 +239,7 @@ int fdt_next_subnode(const void *fdt, int offset)
 	return offset;
 }
 
-int fdt_first_property_offset(const void *fdt, int nodeoffset)
-{
+int fdt_first_property_offset(const void *fdt, int nodeoffset) {
 	int offset;
 
 	if ((offset = fdt_check_node_offset_(fdt, nodeoffset)) < 0)
@@ -271,15 +248,13 @@ int fdt_first_property_offset(const void *fdt, int nodeoffset)
 	return nextprop_(fdt, offset);
 }
 
-int fdt_next_property_offset(const void *fdt, int offset)
-{
+int fdt_next_property_offset(const void *fdt, int offset) {
 	if ((offset = fdt_check_prop_offset_(fdt, offset)) < 0)
 		return offset;
 
 	return nextprop_(fdt, offset);
 }
-const char *fdt_get_string(const void *fdt, int stroffset, int *lenp)
-{
+const char *fdt_get_string(const void *fdt, int stroffset, int *lenp) {
 	const char *s;
 
 	if (stroffset > fdt_size_dt_strings(fdt))
@@ -288,11 +263,10 @@ const char *fdt_get_string(const void *fdt, int stroffset, int *lenp)
 
 	if (lenp)
 		*lenp = strlen(s);
-		
+
 	return s;
 }
 
-const char *fdt_string(const void *fdt, int stroffset)
-{
+const char *fdt_string(const void *fdt, int stroffset) {
 	return fdt_get_string(fdt, stroffset, NULL);
 }

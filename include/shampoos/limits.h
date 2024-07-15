@@ -4,5 +4,4 @@
 #ifndef _SHAMPOOS_LIMIT_H_
 #define _SHAMPOOS_LIMIT_H_
 
-
 #endif

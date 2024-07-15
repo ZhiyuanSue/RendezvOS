@@ -3,6 +3,4 @@
 
 #define LOCK_FREE 1
 
-
-
 #endif

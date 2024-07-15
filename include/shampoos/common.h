@@ -1,15 +1,15 @@
 #ifndef _SHAMPOOS_COMMON_H_
 #define _SHAMPOOS_COMMON_H_
 #define _K_KERNEL_
-#include <common/types.h>
 #include <common/stdarg.h>
 #include <common/stddef.h>
+#include <common/types.h>
 
-#include <shampoos/limits.h>
-#include <shampoos/stdio.h>
 #include <shampoos/error.h>
+#include <shampoos/limits.h>
 #include <shampoos/list.h>
 #include <shampoos/mm/pmm.h>
+#include <shampoos/stdio.h>
 
 #ifdef _AARCH64_
 #include <arch/aarch64/arch_common.h>
@@ -19,7 +19,7 @@
 #include <arch/riscv64/arch_common.h>
 #elif defined _X86_64_
 #include <arch/x86_64/arch_common.h>
-#else	/*for default config is x86_64*/
+#else /*for default config is x86_64*/
 #include <arch/x86_64/arch_common.h>
 #endif
 #include <modules/modules.h>

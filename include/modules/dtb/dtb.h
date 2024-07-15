@@ -1,13 +1,13 @@
 #ifndef _SHAMPOOS_DTB_H_
 #define _SHAMPOOS_DTB_H_
-#include	<common/endianness.h>
-#include	<common/stddef.h>
-#include	<common/limits.h>
-#include	<common/mm.h>
-#include	"fdt.h"
-#include    "libfdt.h"
-#include 	"property.h"
-#include    "print_property.h"
+#include "fdt.h"
+#include "libfdt.h"
+#include "print_property.h"
+#include "property.h"
+#include <common/endianness.h>
+#include <common/limits.h>
+#include <common/mm.h>
+#include <common/stddef.h>
 
 int fdt_check_header(const void *fdt);
 const void *fdt_offset_ptr(const void *fdt, int offset, unsigned int len);

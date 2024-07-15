@@ -14,5 +14,5 @@
 #include <arch/x86_64/mm/vmm.h>
 #endif
 
-int map(u64 ppn,u64 vpn);
+int map(u64 ppn, u64 vpn);
 #endif

@@ -1,9 +1,9 @@
-#ifndef	_SHAMPOOS_TRAP_H_
-#define	_SHAMPOOS_TRAP_H_
+#ifndef _SHAMPOOS_TRAP_H_
+#define _SHAMPOOS_TRAP_H_
 #include <common/types.h>
-#define	IDT_LIMIT	256
-#define	ARCH_USED_TRAP_NUM	21
-enum TRAP_NUM{
+#define IDT_LIMIT 256
+#define ARCH_USED_TRAP_NUM 21
+enum TRAP_NUM {
 	TRAP_DE,
 	TRAP_DB,
 	TRAP_NMI,
@@ -13,7 +13,7 @@ enum TRAP_NUM{
 	TRAP_UD,
 	TRAP_NM,
 	TRAP_DF,
-	TRAP_CSO,	/*reserved,Coprocessor Segment Overrun*/
+	TRAP_CSO, /*reserved,Coprocessor Segment Overrun*/
 	TRAP_TS,
 	TRAP_NP,
 	TRAP_SS,
