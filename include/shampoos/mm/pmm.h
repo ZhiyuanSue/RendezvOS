@@ -72,7 +72,7 @@ enum zone_type {
 struct pmm {
 	// region_count record continuous memory regions number
 	int region_count;
-	//memory_regions record the memory regions
+	// memory_regions record the memory regions
 	struct region memory_regions[SHAMPOOS_MAX_MEMORY_REGIONS];
 	// buckets record the number of the buckets
 	struct buddy_bucket buckets[BUDDY_MAXORDER + 1];
@@ -132,5 +132,10 @@ static inline bool frame_list_empty(struct page_frame *head) {
 		return true;
 	return false;
 }
+
+void calculate_bucket_space();
+void calculate_avaliable_phy_addr_end();
+void generate_buddy_bucket(u64 kernel_phy_start, u64 kernel_phy_end,
+						   u64 buddy_phy_start, u64 buddy_phy_end);
 
 #endif

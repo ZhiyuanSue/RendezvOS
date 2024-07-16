@@ -3,6 +3,71 @@
 #include <shampoos/mm/pmm.h>
 
 struct pmm buddy_pmm;
+u64 entry_per_bucket[BUDDY_MAXORDER + 1], pages_per_bucket[BUDDY_MAXORDER + 1];
+/*some public functions in arch init, you can see some example in arch pmm*/
+void calculate_bucket_space() {
+	u64 adjusted_phy_mem_end = buddy_pmm.avaliable_phy_addr_end;
+	/*we promised that this phy mem end is 2m aligned*/
+	for (int order = 0; order <= BUDDY_MAXORDER; ++order) {
+		u64 size_in_this_order = (PAGE_SIZE << order);
+		entry_per_bucket[order] = adjusted_phy_mem_end / size_in_this_order;
+		pages_per_bucket[order] =
+			ROUND_UP(entry_per_bucket[order] * sizeof(struct page_frame),
+					 PAGE_SIZE) /
+			PAGE_SIZE;
+	}
+}
+void calculate_avaliable_phy_addr_end() {
+	buddy_pmm.avaliable_phy_addr_end = 0;
+	for (int i = 0; i < buddy_pmm.region_count; i++) {
+		struct region reg = buddy_pmm.memory_regions[i];
+		pr_info(
+			"Aviable Mem:base_phy_addr is 0x%x, length = "
+			"0x%x\n",
+			reg.addr, reg.len);
+		u64 sec_start_addr = reg.addr;
+		u64 sec_end_addr = sec_start_addr + reg.len;
+		/*remember, this end is not reachable,[ sec_end_addr , sec_end_addr
+		 * ) */
+		if (sec_end_addr > buddy_pmm.avaliable_phy_addr_end)
+			buddy_pmm.avaliable_phy_addr_end = sec_end_addr;
+	}
+	buddy_pmm.avaliable_phy_addr_end =
+		ROUND_DOWN(buddy_pmm.avaliable_phy_addr_end, MIDDLE_PAGE_SIZE);
+}
+void generate_buddy_bucket(u64 kernel_phy_start, u64 kernel_phy_end,
+						   u64 buddy_phy_start, u64 buddy_phy_end) {
+	/*generate the buddy bucket*/
+	for (int order = 0; order <= BUDDY_MAXORDER; ++order) {
+		buddy_pmm.buckets[order].order = order;
+		buddy_pmm.buckets[order].pages =
+			(struct page_frame *)KERNEL_PHY_TO_VIRT(buddy_phy_start);
+		buddy_phy_start += pages_per_bucket[order] * PAGE_SIZE;
+	}
+	for (int i = 0; i < buddy_pmm.region_count; i++) {
+		struct region reg = buddy_pmm.memory_regions[i];
+		u64 sec_start_addr = reg.addr;
+		u64 sec_end_addr = sec_start_addr + reg.len;
+		/*remember, this end is not reachable,[ sec_end_addr , sec_end_addr
+		 * ) */
+		if (sec_start_addr <= kernel_phy_start && sec_end_addr >= buddy_phy_end)
+			sec_start_addr = buddy_phy_end;
+		sec_start_addr = ROUND_UP(sec_start_addr, MIDDLE_PAGE_SIZE);
+		sec_end_addr = ROUND_DOWN(sec_end_addr, MIDDLE_PAGE_SIZE);
+		for (int order = 0; order <= BUDDY_MAXORDER; ++order) {
+			u64 size_in_this_order = (PAGE_SIZE << order);
+			struct page_frame *pages = buddy_pmm.buckets[order].pages;
+			for (u64 addr_iter = sec_start_addr; addr_iter < sec_end_addr;
+				 addr_iter += size_in_this_order) {
+				u32 index = IDX_FROM_PPN(order, PPN(addr_iter));
+				pages[index].flags |= PAGE_FRAME_AVALIABLE;
+				pages[index].prev = pages[index].next =
+					KERNEL_VIRT_TO_PHY((u64)(&(pages[index])));
+			}
+		}
+	}
+	return;
+}
 
 static void pmm_init_zones() {
 	/*init the zones,remember there might have more then one zone*/

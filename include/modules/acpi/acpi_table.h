@@ -37,8 +37,8 @@
 						 Structure	  only includes the first 20 bytes of this      \
 						 table,                                                    \
 						 bytes 0	  to 19.	  It does not include the Length         \
-						 field	  and	  beyond.	  The current value for this field                             \
-						 is 2. */                                                  \
+						 field	  and	  beyond.	  The current value for	  this      \
+						 field	  is 2. */                                          \
 	u32 rsdt_address; /* 32 bit physical address of the RSDT. */
 /*
  * For acpi version 2.0 RSDP table

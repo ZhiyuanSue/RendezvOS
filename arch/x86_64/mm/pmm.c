@@ -9,42 +9,11 @@ extern char _start, _end; /*the kernel end virt addr*/
 extern u64 L0_table, L1_table, L2_table;
 extern struct pmm buddy_pmm;
 
-static u64 entry_per_bucket[BUDDY_MAXORDER + 1],
+extern u64 entry_per_bucket[BUDDY_MAXORDER + 1],
 	pages_per_bucket[BUDDY_MAXORDER + 1];
-static u64 kernel_phy_start = 0, kernel_phy_end = 0;
-static u64 buddy_phy_start = 0, buddy_phy_end = 0;
 
-static void calculate_avaliable_phy_addr_end() {
-	buddy_pmm.avaliable_phy_addr_end = 0;
-	for (int i = 0; i < buddy_pmm.region_count; i++) {
-		struct region reg = buddy_pmm.memory_regions[i];
-		pr_info(
-			"Aviable Mem:base_phy_addr is 0x%x, length = "
-			"0x%x\n",
-			reg.addr, reg.len);
-		u64 sec_start_addr = reg.addr;
-		u64 sec_end_addr = sec_start_addr + reg.len;
-		/*remember, this end is not reachable,[ sec_end_addr , sec_end_addr
-		 * ) */
-		if (sec_end_addr > buddy_pmm.avaliable_phy_addr_end)
-			buddy_pmm.avaliable_phy_addr_end = sec_end_addr;
-	}
-	buddy_pmm.avaliable_phy_addr_end =
-		ROUND_DOWN(buddy_pmm.avaliable_phy_addr_end, MIDDLE_PAGE_SIZE);
-}
-static void calculate_bucket_space() {
-	u64 adjusted_phy_mem_end = buddy_pmm.avaliable_phy_addr_end;
-	/*we promised that this phy mem end is 2m aligned*/
-	for (int order = 0; order <= BUDDY_MAXORDER; ++order) {
-		u64 size_in_this_order = (PAGE_SIZE << order);
-		entry_per_bucket[order] = adjusted_phy_mem_end / size_in_this_order;
-		pages_per_bucket[order] =
-			ROUND_UP(entry_per_bucket[order] * sizeof(struct page_frame),
-					 PAGE_SIZE) /
-			PAGE_SIZE;
-	}
-}
-static void try_map_buddy_data_space(u32 m_width) {
+static void arch_map_buddy_data_space(u64 kernel_phy_start, u64 kernel_phy_end,
+									  u64 buddy_phy_start, u64 buddy_phy_end) {
 	u64 buddy_phy_start_addr = buddy_phy_start;
 	u64 kernel_end_phy_addr_round_up =
 		ROUND_UP(kernel_phy_end, MIDDLE_PAGE_SIZE);
@@ -62,38 +31,6 @@ static void try_map_buddy_data_space(u32 m_width) {
 							   &L2_table, (PDE_P | PDE_RW | PDE_G | PDE_PS));
 	}
 }
-static void generate_buddy_bucket() {
-	/*generate the buddy bucket*/
-	for (int order = 0; order <= BUDDY_MAXORDER; ++order) {
-		buddy_pmm.buckets[order].order = order;
-		buddy_pmm.buckets[order].pages =
-			(struct page_frame *)KERNEL_PHY_TO_VIRT(buddy_phy_start);
-		buddy_phy_start += pages_per_bucket[order] * PAGE_SIZE;
-	}
-	for (int i = 0; i < buddy_pmm.region_count; i++) {
-		struct region reg = buddy_pmm.memory_regions[i];
-		u64 sec_start_addr = reg.addr;
-		u64 sec_end_addr = sec_start_addr + reg.len;
-		/*remember, this end is not reachable,[ sec_end_addr , sec_end_addr
-		 * ) */
-		if (sec_start_addr <= kernel_phy_start && sec_end_addr >= buddy_phy_end)
-			sec_start_addr = buddy_phy_end;
-		sec_start_addr = ROUND_UP(sec_start_addr, MIDDLE_PAGE_SIZE);
-		sec_end_addr = ROUND_DOWN(sec_end_addr, MIDDLE_PAGE_SIZE);
-		for (int order = 0; order <= BUDDY_MAXORDER; ++order) {
-			u64 size_in_this_order = (PAGE_SIZE << order);
-			struct page_frame *pages = buddy_pmm.buckets[order].pages;
-			for (u64 addr_iter = sec_start_addr; addr_iter < sec_end_addr;
-				 addr_iter += size_in_this_order) {
-				u32 index = IDX_FROM_PPN(order, PPN(addr_iter));
-				pages[index].flags |= PAGE_FRAME_AVALIABLE;
-				pages[index].prev = pages[index].next =
-					KERNEL_VIRT_TO_PHY((u64)(&(pages[index])));
-			}
-		}
-	}
-	return;
-}
 void arch_init_pmm(struct setup_info *arch_setup_info) {
 	struct multiboot_info *mtb_info = GET_MULTIBOOT_INFO(arch_setup_info);
 	struct multiboot_mmap_entry *mmap;
@@ -102,9 +39,10 @@ void arch_init_pmm(struct setup_info *arch_setup_info) {
 	u64 buddy_total_pages = 0;
 
 	bool can_load_kernel = false;
-	kernel_phy_start = KERNEL_VIRT_TO_PHY((u64)(&_start));
-	kernel_phy_end = KERNEL_VIRT_TO_PHY((u64)(&_end));
-	buddy_phy_start = ROUND_UP(kernel_phy_end, PAGE_SIZE);
+	u64 kernel_phy_start = KERNEL_VIRT_TO_PHY((u64)(&_start));
+	u64 kernel_phy_end = KERNEL_VIRT_TO_PHY((u64)(&_end));
+	u64 buddy_phy_start = ROUND_UP(kernel_phy_end, PAGE_SIZE);
+	u64 buddy_phy_end = 0;
 
 	/* check the multiboot header */
 	if (!MULTIBOOT_INFO_FLAG_CHECK(mtb_info->flags, MULTIBOOT_INFO_FLAG_MEM) ||
@@ -153,13 +91,12 @@ void arch_init_pmm(struct setup_info *arch_setup_info) {
 		pr_error("we cannot manager toooo many memory!\n");
 		goto arch_init_pmm_error;
 	}
-	
+
 	for (int i = 0; i < buddy_pmm.region_count; i++) {
 		struct region reg = buddy_pmm.memory_regions[i];
 		u64 sec_start_addr = reg.addr;
 		u64 sec_end_addr = sec_start_addr + reg.len;
-		/*remember, this end is not reachable,[ sec_end_addr , sec_end_addr
-		 * ) */
+		/*hint, this end is not reachable,[ sec_end_addr , sec_end_addr) */
 		if (sec_start_addr <= kernel_phy_start && sec_end_addr >= buddy_phy_end)
 			can_load_kernel = true;
 	}
@@ -169,9 +106,11 @@ void arch_init_pmm(struct setup_info *arch_setup_info) {
 		goto arch_init_pmm_error;
 	}
 
-	try_map_buddy_data_space(arch_setup_info->phy_addr_width);
+	arch_map_buddy_data_space(kernel_phy_start, kernel_phy_end, buddy_phy_start,
+							  buddy_phy_end);
 
-	generate_buddy_bucket();
+	generate_buddy_bucket(kernel_phy_start, kernel_phy_end, buddy_phy_start,
+						  buddy_phy_end);
 
 	return;
 arch_init_pmm_error:
