@@ -3,6 +3,7 @@
 #include <arch/x86_64/mm/vmm.h>
 #include <arch/x86_64/power_ctrl.h>
 #include <modules/log/log.h>
+#include <shampoos/limits.h>
 #include <shampoos/mm/pmm.h>
 extern char _start, _end; /*the kernel end virt addr*/
 extern u64 L0_table, L1_table, L2_table;
@@ -13,29 +14,20 @@ static u64 entry_per_bucket[BUDDY_MAXORDER + 1],
 static u64 kernel_phy_start = 0, kernel_phy_end = 0;
 static u64 buddy_phy_start = 0, buddy_phy_end = 0;
 
-static struct multiboot_info *mtb_info;
-static struct multiboot_mmap_entry *mmap;
-static u64 add_ptr;
-static u64 length;
 static void calculate_avaliable_phy_addr_end() {
 	buddy_pmm.avaliable_phy_addr_end = 0;
-	for (mmap = (struct multiboot_mmap_entry *)add_ptr;
-		 ((u64)mmap) < (add_ptr + length);
-		 mmap = (struct multiboot_mmap_entry *)((u64)mmap + mmap->size +
-												sizeof(mmap->size))) {
-		if (mmap->addr + mmap->len > BIOS_MEM_UPPER &&
-			mmap->type == MULTIBOOT_MEMORY_AVAILABLE) {
-			pr_info(
-				"Aviable Mem:size is 0x%x, base_phy_addr is 0x%x, length = "
-				"0x%x, type = 0x%x\n",
-				mmap->size, mmap->addr, mmap->len, mmap->type);
-			u64 sec_start_addr = mmap->addr;
-			u64 sec_end_addr = sec_start_addr + mmap->len;
-			/*remember, this end is not reachable,[ sec_end_addr , sec_end_addr
-			 * ) */
-			if (sec_end_addr > buddy_pmm.avaliable_phy_addr_end)
-				buddy_pmm.avaliable_phy_addr_end = sec_end_addr;
-		}
+	for (int i = 0; i < buddy_pmm.region_count; i++) {
+		struct region reg = buddy_pmm.memory_regions[i];
+		pr_info(
+			"Aviable Mem:base_phy_addr is 0x%x, length = "
+			"0x%x\n",
+			reg.addr, reg.len);
+		u64 sec_start_addr = reg.addr;
+		u64 sec_end_addr = sec_start_addr + reg.len;
+		/*remember, this end is not reachable,[ sec_end_addr , sec_end_addr
+		 * ) */
+		if (sec_end_addr > buddy_pmm.avaliable_phy_addr_end)
+			buddy_pmm.avaliable_phy_addr_end = sec_end_addr;
 	}
 	buddy_pmm.avaliable_phy_addr_end =
 		ROUND_DOWN(buddy_pmm.avaliable_phy_addr_end, MIDDLE_PAGE_SIZE);
@@ -78,40 +70,35 @@ static void generate_buddy_bucket() {
 			(struct page_frame *)KERNEL_PHY_TO_VIRT(buddy_phy_start);
 		buddy_phy_start += pages_per_bucket[order] * PAGE_SIZE;
 	}
-	for (mmap = (struct multiboot_mmap_entry *)add_ptr;
-		 ((u64)mmap) < (add_ptr + length);
-		 mmap = (struct multiboot_mmap_entry *)((u64)mmap + mmap->size +
-												sizeof(mmap->size))) {
-		if (mmap->addr + mmap->len > BIOS_MEM_UPPER &&
-			mmap->type == MULTIBOOT_MEMORY_AVAILABLE) {
-			u64 sec_start_addr = mmap->addr;
-			u64 sec_end_addr = sec_start_addr + mmap->len;
-			/*remember, this end is not reachable,[ sec_end_addr , sec_end_addr
-			 * ) */
-			if (sec_start_addr <= kernel_phy_start &&
-				sec_end_addr >= buddy_phy_end)
-				sec_start_addr = buddy_phy_end;
-			sec_start_addr = ROUND_UP(sec_start_addr, MIDDLE_PAGE_SIZE);
-			sec_end_addr = ROUND_DOWN(sec_end_addr, MIDDLE_PAGE_SIZE);
-			for (int order = 0; order <= BUDDY_MAXORDER; ++order) {
-				u64 size_in_this_order = (PAGE_SIZE << order);
-				struct page_frame *pages = buddy_pmm.buckets[order].pages;
-				for (u64 addr_iter = sec_start_addr; addr_iter < sec_end_addr;
-					 addr_iter += size_in_this_order) {
-					u32 index = IDX_FROM_PPN(order, PPN(addr_iter));
-					pages[index].flags |= PAGE_FRAME_AVALIABLE;
-					pages[index].prev = pages[index].next =
-						KERNEL_VIRT_TO_PHY((u64)(&(pages[index])));
-				}
+	for (int i = 0; i < buddy_pmm.region_count; i++) {
+		struct region reg = buddy_pmm.memory_regions[i];
+		u64 sec_start_addr = reg.addr;
+		u64 sec_end_addr = sec_start_addr + reg.len;
+		/*remember, this end is not reachable,[ sec_end_addr , sec_end_addr
+		 * ) */
+		if (sec_start_addr <= kernel_phy_start && sec_end_addr >= buddy_phy_end)
+			sec_start_addr = buddy_phy_end;
+		sec_start_addr = ROUND_UP(sec_start_addr, MIDDLE_PAGE_SIZE);
+		sec_end_addr = ROUND_DOWN(sec_end_addr, MIDDLE_PAGE_SIZE);
+		for (int order = 0; order <= BUDDY_MAXORDER; ++order) {
+			u64 size_in_this_order = (PAGE_SIZE << order);
+			struct page_frame *pages = buddy_pmm.buckets[order].pages;
+			for (u64 addr_iter = sec_start_addr; addr_iter < sec_end_addr;
+				 addr_iter += size_in_this_order) {
+				u32 index = IDX_FROM_PPN(order, PPN(addr_iter));
+				pages[index].flags |= PAGE_FRAME_AVALIABLE;
+				pages[index].prev = pages[index].next =
+					KERNEL_VIRT_TO_PHY((u64)(&(pages[index])));
 			}
 		}
 	}
 	return;
 }
 void arch_init_pmm(struct setup_info *arch_setup_info) {
-	mtb_info = GET_MULTIBOOT_INFO(arch_setup_info);
-	add_ptr = mtb_info->mmap.mmap_addr + KERNEL_VIRT_OFFSET;
-	length = mtb_info->mmap.mmap_length;
+	struct multiboot_info *mtb_info = GET_MULTIBOOT_INFO(arch_setup_info);
+	struct multiboot_mmap_entry *mmap;
+	u64 add_ptr = mtb_info->mmap.mmap_addr + KERNEL_VIRT_OFFSET;
+	u64 length = mtb_info->mmap.mmap_length;
 	u64 buddy_total_pages = 0;
 
 	bool can_load_kernel = false;
@@ -124,6 +111,26 @@ void arch_init_pmm(struct setup_info *arch_setup_info) {
 		!MULTIBOOT_INFO_FLAG_CHECK(mtb_info->flags, MULTIBOOT_INFO_FLAG_MMAP)) {
 		pr_info("no mem info\n");
 		goto arch_init_pmm_error;
+	}
+	/*generate the memory region info*/
+	buddy_pmm.region_count = 0;
+	for (mmap = (struct multiboot_mmap_entry *)add_ptr;
+		 ((u64)mmap) < (add_ptr + length);
+		 mmap = (struct multiboot_mmap_entry *)((u64)mmap + mmap->size +
+												sizeof(mmap->size))) {
+		if (mmap->addr + mmap->len > BIOS_MEM_UPPER &&
+			mmap->type == MULTIBOOT_MEMORY_AVAILABLE) {
+			if (buddy_pmm.region_count < SHAMPOOS_MAX_MEMORY_REGIONS) {
+				buddy_pmm.memory_regions[buddy_pmm.region_count].addr =
+					mmap->addr;
+				buddy_pmm.memory_regions[buddy_pmm.region_count].len =
+					mmap->len;
+				buddy_pmm.region_count++;
+			} else {
+				pr_error("we cannot manager toooo many memory regions\n");
+				goto arch_init_pmm_error;
+			}
+		}
 	}
 
 	/* calculate the end of the buddy_pmm avaliable_phy_addr */
@@ -146,20 +153,15 @@ void arch_init_pmm(struct setup_info *arch_setup_info) {
 		pr_error("we cannot manager toooo many memory!\n");
 		goto arch_init_pmm_error;
 	}
-	for (mmap = (struct multiboot_mmap_entry *)add_ptr;
-		 ((u64)mmap) < (add_ptr + length);
-		 mmap = (struct multiboot_mmap_entry *)((u64)mmap + mmap->size +
-												sizeof(mmap->size))) {
-		if (mmap->addr + mmap->len > BIOS_MEM_UPPER &&
-			mmap->type == MULTIBOOT_MEMORY_AVAILABLE) {
-			u64 sec_start_addr = mmap->addr;
-			u64 sec_end_addr = sec_start_addr + mmap->len;
-			/*remember, this end is not reachable,[ sec_end_addr , sec_end_addr
-			 * ) */
-			if (sec_start_addr <= kernel_phy_start &&
-				sec_end_addr >= buddy_phy_end)
-				can_load_kernel = true;
-		}
+	
+	for (int i = 0; i < buddy_pmm.region_count; i++) {
+		struct region reg = buddy_pmm.memory_regions[i];
+		u64 sec_start_addr = reg.addr;
+		u64 sec_end_addr = sec_start_addr + reg.len;
+		/*remember, this end is not reachable,[ sec_end_addr , sec_end_addr
+		 * ) */
+		if (sec_start_addr <= kernel_phy_start && sec_end_addr >= buddy_phy_end)
+			can_load_kernel = true;
 	}
 	/*You need to check whether the kernel have been loaded all successfully*/
 	if (!can_load_kernel) {

@@ -2,6 +2,7 @@
 #include <common/endianness.h>
 #include <modules/dtb/dtb.h>
 #include <shampoos/mm/pmm.h>
+#include <shampoos/limits.h>
 extern char _start, _end; /*the kernel end virt addr*/
 extern u64 L0_table, L1_table, L2_table;
 extern struct pmm buddy_pmm;
@@ -43,12 +44,21 @@ find_memory_node:
 		u_int32_t len = SWAP_ENDIANNESS_32(prop->len);
 		if (!strcmp(s, reg_str)) {
 			u32 *u32_data = (u32 *)data;
-			for (int index = 0; index < len; index += sizeof(u32) * 2) {
-				u32 addr = SWAP_ENDIANNESS_32(*u32_data);
+			for (int index = 0; index < len; index += sizeof(u32) * 4) {
+				u32 addr,len;
+				struct region* reg=&buddy_pmm.memory_regions[buddy_pmm.region_count];
+				addr = SWAP_ENDIANNESS_32(*u32_data);
 				u32_data++;
-				u32 len = SWAP_ENDIANNESS_32(*u32_data);
+				len = SWAP_ENDIANNESS_32(*u32_data);
 				u32_data++;
-				pr_info("start addr is %x,len is %x\n", addr, len);
+				reg->addr=addr+len;
+				addr = SWAP_ENDIANNESS_32(*u32_data);
+				u32_data++;
+				len = SWAP_ENDIANNESS_32(*u32_data);
+				u32_data++;
+				reg->len=addr+len;
+				pr_info("region start 0x%x,len 0x%x\n",reg->addr,reg->len);
+				buddy_pmm.region_count++;
 			}
 		}
 	}
@@ -72,6 +82,7 @@ void arch_init_pmm(struct setup_info *arch_setup_info) {
 		pr_info("reserve_entry: address 0x%x size: 0x%x\n", entry->address,
 				entry->size);
 	}
+	buddy_pmm.region_count=0;
 	get_dtb_memory(dtb_header_ptr, 0, 0);
 	// Need to check kernel and dtb have all loaded
 }

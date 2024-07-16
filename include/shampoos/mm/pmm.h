@@ -19,6 +19,13 @@
 
 #include <common/mm.h>
 
+#include <shampoos/limits.h>
+
+struct region {
+	u64 addr;
+	u64 len;
+};
+
 #define PPN(addr) (addr >> 12)
 #define IDX_FROM_PPN(order, ppn) (ppn >> order)
 #define PPN_FROM_IDX(order, idx) (idx << order)
@@ -63,12 +70,21 @@ enum zone_type {
 };
 
 struct pmm {
-	void (*pmm_init)(struct setup_info *arch_setup_info);
-	u32 (*pmm_alloc)(size_t page_number);
-	int (*pmm_free)(u32 ppn, size_t page_number);
+	// region_count record continuous memory regions number
+	int region_count;
+	//memory_regions record the memory regions
+	struct region memory_regions[SHAMPOOS_MAX_MEMORY_REGIONS];
+	// buckets record the number of the buckets
 	struct buddy_bucket buckets[BUDDY_MAXORDER + 1];
+	// zone record the number of the zone
 	struct buddy_zone zone[ZONE_NR_MAX];
 	u64 avaliable_phy_addr_end;
+	// init buddy pmm
+	void (*pmm_init)(struct setup_info *arch_setup_info);
+	// alloc one page
+	u32 (*pmm_alloc)(size_t page_number);
+	// free one page
+	int (*pmm_free)(u32 ppn, size_t page_number);
 };
 #define GET_AVALI_HEAD_PTR(zone_n, order)                                      \
 	(&(buddy_pmm.zone[zone_n].avaliable_zone_head[order]))
