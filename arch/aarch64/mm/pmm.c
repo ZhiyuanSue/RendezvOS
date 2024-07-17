@@ -1,4 +1,5 @@
 #include <arch/aarch64/mm/pmm.h>
+#include <arch/aarch64/power_ctrl.h>
 #include <common/endianness.h>
 #include <modules/dtb/dtb.h>
 #include <shampoos/limits.h>
@@ -8,9 +9,9 @@ extern u64 L0_table, L1_table, L2_table;
 extern struct buddy buddy_pmm;
 
 extern struct property_type property_types[PROPERTY_TYPE_NUM];
-static u64 kernel_phy_start = 0, kernel_phy_end = 0;
-static u64 buddy_phy_start = 0, buddy_phy_end = 0;
-static void get_dtb_memory(void *fdt, int offset, int depth) {
+extern u64 entry_per_bucket[BUDDY_MAXORDER + 1],
+	pages_per_bucket[BUDDY_MAXORDER + 1];
+static void arch_get_memory_regions(void *fdt, int offset, int depth) {
 	/*
 		actually we seems to use something like of_find_node_by_type
 		but now we have no memory to alloc any struct of device_node
@@ -32,7 +33,7 @@ static void get_dtb_memory(void *fdt, int offset, int depth) {
 		}
 	}
 	fdt_for_each_subnode(node, fdt, offset) {
-		get_dtb_memory(fdt, node, depth + 1);
+		arch_get_memory_regions(fdt, node, depth + 1);
 	}
 	return;
 find_memory_node:
@@ -65,13 +66,22 @@ find_memory_node:
 	}
 }
 
+static void arch_map_buddy_data_space(paddr kernel_phy_start,
+									  paddr kernel_phy_end,
+									  paddr buddy_phy_start,
+									  paddr buddy_phy_end) {}
+
 void arch_init_pmm(struct setup_info *arch_setup_info) {
 
 	struct fdt_header *dtb_header_ptr =
 		(struct fdt_header *)(arch_setup_info->boot_dtb_header_base_addr);
-	buddy_phy_start = ROUND_UP(arch_setup_info->map_end_virt_addr, PAGE_SIZE);
-	kernel_phy_start = KERNEL_VIRT_TO_PHY((u64)(&_start));
-	kernel_phy_end = KERNEL_VIRT_TO_PHY((u64)(&_end));
+	paddr buddy_phy_start =
+		ROUND_UP(arch_setup_info->map_end_virt_addr, PAGE_SIZE);
+	paddr kernel_phy_start = KERNEL_VIRT_TO_PHY((u64)(&_start));
+	paddr kernel_phy_end = KERNEL_VIRT_TO_PHY((u64)(&_end));
+	paddr buddy_phy_end = 0;
+	u64 buddy_total_pages = 0;
+
 	buddy_pmm.avaliable_phy_addr_end = 0;
 
 	pr_info("start arch init pmm\n");
@@ -84,5 +94,29 @@ void arch_init_pmm(struct setup_info *arch_setup_info) {
 				entry->size);
 	}
 	buddy_pmm.region_count = 0;
-	get_dtb_memory(dtb_header_ptr, 0, 0);
+	arch_get_memory_regions(dtb_header_ptr, 0, 0);
+	if (!buddy_pmm.region_count)
+		goto arch_init_pmm_error;
+
+	calculate_avaliable_phy_addr_end();
+
+	for (int order = 0; order <= BUDDY_MAXORDER; ++order)
+		entry_per_bucket[order] = pages_per_bucket[order] = 0;
+	calculate_bucket_space();
+	for (int order = 0; order <= BUDDY_MAXORDER; ++order)
+		buddy_total_pages += pages_per_bucket[order];
+	buddy_phy_end = buddy_phy_start + buddy_total_pages * PAGE_SIZE;
+	pr_info("buddy start 0x%x end 0x%x\n", buddy_phy_start, buddy_phy_end);
+
+	// do some check
+
+	arch_map_buddy_data_space(kernel_phy_start, kernel_phy_end, buddy_phy_start,
+							  buddy_phy_end);
+
+	generate_buddy_bucket(kernel_phy_start, kernel_phy_end, buddy_phy_start,
+						  buddy_phy_end);
+
+	return;
+arch_init_pmm_error:
+	arch_shutdown();
 }

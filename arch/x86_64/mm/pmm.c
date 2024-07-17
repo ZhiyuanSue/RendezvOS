@@ -3,6 +3,7 @@
 #include <arch/x86_64/mm/vmm.h>
 #include <arch/x86_64/power_ctrl.h>
 #include <modules/log/log.h>
+#include <shampoos/error.h>
 #include <shampoos/limits.h>
 #include <shampoos/mm/buddy_pmm.h>
 extern char _start, _end; /*the kernel end virt addr*/
@@ -12,37 +13,11 @@ extern struct buddy buddy_pmm;
 extern u64 entry_per_bucket[BUDDY_MAXORDER + 1],
 	pages_per_bucket[BUDDY_MAXORDER + 1];
 
-static void arch_map_buddy_data_space(paddr kernel_phy_start, paddr kernel_phy_end,
-									  paddr buddy_phy_start, paddr buddy_phy_end) {
-	paddr buddy_phy_start_addr = buddy_phy_start;
-	paddr kernel_end_phy_addr_round_up =
-		ROUND_UP(kernel_phy_end, MIDDLE_PAGE_SIZE);
-	if (buddy_phy_start_addr < kernel_end_phy_addr_round_up)
-		buddy_phy_start_addr =
-			kernel_end_phy_addr_round_up; /*for we have mapped the 2m align
-											 space of kernel*/
-	for (; buddy_phy_start_addr < buddy_phy_end;
-		 buddy_phy_start_addr += MIDDLE_PAGE_SIZE) {
-		/*As pmm and vmm part is not usable now, we still use boot page table*/
-		paddr buddy_start_round_down_2m =
-			ROUND_DOWN(buddy_phy_start_addr, MIDDLE_PAGE_SIZE);
-		arch_set_L2_entry_huge(buddy_start_round_down_2m,
-							   KERNEL_PHY_TO_VIRT(buddy_start_round_down_2m),
-							   &L2_table, (PDE_P | PDE_RW | PDE_G | PDE_PS));
-	}
-}
-void arch_init_pmm(struct setup_info *arch_setup_info) {
+static int arch_get_memory_regions(struct setup_info *arch_setup_info) {
 	struct multiboot_info *mtb_info = GET_MULTIBOOT_INFO(arch_setup_info);
 	struct multiboot_mmap_entry *mmap;
 	vaddr add_ptr = mtb_info->mmap.mmap_addr + KERNEL_VIRT_OFFSET;
 	u64 length = mtb_info->mmap.mmap_length;
-	u64 buddy_total_pages = 0;
-
-	bool can_load_kernel = false;
-	paddr kernel_phy_start = KERNEL_VIRT_TO_PHY((vaddr)(&_start));
-	paddr kernel_phy_end = KERNEL_VIRT_TO_PHY((vaddr)(&_end));
-	paddr buddy_phy_start = ROUND_UP(kernel_phy_end, PAGE_SIZE);
-	paddr buddy_phy_end = 0;
 
 	/* check the multiboot header */
 	if (!MULTIBOOT_INFO_FLAG_CHECK(mtb_info->flags, MULTIBOOT_INFO_FLAG_MEM) ||
@@ -70,6 +45,43 @@ void arch_init_pmm(struct setup_info *arch_setup_info) {
 			}
 		}
 	}
+	return 0;
+arch_init_pmm_error:
+	return -ENOMEM;
+}
+static void arch_map_buddy_data_space(paddr kernel_phy_start,
+									  paddr kernel_phy_end,
+									  paddr buddy_phy_start,
+									  paddr buddy_phy_end) {
+	paddr buddy_phy_start_addr = buddy_phy_start;
+	paddr kernel_end_phy_addr_round_up =
+		ROUND_UP(kernel_phy_end, MIDDLE_PAGE_SIZE);
+	if (buddy_phy_start_addr < kernel_end_phy_addr_round_up)
+		buddy_phy_start_addr =
+			kernel_end_phy_addr_round_up; /*for we have mapped the 2m align
+											 space of kernel*/
+	for (; buddy_phy_start_addr < buddy_phy_end;
+		 buddy_phy_start_addr += MIDDLE_PAGE_SIZE) {
+		/*As pmm and vmm part is not usable now, we still use boot page table*/
+		paddr buddy_start_round_down_2m =
+			ROUND_DOWN(buddy_phy_start_addr, MIDDLE_PAGE_SIZE);
+		arch_set_L2_entry_huge(buddy_start_round_down_2m,
+							   KERNEL_PHY_TO_VIRT(buddy_start_round_down_2m),
+							   &L2_table, (PDE_P | PDE_RW | PDE_G | PDE_PS));
+	}
+}
+void arch_init_pmm(struct setup_info *arch_setup_info) {
+
+	u64 buddy_total_pages = 0;
+
+	bool can_load_kernel = false;
+	paddr kernel_phy_start = KERNEL_VIRT_TO_PHY((vaddr)(&_start));
+	paddr kernel_phy_end = KERNEL_VIRT_TO_PHY((vaddr)(&_end));
+	paddr buddy_phy_start = ROUND_UP(kernel_phy_end, PAGE_SIZE);
+	paddr buddy_phy_end = 0;
+
+	if (arch_get_memory_regions(arch_setup_info) < 0)
+		goto arch_init_pmm_error;
 
 	/* calculate the end of the buddy_pmm avaliable_phy_addr */
 	calculate_avaliable_phy_addr_end();

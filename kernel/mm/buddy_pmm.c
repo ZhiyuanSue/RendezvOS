@@ -86,10 +86,10 @@ static void pmm_init_zones() {
 			zone->zone_head_frame[order] =
 				&(buddy_pmm.buckets[order]
 					  .pages[IDX_FROM_PPN(order, PPN(zone->zone_lower_addr))]);
-			zone->avaliable_zone_head[order].prev =
-				KERNEL_VIRT_TO_PHY((vaddr) & (zone->avaliable_zone_head[order]));
-			zone->avaliable_zone_head[order].next =
-				KERNEL_VIRT_TO_PHY((vaddr) & (zone->avaliable_zone_head[order]));
+			zone->avaliable_zone_head[order].prev = KERNEL_VIRT_TO_PHY(
+				(vaddr) & (zone->avaliable_zone_head[order]));
+			zone->avaliable_zone_head[order].next = KERNEL_VIRT_TO_PHY(
+				(vaddr) & (zone->avaliable_zone_head[order]));
 			zone->zone_total_pages = zone->zone_total_avaliable_pages = 0;
 		}
 		for (paddr addr_iter = 0; addr_iter < buddy_pmm.avaliable_phy_addr_end;
@@ -223,8 +223,8 @@ u32 pmm_alloc_zone(size_t page_number, int zone_number) {
 	if (frame_list_empty(header))
 		return -ENOMEM;
 
-	del_node =
-		(struct page_frame *)KERNEL_PHY_TO_VIRT((paddr)(avaliable_header->next));
+	del_node = (struct page_frame *)KERNEL_PHY_TO_VIRT(
+		(paddr)(avaliable_header->next));
 	index = ((vaddr)del_node - (vaddr)header) / sizeof(struct page_frame);
 	frame_list_del_init(del_node);
 
