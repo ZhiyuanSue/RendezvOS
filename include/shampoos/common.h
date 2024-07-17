@@ -8,6 +8,7 @@
 #include <shampoos/error.h>
 #include <shampoos/limits.h>
 #include <shampoos/list.h>
+#include <shampoos/mm/buddy_pmm.h>
 #include <shampoos/mm/pmm.h>
 #include <shampoos/stdio.h>
 

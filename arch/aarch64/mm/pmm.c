@@ -2,10 +2,10 @@
 #include <common/endianness.h>
 #include <modules/dtb/dtb.h>
 #include <shampoos/limits.h>
-#include <shampoos/mm/pmm.h>
+#include <shampoos/mm/buddy_pmm.h>
 extern char _start, _end; /*the kernel end virt addr*/
 extern u64 L0_table, L1_table, L2_table;
-extern struct pmm buddy_pmm;
+extern struct buddy buddy_pmm;
 
 extern struct property_type property_types[PROPERTY_TYPE_NUM];
 static u64 kernel_phy_start = 0, kernel_phy_end = 0;

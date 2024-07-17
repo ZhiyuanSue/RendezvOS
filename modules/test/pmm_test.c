@@ -1,8 +1,8 @@
 #include <modules/test/test.h>
 #include <shampoos/error.h>
-#include <shampoos/mm/pmm.h>
+#include <shampoos/mm/buddy_pmm.h>
 #define PPN_TEST_CASE_NUM 10
-extern struct pmm buddy_pmm;
+extern struct buddy buddy_pmm;
 void pmm_test(void) {
 	pr_info("start pmm test\n");
 	u32 alloc_ppn[PPN_TEST_CASE_NUM];

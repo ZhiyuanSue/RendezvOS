@@ -36,4 +36,8 @@ typedef u_int64_t uint64_t;
 
 typedef unsigned long uintptr_t;
 
+typedef u64 addr_t;
+typedef addr_t vaddr;
+typedef addr_t paddr;
+
 #endif

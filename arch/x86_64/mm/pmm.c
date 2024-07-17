@@ -4,18 +4,18 @@
 #include <arch/x86_64/power_ctrl.h>
 #include <modules/log/log.h>
 #include <shampoos/limits.h>
-#include <shampoos/mm/pmm.h>
+#include <shampoos/mm/buddy_pmm.h>
 extern char _start, _end; /*the kernel end virt addr*/
 extern u64 L0_table, L1_table, L2_table;
-extern struct pmm buddy_pmm;
+extern struct buddy buddy_pmm;
 
 extern u64 entry_per_bucket[BUDDY_MAXORDER + 1],
 	pages_per_bucket[BUDDY_MAXORDER + 1];
 
-static void arch_map_buddy_data_space(u64 kernel_phy_start, u64 kernel_phy_end,
-									  u64 buddy_phy_start, u64 buddy_phy_end) {
-	u64 buddy_phy_start_addr = buddy_phy_start;
-	u64 kernel_end_phy_addr_round_up =
+static void arch_map_buddy_data_space(paddr kernel_phy_start, paddr kernel_phy_end,
+									  paddr buddy_phy_start, paddr buddy_phy_end) {
+	paddr buddy_phy_start_addr = buddy_phy_start;
+	paddr kernel_end_phy_addr_round_up =
 		ROUND_UP(kernel_phy_end, MIDDLE_PAGE_SIZE);
 	if (buddy_phy_start_addr < kernel_end_phy_addr_round_up)
 		buddy_phy_start_addr =
@@ -24,7 +24,7 @@ static void arch_map_buddy_data_space(u64 kernel_phy_start, u64 kernel_phy_end,
 	for (; buddy_phy_start_addr < buddy_phy_end;
 		 buddy_phy_start_addr += MIDDLE_PAGE_SIZE) {
 		/*As pmm and vmm part is not usable now, we still use boot page table*/
-		u64 buddy_start_round_down_2m =
+		paddr buddy_start_round_down_2m =
 			ROUND_DOWN(buddy_phy_start_addr, MIDDLE_PAGE_SIZE);
 		arch_set_L2_entry_huge(buddy_start_round_down_2m,
 							   KERNEL_PHY_TO_VIRT(buddy_start_round_down_2m),
@@ -34,15 +34,15 @@ static void arch_map_buddy_data_space(u64 kernel_phy_start, u64 kernel_phy_end,
 void arch_init_pmm(struct setup_info *arch_setup_info) {
 	struct multiboot_info *mtb_info = GET_MULTIBOOT_INFO(arch_setup_info);
 	struct multiboot_mmap_entry *mmap;
-	u64 add_ptr = mtb_info->mmap.mmap_addr + KERNEL_VIRT_OFFSET;
+	vaddr add_ptr = mtb_info->mmap.mmap_addr + KERNEL_VIRT_OFFSET;
 	u64 length = mtb_info->mmap.mmap_length;
 	u64 buddy_total_pages = 0;
 
 	bool can_load_kernel = false;
-	u64 kernel_phy_start = KERNEL_VIRT_TO_PHY((u64)(&_start));
-	u64 kernel_phy_end = KERNEL_VIRT_TO_PHY((u64)(&_end));
-	u64 buddy_phy_start = ROUND_UP(kernel_phy_end, PAGE_SIZE);
-	u64 buddy_phy_end = 0;
+	paddr kernel_phy_start = KERNEL_VIRT_TO_PHY((vaddr)(&_start));
+	paddr kernel_phy_end = KERNEL_VIRT_TO_PHY((vaddr)(&_end));
+	paddr buddy_phy_start = ROUND_UP(kernel_phy_end, PAGE_SIZE);
+	paddr buddy_phy_end = 0;
 
 	/* check the multiboot header */
 	if (!MULTIBOOT_INFO_FLAG_CHECK(mtb_info->flags, MULTIBOOT_INFO_FLAG_MEM) ||
@@ -53,8 +53,8 @@ void arch_init_pmm(struct setup_info *arch_setup_info) {
 	/*generate the memory region info*/
 	buddy_pmm.region_count = 0;
 	for (mmap = (struct multiboot_mmap_entry *)add_ptr;
-		 ((u64)mmap) < (add_ptr + length);
-		 mmap = (struct multiboot_mmap_entry *)((u64)mmap + mmap->size +
+		 ((vaddr)mmap) < (add_ptr + length);
+		 mmap = (struct multiboot_mmap_entry *)((vaddr)mmap + mmap->size +
 												sizeof(mmap->size))) {
 		if (mmap->addr + mmap->len > BIOS_MEM_UPPER &&
 			mmap->type == MULTIBOOT_MEMORY_AVAILABLE) {
@@ -94,8 +94,8 @@ void arch_init_pmm(struct setup_info *arch_setup_info) {
 
 	for (int i = 0; i < buddy_pmm.region_count; i++) {
 		struct region reg = buddy_pmm.memory_regions[i];
-		u64 sec_start_addr = reg.addr;
-		u64 sec_end_addr = sec_start_addr + reg.len;
+		paddr sec_start_addr = reg.addr;
+		paddr sec_end_addr = sec_start_addr + reg.len;
 		/*hint, this end is not reachable,[ sec_end_addr , sec_end_addr) */
 		if (sec_start_addr <= kernel_phy_start && sec_end_addr >= buddy_phy_end)
 			can_load_kernel = true;

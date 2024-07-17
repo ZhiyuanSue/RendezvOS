@@ -5,14 +5,14 @@
 extern int log_level;
 extern char _bss_start, _bss_end;
 extern char _end;
-extern struct pmm buddy_pmm;
+extern struct buddy buddy_pmm;
 
 void cmain(struct setup_info *arch_setup_info) {
 	if (arch_setup_info == NULL)
 		return;
 	/*for mmio way, we map the uart after the rount up pos of end,for x86,use io
 	 * port*/
-	uart_open((void *)ROUND_UP((u64)(&_end), MIDDLE_PAGE_SIZE));
+	uart_open((void *)ROUND_UP((vaddr)(&_end), MIDDLE_PAGE_SIZE));
 	log_init((void *)(arch_setup_info->log_buffer_addr), log_level, &uart_putc);
 #ifdef HELLO
 	hello_world();
