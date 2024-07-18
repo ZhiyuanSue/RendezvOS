@@ -20,7 +20,7 @@
 			"use":true ,
 			"features":[
 				"LOG",
-				"_LOG_INFO_"
+				"_LOG_DEBUG_"
 			],
 			"depend_module":[
 

@@ -39,5 +39,6 @@ typedef unsigned long uintptr_t;
 typedef u64 addr_t;
 typedef addr_t vaddr;
 typedef addr_t paddr;
+typedef int error_t;
 
 #endif

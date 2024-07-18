@@ -26,20 +26,15 @@ static int arch_get_memory_regions(struct setup_info *arch_setup_info) {
 		goto arch_init_pmm_error;
 	}
 	/*generate the memory region info*/
-	buddy_pmm.region_count = 0;
+	buddy_pmm.m_regions->region_count = 0;
 	for (mmap = (struct multiboot_mmap_entry *)add_ptr;
 		 ((vaddr)mmap) < (add_ptr + length);
 		 mmap = (struct multiboot_mmap_entry *)((vaddr)mmap + mmap->size +
 												sizeof(mmap->size))) {
 		if (mmap->addr + mmap->len > BIOS_MEM_UPPER &&
 			mmap->type == MULTIBOOT_MEMORY_AVAILABLE) {
-			if (buddy_pmm.region_count < SHAMPOOS_MAX_MEMORY_REGIONS) {
-				buddy_pmm.memory_regions[buddy_pmm.region_count].addr =
-					mmap->addr;
-				buddy_pmm.memory_regions[buddy_pmm.region_count].len =
-					mmap->len;
-				buddy_pmm.region_count++;
-			} else {
+			if (buddy_pmm.m_regions->memory_regions_insert(mmap->addr,
+														   mmap->len)) {
 				pr_error("we cannot manager toooo many memory regions\n");
 				goto arch_init_pmm_error;
 			}
@@ -104,8 +99,10 @@ void arch_init_pmm(struct setup_info *arch_setup_info) {
 		goto arch_init_pmm_error;
 	}
 
-	for (int i = 0; i < buddy_pmm.region_count; i++) {
-		struct region reg = buddy_pmm.memory_regions[i];
+	for (int i = 0; i < buddy_pmm.m_regions->region_count; i++) {
+		if (buddy_pmm.m_regions->memory_regions_entry_empty(i))
+			continue;
+		struct region reg = buddy_pmm.m_regions->memory_regions[i];
 		paddr sec_start_addr = reg.addr;
 		paddr sec_end_addr = sec_start_addr + reg.len;
 		/*hint, this end is not reachable,[ sec_end_addr , sec_end_addr) */

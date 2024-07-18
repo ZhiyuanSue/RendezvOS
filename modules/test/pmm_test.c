@@ -13,15 +13,15 @@ void pmm_test(void) {
 			pr_error("alloc error\n");
 			goto pmm_test_error;
 		} else
-			;  // pr_debug("try to get %x pages ,and alloc ppn
-			   // 0x%x\n",i*2+3,alloc_ppn[i]);
+			pr_debug("try to get %x pages ,and alloc ppn 0x%x\n", i * 2 + 3,
+					 alloc_ppn[i]);
 	}
 	for (int i = 0; i < PPN_TEST_CASE_NUM; ++i) {
 		if (buddy_pmm.pmm_free(alloc_ppn[i], i * 2 + 3)) {
 			pr_error("free error\n");
 			goto pmm_test_error;
 		} else
-			;  // pr_debug("free ppn 0x%x success\n",alloc_ppn[i]);
+			pr_debug("free ppn 0x%x success\n", alloc_ppn[i]);
 	}
 	for (int i = 0; i < PPN_TEST_CASE_NUM; ++i) {
 		alloc_ppn[i] = buddy_pmm.pmm_alloc(i * 2 + 3);
@@ -29,13 +29,13 @@ void pmm_test(void) {
 			pr_error("alloc error\n");
 			goto pmm_test_error;
 		} else
-			;  // pr_debug("try to get %x pages ,and alloc ppn
-			   // 0x%x\n",i*2+3,alloc_ppn[i]);
+			pr_debug("try to get %x pages ,and alloc ppn 0x%x\n", i * 2 + 3,
+					 alloc_ppn[i]);
 		if (buddy_pmm.pmm_free(alloc_ppn[i], i * 2 + 3)) {
 			pr_error("free error\n");
 			goto pmm_test_error;
 		} else
-			;  // pr_debug("free ppn 0x%x success\n",alloc_ppn[i]);
+			pr_debug("free ppn 0x%x success\n", alloc_ppn[i]);
 	}
 	pr_info("pmm test pass!\n");
 	return;

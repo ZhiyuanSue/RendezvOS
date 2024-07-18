@@ -26,6 +26,16 @@ struct region {
 	u64 len;
 };
 
+struct memory_regions {
+	// region_count record continuous memory regions number
+	int region_count;
+	// memory_regions record the memory regions
+	struct region memory_regions[SHAMPOOS_MAX_MEMORY_REGIONS];
+	error_t (*memory_regions_insert)(paddr addr, u64 len);
+	void (*memory_regions_delete)(int index);
+	bool (*memory_regions_entry_empty)(int index);
+};
+
 #define PPN(addr) (addr >> 12)
 
 #define PMM_COMMON                                                             \
