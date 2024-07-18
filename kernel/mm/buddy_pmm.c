@@ -3,6 +3,7 @@
 #include <shampoos/mm/buddy_pmm.h>
 
 struct buddy buddy_pmm;
+extern struct memory_regions m_regions;
 u64 entry_per_bucket[BUDDY_MAXORDER + 1], pages_per_bucket[BUDDY_MAXORDER + 1];
 /*some public functions in arch init, you can see some example in arch pmm*/
 void calculate_bucket_space() {
@@ -19,8 +20,10 @@ void calculate_bucket_space() {
 }
 void calculate_avaliable_phy_addr_end() {
 	buddy_pmm.avaliable_phy_addr_end = 0;
-	for (int i = 0; i < buddy_pmm.region_count; i++) {
-		struct region reg = buddy_pmm.memory_regions[i];
+	for (int i = 0; i < buddy_pmm.m_regions->region_count; i++) {
+		if (buddy_pmm.m_regions->memory_regions_entry_empty(i))
+			continue;
+		struct region reg = buddy_pmm.m_regions->memory_regions[i];
 		pr_info(
 			"Aviable Mem:base_phy_addr is 0x%x, length = "
 			"0x%x\n",
@@ -46,8 +49,10 @@ void generate_buddy_bucket(paddr kernel_phy_start, paddr kernel_phy_end,
 		// TODO: 每个链表的page
 		// frame头都需要按照实际分配而不能连续分配，需要重新计算过。
 	}
-	for (int i = 0; i < buddy_pmm.region_count; i++) {
-		struct region reg = buddy_pmm.memory_regions[i];
+	for (int i = 0; i < buddy_pmm.m_regions->region_count; i++) {
+		if (buddy_pmm.m_regions->memory_regions_entry_empty(i))
+			continue;
+		struct region reg = buddy_pmm.m_regions->memory_regions[i];
 		paddr sec_start_addr = reg.addr;
 		paddr sec_end_addr = sec_start_addr + reg.len;
 		/*remember, this end is not reachable,[ sec_end_addr , sec_end_addr
@@ -338,5 +343,7 @@ int pmm_free(u32 ppn, size_t page_number) {
 	// pages\n",buddy_pmm.zone[zone_number].zone_total_avaliable_pages);
 	return 0;
 }
-struct buddy buddy_pmm = {
-	.pmm_init = pmm_init, .pmm_alloc = pmm_alloc, .pmm_free = pmm_free};
+struct buddy buddy_pmm = {.m_regions = &m_regions,
+						  .pmm_init = pmm_init,
+						  .pmm_alloc = pmm_alloc,
+						  .pmm_free = pmm_free};

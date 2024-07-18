@@ -47,10 +47,8 @@ enum zone_type {
 
 struct buddy {
 	PMM_COMMON;
-	// region_count record continuous memory regions number
-	int region_count;
-	// memory_regions record the memory regions
-	struct region memory_regions[SHAMPOOS_MAX_MEMORY_REGIONS];
+	struct memory_regions *m_regions;
+
 	// buckets record the number of the buckets
 	struct buddy_bucket buckets[BUDDY_MAXORDER + 1];
 	// zone record the number of the zone

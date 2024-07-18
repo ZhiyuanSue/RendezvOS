@@ -1,4 +1,6 @@
+#include <arch/aarch64/mm/page_table_def.h>
 #include <arch/aarch64/mm/pmm.h>
+#include <arch/aarch64/mm/vmm.h>
 #include <arch/aarch64/power_ctrl.h>
 #include <common/endianness.h>
 #include <modules/dtb/dtb.h>
@@ -46,21 +48,20 @@ find_memory_node:
 		if (!strcmp(s, reg_str)) {
 			u32 *u32_data = (u32 *)data;
 			for (int index = 0; index < len; index += sizeof(u32) * 4) {
+				u32 u32_1, u32_2, u32_3, u32_4;
 				u32 addr, len;
-				struct region *reg =
-					&buddy_pmm.memory_regions[buddy_pmm.region_count];
-				addr = SWAP_ENDIANNESS_32(*u32_data);
+				u32_1 = SWAP_ENDIANNESS_32(*u32_data);
 				u32_data++;
-				len = SWAP_ENDIANNESS_32(*u32_data);
+				u32_2 = SWAP_ENDIANNESS_32(*u32_data);
 				u32_data++;
-				reg->addr = addr + len;
-				addr = SWAP_ENDIANNESS_32(*u32_data);
+				addr = u32_1 + u32_2;
+				u32_3 = SWAP_ENDIANNESS_32(*u32_data);
 				u32_data++;
-				len = SWAP_ENDIANNESS_32(*u32_data);
+				u32_4 = SWAP_ENDIANNESS_32(*u32_data);
 				u32_data++;
-				reg->len = addr + len;
-				pr_info("region start 0x%x,len 0x%x\n", reg->addr, reg->len);
-				buddy_pmm.region_count++;
+				len = u32_3 + u32_4;
+				pr_info("region start 0x%x,len 0x%x\n", addr, len);
+				buddy_pmm.m_regions->memory_regions_insert(addr, len);
 			}
 		}
 	}
@@ -69,14 +70,31 @@ find_memory_node:
 static void arch_map_buddy_data_space(paddr kernel_phy_start,
 									  paddr kernel_phy_end,
 									  paddr buddy_phy_start,
-									  paddr buddy_phy_end) {}
+									  paddr buddy_phy_end) {
+	paddr buddy_phy_start_addr = buddy_phy_start;
+	paddr kernel_end_phy_addr_round_up =
+		ROUND_UP(kernel_phy_end, MIDDLE_PAGE_SIZE);
+	if (buddy_phy_start_addr < kernel_end_phy_addr_round_up)
+		buddy_phy_start_addr =
+			kernel_end_phy_addr_round_up; /*for we have mapped the 2m align
+											 space of kernel*/
+	for (; buddy_phy_start_addr < buddy_phy_end;
+		 buddy_phy_start_addr += MIDDLE_PAGE_SIZE) {
+		/*As pmm and vmm part is not usable now, we still use boot page table*/
+		paddr buddy_start_round_down_2m =
+			ROUND_DOWN(buddy_phy_start_addr, MIDDLE_PAGE_SIZE);
+		arch_set_L2_entry_huge(buddy_start_round_down_2m,
+							   KERNEL_PHY_TO_VIRT(buddy_start_round_down_2m),
+							   &L2_table, (PT_DESC_V | PT_DESC_ATTR_LOWER_AF));
+	}
+}
 
 void arch_init_pmm(struct setup_info *arch_setup_info) {
 
 	struct fdt_header *dtb_header_ptr =
 		(struct fdt_header *)(arch_setup_info->boot_dtb_header_base_addr);
-	paddr buddy_phy_start =
-		ROUND_UP(arch_setup_info->map_end_virt_addr, PAGE_SIZE);
+	paddr buddy_phy_start = ROUND_UP(
+		KERNEL_VIRT_TO_PHY(arch_setup_info->map_end_virt_addr), PAGE_SIZE);
 	paddr kernel_phy_start = KERNEL_VIRT_TO_PHY((u64)(&_start));
 	paddr kernel_phy_end = KERNEL_VIRT_TO_PHY((u64)(&_end));
 	paddr buddy_phy_end = 0;
@@ -93,9 +111,9 @@ void arch_init_pmm(struct setup_info *arch_setup_info) {
 		pr_info("reserve_entry: address 0x%x size: 0x%x\n", entry->address,
 				entry->size);
 	}
-	buddy_pmm.region_count = 0;
+	buddy_pmm.m_regions->region_count = 0;
 	arch_get_memory_regions(dtb_header_ptr, 0, 0);
-	if (!buddy_pmm.region_count)
+	if (!buddy_pmm.m_regions->region_count)
 		goto arch_init_pmm_error;
 
 	calculate_avaliable_phy_addr_end();
