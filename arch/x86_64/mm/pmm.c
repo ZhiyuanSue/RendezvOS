@@ -34,7 +34,7 @@ static int arch_get_memory_regions(struct setup_info *arch_setup_info) {
 		if (mmap->addr + mmap->len > BIOS_MEM_UPPER &&
 			mmap->type == MULTIBOOT_MEMORY_AVAILABLE) {
 			if (buddy_pmm.m_regions->memory_regions_insert(mmap->addr,
-															mmap->len)) {
+														   mmap->len)) {
 				pr_error("we cannot manager toooo many memory regions\n");
 				goto arch_init_pmm_error;
 			}
