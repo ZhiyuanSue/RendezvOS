@@ -122,8 +122,7 @@ static void pmm_init_zones() {
 			if (addr_iter >= buddy_pmm.zone[ZONE_NORMAL].zone_lower_addr &&
 				addr_iter < buddy_pmm.zone[ZONE_NORMAL]
 								.zone_upper_addr) { /*zone normal*/
-				if (buddy_pmm.zone[ZONE_NORMAL]
-						.avaliable_frame[BUDDY_MAXORDER])
+				if (buddy_pmm.zone[ZONE_NORMAL].avaliable_frame[BUDDY_MAXORDER])
 					frame_list_add_head(buddy_pmm.buckets[BUDDY_MAXORDER].pages,
 										page,
 										buddy_pmm.zone[ZONE_NORMAL]
@@ -167,8 +166,8 @@ static inline u32 mark_childs(int zone_number, int order, u64 index) {
 		return -ENOMEM;
 	return 0;
 }
-u32 pmm_alloc_zone(size_t page_number, int zone_number) {
-	int alloc_order = 0, tmp_order;
+u32 pmm_alloc_zone(int alloc_order, int zone_number) {
+	int tmp_order;
 	bool find_an_order = false;
 	struct page_frame *avaliable_header = NULL, *header = NULL,
 					  *del_node = NULL;
@@ -177,11 +176,6 @@ u32 pmm_alloc_zone(size_t page_number, int zone_number) {
 					  *right_child = NULL;
 	u64 index = 0;
 
-	if (page_number > (1 << BUDDY_MAXORDER))
-		return -ENOMEM;
-
-	/*calculate the upper 2^n size*/
-	alloc_order = calculate_alloc_order(page_number);
 	tmp_order = alloc_order;
 	/*first,try to find an order have at least one node to alloc*/
 	for (; tmp_order <= BUDDY_MAXORDER; tmp_order++) {
@@ -265,6 +259,7 @@ u32 pmm_alloc_zone(size_t page_number, int zone_number) {
 }
 u32 pmm_alloc(size_t page_number) {
 	int zone_number = ZONE_NORMAL;
+	int alloc_order = 0;
 	/*have we used too many physical memory*/
 	if (page_number < 0)
 		return 0;
@@ -273,7 +268,12 @@ u32 pmm_alloc(size_t page_number) {
 		/*TODO:if so ,we need to swap the memory*/
 		return -ENOMEM;
 	}
-	return pmm_alloc_zone(page_number, zone_number);
+	if (page_number > (1 << BUDDY_MAXORDER))
+		return -ENOMEM;
+	/*calculate the upper 2^n size*/
+	alloc_order = calculate_alloc_order(page_number);
+
+	return pmm_alloc_zone(alloc_order, zone_number);
 }
 static bool inline ppn_inrange(u32 ppn, int *zone_number) {
 	struct buddy_zone mem_zone;
