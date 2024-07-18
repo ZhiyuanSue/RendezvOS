@@ -43,6 +43,8 @@ void generate_buddy_bucket(paddr kernel_phy_start, paddr kernel_phy_end,
 		buddy_pmm.buckets[order].pages =
 			(struct page_frame *)KERNEL_PHY_TO_VIRT(buddy_phy_start);
 		buddy_phy_start += pages_per_bucket[order] * PAGE_SIZE;
+		// TODO: 每个链表的page
+		// frame头都需要按照实际分配而不能连续分配，需要重新计算过。
 	}
 	for (int i = 0; i < buddy_pmm.region_count; i++) {
 		struct region reg = buddy_pmm.memory_regions[i];
@@ -52,6 +54,9 @@ void generate_buddy_bucket(paddr kernel_phy_start, paddr kernel_phy_end,
 		 * ) */
 		if (sec_start_addr <= kernel_phy_start && sec_end_addr >= buddy_phy_end)
 			sec_start_addr = buddy_phy_end;
+		// TODO：同样的，因为每个链表的page frame
+		// array可以移动，所以后续fill的时候需要把这一部分的填充也考虑进去。
+		// 不能简单的这么计算，而是可能需要考虑到section的分裂。
 		sec_start_addr = ROUND_UP(sec_start_addr, MIDDLE_PAGE_SIZE);
 		sec_end_addr = ROUND_DOWN(sec_end_addr, MIDDLE_PAGE_SIZE);
 		for (int order = 0; order <= BUDDY_MAXORDER; ++order) {
@@ -118,8 +123,9 @@ static void pmm_init_zones() {
 				addr_iter < buddy_pmm.zone[ZONE_NORMAL]
 								.zone_upper_addr) { /*zone normal*/
 				frame_list_add_head(
-					page, &(buddy_pmm.zone[ZONE_NORMAL]
-								.avaliable_zone_head[BUDDY_MAXORDER]));
+					buddy_pmm.buckets[BUDDY_MAXORDER].pages, page,
+					&(buddy_pmm.zone[ZONE_NORMAL]
+						  .avaliable_zone_head[BUDDY_MAXORDER]));
 			}
 		}
 	}
@@ -176,7 +182,7 @@ u32 pmm_alloc_zone(size_t page_number, int zone_number) {
 	/*first,try to find an order have at least one node to alloc*/
 	for (; tmp_order <= BUDDY_MAXORDER; tmp_order++) {
 		struct page_frame *header = GET_AVALI_HEAD_PTR(zone_number, tmp_order);
-		if (!frame_list_empty(header)) {
+		if (!frame_list_empty(buddy_pmm.buckets[tmp_order].pages, header)) {
 			find_an_order = true;
 			break;
 		}
@@ -194,7 +200,8 @@ u32 pmm_alloc_zone(size_t page_number, int zone_number) {
 		avaliable_header =
 			(struct page_frame *)GET_AVALI_HEAD_PTR(zone_number, tmp_order);
 		header = GET_HEAD_PTR(zone_number, tmp_order);
-		if (frame_list_empty(avaliable_header))
+		if (frame_list_empty(buddy_pmm.buckets[tmp_order].pages,
+							 avaliable_header))
 			return -ENOMEM;
 		del_node = (struct page_frame *)KERNEL_PHY_TO_VIRT(
 			(paddr)(avaliable_header->next));
@@ -209,10 +216,12 @@ u32 pmm_alloc_zone(size_t page_number, int zone_number) {
 			(right_child->flags & PAGE_FRAME_ALLOCED))
 			return -ENOMEM;
 
-		frame_list_del_init(del_node);
+		frame_list_del_init(buddy_pmm.buckets[tmp_order].pages, del_node);
 		del_node->flags |= PAGE_FRAME_ALLOCED;
-		frame_list_add_head(left_child, child_order_avaliable_header);
-		frame_list_add_head(right_child, child_order_avaliable_header);
+		frame_list_add_head(buddy_pmm.buckets[tmp_order].pages, left_child,
+							child_order_avaliable_header);
+		frame_list_add_head(buddy_pmm.buckets[tmp_order].pages, right_child,
+							child_order_avaliable_header);
 
 		tmp_order -= 1;
 	}
@@ -220,13 +229,13 @@ u32 pmm_alloc_zone(size_t page_number, int zone_number) {
 	avaliable_header =
 		(struct page_frame *)GET_AVALI_HEAD_PTR(zone_number, tmp_order);
 	header = (struct page_frame *)GET_HEAD_PTR(zone_number, tmp_order);
-	if (frame_list_empty(header))
+	if (frame_list_empty(buddy_pmm.buckets[tmp_order].pages, header))
 		return -ENOMEM;
 
 	del_node = (struct page_frame *)KERNEL_PHY_TO_VIRT(
 		(paddr)(avaliable_header->next));
 	index = ((vaddr)del_node - (vaddr)header) / sizeof(struct page_frame);
-	frame_list_del_init(del_node);
+	frame_list_del_init(buddy_pmm.buckets[tmp_order].pages, del_node);
 
 	/*Forth,mark all the child node alloced*/
 	if (mark_childs(zone_number, tmp_order, index))
@@ -292,11 +301,12 @@ static int pmm_free_one(u32 ppn) {
 		 * avaliable list*/
 		if (buddy_node->flags & PAGE_FRAME_ALLOCED ||
 			tmp_order == BUDDY_MAXORDER) {
-			frame_list_add_head(insert_node, avaliable_header);
+			frame_list_add_head(buddy_pmm.buckets[tmp_order].pages, insert_node,
+								avaliable_header);
 			break;
 		}
 		/*else try merge*/
-		frame_list_del_init(buddy_node);
+		frame_list_del_init(buddy_pmm.buckets[tmp_order].pages, buddy_node);
 		tmp_order++;
 	}
 	return 0;

@@ -62,44 +62,49 @@ struct buddy {
 #define GET_HEAD_PTR(zone_n, order)                                            \
 	(buddy_pmm.zone[zone_n].zone_head_frame[order])
 
-static inline void __frame_list_add(struct page_frame *new_node,
+static inline void __frame_list_add(struct page_frame *bucket_head,
+									struct page_frame *new_node,
 									struct page_frame *prev,
 									struct page_frame *next) {
-	next->prev = KERNEL_VIRT_TO_PHY((vaddr)new_node);
-	new_node->next = KERNEL_VIRT_TO_PHY((vaddr)next);
-	new_node->prev = KERNEL_VIRT_TO_PHY((vaddr)prev);
-	prev->next = KERNEL_VIRT_TO_PHY((vaddr)new_node);
+	next->prev = new_node - bucket_head;
+	new_node->next = next - bucket_head;
+	new_node->prev = prev - bucket_head;
+	prev->next = new_node - bucket_head;
 }
-static inline void frame_list_add_head(struct page_frame *new_node,
+static inline void frame_list_add_head(struct page_frame *bucket_head,
+									   struct page_frame *new_node,
 									   struct page_frame *head) {
-	__frame_list_add(new_node, head,
-					 (struct page_frame *)KERNEL_PHY_TO_VIRT(head->next));
+	__frame_list_add(bucket_head, new_node, head, bucket_head + head->next);
 }
-static inline void frame_list_add_tail(struct page_frame *new_node,
+static inline void frame_list_add_tail(struct page_frame *bucket_head,
+									   struct page_frame *new_node,
 									   struct page_frame *head) {
-	__frame_list_add(new_node,
-					 (struct page_frame *)KERNEL_PHY_TO_VIRT(head->prev), head);
+	__frame_list_add(bucket_head, new_node, bucket_head + head->prev, head);
 }
-static inline void __frame_list_del(struct page_frame *prev,
+static inline void __frame_list_del(struct page_frame *bucket_head,
+									struct page_frame *prev,
 									struct page_frame *next) {
-	prev->next = KERNEL_VIRT_TO_PHY((vaddr)next);
-	next->prev = KERNEL_VIRT_TO_PHY((vaddr)prev);
+	prev->next = next - bucket_head;
+	next->prev = prev - bucket_head;
 }
 /*here our module shoule node indepedent of the whole kernel,so we cannot
  * realize the list_del in linux*/
-static inline void frame_list_del_init(struct page_frame *node) {
-	__frame_list_del((struct page_frame *)KERNEL_PHY_TO_VIRT(node->prev),
-					 (struct page_frame *)KERNEL_PHY_TO_VIRT(node->next));
-	node->prev = KERNEL_VIRT_TO_PHY((vaddr)node);
-	node->next = KERNEL_VIRT_TO_PHY((vaddr)node);
+static inline void frame_list_del_init(struct page_frame *bucket_head,
+									   struct page_frame *node) {
+	__frame_list_del(bucket_head, bucket_head + node->prev,
+					 bucket_head + node->next);
+	node->prev = node - bucket_head;
+	node->next = node - bucket_head;
 }
-static inline void frame_list_del(struct page_frame *node) {
-	frame_list_del_init(node);
+static inline void frame_list_del(struct page_frame *bucket_head,
+								  struct page_frame *node) {
+	frame_list_del_init(bucket_head, node);
 }
-static inline bool frame_list_empty(struct page_frame *head) {
-	vaddr next_virt_addr = KERNEL_PHY_TO_VIRT((paddr)(head->next));
-	vaddr prev_virt_addr = KERNEL_PHY_TO_VIRT((paddr)(head->prev));
-	if (((vaddr)head) == next_virt_addr && ((vaddr)head) == prev_virt_addr)
+static inline bool frame_list_empty(struct page_frame *bucket_head,
+									struct page_frame *head) {
+	struct page_frame *next = bucket_head + head->next;
+	struct page_frame *prev = bucket_head + head->prev;
+	if (head == next && head == prev)
 		return true;
 	return false;
 }
