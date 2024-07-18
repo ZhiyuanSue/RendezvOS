@@ -194,7 +194,7 @@ init_mmu:
 	and x4,x4,#ID_AA64MMFR0_EL1_PARANGE_MASK	/*support the usable phyaddr*/
 	lsl	x4,x4,#32
 	and	x4,x4,#TCR_EL1_IPS_MASK
-	//mov x4,#TCR_EL1_IPS_48bit
+	//mov x4,#TCR_EL1_IPS_40bit
 	orr	x2,x2,x4
 	/*set ttbr0*/
 	/*orr x2,x2,#TCR_EL1_EPD0_ENABLE_WALK*/ /*for it's 0*/
