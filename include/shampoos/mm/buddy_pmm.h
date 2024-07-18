@@ -14,16 +14,10 @@
 struct page_frame {
 #define PAGE_FRAME_ALLOCED (1 << 0)
 #define PAGE_FRAME_AVALIABLE (1 << 1)
-#define PAGE_FRAME_SHARED                                                      \
-	(1 << 2) /*used to record this page frame is                               \
-				shared*/
-	u64 flags : 4;
-	u64 prev : 30;
-	u64 next : 30;
-	/*
-	 * the kernel data must in 1G field, so 30 bit plus the kernel_virt_offset
-	 * is necessary
-	 */
+	u64 flags : 2;
+	u64 shared_count : 6;
+	u64 prev : 28;
+	u64 next : 28;
 } __attribute__((packed));
 
 struct buddy_bucket {
@@ -36,7 +30,7 @@ struct buddy_zone {
 	paddr zone_lower_addr;
 	int zone_total_pages;
 	int zone_total_avaliable_pages;
-	struct page_frame avaliable_zone_head[BUDDY_MAXORDER + 1];
+	struct page_frame *avaliable_frame[BUDDY_MAXORDER + 1];
 	struct page_frame *zone_head_frame[BUDDY_MAXORDER + 1];
 };
 
@@ -53,10 +47,11 @@ struct buddy {
 	struct buddy_bucket buckets[BUDDY_MAXORDER + 1];
 	// zone record the number of the zone
 	struct buddy_zone zone[ZONE_NR_MAX];
+	paddr buddy_phy_start_addr;
 	paddr avaliable_phy_addr_end;
 };
 #define GET_AVALI_HEAD_PTR(zone_n, order)                                      \
-	(&(buddy_pmm.zone[zone_n].avaliable_zone_head[order]))
+	(buddy_pmm.zone[zone_n].avaliable_frame[order])
 #define GET_HEAD_PTR(zone_n, order)                                            \
 	(buddy_pmm.zone[zone_n].zone_head_frame[order])
 
@@ -98,8 +93,8 @@ static inline void frame_list_del(struct page_frame *bucket_head,
 								  struct page_frame *node) {
 	frame_list_del_init(bucket_head, node);
 }
-static inline bool frame_list_empty(struct page_frame *bucket_head,
-									struct page_frame *head) {
+static inline bool frame_list_only_one(struct page_frame *bucket_head,
+									   struct page_frame *head) {
 	struct page_frame *next = bucket_head + head->next;
 	struct page_frame *prev = bucket_head + head->prev;
 	if (head == next && head == prev)
