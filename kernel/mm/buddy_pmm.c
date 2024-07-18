@@ -170,7 +170,6 @@ static inline u32 mark_childs(int zone_number, int order, u64 index) {
 	return 0;
 }
 u32 pmm_alloc_zone(size_t page_number, int zone_number) {
-	pr_info("go into pmm alloc zone\n");
 	int alloc_order = 0, tmp_order;
 	bool find_an_order = false;
 	struct page_frame *avaliable_header = NULL, *header = NULL,
@@ -203,9 +202,7 @@ u32 pmm_alloc_zone(size_t page_number, int zone_number) {
 	 * in step 1 ,the alloc_order must >= 0, and if tmp_order == 0, cannot run
 	 * into while so tmp_order-1 >= 0, and it have a child list
 	 */
-	pr_info("start while %d %d\n", tmp_order, alloc_order);
 	while (tmp_order > alloc_order) {
-		pr_info("in while 0 tmp order is %d\n", tmp_order);
 		avaliable_header = GET_AVALI_HEAD_PTR(zone_number, tmp_order);
 		header = GET_HEAD_PTR(zone_number, tmp_order);
 		if (!avaliable_header)
@@ -222,9 +219,12 @@ u32 pmm_alloc_zone(size_t page_number, int zone_number) {
 			(right_child->flags & PAGE_FRAME_ALLOCED))
 			return -ENOMEM;
 		if (frame_list_only_one(buddy_pmm.buckets[tmp_order].pages, del_node))
-			buddy_pmm.zone[zone_number].avaliable_frame[tmp_order] = NULL;
-		else
+			GET_AVALI_HEAD_PTR(zone_number, tmp_order) = NULL;
+		else {
+			GET_AVALI_HEAD_PTR(zone_number, tmp_order) =
+				buddy_pmm.buckets[tmp_order].pages + del_node->next;
 			frame_list_del_init(buddy_pmm.buckets[tmp_order].pages, del_node);
+		}
 		del_node->flags |= PAGE_FRAME_ALLOCED;
 
 		if (!child_order_avaliable_header) {
@@ -240,7 +240,6 @@ u32 pmm_alloc_zone(size_t page_number, int zone_number) {
 
 		tmp_order -= 1;
 	}
-	pr_info("end while\n");
 	/*third,try to del the node at the head of the alloc order list*/
 	avaliable_header = GET_AVALI_HEAD_PTR(zone_number, tmp_order);
 	header = (struct page_frame *)GET_HEAD_PTR(zone_number, tmp_order);
@@ -248,13 +247,13 @@ u32 pmm_alloc_zone(size_t page_number, int zone_number) {
 		return -ENOMEM;
 	del_node = avaliable_header;
 	index = del_node - header;
-	pr_info("pmm alloc zone 2 index %x\n", index);
 	if (frame_list_only_one(buddy_pmm.buckets[tmp_order].pages, del_node))
-		buddy_pmm.zone[zone_number].avaliable_frame[tmp_order] = NULL;
-	else
+		GET_AVALI_HEAD_PTR(zone_number, tmp_order) = NULL;
+	else {
+		GET_AVALI_HEAD_PTR(zone_number, tmp_order) =
+			buddy_pmm.buckets[tmp_order].pages + del_node->next;
 		frame_list_del_init(buddy_pmm.buckets[tmp_order].pages, del_node);
-
-	pr_info("finish frame list del\n");
+	}
 
 	/*Forth,mark all the child node alloced*/
 	if (mark_childs(zone_number, tmp_order, index))
@@ -331,9 +330,12 @@ static int pmm_free_one(u32 ppn) {
 		}
 		/*else try merge*/
 		if (frame_list_only_one(buddy_pmm.buckets[tmp_order].pages, buddy_node))
-			buddy_pmm.zone[zone_number].avaliable_frame[tmp_order] = NULL;
-		else
+			GET_AVALI_HEAD_PTR(zone_number, tmp_order) = NULL;
+		else {
+			GET_AVALI_HEAD_PTR(zone_number, tmp_order) =
+				buddy_pmm.buckets[tmp_order].pages + buddy_node->next;
 			frame_list_del_init(buddy_pmm.buckets[tmp_order].pages, buddy_node);
+		}
 
 		tmp_order++;
 	}
