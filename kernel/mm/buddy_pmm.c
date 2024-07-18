@@ -122,16 +122,14 @@ static void pmm_init_zones() {
 			if (addr_iter >= buddy_pmm.zone[ZONE_NORMAL].zone_lower_addr &&
 				addr_iter < buddy_pmm.zone[ZONE_NORMAL]
 								.zone_upper_addr) { /*zone normal*/
-				if (!buddy_pmm.zone[ZONE_NORMAL]
-						 .avaliable_frame[BUDDY_MAXORDER]) {
-					buddy_pmm.zone[ZONE_NORMAL]
-						.avaliable_frame[BUDDY_MAXORDER] = page;
-				} else {
+				if (buddy_pmm.zone[ZONE_NORMAL]
+						.avaliable_frame[BUDDY_MAXORDER])
 					frame_list_add_head(buddy_pmm.buckets[BUDDY_MAXORDER].pages,
 										page,
 										buddy_pmm.zone[ZONE_NORMAL]
 											.avaliable_frame[BUDDY_MAXORDER]);
-				}
+				buddy_pmm.zone[ZONE_NORMAL].avaliable_frame[BUDDY_MAXORDER] =
+					page;
 			}
 		}
 	}
@@ -227,16 +225,16 @@ u32 pmm_alloc_zone(size_t page_number, int zone_number) {
 		}
 		del_node->flags |= PAGE_FRAME_ALLOCED;
 
-		if (!child_order_avaliable_header) {
-			child_order_avaliable_header =
-				GET_AVALI_HEAD_PTR(zone_number, tmp_order - 1) = left_child;
-		} else {
+		if (child_order_avaliable_header)
 			frame_list_add_head(buddy_pmm.buckets[tmp_order - 1].pages,
 								left_child, child_order_avaliable_header);
-		}
+		child_order_avaliable_header =
+			GET_AVALI_HEAD_PTR(zone_number, tmp_order - 1) = left_child;
 		// after this, the child order must have at least one node ,so just add
 		frame_list_add_head(buddy_pmm.buckets[tmp_order - 1].pages, right_child,
 							child_order_avaliable_header);
+		child_order_avaliable_header =
+			GET_AVALI_HEAD_PTR(zone_number, tmp_order - 1) = right_child;
 
 		tmp_order -= 1;
 	}
@@ -319,12 +317,11 @@ static int pmm_free_one(u32 ppn) {
 		 * avaliable list*/
 		if (buddy_node->flags & PAGE_FRAME_ALLOCED ||
 			tmp_order == BUDDY_MAXORDER) {
-			if (!avaliable_header)
-				avaliable_header = insert_node;
-			else {
+			if (avaliable_header)
 				frame_list_add_head(buddy_pmm.buckets[tmp_order].pages,
 									insert_node, avaliable_header);
-			}
+			avaliable_header = GET_AVALI_HEAD_PTR(zone_number, tmp_order) =
+				insert_node;
 
 			break;
 		}
