@@ -143,12 +143,12 @@ set_segments:
 	movw	%ax,%fs
 	movw	%ax,%gs
 set_new_stack:
-	movq	$(_boot_stack_top),%rsp
+	movabs	$(_boot_stack_top),%rsp
 clean_tmp_page_table:
-	movq	%rax,(L0_table)
-	movq	%rax,(L1_table)
+	movabs	%rax,(L0_table)
+	movabs	%rax,(L1_table)
 run_main:
-	mov	$(setup_info),%rdi
+	movabs	$(setup_info),%rdi
 	call	cmain
 	hlt
 	jmp	hlt
