@@ -72,7 +72,7 @@ TODO：因为这个分配数量可能超过1G的空间，所以如果有需要�
 
 此时，对于能够支持的物理空间的限制，仅仅只有在page_frame中的next和prev的位数的限制，我这边设置28位是因为在qemu的x86_64中使用了40位的物理内存空间（大概1T）
 
-因此为了尽可能的通用，在aarch64的设计中，我也将tcr_el1的ips位设为最大40，防止出事情。(TODO)
+因此为了尽可能的通用，在aarch64的设计中，我也将tcr_el1的ips位设为最大40，防止出事情。
 
 # shared memory 的处理。
 对于每个page frame，还设置了一个字段表示shared memory的count数量，我认为6位表示count==64是完全足够的

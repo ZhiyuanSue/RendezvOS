@@ -193,9 +193,14 @@ init_mmu:
 	mrs x4,ID_AA64MMFR0_EL1
 	and x4,x4,#ID_AA64MMFR0_EL1_PARANGE_MASK	/*support the usable phyaddr*/
 	lsl	x4,x4,#32
+	mov x5,#1
+	lsl x5,x5,#33
+	cmp x4,x5
+	b.ls set_tcr_ips_end
+	// limit the tcr el1 ips to 40bits
+	mov x4,x5
+set_tcr_ips_end:
 	and	x4,x4,#TCR_EL1_IPS_MASK
-	//mov x4,#TCR_EL1_IPS_40bit
-	// TODO: limit the tcr el1 ips to 40bits
 	orr	x2,x2,x4
 	/*set ttbr0*/
 	/*orr x2,x2,#TCR_EL1_EPD0_ENABLE_WALK*/ /*for it's 0*/
