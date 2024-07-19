@@ -9,7 +9,7 @@ SECTIONS {
 	_start = .;
 	.text : 
 	{
-		*(.boot)
+		*(.boot .boot.*)
 		*(.boot_64)
 		*(.text .text.*)
 		*(.trap .trap.*)
@@ -18,10 +18,6 @@ SECTIONS {
 	_sdata = .;
 	.data :
 	{
-		*(.boot.page)
-		*(.boot.log)
-		*(.boot.data)
-		*(.boot_stack)
 		*(.data .data.*)
 	}
 	_edata = .;
@@ -29,6 +25,8 @@ SECTIONS {
 	_bss_start = .;
 	.bss :
 	{
+		*(.boot_stack)
+		_boot_stack_top = .;
 		*(.bss .bss.*)
 	}
 	_bss_end = .;

@@ -54,7 +54,7 @@ clear_bss:
 	jmp		clear_bss
 set_sp:
 	/*set sp*/
-	movl 	$(boot_stack + boot_stack_size - kernel_virt_offset),%esp
+	movl 	$(_boot_stack_top - kernel_virt_offset),%esp
 	/*clear the flag register*/
 	pushl	$0
 	popf
@@ -143,7 +143,7 @@ set_segments:
 	movw	%ax,%fs
 	movw	%ax,%gs
 set_new_stack:
-	movq	$(boot_stack+boot_stack_size),%rsp
+	movq	$(_boot_stack_top),%rsp
 clean_tmp_page_table:
 	movq	%rax,(L0_table)
 	movq	%rax,(L1_table)

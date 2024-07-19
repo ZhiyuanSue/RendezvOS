@@ -3,7 +3,7 @@ modules= $(shell find ./* -maxdepth 0 -type d)
 
 all: init $(modules) ${OBJECTS}
 	@for mod in $(modules); do $(MAKE) -C $$mod all; done
-	@-rm *.d
+	@-rm -f *.d
 
 -include *.d
 ${BUILD}/trap_entry.o: ./trap_entry.s $(modules)

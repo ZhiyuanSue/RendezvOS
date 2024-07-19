@@ -36,6 +36,8 @@ LDFLAGS	+=	-T $(SCRIPT_LINK_DIR)/$(ARCH)_linker.ld
 
 ARFLAGS	+=	-rcs
 
+MAKEFLAGS += --no-print-directory
+
 export ARCH KERNELVERSION ROOT_DIR BUILD SCRIPT_MAKE_DIR INCLUDE_DIR CC LD AR CFLAGS ARFLAGS LDFLAGS LIBS DBG
 
 all:  init have_config $(Target_BIN) clean
@@ -77,12 +79,12 @@ fmt:
 	
 
 mrproper: clean
-	@echo "rm all Makefile.env"
+	@echo "RM	Makefile.env"
 	@-rm -f $(shell find $(ROOT_DIR) -name Makefile.env) 
 	@-rm -rf $(BUILD)/*
-	@-rm $(ROOT_DIR)/include/modules/modules.h
+	@-rm -f $(ROOT_DIR)/include/modules/modules.h
 
 clean:	init
-	@echo "rm all obj file under build"
+	@echo "RM	OBJS"
 	@-rm -f $(shell find $(BUILD) -name *.o)
-	@-rm ./qemu.log
+	@-rm -f ./qemu.log

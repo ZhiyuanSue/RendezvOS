@@ -3,9 +3,9 @@ modules= $(shell find ./* -maxdepth 0 -type d)
 
 all: init $(modules) ${OBJECTS}
 	@for mod in $(modules); do $(MAKE) -C $$mod all; done
-	@-rm *.d
+	@-rm -f *.d
 
 -include *.d
 ${BUILD}/%.o: ./%.c $(modules)
-	@echo "CC		"$@
+	@echo "CC	"$@
 	@$(CC) $(CFLAGS) -o $@ -c $< -MD -MF $*.d -MP
