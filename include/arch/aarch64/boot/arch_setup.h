@@ -2,7 +2,7 @@
 #define _SHAMPOOS_ARCH_SETUP_H_
 #include <common/types.h>
 #ifndef KERNEL_VIRT_OFFSET
-#define KERNEL_VIRT_OFFSET 0xffffffffc0000000
+#define KERNEL_VIRT_OFFSET 0xffffffff80000000
 #endif
 
 struct boot_header {

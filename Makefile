@@ -29,7 +29,7 @@ ifeq ($(DBG), true)
 	CFLAGS	+= --verbose
 endif
 CFLAGS	+= -Wall -O3 -nostdlib -nostdinc
-CFLAGS	+= -fno-stack-protector -fPIC
+CFLAGS	+= -fno-stack-protector
 CFLAGS	+=	-I $(INCLUDE_DIR)
 
 LDFLAGS	+=	-T $(SCRIPT_LINK_DIR)/$(ARCH)_linker.ld

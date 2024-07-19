@@ -1,4 +1,4 @@
-#define	kernel_virt_offset 0xffffffffc0000000
+#define	kernel_virt_offset 0xffffffff80000000
 #define	boot_stack_size	0x10000
 #define	multiboot_header_magic	0x1BADB002
 #define	multiboot_header_flag_addr	0x00000002
@@ -239,8 +239,9 @@ L1_table:
 		so the first entry of pdpt table must also set to the pd
 	*/
 	.quad	L2_table - kernel_virt_offset + (PDPTE_P | PDPTE_RW)
-	.zero	8*510
+	.zero	8*509
 	.quad	L2_table - kernel_virt_offset + (PDPTE_P | PDPTE_RW)
+	.zero	8
 
 	.global L2_table
 L2_table:
