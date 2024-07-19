@@ -154,7 +154,7 @@ static inline int calculate_alloc_order(size_t page_number) {
 	}
 	return alloc_order;
 }
-static inline u32 mark_childs(int zone_number, int order, u64 index) {
+static inline error_t mark_childs(int zone_number, int order, u64 index) {
 	struct page_frame *del_node = &(GET_HEAD_PTR(zone_number, order)[index]);
 	if (order < 0)
 		return 0;
@@ -166,7 +166,7 @@ static inline u32 mark_childs(int zone_number, int order, u64 index) {
 		return -ENOMEM;
 	return 0;
 }
-u32 pmm_alloc_zone(int alloc_order, int zone_number) {
+int pmm_alloc_zone(int alloc_order, int zone_number) {
 	int tmp_order;
 	bool find_an_order = false;
 	struct page_frame *avaliable_header = NULL, *header = NULL,
@@ -257,7 +257,7 @@ u32 pmm_alloc_zone(int alloc_order, int zone_number) {
 			 buddy_pmm.zone[zone_number].zone_total_avaliable_pages);
 	return PPN_FROM_IDX(alloc_order, index);
 }
-u32 pmm_alloc(size_t page_number) {
+int pmm_alloc(size_t page_number) {
 	int zone_number = ZONE_NORMAL;
 	int alloc_order = 0;
 	/*have we used too many physical memory*/
@@ -288,7 +288,7 @@ static bool inline ppn_inrange(u32 ppn, int *zone_number) {
 	}
 	return ppn_inrange;
 }
-static int pmm_free_one(u32 ppn) {
+static error_t pmm_free_one(u32 ppn) {
 	u64 index, buddy_index;
 	int tmp_order = 0, zone_number = 0;
 	struct page_frame *avaliable_header = NULL, *header = NULL,
@@ -338,7 +338,7 @@ static int pmm_free_one(u32 ppn) {
 	}
 	return 0;
 }
-int pmm_free(u32 ppn, size_t page_number) {
+error_t pmm_free(u32 ppn, size_t page_number) {
 	int alloc_order = 0;
 	int free_one_result = 0;
 	int zone_number = 0;

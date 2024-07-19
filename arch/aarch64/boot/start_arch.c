@@ -30,7 +30,7 @@ static void map_dtb(struct setup_info *arch_setup_info) {
 		arch_setup_info->boot_dtb_header_base_addr + MIDDLE_PAGE_SIZE * 2;
 }
 
-int start_arch(struct setup_info *arch_setup_info) {
+error_t start_arch(struct setup_info *arch_setup_info) {
 	map_dtb(arch_setup_info);
 	struct fdt_header *dtb_header_ptr =
 		(struct fdt_header *)(arch_setup_info->boot_dtb_header_base_addr);

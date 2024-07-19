@@ -13,7 +13,7 @@ extern struct buddy buddy_pmm;
 extern u64 entry_per_bucket[BUDDY_MAXORDER + 1],
 	pages_per_bucket[BUDDY_MAXORDER + 1];
 
-static int arch_get_memory_regions(struct setup_info *arch_setup_info) {
+static error_t arch_get_memory_regions(struct setup_info *arch_setup_info) {
 	struct multiboot_info *mtb_info = GET_MULTIBOOT_INFO(arch_setup_info);
 	struct multiboot_mmap_entry *mmap;
 	vaddr add_ptr = mtb_info->mmap.mmap_addr + KERNEL_VIRT_OFFSET;

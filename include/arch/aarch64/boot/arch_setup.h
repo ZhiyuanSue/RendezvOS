@@ -29,5 +29,5 @@ struct setup_info {
 	u64 boot_dtb_header_base_addr; /*0x38*/
 } __attribute__((packed));
 
-int start_arch(struct setup_info *arch_setup_info);
+error_t start_arch(struct setup_info *arch_setup_info);
 #endif

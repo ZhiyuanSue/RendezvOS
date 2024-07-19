@@ -40,8 +40,8 @@ struct memory_regions {
 
 #define PMM_COMMON                                                             \
 	void (*pmm_init)(struct setup_info * arch_setup_info);                     \
-	u32 (*pmm_alloc)(size_t page_number);                                      \
-	int (*pmm_free)(u32 ppn, size_t page_number)
+	int (*pmm_alloc)(size_t page_number);                                      \
+	error_t (*pmm_free)(u32 ppn, size_t page_number)
 
 struct pmm {
 	PMM_COMMON;
