@@ -22,7 +22,7 @@
 #include <shampoos/limits.h>
 
 struct region {
-	u64 addr;
+	paddr addr;
 	u64 len;
 };
 

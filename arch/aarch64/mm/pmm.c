@@ -95,10 +95,11 @@ void arch_init_pmm(struct setup_info *arch_setup_info) {
 		(struct fdt_header *)(arch_setup_info->boot_dtb_header_base_addr);
 	paddr buddy_phy_start = ROUND_UP(
 		KERNEL_VIRT_TO_PHY(arch_setup_info->map_end_virt_addr), PAGE_SIZE);
-	paddr kernel_phy_start = KERNEL_VIRT_TO_PHY((u64)(&_start));
-	paddr kernel_phy_end = KERNEL_VIRT_TO_PHY((u64)(&_end));
+	paddr kernel_phy_start = KERNEL_VIRT_TO_PHY((vaddr)(&_start));
+	paddr kernel_phy_end = KERNEL_VIRT_TO_PHY((vaddr)(&_end));
 	paddr buddy_phy_end = 0;
 	u64 buddy_total_pages = 0;
+	bool can_load_kernel = false;
 
 	buddy_pmm.avaliable_phy_addr_end = 0;
 
@@ -116,6 +117,40 @@ void arch_init_pmm(struct setup_info *arch_setup_info) {
 	if (!buddy_pmm.m_regions->region_count)
 		goto arch_init_pmm_error;
 
+	// adjust the memory regions, according to the kernel
+
+	for (int i = 0; i < buddy_pmm.m_regions->region_count; i++) {
+		if (buddy_pmm.m_regions->memory_regions_entry_empty(i))
+			continue;
+		struct region *reg = &buddy_pmm.m_regions->memory_regions[i];
+		paddr region_end = reg->addr + reg->len;
+		paddr map_end_phy_addr =
+			KERNEL_VIRT_TO_PHY(arch_setup_info->map_end_virt_addr);
+		// find the region
+		if (kernel_phy_start >= reg->addr && map_end_phy_addr <= region_end) {
+			// the kernel used all the memeory
+			if (kernel_phy_start == reg->addr && map_end_phy_addr == region_end)
+				buddy_pmm.m_regions->memory_regions_delete(i);
+			// only one size is used, just change the region
+			else if (kernel_phy_start == reg->addr) {
+				reg->addr = map_end_phy_addr;
+			} else if (map_end_phy_addr == region_end) {
+				reg->len = kernel_phy_start - reg->addr;
+			} else {
+				// both side have space, adjust the region and insert a new one
+				reg->len = kernel_phy_start - reg->addr;
+				buddy_pmm.m_regions->memory_regions_insert(
+					map_end_phy_addr, region_end - map_end_phy_addr);
+			}
+			can_load_kernel = true;
+		}
+	}
+	/*You need to check whether the kernel and dtb have been loaded all successfully*/
+	if (!can_load_kernel) {
+		pr_info("cannot load kernel\n");
+		goto arch_init_pmm_error;
+	}
+
 	calculate_avaliable_phy_addr_end();
 
 	for (int order = 0; order <= BUDDY_MAXORDER; ++order)
@@ -125,8 +160,6 @@ void arch_init_pmm(struct setup_info *arch_setup_info) {
 		buddy_total_pages += pages_per_bucket[order];
 	buddy_phy_end = buddy_phy_start + buddy_total_pages * PAGE_SIZE;
 	pr_info("buddy start 0x%x end 0x%x\n", buddy_phy_start, buddy_phy_end);
-
-	// do some check
 
 	arch_map_buddy_data_space(kernel_phy_start, kernel_phy_end, buddy_phy_start,
 							  buddy_phy_end);

@@ -77,6 +77,37 @@ void arch_init_pmm(struct setup_info *arch_setup_info) {
 
 	if (arch_get_memory_regions(arch_setup_info) < 0)
 		goto arch_init_pmm_error;
+	// adjust the memory regions, according to the kernel
+
+	for (int i = 0; i < buddy_pmm.m_regions->region_count; i++) {
+		if (buddy_pmm.m_regions->memory_regions_entry_empty(i))
+			continue;
+		struct region *reg = &buddy_pmm.m_regions->memory_regions[i];
+		paddr region_end = reg->addr + reg->len;
+		// find the region
+		if (kernel_phy_start >= reg->addr && kernel_phy_end <= region_end) {
+			// the kernel used all the memeory
+			if (kernel_phy_start == reg->addr && kernel_phy_end == region_end)
+				buddy_pmm.m_regions->memory_regions_delete(i);
+			// only one size is used, just change the region
+			else if (kernel_phy_start == reg->addr) {
+				reg->addr = kernel_phy_end;
+			} else if (kernel_phy_end == region_end) {
+				reg->len = kernel_phy_start - reg->addr;
+			} else {
+				// both side have space, adjust the region and insert a new one
+				reg->len = kernel_phy_start - reg->addr;
+				buddy_pmm.m_regions->memory_regions_insert(
+					kernel_phy_end, region_end - kernel_phy_end);
+			}
+			can_load_kernel = true;
+		}
+	}
+	/*You need to check whether the kernel have been loaded all successfully*/
+	if (!can_load_kernel) {
+		pr_info("cannot load kernel\n");
+		goto arch_init_pmm_error;
+	}
 
 	/* calculate the end of the buddy_pmm avaliable_phy_addr */
 	calculate_avaliable_phy_addr_end();
@@ -89,31 +120,6 @@ void arch_init_pmm(struct setup_info *arch_setup_info) {
 		buddy_total_pages += pages_per_bucket[order];
 	buddy_phy_end = buddy_phy_start + buddy_total_pages * PAGE_SIZE;
 	pr_info("buddy start 0x%x end 0x%x\n", buddy_phy_start, buddy_phy_end);
-
-	/*check whether the kernel can put in all*/
-	/*try to check an avaliable region to place the kernel and buddy data*/
-	/*as the buddy_node is presented by 30bits, it must be put less than
-	 * 1G,check it*/
-	if (buddy_phy_end > BUDDY_MAX_PHY_END) {
-		pr_error("we cannot manager toooo many memory!\n");
-		goto arch_init_pmm_error;
-	}
-
-	for (int i = 0; i < buddy_pmm.m_regions->region_count; i++) {
-		if (buddy_pmm.m_regions->memory_regions_entry_empty(i))
-			continue;
-		struct region reg = buddy_pmm.m_regions->memory_regions[i];
-		paddr sec_start_addr = reg.addr;
-		paddr sec_end_addr = sec_start_addr + reg.len;
-		/*hint, this end is not reachable,[ sec_end_addr , sec_end_addr) */
-		if (sec_start_addr <= kernel_phy_start && sec_end_addr >= buddy_phy_end)
-			can_load_kernel = true;
-	}
-	/*You need to check whether the kernel have been loaded all successfully*/
-	if (!can_load_kernel) {
-		pr_info("cannot load kernel\n");
-		goto arch_init_pmm_error;
-	}
 
 	arch_map_buddy_data_space(kernel_phy_start, kernel_phy_end, buddy_phy_start,
 							  buddy_phy_end);
