@@ -3,22 +3,20 @@
  * */
 #ifndef _SHAMPOOS_ARCH_PMM_H_
 #define _SHAMPOOS_ARCH_PMM_H_
-#ifndef _SHAMPOOS_KERNEL_OFFSET_
-#define _SHAMPOOS_KERNEL_OFFSET_ 0xffffffff80000000
-
-#ifndef KERNEL_VIRT_OFFSET
-#define KERNEL_VIRT_OFFSET 0xffffffff80000000
-#endif
-
-#define KERNEL_VIRT_OFFSET_MASK (~KERNEL_VIRT_OFFSET)
-#define KERNEL_PHY_TO_VIRT(phy_addr) (phy_addr + _SHAMPOOS_KERNEL_OFFSET_)
-#define KERNEL_VIRT_TO_PHY(virt_addr) (virt_addr - _SHAMPOOS_KERNEL_OFFSET_)
-#endif
 
 #define BUDDY_MAX_PHY_END 0x40000000
 
 #include <arch/x86_64/boot/arch_setup.h>
 #include <arch/x86_64/boot/multiboot.h>
+
+#ifdef KERNEL_VIRT_OFFSET
+
+#define KERNEL_VIRT_OFFSET_MASK (~KERNEL_VIRT_OFFSET)
+#define KERNEL_PHY_TO_VIRT(phy_addr) (phy_addr + KERNEL_VIRT_OFFSET)
+#define KERNEL_VIRT_TO_PHY(virt_addr) (virt_addr - KERNEL_VIRT_OFFSET)
+#else
+#error "A KERNEL_VIRT_OFFSET micro must be defined"
+#endif
 
 void arch_init_pmm(struct setup_info *arch_setup_info);
 
