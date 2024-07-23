@@ -46,8 +46,6 @@ void generate_buddy_bucket(paddr kernel_phy_start, paddr kernel_phy_end,
 		buddy_pmm.buckets[order].pages =
 			(struct page_frame *)KERNEL_PHY_TO_VIRT(buddy_phy_start);
 		buddy_phy_start += pages_per_bucket[order] * PAGE_SIZE;
-		// TODO: 每个链表的page
-		// frame头都需要按照实际分配而不能连续分配，需要重新计算过。
 	}
 	for (int i = 0; i < buddy_pmm.m_regions->region_count; i++) {
 		if (buddy_pmm.m_regions->memory_regions_entry_empty(i))
@@ -58,9 +56,6 @@ void generate_buddy_bucket(paddr kernel_phy_start, paddr kernel_phy_end,
 		/*this end is not reachable,[ sec_end_addr , sec_end_addr) */
 		if (sec_start_addr <= kernel_phy_start && sec_end_addr >= buddy_phy_end)
 			sec_start_addr = buddy_phy_end;
-		// TODO：同样的，因为每个链表的page frame
-		// array可以移动，所以后续fill的时候需要把这一部分的填充也考虑进去。
-		// 不能简单的这么计算，而是可能需要考虑到section的分裂。
 		sec_start_addr = ROUND_UP(sec_start_addr, MIDDLE_PAGE_SIZE);
 		sec_end_addr = ROUND_DOWN(sec_end_addr, MIDDLE_PAGE_SIZE);
 		for (int order = 0; order <= BUDDY_MAXORDER; ++order) {

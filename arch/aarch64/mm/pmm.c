@@ -99,7 +99,7 @@ void arch_init_pmm(struct setup_info *arch_setup_info) {
 	paddr kernel_phy_end = KERNEL_VIRT_TO_PHY((vaddr)(&_end));
 	paddr buddy_phy_end = 0;
 	u64 buddy_total_pages = 0;
-	bool can_load_kernel = false;
+	int kernel_region = -1;
 
 	buddy_pmm.avaliable_phy_addr_end = 0;
 
@@ -138,15 +138,17 @@ void arch_init_pmm(struct setup_info *arch_setup_info) {
 				reg->len = kernel_phy_start - reg->addr;
 			} else {
 				// both side have space, adjust the region and insert a new one
-				reg->len = kernel_phy_start - reg->addr;
 				buddy_pmm.m_regions->memory_regions_insert(
-					map_end_phy_addr, region_end - map_end_phy_addr);
+					reg->addr, kernel_phy_start - reg->addr);
+				reg->addr = map_end_phy_addr;
+				reg->len = region_end - map_end_phy_addr;
 			}
-			can_load_kernel = true;
+			kernel_region = i;
 		}
 	}
-	/*You need to check whether the kernel and dtb have been loaded all successfully*/
-	if (!can_load_kernel) {
+	/*You need to check whether the kernel and dtb have been loaded all
+	 * successfully*/
+	if (kernel_region == -1) {
 		pr_info("cannot load kernel\n");
 		goto arch_init_pmm_error;
 	}
@@ -160,6 +162,20 @@ void arch_init_pmm(struct setup_info *arch_setup_info) {
 		buddy_total_pages += pages_per_bucket[order];
 	buddy_phy_end = buddy_phy_start + buddy_total_pages * PAGE_SIZE;
 	pr_info("buddy start 0x%x end 0x%x\n", buddy_phy_start, buddy_phy_end);
+
+	if (ROUND_DOWN(buddy_phy_end, HUGE_PAGE_SIZE) !=
+		ROUND_DOWN(kernel_phy_start, HUGE_PAGE_SIZE)) {
+		pr_error("cannot load the buddy: cannot load in the same 1G\n");
+		goto arch_init_pmm_error;
+	}
+	if (buddy_pmm.m_regions->memory_regions[kernel_region].addr +
+			buddy_pmm.m_regions->memory_regions[kernel_region].len <
+		buddy_phy_end) {
+		pr_error("cannot load the buddy %x %x\n",
+				 buddy_pmm.m_regions->memory_regions[kernel_region].addr,
+				 buddy_pmm.m_regions->memory_regions[kernel_region].len);
+		goto arch_init_pmm_error;
+	}
 
 	arch_map_buddy_data_space(kernel_phy_start, kernel_phy_end, buddy_phy_start,
 							  buddy_phy_end);

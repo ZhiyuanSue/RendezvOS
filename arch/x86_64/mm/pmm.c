@@ -69,11 +69,11 @@ void arch_init_pmm(struct setup_info *arch_setup_info) {
 
 	u64 buddy_total_pages = 0;
 
-	bool can_load_kernel = false;
 	paddr kernel_phy_start = KERNEL_VIRT_TO_PHY((vaddr)(&_start));
 	paddr kernel_phy_end = KERNEL_VIRT_TO_PHY((vaddr)(&_end));
 	paddr buddy_phy_start = ROUND_UP(kernel_phy_end, PAGE_SIZE);
 	paddr buddy_phy_end = 0;
+	int kernel_region = -1;
 
 	if (arch_get_memory_regions(arch_setup_info) < 0)
 		goto arch_init_pmm_error;
@@ -96,15 +96,16 @@ void arch_init_pmm(struct setup_info *arch_setup_info) {
 				reg->len = kernel_phy_start - reg->addr;
 			} else {
 				// both side have space, adjust the region and insert a new one
-				reg->len = kernel_phy_start - reg->addr;
 				buddy_pmm.m_regions->memory_regions_insert(
-					kernel_phy_end, region_end - kernel_phy_end);
+					reg->addr, kernel_phy_start - reg->addr);
+				reg->addr = kernel_phy_end;
+				reg->len = region_end - kernel_phy_end;
 			}
-			can_load_kernel = true;
+			kernel_region = i;
 		}
 	}
 	/*You need to check whether the kernel have been loaded all successfully*/
-	if (!can_load_kernel) {
+	if (kernel_region == -1) {
 		pr_info("cannot load kernel\n");
 		goto arch_init_pmm_error;
 	}
@@ -120,6 +121,18 @@ void arch_init_pmm(struct setup_info *arch_setup_info) {
 		buddy_total_pages += pages_per_bucket[order];
 	buddy_phy_end = buddy_phy_start + buddy_total_pages * PAGE_SIZE;
 	pr_info("buddy start 0x%x end 0x%x\n", buddy_phy_start, buddy_phy_end);
+
+	if (ROUND_DOWN(buddy_phy_end, HUGE_PAGE_SIZE) !=
+		ROUND_DOWN(kernel_phy_start, HUGE_PAGE_SIZE)) {
+		pr_error("cannot load the buddy\n");
+		goto arch_init_pmm_error;
+	}
+	if (buddy_pmm.m_regions->memory_regions[kernel_region].addr +
+			buddy_pmm.m_regions->memory_regions[kernel_region].len <
+		buddy_phy_end) {
+		pr_error("cannot load the buddy\n");
+		goto arch_init_pmm_error;
+	}
 
 	arch_map_buddy_data_space(kernel_phy_start, kernel_phy_end, buddy_phy_start,
 							  buddy_phy_end);
