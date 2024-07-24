@@ -6,19 +6,7 @@ struct buddy buddy_pmm;
 extern struct memory_regions m_regions;
 u64 entry_per_bucket[BUDDY_MAXORDER + 1], pages_per_bucket[BUDDY_MAXORDER + 1];
 /*some public functions in arch init, you can see some example in arch pmm*/
-void calculate_bucket_space() {
-	paddr adjusted_phy_mem_end = buddy_pmm.avaliable_phy_addr_end;
-	/*we promised that this phy mem end is 2m aligned*/
-	for (int order = 0; order <= BUDDY_MAXORDER; ++order) {
-		u64 size_in_this_order = (PAGE_SIZE << order);
-		entry_per_bucket[order] = adjusted_phy_mem_end / size_in_this_order;
-		pages_per_bucket[order] =
-			ROUND_UP(entry_per_bucket[order] * sizeof(struct page_frame),
-					 PAGE_SIZE) /
-			PAGE_SIZE;
-	}
-}
-void calculate_avaliable_phy_addr_end() {
+static void calculate_avaliable_phy_addr_end() {
 	buddy_pmm.avaliable_phy_addr_end = 0;
 	for (int i = 0; i < buddy_pmm.m_regions->region_count; i++) {
 		if (buddy_pmm.m_regions->memory_regions_entry_empty(i))
@@ -38,8 +26,27 @@ void calculate_avaliable_phy_addr_end() {
 	buddy_pmm.avaliable_phy_addr_end =
 		ROUND_DOWN(buddy_pmm.avaliable_phy_addr_end, MIDDLE_PAGE_SIZE);
 }
-void generate_buddy_bucket(paddr kernel_phy_start, paddr kernel_phy_end,
-						   paddr buddy_phy_start, paddr buddy_phy_end) {
+u64 calculate_pmm_space() {
+	u64 buddy_total_pages = 0;
+	calculate_avaliable_phy_addr_end();
+	for (int order = 0; order <= BUDDY_MAXORDER; ++order)
+		entry_per_bucket[order] = pages_per_bucket[order] = 0;
+	paddr adjusted_phy_mem_end = buddy_pmm.avaliable_phy_addr_end;
+	/*we promised that this phy mem end is 2m aligned*/
+	for (int order = 0; order <= BUDDY_MAXORDER; ++order) {
+		u64 size_in_this_order = (PAGE_SIZE << order);
+		entry_per_bucket[order] = adjusted_phy_mem_end / size_in_this_order;
+		pages_per_bucket[order] =
+			ROUND_UP(entry_per_bucket[order] * sizeof(struct page_frame),
+					 PAGE_SIZE) /
+			PAGE_SIZE;
+	}
+	for (int order = 0; order <= BUDDY_MAXORDER; ++order)
+		buddy_total_pages += pages_per_bucket[order];
+	return buddy_total_pages;
+}
+void generate_pmm_data(paddr kernel_phy_start, paddr kernel_phy_end,
+					   paddr buddy_phy_start, paddr buddy_phy_end) {
 	/*generate the buddy bucket*/
 	for (int order = 0; order <= BUDDY_MAXORDER; ++order) {
 		buddy_pmm.buckets[order].order = order;

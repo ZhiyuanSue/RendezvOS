@@ -47,4 +47,9 @@ struct pmm {
 	PMM_COMMON;
 };
 
+// get the pages pmm manager need
+u64 calculate_pmm_space();
+void generate_pmm_data(paddr kernel_phy_start, paddr kernel_phy_end,
+					   paddr pmm_data_phy_start, paddr pmm_data_phy_end);
+
 #endif

@@ -102,9 +102,9 @@ static inline bool frame_list_only_one(struct page_frame *bucket_head,
 	return false;
 }
 
-void calculate_bucket_space();
-void calculate_avaliable_phy_addr_end();
-void generate_buddy_bucket(paddr kernel_phy_start, paddr kernel_phy_end,
-						   paddr buddy_phy_start, paddr buddy_phy_end);
+// get the pages pmm manager need
+u64 calculate_pmm_space();
+void generate_pmm_data(paddr kernel_phy_start, paddr kernel_phy_end,
+					   paddr pmm_data_phy_start, paddr pmm_data_phy_end);
 
 #endif
