@@ -17,11 +17,11 @@ static void map_dtb(struct setup_info *arch_setup_info) {
 	*/
 	u64 vaddr = ROUND_UP(arch_setup_info->map_end_virt_addr, MIDDLE_PAGE_SIZE);
 	u64 paddr = ROUND_DOWN(arch_setup_info->dtb_ptr, MIDDLE_PAGE_SIZE);
-	arch_set_L2_entry_huge(paddr, vaddr, &L2_table,
+	arch_set_L2_entry_huge(paddr, vaddr, (struct L2_entry *)&L2_table,
 						   (PT_DESC_V | PT_DESC_ATTR_LOWER_AF));
 	vaddr += MIDDLE_PAGE_SIZE;
 	paddr += MIDDLE_PAGE_SIZE;
-	arch_set_L2_entry_huge(paddr, vaddr, &L2_table,
+	arch_set_L2_entry_huge(paddr, vaddr, (struct L2_entry *)&L2_table,
 						   (PT_DESC_V | PT_DESC_ATTR_LOWER_AF));
 	u64 offset = vaddr - paddr;
 	arch_setup_info->boot_dtb_header_base_addr =

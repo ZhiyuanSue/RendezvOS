@@ -62,7 +62,8 @@ static void arch_map_buddy_data_space(paddr kernel_phy_start,
 			ROUND_DOWN(buddy_phy_start_addr, MIDDLE_PAGE_SIZE);
 		arch_set_L2_entry_huge(buddy_start_round_down_2m,
 							   KERNEL_PHY_TO_VIRT(buddy_start_round_down_2m),
-							   &L2_table, (PDE_P | PDE_RW | PDE_G | PDE_PS));
+							   (struct L2_entry *)&L2_table,
+							   (PDE_P | PDE_RW | PDE_G | PDE_PS));
 	}
 }
 void arch_init_pmm(struct setup_info *arch_setup_info) {
