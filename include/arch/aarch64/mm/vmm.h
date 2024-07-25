@@ -2,8 +2,19 @@
 #define _SHAMPOOS_ARCH_VMM_H_
 #include <common/types.h>
 // here we only consider the 4K paging
-#define LOWER_BLOCK_ATTR u64 : 10
-#define UPPER_BLOCK_ATTR u64 : 12
+#define LOWER_BLOCK_ATTR \
+	u64 AttrIndex:3;	\
+	u64 NS:1;	\
+	u64 AP:2;	\
+	u64 SH:2;	\
+	u64 AF:1;	\
+	u64 nG:1
+#define UPPER_BLOCK_ATTR \
+	u64 contiguous:1;	\
+	u64 PXN:1;	\
+	u64 UXN:1;	\
+	u64 RES0:4;	\
+	u64 RES1:5
 union L0_entry {
 	u64 entry;
 	struct {
@@ -25,7 +36,7 @@ union L1_entry_huge {
 		u64 BOK : 1;
 		LOWER_BLOCK_ATTR;
 		u64 : 18;
-		u64 vaddr : 18;
+		u64 paddr : 18;
 		u64 : 4;
 		UPPER_BLOCK_ATTR;
 	};
@@ -52,7 +63,7 @@ union L2_entry_huge {
 		LOWER_BLOCK_ATTR;
 		// res0
 		u64 : 9;
-		u64 vaddr : 27;
+		u64 paddr : 27;
 		// res0
 		u64 : 4;
 		UPPER_BLOCK_ATTR;

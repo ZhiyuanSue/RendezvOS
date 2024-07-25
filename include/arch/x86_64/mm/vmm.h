@@ -72,7 +72,7 @@ union L2_entry_huge {  // PDE
 		u64 : 3;
 		u64 PAT : 1;
 		u64 : 8;
-		u64 vaddr : 31;
+		u64 paddr : 31;
 		u64 : 7;
 		u64 PK : 4;	 // only used in 2m huge page and CR4.PKE is enabled
 		u64 XD : 1;
@@ -108,7 +108,7 @@ union L3_entry {
 		u64 PAT : 1;
 		u64 G : 1;
 		u64 : 3;
-		u64 vaddr : 40;
+		u64 paddr : 40;
 		u64 : 7;
 		u64 PK : 4;	 // only used in CR4.PKE is enabled
 		u64 XD : 1;
