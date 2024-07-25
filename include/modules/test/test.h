@@ -4,6 +4,7 @@
 #include <modules/log/log.h>
 
 void pmm_test(void);
+void arch_vmm_test(void);
 void test(void);
 
 #endif

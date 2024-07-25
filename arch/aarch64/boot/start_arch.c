@@ -15,13 +15,14 @@ static void map_dtb(struct setup_info *arch_setup_info) {
 		the dtb must be 8 byte align, and less then 2m
 		as it haven't defined that dtb must 2m align, we must alloc 4m
 	*/
-	u64 vaddr = ROUND_UP(arch_setup_info->map_end_virt_addr, MIDDLE_PAGE_SIZE);
-	u64 paddr = ROUND_DOWN(arch_setup_info->dtb_ptr, MIDDLE_PAGE_SIZE);
-	arch_set_L2_entry_huge(paddr, vaddr, (struct L2_entry *)&L2_table,
+	vaddr vaddr =
+		ROUND_UP(arch_setup_info->map_end_virt_addr, MIDDLE_PAGE_SIZE);
+	paddr paddr = ROUND_DOWN(arch_setup_info->dtb_ptr, MIDDLE_PAGE_SIZE);
+	arch_set_L2_entry_huge(paddr, vaddr, (union L2_entry_huge *)&L2_table,
 						   (PT_DESC_V | PT_DESC_ATTR_LOWER_AF));
 	vaddr += MIDDLE_PAGE_SIZE;
 	paddr += MIDDLE_PAGE_SIZE;
-	arch_set_L2_entry_huge(paddr, vaddr, (struct L2_entry *)&L2_table,
+	arch_set_L2_entry_huge(paddr, vaddr, (union L2_entry_huge *)&L2_table,
 						   (PT_DESC_V | PT_DESC_ATTR_LOWER_AF));
 	u64 offset = vaddr - paddr;
 	arch_setup_info->boot_dtb_header_base_addr =

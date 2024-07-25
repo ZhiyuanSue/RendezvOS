@@ -58,7 +58,7 @@ static void arch_map_pmm_data_space(paddr kernel_phy_start,
 			ROUND_DOWN(pmm_data_phy_start_addr, MIDDLE_PAGE_SIZE);
 		arch_set_L2_entry_huge(pmm_data_start_round_down_2m,
 							   KERNEL_PHY_TO_VIRT(pmm_data_start_round_down_2m),
-							   (struct L2_entry *)&L2_table,
+							   (union L2_entry_huge *)&L2_table,
 							   (PDE_P | PDE_RW | PDE_G | PDE_PS));
 	}
 }
