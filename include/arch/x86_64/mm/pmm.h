@@ -4,8 +4,6 @@
 #ifndef _SHAMPOOS_ARCH_PMM_H_
 #define _SHAMPOOS_ARCH_PMM_H_
 
-#define BUDDY_MAX_PHY_END 0x40000000
-
 #include <arch/x86_64/boot/arch_setup.h>
 #include <arch/x86_64/boot/multiboot.h>
 

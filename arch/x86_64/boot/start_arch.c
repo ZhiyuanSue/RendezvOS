@@ -59,7 +59,7 @@ error_t start_arch(struct setup_info *arch_setup_info) {
 	} else {
 		pr_info("no input cmdline\n");
 	}
-	init_idt();
+	init_interrupt();
 	enable_cache();
 	start_fp();
 	start_simd();

@@ -2,7 +2,7 @@
 #include <arch/x86_64/trap.h>
 
 extern u64 *trap_vec;
-extern struct idt_gate_desc idt[256];
+extern struct idt_gate_desc trap_vec_table[256];
 const char *trap_name_string[ARCH_USED_TRAP_NUM + 2] = {
 	"Fault:Divide Error\n\0", "Fault/Trap:Debug Exception\n\0",
 	"Interrupt:NMI Interrupt\n\0", "Trap:Breakpoint\n\0", "Trap:Overflow\n\0",
@@ -18,10 +18,10 @@ const char *trap_name_string[ARCH_USED_TRAP_NUM + 2] = {
 	/*others*/
 	"Intel reserved\n\0", /*for trap number between 21-31*/
 	"User Defined interrupts\n\0"};
-void init_idt(void) {
+void init_interrupt(void) {
 	struct pseudo_descriptor idtr_desc;
 	idtr_desc.limit = IDT_LIMIT - 1;
-	idtr_desc.base_addr = (u64)(&idt);
+	idtr_desc.base_addr = (u64)(&trap_vec_table);
 	for (int i = 0; i < IDT_LIMIT; ++i) {
 		/*generate the IDT table*/
 		;

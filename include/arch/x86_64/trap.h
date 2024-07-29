@@ -26,6 +26,6 @@ enum TRAP_NUM {
 	TRAP_XM,
 	TRAP_VE,
 };
-void init_idt(void);
+void init_interrupt(void);
 void trap_handler();
 #endif

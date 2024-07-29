@@ -2,6 +2,7 @@
 #include <arch/aarch64/mm/page_table_def.h>
 #include <arch/aarch64/mm/vmm.h>
 #include <arch/aarch64/power_ctrl.h>
+#include <arch/aarch64/trap.h>
 #include <common/endianness.h>
 #include <common/mm.h>
 #include <modules/dtb/dtb.h>
@@ -40,6 +41,7 @@ error_t start_arch(struct setup_info *arch_setup_info) {
 		goto start_arch_error;
 	}
 	// parse_print_dtb(dtb_header_ptr,0,0);
+	init_interrupt();
 
 	return 0;
 start_arch_error:
