@@ -3,7 +3,7 @@
 #include <common/types.h>
 
 #ifndef KERNEL_VIRT_OFFSET
-#define KERNEL_VIRT_OFFSET 0xffffffff80000000
+#define KERNEL_VIRT_OFFSET 0xffff800000000000
 #endif
 #define BIOS_MEM_UPPER 0x100000
 

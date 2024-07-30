@@ -24,12 +24,10 @@ struct log_buffer {
 	int log_level;
 	int cur_buffer_idx;
 	int cur_buffer_offset;
-	void (*write_log)(u_int8_t ch);
 	struct log_buffer_desc LOG_BUF[LOG_BUFFER_SIZE];
 };
 
-void log_init(void *log_buffer_addr, int log_level,
-			  void (*write_log)(u_int8_t ch));
+void log_init(void *log_buffer_addr, int log_level);
 void printk(const char *format, int log_level, ...);
 
 #define COLOR_SET(dis_mod, forward_color, backword_color)                      \

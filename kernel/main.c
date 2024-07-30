@@ -13,7 +13,7 @@ void cmain(struct setup_info *arch_setup_info) {
 	/*for mmio way, we map the uart after the rount up pos of end,for x86,use io
 	 * port*/
 	uart_open((void *)ROUND_UP((vaddr)(&_end), MIDDLE_PAGE_SIZE));
-	log_init((void *)(arch_setup_info->log_buffer_addr), log_level, &uart_putc);
+	log_init((void *)(arch_setup_info->log_buffer_addr), log_level);
 #ifdef HELLO
 	hello_world();
 #endif

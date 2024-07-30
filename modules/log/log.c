@@ -1,5 +1,6 @@
 #include <common/types.h>
 #include <modules/log/log.h>
+#include <modules/driver/driver.h>
 
 struct log_buffer LOG_BUFFER;
 #ifdef _LOG_OFF_
@@ -24,10 +25,8 @@ int log_level = LOG_DEBUG;
 int log_level = LOG_OFF;
 #endif
 
-void log_init(void *log_buffer_addr, int log_level,
-			  void (*write_log)(u_int8_t ch)) {
-	write_log('\n');
-	LOG_BUFFER.write_log = write_log;
+void log_init(void *log_buffer_addr, int log_level) {
+	uart_putc('\n');
 	for (int i = 0; i < LOG_BUFFER_SIZE; ++i) {
 		LOG_BUFFER.LOG_BUF[i].start_addr =
 			log_buffer_addr + i * LOG_BUFFER_SINGLE_SIZE;
@@ -71,7 +70,7 @@ void log_print(char *buffer, const char *format, va_list arg_list) {
 	char buf[20];
 	while ((c = *format++) != 0) {
 		if (c != '%')
-			LOG_BUFFER.write_log(c);
+			uart_putc(c);
 		else {
 			char *p, *p2;
 			int pad0 = 0, pad = 0;
@@ -111,9 +110,9 @@ void log_print(char *buffer, const char *format, va_list arg_list) {
 				for (p2 = p; *p2; p2++)
 					;
 				for (; p2 < p + pad; p2++)
-					LOG_BUFFER.write_log(pad0 ? '0' : ' ');
+					uart_putc(pad0 ? '0' : ' ');
 				while (*p)
-					LOG_BUFFER.write_log(*p++);
+					uart_putc(*p++);
 				break;
 			default:
 				break;
@@ -123,7 +122,7 @@ void log_print(char *buffer, const char *format, va_list arg_list) {
 }
 
 void printk(const char *format, int log_level, ...) {
-	if (log_level <= LOG_BUFFER.log_level && LOG_BUFFER.write_log) {
+	if (log_level <= LOG_BUFFER.log_level) {
 		va_list arg_list;
 		va_start(arg_list, log_level);
 

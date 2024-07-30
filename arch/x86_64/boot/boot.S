@@ -1,4 +1,4 @@
-#define	kernel_virt_offset 0xffffffff80000000
+#define	kernel_virt_offset 0xffff800000000000
 #define	boot_stack_size	0x10000
 #define	multiboot_header_magic	0x1BADB002
 #define	multiboot_header_flag_addr	0x00000002
@@ -146,7 +146,6 @@ set_new_stack:
 	movabs	$(_boot_stack_top),%rsp
 clean_tmp_page_table:
 	movabs	%rax,(L0_table)
-	movabs	%rax,(L1_table)
 run_main:
 	movabs	$(setup_info),%rdi
 	call	cmain
@@ -213,8 +212,9 @@ L0_table:
 		bit 63:XD,disable-execute
 	*/
 	.quad	L1_table - kernel_virt_offset + ( PML4E_P | PML4E_RW )
-	.zero	8*510
+	.zero	8*255
 	.quad	L1_table - kernel_virt_offset + ( PML4E_P | PML4E_RW | PML4E_US)
+	.zero	8*255
 	
 	.global L1_table
 L1_table:
@@ -239,9 +239,7 @@ L1_table:
 		so the first entry of pdpt table must also set to the pd
 	*/
 	.quad	L2_table - kernel_virt_offset + (PDPTE_P | PDPTE_RW)
-	.zero	8*509
-	.quad	L2_table - kernel_virt_offset + (PDPTE_P | PDPTE_RW)
-	.zero	8
+	.zero	8*511
 
 	.global L2_table
 L2_table:
@@ -267,12 +265,11 @@ L2_table:
 	*/
 	.zero 8*512
 	/*
-		the start pos is 1111 1111 1111 1111 1111 1111 1111 1111 1100 0000 0000 0000 0000 0000 0000 0000 b
+		the start pos is 1111 1111 1111 1111 1111 1111 1000 0000 0000 0000 0000 0000 0000 0000 0000 0000 b
 		and the first  | 1...              1 | is pre 1 bits 
 		and the                             |1111 1111 1| is the PML4 addr, which will find the last entry of PDPT
-		and then                                       |111 1111 11| is the PDPT addr, which will find the last entry of PDE
+		and then                                       |000 0000 00| is the PDPT addr, which will find the last entry of PDE
 		and find the L2_table,and set this entry's PS bit 
-		and we don't think the kernel might need more then 1GB space on shampoos
 	*/
 	.section .boot.log
 	.p2align 12
