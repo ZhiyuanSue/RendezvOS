@@ -6,10 +6,10 @@ all: init $(modules) ${OBJECTS}
 	@-rm -f *.d
 
 -include *.d
-${BUILD}/trap_entry.o: ./trap_entry.s $(modules)
+${BUILD}/trap_entry.o: ./trap_entry.S $(modules)
 	@echo "CC	${BUILD}/trap_entry.o"
 	@$(CC) $(CFLAGS) -o $@ -c $<
-${BUILD}/trap_vec.o: ./trap_vec.s $(modules)
+${BUILD}/trap_vec.o: ./trap_vec.S $(modules)
 	@echo "CC	${BUILD}/trap_vec.o"
 	@$(CC) $(CFLAGS) -o $@ -c $<
 

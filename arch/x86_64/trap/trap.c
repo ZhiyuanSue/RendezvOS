@@ -1,8 +1,9 @@
 #include <arch/x86_64/sys_ctrl.h>
+#include <arch/x86_64/sys_ctrl_def.h>
 #include <arch/x86_64/trap.h>
 
 extern u64 *trap_vec;
-extern struct idt_gate_desc trap_vec_table[256];
+extern union idt_gate_desc trap_vec_table[256];
 const char *trap_name_string[ARCH_USED_TRAP_NUM + 2] = {
 	"Fault:Divide Error\n\0", "Fault/Trap:Debug Exception\n\0",
 	"Interrupt:NMI Interrupt\n\0", "Trap:Breakpoint\n\0", "Trap:Overflow\n\0",
@@ -24,7 +25,11 @@ void init_interrupt(void) {
 	idtr_desc.base_addr = (u64)(&trap_vec_table);
 	for (int i = 0; i < IDT_LIMIT; ++i) {
 		/*generate the IDT table*/
-		;
+		union desc_selector sel;
+		sel.rpl=KERNEL_PL;
+		sel.table_indicator=0;
+		sel.index=1;
+		SET_IDT_GATE(trap_vec_table[i],(vaddr)&trap_vec[i],sel,KERNEL_PL,0xe);
 	}
 	lidt(&idtr_desc);
 }

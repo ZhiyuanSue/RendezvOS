@@ -1,5 +1,9 @@
 #ifndef _SHAMPOOS_X86_SYS_CTRL_DEF_H_
 #define _SHAMPOOS_X86_SYS_CTRL_DEF_H_
+/*Privilege Level*/
+#define KERNEL_PL	(0)
+#define USER_PL	(3)
+
 /*CR0*/
 #define CR0_PE (1 << 0)
 #define CR0_MP (1 << 1)
