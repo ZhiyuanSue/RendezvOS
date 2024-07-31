@@ -12,6 +12,8 @@ https://blog.csdn.net/weixin_46716100/article/details/122205489
 我找了一篇文章来介绍使用8259A
 
 ## APIC
+
+### Local APIC
 首先使用CPUID，EAX=01，返回的EDX中bit9置位表示支持local APIC
 
 对于Local APIC，他放在1个4K的block中
@@ -30,13 +32,78 @@ https://blog.csdn.net/weixin_46716100/article/details/122205489
 APIC ID,在多核中，APIC ID还被当做CPU ID，这个值还可以通过CPUID命令，EAX=1，返回的EBX中的bit31-24来决定，即使写了APIC寄存器空间的APIC ID，CPUID命令也会正确返回通过启动决定的CPUID
 这个寄存器放在FEE0 0020H
 
-### INIT Reset和多核启动的Wait for init状态
+#### INIT Reset和多核启动的Wait for init状态
 这个不细说了
 
-Local APIC VERSION register
+#### Local APIC VERSION register
 bit 0-7表示vition，0XH都是82489，10-15H都是integrated APIC
 bit 16-23为MAX LVT entry
 bit 24 为EOI，翻译是说，用户软件是否可以通过设置Spurious Interrupt Vector rigister的bit 12禁用broadcast EOI消息
+
+#### LVT寄存器
+可以见10.5.1
+包括CMCI、Timer（需要额外的寄存器支持）、Thermal、Performance、LINT0、LINT1、Error几个寄存器
+最低8位是Vector，表示对应的core里面的中断。
+其他的位也值得关注，看Figure10-8
+
+#### ESR寄存器
+几个位表明出错的原因
+
+#### Timer寄存器
+包括
+divide configure寄存器
+initial count寄存器
+current count寄存器
+LVT timer寄存器
+
+首先是否支持还是需要看CPUID
+CPUID.06H.EAX.ARAT[bit2]
+
+APIC的频率是CPU的bus clock，然后divide了divide configure寄存器配置的值
+
+##### TSC模式
+这是基于CPU的时钟而不是CPU的总线，相对更加精确
+需要CPUID.01H.ECX.TSC_Deadline支持
+
+而这还涉及到一个IA32_TSC_DEADLINE寄存器（MSR地址为6E0H）而不是使用initial count和current count
+反正就是倒计时一次
+
+TSC模式需要做的事情就是
+1、检测是否支持TSC
+2、在LVT Timer寄存器中设置为TSC的模式
+3、在IA32_TSC_DEADLINE寄存器写入东西
+4、会触发中断
+5、重复3开始的步骤
+
+#### IPI
+ICR寄存器
+Interrupt Command Register
+
+IPI本身可以向其他核心发消息，转发自己来不及处理的中断信号，向自己发消息，以及发送SIPI开始多核启动
+
+ICR寄存器本身是64位的寄存器（在xAPIC中是ICR_LOW和ICR_HIGH，两个寄存器），除了delivery status位是只读的之外都是可读写的
+
+vector位
+
+Delivery Mode，其中特别的是SIPI（0b110）
+
+Destination shorthand，四个模式，00表示使用destination位指明的，01表示自己，10表示包括自己在内的所有，11表示除了自己之外的所有
+其他还有一些位
+（需要注意不是所有的组合都有效）
+
+决定IPI的除了ICR寄存器之外，还包括
+Local destination register（LDR）以及Destination format register（DFR）
+
+物理dst模式
+直接使用APIC ID作为目的地
+
+逻辑dst模式
+使用一个8bit的message destination address（MDA），这个MDA
+在LDR的高8位写入了logical APIC ID
+对于DFR寄存器，只有高4位有效并且要么全都是1表示flat模式，要么全都是0表示cluster模式，剩余全都是1
+
+
+
 
 ## xAPIC
 
