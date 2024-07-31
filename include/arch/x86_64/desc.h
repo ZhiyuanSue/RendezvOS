@@ -9,12 +9,12 @@ struct pseudo_descriptor {
 
 union desc_selector {
 	u16 selector;
-	struct{
+	struct {
 		u16 rpl : 2;
 		u16 table_indicator : 1;
 		u16 index : 13;
 	};
-}__attribute__((packed));
+} __attribute__((packed));
 
 /* segment descriptors */
 struct seg_desc {
@@ -31,38 +31,38 @@ struct seg_desc {
 	u32 d_or_b : 1;				 // 0 = 16-bit segment, 1 = 32-bit segment
 	u32 g : 1;					 // granularity: limit scaled by 4K when set
 	u32 base_address_31_24 : 8;	 // high bits of segment base address
-}__attribute__((packed));
+} __attribute__((packed));
 union idt_gate_desc {
 	u64 idt[2];
-	struct{
+	struct {
 		/*first u32*/
 		u16 offset_15_0;
 		union desc_selector seg_selector;
 		/*second u32*/
-		u32 ist:3;
-		u32 zero_0:5;
-		u32 type:4;
-		u32 zero_1:1;
-		u32 dpl:2;
-		u32 p:1;
-		u32 offset_31_16:16;
+		u32 ist : 3;
+		u32 zero_0 : 5;
+		u32 type : 4;
+		u32 zero_1 : 1;
+		u32 dpl : 2;
+		u32 p : 1;
+		u32 offset_31_16 : 16;
 		/*third u32*/
 		u32 offset_63_32;
 		/*forth u32*/
 		u32 res;
 	};
-}__attribute__((packed));
-#define SET_IDT_GATE(gate,offset,sel,_dpl,_type)	\
-	gate.res=0;	\
-	gate.offset_63_32=(u32)((offset)>>32);	\
-	gate.offset_31_16=(u32)(offset & 0xffffffff)>>16;	\
-	gate.p=1;	\
-	gate.dpl=_dpl;	\
-	gate.zero_1=0;	\
-	gate.type=_type;	\
-	gate.zero_0=0;	\
-	gate.ist=0;	\
-	gate.seg_selector=sel;	\
-	gate.offset_15_0=(u32)(offset & 0xffff)
+} __attribute__((packed));
+#define SET_IDT_GATE(gate, offset, sel, _dpl, _type)                           \
+	gate.res = 0;                                                              \
+	gate.offset_63_32 = (u32)((offset) >> 32);                                 \
+	gate.offset_31_16 = (u32)(offset & 0xffffffff) >> 16;                      \
+	gate.p = 1;                                                                \
+	gate.dpl = _dpl;                                                           \
+	gate.zero_1 = 0;                                                           \
+	gate.type = _type;                                                         \
+	gate.zero_0 = 0;                                                           \
+	gate.ist = 0;                                                              \
+	gate.seg_selector = sel;                                                   \
+	gate.offset_15_0 = (u32)(offset & 0xffff)
 
 #endif

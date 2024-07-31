@@ -7,13 +7,43 @@ x86_64下
 外设的中断源
 我这边试图写四种情况下
 ## no APIC
-这时候只能用8259A和8254（用于时钟），但是正常情况需要disable掉APIC
+这时候只能用8259A和8254（用于时钟），但是正常情况需要disable掉APIC，才会只使用8259A
+https://blog.csdn.net/weixin_46716100/article/details/122205489
+我找了一篇文章来介绍使用8259A
 
 ## APIC
+首先使用CPUID，EAX=01，返回的EDX中bit9置位表示支持local APIC
+
+对于Local APIC，他放在1个4K的block中
+查看10.4了解其布局
+初试物理地址都在0xFEE00000，他必须被映射到一个strong uncachable的区域（UC），见11.3
+
+可选的一个动作是，把这个地址空间，映射到另一个区域
+见10.4.5
+
+访问所有的32bit的寄存器，64bit或者256bit的寄存器，必须使用128bit的align
+
+有个IA32_APIC_BASE MSR寄存器，见10.4.3，来启用或者禁用APIC
+这个寄存器低12位中，bit11表示APIC是否启用，bit8表示处理器是BSP
+然后bit12-maxphyaddr是表示APIC base
+
+APIC ID,在多核中，APIC ID还被当做CPU ID，这个值还可以通过CPUID命令，EAX=1，返回的EBX中的bit31-24来决定，即使写了APIC寄存器空间的APIC ID，CPUID命令也会正确返回通过启动决定的CPUID
+这个寄存器放在FEE0 0020H
+
+### INIT Reset和多核启动的Wait for init状态
+这个不细说了
+
+Local APIC VERSION register
+bit 0-7表示vition，0XH都是82489，10-15H都是integrated APIC
+bit 16-23为MAX LVT entry
+bit 24 为EOI，翻译是说，用户软件是否可以通过设置Spurious Interrupt Vector rigister的bit 12禁用broadcast EOI消息
 
 ## xAPIC
 
 ## x2APIC
+CPUID:01H:ECX[21]=1表示支持x2APIC
+在x2APIC中，APIC ID作为MSR 802H寄存器。整个32位都被当做ID
+
 
 ## syscall and sysret
 具体见column 3的5.8.8，和之前使用中断的方式不同，这个快速系统调用，需要额外考虑

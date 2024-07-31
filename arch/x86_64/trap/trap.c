@@ -26,10 +26,11 @@ void init_interrupt(void) {
 	for (int i = 0; i < IDT_LIMIT; ++i) {
 		/*generate the IDT table*/
 		union desc_selector sel;
-		sel.rpl=KERNEL_PL;
-		sel.table_indicator=0;
-		sel.index=1;
-		SET_IDT_GATE(trap_vec_table[i],(vaddr)&trap_vec[i],sel,KERNEL_PL,0xe);
+		sel.rpl = KERNEL_PL;
+		sel.table_indicator = 0;
+		sel.index = 1;
+		SET_IDT_GATE(trap_vec_table[i], (vaddr)&trap_vec[i], sel, KERNEL_PL,
+					 0xe);
 	}
 	lidt(&idtr_desc);
 }

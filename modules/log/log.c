@@ -1,6 +1,6 @@
 #include <common/types.h>
-#include <modules/log/log.h>
 #include <modules/driver/driver.h>
+#include <modules/log/log.h>
 
 struct log_buffer LOG_BUFFER;
 #ifdef _LOG_OFF_
