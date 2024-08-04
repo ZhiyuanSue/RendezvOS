@@ -2,7 +2,6 @@
 #define _SHAMPOOS_TRAP_H_
 #include <common/types.h>
 #define IDT_LIMIT 256
-#define ARCH_USED_TRAP_NUM 21
 enum TRAP_NUM {
 	TRAP_DE,
 	TRAP_DB,
@@ -25,6 +24,7 @@ enum TRAP_NUM {
 	TRAP_MC,
 	TRAP_XM,
 	TRAP_VE,
+	TRAP_ARCH_USED,
 };
 void init_interrupt(void);
 void trap_handler();

@@ -4,7 +4,7 @@
 
 extern u64 *trap_vec;
 extern union idt_gate_desc trap_vec_table[256];
-const char *trap_name_string[ARCH_USED_TRAP_NUM + 2] = {
+const char *trap_name_string[TRAP_ARCH_USED + 2] = {
 	"Fault:Divide Error\n\0", "Fault/Trap:Debug Exception\n\0",
 	"Interrupt:NMI Interrupt\n\0", "Trap:Breakpoint\n\0", "Trap:Overflow\n\0",
 	"Fault:BOUND Range exceeded\n\0", "Fault:Invalid Opcode\n\0",
