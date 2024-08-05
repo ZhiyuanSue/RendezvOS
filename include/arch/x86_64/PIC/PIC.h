@@ -25,10 +25,6 @@
 	and at slave,the icw 3 should have the index at which the master bit masked
 */
 
-/*we also define the slave id, we use 0x4*/
-#define _8259A_SLAVE_INDEX_ (4)
-#define _8259A_SLAVE_MASK_ (1 << _8259A_SLAVE_INDEX_)
-
 /*ICW 4, odd*/
 #define _8259A_ICW_4_uPM_ (1 << 0)	/*should be 1*/
 #define _8259A_ICW_4_AEOI_ (1 << 1) /*1 means auto,0 means menual*/
@@ -66,6 +62,24 @@
 	(1 << 5) /*set ESMM,1 means the special mask method set, 0 means reset*/
 #define _8259A_OCW_3_ESMM_ (1 << 6) /*set SMM validation*/
 
+/*some IRQ number is pre-defined*/
+/*Master*/
+#define _8259A_TIMER_ (0)
+#define _8259A_KEYBOARD_ (1)
+#define _8259A_SLAVE_INDEX_ (2)
+#define _8259A_SLAVE_MASK_ (1 << _8259A_SLAVE_INDEX_) /*used to init ICW 3*/
+#define _8259A_UART_2_ (3)
+#define _8259A_UART_1_ (4)
+#define _8259A_LPT_2_ (5)
+#define _8259A_FLOPPY_ (6)
+#define _8259A_LPT_1_ (7)
+/*Slave*/
+#define _8259A_RT_TIMER (8)
+#define _8259A_MOUSE (12)
+#define _8259A_FP (13)
+#define _8259A_AT (14)
+
 void init_PIC();
+void enable_IRQ();
 
 #endif
