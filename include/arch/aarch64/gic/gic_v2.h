@@ -64,3 +64,21 @@ struct gic_cpu_interface {
 	u32 Res_2[0x3C0];	 /*	0x100-0x1000*/
 	u32 GICC_DIR;		 /*WO	0x1000*/
 };
+
+struct gic_virtual_interface {
+	u32 GICH_HCR;	/*RW	0x00*/
+	u32 GICH_VTR;	/*RO	0x04*/
+	u32 GICH_VMCR;	/*RW	0x08*/
+	u32 Res_0;		/*		0x0C*/
+	u32 GICH_MISR;	/*RO	0x10*/
+	u32 Res_1[0x3];	/*		0x14-0x1C*/
+	u32 GICH_EISR0;	/*RO	0x20*/
+	u32 GICH_EISR1;	/*RO	0x24*/
+	u32 Res_2[0x2];	/*		0x28-0x2C*/
+	u32 GICH_ELSR0;	/*RO	0x30*/
+	u32 GICH_ELSR1;	/*RO	0x34*/
+	u32 Res_3[0x2E];	/*	0x38-0xEC*/
+	u32 GICH_APR;	/*RW	0xF0*/
+	u32 Res_4[0x3];	/*		0xF4-0xFC*/
+	u32 GICH_LR[0x40];	/*RW	0x100-0x1FC*/
+};

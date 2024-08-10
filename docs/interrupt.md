@@ -274,6 +274,26 @@ D表示debug，A表示SError，I，IRQ，F，FIQ
 
 SPSel，选择SP0或者SP_x
 
+# gic_v2
+首先需要在设备树中能够找到这个设备，在设备树当中，有个interrupt-controller字段。
+其次对应的mmio的地址需要进行分配。
+
+gic v2中中断的几个状态及其转换（虽然但是，要理解后面说的一堆东西，这个状态是基础）
+inactive：没有中断或者已经处理完了
+pending：还没处理
+active：正在处理
+active and pending：正在处理但是还有新的中断来了。
+
+
+中断源类型和中断ID
+和local apic不同，gic_v2不仅包括本地的，还包括了相当于IOAPIC的中断源
+
+SGI
+（要弄明白，他最多支持8个core）
+
+PPI
+SPI
+
 
 # riscv
 
