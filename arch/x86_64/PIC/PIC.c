@@ -67,11 +67,11 @@ error_t disable_IRQ(int irq_num) {
 error_t EOI(int irq_num) { /*just send an EOI to OCW 2*/
 	if (irq_num >= _8259A_MASTER_IRQ_NUM_ &&
 		irq_num < _8259A_MASTER_IRQ_NUM_ + _8259A_IRQ_NUM_) { /*master irq*/
-		outb(_X86_8259A_MASTER_1_, _8259A_OCW_2_EOI_);
+		outb(_X86_8259A_MASTER_0_, _8259A_OCW_2_EOI_);
 	} else if (irq_num >= _8259A_SLAVE_IRQ_NUM_ &&
 			   irq_num <
 				   _8259A_SLAVE_IRQ_NUM_ + _8259A_IRQ_NUM_) { /*slave irq*/
-		outb(_X86_8259A_SLAVE_1_, _8259A_OCW_2_EOI_);
+		outb(_X86_8259A_SLAVE_0_, _8259A_OCW_2_EOI_);
 	} else { /*wrong irq num*/
 		return -EPERM;
 	}

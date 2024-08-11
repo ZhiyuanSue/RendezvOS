@@ -82,6 +82,7 @@
 #define _8259A_FP (13)
 #define _8259A_AT (14)
 
+#include <common/types.h>
 void init_PIC();
 error_t enable_IRQ(int irq_num);
 error_t disable_IRQ(int irq_num);
