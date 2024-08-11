@@ -63,6 +63,9 @@
 #define _8259A_OCW_3_ESMM_ (1 << 6) /*set SMM validation*/
 
 /*some IRQ number is pre-defined*/
+#define _8259A_MASTER_IRQ_NUM_ (0x20)
+#define _8259A_IRQ_NUM_ (8) /*The 8259A have only 8 irqs*/
+#define _8259A_SLAVE_IRQ_NUM_ (_8259A_MASTER_IRQ_NUM_ + _8259A_IRQ_NUM_)
 /*Master*/
 #define _8259A_TIMER_ (0)
 #define _8259A_KEYBOARD_ (1)
@@ -80,6 +83,7 @@
 #define _8259A_AT (14)
 
 void init_PIC();
-void enable_IRQ();
-
+error_t enable_IRQ(int irq_num);
+error_t disable_IRQ(int irq_num);
+error_t EOI(int irq_num);
 #endif

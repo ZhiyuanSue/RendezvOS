@@ -1,7 +1,13 @@
 #ifndef _SHAMPOOS_X86_64_IO_PORT_H_
 #define _SHAMPOOS_X86_64_IO_PORT_H_
 
-/*define some of the ports in X86_64 here, which might be platform decided*/
+/*
+	define some of the ports in X86_64 here, which might be platform decided
+	I have find some of the website for most accepted x86 PC port definatioins
+	here are two of them:
+	https://bochs.sourceforge.io/techspec/PORTS.LST
+	http://www.os2site.com/sw/info/memory/ports.txt
+*/
 #define _X86_16550A_COM1_BASE_ 0x3F8
 /*actually using early serial ouput we just need one serial port*/
 #define _X86_16550A_COM2_BASE_ 0x2F8
