@@ -1,3 +1,7 @@
+# 中断的level trigger和edge trigger
+level trigger触发的条件是只要保持在特定的电平，这个中断就会持续触发
+edge trigger的条件是从高电平到低电平或者低电平到高电平，只要变化了就会触发一次。
+
 # x86_64
 x86_64下
 首先看中断向量表
@@ -274,26 +278,69 @@ D表示debug，A表示SError，I，IRQ，F，FIQ
 
 SPSel，选择SP0或者SP_x
 
-# gic_v2
+## gic_v2
 首先需要在设备树中能够找到这个设备，在设备树当中，有个interrupt-controller字段。
 其次对应的mmio的地址需要进行分配。
 
-gic v2中中断的几个状态及其转换（虽然但是，要理解后面说的一堆东西，这个状态是基础）
+### gic v2中中断的几个状态及其转换（虽然但是，要理解后面说的一堆东西，这个状态是基础）
 inactive：没有中断或者已经处理完了
 pending：还没处理
 active：正在处理
 active and pending：正在处理但是还有新的中断来了。
 
 
-中断源类型和中断ID
+### 中断源类型和中断ID
 和local apic不同，gic_v2不仅包括本地的，还包括了相当于IOAPIC的中断源
 
-SGI
-（要弄明白，他最多支持8个core）
+### 中断分组
+分为group0和group1
+在group0中是
 
-PPI
-SPI
+### 中断号分配
+SGI(software-generated interrupt)
+（
+要弄明白，他最多支持8个core，然后这是用于IPI的，也就是写入GICD_SGIR寄存器，这个SGI是edge triggered的。
+在GICC_IAR或者GICC_AIAR寄存器的CPUID位定义了请求该中断的cpu
+GIC可以保证允许同时多对SGI中断的触发。
+）
+ID0-15
+其中0-7是Non-secure interrupts
+8-15是secure interrupts
 
+PPI(private peripheral interrupt)
+CPU私有的寄存器
+ID16-31
+SPI(shared peripheral interrupt)
+看distributor分发给谁
+ID32-1019
+
+最后的最后，ID1020-ID1023是保留的
+
+### 模型
+1-N模型
+只有一个CPU会处理某个中断
+N-N模型
+一个中断会引起多个CPU的响应
+
+### spurious 中断
+感觉和APIC的spurious一样，可以看看那个解释，因为提升了优先级或者禁用中断啥的，导致某些中断已经没有用了。
+但是他额外给了原因说是，在1-N模型下别的处理器声明自己用了这个中断
+
+### Banking的含义
+banking interrupt 其实我印象中APIC也有，同一个中断号可能存在多个中断。
+register banking 大概应该是说cpu interface存在多个core的副本吧
+
+### GICC_HPPIR
+对应的cpu interface的优先级的最高的活跃的中断可以在这个寄存器中读出来。
+
+### GICC_IAR
+
+
+## gic_v3
+### 中断状态
+首先依然是所谓的中断的几个状态。这回增加了不少状态
+
+### 中断分组
 
 # riscv
 
