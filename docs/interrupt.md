@@ -282,21 +282,22 @@ SPSel，选择SP0或者SP_x
 首先需要在设备树中能够找到这个设备，在设备树当中，有个interrupt-controller字段。
 其次对应的mmio的地址需要进行分配。
 
-### gic v2中中断的几个状态及其转换（虽然但是，要理解后面说的一堆东西，这个状态是基础）
+#### gic v2中中断的几个状态及其转换（虽然但是，要理解后面说的一堆东西，这个状态是基础）
 inactive：没有中断或者已经处理完了
 pending：还没处理
 active：正在处理
 active and pending：正在处理但是还有新的中断来了。
 
 
-### 中断源类型和中断ID
+#### 中断源类型和中断ID
 和local apic不同，gic_v2不仅包括本地的，还包括了相当于IOAPIC的中断源
 
-### 中断分组
+#### 中断分组
 分为group0和group1
-在group0中是
+在group0中是secure，在group1中是non-secure的
 
-### 中断号分配
+
+#### 中断号分配
 SGI(software-generated interrupt)
 （
 要弄明白，他最多支持8个core，然后这是用于IPI的，也就是写入GICD_SGIR寄存器，这个SGI是edge triggered的。
@@ -316,25 +317,107 @@ ID32-1019
 
 最后的最后，ID1020-ID1023是保留的
 
-### 模型
+#### 模型
 1-N模型
 只有一个CPU会处理某个中断
 N-N模型
 一个中断会引起多个CPU的响应
 
-### spurious 中断
+#### spurious 中断
 感觉和APIC的spurious一样，可以看看那个解释，因为提升了优先级或者禁用中断啥的，导致某些中断已经没有用了。
 但是他额外给了原因说是，在1-N模型下别的处理器声明自己用了这个中断
+读GICC_IAR的过程中，可能会返回要么是当前最高优先级的pending的中断，要么是返回一个spurious的中断号
 
-### Banking的含义
+#### Banking的含义
 banking interrupt 其实我印象中APIC也有，同一个中断号可能存在多个中断。
 register banking 大概应该是说cpu interface存在多个core的副本吧
 
-### GICC_HPPIR
+#### 中断结束的情况
+一个是因为优先级的原因被drop了
+一个是deactivation。就是正常中断处理完了。总而言之，需要注意到这是两个不同的stages。
+
+#### 中断旁路的情况
+就是说，如果某个CPU interface的中断信号被disable了，system legacy的中断信号会旁路给CPU
+（感觉没啥用）
+这是指的我们传统的legacy的中断信号（就是IRQ和FIQ）是否经过CPU interface控制和处理
+
+#### Power管理
+原文没细说，只是在中断旁路里面，有IRQ和FIQ的wake up信号
+
+### 中断的处理和优先级
+#### 被支持的中断的识别
+读GICD_TYPER看到底有多少个GICD_ISENABLERns
+读GICD_ISENABLERns看哪些被置位了
+需要写GICD_CTRL禁用forwarding of interrupts from the distributor to the CPU interfaces
+对于每个GICD_ISENABLERns都写入0xffffffff然后看看哪些被置位了。
+
+还要使用GICD_ICENABLERns去查看哪些位被永久使用
+方法也是一样的，就是写入0xffffffff
+最后需要写GICD_CTRL重新enable
+
+#### 中断完成
+中断完成的时候，写入EOIR就会触发优先级drop
+
+### Gic_v2的寄存器
+
+#### GICD_IGROUPn
+配置group的
+
+#### GICD_TYPER
+ITLinesNumber指明GICD_ISENABLERns有多少个（同时确定了最大支持的SGI，还是要看SGI是否超出范围1019）
+
+
+#### GICD_ISENABLERns
+提供了哪些中断被support，可以enable的信息
+比如ID0-15就对应SGI的时候，就用GICD_ISENABLER的bit0-15
+ID16-31就对应了bit16-31
+如果某个中断是不被支持的，那么对应的位就是RAZ/WI
+如果是被支持的，那么对应的位就是RAO/WI,就是被置位的
+
+#### GICD_ICENABLERns
+和上面基本一样
+
+#### GICC_HPPIR
 对应的cpu interface的优先级的最高的活跃的中断可以在这个寄存器中读出来。
 
-### GICC_IAR
+#### GICC_IAR
+acknowledge the interrupt
+读取这个寄存器会返回一个中断号id，已经如果是SGI会有一个源CPU的ID
+读取这个寄存器会把状态从pending转为pending and active或者active
+需要注意的是，如果是level trigger的，他会不停地触发中断，这时候需要在ISR（interrupt service register）中assert某个中断才能结束
 
+
+
+#### GICC_CTLR
+EOImode位表示了，前面说的中断结束的优先级drop和deactivation是否合并。
+如果是分离模式，优先级drop会发生在写入CPU interface EOI寄存器中。而后者则会写入Deactivation Interrupt register
+
+Table 2-1描述了GICv1的FIQEn，EnableGrp0和EnableGrp1的8种组合在IRQ和FIQ的旁路情况
+而GICv2的情况下（v1已经废弃，所以无关紧要），在上述的基础上，还需要额外的使用GICC_CTLR的几个位来禁用旁路
+FIQBypDisGrp0
+FIQBypDisGrp1
+IRQBypDisGrp0
+IRQBypDisGrp1
+
+具体的比较复杂，得查表table2-2和table2-3（我不想看那个破图了）
+
+AckCtl如果置位为0，那么Group0和1分别有一套寄存器
+Group0：
+GICC_IAR，GICC_EOIR，GICC_HPPIR
+Group1：
+GICC_AIAR，GICC_AEOIR，GICC_AHPPIR
+Arm的推荐是这一个位建议置零
+
+
+
+#### GICC_APRn
+会存储power 管理的状态
+
+
+#### GICC_DIR
+deactivate interrupt register
+正如前面说的那样，如果使用分离模式，需要不仅写入EOIR，还需要写入DIR
+需要注意的是，写入DIR寄存器的顺序需要跟从AIAR寄存器读的顺序相反，只有这样才能保证自己声明的deactivate的中断是最近读取的。
 
 ## gic_v3
 ### 中断状态
