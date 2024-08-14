@@ -1,6 +1,24 @@
 # x86下的cache
 缺少相应的指令
 但是intel手册中有将页面控制cache的部分
+
+对于cache和内存的一致性
+分为如下情况
+Strong uncachable（UC）非常强的顺序保证
+uncachable（UC-）在PAT中设置
+Write combination（WC）
+Write Through（WT）
+Write Back（WB）
+Write Protected（WP）读可以cache，写不能
+具体看表格11-2吧，不过，这些都挺好理解的不是吗
+
+CR0 bit30 CD标志位
+如果CD被清零，那么整个系统都是cache的，只不过个别的会因为其他比如页表设置等等来启用非cache
+bit29 NW标志位
+配合CD一起的，用于控制write的行为，比如都清零，会使用write back，但是总而言之，为了性能，这两位都清零即可。无需考虑其他
+
+
+
 # x86下的barrier
 sfence，在读指令之前，可以强制从主存加载数据
 lfence，写指令之后插入写屏障，可以强制让写入缓存的数据写回主存
@@ -9,6 +27,9 @@ mfence，上面两者的综合
 # x86下的tlb
 invlpg指令
 当然切换CR3会使得整个TLB失效
+
+# x86下的缓存发现
+可以使用eax=2的cpuid，具体见CPUID头文件里面的链接，里面有更为详细的表格
 
 # aarch64的barrier
 对于aarch64的barrier
@@ -146,3 +167,5 @@ TLBI VAE1：和之前一样bit [63:48]表示为ASID，指定ASID
 TLBI VMALLE1：根据VMID进行无效，xt参数必须是0b11111
 带有inner和outer版本
 后面带VM的均是虚拟机情况下的，shampoos目前并不涉及虚拟化相关内容，在此不做展开。
+
+# aarch64的缓存发现
