@@ -1,8 +1,10 @@
+#include <arch/x86_64/PIC/PIC.h>
 #include <arch/x86_64/boot/arch_setup.h>
 #include <arch/x86_64/boot/multiboot.h>
 #include <arch/x86_64/sys_ctrl.h>
 #include <arch/x86_64/sys_ctrl_def.h>
 #include <arch/x86_64/trap.h>
+#include <modules/driver/timer/8254.h>
 #include <modules/log/log.h>
 #include <shampoos/error.h>
 extern u32 max_phy_addr_width;
@@ -60,6 +62,13 @@ error_t start_arch(struct setup_info *arch_setup_info) {
 		pr_info("no input cmdline\n");
 	}
 	init_interrupt();
+
+	// TODO:tmp code
+	/*init 8259A and 8254 timer*/
+	init_PIC();
+	enable_IRQ(0x20);
+	init_8254();
+
 	enable_cache();
 	start_fp();
 	start_simd();

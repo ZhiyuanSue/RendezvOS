@@ -32,4 +32,7 @@
 #define _X86_8259A_SLAVE_1_ 0xA1
 /*the odd port of slave 8259A*/
 
+#define _X86_8254_COUNTER_0_ 0x40
+#define _X86_8254_COUNTER_1_ 0x41
+
 #endif

@@ -1,6 +1,8 @@
+#include <arch/x86_64/PIC/PIC.h>
 #include <arch/x86_64/sys_ctrl.h>
 #include <arch/x86_64/sys_ctrl_def.h>
 #include <arch/x86_64/trap.h>
+#include <modules/log/log.h>
 
 extern u64 *trap_vec;
 extern union idt_gate_desc trap_vec_table[256];
@@ -36,3 +38,8 @@ void init_interrupt(void) {
 }
 
 void trap_handler() {}
+
+void time_irq() {
+	pr_info("timer interrupt\n");
+	EOI(0x20);
+}
