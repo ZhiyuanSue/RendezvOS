@@ -33,6 +33,8 @@
 /*the odd port of slave 8259A*/
 
 #define _X86_8254_COUNTER_0_ 0x40
-#define _X86_8254_COUNTER_1_ 0x41
+#define _X86_8254_COUNTER_1_ (_X86_8254_COUNTER_0_ + 1)
+#define _X86_8254_COUNTER_2_ (_X86_8254_COUNTER_0_ + 2)
+#define _X86_8254_CTRL_PORT_ (_X86_8254_COUNTER_0_ + 3)
 
 #endif

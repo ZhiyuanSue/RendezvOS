@@ -66,8 +66,9 @@ error_t start_arch(struct setup_info *arch_setup_info) {
 	// TODO:tmp code
 	/*init 8259A and 8254 timer*/
 	init_PIC();
-	enable_IRQ(0x20);
 	init_8254();
+	enable_IRQ(_8259A_MASTER_IRQ_NUM_ + _8259A_TIMER_);
+	enable_IRQ(_8259A_MASTER_IRQ_NUM_ + _8259A_UART_1_);
 
 	enable_cache();
 	start_fp();

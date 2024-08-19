@@ -27,5 +27,6 @@ void cmain(struct setup_info *arch_setup_info) {
 
 	start_smp();
 	test();
+	cpu_idle();
 	arch_shutdown();
 }
