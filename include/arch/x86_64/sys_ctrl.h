@@ -76,4 +76,13 @@ static u32 inline get_mxcsr() {
 static void inline lidt(struct pseudo_descriptor *desc) {
 	asm volatile("lidt	(%0)" : : "r"(desc) : "memory");
 }
+
+static u64 inline rdmsr(u32 msr_id) {
+	u64 val;
+	asm volatile("rdmsr" : "=A"(val) : "c"(msr_id));
+	return val;
+}
+static void inline wrmsr(u32 msr_id, u64 val) {
+	asm volatile("wrmsr" ::"c"(msr_id), "A"(val));
+}
 #endif

@@ -37,9 +37,7 @@ void init_interrupt(void) {
 	lidt(&idtr_desc);
 }
 
-void trap_handler() {
-	pr_info("go into trap handler\n");
-}
+void trap_handler() { pr_info("go into trap handler\n"); }
 
 void time_irq() {
 	pr_info("timer interrupt\n");

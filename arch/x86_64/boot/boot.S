@@ -8,6 +8,7 @@
 #define	align_bit32_not_2m_minus_1	0xffe00000
 #include	<arch/x86_64/sys_ctrl_def.h>
 #include	<arch/x86_64/mm/page_table_def.h>
+#include	<arch/x86_64/msr.h>
 /* some definations */
 
 /*code under 32bit*/

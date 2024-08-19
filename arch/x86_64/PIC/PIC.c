@@ -1,6 +1,7 @@
 #include <arch/x86_64/PIC/PIC.h>
 #include <arch/x86_64/io.h>
 #include <arch/x86_64/io_port.h>
+#include <shampoos/bit.h>
 #include <shampoos/error.h>
 
 u8 _8259A_IMR_MASTER_, _8259A_IMR_SLAVE_;
@@ -31,17 +32,15 @@ error_t enable_IRQ(int irq_num) {
 	/*just clear the mask of the OCW 1*/
 	if (irq_num >= _8259A_MASTER_IRQ_NUM_ &&
 		irq_num < _8259A_MASTER_IRQ_NUM_ + _8259A_IRQ_NUM_) { /*master irq*/
-		u8 tmp_mask = ~_8259A_IMR_MASTER_;
-		tmp_mask |= 1 << (irq_num - _8259A_MASTER_IRQ_NUM_);
-		_8259A_IMR_MASTER_ = ~tmp_mask;
+		_8259A_IMR_MASTER_ =
+			clear_bit(_8259A_IMR_MASTER_, (irq_num - _8259A_MASTER_IRQ_NUM_));
 		outb(_X86_8259A_MASTER_1_, _8259A_IMR_MASTER_);
 	} else if (irq_num >= _8259A_SLAVE_IRQ_NUM_ &&
 			   irq_num < _8259A_SLAVE_IRQ_NUM_ +
 							 _8259A_IRQ_NUM_) { /*slave irq, need enable the irq
 												   2 at master, too*/
-		u8 tmp_mask = ~_8259A_IMR_SLAVE_;
-		tmp_mask |= 1 << (irq_num - _8259A_SLAVE_IRQ_NUM_);
-		_8259A_IMR_SLAVE_ = ~tmp_mask;
+		_8259A_IMR_SLAVE_ =
+			clear_bit(_8259A_IMR_SLAVE_, (irq_num - _8259A_SLAVE_IRQ_NUM_));
 		outb(_X86_8259A_SLAVE_1_, _8259A_IMR_SLAVE_);
 	} else { /*wrong irq num*/
 		return -EPERM;
@@ -51,12 +50,14 @@ error_t enable_IRQ(int irq_num) {
 error_t disable_IRQ(int irq_num) {
 	if (irq_num >= _8259A_MASTER_IRQ_NUM_ &&
 		irq_num < _8259A_MASTER_IRQ_NUM_ + _8259A_IRQ_NUM_) { /*master irq*/
-		_8259A_IMR_MASTER_ |= 1 << (irq_num - _8259A_MASTER_IRQ_NUM_);
+		_8259A_IMR_MASTER_ =
+			set_bit(_8259A_IMR_MASTER_, (irq_num - _8259A_MASTER_IRQ_NUM_));
 		outb(_X86_8259A_MASTER_1_, _8259A_IMR_MASTER_);
 	} else if (irq_num >= _8259A_SLAVE_IRQ_NUM_ &&
 			   irq_num <
 				   _8259A_SLAVE_IRQ_NUM_ + _8259A_IRQ_NUM_) { /*slave irq*/
-		_8259A_IMR_SLAVE_ |= 1 << (irq_num - _8259A_SLAVE_IRQ_NUM_);
+		_8259A_IMR_SLAVE_ =
+			set_bit(_8259A_IMR_SLAVE_, (irq_num - _8259A_SLAVE_IRQ_NUM_));
 		outb(_X86_8259A_SLAVE_1_, _8259A_IMR_SLAVE_);
 	} else { /*wrong irq num*/
 		return -EPERM;

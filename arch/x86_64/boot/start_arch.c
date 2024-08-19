@@ -1,23 +1,24 @@
+#include <arch/x86_64/PIC/IRQ.h>
 #include <arch/x86_64/PIC/PIC.h>
 #include <arch/x86_64/boot/arch_setup.h>
 #include <arch/x86_64/boot/multiboot.h>
+#include <arch/x86_64/cpuid.h>
 #include <arch/x86_64/sys_ctrl.h>
 #include <arch/x86_64/sys_ctrl_def.h>
 #include <arch/x86_64/trap.h>
 #include <modules/driver/timer/8254.h>
 #include <modules/log/log.h>
 #include <shampoos/error.h>
-#include <arch/x86_64/cpuid.h>
 extern u32 max_phy_addr_width;
 struct cpuinfo_x86 cpuinfo;
 static void get_cpuinfo() {
 	/*TODO :rewite the check of cpuid*/
-	u32 eax=0,ebx=0,ecx=0,edx=0;
+	u32 eax = 0, ebx = 0, ecx = 0, edx = 0;
 	/*first get the number that cpuid support*/
-	cpuid(0x0,&eax,&ebx,&ecx,&edx);
-	cpuid(0x1,&eax,&ebx,&ecx,&edx);
-	cpuinfo.feature_1=ecx;
-	cpuinfo.feature_2=edx;
+	cpuid(0x0, &eax, &ebx, &ecx, &edx);
+	cpuid(0x1, &eax, &ebx, &ecx, &edx);
+	cpuinfo.feature_1 = ecx;
+	cpuinfo.feature_2 = edx;
 }
 static void enable_cache() {}
 static void start_fp() {
@@ -25,11 +26,12 @@ static void start_fp() {
 	set_cr0_bit(CR0_NE);
 }
 static void start_simd() {
-	get_cpuinfo();
-
 	/*use cpuinfo to check the simd support or not*/
-	if (((cpuinfo.feature_2) & (X86_CPUID_FEATURE_EDX_SSE | X86_CPUID_FEATURE_EDX_SSE2 | X86_CPUID_FEATURE_EDX_FXSR | X86_CPUID_FEATURE_EDX_CLFSH)) &&
-		((cpuinfo.feature_1) & (X86_CPUID_FEATURE_ECX_SSE3 | X86_CPUID_FEATURE_ECX_SSSE3))) {
+	if (((cpuinfo.feature_2) &
+		 (X86_CPUID_FEATURE_EDX_SSE | X86_CPUID_FEATURE_EDX_SSE2 |
+		  X86_CPUID_FEATURE_EDX_FXSR | X86_CPUID_FEATURE_EDX_CLFSH)) &&
+		((cpuinfo.feature_1) &
+		 (X86_CPUID_FEATURE_ECX_SSE3 | X86_CPUID_FEATURE_ECX_SSSE3))) {
 		pr_info("have simd feature,starting...\n");
 		/*set osfxsr : cr4 bit 9*/
 		set_cr4_bit(CR4_OSFXSR);
@@ -67,10 +69,12 @@ error_t start_arch(struct setup_info *arch_setup_info) {
 	} else {
 		pr_info("no input cmdline\n");
 	}
+	get_cpuinfo();
 	init_interrupt();
 
 	// TODO:tmp code
 	/*init 8259A and 8254 timer*/
+	arch_init_irq();
 	init_PIC();
 	init_8254();
 	enable_IRQ(_8259A_MASTER_IRQ_NUM_ + _8259A_TIMER_);
