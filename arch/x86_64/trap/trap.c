@@ -5,7 +5,7 @@
 #include <modules/log/log.h>
 
 extern u64 *trap_vec;
-extern union idt_gate_desc trap_vec_table[256];
+extern union idt_gate_desc trap_vec_table[IDT_LIMIT];
 const char *trap_name_string[TRAP_ARCH_USED + 2] = {
 	"Fault:Divide Error\n\0", "Fault/Trap:Debug Exception\n\0",
 	"Interrupt:NMI Interrupt\n\0", "Trap:Breakpoint\n\0", "Trap:Overflow\n\0",
@@ -37,7 +37,9 @@ void init_interrupt(void) {
 	lidt(&idtr_desc);
 }
 
-void trap_handler() {}
+void trap_handler() {
+	pr_info("go into trap handler\n");
+}
 
 void time_irq() {
 	pr_info("timer interrupt\n");

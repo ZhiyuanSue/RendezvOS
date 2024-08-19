@@ -97,7 +97,8 @@ trap_31:
 	jmp	trap_entry
 	.global	trap_32
 trap_32:
-	jmp	trap_entry
+	call	time_irq
+	jmp	trap_exit
 	.global	trap_33
 trap_33:
 	jmp	trap_entry
