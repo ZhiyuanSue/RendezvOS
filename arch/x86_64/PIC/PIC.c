@@ -27,6 +27,11 @@ void init_PIC() {
 	_8259A_IMR_MASTER_ = 0xFB;
 	_8259A_IMR_SLAVE_ = 0xFF;
 }
+void disable_PIC() {
+	/*we just mask all the interrupts*/
+	outb(_X86_8259A_MASTER_1_, 0xFF);
+	outb(_X86_8259A_SLAVE_1_, 0xFF);
+}
 
 error_t enable_IRQ(int irq_num) {
 	/*just clear the mask of the OCW 1*/

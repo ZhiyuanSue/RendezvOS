@@ -1,5 +1,4 @@
 #include <arch/x86_64/PIC/IRQ.h>
-#include <arch/x86_64/PIC/PIC.h>
 #include <arch/x86_64/boot/arch_setup.h>
 #include <arch/x86_64/boot/multiboot.h>
 #include <arch/x86_64/cpuid.h>
@@ -72,13 +71,9 @@ error_t start_arch(struct setup_info *arch_setup_info) {
 	get_cpuinfo();
 	init_interrupt();
 
-	// TODO:tmp code
-	/*init 8259A and 8254 timer*/
-	arch_init_irq();
-	init_PIC();
-	init_8254();
-	enable_IRQ(_8259A_MASTER_IRQ_NUM_ + _8259A_TIMER_);
-	enable_IRQ(_8259A_MASTER_IRQ_NUM_ + _8259A_UART_1_);
+	init_irq();
+
+	init_timer();
 
 	enable_cache();
 	start_fp();

@@ -84,6 +84,7 @@
 
 #include <common/types.h>
 void init_PIC();
+void disable_PIC();
 error_t enable_IRQ(int irq_num);
 error_t disable_IRQ(int irq_num);
 error_t EOI(int irq_num);
