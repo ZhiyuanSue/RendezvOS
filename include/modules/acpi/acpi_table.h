@@ -43,7 +43,7 @@
 				table,                                                    \
 																		\ \
 				bytes 0		to 19.		It does not include the Length           \
-				field		and		beyond.		The current value for	  this        \
+				field		and		beyond.		The current value for		this         \
 				field		is 2. */                                           \
 	u32 rsdt_address; /* 32 bit physical address of the RSDT. */
 /*
@@ -120,8 +120,10 @@ struct				acpi_gas
 			identifier. */                                                      \
 	u32 length; /* The length of the table, in bytes,
 		                          \
+									\                                             \
 					including the header,
 						                                      \
+																\                 \
 					starting from offset 0.    This field is used to record the \
 					size of the entire table. */                                \
 	u8 revision;                                                                \
@@ -131,6 +133,7 @@ struct				acpi_gas
 			same signature.*/                                                   \
 	u8 checksum; /* The entire table, including the checksum field,
 		            \
+					\                                                           \
 					must add to zero to be considered valid. */                 \
 	char OEMID[6];                                                              \
 	/* An OEM-supplied string that identifies the OEM. */                       \
@@ -148,12 +151,14 @@ struct				acpi_gas
 	/* Vendor ID of utility that created the table.                             \
 			For tables containing Definition Blocks,
 				                           \
+											\                                    \
 				this is the                                                     \
 			ID for the ASL Compiler. */                                         \
 	u32 Creator_revision;                                                       \
 	/*Revision of utility that created the table.                               \
 			For tables containing Definition Blocks,
 				                           \
+											\                                    \
 				this is                                                         \
 			the revision for the ASL Compiler.*/
 /*Root System Description Tables*/
