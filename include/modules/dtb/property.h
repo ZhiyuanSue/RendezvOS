@@ -1,7 +1,8 @@
 #ifndef _SHAMPOOS_PROPERTY_H_
-#define _SHAMPOOS_PROPERTY_H_
-#include <common/types.h>
-enum property_value_type {
+# define _SHAMPOOS_PROPERTY_H_
+# include <common/types.h>
+enum					property_value_type
+{
 	PROPERTY_VALUE_EMPTY,
 	PROPERTY_VALUE_U32,
 	PROPERTY_VALUE_U64,
@@ -10,7 +11,8 @@ enum property_value_type {
 	PROPERTY_VALUE_PHANDLE,
 	PROPERTY_VALUE_STRINGLIST,
 };
-enum property_type_enum {
+enum					property_type_enum
+{
 	PROPERTY_TYPE_NONE,
 	PROPERTY_TYPE_COMPATIBLE,
 	PROPERTY_TYPE_MODEL,
@@ -40,10 +42,11 @@ enum property_type_enum {
 	PROPERTY_TYPE_OTHER,
 	PROPERTY_TYPE_NUM
 };
-struct property_type {
-	char property_string[32];
-	int property_type_enum;
-	int value_enum[2];
+struct					property_type
+{
+	char				property_string[32];
+	int					property_type_enum;
+	int					value_enum[2];
 };
-enum property_type_enum get_property_type(const char *property_name);
+enum property_type_enum	get_property_type(const char *property_name);
 #endif

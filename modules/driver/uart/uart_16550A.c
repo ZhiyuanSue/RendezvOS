@@ -5,12 +5,14 @@
  * and 16550A is totally compatible with 8250 of intel
  */
 
-#include <modules/driver/uart/uart_16550A.h>
+# include <modules/driver/uart/uart_16550A.h>
 
 /*The following functions are just used for early print*/
-void uart_16550A_open() {
-	/*set 115200*/
+void	uart_16550A_open(void)
+{
+	u_int8_t	lcr;
 
+	/*set 115200*/
 	/*
 		Baud rate	DLM		DLL
 		50			09H		00H
@@ -32,18 +34,24 @@ void uart_16550A_open() {
 		115200		00H		01H
 	*/
 	uart_write_reg(IER, 0x00);
-	u_int8_t lcr = uart_read_reg(LCR);
+	lcr = uart_read_reg(LCR);
 	uart_write_reg(LCR, lcr | (1 << 7));
 	uart_write_reg(DLM, 0x0);
 	uart_write_reg(DLL, 0x01);
 	uart_write_reg(LCR, 0);
 }
-void uart_16550A_putc(u_int8_t ch) {
+void	uart_16550A_putc(u_int8_t ch)
+{
 	while (!(uart_read_reg(LSR) & (1 << 5)))
 		;
 	uart_write_reg(THR, ch);
 }
-u_int8_t uart_16550A_getc() { return 0; }
-void uart_16550A_close() {}
+u_int8_t	uart_16550A_getc(void)
+{
+	return (0);
+}
+void	uart_16550A_close(void)
+{
+}
 
 #endif

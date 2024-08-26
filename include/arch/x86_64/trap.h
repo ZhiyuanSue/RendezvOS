@@ -1,8 +1,9 @@
 #ifndef _SHAMPOOS_TRAP_H_
-#define _SHAMPOOS_TRAP_H_
-#include <common/types.h>
-#define IDT_LIMIT 256
-enum TRAP_NUM {
+# define _SHAMPOOS_TRAP_H_
+# include <common/types.h>
+# define IDT_LIMIT 256
+enum	TRAP_NUM
+{
 	TRAP_DE,
 	TRAP_DB,
 	TRAP_NMI,
@@ -26,6 +27,6 @@ enum TRAP_NUM {
 	TRAP_VE,
 	TRAP_ARCH_USED,
 };
-void init_interrupt(void);
-void trap_handler();
+void	init_interrupt(void);
+void	trap_handler(void);
 #endif
