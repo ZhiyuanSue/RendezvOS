@@ -1,6 +1,6 @@
 #ifdef _X86_64_
-#include <arch/x86_64/PIC/IRQ.h>
-#include <arch/x86_64/time.h>
+# include <arch/x86_64/PIC/IRQ.h>
+# include <arch/x86_64/time.h>
 
 extern int	arch_irq_type;
 void	init_timer(void)

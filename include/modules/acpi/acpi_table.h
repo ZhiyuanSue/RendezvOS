@@ -22,28 +22,29 @@
  */
 # define ACPI_TABLE_RSDP(version) (struct acpi_table_rsdp_##version)
 
-# define ACPI_TABLE_RSDP_1 char signature[8];	\
-		/* “RSD PTR ” (Notice that this signature must contain    \
-					a trailing blank character.) */	\
-	u8					checksum;	\
-		/* This is the checksum of the fields defined in the ACPI 1.0 \
-					specification. This includes only the first 20 bytes of    \
-					this table, bytes 0 to 19,	\
-						including the checksum field.   \
-					These bytes must sum to zero. */	\
-	char				oemid[6];	\
-		/* An OEM-supplied string that identifies the OEM. */	\
-	u8					revision;	\
-		/* The revision of this structure. 	\                           \
-					Larger revision numbers are backward compatible to lower  \
-					revision numbers.		The ACPI version 1.0 revision		number \
-					of		this table is zero.		The ACPI version 1.0 RSDP       \
-					Structure		only includes the first 20 bytes of this       \
-					table,	\
-																			\
-					bytes 0		to 19.		It does not include the Length          \
-					field		and		beyond.	  The current value for	  this       \
-					field		is 2. */	\
+# define ACPI_TABLE_RSDP_1                                                 \
+	char signature[8];                                                    \
+	/* “RSD PTR ” (Notice that this signature must contain            \
+				a trailing blank character.) */                           \
+	u8 checksum;                                                          \
+	/* This is the checksum of the fields defined in the ACPI 1.0         \
+				specification. This includes only the first 20 bytes of   \
+				this table, bytes 0 to 19,                                \
+					including the checksum field.                         \
+				These bytes must sum to zero. */                          \
+	char oemid[6];                                                        \
+	/* An OEM-supplied string that identifies the OEM. */                 \
+	u8 revision;                                                          \
+	/* The revision of this structure. 	\                                 \
+				Larger revision numbers are backward compatible to lower  \
+				revision numbers.		The ACPI version 1.0 revision		number  \
+				of		this table is zero.		The ACPI version 1.0 RSDP        \
+				Structure		only includes the first 20 bytes of this       \
+				table,                                                    \
+																		\ \
+				bytes 0		to 19.		It does not include the Length           \
+				field		and		beyond.		The current value for	  this        \
+				field		is 2. */                                           \
 	u32 rsdt_address; /* 32 bit physical address of the RSDT. */
 /*
  * For acpi version 2.0 RSDP table
@@ -113,43 +114,48 @@ struct				acpi_gas
 /*
  *	ACPI table header
  */
-# define ACPI_TABLE_HEAD 	\
-	char signature[4];	\
-				/* The ASCII string representation of the table                \
-						identifier. */	\
-	u32 length; /* The length of the table, in bytes,	\
-					including the header,    \
+# define ACPI_TABLE_HEAD                                                         \
+	char signature[4];                                                          \
+	/* The ASCII string representation of the table                             \
+			identifier. */                                                      \
+	u32 length; /* The length of the table, in bytes,
+		                          \
+					including the header,
+						                                      \
 					starting from offset 0.    This field is used to record the \
-					size of the entire table. */	\
-	u8					revision;	\
-				/* The revision of the structure corresponding to the          \
-						signature field for this table.   Larger revision numbers   \
-						are backward compatible to lower revision numbers with the  \
-						same signature.*/	\
-	u8 checksum; /* The entire table, including the checksum field,	\
-					must add to zero to be considered valid. */	\
-	char				OEMID[6];	\
-				/* An OEM-supplied string that identifies the OEM. */	\
-	char				OEM_table_ID[8];	\
-				/* An OEM-supplied string that the OEM uses to                 \
-						identify the particular data table. This field is           \
-						particularly useful when defining a definition              \
-						block to distinguish definition block functions.            \
-						The OEM assigns each dissimilar table a new OEM            \
-						Table ID. */	\
-	u32					OEM_revision;	\
-				/* An OEM-supplied revision number. Larger numbers are         \
-						assumed to be newer revisions. */	\
-	u32					Creator_ID;	\
-				/* Vendor ID of utility that created the table.                \
-						For tables containing Definition Blocks,
-							this is the       \
-						ID for the ASL Compiler. */	\
-	u32					Creator_revision;	\
-				/*Revision of utility that created the table.                  \
-						For tables containing Definition Blocks,	\
-							this is           \
-						the revision for the ASL Compiler.*/
+					size of the entire table. */                                \
+	u8 revision;                                                                \
+	/* The revision of the structure corresponding to the                       \
+			signature field for this table.   Larger revision numbers           \
+			are backward compatible to lower revision numbers with the          \
+			same signature.*/                                                   \
+	u8 checksum; /* The entire table, including the checksum field,
+		            \
+					must add to zero to be considered valid. */                 \
+	char OEMID[6];                                                              \
+	/* An OEM-supplied string that identifies the OEM. */                       \
+	char OEM_table_ID[8];                                                       \
+	/* An OEM-supplied string that the OEM uses to                              \
+			identify the particular data table. This field is                   \
+			particularly useful when defining a definition                      \
+			block to distinguish definition block functions.                    \
+			The OEM assigns each dissimilar table a new OEM                     \
+			Table ID. */                                                        \
+	u32 OEM_revision;                                                           \
+	/* An OEM-supplied revision number. Larger numbers are                      \
+			assumed to be newer revisions. */                                   \
+	u32 Creator_ID;                                                             \
+	/* Vendor ID of utility that created the table.                             \
+			For tables containing Definition Blocks,
+				                           \
+				this is the                                                     \
+			ID for the ASL Compiler. */                                         \
+	u32 Creator_revision;                                                       \
+	/*Revision of utility that created the table.                               \
+			For tables containing Definition Blocks,
+				                           \
+				this is                                                         \
+			the revision for the ASL Compiler.*/
 /*Root System Description Tables*/
 struct				acpi_table_rsdt
 {

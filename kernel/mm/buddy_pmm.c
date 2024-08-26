@@ -210,11 +210,12 @@ int	pmm_alloc_zone(int alloc_order, int zone_number)
 {
 	int					tmp_order;
 	bool				find_an_order;
-	struct page_frame	*avaliable_header,*del_node;
-	struct page_frame	*child_order_avaliable_header,*child_order_header,*left_child,*right_child;
 	u64					index;
 	struct page_frame	*header;
 
+	struct page_frame *avaliable_header, *del_node;
+	struct page_frame *child_order_avaliable_header, *child_order_header,
+		*left_child, *right_child;
 	child_order_avaliable_header = NULL;
 	avaliable_header = NULL;
 	child_order_header = NULL;
@@ -351,10 +352,10 @@ static bool inline	ppn_inrange(u32 ppn, int *zone_number)
 }
 static error_t	pmm_free_one(u32 ppn)
 {
-	int					tmp_order, zone_number;
-	struct page_frame	*avaliable_header, *header, *insert_node;
 	struct page_frame	*buddy_node;
 
+	int tmp_order, zone_number;
+	struct page_frame *avaliable_header, *header, *insert_node;
 	avaliable_header = NULL;
 	tmp_order = 0;
 	header = NULL;

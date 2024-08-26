@@ -14,7 +14,6 @@ extern struct memory_regions	m_regions;
 extern struct property_type		property_types[PROPERTY_TYPE_NUM];
 static void	arch_get_memory_regions(void *fdt, int offset, int depth)
 {
-	int property, node;
 	const char			*device_type_str = property_types[PROPERTY_TYPE_DEVICE_TYPE].property_string;
 	const char			*memory_str = "memory\0";
 	const char			*reg_str = property_types[PROPERTY_TYPE_REG].property_string;
@@ -25,13 +24,15 @@ static void	arch_get_memory_regions(void *fdt, int offset, int depth)
 	u_int32_t			len;
 	u32					*u32_data;
 
+	int property, node;
 	/*
 		actually we seems to use something like of_find_node_by_type
 		but now we have no memory to alloc any struct of device_node
 	*/
 	fdt_for_each_property_offset(property, fdt, offset)
 	{
-		prop = (struct fdt_property *)fdt_offset_ptr(fdt, property, FDT_TAGSIZE);
+		prop = (struct fdt_property *)fdt_offset_ptr(fdt, property,
+				FDT_TAGSIZE);
 		property_name = fdt_string(fdt, SWAP_ENDIANNESS_32(prop->nameoff));
 		data = (const char *)(prop->data);
 		if (!strcmp(property_name, device_type_str) && !strcmp(data,
