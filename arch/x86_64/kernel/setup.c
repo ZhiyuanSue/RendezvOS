@@ -1,7 +1,6 @@
 
 
-void	cpu_idle(void)
-{
-	while (1)
-		;
+void cpu_idle(void) {
+    while (1)
+        ;
 }
