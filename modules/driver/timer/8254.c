@@ -1,3 +1,4 @@
+#ifdef _X86_64_
 #include <arch/x86_64/io.h>
 #include <arch/x86_64/io_port.h>
 #include <modules/driver/timer/8254.h>
@@ -11,3 +12,4 @@ void	init_8254(void)
 	outb(_X86_8254_COUNTER_0_, 0x23);
 	outb(_X86_8254_COUNTER_0_, 0x45);
 }
+#endif

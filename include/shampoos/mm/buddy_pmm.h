@@ -55,9 +55,9 @@ struct						buddy
 	paddr					buddy_phy_start_addr;
 	paddr					avaliable_phy_addr_end;
 };
-# define GET_AVALI_HEAD_PTR(zone_n,
+# define GET_AVALI_HEAD_PTR(zone_n,	\
 	order) (buddy_pmm.zone[zone_n].avaliable_frame[order])
-# define GET_HEAD_PTR(zone_n,
+# define GET_HEAD_PTR(zone_n,	\
 	order) (buddy_pmm.zone[zone_n].zone_head_frame[order])
 
 static inline void	__frame_list_add(struct page_frame *bucket_head,

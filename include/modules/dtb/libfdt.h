@@ -100,18 +100,17 @@
 # define FDT_MAX_PHANDLE 0xfffffffe
 /* Valid values for phandles range from 1 to 2^32-2. */
 
-# define fdt_for_each_subnode(node, fdt,
-	parent) for (node = fdt_first_subnode(fdt,
+# define fdt_for_each_subnode(node, fdt,parent) 	\
+	for (node = fdt_first_subnode(fdt,	\
 		parent); node >= 0; node = fdt_next_subnode(fdt, node))
-# define fdt_for_each_property_offset(property, fdt,
-	node) for (property = fdt_first_property_offset(fdt,
-		node); property >= 0; property = fdt_next_property_offset(fdt,
-		property))
+# define fdt_for_each_property_offset(property, fdt, node) \
+	for (property = fdt_first_property_offset(fdt,	\
+		node); property >= 0; property = fdt_next_property_offset(fdt, property))
 	/**********************************************************************/
 	/* General functions                                                  */
 	/**********************************************************************/
-# define fdt_get_header(fdt,
-	field) (SWAP_ENDIANNESS_32(((const struct fdt_header *)(fdt))->field))
+# define fdt_get_header(fdt, field) \
+	(SWAP_ENDIANNESS_32(((const struct fdt_header *)(fdt))->field))
 # define fdt_magic(fdt) (fdt_get_header(fdt, magic))
 # define fdt_totalsize(fdt) (fdt_get_header(fdt, totalsize))
 # define fdt_off_dt_struct(fdt) (fdt_get_header(fdt, off_dt_struct))

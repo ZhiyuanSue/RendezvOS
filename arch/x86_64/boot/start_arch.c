@@ -5,6 +5,7 @@
 #include <arch/x86_64/sys_ctrl.h>
 #include <arch/x86_64/sys_ctrl_def.h>
 #include <arch/x86_64/trap.h>
+#include <arch/x86_64/time.h>
 #include <modules/driver/timer/8254.h>
 #include <modules/log/log.h>
 #include <shampoos/error.h>
@@ -13,13 +14,12 @@ extern u32			max_phy_addr_width;
 struct cpuinfo_x86	cpuinfo;
 static void	get_cpuinfo(void)
 {
-	u32	eax;
+	u32	eax=0;
+	u32 ebx=0;
+	u32 ecx=0;
+	u32 edx=0;
 
-	eax = 0, ebx;
-	eax = 0, ebx = 0, ecx;
-	eax = 0, ebx = 0, ecx = 0, edx;
 	/*TODO :rewite the check of cpuid*/
-	eax = 0, ebx = 0, ecx = 0, edx = 0;
 	/*first get the number that cpuid support*/
 	cpuid(0x0, &eax, &ebx, &ecx, &edx);
 	cpuid(0x1, &eax, &ebx, &ecx, &edx);

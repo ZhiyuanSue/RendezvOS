@@ -33,7 +33,7 @@ struct						log_buffer
 void						log_init(void *log_buffer_addr, int log_level);
 void						printk(const char *format, int log_level, ...);
 
-# define COLOR_SET(dis_mod, forward_color, backword_color) printk("\033[%d;%dm",
+# define COLOR_SET(dis_mod, forward_color, backword_color) printk("\033[%d;%dm", \
 	LOG_OFF, dis_mod, forward_color, backword_color);
 
 # define pr_debug(format, ...)                     \

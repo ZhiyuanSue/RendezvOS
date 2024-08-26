@@ -14,16 +14,14 @@ extern struct memory_regions	m_regions;
 extern struct property_type		property_types[PROPERTY_TYPE_NUM];
 static void	arch_get_memory_regions(void *fdt, int offset, int depth)
 {
+	int property, node;
 	const char			*device_type_str = property_types[PROPERTY_TYPE_DEVICE_TYPE].property_string;
 	const char			*memory_str = "memory\0";
 	const char			*reg_str = property_types[PROPERTY_TYPE_REG].property_string;
 	struct fdt_property	*prop;
-	const char			*property_name = fdt_string(fdt,
-						SWAP_ENDIANNESS_32(prop->nameoff));
-	const char			*data = (const char *)(prop->data);
-	struct fdt_property	*prop;
-	const char			*s = fdt_string(fdt, SWAP_ENDIANNESS_32(prop->nameoff));
-	const char			*data = (const char *)(prop->data);
+	const char			*property_name;
+	const char			*data;
+	const char			*s;
 	u_int32_t			len;
 	u32					*u32_data;
 
@@ -31,11 +29,11 @@ static void	arch_get_memory_regions(void *fdt, int offset, int depth)
 		actually we seems to use something like of_find_node_by_type
 		but now we have no memory to alloc any struct of device_node
 	*/
-	int property, node;
 	fdt_for_each_property_offset(property, fdt, offset)
 	{
-		prop = (struct fdt_property *)fdt_offset_ptr(fdt, property,
-				FDT_TAGSIZE);
+		prop = (struct fdt_property *)fdt_offset_ptr(fdt, property, FDT_TAGSIZE);
+		property_name = fdt_string(fdt, SWAP_ENDIANNESS_32(prop->nameoff));
+		data = (const char *)(prop->data);
 		if (!strcmp(property_name, device_type_str) && !strcmp(data,
 				memory_str))
 		{
@@ -52,6 +50,8 @@ find_memory_node:
 	{
 		prop = (struct fdt_property *)fdt_offset_ptr(fdt, property,
 				FDT_TAGSIZE);
+		s = fdt_string(fdt, SWAP_ENDIANNESS_32(prop->nameoff));
+		data = (const char *)(prop->data);
 		len = SWAP_ENDIANNESS_32(prop->len);
 		if (!strcmp(s, reg_str))
 		{

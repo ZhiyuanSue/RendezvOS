@@ -144,8 +144,7 @@ void	parse_print_dtb(void *fdt, int offset, int depth)
 {
 	char				*ch;
 	struct fdt_property	*prop;
-	const char			*property_name = fdt_string(fdt,
-						SWAP_ENDIANNESS_32(prop->nameoff));
+	const char			*property_name;
 
 	/*This function is just an example of how to parse the dtb*/
 	int property, node;
@@ -159,6 +158,7 @@ void	parse_print_dtb(void *fdt, int offset, int depth)
 				FDT_TAGSIZE);
 		for (int i = 0; i < depth + 1; ++i)
 			print_property("\t");
+		property_name = fdt_string(fdt, SWAP_ENDIANNESS_32(prop->nameoff));
 		print_property("%s\t:\t", property_name);
 		print_property_value(property_name, prop->data, prop->len);
 		print_property("\n");

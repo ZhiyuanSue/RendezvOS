@@ -53,10 +53,8 @@ void						uart_16550A_close(void);
 #  include <arch/x86_64/io.h>
 #  include <arch/x86_64/io_port.h>
 #  include <common/stddef.h>
-#  define uart_write_reg(reg_name, data) outb(_X86_16550A_COM1_BASE_
-	+ offsetof(UART_16550A, reg_name), data)
-#  define uart_read_reg(reg_name) inb(_X86_16550A_COM1_BASE_
-	+ offsetof(UART_16550A, reg_name))
+#  define uart_write_reg(reg_name, data) outb(_X86_16550A_COM1_BASE_ + offsetof(UART_16550A, reg_name), data)
+#  define uart_read_reg(reg_name) inb(_X86_16550A_COM1_BASE_ + offsetof(UART_16550A, reg_name))
 
 # elif defined _RISCV64_
 #  define _VIRT_BASE_COM0_ 0x10000000UL

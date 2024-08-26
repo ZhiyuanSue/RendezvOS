@@ -81,11 +81,11 @@ void	log_print(char *buffer, const char *format, va_list arg_list)
 	u_int8_t	c;
 	char		buf[20];
 	int			pad0;
+	int			pad;
 	i32			d;
-	u32			d;
-	i64			d;
+	u32			u;
+	i64			x;
 
-	pad0 = 0, pad;
 	while ((c = *format++) != 0)
 	{
 		if (c != '%')
@@ -116,15 +116,15 @@ void	log_print(char *buffer, const char *format, va_list arg_list)
 			}
 			case 'u':
 			{
-				d = va_arg(arg_list, u_int64_t);
-				itoa(buf, c, d);
+				u = va_arg(arg_list, u_int64_t);
+				itoa(buf, c, u);
 				p = buf;
 				goto string;
 			}
 			case 'x':
 			{
-				d = va_arg(arg_list, int64_t);
-				itoa(buf, c, d);
+				x = va_arg(arg_list, int64_t);
+				itoa(buf, c, x);
 				p = buf;
 				goto string;
 			}

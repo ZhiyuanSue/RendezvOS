@@ -106,8 +106,6 @@ static void	pmm_init_zones(void)
 	struct buddy_zone	*zone;
 	u32					index;
 	struct page_frame	*page;
-	u32					index;
-	struct page_frame	*page;
 
 	/*init the zones,remember there might have more then one zone*/
 	for (int mem_zone = 0; mem_zone < ZONE_NR_MAX; ++mem_zone)
@@ -212,21 +210,19 @@ int	pmm_alloc_zone(int alloc_order, int zone_number)
 {
 	int					tmp_order;
 	bool				find_an_order;
-	struct page_frame	*avaliable_header;
-	struct page_frame	*child_order_avaliable_header;
+	struct page_frame	*avaliable_header,*del_node;
+	struct page_frame	*child_order_avaliable_header,*child_order_header,*left_child,*right_child;
 	u64					index;
 	struct page_frame	*header;
 
-	child_order_avaliable_header = NULL, *child_order_header;
-	avaliable_header = NULL, *header;
-	child_order_avaliable_header = NULL, child_order_header = NULL, *left_child;
-	avaliable_header = NULL, header = NULL, *del_node;
-	child_order_avaliable_header = NULL, child_order_header = NULL,
-		left_child = NULL, *right_child;
+	child_order_avaliable_header = NULL;
+	avaliable_header = NULL;
+	child_order_header = NULL;
+	header = NULL;
+	left_child = NULL;
 	find_an_order = false;
-	avaliable_header = NULL, header = NULL, del_node = NULL;
-	child_order_avaliable_header = NULL, child_order_header = NULL,
-		left_child = NULL, right_child = NULL;
+	del_node = NULL;
+	right_child = NULL;
 	index = 0;
 	tmp_order = alloc_order;
 	/*first,try to find an order have at least one node to alloc*/
@@ -355,16 +351,16 @@ static bool inline	ppn_inrange(u32 ppn, int *zone_number)
 }
 static error_t	pmm_free_one(u32 ppn)
 {
-	int					tmp_order;
-	struct page_frame	*avaliable_header;
+	int					tmp_order, zone_number;
+	struct page_frame	*avaliable_header, *header, *insert_node;
 	struct page_frame	*buddy_node;
 
-	avaliable_header = NULL, *header;
-	tmp_order = 0, zone_number;
-	avaliable_header = NULL, header = NULL, *insert_node;
+	avaliable_header = NULL;
+	tmp_order = 0;
+	header = NULL;
 	u64 index, buddy_index;
-	tmp_order = 0, zone_number = 0;
-	avaliable_header = NULL, header = NULL, insert_node = NULL;
+	zone_number = 0;
+	insert_node = NULL;
 	buddy_node = NULL;
 	/*try to insert the node and try to merge*/
 	while (tmp_order <= BUDDY_MAXORDER)

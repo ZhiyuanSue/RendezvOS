@@ -28,6 +28,5 @@ void	cmain(struct setup_info *arch_setup_info)
 		* no more boot stack：in x86,please use LSS, see manual 6.8.3*/
 	start_smp();
 	test();
-	cpu_idle();
 	arch_shutdown();
 }

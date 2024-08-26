@@ -1,3 +1,4 @@
+#ifdef _X86_64_
 #ifndef _SHAMPOOS_8254_H_
 # define _SHAMPOOS_8254_H_
 
@@ -14,4 +15,5 @@
 # define _8254_CTL_SC_MASK_ (0b11 << _8254_CTL_SC_OFF_)
 
 void	init_8254(void);
+#endif
 #endif
