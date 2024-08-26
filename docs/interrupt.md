@@ -316,12 +316,23 @@ SPI(shared peripheral interrupt)
 ID32-1019
 
 最后的最后，ID1020-ID1023是保留的
+对于保留的中断号，ID1023是用于spurious 中断的
+
+
+peripheral interrupt又有edge-triggered和level_sensitive的区别
 
 #### 模型
 1-N模型
 只有一个CPU会处理某个中断
 N-N模型
 一个中断会引起多个CPU的响应
+
+具体的1-N模型的实现：
+就是如果某个中断触发了，会通知多个CPU interface，但是只要一个已经清除了中断，剩下的所有的CPU interface都会返回一个spurious的interrupt ID
+
+收到消息的CPU interface读取GICC_IAR会得到对应的ID
+对于spurious中断，读取GICC_IAR的结果是得到一个ID 1023的spurious的中断。他就无需写入GICC_EOIR就可直接返回。
+
 
 #### spurious 中断
 感觉和APIC的spurious一样，可以看看那个解释，因为提升了优先级或者禁用中断啥的，导致某些中断已经没有用了。
@@ -358,6 +369,50 @@ register banking 大概应该是说cpu interface存在多个core的副本吧
 #### 中断完成
 中断完成的时候，写入EOIR就会触发优先级drop
 
+#### 更改一个中断的pending状态
+对于peripheral interrupt
+通过GICD_ISPENDRn的bit位设置
+通过GICD_ICPENDRn的bit位清除
+
+如果是level_sensitive的
+如果已经给ICPENDR某个位置位了，那么再改也不影响
+如果给ISPENDR某个位置位了，那么跟对应的硬件，就没有任何影响
+
+另外，必须考虑的事情是，如果是SGI中断，则写这两个寄存器没有任何影响（是写，但是读还是会表明状态）。
+因为只有写GICC_SGIR有影响。
+或者直接修改GICD_SPENDSGIRn和GICD_CPENDSGIRn的对应的位来写SGI的中断
+
+#### 发现一个中断的active状态
+通过前面说的GICD_ISPENDR或者GICD_ICPENDR来发现pending状态
+通过GICD_ISACTIVERn或者GICD_ICACTIVERn的对应位来发现active状态
+
+如果对应的位处于pending and active的状态，对应位都会置位
+对于SGI中断，也可以对应的去读GICD_ISPENDRn和GICD_ICPENDRn
+也可以在上述的GICD_SPENDSGIRn和GICD_CPENDSGIRn
+
+#### 生成一个SGI中断
+生成SGI中断是通过写GICD_SGIR寄存器来实现的
+一个SGI可以有多个目标处理器
+来自不同处理器的SGI使用相同的中断，仍然有相同的中断id
+所以使用中断id加上source processor 和target process的值来进行SGI中断的pending状态的区分
+所以同一时间，只有某个固定的interrupt ID的SGI中断可以触发，也就是同一个CPU不可能同时触发先公的interrupt id，即使两个处理器触发了相同的interrupt的id
+
+对于读取GICC_IAR，他会同时返回source cpuid和interrupt id
+对于中断优先级，每个不同的target processor，他的SGI interrupt ID可以具有不同的优先级。
+
+#### 中断优先级
+优先级使用8bit，GIC支持最小16，最大256的中断优先级。如果GIC使用少于256的中断级数，低位都是RAZ/WI的，
+越小的有更高的优先级
+
+使用GICD_IPRIORITYRn寄存器记录优先级.平台可以固定某些中断作为read-only的优先级.
+其他的优先级使用GICD_IPRIORITYRn来设置.
+可以通过写入0xff到GICD_IPRIORITYRn的对应位置再读出来来判断是否可以这样做.
+对于初始化,ARM推荐对于其他的中断,先disable所有的中断,而对于SGI,则检查该中断是否是inactive的
+
+
+#### 中断抢占和嵌套
+
+
 ### Gic_v2的寄存器
 
 #### GICD_IGROUPn
@@ -376,6 +431,13 @@ ID16-31就对应了bit16-31
 
 #### GICD_ICENABLERns
 和上面基本一样
+
+修改GICD的ISENABLERns和GICD的ICENABLERns去更改他的enable和disable状态，并不会改变已经有的中断的状态，比如已经pending的就不会disable掉
+
+#### GICD_ISPENDRn
+影响中断的pending状态
+#### GICD_ICPENDRn
+同上
 
 #### GICC_HPPIR
 对应的cpu interface的优先级的最高的活跃的中断可以在这个寄存器中读出来。
@@ -418,6 +480,7 @@ Arm的推荐是这一个位建议置零
 deactivate interrupt register
 正如前面说的那样，如果使用分离模式，需要不仅写入EOIR，还需要写入DIR
 需要注意的是，写入DIR寄存器的顺序需要跟从AIAR寄存器读的顺序相反，只有这样才能保证自己声明的deactivate的中断是最近读取的。
+
 
 ## gic_v3
 ### 中断状态
