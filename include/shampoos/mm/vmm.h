@@ -13,8 +13,8 @@
 #else
 #include <arch/x86_64/mm/vmm.h>
 #endif
-#include <shampoos/rb_tree.h>
 #include "vma.h"
+#include <shampoos/rb_tree.h>
 
 error_t map(paddr vspace_root_paddr, u64 ppn, u64 vpn, int level);
 #define MM_COMMON                   \

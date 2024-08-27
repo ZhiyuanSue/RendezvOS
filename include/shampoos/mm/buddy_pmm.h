@@ -49,6 +49,7 @@ struct buddy {
 };
 #define GET_AVALI_HEAD_PTR(zone_n, order) (buddy_pmm.zone[ zone_n ].avaliable_frame[ order ])
 #define GET_HEAD_PTR(zone_n, order) (buddy_pmm.zone[ zone_n ].zone_head_frame[ order ])
+#define GET_ORDER_PAGES(order) (buddy_pmm.buckets[ order ].pages)
 
 static inline void __frame_list_add(struct page_frame *bucket_head, struct page_frame *new_node,
                                     struct page_frame *prev, struct page_frame *next) {

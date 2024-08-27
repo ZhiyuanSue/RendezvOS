@@ -3,8 +3,8 @@
 #include <common/types.h>
 #include <shampoos/rb_tree.h>
 
-struct vma{
-	struct rb_root rb_tree;
+struct vma {
+    struct rb_root rb_tree;
 };
 
 #endif

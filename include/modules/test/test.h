@@ -6,5 +6,6 @@
 void pmm_test(void);
 void arch_vmm_test(void);
 void test(void);
+void rb_tree_test(void);
 
 #endif

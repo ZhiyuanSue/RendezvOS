@@ -62,7 +62,7 @@ void generate_pmm_data(paddr kernel_phy_start, paddr kernel_phy_end, paddr buddy
     /*generate the buddy bucket*/
     for (int order = 0; order <= BUDDY_MAXORDER; ++order) {
         buddy_pmm.buckets[ order ].order = order;
-        buddy_pmm.buckets[ order ].pages = (struct page_frame *)KERNEL_PHY_TO_VIRT(buddy_phy_start);
+        GET_ORDER_PAGES(order)           = (struct page_frame *)KERNEL_PHY_TO_VIRT(buddy_phy_start);
         buddy_phy_start += pages_per_bucket[ order ] * PAGE_SIZE;
     }
     for (int i = 0; i < buddy_pmm.m_regions->region_count; i++) {
@@ -78,7 +78,7 @@ void generate_pmm_data(paddr kernel_phy_start, paddr kernel_phy_end, paddr buddy
         sec_end_addr   = ROUND_DOWN(sec_end_addr, MIDDLE_PAGE_SIZE);
         for (int order = 0; order <= BUDDY_MAXORDER; ++order) {
             size_in_this_order = (PAGE_SIZE << order);
-            pages              = buddy_pmm.buckets[ order ].pages;
+            pages              = GET_ORDER_PAGES(order);
             for (paddr addr_iter = sec_start_addr; addr_iter < sec_end_addr;
                  addr_iter += size_in_this_order) {
                 index = IDX_FROM_PPN(order, PPN(addr_iter));
@@ -109,15 +109,14 @@ static void pmm_init_zones(void) {
         }
         for (int order = 0; order <= BUDDY_MAXORDER; ++order) {
             zone->zone_head_frame[ order ] =
-                &(buddy_pmm.buckets[ order ]
-                      .pages[ IDX_FROM_PPN(order, PPN(zone->zone_lower_addr)) ]);
+                &(GET_ORDER_PAGES(order)[ IDX_FROM_PPN(order, PPN(zone->zone_lower_addr)) ]);
             zone->avaliable_frame[ order ] = NULL;
             zone->zone_total_pages = zone->zone_total_avaliable_pages = 0;
         }
         for (paddr addr_iter = 0; addr_iter < buddy_pmm.avaliable_phy_addr_end;
              addr_iter += (PAGE_SIZE << BUDDY_MAXORDER)) {
             index = IDX_FROM_PPN(BUDDY_MAXORDER, PPN(addr_iter));
-            page  = &(buddy_pmm.buckets[ BUDDY_MAXORDER ].pages[ index ]);
+            page  = &(GET_ORDER_PAGES(BUDDY_MAXORDER)[ index ]);
             if (page->flags & PAGE_FRAME_AVALIABLE) {
                 if (addr_iter >= buddy_pmm.zone[ ZONE_NORMAL ].zone_lower_addr &&
                     addr_iter < buddy_pmm.zone[ ZONE_NORMAL ].zone_upper_addr) {
@@ -131,13 +130,13 @@ static void pmm_init_zones(void) {
     for (paddr addr_iter = 0; addr_iter < buddy_pmm.avaliable_phy_addr_end;
          addr_iter += (PAGE_SIZE << BUDDY_MAXORDER)) {
         index = IDX_FROM_PPN(BUDDY_MAXORDER, PPN(addr_iter));
-        page  = &(buddy_pmm.buckets[ BUDDY_MAXORDER ].pages[ index ]);
+        page  = &(GET_ORDER_PAGES(BUDDY_MAXORDER)[ index ]);
         if (page->flags & PAGE_FRAME_AVALIABLE) {
             if (addr_iter >= buddy_pmm.zone[ ZONE_NORMAL ].zone_lower_addr &&
                 addr_iter < buddy_pmm.zone[ ZONE_NORMAL ].zone_upper_addr) { /*zone normal*/
                 if (buddy_pmm.zone[ ZONE_NORMAL ].avaliable_frame[ BUDDY_MAXORDER ])
                     frame_list_add_head(
-                        buddy_pmm.buckets[ BUDDY_MAXORDER ].pages, page,
+                        GET_ORDER_PAGES(BUDDY_MAXORDER), page,
                         buddy_pmm.zone[ ZONE_NORMAL ].avaliable_frame[ BUDDY_MAXORDER ]);
                 buddy_pmm.zone[ ZONE_NORMAL ].avaliable_frame[ BUDDY_MAXORDER ] = page;
             }
@@ -228,20 +227,20 @@ int pmm_alloc_zone(int alloc_order, int zone_number) {
         right_child                  = &child_order_header[ (index << 1) + 1 ];
         if ((left_child->flags & PAGE_FRAME_ALLOCED) || (right_child->flags & PAGE_FRAME_ALLOCED))
             return (-ENOMEM);
-        if (frame_list_only_one(buddy_pmm.buckets[ tmp_order ].pages, del_node))
+        if (frame_list_only_one(GET_ORDER_PAGES(tmp_order), del_node))
             GET_AVALI_HEAD_PTR(zone_number, tmp_order) = NULL;
         else {
             GET_AVALI_HEAD_PTR(zone_number, tmp_order) =
-                buddy_pmm.buckets[ tmp_order ].pages + del_node->next;
-            frame_list_del_init(buddy_pmm.buckets[ tmp_order ].pages, del_node);
+                GET_ORDER_PAGES(tmp_order) + del_node->next;
+            frame_list_del_init(GET_ORDER_PAGES(tmp_order), del_node);
         }
         del_node->flags |= PAGE_FRAME_ALLOCED;
         if (child_order_avaliable_header)
-            frame_list_add_head(buddy_pmm.buckets[ tmp_order - 1 ].pages, left_child,
+            frame_list_add_head(GET_ORDER_PAGES(tmp_order - 1), left_child,
                                 child_order_avaliable_header);
         child_order_avaliable_header = GET_AVALI_HEAD_PTR(zone_number, tmp_order - 1) = left_child;
         // after this, the child order must have at least one node ,so just add
-        frame_list_add_head(buddy_pmm.buckets[ tmp_order - 1 ].pages, right_child,
+        frame_list_add_head(GET_ORDER_PAGES(tmp_order - 1), right_child,
                             child_order_avaliable_header);
         child_order_avaliable_header = GET_AVALI_HEAD_PTR(zone_number, tmp_order - 1) = right_child;
         tmp_order -= 1;
@@ -253,12 +252,11 @@ int pmm_alloc_zone(int alloc_order, int zone_number) {
         return (-ENOMEM);
     del_node = avaliable_header;
     index    = del_node - header;
-    if (frame_list_only_one(buddy_pmm.buckets[ tmp_order ].pages, del_node))
+    if (frame_list_only_one(GET_ORDER_PAGES(tmp_order), del_node))
         GET_AVALI_HEAD_PTR(zone_number, tmp_order) = NULL;
     else {
-        GET_AVALI_HEAD_PTR(zone_number, tmp_order) =
-            buddy_pmm.buckets[ tmp_order ].pages + del_node->next;
-        frame_list_del_init(buddy_pmm.buckets[ tmp_order ].pages, del_node);
+        GET_AVALI_HEAD_PTR(zone_number, tmp_order) = GET_ORDER_PAGES(tmp_order) + del_node->next;
+        frame_list_del_init(GET_ORDER_PAGES(tmp_order), del_node);
     }
     /*Forth,mark all the child node alloced*/
     if (mark_childs(zone_number, tmp_order, index))
@@ -335,18 +333,17 @@ static error_t pmm_free_one(u32 ppn) {
          * avaliable list*/
         if (buddy_node->flags & PAGE_FRAME_ALLOCED || tmp_order == BUDDY_MAXORDER) {
             if (avaliable_header)
-                frame_list_add_head(buddy_pmm.buckets[ tmp_order ].pages, insert_node,
-                                    avaliable_header);
+                frame_list_add_head(GET_ORDER_PAGES(tmp_order), insert_node, avaliable_header);
             avaliable_header = GET_AVALI_HEAD_PTR(zone_number, tmp_order) = insert_node;
             break;
         }
         /*else try merge*/
-        if (frame_list_only_one(buddy_pmm.buckets[ tmp_order ].pages, buddy_node))
+        if (frame_list_only_one(GET_ORDER_PAGES(tmp_order), buddy_node))
             GET_AVALI_HEAD_PTR(zone_number, tmp_order) = NULL;
         else {
             GET_AVALI_HEAD_PTR(zone_number, tmp_order) =
-                buddy_pmm.buckets[ tmp_order ].pages + buddy_node->next;
-            frame_list_del_init(buddy_pmm.buckets[ tmp_order ].pages, buddy_node);
+                GET_ORDER_PAGES(tmp_order) + buddy_node->next;
+            frame_list_del_init(GET_ORDER_PAGES(tmp_order), buddy_node);
         }
         tmp_order++;
     }
