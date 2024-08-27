@@ -30,11 +30,11 @@ static void calculate_avaliable_phy_addr_end(void) {
         ROUND_DOWN(buddy_pmm.avaliable_phy_addr_end, MIDDLE_PAGE_SIZE);
 }
 u64 calculate_pmm_space(void) {
-    u64   buddy_total_pages;
+    u64   pages;
     paddr adjusted_phy_mem_end;
     u64   size_in_this_order;
 
-    buddy_total_pages = 0;
+    pages = 0;
     calculate_avaliable_phy_addr_end();
     for (int order = 0; order <= BUDDY_MAXORDER; ++order)
         entry_per_bucket[ order ] = pages_per_bucket[ order ] = 0;
@@ -47,8 +47,8 @@ u64 calculate_pmm_space(void) {
             ROUND_UP(entry_per_bucket[ order ] * sizeof(struct page_frame), PAGE_SIZE) / PAGE_SIZE;
     }
     for (int order = 0; order <= BUDDY_MAXORDER; ++order)
-        buddy_total_pages += pages_per_bucket[ order ];
-    return (buddy_total_pages);
+        pages += pages_per_bucket[ order ];
+    return (pages);
 }
 void generate_pmm_data(paddr kernel_phy_start, paddr kernel_phy_end, paddr buddy_phy_start,
                        paddr buddy_phy_end) {
@@ -185,7 +185,6 @@ int pmm_alloc_zone(int alloc_order, int zone_number) {
     bool               find_an_order;
     u64                index;
     struct page_frame *header;
-
     struct page_frame *avaliable_header, *del_node;
     struct page_frame *child_order_avaliable_header, *child_order_header, *left_child, *right_child;
     child_order_avaliable_header = NULL;

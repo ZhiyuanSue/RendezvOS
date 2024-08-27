@@ -411,6 +411,30 @@ register banking 大概应该是说cpu interface存在多个core的副本吧
 
 
 #### 中断抢占和嵌套
+中断嵌套的情况,必须满足1/中断优先级高于目前的优先级mask,2/group优先级高于CPU interface的runing priority的group的优先级
+就是在一个中断还active的时候CPU声明另一个中断被active
+也叫做interrupt nesting
+
+#### 优先级mask
+GICC_PMR(应该就是priority mask的寄存器的意思)
+设置一个阈值(threshold), GIC只有高于这个阈值的中断才会处理，如果是初始化的全都是0，这时候，会屏蔽所有中断。在比较的时候，不会使用优先级组
+
+#### 优先级分组
+使用Binary Point Register (GICC_BPR)，将他们分为group priority和subpriority
+当考虑抢占的时候，一个组里的所有的中断，也许他们有不同的中断优先级，但是被认为具有相同的优先级，而不考虑subpriority
+也就意味着，同一个组，里面最多只有一个active的中断。
+这个active priority也被称作preemption level
+
+所以如果要抢占，他必须满足前面说的第二条，也就是group要更高的优先级（数值上更低）
+如果没有抢占，也就是目前没有活跃的中断，就无所谓
+
+对于BPR里面指定的数值，他的binary point value指定了前面多少位是用于group的。剩下的后面多少位是用于subpriority的
+
+GICv2有两个BPR，可以在GICC_CTLR.CBPR位设置，具体见table3-2，用于指明到底是Non-secure还是secure的
+
+#### GIC中断分组支持
+GICD_IGROUPn只是用于配置每个中断为Group0或者1的
+
 
 
 ### Gic_v2的寄存器
