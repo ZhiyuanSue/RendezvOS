@@ -8,9 +8,9 @@
 #include "uart_pl011.h"
 #endif
 
-void     uart_open(void *base_addr);
-void     uart_putc(u_int8_t ch);
+void uart_open(void *base_addr);
+void uart_putc(u_int8_t ch);
 u_int8_t uart_getc(void);
-void     uart_close(void);
+void uart_close(void);
 
 #endif

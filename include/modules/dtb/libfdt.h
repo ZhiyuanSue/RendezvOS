@@ -7,7 +7,7 @@
    complie 2024/5/21
 */
 #define FDT_FIRST_SUPPORTED_VERSION 0x02
-#define FDT_LAST_SUPPORTED_VERSION 0x11
+#define FDT_LAST_SUPPORTED_VERSION  0x11
 
 /* Error codes: informative error codes */
 #define FDT_ERR_NOTFOUND 1
@@ -100,27 +100,30 @@
 #define FDT_MAX_PHANDLE 0xfffffffe
 /* Valid values for phandles range from 1 to 2^32-2. */
 
-#define fdt_for_each_subnode(node, fdt, parent) \
-    for (node = fdt_first_subnode(fdt, parent); node >= 0; node = fdt_next_subnode(fdt, node))
-#define fdt_for_each_property_offset(property, fdt, node)                \
-    for (property = fdt_first_property_offset(fdt, node); property >= 0; \
-         property = fdt_next_property_offset(fdt, property))
+#define fdt_for_each_subnode(node, fdt, parent)                \
+        for (node = fdt_first_subnode(fdt, parent); node >= 0; \
+             node = fdt_next_subnode(fdt, node))
+#define fdt_for_each_property_offset(property, fdt, node)                    \
+        for (property = fdt_first_property_offset(fdt, node); property >= 0; \
+             property = fdt_next_property_offset(fdt, property))
 /**********************************************************************/
 /* General functions                                                  */
 /**********************************************************************/
-#define fdt_get_header(fdt, field) (SWAP_ENDIANNESS_32(((const struct fdt_header *)(fdt))->field))
-#define fdt_magic(fdt) (fdt_get_header(fdt, magic))
-#define fdt_totalsize(fdt) (fdt_get_header(fdt, totalsize))
-#define fdt_off_dt_struct(fdt) (fdt_get_header(fdt, off_dt_struct))
-#define fdt_off_dt_strings(fdt) (fdt_get_header(fdt, off_dt_strings))
-#define fdt_off_mem_rsvmap(fdt) (fdt_get_header(fdt, off_mem_rsvmap))
-#define fdt_version(fdt) (fdt_get_header(fdt, version))
+#define fdt_get_header(fdt, field) \
+        (SWAP_ENDIANNESS_32(((const struct fdt_header *)(fdt))->field))
+#define fdt_magic(fdt)             (fdt_get_header(fdt, magic))
+#define fdt_totalsize(fdt)         (fdt_get_header(fdt, totalsize))
+#define fdt_off_dt_struct(fdt)     (fdt_get_header(fdt, off_dt_struct))
+#define fdt_off_dt_strings(fdt)    (fdt_get_header(fdt, off_dt_strings))
+#define fdt_off_mem_rsvmap(fdt)    (fdt_get_header(fdt, off_mem_rsvmap))
+#define fdt_version(fdt)           (fdt_get_header(fdt, version))
 #define fdt_last_comp_version(fdt) (fdt_get_header(fdt, last_comp_version))
-#define fdt_boot_cpuid_phys(fdt) (fdt_get_header(fdt, boot_cpuid_phys))
-#define fdt_size_dt_strings(fdt) (fdt_get_header(fdt, size_dt_strings))
-#define fdt_size_dt_struct(fdt) (fdt_get_header(fdt, size_dt_struct))
+#define fdt_boot_cpuid_phys(fdt)   (fdt_get_header(fdt, boot_cpuid_phys))
+#define fdt_size_dt_strings(fdt)   (fdt_get_header(fdt, size_dt_strings))
+#define fdt_size_dt_struct(fdt)    (fdt_get_header(fdt, size_dt_struct))
 
-static inline const void *fdt_offset_ptr_(const void *fdt, int offset) {
-    return ((const char *)fdt + fdt_off_dt_struct(fdt) + offset);
+static inline const void *fdt_offset_ptr_(const void *fdt, int offset)
+{
+        return ((const char *)fdt + fdt_off_dt_struct(fdt) + offset);
 }
 #endif

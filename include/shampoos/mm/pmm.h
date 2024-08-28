@@ -21,34 +21,34 @@
 #include <shampoos/limits.h>
 
 struct region {
-    paddr addr;
-    u64   len;
+        paddr addr;
+        u64 len;
 };
 
 struct memory_regions {
-    // region_count record continuous memory regions number
-    int region_count;
-    // memory_regions record the memory regions
-    struct region memory_regions[ SHAMPOOS_MAX_MEMORY_REGIONS ];
-    error_t (*memory_regions_insert)(paddr addr, u64 len);
-    void (*memory_regions_delete)(int index);
-    bool (*memory_regions_entry_empty)(int index);
+        // region_count record continuous memory regions number
+        int region_count;
+        // memory_regions record the memory regions
+        struct region memory_regions[SHAMPOOS_MAX_MEMORY_REGIONS];
+        error_t (*memory_regions_insert)(paddr addr, u64 len);
+        void (*memory_regions_delete)(int index);
+        bool (*memory_regions_entry_empty)(int index);
 };
 
 #define PPN(addr) (addr >> 12)
 
-#define PMM_COMMON                                         \
-    void (*pmm_init)(struct setup_info * arch_setup_info); \
-    int (*pmm_alloc)(size_t page_number);                  \
-    error_t (*pmm_free)(u32 ppn, size_t page_number)
+#define PMM_COMMON                                             \
+        void (*pmm_init)(struct setup_info * arch_setup_info); \
+        int (*pmm_alloc)(size_t page_number);                  \
+        error_t (*pmm_free)(u32 ppn, size_t page_number)
 
 struct pmm {
-    PMM_COMMON;
+        PMM_COMMON;
 };
 
 // get the pages pmm manager need
-u64  calculate_pmm_space(void);
-void generate_pmm_data(paddr kernel_phy_start, paddr kernel_phy_end, paddr pmm_data_phy_start,
-                       paddr pmm_data_phy_end);
+u64 calculate_pmm_space(void);
+void generate_pmm_data(paddr kernel_phy_start, paddr kernel_phy_end,
+                       paddr pmm_data_phy_start, paddr pmm_data_phy_end);
 
 #endif

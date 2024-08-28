@@ -4,7 +4,7 @@
 #include <shampoos/rb_tree.h>
 
 struct vma {
-    struct rb_root rb_tree;
+        struct rb_root rb_tree;
 };
 
 #endif

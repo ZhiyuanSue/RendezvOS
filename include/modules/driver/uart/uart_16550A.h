@@ -4,24 +4,24 @@
 #include <common/types.h>
 
 typedef struct UART_16550A_regs {
-    union {
-        volatile u_int8_t RHR;
-        volatile u_int8_t THR;
-        volatile u_int8_t DLL;
-    };
-    union {
-        volatile u_int8_t IER;
-        volatile u_int8_t DLM;
-    };
-    union {
-        volatile u_int8_t FCR;
-        volatile u_int8_t ISR;
-    };
-    volatile u_int8_t LCR;
-    volatile u_int8_t MCR;
-    volatile u_int8_t LSR;
-    volatile u_int8_t MSR;
-    volatile u_int8_t SPR;
+        union {
+                volatile u_int8_t RHR;
+                volatile u_int8_t THR;
+                volatile u_int8_t DLL;
+        };
+        union {
+                volatile u_int8_t IER;
+                volatile u_int8_t DLM;
+        };
+        union {
+                volatile u_int8_t FCR;
+                volatile u_int8_t ISR;
+        };
+        volatile u_int8_t LCR;
+        volatile u_int8_t MCR;
+        volatile u_int8_t LSR;
+        volatile u_int8_t MSR;
+        volatile u_int8_t SPR;
 } UART_16550A;
 /* At the beginning, the states are
  * IER = 0
@@ -40,18 +40,19 @@ typedef struct UART_16550A_regs {
  * TXRDY = Low
  * INT = Low
  */
-void     uart_16550A_open(void);
-void     uart_16550A_putc(u_int8_t ch);
+void uart_16550A_open(void);
+void uart_16550A_putc(u_int8_t ch);
 u_int8_t uart_16550A_getc(void);
-void     uart_16550A_close(void);
+void uart_16550A_close(void);
 
 #ifdef _X86_64_
 #include <arch/x86_64/io.h>
 #include <arch/x86_64/io_port.h>
 #include <common/stddef.h>
 #define uart_write_reg(reg_name, data) \
-    outb(_X86_16550A_COM1_BASE_ + offsetof(UART_16550A, reg_name), data)
-#define uart_read_reg(reg_name) inb(_X86_16550A_COM1_BASE_ + offsetof(UART_16550A, reg_name))
+        outb(_X86_16550A_COM1_BASE_ + offsetof(UART_16550A, reg_name), data)
+#define uart_read_reg(reg_name) \
+        inb(_X86_16550A_COM1_BASE_ + offsetof(UART_16550A, reg_name))
 
 #elif defined _RISCV64_
 #define _VIRT_BASE_COM0_ 0x10000000UL
