@@ -113,7 +113,16 @@ void RB_SolveDoubleRed(struct rb_node* rb_p, struct rb_root* root)
                 RB_SET_RED(g);
                 struct rb_node* gg = (struct rb_node*)RB_PARENT(g);
                 struct rb_node* r = rotateAt(rb_p);
-                RB_FROMPARENTTO(g, root) = r;
+
+                if (RB_ISROOT(rb_p)) {
+                        root->rb_root = r;
+                } else {
+                        if (RB_ISLCHILD(rb_p)) {
+                                (RB_PARENT(rb_p))->left_child = r;
+                        } else {
+                                (RB_PARENT(rb_p))->right_child = r;
+                        }
+                }
                 RB_SET_PARENT(r, gg);
         } else {
                 RB_SET_BLACK(p);
@@ -127,4 +136,5 @@ void RB_SolveDoubleRed(struct rb_node* rb_p, struct rb_root* root)
 }
 void RB_SolveDoubleBlack(struct rb_node* rb_p)
 {
+	
 }

@@ -27,32 +27,20 @@ struct rb_root {
                                          (RB_HIGHT(rb_p->left_child) + 1)))
 
 #define RB_ISROOT(rb_p) (!(RB_PARENT(rb_p)))
-#define RB_ISLCHILD(rb_p)  \
-        ((RB_PARENT(rb_p)) \
-         && ((rb_p) == ((struct rb_node*)(RB_PARENT(rb_p)))->left_child))
-#define RB_ISRCHILD(rb_p)  \
-        ((RB_PARENT(rb_p)) \
-         && ((rb_p) == ((struct rb_node*)(RB_PARENT(rb_p)))->right_child))
+#define RB_ISLCHILD(rb_p) \
+        ((RB_PARENT(rb_p)) && ((rb_p) == (RB_PARENT(rb_p))->left_child))
+#define RB_ISRCHILD(rb_p) \
+        ((RB_PARENT(rb_p)) && ((rb_p) == (RB_PARENT(rb_p))->right_child))
 #define RB_HASCHILD(rb_p)     ((rb_p)->left_child || (rb_p)->right_child)
 #define RB_HASBOTHCHILD(rb_p) ((rb_p)->left_child && (rb_p)->right_child)
 
 #define RB_SIBLING(rb_p)                                    \
         (RB_ISLCHILD(rb_p) ? RB_PARENT(rb_p)->right_child : \
                              RB_PARENT(rb_p)->left_child)
-#define RB_UNCLE(rb_p)                                        \
-        (RB_ISLCHILD((struct rb_node*)RB_PARENT(rb_p)) ?      \
-                 ((struct rb_node*)(RB_PARENT(                \
-                          (struct rb_node*)RB_PARENT(rb_p)))) \
-                         ->right_child :                      \
-                 ((struct rb_node*)(RB_PARENT(                \
-                          (struct rb_node*)RB_PARENT(rb_p)))) \
-                         ->left_child)
-#define RB_FROMPARENTTO(rb_p, root)                                       \
-        (RB_ISROOT(rb_p)) ?                                               \
-                (root->rb_root) :                                         \
-                (RB_ISLCHILD(rb_p) ?                                      \
-                         ((struct rb_node*)RB_PARENT(rb_p))->left_child : \
-                         ((struct rb_node*)RB_PARENT(rb_p))->right_child)
+#define RB_UNCLE(rb_p)                                       \
+        (RB_ISLCHILD(RB_PARENT(rb_p)) ?                      \
+                 (RB_PARENT(RB_PARENT(rb_p)))->right_child : \
+                 (RB_PARENT(RB_PARENT(rb_p)))->left_child)
 
 #define RB_SET_RED(rb_p)                       \
         do {                                   \
@@ -72,6 +60,6 @@ void rb_remove(struct rb_node* rb_p);
 void rb_insert(struct rb_node* rb_p);
 struct rb_node* rb_prev(struct rb_node* rb_p);
 struct rb_node* rb_next(struct rb_node* rb_p);
-void RB_SolveDoubleRed(struct rb_node* rb_p,struct rb_root* root);
+void RB_SolveDoubleRed(struct rb_node* rb_p, struct rb_root* root);
 void RB_SolveDoubleBlack(struct rb_node* rb_p);
 #endif
