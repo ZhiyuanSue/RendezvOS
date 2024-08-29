@@ -6,7 +6,7 @@ u64 update_height(struct rb_node* rb_p)
                                  rb_p->right_child->black_height);
         return RB_ISBLACK(rb_p) ? rb_p->black_height++ : rb_p->black_height;
 }
-void rb_remove(struct rb_node* rb_p)
+void rb_remove(struct rb_node* rb_p,struct rb_root* root)
 {
 }
 void rb_insert(struct rb_node* rb_p)
@@ -136,5 +136,5 @@ void RB_SolveDoubleRed(struct rb_node* rb_p, struct rb_root* root)
 }
 void RB_SolveDoubleBlack(struct rb_node* rb_p)
 {
-	
+
 }

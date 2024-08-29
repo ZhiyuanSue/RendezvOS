@@ -56,7 +56,7 @@ struct rb_root {
         } while (0)
 u64 update_height(struct rb_node* rb_p);
 
-void rb_remove(struct rb_node* rb_p);
+void rb_remove(struct rb_node* rb_p,struct rb_root* root);
 void rb_insert(struct rb_node* rb_p);
 struct rb_node* rb_prev(struct rb_node* rb_p);
 struct rb_node* rb_next(struct rb_node* rb_p);
