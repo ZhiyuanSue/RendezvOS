@@ -9,8 +9,12 @@ u64 update_height(struct rb_node* rb_p)
 void rb_remove(struct rb_node* rb_p, struct rb_root* root)
 {
 }
-void rb_insert(struct rb_node* rb_p)
+void rb_link_node(struct rb_node* node, struct rb_node* parent,
+                  struct rb_node** rb_link)
 {
+        RB_SET_PARENT(node, parent);
+        node->left_child = node->right_child = NULL;
+        *rb_link = node;
 }
 struct rb_node* rb_prev(struct rb_node* rb_p)
 {
