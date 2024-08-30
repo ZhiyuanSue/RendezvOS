@@ -13,17 +13,22 @@ u64 next = 1;
 struct t_node {
         struct rb_node rb;
         u32 key;
+        u32 id;
 };
 struct rb_root t_root = {NULL};
 struct t_node node_list[max_node_num];
 
 bool check_rb(struct rb_node* node, int* height, int* count)
 {
+        pr_info("[check rb]\n");
         if (node == NULL) {
                 *height = 0;
                 return true;
         }
         int left_height, right_height;
+        pr_info("check child left 0x%x right 0x%x\n",
+                node->left_child,
+                node->right_child);
         bool l = check_rb(node->left_child, &left_height, count);
         bool r = check_rb(node->right_child, &right_height, count);
 
@@ -90,7 +95,6 @@ void rb_tree_test_insert(struct t_node* node, struct rb_root* root)
 {
         struct rb_node** new = &root->rb_root, *parent = NULL;
         u32 key = node->key;
-        pr_info("go into while\n");
         while (*new) {
                 parent = *new;
                 struct t_node* test_data =
@@ -100,9 +104,8 @@ void rb_tree_test_insert(struct t_node* node, struct rb_root* root)
                 else
                         new = &parent->right_child;
         }
-
+        RB_SET_RED(&(node->rb));
         rb_link_node(&node->rb, parent, new);
-        pr_info("solve double red\n");
         RB_SolveDoubleRed(&node->rb, root);
 }
 void rb_tree_test_remove()
@@ -115,7 +118,11 @@ void rb_tree_test_init()
                 next = (u64)next * 1103515245 + 12345;
                 node_list[i].key = ((next / 65536) % 32768);
                 node_list[i].rb.left_child = node_list[i].rb.right_child = NULL;
+                node_list[i].rb.id = i;
         }
+        pr_info("the first node address is 0x%x 0x%x\n",
+                (u64)&node_list,
+                (u64)&node_list[0].rb);
 }
 
 void rb_tree_test(void)
@@ -123,12 +130,14 @@ void rb_tree_test(void)
         rb_tree_test_init();
         for (int i = 0; i < max_loops; i++) {
                 for (int j = 0; j < max_node_num; j++) {
-                        pr_info("insert round %d\n", j);
+                        pr_info("====== insert round %d ======\n", j);
                         if (!check(j)) {
                                 pr_error("rb tree test insert error\n");
                                 return;
                         }
-                        rb_tree_test_insert(&node_list[i], &t_root);
+                        pr_info("the 0 node color is %d\n",
+                                RB_COLOR(&node_list[0].rb));
+                        rb_tree_test_insert(&node_list[j], &t_root);
                 }
                 for (int j = 0; j < max_node_num; j++) {
                         if (!check(j)) {
