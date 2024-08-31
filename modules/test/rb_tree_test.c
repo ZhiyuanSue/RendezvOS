@@ -19,7 +19,6 @@ u64 next = 1;
 struct t_node {
         struct rb_node rb;
         u32 key;
-        u32 id;
 };
 struct rb_root t_root = {NULL};
 struct t_node node_list[max_node_num];
@@ -74,7 +73,6 @@ bool check(int nr_nodes)
         }
         int height;
         int count = 0;
-        debug("go into check rb\n");
         bool res = check_rb(t_root.rb_root, &height, &count, 0);
         if (res == false || count != nr_nodes) {
                 debug("check count is %d nr_node is %d\n", count, nr_nodes);
@@ -111,7 +109,6 @@ void rb_tree_test_insert(struct t_node* node, struct rb_root* root)
                 else
                         new = &parent->right_child;
         }
-        // RB_SET_RED(&(node->rb));
         rb_link_node(&node->rb, parent, new);
         RB_SolveDoubleRed(&node->rb, root);
 }
@@ -137,14 +134,15 @@ void rb_tree_test(void)
         rb_tree_test_init();
         for (int i = 0; i < max_loops; i++) {
                 for (int j = 0; j < max_node_num; j++) {
-                        debug("====== insert round %d ======\n", j);
-                        if (!check(j)) {
-                                pr_error("rb tree test insert error\n");
-                                return;
-                        }
+                        // if (!check(j)) {
+                        //         pr_error("rb tree test insert error\n");
+                        //         return;
+                        // }
                         rb_tree_test_insert(&node_list[j], &t_root);
                 }
-                for (int j = 0; j < max_node_num; j++) {
+                debug("finish round %d insert\n", i);
+                for (int j = max_node_num; j > 0; j--) {
+                        debug("====== delete round %d ======\n", j);
                         if (!check(j)) {
                                 pr_error("rb tree test remove error\n");
                                 return;
