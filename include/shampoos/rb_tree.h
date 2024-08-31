@@ -19,7 +19,7 @@ struct rb_root {
 #define RB_HIGHT(rb_p)   ((rb_p) ? (rb_p)->black_height : -1)
 #define RB_COLOR(rb_p)   ((rb_p)->rb_parent_color & 0x1)
 #define RB_ISBLACK(rb_p) (!(rb_p) || RB_COLOR(rb_p) == RB_BLACK)
-#define RB_ISRED(rb_p)   (!ISBLACK(rb_p))
+#define RB_ISRED(rb_p)   (!RB_ISBLACK(rb_p))
 #define RB_PARENT(rb_p)  ((struct rb_node*)((rb_p)->rb_parent_color & ~3))
 #define RB_HIGHT_UPDATED(rb_p)                                        \
         (RB_HIGHT(rb_p->left_child) == RB_HIGHT(rb_p->right_child)    \
@@ -34,6 +34,8 @@ struct rb_root {
         ((RB_PARENT(rb_p)) && ((rb_p) == (RB_PARENT(rb_p))->right_child))
 #define RB_HASCHILD(rb_p)     ((rb_p)->left_child || (rb_p)->right_child)
 #define RB_HASBOTHCHILD(rb_p) ((rb_p)->left_child && (rb_p)->right_child)
+#define RB_HASLCHILD(rb_p)    ((rb_p)->left_child)
+#define RB_HASRCHILD(rb_p)    ((rb_p)->right_child)
 
 #define RB_SIBLING(rb_p)                                    \
         (RB_ISLCHILD(rb_p) ? RB_PARENT(rb_p)->right_child : \
@@ -64,5 +66,6 @@ struct rb_node* rb_next(struct rb_node* rb_p);
 void rb_link_node(struct rb_node* node, struct rb_node* parent,
                   struct rb_node** rb_link);
 void RB_SolveDoubleRed(struct rb_node* rb_p, struct rb_root* root);
-void RB_SolveDoubleBlack(struct rb_node* rb_p);
+void RB_SolveDoubleBlack(struct rb_node* rb_p, struct rb_node* parent,
+                         struct rb_root* root);
 #endif

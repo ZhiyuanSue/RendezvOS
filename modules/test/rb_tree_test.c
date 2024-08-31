@@ -9,7 +9,7 @@
  and it's also an example of the usage of the rb tree*/
 #define max_node_num 256
 #define max_loops    256
-#define DEBUG
+// #define DEBUG
 #ifdef DEBUG
 #define debug pr_debug
 #else
@@ -124,15 +124,13 @@ void rb_tree_test_init()
                 node_list[i].rb.left_child = node_list[i].rb.right_child = NULL;
                 node_list[i].rb.id = i;
         }
-        debug("the first node address is 0x%x 0x%x\n",
-              (u64)&node_list,
-              (u64)&node_list[0].rb);
+        t_root.rb_root = NULL;
 }
 
 void rb_tree_test(void)
 {
-        rb_tree_test_init();
         for (int i = 0; i < max_loops; i++) {
+                rb_tree_test_init();
                 for (int j = 0; j < max_node_num; j++) {
                         // if (!check(j)) {
                         //         pr_error("rb tree test insert error\n");
@@ -140,7 +138,7 @@ void rb_tree_test(void)
                         // }
                         rb_tree_test_insert(&node_list[j], &t_root);
                 }
-                debug("finish round %d insert\n", i);
+                // pr_info("finish round %d insert\n", i);
                 for (int j = max_node_num; j > 0; j--) {
                         debug("====== delete round %d ======\n", j);
                         if (!check(j)) {
@@ -150,5 +148,5 @@ void rb_tree_test(void)
                         rb_tree_test_remove();
                 }
         }
-        debug("rb tree test succ\n");
+        pr_info("rb tree test succ\n");
 }

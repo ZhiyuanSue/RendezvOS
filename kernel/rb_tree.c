@@ -141,6 +141,63 @@ void RB_SolveDoubleRed(struct rb_node* rb_p, struct rb_root* root)
                 RB_SolveDoubleRed(g, root);
         }
 }
-void RB_SolveDoubleBlack(struct rb_node* rb_p)
+void RB_SolveDoubleBlack(struct rb_node* rb_p, struct rb_node* _hot,
+                         struct rb_root* root)
 {
+        struct rb_node* p = rb_p ? RB_PARENT(rb_p) : _hot;
+        if (!p)
+                return;
+        struct rb_node* s = RB_SIBLING(rb_p);
+        if (RB_ISBLACK(s)) {
+                struct rb_node* t = NULL;
+                if (RB_HASLCHILD(s) && RB_ISRED(s->left_child))
+                        t = s->left_child;
+                else if (RB_HASRCHILD(s) && RB_ISRED(s->right_child))
+                        t = s->right_child;
+                if (t) {
+                        bool oldColor = RB_COLOR(p);
+                        struct rb_node* b;
+                        if (RB_ISROOT(p)) {
+                                root->rb_root = b = rotateAt(t);
+                        } else {
+                                if (RB_ISLCHILD(p)) {
+                                        RB_PARENT(p)->left_child = b =
+                                                rotateAt(t);
+                                } else {
+                                        RB_PARENT(p)->right_child = b =
+                                                rotateAt(t);
+                                }
+                        }
+                        if (RB_HASLCHILD(b))
+                                RB_SET_BLACK(b->left_child);
+                        if (RB_HASRCHILD(b))
+                                RB_SET_BLACK(b->right_child);
+                        if (oldColor)
+                                RB_SET_BLACK(b);
+                        else
+                                RB_SET_RED(b);
+                } else {
+                        RB_SET_RED(s);
+                        if (RB_ISRED(p)) {
+                                RB_SET_BLACK(p);
+                        } else {
+                                RB_SolveDoubleBlack(p, _hot, root);
+                        }
+                }
+        } else {
+                RB_SET_BLACK(s);
+                RB_SET_RED(p);
+                struct rb_node* t = RB_ISLCHILD(s) ? s->left_child :
+                                                     s->right_child;
+                if (RB_ISROOT(p)) {
+                        root->rb_root = rotateAt(t);
+                } else {
+                        if (RB_ISLCHILD(p)) {
+                                RB_PARENT(p)->left_child = rotateAt(t);
+                        } else {
+                                RB_PARENT(p)->right_child = rotateAt(t);
+                        }
+                }
+                RB_SolveDoubleBlack(rb_p, p, root);
+        }
 }
