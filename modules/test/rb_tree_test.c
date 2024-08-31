@@ -9,6 +9,12 @@
  and it's also an example of the usage of the rb tree*/
 #define max_node_num 256
 #define max_loops    256
+#define DEBUG
+#ifdef DEBUG
+#define debug pr_debug
+#else
+#define debug pr_off
+#endif
 u64 next = 1;
 struct t_node {
         struct rb_node rb;
@@ -18,22 +24,24 @@ struct t_node {
 struct rb_root t_root = {NULL};
 struct t_node node_list[max_node_num];
 
-bool check_rb(struct rb_node* node, int* height, int* count)
+bool check_rb(struct rb_node* node, int* height, int* count, int level)
 {
-        pr_info("[check rb]\n");
+        for (int i = 0; i < level; i++)
+                debug("\t");
         if (node == NULL) {
+                debug("[NULL]\n");
                 *height = 0;
                 return true;
         }
+        debug("[id] %d with color %d\n", node->id, RB_COLOR(node));
         int left_height, right_height;
-        pr_info("check child left 0x%x right 0x%x\n",
-                node->left_child,
-                node->right_child);
-        bool l = check_rb(node->left_child, &left_height, count);
-        bool r = check_rb(node->right_child, &right_height, count);
+        debug("[L]");
+        bool l = check_rb(node->left_child, &left_height, count, level + 1);
+        debug("[R]");
+        bool r = check_rb(node->right_child, &right_height, count, level + 1);
 
         if (!l || !r) {
-                pr_info("l is %d and r is %d\n", l, r);
+                debug("l is %d and r is %d\n", l, r);
                 return false;
         }
 
@@ -52,8 +60,7 @@ bool check_rb(struct rb_node* node, int* height, int* count)
                 return false;
         }
         /*update the height*/
-        if (RB_COLOR(node) == RB_BLACK)
-                (*height)++;
+        *height = (RB_COLOR(node) == RB_BLACK) ? (left_height++) : left_height;
         (*count)++;
         return true;
 }
@@ -67,10 +74,10 @@ bool check(int nr_nodes)
         }
         int height;
         int count = 0;
-        pr_info("go into check rb\n");
-        bool res = check_rb(t_root.rb_root, &height, &count);
+        debug("go into check rb\n");
+        bool res = check_rb(t_root.rb_root, &height, &count, 0);
         if (res == false || count != nr_nodes) {
-                pr_info("check count is %d nr_node is %d\n", count, nr_nodes);
+                debug("check count is %d nr_node is %d\n", count, nr_nodes);
                 return false;
         }
         return true;
@@ -104,7 +111,7 @@ void rb_tree_test_insert(struct t_node* node, struct rb_root* root)
                 else
                         new = &parent->right_child;
         }
-        RB_SET_RED(&(node->rb));
+        // RB_SET_RED(&(node->rb));
         rb_link_node(&node->rb, parent, new);
         RB_SolveDoubleRed(&node->rb, root);
 }
@@ -120,9 +127,9 @@ void rb_tree_test_init()
                 node_list[i].rb.left_child = node_list[i].rb.right_child = NULL;
                 node_list[i].rb.id = i;
         }
-        pr_info("the first node address is 0x%x 0x%x\n",
-                (u64)&node_list,
-                (u64)&node_list[0].rb);
+        debug("the first node address is 0x%x 0x%x\n",
+              (u64)&node_list,
+              (u64)&node_list[0].rb);
 }
 
 void rb_tree_test(void)
@@ -130,13 +137,11 @@ void rb_tree_test(void)
         rb_tree_test_init();
         for (int i = 0; i < max_loops; i++) {
                 for (int j = 0; j < max_node_num; j++) {
-                        pr_info("====== insert round %d ======\n", j);
+                        debug("====== insert round %d ======\n", j);
                         if (!check(j)) {
                                 pr_error("rb tree test insert error\n");
                                 return;
                         }
-                        pr_info("the 0 node color is %d\n",
-                                RB_COLOR(&node_list[0].rb));
                         rb_tree_test_insert(&node_list[j], &t_root);
                 }
                 for (int j = 0; j < max_node_num; j++) {
@@ -147,5 +152,5 @@ void rb_tree_test(void)
                         rb_tree_test_remove();
                 }
         }
-        pr_info("rb tree test succ\n");
+        debug("rb tree test succ\n");
 }

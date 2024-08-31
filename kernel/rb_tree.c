@@ -102,16 +102,17 @@ static struct rb_node* rotateAt(struct rb_node* v)
 }
 void RB_SolveDoubleRed(struct rb_node* rb_p, struct rb_root* root)
 {
-        pr_info("[solve double red]\n");
+        pr_debug("[solve double red]\n");
         if (RB_ISROOT(rb_p)) {
                 RB_SET_BLACK(rb_p);
                 rb_p->black_height++;
                 return;
         }
         struct rb_node* p = (struct rb_node*)RB_PARENT(rb_p);
-        pr_info("p is 0x%x\n", (u64)p);
+        pr_debug("p is 0x%x\n", (u64)p);
         if (p)
-                pr_info("[RB solvedoublered]%d color %d;parent is %d color %d\n",
+                pr_debug(
+                        "[RB solvedoublered]%d color %d;parent is %d color %d\n",
                         rb_p->id,
                         RB_COLOR(rb_p),
                         p->id,
@@ -121,13 +122,14 @@ void RB_SolveDoubleRed(struct rb_node* rb_p, struct rb_root* root)
 
         struct rb_node* g = (struct rb_node*)RB_PARENT(p);
         struct rb_node* u = (struct rb_node*)RB_UNCLE(rb_p);
-        pr_info("[RB solvedoublered]g is 0x%x u is 0x%x\n", (u64)g, (u64)u);
+        pr_debug("[RB solvedoublered]g is 0x%x u is 0x%x\n", (u64)g, (u64)u);
         if (RB_ISBLACK(u)) {
                 if (RB_ISLCHILD(rb_p) == RB_ISLCHILD(p))
                         RB_SET_BLACK(p);
                 else
                         RB_SET_BLACK(rb_p);
-                pr_info("[RB solvedoublered]%d color %d;parent is %d color %d\n",
+                pr_debug(
+                        "[RB solvedoublered]%d color %d;parent is %d color %d\n",
                         rb_p->id,
                         RB_COLOR(rb_p),
                         p->id,
@@ -135,7 +137,7 @@ void RB_SolveDoubleRed(struct rb_node* rb_p, struct rb_root* root)
                 RB_SET_RED(g);
                 struct rb_node* gg = (struct rb_node*)RB_PARENT(g);
                 struct rb_node* r = rotateAt(rb_p);
-                pr_info("finish rotate\n");
+                pr_debug("finish rotate\n");
                 if (RB_ISROOT(rb_p)) {
                         root->rb_root = r;
                 } else {

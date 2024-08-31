@@ -82,6 +82,10 @@ void printk(const char *format, int log_level, ...);
                 printk(format, LOG_EMERG, ##__VA_ARGS__); \
                 COLOR_SET(0, 0, 0)                        \
         }
+#define pr_off(format, ...) \
+        {                   \
+                ;           \
+        }
 #define print(format, ...) printk(format, LOG_OFF, ##__VA_ARGS__)
 
 #endif
