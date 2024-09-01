@@ -9,7 +9,7 @@
  and it's also an example of the usage of the rb tree*/
 #define max_node_num 256
 #define max_loops    256
-// #define DEBUG
+#define DEBUG
 #ifdef DEBUG
 #define debug pr_debug
 #else
@@ -112,9 +112,10 @@ void rb_tree_test_insert(struct t_node* node, struct rb_root* root)
         rb_link_node(&node->rb, parent, new);
         RB_SolveDoubleRed(&node->rb, root);
 }
-void rb_tree_test_remove()
+void rb_tree_test_remove(struct t_node* node, struct rb_root* root)
 {
         // TODO
+        rb_remove(&node->rb, root);
 }
 void rb_tree_test_init()
 {
@@ -138,14 +139,14 @@ void rb_tree_test(void)
                         // }
                         rb_tree_test_insert(&node_list[j], &t_root);
                 }
-                // pr_info("finish round %d insert\n", i);
+                pr_info("finish round %d insert\n", i);
                 for (int j = max_node_num; j > 0; j--) {
                         debug("====== delete round %d ======\n", j);
                         if (!check(j)) {
                                 pr_error("rb tree test remove error\n");
                                 return;
                         }
-                        rb_tree_test_remove();
+                        rb_tree_test_remove(&node_list[j], &t_root);
                 }
         }
         pr_info("rb tree test succ\n");

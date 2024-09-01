@@ -66,6 +66,6 @@ struct rb_node* rb_next(struct rb_node* rb_p);
 void rb_link_node(struct rb_node* node, struct rb_node* parent,
                   struct rb_node** rb_link);
 void RB_SolveDoubleRed(struct rb_node* rb_p, struct rb_root* root);
-void RB_SolveDoubleBlack(struct rb_node* rb_p, struct rb_node* parent,
-                         struct rb_root* root);
+void RB_SolveDoubleBlack(struct rb_node* rb_p, struct rb_root* root,
+                         struct rb_node* _hot);
 #endif
