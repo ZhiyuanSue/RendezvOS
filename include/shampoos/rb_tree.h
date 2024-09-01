@@ -9,7 +9,6 @@ struct rb_node {
         struct rb_node* left_child;
         struct rb_node* right_child;
         u64 black_height;
-        u64 id; /*for test*/
 };
 __attribute__((aligned(sizeof(u64))))
 
