@@ -7,8 +7,8 @@
 /*besides, unlike the tranditional rb tree,
  the linux rb tree need you to define your own data struct
  and it's also an example of the usage of the rb tree*/
-#define max_node_num 256
-#define max_loops    256
+#define max_node_num 32
+#define max_loops    32
 #define DEBUG
 #ifdef DEBUG
 #define debug pr_debug
@@ -32,7 +32,12 @@ bool check_rb(struct rb_node* node, int* height, int* count, int level)
                 *height = 0;
                 return true;
         }
-        debug("[id] %d with color %d\n", node->id, RB_COLOR(node));
+        debug("[Id:%d] [Color:%d] ", node->id, RB_COLOR(node));
+        if (RB_PARENT(node)) {
+                debug(" [Parent:%d]\n", RB_PARENT(node)->id);
+        } else {
+                debug("\n");
+        }
         int left_height, right_height;
         debug("[L]");
         bool l = check_rb(node->left_child, &left_height, count, level + 1);
@@ -56,6 +61,20 @@ bool check_rb(struct rb_node* node, int* height, int* count, int level)
         if ((RB_COLOR(node) == RB_RED)
             && (!RB_PARENT(node) || RB_COLOR(RB_PARENT(node)) == RB_RED)) {
                 pr_error("double red error\n");
+                return false;
+        }
+        /*check parent*/
+        if (RB_HASLCHILD(node) && RB_PARENT(node->left_child)->id != node->id) {
+                pr_error("wrong parent id [P:%d] [C:%d]\n",
+                         node->id,
+                         node->left_child->id);
+                return false;
+        }
+        if (RB_HASRCHILD(node)
+            && RB_PARENT(node->right_child)->id != node->id) {
+                pr_error("wrong parent id [P:%d] [C:%d]\n",
+                         node->id,
+                         node->right_child->id);
                 return false;
         }
         /*update the height*/
@@ -146,7 +165,7 @@ void rb_tree_test(void)
                                 pr_error("rb tree test remove error\n");
                                 return;
                         }
-                        rb_tree_test_remove(&node_list[j], &t_root);
+                        rb_tree_test_remove(&node_list[j - 1], &t_root);
                 }
         }
         pr_info("rb tree test succ\n");

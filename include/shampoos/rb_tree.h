@@ -16,7 +16,7 @@ __attribute__((aligned(sizeof(u64))))
 struct rb_root {
         struct rb_node* rb_root;
 };
-#define RB_HIGHT(rb_p)   ((rb_p) ? (rb_p)->black_height : -1)
+#define RB_HIGHT(rb_p)   ((rb_p) ? (rb_p)->black_height : 0)
 #define RB_COLOR(rb_p)   ((rb_p)->rb_parent_color & 0x1)
 #define RB_ISBLACK(rb_p) (!(rb_p) || RB_COLOR(rb_p) == RB_BLACK)
 #define RB_ISRED(rb_p)   (!RB_ISBLACK(rb_p))
