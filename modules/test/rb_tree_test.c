@@ -44,12 +44,19 @@ bool check_rb(struct rb_node* node, int* height, int* count, int level)
         debug("[R]");
         bool r = check_rb(node->right_child, &right_height, count, level + 1);
 
+        /*update the height*/
+        (*height) = RB_COLOR(node) ? (left_height + 1) : left_height;
+        (*count)++;
+
         if (!l || !r) {
                 debug("l is %d and r is %d\n", l, r);
                 return false;
         }
 
         /*check height*/
+        // debug("left_height is %d right_height is %d\n",
+        //       left_height,
+        //       right_height);
         if (left_height != right_height) {
                 pr_error("height is unequal,left %d,right %d\n",
                          left_height,
@@ -77,9 +84,6 @@ bool check_rb(struct rb_node* node, int* height, int* count, int level)
                          node->right_child->id);
                 return false;
         }
-        /*update the height*/
-        *height = (RB_COLOR(node) == RB_BLACK) ? (left_height++) : left_height;
-        (*count)++;
         return true;
 }
 bool check(int nr_nodes)
@@ -143,6 +147,8 @@ void rb_tree_test_init()
                 node_list[i].key = ((next / 65536) % 32768);
                 node_list[i].rb.left_child = node_list[i].rb.right_child = NULL;
                 node_list[i].rb.id = i;
+                node_list[i].rb.black_height = 0;
+                node_list[i].rb.rb_parent_color = 0;
         }
         t_root.rb_root = NULL;
 }

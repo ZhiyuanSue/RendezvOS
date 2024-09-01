@@ -190,11 +190,16 @@ static struct rb_node* connect34(struct rb_node* a, struct rb_node* b,
 }
 static struct rb_node* rotateAt(struct rb_node* v)
 {
+        pr_info("rotateAt\n");
         struct rb_node* p = RB_PARENT(v);
+        pr_debug("connect 34 p\n");
         struct rb_node* g = RB_PARENT(p);
+        pr_debug("connect 34 g\n");
         if (RB_ISLCHILD(p)) {
                 if (RB_ISLCHILD(v)) {
+                        pr_debug("connect 34 1\n");
                         RB_SET_PARENT(p, RB_PARENT(g));
+                        pr_debug("connect 34 1\n");
                         return connect34(v,
                                          p,
                                          g,
@@ -203,7 +208,9 @@ static struct rb_node* rotateAt(struct rb_node* v)
                                          p->right_child,
                                          g->right_child);
                 } else {
+                        pr_debug("connect 34 2\n");
                         RB_SET_PARENT(v, RB_PARENT(g));
+                        pr_debug("connect 34 2\n");
                         return connect34(p,
                                          v,
                                          g,
@@ -214,7 +221,9 @@ static struct rb_node* rotateAt(struct rb_node* v)
                 }
         } else {
                 if (RB_ISRCHILD(v)) {
+                        pr_debug("connect 34 3\n");
                         RB_SET_PARENT(p, RB_PARENT(g));
+                        pr_debug("connect 34 3\n");
                         return connect34(g,
                                          p,
                                          v,
@@ -223,7 +232,9 @@ static struct rb_node* rotateAt(struct rb_node* v)
                                          v->left_child,
                                          v->right_child);
                 } else {
+                        pr_debug("connect 34 4\n");
                         RB_SET_PARENT(v, RB_PARENT(g));
+                        pr_debug("connect 34 4\n");
                         return connect34(g,
                                          v,
                                          p,
@@ -339,6 +350,8 @@ void RB_SolveDoubleBlack(struct rb_node* rb_p, struct rb_root* root,
                 struct rb_node* t = RB_ISLCHILD(s) ? s->left_child :
                                                      s->right_child;
                 pr_debug("[double black] 6\n");
+                if (t == NULL)
+                        pr_debug("t is null\n");
                 _hot = p;
                 if (RB_ISROOT(p)) {
                         pr_debug("[double black] root\n");
