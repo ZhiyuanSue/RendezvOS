@@ -7,8 +7,8 @@
 /*besides, unlike the tranditional rb tree,
  the linux rb tree need you to define your own data struct
  and it's also an example of the usage of the rb tree*/
-#define max_node_num 256
-#define max_loops    256
+#define max_node_num 128
+#define max_loops    128
 // #define DEBUG
 #ifdef DEBUG
 #define debug pr_debug
@@ -104,13 +104,12 @@ void rb_tree_test_insert(struct t_node* node, struct rb_root* root)
                 else
                         new = &parent->right_child;
         }
-        rb_link_node(&node->rb, parent, new);
+        RB_Link_Node(&node->rb, parent, new);
         RB_SolveDoubleRed(&node->rb, root);
 }
 void rb_tree_test_remove(struct t_node* node, struct rb_root* root)
 {
-        // TODO
-        rb_remove(&node->rb, root);
+        RB_Remove(&node->rb, root);
 }
 void rb_tree_test_init()
 {
@@ -146,5 +145,5 @@ void rb_tree_test(void)
                         rb_tree_test_remove(&node_list[j - 1], &t_root);
                 }
         }
-        pr_info("rb tree test succ\n");
+        pr_info("[ TEST ] rb tree test succ\n");
 }

@@ -74,7 +74,7 @@ void pmm_test(void)
                 pr_error("alloc boundary error\n");
                 goto pmm_test_error;
         }
-        pr_info("pmm test pass!\n");
+        pr_info("[ TEST ] pmm test pass!\n");
         return;
 pmm_test_error:
         pr_error("pmm test error!\n");

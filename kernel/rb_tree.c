@@ -1,59 +1,19 @@
 #include <shampoos/rb_tree.h>
 #include <common/stddef.h>
 #include <modules/log/log.h>
-u64 update_height(struct rb_node* rb_p)
+static u64 update_height(struct rb_node* rb_p)
 {
         rb_p->black_height =
                 MAX(RB_HIGHT(rb_p->left_child), RB_HIGHT(rb_p->right_child));
         return RB_ISBLACK(rb_p) ? rb_p->black_height++ : rb_p->black_height;
 }
-
-void rb_link_node(struct rb_node* node, struct rb_node* parent,
-                  struct rb_node** rb_link)
-{
-        RB_SET_PARENT(node, parent);
-        node->left_child = node->right_child = NULL;
-        *rb_link = node;
-}
-struct rb_node* rb_prev(struct rb_node* rb_p)
-{
-        if (!rb_p)
-                return NULL;
-        struct rb_node* p = rb_p;
-        if (p->left_child) {
-                p = p->left_child;
-                while (RB_HASRCHILD(p))
-                        p = p->right_child;
-        } else {
-                while (RB_ISLCHILD(p))
-                        p = RB_PARENT(p);
-                p = RB_PARENT(p);
-        }
-        return p;
-}
-struct rb_node* rb_next(struct rb_node* rb_p)
-{
-        if (!rb_p)
-                return NULL;
-        struct rb_node* s = rb_p;
-        if (s->right_child) {
-                s = s->right_child;
-                while (RB_HASLCHILD(s))
-                        s = s->left_child;
-        } else {
-                while (RB_ISRCHILD(s))
-                        s = RB_PARENT(s);
-                s = RB_PARENT(s);
-        }
-        return s;
-}
-struct rb_node* rb_removeAt(struct rb_node* rb_p, struct rb_root* root,
-                            struct rb_node** _hot)
+static struct rb_node* rb_removeAt(struct rb_node* rb_p, struct rb_root* root,
+                                   struct rb_node** _hot)
 {
         struct rb_node* del = rb_p;
         struct rb_node* succ = NULL;
         struct rb_node* parent = RB_PARENT(rb_p);
-        *_hot=parent;
+        *_hot = parent;
         bool color = RB_COLOR(rb_p);
         if (!RB_HASLCHILD(rb_p)) {
                 succ = rb_p->right_child;
@@ -76,7 +36,7 @@ struct rb_node* rb_removeAt(struct rb_node* rb_p, struct rb_root* root,
                                 parent->right_child = succ;
                 }
         } else {
-                del = rb_next(del);
+                del = RB_Next(del);
                 struct rb_node* del_par = RB_PARENT(del);
                 if (del_par == rb_p) {
                         succ = del->right_child;
@@ -84,7 +44,7 @@ struct rb_node* rb_removeAt(struct rb_node* rb_p, struct rb_root* root,
                         del->left_child = rb_p->left_child;
                         RB_SET_PARENT(del->left_child, del);
                 } else {
-                        *_hot=del_par;
+                        *_hot = del_par;
                         del_par->left_child = succ = del->right_child;
                         del->left_child = rb_p->left_child;
                         del->right_child = rb_p->right_child;
@@ -114,30 +74,6 @@ struct rb_node* rb_removeAt(struct rb_node* rb_p, struct rb_root* root,
                 RB_SET_PARENT(succ, (*_hot));
 
         return succ;
-}
-
-void rb_remove(struct rb_node* rb_p, struct rb_root* root)
-{
-        if (!rb_p || !root || !root->rb_root)
-                return;
-        struct rb_node* _hot = NULL;
-        struct rb_node* succ = rb_removeAt(rb_p, root, &_hot);
-        if (!(root->rb_root))
-                return; // empty
-        if (!_hot) // the root is deleted
-        {
-                RB_SET_BLACK(root->rb_root);
-                update_height(root->rb_root);
-                return;
-        }
-        if (RB_HIGHT_UPDATED(_hot))
-                return;
-        if (RB_ISRED(succ)) {
-                RB_SET_BLACK(succ);
-                succ->black_height++;
-                return;
-        }
-        RB_SolveDoubleBlack(succ, root, _hot);
 }
 static struct rb_node* connect34(struct rb_node* a, struct rb_node* b,
                                  struct rb_node* c, struct rb_node* T0,
@@ -214,51 +150,9 @@ static struct rb_node* rotateAt(struct rb_node* v)
                 }
         }
 }
-void RB_SolveDoubleRed(struct rb_node* rb_p, struct rb_root* root)
+static void RB_SolveDoubleBlack(struct rb_node* rb_p, struct rb_root* root,
+                                struct rb_node* _hot)
 {
-        if (RB_ISROOT(rb_p)) {
-                RB_SET_BLACK(rb_p);
-                rb_p->black_height++;
-                return;
-        }
-        struct rb_node* p = (struct rb_node*)RB_PARENT(rb_p);
-        if (RB_ISBLACK(p))
-                return;
-
-        struct rb_node* g = (struct rb_node*)RB_PARENT(p);
-        struct rb_node* u = (struct rb_node*)RB_UNCLE(rb_p);
-        if (RB_ISBLACK(u)) {
-                if (RB_ISLCHILD(rb_p) == RB_ISLCHILD(p))
-                        RB_SET_BLACK(p);
-                else
-                        RB_SET_BLACK(rb_p);
-                RB_SET_RED(g);
-                struct rb_node* gg = (struct rb_node*)RB_PARENT(g);
-                struct rb_node* r = NULL;
-                if (RB_ISROOT(g)) {
-                        root->rb_root = r = rotateAt(rb_p);
-                } else {
-                        if (RB_ISLCHILD(g)) {
-                                gg->left_child = r = rotateAt(rb_p);
-                        } else {
-                                gg->right_child = r = rotateAt(rb_p);
-                        }
-                }
-                RB_SET_PARENT(r, gg);
-        } else {
-                RB_SET_BLACK(p);
-                p->black_height++;
-                RB_SET_BLACK(u);
-                u->black_height++;
-                if (!RB_ISROOT(g))
-                        RB_SET_RED(g);
-                RB_SolveDoubleRed(g, root);
-        }
-}
-void RB_SolveDoubleBlack(struct rb_node* rb_p, struct rb_root* root,
-                         struct rb_node* _hot)
-{
-
         struct rb_node* p = rb_p ? RB_PARENT(rb_p) : _hot;
         if (!p)
                 return;
@@ -321,5 +215,124 @@ void RB_SolveDoubleBlack(struct rb_node* rb_p, struct rb_root* root,
                         }
                 }
                 RB_SolveDoubleBlack(rb_p, root, _hot);
+        }
+}
+
+void RB_Link_Node(struct rb_node* node, struct rb_node* parent,
+                  struct rb_node** rb_link)
+{
+        RB_SET_PARENT(node, parent);
+        node->left_child = node->right_child = NULL;
+        *rb_link = node;
+}
+struct rb_node* RB_Prev(struct rb_node* rb_p)
+{
+        if (!rb_p)
+                return NULL;
+        struct rb_node* p = rb_p;
+        if (p->left_child) {
+                p = p->left_child;
+                while (RB_HASRCHILD(p))
+                        p = p->right_child;
+        } else {
+                while (RB_ISLCHILD(p))
+                        p = RB_PARENT(p);
+                p = RB_PARENT(p);
+        }
+        return p;
+}
+struct rb_node* RB_Next(struct rb_node* rb_p)
+{
+        if (!rb_p)
+                return NULL;
+        struct rb_node* s = rb_p;
+        if (s->right_child) {
+                s = s->right_child;
+                while (RB_HASLCHILD(s))
+                        s = s->left_child;
+        } else {
+                while (RB_ISRCHILD(s))
+                        s = RB_PARENT(s);
+                s = RB_PARENT(s);
+        }
+        return s;
+}
+struct rb_node* RB_First(struct rb_root* root)
+{
+        struct rb_node* first = root->rb_root;
+        while (first)
+                first = first->left_child;
+        return first;
+}
+struct rb_node* RB_Last(struct rb_root* root)
+{
+        struct rb_node* last = root->rb_root;
+        while (last)
+                last = last->right_child;
+        return last;
+}
+
+void RB_Remove(struct rb_node* rb_p, struct rb_root* root)
+{
+        if (!rb_p || !root || !root->rb_root)
+                return;
+        struct rb_node* _hot = NULL;
+        struct rb_node* succ = rb_removeAt(rb_p, root, &_hot);
+        if (!(root->rb_root))
+                return; // empty
+        if (!_hot) // the root is deleted
+        {
+                RB_SET_BLACK(root->rb_root);
+                update_height(root->rb_root);
+                return;
+        }
+        if (RB_HIGHT_UPDATED(_hot))
+                return;
+        if (RB_ISRED(succ)) {
+                RB_SET_BLACK(succ);
+                succ->black_height++;
+                return;
+        }
+        RB_SolveDoubleBlack(succ, root, _hot);
+}
+void RB_SolveDoubleRed(struct rb_node* rb_p, struct rb_root* root)
+{
+        if (RB_ISROOT(rb_p)) {
+                RB_SET_BLACK(rb_p);
+                rb_p->black_height++;
+                return;
+        }
+        struct rb_node* p = (struct rb_node*)RB_PARENT(rb_p);
+        if (RB_ISBLACK(p))
+                return;
+
+        struct rb_node* g = (struct rb_node*)RB_PARENT(p);
+        struct rb_node* u = (struct rb_node*)RB_UNCLE(rb_p);
+        if (RB_ISBLACK(u)) {
+                if (RB_ISLCHILD(rb_p) == RB_ISLCHILD(p))
+                        RB_SET_BLACK(p);
+                else
+                        RB_SET_BLACK(rb_p);
+                RB_SET_RED(g);
+                struct rb_node* gg = (struct rb_node*)RB_PARENT(g);
+                struct rb_node* r = NULL;
+                if (RB_ISROOT(g)) {
+                        root->rb_root = r = rotateAt(rb_p);
+                } else {
+                        if (RB_ISLCHILD(g)) {
+                                gg->left_child = r = rotateAt(rb_p);
+                        } else {
+                                gg->right_child = r = rotateAt(rb_p);
+                        }
+                }
+                RB_SET_PARENT(r, gg);
+        } else {
+                RB_SET_BLACK(p);
+                p->black_height++;
+                RB_SET_BLACK(u);
+                u->black_height++;
+                if (!RB_ISROOT(g))
+                        RB_SET_RED(g);
+                RB_SolveDoubleRed(g, root);
         }
 }

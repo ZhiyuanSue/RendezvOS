@@ -27,7 +27,7 @@ void arch_vmm_test(void)
                 pr_error("vmm entry align error\n");
                 goto arch_vmm_test_error;
         }
-        pr_info("arch vmm test pass!\n");
+        pr_info("[ TEST ] arch vmm test pass!\n");
         return;
 arch_vmm_test_error:
         pr_error("arch vmm test failed\n");

@@ -56,15 +56,13 @@ struct rb_root {
         do {                                                            \
                 (rb_p)->rb_parent_color = RB_COLOR(rb_p) | (u64)parent; \
         } while (0)
-u64 update_height(struct rb_node* rb_p);
 
-void rb_remove(struct rb_node* rb_p, struct rb_root* root);
-void rb_insert(struct rb_node* rb_p);
-struct rb_node* rb_prev(struct rb_node* rb_p);
-struct rb_node* rb_next(struct rb_node* rb_p);
-void rb_link_node(struct rb_node* node, struct rb_node* parent,
+void RB_Remove(struct rb_node* rb_p, struct rb_root* root);
+struct rb_node* RB_Prev(struct rb_node* rb_p);
+struct rb_node* RB_Next(struct rb_node* rb_p);
+struct rb_node* RB_First(struct rb_root* root);
+struct rb_node* RB_Last(struct rb_root* root);
+void RB_Link_Node(struct rb_node* node, struct rb_node* parent,
                   struct rb_node** rb_link);
 void RB_SolveDoubleRed(struct rb_node* rb_p, struct rb_root* root);
-void RB_SolveDoubleBlack(struct rb_node* rb_p, struct rb_root* root,
-                         struct rb_node* _hot);
 #endif
