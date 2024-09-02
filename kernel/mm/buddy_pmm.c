@@ -189,7 +189,6 @@ static void pmm_init_zones(void)
 
 void pmm_init(struct setup_info *arch_setup_info)
 {
-        pr_info("start pmm init\n");
         arch_init_pmm(arch_setup_info);
         pmm_init_zones();
 }
@@ -352,7 +351,7 @@ int pmm_alloc(size_t page_number)
 
         if (buddy_pmm.zone[zone_number].zone_total_avaliable_pages
             < page_number) {
-                pr_error("this zone have no memory to alloc\n");
+                pr_error("[ BUDDY ]this zone have no memory to alloc\n");
                 /*TODO:if so ,we need to swap the memory*/
                 return (-ENOMEM);
         }
@@ -458,7 +457,7 @@ error_t pmm_free(u32 ppn, size_t page_number)
         for (int page_count = 0; page_count < (1 << alloc_order);
              page_count++) {
                 if (ppn_inrange(ppn + page_count, &zone_number) == false) {
-                        pr_error("this ppn is illegal\n");
+                        pr_error("[ BUDDY ]this ppn is illegal\n");
                         return (-ENOMEM);
                 }
 

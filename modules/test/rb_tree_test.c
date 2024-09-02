@@ -9,12 +9,6 @@
  and it's also an example of the usage of the rb tree*/
 #define max_node_num 128
 #define max_loops    128
-// #define DEBUG
-#ifdef DEBUG
-#define debug pr_debug
-#else
-#define debug pr_off
-#endif
 u64 next = 1;
 struct t_node {
         struct rb_node rb;

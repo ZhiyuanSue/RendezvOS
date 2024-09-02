@@ -6,7 +6,6 @@
 extern struct buddy buddy_pmm;
 void pmm_test(void)
 {
-        pr_info("start pmm test\n");
         u32 alloc_ppn[PPN_TEST_CASE_NUM];
 
         for (int i = 0; i < PPN_TEST_CASE_NUM; ++i) {
@@ -15,7 +14,7 @@ void pmm_test(void)
                         pr_error("alloc error\n");
                         goto pmm_test_error;
                 } else
-                        pr_debug("try to get %x pages ,and alloc ppn 0x%x\n",
+                        debug("try to get %x pages ,and alloc ppn 0x%x\n",
                                  i * 2 + 3,
                                  alloc_ppn[i]);
         }
@@ -24,7 +23,7 @@ void pmm_test(void)
                         pr_error("free error\n");
                         goto pmm_test_error;
                 } else
-                        pr_debug("free ppn 0x%x success\n", alloc_ppn[i]);
+                        debug("free ppn 0x%x success\n", alloc_ppn[i]);
         }
         for (int i = 0; i < PPN_TEST_CASE_NUM; ++i) {
                 alloc_ppn[i] = buddy_pmm.pmm_alloc(i * 2 + 3);
@@ -32,14 +31,14 @@ void pmm_test(void)
                         pr_error("alloc error\n");
                         goto pmm_test_error;
                 } else
-                        pr_debug("try to get %x pages ,and alloc ppn 0x%x\n",
+                        debug("try to get %x pages ,and alloc ppn 0x%x\n",
                                  i * 2 + 3,
                                  alloc_ppn[i]);
                 if (buddy_pmm.pmm_free(alloc_ppn[i], i * 2 + 3)) {
                         pr_error("free error\n");
                         goto pmm_test_error;
                 } else
-                        pr_debug("free ppn 0x%x success\n", alloc_ppn[i]);
+                        debug("free ppn 0x%x success\n", alloc_ppn[i]);
         }
         // try to alloc all the memory,then try to alloc will lead to an error
         // if no such an error, the boundary conditions is error
@@ -58,7 +57,7 @@ void pmm_test(void)
                         pr_error("free error\n");
                         goto pmm_test_error;
                 } else
-                        pr_debug("free ppn 0x%x success\n", alloc_ppn[i]);
+                        debug("free ppn 0x%x success\n", alloc_ppn[i]);
         }
         for (int i = 0; i < PPN_TEST_CASE_NUM; ++i) {
                 alloc_ppn[i] = buddy_pmm.pmm_alloc(1);
@@ -66,7 +65,7 @@ void pmm_test(void)
                         pr_error("alloc error\n");
                         goto pmm_test_error;
                 } else
-                        pr_debug("try to get %x pages ,and alloc ppn 0x%x\n",
+                        debug("try to get %x pages ,and alloc ppn 0x%x\n",
                                  1,
                                  alloc_ppn[i]);
         }
