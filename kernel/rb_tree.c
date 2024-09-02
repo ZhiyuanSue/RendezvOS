@@ -1,4 +1,4 @@
-#include <shampoos/rb_tree.h>
+#include <common/dsa/rb_tree.h>
 #include <common/stddef.h>
 #include <modules/log/log.h>
 static u64 update_height(struct rb_node* rb_p)

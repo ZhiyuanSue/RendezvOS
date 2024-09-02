@@ -2,7 +2,7 @@
 #define _SHAMPOOS_LOG_H_
 #include <common/stdarg.h>
 #include <common/types.h>
-#include <shampoos/list.h>
+#include <common/dsa/list.h>
 #define LOG_BUFFER_SIZE        0x10
 #define LOG_BUFFER_SINGLE_SIZE 0x1000
 enum log_level {
