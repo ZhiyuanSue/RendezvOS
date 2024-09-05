@@ -6,7 +6,7 @@
 #include <common/types.h>
 #define MAX_SLUB_SLOTS 10
 
-struct slub {
+struct m_allocator {
         MM_COMMON;
         struct pmm *pmm;
 };

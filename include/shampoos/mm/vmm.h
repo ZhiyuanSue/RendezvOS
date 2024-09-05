@@ -13,7 +13,6 @@
 #else
 #include <arch/x86_64/mm/vmm.h>
 #endif
-#include "vma.h"
 #include <common/dsa/rb_tree.h>
 
 error_t map(paddr vspace_root_paddr, u64 ppn, u64 vpn, int level);
@@ -24,4 +23,16 @@ error_t map(paddr vspace_root_paddr, u64 ppn, u64 vpn, int level);
 struct allocator {
         MM_COMMON;
 };
+
+struct vma_struct {
+        struct mm_struct* mm;
+        struct rb_node vma_rb;
+};
+struct mm_struct{
+        struct rb_root mm_root;
+};
+
+struct mm_struct* create_mm();
+struct vma_struct* create_vma();
+void insert_vma(struct mm_struct* mm,struct vma_struct* vma);
 #endif
