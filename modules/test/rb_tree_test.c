@@ -139,5 +139,5 @@ void rb_tree_test(void)
                         rb_tree_test_remove(&node_list[j - 1], &t_root);
                 }
         }
-        pr_info("[ TEST ] rb tree test succ\n");
+        pr_info("[ TEST ] rb tree test pass!\n");
 }

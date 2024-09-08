@@ -15,8 +15,8 @@ void pmm_test(void)
                         goto pmm_test_error;
                 } else
                         debug("try to get %x pages ,and alloc ppn 0x%x\n",
-                                 i * 2 + 3,
-                                 alloc_ppn[i]);
+                              i * 2 + 3,
+                              alloc_ppn[i]);
         }
         for (int i = 0; i < PPN_TEST_CASE_NUM; ++i) {
                 if (buddy_pmm.pmm_free(alloc_ppn[i], i * 2 + 3)) {
@@ -32,8 +32,8 @@ void pmm_test(void)
                         goto pmm_test_error;
                 } else
                         debug("try to get %x pages ,and alloc ppn 0x%x\n",
-                                 i * 2 + 3,
-                                 alloc_ppn[i]);
+                              i * 2 + 3,
+                              alloc_ppn[i]);
                 if (buddy_pmm.pmm_free(alloc_ppn[i], i * 2 + 3)) {
                         pr_error("free error\n");
                         goto pmm_test_error;
@@ -66,8 +66,8 @@ void pmm_test(void)
                         goto pmm_test_error;
                 } else
                         debug("try to get %x pages ,and alloc ppn 0x%x\n",
-                                 1,
-                                 alloc_ppn[i]);
+                              1,
+                              alloc_ppn[i]);
         }
         if (buddy_pmm.pmm_alloc(1) != -ENOMEM) {
                 pr_error("alloc boundary error\n");
