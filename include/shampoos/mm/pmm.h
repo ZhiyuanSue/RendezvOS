@@ -37,9 +37,11 @@ struct memory_regions {
 
 #define PPN(addr) (addr >> 12)
 
-#define PMM_COMMON                                             \
-        void (*pmm_init)(struct setup_info * arch_setup_info); \
-        int (*pmm_alloc)(size_t page_number);                  \
+enum zone_type { ZONE_NORMAL, ZONE_NR_MAX };
+
+#define PMM_COMMON                                                        \
+        void (*pmm_init)(struct setup_info * arch_setup_info);            \
+        int (*pmm_alloc)(size_t page_number, enum zone_type zone_number); \
         error_t (*pmm_free)(u32 ppn, size_t page_number)
 
 struct pmm {

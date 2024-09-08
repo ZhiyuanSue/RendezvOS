@@ -1,5 +1,4 @@
 #include <arch/x86_64/boot/arch_setup.h>
-#include <arch/x86_64/mm/page_table.h>
 #include <arch/x86_64/mm/vmm.h>
 #include <arch/x86_64/power_ctrl.h>
 #include <modules/log/log.h>

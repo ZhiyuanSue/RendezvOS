@@ -1,4 +1,3 @@
-#include <arch/x86_64/mm/page_table.h>
 #include <arch/x86_64/mm/page_table_def.h>
 #include <arch/x86_64/mm/vmm.h>
 

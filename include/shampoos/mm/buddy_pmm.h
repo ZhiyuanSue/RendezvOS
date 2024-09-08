@@ -34,8 +34,6 @@ struct buddy_zone {
         struct page_frame *zone_head_frame[BUDDY_MAXORDER + 1];
 };
 
-enum zone_type { ZONE_NORMAL, ZONE_NR_MAX };
-
 struct buddy {
         PMM_COMMON;
         struct memory_regions *m_regions;

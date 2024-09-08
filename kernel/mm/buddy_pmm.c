@@ -338,12 +338,10 @@ int pmm_alloc_zone(int alloc_order, int zone_number)
 
         return (PPN_FROM_IDX(alloc_order, index));
 }
-int pmm_alloc(size_t page_number)
+int pmm_alloc(size_t page_number, enum zone_type zone_number)
 {
-        int zone_number;
         int alloc_order;
 
-        zone_number = ZONE_NORMAL;
         alloc_order = 0;
         /*have we used too many physical memory*/
         if (page_number < 0)

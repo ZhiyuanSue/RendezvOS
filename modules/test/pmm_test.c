@@ -9,7 +9,7 @@ void pmm_test(void)
         u32 alloc_ppn[PPN_TEST_CASE_NUM];
 
         for (int i = 0; i < PPN_TEST_CASE_NUM; ++i) {
-                alloc_ppn[i] = buddy_pmm.pmm_alloc(i * 2 + 3);
+                alloc_ppn[i] = buddy_pmm.pmm_alloc(i * 2 + 3, ZONE_NORMAL);
                 if (alloc_ppn[i] == -ENOMEM) {
                         pr_error("alloc error\n");
                         goto pmm_test_error;
@@ -26,7 +26,7 @@ void pmm_test(void)
                         debug("free ppn 0x%x success\n", alloc_ppn[i]);
         }
         for (int i = 0; i < PPN_TEST_CASE_NUM; ++i) {
-                alloc_ppn[i] = buddy_pmm.pmm_alloc(i * 2 + 3);
+                alloc_ppn[i] = buddy_pmm.pmm_alloc(i * 2 + 3, ZONE_NORMAL);
                 if (alloc_ppn[i] == -ENOMEM) {
                         pr_error("alloc error\n");
                         goto pmm_test_error;
@@ -44,9 +44,10 @@ void pmm_test(void)
         // if no such an error, the boundary conditions is error
         while (buddy_pmm.zone->zone_total_avaliable_pages) {
                 alloc_ppn[buddy_pmm.zone->zone_total_avaliable_pages
-                          % PPN_TEST_CASE_NUM] = buddy_pmm.pmm_alloc(1);
+                          % PPN_TEST_CASE_NUM] =
+                        buddy_pmm.pmm_alloc(1, ZONE_NORMAL);
         }
-        if (buddy_pmm.pmm_alloc(1) != -ENOMEM) {
+        if (buddy_pmm.pmm_alloc(1, ZONE_NORMAL) != -ENOMEM) {
                 pr_error("alloc boundary error\n");
                 goto pmm_test_error;
         }
@@ -60,7 +61,7 @@ void pmm_test(void)
                         debug("free ppn 0x%x success\n", alloc_ppn[i]);
         }
         for (int i = 0; i < PPN_TEST_CASE_NUM; ++i) {
-                alloc_ppn[i] = buddy_pmm.pmm_alloc(1);
+                alloc_ppn[i] = buddy_pmm.pmm_alloc(1, ZONE_NORMAL);
                 if (alloc_ppn[i] == -ENOMEM) {
                         pr_error("alloc error\n");
                         goto pmm_test_error;
@@ -69,7 +70,7 @@ void pmm_test(void)
                               1,
                               alloc_ppn[i]);
         }
-        if (buddy_pmm.pmm_alloc(1) != -ENOMEM) {
+        if (buddy_pmm.pmm_alloc(1, ZONE_NORMAL) != -ENOMEM) {
                 pr_error("alloc boundary error\n");
                 goto pmm_test_error;
         }
