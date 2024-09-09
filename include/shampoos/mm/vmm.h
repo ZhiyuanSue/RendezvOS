@@ -14,7 +14,7 @@
 #include <arch/x86_64/mm/vmm.h>
 #endif
 #include <common/dsa/rb_tree.h>
-
+/*kernel might try to mapping one page to a different vspace*/
 error_t map(paddr vspace_root_paddr, u64 ppn, u64 vpn, int level);
 #define MM_COMMON                       \
         void (*init)(struct pmm * pmm); \
