@@ -4,30 +4,30 @@
 void inline arch_set_L0_entry(paddr ppn, vaddr vpn, union L0_entry *pt_addr,
                               u64 flags)
 {
-        pt_addr[(vpn << 16) >> 55].entry = (ppn & PT_DESC_ADDR_MASK) | flags;
+        pt_addr[L0_INDEX(vpn)].entry = (ppn & PT_DESC_ADDR_MASK) | flags;
 }
 void inline arch_set_L1_entry(paddr ppn, vaddr vpn, union L1_entry *pt_addr,
                               u64 flags)
 {
-        pt_addr[(vpn << 25) >> 55].entry = (ppn & PT_DESC_ADDR_MASK) | flags;
+        pt_addr[L1_INDEX(vpn)].entry = (ppn & PT_DESC_ADDR_MASK) | flags;
 }
 void inline arch_set_L1_entry_huge(paddr ppn, vaddr vpn,
                                    union L1_entry_huge *pt_addr, u64 flags)
 {
-        pt_addr[(vpn << 25) >> 55].entry = (ppn & PT_DESC_ADDR_MASK) | flags;
+        pt_addr[L1_INDEX(vpn)].entry = (ppn & PT_DESC_ADDR_MASK) | flags;
 }
 void inline arch_set_L2_entry(paddr ppn, vaddr vpn, union L2_entry *pt_addr,
                               u64 flags)
 {
-        pt_addr[(vpn << 34) >> 55].entry = (ppn & PT_DESC_ADDR_MASK) | flags;
+        pt_addr[L2_INDEX(vpn)].entry = (ppn & PT_DESC_ADDR_MASK) | flags;
 }
 void inline arch_set_L2_entry_huge(paddr ppn, vaddr vpn,
                                    union L2_entry_huge *pt_addr, u64 flags)
 {
-        pt_addr[(vpn << 34) >> 55].entry = (ppn & PT_DESC_ADDR_MASK) | flags;
+        pt_addr[L2_INDEX(vpn)].entry = (ppn & PT_DESC_ADDR_MASK) | flags;
 }
 void inline arch_set_L3_entry(paddr ppn, vaddr vpn, union L3_entry *pt_addr,
                               u64 flags)
 {
-        pt_addr[(vpn << 43) >> 55].entry = (ppn & PT_DESC_ADDR_MASK) | flags;
+        pt_addr[L3_INDEX(vpn)].entry = (ppn & PT_DESC_ADDR_MASK) | flags;
 }

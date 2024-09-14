@@ -195,6 +195,7 @@ tmp_gdt_desc:
 /**/
 	.section .boot.page
 	.p2align 12
+	.global L0_table
 L0_table:
 	/*
 		PML4_entry reference a pdpt 

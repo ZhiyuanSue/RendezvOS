@@ -3,11 +3,11 @@
 #include "page_table_def.h"
 #include <common/types.h>
 
-#define mask_9_bit 0x1ff
-#define PML4(addr) ((addr >> 39) & mask_9_bit)
-#define PDPT(addr) ((addr >> 30) & mask_9_bit)
-#define PDT(addr)  ((addr >> 21) & mask_9_bit)
-#define PT(addr)   ((addr >> 12) & mask_9_bit)
+#define mask_9_bit     0x1ff
+#define L0_INDEX(addr) ((addr >> 39) & mask_9_bit)
+#define L1_INDEX(addr) ((addr >> 30) & mask_9_bit)
+#define L2_INDEX(addr) ((addr >> 21) & mask_9_bit)
+#define L3_INDEX(addr) ((addr >> 12) & mask_9_bit)
 
 /*some bit of cr3*/
 #define CR3_PWT           (1 << 3)
