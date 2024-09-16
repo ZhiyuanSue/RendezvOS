@@ -114,7 +114,6 @@ prepare_page_table:
 	adr	x2,#L0_table
 	mov	x3,#PT_DESC_V
 	orr	x3,x3,#PT_DESC_BLOCK_OR_TABLE
-	orr	x3,x3,#PT_DESC_ATTR_LOWER_AF
 	bl	arch_set_L0_entry
 
 	/*======L1======*/
@@ -124,7 +123,6 @@ prepare_page_table:
 	adr	x2,#L1_table
 	mov	x3,#PT_DESC_V
 	orr	x3,x3,#PT_DESC_BLOCK_OR_TABLE
-	orr	x3,x3,#PT_DESC_ATTR_LOWER_AF
 	bl	arch_set_L1_entry
 
 	/*======loop and add entries into the L2 block======*/

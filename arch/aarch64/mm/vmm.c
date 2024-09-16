@@ -100,7 +100,7 @@ u64 arch_decode_flags(int entry_level, u64 ENTRY_FLAGS)
         } else {
                 ARCH_PFLAGS = set_mask(ARCH_PFLAGS, MEM_ATTR_NORMAL);
         }
-        if (ENTRY_FLAGS & PAGE_ENTRY_HUGE) {
+        if (!(ENTRY_FLAGS & PAGE_ENTRY_HUGE)) {
                 switch (entry_level) {
                 case 1:
                         ARCH_PFLAGS =
