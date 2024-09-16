@@ -26,6 +26,8 @@ enum ENTRY_FLAGS {
         PAGE_ENTRY_HUGE = 1 << 8,
 
 };
+typedef u64 ENTRY_FLAGS_t;
+typedef u64 ARCH_PFLAGS_T;
 /*
     here we call the common flags entry flags
     and the flags in arch as page flags(pflags)
