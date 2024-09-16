@@ -5,44 +5,46 @@
 
 u32 max_phy_addr_width;
 void inline arch_set_L0_entry(paddr ppn, vaddr vpn, union L0_entry *pt_addr,
-                              u64 flags)
+                              ARCH_PFLAGS_T flags)
 {
         pt_addr[L0_INDEX(vpn)].entry = PML4E_ADDR(ppn, max_phy_addr_width)
                                        | flags;
 }
 void inline arch_set_L1_entry(paddr ppn, vaddr vpn, union L1_entry *pt_addr,
-                              u64 flags)
+                              ARCH_PFLAGS_T flags)
 {
         pt_addr[L1_INDEX(vpn)].entry = PDPTE_ADDR(ppn, max_phy_addr_width)
                                        | flags;
 }
 void inline arch_set_L1_entry_huge(paddr ppn, vaddr vpn,
-                                   union L1_entry_huge *pt_addr, u64 flags)
+                                   union L1_entry_huge *pt_addr,
+                                   ARCH_PFLAGS_T flags)
 {
         pt_addr[L1_INDEX(vpn)].entry = PDPTE_ADDR_1G(ppn, max_phy_addr_width)
                                        | flags;
 }
 void inline arch_set_L2_entry(paddr ppn, vaddr vpn, union L2_entry *pt_addr,
-                              u64 flags)
+                              ARCH_PFLAGS_T flags)
 {
         pt_addr[L2_INDEX(vpn)].entry = PDE_ADDR(ppn, max_phy_addr_width)
                                        | flags;
 }
 void inline arch_set_L2_entry_huge(paddr ppn, vaddr vpn,
-                                   union L2_entry_huge *pt_addr, u64 flags)
+                                   union L2_entry_huge *pt_addr,
+                                   ARCH_PFLAGS_T flags)
 {
         pt_addr[L2_INDEX(vpn)].entry = PDE_ADDR_2M(ppn, max_phy_addr_width)
                                        | flags;
 }
 void inline arch_set_L3_entry(paddr ppn, vaddr vpn, union L3_entry *pt_addr,
-                              u64 flags)
+                              ARCH_PFLAGS_T flags)
 {
         pt_addr[L3_INDEX(vpn)].entry = PTE_ADDR(ppn, max_phy_addr_width)
                                        | flags;
 }
-u64 arch_decode_flags(int entry_level, u64 ENTRY_FLAGS)
+ARCH_PFLAGS_T arch_decode_flags(int entry_level, ENTRY_FLAGS_t ENTRY_FLAGS)
 {
-        u64 ARCH_PFLAGS = 0;
+        ENTRY_FLAGS_t ARCH_PFLAGS = 0;
         if (ENTRY_FLAGS & PAGE_ENTRY_VALID) {
                 switch (entry_level) {
                 case 0:
@@ -172,9 +174,9 @@ u64 arch_decode_flags(int entry_level, u64 ENTRY_FLAGS)
         }
         return ARCH_PFLAGS;
 }
-u64 arch_encode_flags(int entry_level, u64 ARCH_PFLAGS)
+ENTRY_FLAGS_t arch_encode_flags(int entry_level, ARCH_PFLAGS_T ARCH_PFLAGS)
 {
-        u64 ENTRY_FLAGS = 0;
+        ENTRY_FLAGS_t ENTRY_FLAGS = 0;
         if (ARCH_PFLAGS & PML4E_P || ARCH_PFLAGS & PDPTE_P
             || ARCH_PFLAGS & PDE_P || ARCH_PFLAGS & PTE_P) {
                 ENTRY_FLAGS = set_mask(ENTRY_FLAGS, PAGE_ENTRY_VALID);
