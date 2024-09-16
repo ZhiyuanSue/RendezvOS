@@ -3,6 +3,7 @@
 #include <arch/aarch64/mm/vmm.h>
 #include <common/mm.h>
 #include <common/bit.h>
+#include <common/stdbool.h>
 
 void inline arch_set_L0_entry(paddr ppn, vaddr vpn, union L0_entry *pt_addr,
                               u64 flags)
@@ -34,7 +35,7 @@ void inline arch_set_L3_entry(paddr ppn, vaddr vpn, union L3_entry *pt_addr,
 {
         pt_addr[L3_INDEX(vpn)].entry = (ppn & PT_DESC_ADDR_MASK) | flags;
 }
-u64 mair_init()
+void mair_init()
 {
         /*we use the mair register to indicate the memory attr,so we need init
          * it*/
@@ -56,19 +57,41 @@ u64 mair_init()
         }
         asm volatile("msr mair_el1, %0;" : : "r"(mair_reg_val));
 }
+static bool is_page_or_block(int entry_level, u64 ENTRY_FLAGS)
+{
+        return ((ENTRY_FLAGS & PAGE_ENTRY_HUGE)
+                && (entry_level == 1 || entry_level == 2))
+               || (entry_level == 3);
+}
 u64 arch_decode_flags(int entry_level, u64 ENTRY_FLAGS)
 {
-        u64 ARCH_PFLAGS;
-        ARCH_PFLAGS = set_mask(ARCH_PFLAGS, PT_DESC_ATTR_LOWER_AF);
-        if (ENTRY_FLAGS & PAGE_ENTRY_WRITE) {
-        }
+        u64 ARCH_PFLAGS = 0;
+        if (is_page_or_block(entry_level, ENTRY_FLAGS))
+                ARCH_PFLAGS = set_mask(ARCH_PFLAGS, PT_DESC_ATTR_LOWER_AF);
+
         if (ENTRY_FLAGS & PAGE_ENTRY_READ) {
                 ARCH_PFLAGS = set_mask(ARCH_PFLAGS, PT_DESC_V);
         }
-        if (ENTRY_FLAGS & PAGE_ENTRY_EXEC) {
+        if (!(ENTRY_FLAGS & PAGE_ENTRY_WRITE)) {
+                if (is_page_or_block(entry_level, ENTRY_FLAGS))
+                        ARCH_PFLAGS =
+                                set_mask(ARCH_PFLAGS, PT_DESC_ATTR_LOWER_AP_RO);
         }
         if (ENTRY_FLAGS & PAGE_ENTRY_USER) {
+                if (is_page_or_block(entry_level, ENTRY_FLAGS))
+                        ARCH_PFLAGS = set_mask(ARCH_PFLAGS,
+                                               PT_DESC_ATTR_LOWER_AP_EL0);
+                ARCH_PFLAGS = set_mask(ARCH_PFLAGS, PT_DESC_ATTR_UPPER_PXN);
+                if (!(ENTRY_FLAGS & PAGE_ENTRY_EXEC)) {
+                        ARCH_PFLAGS =
+                                set_mask(ARCH_PFLAGS, PT_DESC_ATTR_UPPER_XN);
+                }
         } else {
+                ARCH_PFLAGS = set_mask(ARCH_PFLAGS, PT_DESC_ATTR_UPPER_XN);
+                if (!(ENTRY_FLAGS & PAGE_ENTRY_EXEC)) {
+                        ARCH_PFLAGS =
+                                set_mask(ARCH_PFLAGS, PT_DESC_ATTR_UPPER_PXN);
+                }
         }
         if (ENTRY_FLAGS & PAGE_ENTRY_UNCACHED) {
                 ARCH_PFLAGS = set_mask(ARCH_PFLAGS, MEM_ATTR_UNCACHED);
@@ -92,10 +115,38 @@ u64 arch_decode_flags(int entry_level, u64 ENTRY_FLAGS)
                 }
         }
         if (!(ENTRY_FLAGS & PAGE_ENTRY_GLOBAL)) {
-                ARCH_PFLAGS = set_mask(ARCH_PFLAGS, PT_DESC_ATTR_LOWER_NG);
+                if (is_page_or_block(entry_level, ENTRY_FLAGS))
+                        ARCH_PFLAGS =
+                                set_mask(ARCH_PFLAGS, PT_DESC_ATTR_LOWER_NG);
         }
         return ARCH_PFLAGS;
 }
 u64 arch_encode_flags(int entry_level, u64 ARCH_PFLAGS)
 {
+        u64 ENTRY_FLAGS = 0;
+        if (!(ARCH_PFLAGS & PT_DESC_V))
+                return ENTRY_FLAGS;
+        ENTRY_FLAGS = PAGE_ENTRY_READ | PAGE_ENTRY_VALID;
+        if ((ARCH_PFLAGS & PT_DESC_ATTR_LOWER_AF)
+            && (entry_level == 1 || entry_level == 2))
+                ENTRY_FLAGS = set_mask(ENTRY_FLAGS, PAGE_ENTRY_HUGE);
+        if (!(ARCH_PFLAGS & PT_DESC_ATTR_LOWER_AP_RO))
+                ENTRY_FLAGS = set_mask(ENTRY_FLAGS, PAGE_ENTRY_WRITE);
+        if (ARCH_PFLAGS & PT_DESC_ATTR_LOWER_AP_EL0) {
+                ENTRY_FLAGS = set_mask(ENTRY_FLAGS, PAGE_ENTRY_USER);
+                if (!(ARCH_PFLAGS & PT_DESC_ATTR_UPPER_XN))
+                        ENTRY_FLAGS = set_mask(ENTRY_FLAGS, PAGE_ENTRY_EXEC);
+        } else if (!(ARCH_PFLAGS & PT_DESC_ATTR_UPPER_PXN))
+                ENTRY_FLAGS = set_mask(ENTRY_FLAGS, PAGE_ENTRY_EXEC);
+
+        u64 mem_attr = ARCH_PFLAGS & PT_DESC_ATTR_LOWER_ATTRINDX_MASK;
+        if (mem_attr == MEM_ATTR_DEVICE)
+                ENTRY_FLAGS = set_mask(ENTRY_FLAGS, PAGE_ENTRY_DEVICE);
+        else if (mem_attr == MEM_ATTR_UNCACHED)
+                ENTRY_FLAGS = set_mask(ENTRY_FLAGS, PAGE_ENTRY_UNCACHED);
+
+        if (((ENTRY_FLAGS & PAGE_ENTRY_HUGE) || entry_level == 3)
+            && (ENTRY_FLAGS & PT_DESC_ATTR_LOWER_NG))
+                ENTRY_FLAGS = set_mask(ENTRY_FLAGS, PAGE_ENTRY_GLOBAL);
+        return ENTRY_FLAGS;
 }
