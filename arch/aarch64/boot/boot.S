@@ -33,6 +33,8 @@ _entry:
 	bl	drop_to_el1
 	bl	sel_stack
 	bl	set_stack
+	/*set mair for paging*/
+	bl  mair_init
 	/*prepare some page table*/
 	bl	prepare_page_table
 finish_prepare_page_table:
@@ -208,6 +210,8 @@ set_tcr_ips_end:
 	orr x2,x2,#TCR_EL1_SH0_INNER_SHARED_CACHE
 	orr x2,x2,#TCR_EL1_ORGN0_WB_RA_WA_CACHE
 	orr x2,x2,#TCR_EL1_IRGN0_WB_RA_WA_CACHE
+	orr x2,x2,#TCR_EL1_HA
+	orr x2,x2,#TCR_EL1_HD
 	mov x4,#0x10
 	orr x2,x2,x4
 

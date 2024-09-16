@@ -62,6 +62,9 @@
 #define TCR_EL1_TBI0_IGN  (1 << 37)
 #define TCR_EL1_TBI0_USED 0
 
+#define TCR_EL1_HA (1 << 39)
+#define TCR_EL1_HD (1 << 40)
+
 #define TCR_EL1_AS (1 << 36)
 
 #define TCR_EL1_EPD1_ENABLE_WALK  0
@@ -76,7 +79,18 @@
 #define ID_AA64MMFR0_EL1_PARANGE_MASK (0xf)
 
 /*MAIR*/
-
+#define MAIR_EL1_NR     (8)
+#define MAIR_EL1_ATTR_0 (0b00000000) /*nGnRnE Device memory*/
+/*for normal memory, use alloc(1)*/
+#define MAIR_EL1_ATTR_1                                                \
+        (0b11111111) /*Normal,inner and outer write back ,r/w allocate \
+                        non-transient*/
+#define MAIR_EL1_ATTR_2 (0b01000100) /*Normal,inner and outer non-cacheable*/
+#define MAIR_EL1_ATTR_3 (0)
+#define MAIR_EL1_ATTR_4 (0)
+#define MAIR_EL1_ATTR_5 (0)
+#define MAIR_EL1_ATTR_6 (0)
+#define MAIR_EL1_ATTR_7 (0)
 /*SPSel*/
 #define SPSEL_SP_ELx (1)
 

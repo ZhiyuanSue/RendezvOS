@@ -30,6 +30,7 @@
 #define PT_DESC_ATTR_LOWER_AP_MASK       (0xC0)
 #define PT_DESC_ATTR_LOWER_NS            (1ULL << 5)
 #define PT_DESC_ATTR_LOWER_ATTRINDX_MASK (0x1C)
+#define PT_DESC_ATTR_LOWER_ATTRINDX_OFF  (2)
 /*upper*/
 #define PT_DESC_ATTR_UPPER_XN   (1ULL << 54)
 #define PT_DESC_ATTR_UPPER_PXN  (1ULL << 53)
