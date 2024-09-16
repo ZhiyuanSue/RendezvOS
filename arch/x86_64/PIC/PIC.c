@@ -1,7 +1,7 @@
 #include <arch/x86_64/PIC/PIC.h>
 #include <arch/x86_64/io.h>
 #include <arch/x86_64/io_port.h>
-#include <shampoos/bit.h>
+#include <common/bit.h>
 #include <shampoos/error.h>
 
 u8 _8259A_IMR_MASTER_, _8259A_IMR_SLAVE_;

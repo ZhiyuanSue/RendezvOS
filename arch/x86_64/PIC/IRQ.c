@@ -3,7 +3,7 @@
 #include <arch/x86_64/msr.h>
 #include <arch/x86_64/sys_ctrl.h>
 #include <modules/log/log.h>
-#include <shampoos/bit.h>
+#include <common/bit.h>
 
 extern struct cpuinfo_x86 cpuinfo;
 int arch_irq_type = NO_IRQ;

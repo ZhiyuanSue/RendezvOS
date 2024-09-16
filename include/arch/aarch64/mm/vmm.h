@@ -120,4 +120,9 @@ void arch_set_L2_entry_huge(paddr ppn, vaddr vpn, union L2_entry_huge *pt_addr,
                             u64 flags);
 void arch_set_L3_entry(paddr ppn, vaddr vpn, union L3_entry *pt_addr,
                        u64 flags);
+/*use those functions to set page entry flags for every page entry*/
+u64 arch_decode_flags(int entry_level, u64 ENTRY_FLAGS);
+u64 arch_encode_flags(int entry_level, u64 ARCH_PFLAGS);
+u64 arch_enable_pflags(int entry_level, u64 flags);
+u64 arch_disable_pflags(int entry_level, u64 flags);
 #endif
