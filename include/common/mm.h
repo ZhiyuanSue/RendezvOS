@@ -15,12 +15,16 @@
 #define ALIGNED(x, align) ((x & (align - 1)) == 0)
 
 enum ENTRY_FLAGS {
-        PAGE_ENTRY_WRITE = 1 << 0,
-        PAGE_ENTRY_READ = 1 << 1,
-        PAGE_ENTRY_EXEC = 1 << 2,
-        PAGE_ENTRY_USER = 1 << 3,
-        PAGE_ENTRY_DEVICE = 1 << 4,
-        PAGE_ENTRY_UNCACHED = 1 << 5,
+        PAGE_ENTRY_VALID = 1 << 0,
+        PAGE_ENTRY_WRITE = 1 << 1,
+        PAGE_ENTRY_READ = 1 << 2,
+        PAGE_ENTRY_EXEC = 1 << 3,
+        PAGE_ENTRY_USER = 1 << 4,
+        PAGE_ENTRY_DEVICE = 1 << 5,
+        PAGE_ENTRY_UNCACHED = 1 << 6,
+        PAGE_ENTRY_GLOBAL = 1 << 7,
+        PAGE_ENTRY_HUGE = 1 << 8,
+
 };
 /*
     here we call the common flags entry flags
