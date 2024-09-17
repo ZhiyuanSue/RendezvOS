@@ -36,7 +36,8 @@ ENTRY_FLAGS_t arch_encode_flags(int entry_level, ARCH_PFLAGS_t ARCH_PFLAGS);
 */
 void init_map();
 /*kernel might try to mapping one page to a different vspace*/
-error_t map(paddr vspace_root_paddr, u64 ppn, u64 vpn, int level);
+error_t map(paddr* vspace_root_paddr, u64 ppn, u64 vpn, int level,
+            struct pmm pmm);
 #define MM_COMMON                       \
         void (*init)(struct pmm * pmm); \
         void* (*m_alloc)(size_t Bytes); \
