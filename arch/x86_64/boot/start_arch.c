@@ -9,6 +9,7 @@
 #include <modules/driver/timer/8254.h>
 #include <modules/log/log.h>
 #include <shampoos/error.h>
+#include <shampoos/mm/vmm.h>
 
 extern u32 max_phy_addr_width;
 struct cpuinfo_x86 cpuinfo;

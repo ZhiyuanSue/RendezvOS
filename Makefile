@@ -28,7 +28,7 @@ ifeq ($(DBG), true)
 	CFLAGS	+= -g
 	CFLAGS	+= --verbose
 endif
-CFLAGS	+= -Wall -O3 -nostdlib -nostdinc
+CFLAGS	+= -Wall -Os -nostdlib -nostdinc
 CFLAGS	+= -fno-stack-protector
 CFLAGS	+=	-I $(INCLUDE_DIR)
 

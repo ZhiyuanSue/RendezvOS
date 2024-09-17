@@ -32,17 +32,26 @@ void arch_vmm_test(void)
                 pr_error("vmm entry align error\n");
                 goto arch_vmm_test_error;
         }
-		pr_info("[ TEST ] vmm:arch vmm test pass!\n");
+        pr_info("[ TEST ] vmm:arch vmm test pass!\n");
 
-		/*TEST:memset the map l3 table to 0*/
-		u32 ppn=buddy_pmm.pmm_alloc(1,ZONE_NORMAL);
-		paddr page_paddr = ppn << 12;
-		vaddr page_vaddr = map_pages;
-		ENTRY_FLAGS_t flags = arch_decode_flags(3,PAGE_ENTRY_READ|PAGE_ENTRY_VALID|PAGE_ENTRY_WRITE);
-		arch_set_L3_entry(page_paddr,map_pages,(union L3_entry*)&MAP_L3_table,flags);
-		memset((void *)map_pages,0,PAGE_SIZE);
-		pr_info("[ TEST ] vmm:init map system success\n");
-        
+        /*TEST:memset the map l3 table to 0*/
+        u32 ppn = buddy_pmm.pmm_alloc(1, ZONE_NORMAL);
+        paddr page_paddr = ppn << 12;
+        vaddr page_vaddr = map_pages;
+        ENTRY_FLAGS_t flags = arch_decode_flags(
+                3, PAGE_ENTRY_READ | PAGE_ENTRY_VALID | PAGE_ENTRY_WRITE);
+
+        arch_set_L3_entry(
+                page_paddr, map_pages, (union L3_entry *)&MAP_L3_table, flags);
+		u64 tmp_test=*((u64 *)map_pages);
+		*((u64 *)map_pages) = tmp_test+1;
+		if(*((u64 *)map_pages)!=tmp_test+1)
+			pr_error("[ TEST ] error write in during init map test\n");
+        memset((char *)map_pages, 0, PAGE_SIZE);
+		if(*((u64 *)map_pages))
+			pr_error("[ TEST ] error memset in during init map test\n");
+        pr_info("[ TEST ] vmm:init map system success\n");
+
         return;
 arch_vmm_test_error:
         pr_error("arch vmm test failed\n");

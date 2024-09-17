@@ -68,7 +68,7 @@ ARCH_PFLAGS_t arch_decode_flags(int entry_level, ENTRY_FLAGS_t ENTRY_FLAGS)
                         ARCH_PFLAGS =
                                 set_mask(ARCH_PFLAGS, PT_DESC_ATTR_LOWER_AP_RO);
         }
-		
+
         if (ENTRY_FLAGS & PAGE_ENTRY_USER) {
                 if (is_page_or_block(entry_level, ENTRY_FLAGS))
                         ARCH_PFLAGS = set_mask(ARCH_PFLAGS,
@@ -94,6 +94,10 @@ ARCH_PFLAGS_t arch_decode_flags(int entry_level, ENTRY_FLAGS_t ENTRY_FLAGS)
         }
         if (!(ENTRY_FLAGS & PAGE_ENTRY_HUGE)) {
                 switch (entry_level) {
+                case 0:
+                        ARCH_PFLAGS =
+                                set_mask(ARCH_PFLAGS, PT_DESC_BLOCK_OR_TABLE);
+                        break;
                 case 1:
                         ARCH_PFLAGS =
                                 set_mask(ARCH_PFLAGS, PT_DESC_BLOCK_OR_TABLE);
@@ -102,9 +106,9 @@ ARCH_PFLAGS_t arch_decode_flags(int entry_level, ENTRY_FLAGS_t ENTRY_FLAGS)
                         ARCH_PFLAGS =
                                 set_mask(ARCH_PFLAGS, PT_DESC_BLOCK_OR_TABLE);
                         break;
-				case 3:
-						ARCH_PFLAGS = set_mask(ARCH_PFLAGS,PT_DESC_PAGE);
-						break;
+                case 3:
+                        ARCH_PFLAGS = set_mask(ARCH_PFLAGS, PT_DESC_PAGE);
+                        break;
                 default:
                         break;
                 }
