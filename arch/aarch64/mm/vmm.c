@@ -4,36 +4,25 @@
 #include <common/mm.h>
 #include <common/bit.h>
 #include <common/stdbool.h>
+#include <shampoos/mm/vmm.h>
 
 void inline arch_set_L0_entry(paddr ppn, vaddr vpn, union L0_entry *pt_addr,
-                              ARCH_PFLAGS_T flags)
+                              ARCH_PFLAGS_t flags)
 {
         pt_addr[L0_INDEX(vpn)].entry = (ppn & PT_DESC_ADDR_MASK) | flags;
 }
 void inline arch_set_L1_entry(paddr ppn, vaddr vpn, union L1_entry *pt_addr,
-                              ARCH_PFLAGS_T flags)
-{
-        pt_addr[L1_INDEX(vpn)].entry = (ppn & PT_DESC_ADDR_MASK) | flags;
-}
-void inline arch_set_L1_entry_huge(paddr ppn, vaddr vpn,
-                                   union L1_entry_huge *pt_addr,
-                                   ARCH_PFLAGS_T flags)
+                              ARCH_PFLAGS_t flags)
 {
         pt_addr[L1_INDEX(vpn)].entry = (ppn & PT_DESC_ADDR_MASK) | flags;
 }
 void inline arch_set_L2_entry(paddr ppn, vaddr vpn, union L2_entry *pt_addr,
-                              ARCH_PFLAGS_T flags)
-{
-        pt_addr[L2_INDEX(vpn)].entry = (ppn & PT_DESC_ADDR_MASK) | flags;
-}
-void inline arch_set_L2_entry_huge(paddr ppn, vaddr vpn,
-                                   union L2_entry_huge *pt_addr,
-                                   ARCH_PFLAGS_T flags)
+                              ARCH_PFLAGS_t flags)
 {
         pt_addr[L2_INDEX(vpn)].entry = (ppn & PT_DESC_ADDR_MASK) | flags;
 }
 void inline arch_set_L3_entry(paddr ppn, vaddr vpn, union L3_entry *pt_addr,
-                              ARCH_PFLAGS_T flags)
+                              ARCH_PFLAGS_t flags)
 {
         pt_addr[L3_INDEX(vpn)].entry = (ppn & PT_DESC_ADDR_MASK) | flags;
 }
@@ -65,9 +54,9 @@ static bool is_page_or_block(int entry_level, ENTRY_FLAGS_t ENTRY_FLAGS)
                 && (entry_level == 1 || entry_level == 2))
                || (entry_level == 3);
 }
-ARCH_PFLAGS_T arch_decode_flags(int entry_level, ENTRY_FLAGS_t ENTRY_FLAGS)
+ARCH_PFLAGS_t arch_decode_flags(int entry_level, ENTRY_FLAGS_t ENTRY_FLAGS)
 {
-        ARCH_PFLAGS_T ARCH_PFLAGS = 0;
+        ARCH_PFLAGS_t ARCH_PFLAGS = 0;
         if (is_page_or_block(entry_level, ENTRY_FLAGS))
                 ARCH_PFLAGS = set_mask(ARCH_PFLAGS, PT_DESC_ATTR_LOWER_AF);
 
@@ -123,7 +112,7 @@ ARCH_PFLAGS_T arch_decode_flags(int entry_level, ENTRY_FLAGS_t ENTRY_FLAGS)
         }
         return ARCH_PFLAGS;
 }
-ENTRY_FLAGS_t arch_encode_flags(int entry_level, ARCH_PFLAGS_T ARCH_PFLAGS)
+ENTRY_FLAGS_t arch_encode_flags(int entry_level, ARCH_PFLAGS_t ARCH_PFLAGS)
 {
         ENTRY_FLAGS_t ENTRY_FLAGS = 0;
         if (!(ARCH_PFLAGS & PT_DESC_V))

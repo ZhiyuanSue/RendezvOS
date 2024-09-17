@@ -11,6 +11,7 @@ SECTIONS {
 	{
 		*(.boot)
 		*(.text .text.*)
+		*(.boot.*)
 	}
 	. = ALIGN(4K);
 	_sdata = .;

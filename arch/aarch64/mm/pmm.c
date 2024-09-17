@@ -6,6 +6,7 @@
 #include <modules/dtb/dtb.h>
 #include <shampoos/limits.h>
 #include <shampoos/mm/pmm.h>
+#include <shampoos/mm/vmm.h>
 
 extern char _start, _end; /*the kernel end virt addr*/
 extern u64 L0_table, L1_table, L2_table;
@@ -88,26 +89,26 @@ static void arch_map_pmm_data_space(paddr kernel_phy_start,
         paddr pmm_data_phy_start_addr;
         paddr kernel_end_phy_addr_round_up;
         paddr pmm_data_start_round_down_2m;
+		ARCH_PFLAGS_t flags; 
 
         pmm_data_phy_start_addr = pmm_data_phy_start;
         kernel_end_phy_addr_round_up =
                 ROUND_UP(kernel_phy_end, MIDDLE_PAGE_SIZE);
         if (pmm_data_phy_start_addr < kernel_end_phy_addr_round_up)
                 pmm_data_phy_start_addr = kernel_end_phy_addr_round_up;
-        /*for we have mapped the 2m align
-                                                                space of
-           kernel*/
+        /*for we have mapped the 2m align space of kernel*/
+		flags= arch_decode_flags(2,PAGE_ENTRY_GLOBAL|PAGE_ENTRY_HUGE|PAGE_ENTRY_READ|PAGE_ENTRY_VALID|PAGE_ENTRY_WRITE);
         for (; pmm_data_phy_start_addr < pmm_data_phy_end;
              pmm_data_phy_start_addr += MIDDLE_PAGE_SIZE) {
                 /*As pmm and vmm part is not usable now, we still use boot page
                  * table*/
                 pmm_data_start_round_down_2m =
                         ROUND_DOWN(pmm_data_phy_start_addr, MIDDLE_PAGE_SIZE);
-                arch_set_L2_entry_huge(
+                arch_set_L2_entry(
                         pmm_data_start_round_down_2m,
                         KERNEL_PHY_TO_VIRT(pmm_data_start_round_down_2m),
-                        (union L2_entry_huge *)&L2_table,
-                        (PT_DESC_V | PT_DESC_ATTR_LOWER_AF));
+                        (union L2_entry *)&L2_table,
+                        flags);
         }
 }
 

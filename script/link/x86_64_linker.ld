@@ -9,8 +9,9 @@ SECTIONS {
 	_start = .;
 	.text : 
 	{
-		*(.boot .boot.*)
+		*(.boot)
 		*(.boot_64)
+		*(.boot.*)
 		*(.text .text.*)
 		*(.trap .trap.*)
 	}
