@@ -17,7 +17,7 @@ static void map_dtb(struct setup_info *arch_setup_info)
         vaddr vaddr;
         paddr paddr;
         u64 offset;
-		ARCH_PFLAGS_t flags;
+        ARCH_PFLAGS_t flags;
 
         /*
             map the dtb, using the linux boot protocol, which define that:
@@ -26,17 +26,13 @@ static void map_dtb(struct setup_info *arch_setup_info)
         */
         vaddr = ROUND_UP(arch_setup_info->map_end_virt_addr, MIDDLE_PAGE_SIZE);
         paddr = ROUND_DOWN(arch_setup_info->dtb_ptr, MIDDLE_PAGE_SIZE);
-		flags = arch_decode_flags(2,PAGE_ENTRY_GLOBAL|PAGE_ENTRY_HUGE|PAGE_ENTRY_READ|PAGE_ENTRY_VALID);
-        arch_set_L2_entry(paddr,
-                               vaddr,
-                               (union L2_entry *)&L2_table,
-                               flags);
+        flags = arch_decode_flags(2,
+                                  PAGE_ENTRY_GLOBAL | PAGE_ENTRY_HUGE
+                                          | PAGE_ENTRY_READ | PAGE_ENTRY_VALID);
+        arch_set_L2_entry(paddr, vaddr, (union L2_entry *)&L2_table, flags);
         vaddr += MIDDLE_PAGE_SIZE;
         paddr += MIDDLE_PAGE_SIZE;
-        arch_set_L2_entry(paddr,
-                               vaddr,
-                               (union L2_entry *)&L2_table,
-                               flags);
+        arch_set_L2_entry(paddr, vaddr, (union L2_entry *)&L2_table, flags);
         offset = vaddr - paddr;
         arch_setup_info->boot_dtb_header_base_addr =
                 arch_setup_info->dtb_ptr + offset;
@@ -57,6 +53,7 @@ error_t start_arch(struct setup_info *arch_setup_info)
         }
         // parse_print_dtb(dtb_header_ptr,0,0);
         init_interrupt();
+        init_map();
 
         return (0);
 start_arch_error:

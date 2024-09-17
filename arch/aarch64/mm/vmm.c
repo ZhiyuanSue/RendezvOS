@@ -6,25 +6,25 @@
 #include <common/stdbool.h>
 #include <shampoos/mm/vmm.h>
 
-void inline arch_set_L0_entry(paddr ppn, vaddr vpn, union L0_entry *pt_addr,
+void inline arch_set_L0_entry(paddr p, vaddr v, union L0_entry *pt_addr,
                               ARCH_PFLAGS_t flags)
 {
-        pt_addr[L0_INDEX(vpn)].entry = (ppn & PT_DESC_ADDR_MASK) | flags;
+        pt_addr[L0_INDEX(v)].entry = (p & PT_DESC_ADDR_MASK) | flags;
 }
-void inline arch_set_L1_entry(paddr ppn, vaddr vpn, union L1_entry *pt_addr,
+void inline arch_set_L1_entry(paddr p, vaddr v, union L1_entry *pt_addr,
                               ARCH_PFLAGS_t flags)
 {
-        pt_addr[L1_INDEX(vpn)].entry = (ppn & PT_DESC_ADDR_MASK) | flags;
+        pt_addr[L1_INDEX(v)].entry = (p & PT_DESC_ADDR_MASK) | flags;
 }
-void inline arch_set_L2_entry(paddr ppn, vaddr vpn, union L2_entry *pt_addr,
+void inline arch_set_L2_entry(paddr p, vaddr v, union L2_entry *pt_addr,
                               ARCH_PFLAGS_t flags)
 {
-        pt_addr[L2_INDEX(vpn)].entry = (ppn & PT_DESC_ADDR_MASK) | flags;
+        pt_addr[L2_INDEX(v)].entry = (p & PT_DESC_ADDR_MASK) | flags;
 }
-void inline arch_set_L3_entry(paddr ppn, vaddr vpn, union L3_entry *pt_addr,
+void inline arch_set_L3_entry(paddr p, vaddr v, union L3_entry *pt_addr,
                               ARCH_PFLAGS_t flags)
 {
-        pt_addr[L3_INDEX(vpn)].entry = (ppn & PT_DESC_ADDR_MASK) | flags;
+        pt_addr[L3_INDEX(v)].entry = (p & PT_DESC_ADDR_MASK) | flags;
 }
 void mair_init()
 {
@@ -68,6 +68,7 @@ ARCH_PFLAGS_t arch_decode_flags(int entry_level, ENTRY_FLAGS_t ENTRY_FLAGS)
                         ARCH_PFLAGS =
                                 set_mask(ARCH_PFLAGS, PT_DESC_ATTR_LOWER_AP_RO);
         }
+		
         if (ENTRY_FLAGS & PAGE_ENTRY_USER) {
                 if (is_page_or_block(entry_level, ENTRY_FLAGS))
                         ARCH_PFLAGS = set_mask(ARCH_PFLAGS,
@@ -101,6 +102,9 @@ ARCH_PFLAGS_t arch_decode_flags(int entry_level, ENTRY_FLAGS_t ENTRY_FLAGS)
                         ARCH_PFLAGS =
                                 set_mask(ARCH_PFLAGS, PT_DESC_BLOCK_OR_TABLE);
                         break;
+				case 3:
+						ARCH_PFLAGS = set_mask(ARCH_PFLAGS,PT_DESC_PAGE);
+						break;
                 default:
                         break;
                 }

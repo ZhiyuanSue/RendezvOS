@@ -89,6 +89,7 @@ error_t start_arch(struct setup_info *arch_setup_info)
         } else {
                 pr_info("no input cmdline\n");
         }
+        init_map();
         get_cpuinfo();
         init_interrupt();
         init_irq();

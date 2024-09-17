@@ -15,13 +15,13 @@
 #endif
 #include <common/dsa/rb_tree.h>
 
-void arch_set_L0_entry(paddr ppn, vaddr vpn, union L0_entry* pt_addr,
+void arch_set_L0_entry(paddr p, vaddr v, union L0_entry* pt_addr,
                        ARCH_PFLAGS_t flags);
-void arch_set_L1_entry(paddr ppn, vaddr vpn, union L1_entry* pt_addr,
+void arch_set_L1_entry(paddr p, vaddr v, union L1_entry* pt_addr,
                        ARCH_PFLAGS_t flags);
-void arch_set_L2_entry(paddr ppn, vaddr vpn, union L2_entry* pt_addr,
+void arch_set_L2_entry(paddr p, vaddr v, union L2_entry* pt_addr,
                        ARCH_PFLAGS_t flags);
-void arch_set_L3_entry(paddr ppn, vaddr vpn, union L3_entry* pt_addr,
+void arch_set_L3_entry(paddr p, vaddr v, union L3_entry* pt_addr,
                        ARCH_PFLAGS_t flags);
 /*use those functions to set page entry flags for every page entry*/
 ARCH_PFLAGS_t arch_decode_flags(int entry_level, ENTRY_FLAGS_t ENTRY_FLAGS);

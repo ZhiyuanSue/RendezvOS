@@ -21,6 +21,7 @@ SECTIONS {
 		. = ALIGN(4K);
 		*(.boot.page)
 		*(.boot.log)
+		*(.boot.map_util)
 		*(.data .data.*)
 	}
 	_edata = .;

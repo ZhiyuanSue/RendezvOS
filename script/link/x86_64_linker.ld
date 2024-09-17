@@ -19,6 +19,7 @@ SECTIONS {
 	_sdata = .;
 	.data :
 	{
+		*(.boot.map_util)
 		*(.data .data.*)
 	}
 	_edata = .;
