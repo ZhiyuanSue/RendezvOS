@@ -53,6 +53,42 @@ void arch_vmm_test(void)
         buddy_pmm.pmm_free(ppn, 1);
         pr_info("[ TEST ] vmm:init map system pass!\n");
 
+        /*
+                first alloc one page frame, alloc a new 4K virtual region, and try map
+                expect success
+        */
+
+        /*
+                then we alloc another page frame and try to map to same virtual region
+                expect fail
+        */
+
+        /*free those two page frame to buddy and unmap*/
+
+        /*
+                this time alloc a new 2M virtual region
+        */
+
+        /*
+                another 2M page map to same virtual region
+        */
+
+        /*free them and unmap*/
+
+        /*
+                alloc a 4K but map to a level3 2M page, although unnormal
+                expect success
+        */
+
+        /*
+                let the vspace root page be empty, and try to map and create one
+                expect success
+        */
+
+        /*alloc a 4K and try to map at the new vspace with a level 1, expect fail*/
+
+        /*alloc a 4K and try to map at the new vspace with a level 0, expect fail*/
+
         pr_info("[ TEST ] vmm:vmm map test pass!\n");
 
         return;

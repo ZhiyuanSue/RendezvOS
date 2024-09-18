@@ -14,6 +14,12 @@
 
 #define ALIGNED(x, align) ((x & (align - 1)) == 0)
 
+#define mask_9_bit     0x1ff
+#define L0_INDEX(addr) ((addr >> 39) & mask_9_bit)
+#define L1_INDEX(addr) ((addr >> 30) & mask_9_bit)
+#define L2_INDEX(addr) ((addr >> 21) & mask_9_bit)
+#define L3_INDEX(addr) ((addr >> 12) & mask_9_bit)
+
 enum ENTRY_FLAGS {
         PAGE_ENTRY_VALID = 1 << 0,
         PAGE_ENTRY_WRITE = 1 << 1,

@@ -15,12 +15,6 @@
 #endif
 #include <common/dsa/rb_tree.h>
 
-#define mask_9_bit     0x1ff
-#define L0_INDEX(addr) ((addr >> 39) & mask_9_bit)
-#define L1_INDEX(addr) ((addr >> 30) & mask_9_bit)
-#define L2_INDEX(addr) ((addr >> 21) & mask_9_bit)
-#define L3_INDEX(addr) ((addr >> 12) & mask_9_bit)
-
 void arch_set_L0_entry(paddr p, vaddr v, union L0_entry* pt_addr,
                        ARCH_PFLAGS_t flags);
 void arch_set_L1_entry(paddr p, vaddr v, union L1_entry* pt_addr,
@@ -41,9 +35,17 @@ ENTRY_FLAGS_t arch_encode_flags(int entry_level, ARCH_PFLAGS_t ARCH_PFLAGS);
         and we think we should not have more than 512 cores
 */
 void init_map();
-/*kernel might try to mapping one page to a different vspace*/
+/*
+        kernel might try to mapping one page to a different vspace
+        and if the vspace is not exist, it should try to alloc a new one
+*/
 error_t map(paddr* vspace_root_paddr, u64 ppn, u64 vpn, int level,
             struct pmm pmm);
+/*
+        here we think the vspace root paddr must exist.
+        and we expect the vpn and the page number we need to unmap
+*/
+error_t unmap(paddr vspace_root_paddr, u64 vpn, size_t page_num);
 #define MM_COMMON                       \
         void (*init)(struct pmm * pmm); \
         void* (*m_alloc)(size_t Bytes); \
