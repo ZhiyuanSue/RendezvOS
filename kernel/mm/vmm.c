@@ -75,6 +75,7 @@ error_t map(paddr *vspace_root_paddr, u64 ppn, u64 vpn, int level,
                           map_vaddr,
                           (union L3_entry *)&MAP_L3_table,
                           flags);
+        // TODO:flush tlb
         if (new_alloc) {
                 memset((char *)map_vaddr, 0, PAGE_SIZE);
                 new_alloc = false;
@@ -106,6 +107,7 @@ error_t map(paddr *vspace_root_paddr, u64 ppn, u64 vpn, int level,
                           map_vaddr,
                           (union L3_entry *)&MAP_L3_table,
                           flags);
+        // TODO:flush tlb
         if (new_alloc) {
                 memset((char *)map_vaddr, 0, PAGE_SIZE);
                 new_alloc = false;
@@ -122,7 +124,10 @@ error_t map(paddr *vspace_root_paddr, u64 ppn, u64 vpn, int level,
                                           PAGE_ENTRY_GLOBAL | PAGE_ENTRY_READ
                                                   | PAGE_ENTRY_VALID
                                                   | PAGE_ENTRY_WRITE);
-                arch_set_L1_entry(next_level_paddr, v, (union L1_entry *)map_vaddr, flags);
+                arch_set_L1_entry(next_level_paddr,
+                                  v,
+                                  (union L1_entry *)map_vaddr,
+                                  flags);
         }
         /*=== === === L2 table === === ===*/
         /*map the L1 table to one L3 table entry*/
@@ -134,6 +139,7 @@ error_t map(paddr *vspace_root_paddr, u64 ppn, u64 vpn, int level,
                           map_vaddr,
                           (union L3_entry *)&MAP_L3_table,
                           flags);
+        // TODO:flush tlb
         if (new_alloc) {
                 memset((char *)map_vaddr, 0, PAGE_SIZE);
                 new_alloc = false;
@@ -145,7 +151,8 @@ error_t map(paddr *vspace_root_paddr, u64 ppn, u64 vpn, int level,
                         PAGE_ENTRY_GLOBAL | PAGE_ENTRY_READ | PAGE_ENTRY_VALID
                                 | PAGE_ENTRY_WRITE | PAGE_ENTRY_HUGE);
                 if (!next_level_paddr) {
-                        arch_set_L2_entry(p, v, (union L2_entry *)map_vaddr, flags);
+                        arch_set_L2_entry(
+                                p, v, (union L2_entry *)map_vaddr, flags);
                         return 0;
                 }
                 if (next_level_paddr != p) {
@@ -172,8 +179,10 @@ error_t map(paddr *vspace_root_paddr, u64 ppn, u64 vpn, int level,
                                 2,
                                 PAGE_ENTRY_GLOBAL | PAGE_ENTRY_READ
                                         | PAGE_ENTRY_VALID | PAGE_ENTRY_WRITE);
-                        arch_set_L2_entry(
-                                next_level_paddr, v, (union L2_entry *)map_vaddr, flags);
+                        arch_set_L2_entry(next_level_paddr,
+                                          v,
+                                          (union L2_entry *)map_vaddr,
+                                          flags);
                 }
         }
 
@@ -187,6 +196,7 @@ error_t map(paddr *vspace_root_paddr, u64 ppn, u64 vpn, int level,
                           map_vaddr,
                           (union L3_entry *)&MAP_L3_table,
                           flags);
+        // TODO:flush tlb
         if (new_alloc) {
                 memset((char *)map_vaddr, 0, PAGE_SIZE);
                 new_alloc = false;
@@ -211,5 +221,6 @@ error_t map(paddr *vspace_root_paddr, u64 ppn, u64 vpn, int level,
                 return -EINVAL;
         }
         pr_info("[ MAP ] remap same physical pages to a same virtual 4K page\n");
+        // TODO:flush tlb of addr v
         return 0;
 }

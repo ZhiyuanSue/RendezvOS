@@ -42,16 +42,18 @@ void arch_vmm_test(void)
                 3, PAGE_ENTRY_READ | PAGE_ENTRY_VALID | PAGE_ENTRY_WRITE);
 
         arch_set_L3_entry(
-                page_paddr, map_pages, (union L3_entry *)&MAP_L3_table, flags);
-        u64 tmp_test = *((u64 *)map_pages);
-        *((u64 *)map_pages) = tmp_test + 1;
-        if (*((u64 *)map_pages) != tmp_test + 1)
+                page_paddr, page_vaddr, (union L3_entry *)&MAP_L3_table, flags);
+        u64 tmp_test = *((u64 *)page_vaddr);
+        *((u64 *)page_vaddr) = tmp_test + 1;
+        if (*((u64 *)page_vaddr) != tmp_test + 1)
                 pr_error("[ TEST ] error write in during init map test\n");
-        memset((char *)map_pages, 0, PAGE_SIZE);
-        if (*((u64 *)map_pages))
+        memset((char *)page_vaddr, 0, PAGE_SIZE);
+        if (*((u64 *)page_vaddr))
                 pr_error("[ TEST ] error memset in during init map test\n");
         buddy_pmm.pmm_free(ppn, 1);
-        pr_info("[ TEST ] vmm:init map system success\n");
+        pr_info("[ TEST ] vmm:init map system pass!\n");
+
+        pr_info("[ TEST ] vmm:vmm map test pass!\n");
 
         return;
 arch_vmm_test_error:

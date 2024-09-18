@@ -15,6 +15,12 @@
 #endif
 #include <common/dsa/rb_tree.h>
 
+#define mask_9_bit     0x1ff
+#define L0_INDEX(addr) ((addr >> 39) & mask_9_bit)
+#define L1_INDEX(addr) ((addr >> 30) & mask_9_bit)
+#define L2_INDEX(addr) ((addr >> 21) & mask_9_bit)
+#define L3_INDEX(addr) ((addr >> 12) & mask_9_bit)
+
 void arch_set_L0_entry(paddr p, vaddr v, union L0_entry* pt_addr,
                        ARCH_PFLAGS_t flags);
 void arch_set_L1_entry(paddr p, vaddr v, union L1_entry* pt_addr,

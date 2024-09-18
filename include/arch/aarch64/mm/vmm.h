@@ -2,12 +2,6 @@
 #define _SHAMPOOS_ARCH_VMM_H_
 #include <common/types.h>
 
-#define mask_9_bit     0x1ff
-#define L0_INDEX(addr) ((addr >> 39) & mask_9_bit)
-#define L1_INDEX(addr) ((addr >> 30) & mask_9_bit)
-#define L2_INDEX(addr) ((addr >> 21) & mask_9_bit)
-#define L3_INDEX(addr) ((addr >> 12) & mask_9_bit)
-
 static inline paddr get_current_kernel_vspace_root()
 {
         u64 ttbr1_tmp;
