@@ -15,6 +15,9 @@
 #include <shampoos/mm/vmm.h>
 #include <common/string.h>
 
+#define vpn_1 0xffffff7fbfdfe000
+/*this vpn address means four level index are all 1111 1111 0 */
+
 union L0_entry l0;
 union L1_entry_huge l1_h;
 union L1_entry l1;
@@ -33,6 +36,7 @@ void arch_vmm_test(void)
                 goto arch_vmm_test_error;
         }
         pr_info("[ TEST ] vmm:arch vmm test pass!\n");
+        /*=== === === ===*/
 
         /*TEST:memset the map l3 table to 0*/
         u32 ppn = buddy_pmm.pmm_alloc(1, ZONE_NORMAL);
@@ -52,18 +56,30 @@ void arch_vmm_test(void)
                 pr_error("[ TEST ] error memset in during init map test\n");
         buddy_pmm.pmm_free(ppn, 1);
         pr_info("[ TEST ] vmm:init map system pass!\n");
+        /*=== === === ===*/
+        /*
+                first alloc one page frame, alloc a new 4K virtual region, and
+           try map ,expect success
+        */
+        paddr old_vspace_root = get_current_kernel_vspace_root();
+        u32 old_ppn_1 = buddy_pmm.pmm_alloc(1, ZONE_NORMAL);
+        if (map(&old_vspace_root,
+                old_ppn_1,
+                VPN(vpn_1),
+                3,
+                (struct pmm *)&buddy_pmm)) {
+                pr_error("[ TEST ] ERROR:map 4K virtual error!\n");
+                goto arch_vmm_test_error;
+        }
+        memset((void *)vpn_1, 0, PAGE_SIZE);
 
         /*
-                first alloc one page frame, alloc a new 4K virtual region, and try map
-                expect success
+                then we alloc another page frame and try to map to same virtual
+           region ,expect fail
         */
+        u32 ppn_2 = buddy_pmm.pmm_alloc(1, ZONE_NORMAL);
 
-        /*
-                then we alloc another page frame and try to map to same virtual region
-                expect fail
-        */
-
-        /*free those two page frame to buddy and unmap*/
+        /*free the second page frame to buddy and do not unmap*/
 
         /*
                 this time alloc a new 2M virtual region
@@ -76,22 +92,24 @@ void arch_vmm_test(void)
         /*free them and unmap*/
 
         /*
-                alloc a 4K but map to a level3 2M page, although unnormal
-                expect success
+                alloc a 4K but map to a level3 2M page (the same 2M virtual
+           region,but unmapped) , although unnormal, expect success
         */
 
         /*
-                let the vspace root page be empty, and try to map and create one
-                expect success
+                let the vspace root page be empty, and try to map the same 4K
+           region(for it's another vspace), expect success
         */
+        /*alloc a 4K and try to map at the new vspace with a level 1, expect
+         * fail*/
 
-        /*alloc a 4K and try to map at the new vspace with a level 1, expect fail*/
+        /*alloc a 4K and try to map at the new vspace with a level 0, expect
+         * fail*/
 
-        /*alloc a 4K and try to map at the new vspace with a level 0, expect fail*/
-
+        /*unmap the old_ppn_1*/
         pr_info("[ TEST ] vmm:vmm map test pass!\n");
 
         return;
 arch_vmm_test_error:
-        pr_error("arch vmm test failed\n");
+        pr_error("[ ERROR ] arch vmm test failed\n");
 }

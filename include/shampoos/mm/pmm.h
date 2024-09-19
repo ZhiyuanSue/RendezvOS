@@ -35,8 +35,6 @@ struct memory_regions {
         bool (*memory_regions_entry_empty)(int index);
 };
 
-#define PPN(addr) (addr >> 12)
-
 enum zone_type { ZONE_NORMAL, ZONE_NR_MAX };
 
 #define PMM_COMMON                                                        \

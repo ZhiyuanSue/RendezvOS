@@ -57,8 +57,27 @@ static bool is_page_or_block(int entry_level, ENTRY_FLAGS_t ENTRY_FLAGS)
 ARCH_PFLAGS_t arch_decode_flags(int entry_level, ENTRY_FLAGS_t ENTRY_FLAGS)
 {
         ARCH_PFLAGS_t ARCH_PFLAGS = 0;
-        if (is_page_or_block(entry_level, ENTRY_FLAGS))
+        if (is_page_or_block(entry_level, ENTRY_FLAGS)) {
                 ARCH_PFLAGS = set_mask(ARCH_PFLAGS, PT_DESC_ATTR_LOWER_AF);
+                if (ENTRY_FLAGS & PAGE_ENTRY_USER) {
+                        ARCH_PFLAGS = set_mask(ARCH_PFLAGS,
+                                               PT_DESC_ATTR_LOWER_AP_EL0);
+                        ARCH_PFLAGS =
+                                set_mask(ARCH_PFLAGS, PT_DESC_ATTR_UPPER_PXN);
+                        if (!(ENTRY_FLAGS & PAGE_ENTRY_EXEC)) {
+                                ARCH_PFLAGS = set_mask(ARCH_PFLAGS,
+                                                       PT_DESC_ATTR_UPPER_XN);
+                        }
+
+                } else {
+                        ARCH_PFLAGS =
+                                set_mask(ARCH_PFLAGS, PT_DESC_ATTR_UPPER_XN);
+                        if (!(ENTRY_FLAGS & PAGE_ENTRY_EXEC)) {
+                                ARCH_PFLAGS = set_mask(ARCH_PFLAGS,
+                                                       PT_DESC_ATTR_UPPER_PXN);
+                        }
+                }
+        }
 
         if (ENTRY_FLAGS & PAGE_ENTRY_READ) {
                 ARCH_PFLAGS = set_mask(ARCH_PFLAGS, PT_DESC_V);
@@ -69,22 +88,6 @@ ARCH_PFLAGS_t arch_decode_flags(int entry_level, ENTRY_FLAGS_t ENTRY_FLAGS)
                                 set_mask(ARCH_PFLAGS, PT_DESC_ATTR_LOWER_AP_RO);
         }
 
-        if (ENTRY_FLAGS & PAGE_ENTRY_USER) {
-                if (is_page_or_block(entry_level, ENTRY_FLAGS))
-                        ARCH_PFLAGS = set_mask(ARCH_PFLAGS,
-                                               PT_DESC_ATTR_LOWER_AP_EL0);
-                ARCH_PFLAGS = set_mask(ARCH_PFLAGS, PT_DESC_ATTR_UPPER_PXN);
-                if (!(ENTRY_FLAGS & PAGE_ENTRY_EXEC)) {
-                        ARCH_PFLAGS =
-                                set_mask(ARCH_PFLAGS, PT_DESC_ATTR_UPPER_XN);
-                }
-        } else {
-                ARCH_PFLAGS = set_mask(ARCH_PFLAGS, PT_DESC_ATTR_UPPER_XN);
-                if (!(ENTRY_FLAGS & PAGE_ENTRY_EXEC)) {
-                        ARCH_PFLAGS =
-                                set_mask(ARCH_PFLAGS, PT_DESC_ATTR_UPPER_PXN);
-                }
-        }
         if (ENTRY_FLAGS & PAGE_ENTRY_UNCACHED) {
                 ARCH_PFLAGS = set_mask(ARCH_PFLAGS, MEM_ATTR_UNCACHED);
         } else if (ENTRY_FLAGS & PAGE_ENTRY_DEVICE) {

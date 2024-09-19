@@ -33,12 +33,24 @@ void init_map()
                           flags);
         // TODO:flush tlb
 }
+static void util_map(paddr p, vaddr v)
+/*This function try to map one phy page to virtual page at the MAP_L3_table as a
+ * tool to change data*/
+{
+        ARCH_PFLAGS_t flags;
+        flags = arch_decode_flags(3,
+                                  PAGE_ENTRY_GLOBAL | PAGE_ENTRY_READ
+                                          | PAGE_ENTRY_VALID
+                                          | PAGE_ENTRY_WRITE);
+        arch_set_L3_entry(p, v, (union L3_entry *)&MAP_L3_table, flags);
+        // TODO:flush tlb
+}
 error_t map(paddr *vspace_root_paddr, u64 ppn, u64 vpn, int level,
-            struct pmm pmm)
+            struct pmm *pmm)
 {
         int cpu_id = 0; /*for smp, it might map to different L3 table entry*/
         ARCH_PFLAGS_t flags;
-        vaddr map_vaddr = map_pages + cpu_id * PAGE_SIZE;
+        vaddr map_vaddr = map_pages + cpu_id * PAGE_SIZE * 4+PAGE_SIZE;
         paddr p = ppn << 12;
         vaddr v = vpn << 12;
         paddr next_level_paddr;
@@ -48,8 +60,12 @@ error_t map(paddr *vspace_root_paddr, u64 ppn, u64 vpn, int level,
 
         /*=== === === L0 table === === ===*/
         /*some check*/
-        if (level != 2 || level != 3) {
+        if (level != 2 && level != 3) {
                 pr_error("[ ERROR ] we only support 2M/4K mapping\n");
+                return -EINVAL;
+        }
+        if (!ppn | !vpn | !pmm) {
+                pr_error("[ ERROR ] input arguments error\n");
                 return -EINVAL;
         }
 
@@ -57,7 +73,7 @@ error_t map(paddr *vspace_root_paddr, u64 ppn, u64 vpn, int level,
         /*if no root page, try to allocator one with the pmm allocator*/
         if (!(*vspace_root_paddr)) {
                 // TOOD:lock pmm alloctor
-                *vspace_root_paddr = (pmm.pmm_alloc(1, ZONE_NORMAL)) << 12;
+                *vspace_root_paddr = (pmm->pmm_alloc(1, ZONE_NORMAL)) << 12;
                 // TODO:unlock pmm allocator
                 new_alloc = true;
         } else if (ROUND_DOWN(*vspace_root_paddr, PAGE_SIZE)
@@ -67,25 +83,18 @@ error_t map(paddr *vspace_root_paddr, u64 ppn, u64 vpn, int level,
                 return -EINVAL;
         }
         /*map the L0 table to one L3 table entry*/
-        flags = arch_decode_flags(3,
-                                  PAGE_ENTRY_GLOBAL | PAGE_ENTRY_READ
-                                          | PAGE_ENTRY_VALID
-                                          | PAGE_ENTRY_WRITE);
-        arch_set_L3_entry(*vspace_root_paddr,
-                          map_vaddr,
-                          (union L3_entry *)&MAP_L3_table,
-                          flags);
-        // TODO:flush tlb
+        util_map(*vspace_root_paddr, map_vaddr);
         if (new_alloc) {
                 memset((char *)map_vaddr, 0, PAGE_SIZE);
                 new_alloc = false;
         }
         /*use map util table to change the L0 table*/
-        next_level_paddr = L0_entry_addr(((union L0_entry *)map_vaddr)[L0_INDEX(v)]);
+        next_level_paddr =
+                L0_entry_addr(((union L0_entry *)map_vaddr)[L0_INDEX(v)]);
         if (!next_level_paddr) {
                 /*no next level page, need alloc one*/
                 // TOOD:lock pmm alloctor
-                next_level_paddr = (pmm.pmm_alloc(1, ZONE_NORMAL)) << 12;
+                next_level_paddr = (pmm->pmm_alloc(1, ZONE_NORMAL)) << 12;
                 // TODO:unlock pmm allocator
                 new_alloc = true;
                 flags = arch_decode_flags(0,
@@ -99,25 +108,19 @@ error_t map(paddr *vspace_root_paddr, u64 ppn, u64 vpn, int level,
         }
         /*=== === === L1 table === === ===*/
         /*map the L1 table to one L3 table entry*/
-        flags = arch_decode_flags(3,
-                                  PAGE_ENTRY_GLOBAL | PAGE_ENTRY_READ
-                                          | PAGE_ENTRY_VALID
-                                          | PAGE_ENTRY_WRITE);
-        arch_set_L3_entry(next_level_paddr,
-                          map_vaddr,
-                          (union L3_entry *)&MAP_L3_table,
-                          flags);
-        // TODO:flush tlb
+		map_vaddr+=PAGE_SIZE;
+        util_map(next_level_paddr, map_vaddr);
         if (new_alloc) {
                 memset((char *)map_vaddr, 0, PAGE_SIZE);
                 new_alloc = false;
         }
         /*use map util table to change the L1 table*/
-        next_level_paddr = L1_entry_addr(((union L1_entry *)map_vaddr)[L1_INDEX(v)]);
+        next_level_paddr =
+                L1_entry_addr(((union L1_entry *)map_vaddr)[L1_INDEX(v)]);
         if (!next_level_paddr) {
                 /*no next level page, need alloc one*/
                 // TOOD:lock pmm alloctor
-                next_level_paddr = (pmm.pmm_alloc(1, ZONE_NORMAL)) << 12;
+                next_level_paddr = (pmm->pmm_alloc(1, ZONE_NORMAL)) << 12;
                 // TODO:unlock pmm allocator
                 new_alloc = true;
                 flags = arch_decode_flags(1,
@@ -131,15 +134,8 @@ error_t map(paddr *vspace_root_paddr, u64 ppn, u64 vpn, int level,
         }
         /*=== === === L2 table === === ===*/
         /*map the L1 table to one L3 table entry*/
-        flags = arch_decode_flags(3,
-                                  PAGE_ENTRY_GLOBAL | PAGE_ENTRY_READ
-                                          | PAGE_ENTRY_VALID
-                                          | PAGE_ENTRY_WRITE);
-        arch_set_L3_entry(next_level_paddr,
-                          map_vaddr,
-                          (union L3_entry *)&MAP_L3_table,
-                          flags);
-        // TODO:flush tlb
+		map_vaddr+=PAGE_SIZE;
+        util_map(next_level_paddr, map_vaddr);
         if (new_alloc) {
                 memset((char *)map_vaddr, 0, PAGE_SIZE);
                 new_alloc = false;
@@ -166,12 +162,12 @@ error_t map(paddr *vspace_root_paddr, u64 ppn, u64 vpn, int level,
                 pr_info("[ MAP ] remap same physical pages to a same virtual 2M page\n");
                 return 0;
         } else {
-                next_level_paddr =
-                        L2_entry_addr(((union L2_entry *)map_vaddr)[L2_INDEX(v)]);
+                next_level_paddr = L2_entry_addr(
+                        ((union L2_entry *)map_vaddr)[L2_INDEX(v)]);
                 if (!next_level_paddr) {
                         /*no next level page, need alloc one*/
                         // TOOD:lock pmm alloctor
-                        next_level_paddr = (pmm.pmm_alloc(1, ZONE_NORMAL))
+                        next_level_paddr = (pmm->pmm_alloc(1, ZONE_NORMAL))
                                            << 12;
                         // TODO:unlock pmm allocator
                         new_alloc = true;
@@ -185,27 +181,20 @@ error_t map(paddr *vspace_root_paddr, u64 ppn, u64 vpn, int level,
                                           flags);
                 }
         }
-
         /*=== === === L3 table === === ===*/
         /*map the L1 table to one L3 table entry*/
-        flags = arch_decode_flags(3,
-                                  PAGE_ENTRY_GLOBAL | PAGE_ENTRY_READ
-                                          | PAGE_ENTRY_VALID
-                                          | PAGE_ENTRY_WRITE);
-        arch_set_L3_entry(next_level_paddr,
-                          map_vaddr,
-                          (union L3_entry *)&MAP_L3_table,
-                          flags);
-        // TODO:flush tlb
+		map_vaddr+=PAGE_SIZE;
+        util_map(next_level_paddr, map_vaddr);
         if (new_alloc) {
                 memset((char *)map_vaddr, 0, PAGE_SIZE);
                 new_alloc = false;
         }
         /*use map util table to change the L3 table*/
-        next_level_paddr = L3_entry_addr(((union L3_entry *)map_vaddr)[L3_INDEX(v)]);
+        next_level_paddr =
+                L3_entry_addr(((union L3_entry *)map_vaddr)[L3_INDEX(v)]);
         if (!next_level_paddr) { /*seems more likely*/
                 /*we give the ppn, and no need to alloc another page*/
-                flags = arch_decode_flags(0,
+                flags = arch_decode_flags(3,
                                           PAGE_ENTRY_GLOBAL | PAGE_ENTRY_READ
                                                   | PAGE_ENTRY_VALID
                                                   | PAGE_ENTRY_WRITE);
