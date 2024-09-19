@@ -20,6 +20,13 @@
 #define L2_INDEX(addr) ((addr >> 21) & mask_9_bit)
 #define L3_INDEX(addr) ((addr >> 12) & mask_9_bit)
 
+#define L0_entry_addr(entry) ((entry.paddr)<<12)
+#define L1_entry_huge_addr(entry) ((entry.paddr)<<30)
+#define L1_entry_addr(entry) ((entry.paddr)<<12)
+#define L2_entry_huge_addr(entry) ((entry.paddr)<<21)
+#define L2_entry_addr(entry) ((entry.paddr)<<12)
+#define L3_entry_addr(entry) ((entry.paddr)<<12)
+
 enum ENTRY_FLAGS {
         PAGE_ENTRY_VALID = 1 << 0,
         PAGE_ENTRY_WRITE = 1 << 1,

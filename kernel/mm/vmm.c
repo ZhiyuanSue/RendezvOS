@@ -81,7 +81,7 @@ error_t map(paddr *vspace_root_paddr, u64 ppn, u64 vpn, int level,
                 new_alloc = false;
         }
         /*use map util table to change the L0 table*/
-        next_level_paddr = ((union L0_entry *)map_vaddr)[L0_INDEX(v)].paddr;
+        next_level_paddr = L0_entry_addr(((union L0_entry *)map_vaddr)[L0_INDEX(v)]);
         if (!next_level_paddr) {
                 /*no next level page, need alloc one*/
                 // TOOD:lock pmm alloctor
@@ -113,7 +113,7 @@ error_t map(paddr *vspace_root_paddr, u64 ppn, u64 vpn, int level,
                 new_alloc = false;
         }
         /*use map util table to change the L1 table*/
-        next_level_paddr = ((union L1_entry *)map_vaddr)[L1_INDEX(v)].paddr;
+        next_level_paddr = L1_entry_addr(((union L1_entry *)map_vaddr)[L1_INDEX(v)]);
         if (!next_level_paddr) {
                 /*no next level page, need alloc one*/
                 // TOOD:lock pmm alloctor
@@ -167,7 +167,7 @@ error_t map(paddr *vspace_root_paddr, u64 ppn, u64 vpn, int level,
                 return 0;
         } else {
                 next_level_paddr =
-                        ((union L2_entry *)map_vaddr)[L2_INDEX(v)].paddr;
+                        L2_entry_addr(((union L2_entry *)map_vaddr)[L2_INDEX(v)]);
                 if (!next_level_paddr) {
                         /*no next level page, need alloc one*/
                         // TOOD:lock pmm alloctor
@@ -202,7 +202,7 @@ error_t map(paddr *vspace_root_paddr, u64 ppn, u64 vpn, int level,
                 new_alloc = false;
         }
         /*use map util table to change the L3 table*/
-        next_level_paddr = ((union L3_entry *)map_vaddr)[L3_INDEX(v)].paddr;
+        next_level_paddr = L3_entry_addr(((union L3_entry *)map_vaddr)[L3_INDEX(v)]);
         if (!next_level_paddr) { /*seems more likely*/
                 /*we give the ppn, and no need to alloc another page*/
                 flags = arch_decode_flags(0,
