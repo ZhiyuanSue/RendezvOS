@@ -49,11 +49,14 @@ error_t map(paddr *vspace_root_paddr, u64 ppn, u64 vpn, int level,
             struct pmm *pmm)
 {
         int cpu_id = 0; /*for smp, it might map to different L3 table entry*/
-        ARCH_PFLAGS_t flags;
+        ARCH_PFLAGS_t flags = 0;
+        ENTRY_FLAGS_t entry_flags = 0;
         vaddr map_vaddr = map_pages + cpu_id * PAGE_SIZE * 4;
         paddr p = ppn << 12;
         vaddr v = vpn << 12;
-        paddr next_level_paddr;
+        u64 pt_entry = 0;
+        paddr next_level_paddr = 0;
+        int pmm_res = 0;
         bool new_alloc = false;
         /*for a new alloced page, we must memset to all 0, use this flag to
          * decide whether memset*/
@@ -75,8 +78,13 @@ error_t map(paddr *vspace_root_paddr, u64 ppn, u64 vpn, int level,
         /*if no root page, try to allocator one with the pmm allocator*/
         if (!(*vspace_root_paddr)) {
                 // TOOD:lock pmm alloctor
-                *vspace_root_paddr = (pmm->pmm_alloc(1, ZONE_NORMAL)) << 12;
+                pmm_res = pmm->pmm_alloc(1, ZONE_NORMAL);
                 // TODO:unlock pmm allocator
+                if (pmm_res <= 0) {
+                        pr_error("[ ERROR ] try alloc vspace root ppn fail\n");
+                        return -ENOMEM;
+                }
+                *vspace_root_paddr = (pmm_res) << 12;
                 new_alloc = true;
         } else if (ROUND_DOWN(*vspace_root_paddr, PAGE_SIZE)
                    != *vspace_root_paddr) {
@@ -96,8 +104,13 @@ error_t map(paddr *vspace_root_paddr, u64 ppn, u64 vpn, int level,
         if (!next_level_paddr) {
                 /*no next level page, need alloc one*/
                 // TOOD:lock pmm alloctor
-                next_level_paddr = (pmm->pmm_alloc(1, ZONE_NORMAL)) << 12;
+                pmm_res = pmm->pmm_alloc(1, ZONE_NORMAL);
                 // TODO:unlock pmm allocator
+                if (pmm_res <= 0) {
+                        pr_error("[ ERROR ] try alloc ppn fail\n");
+                        return -ENOMEM;
+                }
+                next_level_paddr = (pmm_res) << 12;
                 new_alloc = true;
                 flags = arch_decode_flags(0,
                                           PAGE_ENTRY_GLOBAL | PAGE_ENTRY_READ
@@ -119,11 +132,17 @@ error_t map(paddr *vspace_root_paddr, u64 ppn, u64 vpn, int level,
         /*use map util table to change the L1 table*/
         next_level_paddr =
                 L1_entry_addr(((union L1_entry *)map_vaddr)[L1_INDEX(v)]);
+        pt_entry = ((union L1_entry *)map_vaddr)[L1_INDEX(v)].entry;
         if (!next_level_paddr) {
                 /*no next level page, need alloc one*/
                 // TOOD:lock pmm alloctor
-                next_level_paddr = (pmm->pmm_alloc(1, ZONE_NORMAL)) << 12;
+                pmm_res = pmm->pmm_alloc(1, ZONE_NORMAL);
                 // TODO:unlock pmm allocator
+                if (pmm_res <= 0) {
+                        pr_error("[ ERROR ] try alloc ppn fail\n");
+                        return -ENOMEM;
+                }
+                next_level_paddr = (pmm_res) << 12;
                 new_alloc = true;
                 flags = arch_decode_flags(1,
                                           PAGE_ENTRY_GLOBAL | PAGE_ENTRY_READ
@@ -167,9 +186,9 @@ error_t map(paddr *vspace_root_paddr, u64 ppn, u64 vpn, int level,
                            it's valid), and then check all the entry in the
                            level 3 page table
 
-                           1/if it's not valid and not the final page table, we
-                           do not let the page table swap out to the disk, it
-                           must be an error
+                           1/if it's not valid and not the final page table but
+                           still have value, we do not let the page table swap
+                           out to the disk, it must be an error
 
                            2/if it's not valid but have value and is final, it
                            means the 2M page is swap out, a remap happend
@@ -180,12 +199,47 @@ error_t map(paddr *vspace_root_paddr, u64 ppn, u64 vpn, int level,
                            4/if it's valid(must have value) and the final page
                            table, we also have a remap event
                         */
-                        pr_error(
-                                "[ MAP ] mapping two different physical pages to a same virtual 2M page");
-                        pr_error("[ MAP ] arguments: old 0x%x new 0x%x\n",
-                                 next_level_paddr,
-                                 p);
-                        return -EINVAL;
+                        entry_flags = arch_encode_flags(2, pt_entry);
+                        if ((entry_flags & PAGE_ENTRY_VALID)
+                            && !is_final_level_pt(2, entry_flags)) {
+                                vaddr pre_map_vaddr = map_vaddr + PAGE_SIZE;
+                                util_map(next_level_paddr, pre_map_vaddr);
+                                bool have_filled_entry = false;
+                                for (;
+                                     pre_map_vaddr < map_vaddr + PAGE_SIZE * 2;
+                                     pre_map_vaddr += sizeof(union L3_entry)) {
+                                        if (((union L3_entry *)pre_map_vaddr)
+                                                    ->entry) {
+                                                have_filled_entry = true;
+                                                break;
+                                        }
+                                }
+                                if (have_filled_entry) {
+                                        pr_error(
+                                                "[ MAP ] mapping 2M page have had a mapped level 3 page table and have a existed 4K entry\n");
+                                        return -EINVAL;
+                                }
+                                pmm_res =
+                                        pmm->pmm_free(PPN(next_level_paddr), 1);
+                                if (pmm_res) {
+                                        pr_error(
+                                                "[ MAP ] pmm free error with a ppn 0x%x\n",
+                                                PPN(next_level_paddr));
+                                        return -EINVAL;
+                                }
+                                arch_set_L2_entry(p,
+                                                  v,
+                                                  (union L2_entry *)map_vaddr,
+                                                  flags);
+                        } else {
+                                pr_error(
+                                        "[ MAP ] mapping two different physical pages to a same virtual 2M page\n");
+                                pr_error(
+                                        "[ MAP ] arguments: old 0x%x new 0x%x\n",
+                                        next_level_paddr,
+                                        p);
+                                return -EINVAL;
+                        }
                 }
                 pr_info("[ MAP ] remap same physical pages to a same virtual 2M page\n");
                 return 0;
@@ -195,9 +249,13 @@ error_t map(paddr *vspace_root_paddr, u64 ppn, u64 vpn, int level,
                 if (!next_level_paddr) {
                         /*no next level page, need alloc one*/
                         // TOOD:lock pmm alloctor
-                        next_level_paddr = (pmm->pmm_alloc(1, ZONE_NORMAL))
-                                           << 12;
+                        pmm_res = pmm->pmm_alloc(1, ZONE_NORMAL);
                         // TODO:unlock pmm allocator
+                        if (pmm_res <= 0) {
+                                pr_error("[ ERROR ] try alloc ppn fail\n");
+                                return -ENOMEM;
+                        }
+                        next_level_paddr = (pmm_res) << 12;
                         new_alloc = true;
                         flags = arch_decode_flags(
                                 2,
@@ -231,13 +289,18 @@ error_t map(paddr *vspace_root_paddr, u64 ppn, u64 vpn, int level,
         }
         if (next_level_paddr != p) {
                 pr_error(
-                        "[ MAP ] mapping two different physical pages to a same virtual 4K page");
+                        "[ MAP ] mapping two different physical pages to a same virtual 4K page\n");
                 pr_error("[ MAP ] arguments: old 0x%x new 0x%x\n",
                          next_level_paddr,
                          p);
                 return -EINVAL;
         }
         pr_info("[ MAP ] remap same physical pages to a same virtual 4K page\n");
-        // TODO:flush tlb of addr v
+        arch_tlb_invalidate(v);
+        return 0;
+}
+
+error_t unmap(paddr vspace_root_paddr, u64 vpn, size_t page_num)
+{
         return 0;
 }
