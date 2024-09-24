@@ -50,13 +50,15 @@ error_t map(paddr *vspace_root_paddr, u64 ppn, u64 vpn, int level,
 {
         int cpu_id = 0; /*for smp, it might map to different L3 table entry*/
         ARCH_PFLAGS_t flags;
-        vaddr map_vaddr = map_pages + cpu_id * PAGE_SIZE * 4+PAGE_SIZE;
+        vaddr map_vaddr = map_pages + cpu_id * PAGE_SIZE * 4;
         paddr p = ppn << 12;
         vaddr v = vpn << 12;
         paddr next_level_paddr;
         bool new_alloc = false;
         /*for a new alloced page, we must memset to all 0, use this flag to
          * decide whether memset*/
+        /*flush all the tlbs of those 4 pages*/
+        arch_tlb_invalidate_range(map_vaddr, map_vaddr + PAGE_SIZE * 4);
 
         /*=== === === L0 table === === ===*/
         /*some check*/
@@ -108,7 +110,7 @@ error_t map(paddr *vspace_root_paddr, u64 ppn, u64 vpn, int level,
         }
         /*=== === === L1 table === === ===*/
         /*map the L1 table to one L3 table entry*/
-		map_vaddr+=PAGE_SIZE;
+        map_vaddr += PAGE_SIZE;
         util_map(next_level_paddr, map_vaddr);
         if (new_alloc) {
                 memset((char *)map_vaddr, 0, PAGE_SIZE);
@@ -134,7 +136,7 @@ error_t map(paddr *vspace_root_paddr, u64 ppn, u64 vpn, int level,
         }
         /*=== === === L2 table === === ===*/
         /*map the L1 table to one L3 table entry*/
-		map_vaddr+=PAGE_SIZE;
+        map_vaddr += PAGE_SIZE;
         util_map(next_level_paddr, map_vaddr);
         if (new_alloc) {
                 memset((char *)map_vaddr, 0, PAGE_SIZE);
@@ -152,6 +154,32 @@ error_t map(paddr *vspace_root_paddr, u64 ppn, u64 vpn, int level,
                         return 0;
                 }
                 if (next_level_paddr != p) {
+                        /*
+                           there might have one special case: if I map a 4K page
+                           and then unmap it, the 2M page entry still there, and
+                           then if I try to map it to a 2M page it will cause an
+                           error, but the 4K page is unmapped, so it must be
+                           right logically
+
+                           to avoid this problem, here we need to check the
+                           valid and whether is the end page table of this entry
+                           and map the level 3 page table to the next entry(if
+                           it's valid), and then check all the entry in the
+                           level 3 page table
+
+                           1/if it's not valid and not the final page table, we
+                           do not let the page table swap out to the disk, it
+                           must be an error
+
+                           2/if it's not valid but have value and is final, it
+                           means the 2M page is swap out, a remap happend
+
+                           3/if it's valid and not the final page table, we need
+                           to map and check all the entry's
+
+                           4/if it's valid(must have value) and the final page
+                           table, we also have a remap event
+                        */
                         pr_error(
                                 "[ MAP ] mapping two different physical pages to a same virtual 2M page");
                         pr_error("[ MAP ] arguments: old 0x%x new 0x%x\n",
@@ -183,7 +211,7 @@ error_t map(paddr *vspace_root_paddr, u64 ppn, u64 vpn, int level,
         }
         /*=== === === L3 table === === ===*/
         /*map the L1 table to one L3 table entry*/
-		map_vaddr+=PAGE_SIZE;
+        map_vaddr += PAGE_SIZE;
         util_map(next_level_paddr, map_vaddr);
         if (new_alloc) {
                 memset((char *)map_vaddr, 0, PAGE_SIZE);

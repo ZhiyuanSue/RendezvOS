@@ -1,6 +1,6 @@
 #ifndef _SHAMPOOS_MM_H_
 #define _SHAMPOOS_MM_H_
-
+#include <common/stdbool.h>
 #define PAGE_SIZE        0x1000
 #define MIDDLE_PAGE_SIZE 0x200000
 #define HUGE_PAGE_SIZE   0x40000000
@@ -48,4 +48,10 @@ typedef u64 ARCH_PFLAGS_t;
     here we call the common flags entry flags
     and the flags in arch as page flags(pflags)
 */
+static inline bool is_final_level_pt(int entry_level, ENTRY_FLAGS_t ENTRY_FLAGS)
+{
+        return ((ENTRY_FLAGS & PAGE_ENTRY_HUGE)
+                && (entry_level == 1 || entry_level == 2))
+               || (entry_level == 3);
+}
 #endif

@@ -1,6 +1,7 @@
 #ifndef _SHAMPOOS_ARCH_VMM_H_
 #define _SHAMPOOS_ARCH_VMM_H_
 #include <common/types.h>
+#include <arch/aarch64/sync/tlb.h>
 
 static inline paddr get_current_kernel_vspace_root()
 {

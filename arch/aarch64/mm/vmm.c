@@ -48,16 +48,10 @@ void mair_init()
         }
         asm volatile("msr mair_el1, %0;" : : "r"(mair_reg_val));
 }
-static bool is_page_or_block(int entry_level, ENTRY_FLAGS_t ENTRY_FLAGS)
-{
-        return ((ENTRY_FLAGS & PAGE_ENTRY_HUGE)
-                && (entry_level == 1 || entry_level == 2))
-               || (entry_level == 3);
-}
 ARCH_PFLAGS_t arch_decode_flags(int entry_level, ENTRY_FLAGS_t ENTRY_FLAGS)
 {
         ARCH_PFLAGS_t ARCH_PFLAGS = 0;
-        if (is_page_or_block(entry_level, ENTRY_FLAGS)) {
+        if (is_final_level_pt(entry_level, ENTRY_FLAGS)) {
                 ARCH_PFLAGS = set_mask(ARCH_PFLAGS, PT_DESC_ATTR_LOWER_AF);
                 if (ENTRY_FLAGS & PAGE_ENTRY_USER) {
                         ARCH_PFLAGS = set_mask(ARCH_PFLAGS,
@@ -83,7 +77,7 @@ ARCH_PFLAGS_t arch_decode_flags(int entry_level, ENTRY_FLAGS_t ENTRY_FLAGS)
                 ARCH_PFLAGS = set_mask(ARCH_PFLAGS, PT_DESC_V);
         }
         if (!(ENTRY_FLAGS & PAGE_ENTRY_WRITE)) {
-                if (is_page_or_block(entry_level, ENTRY_FLAGS))
+                if (is_final_level_pt(entry_level, ENTRY_FLAGS))
                         ARCH_PFLAGS =
                                 set_mask(ARCH_PFLAGS, PT_DESC_ATTR_LOWER_AP_RO);
         }
@@ -117,7 +111,7 @@ ARCH_PFLAGS_t arch_decode_flags(int entry_level, ENTRY_FLAGS_t ENTRY_FLAGS)
                 }
         }
         if (!(ENTRY_FLAGS & PAGE_ENTRY_GLOBAL)) {
-                if (is_page_or_block(entry_level, ENTRY_FLAGS))
+                if (is_final_level_pt(entry_level, ENTRY_FLAGS))
                         ARCH_PFLAGS =
                                 set_mask(ARCH_PFLAGS, PT_DESC_ATTR_LOWER_NG);
         }

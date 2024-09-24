@@ -3,6 +3,7 @@
 #include "page_table_def.h"
 #include <common/types.h>
 #include <common/mm.h>
+#include <arch/x86_64/sync/tlb.h>
 
 /*some bit of cr3*/
 #define CR3_PWT           (1 << 3)
