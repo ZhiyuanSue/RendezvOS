@@ -45,7 +45,7 @@ error_t map(paddr* vspace_root_paddr, u64 ppn, u64 vpn, int level,
         here we think the vspace root paddr must exist.
         and we expect the vpn and the page number we need to unmap
 */
-error_t unmap(paddr vspace_root_paddr, u64 vpn, size_t page_num);
+error_t unmap(paddr vspace_root_paddr, u64 vpn);
 #define MM_COMMON                       \
         void (*init)(struct pmm * pmm); \
         void* (*m_alloc)(size_t Bytes); \
