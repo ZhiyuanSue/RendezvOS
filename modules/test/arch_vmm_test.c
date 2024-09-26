@@ -15,10 +15,12 @@
 #include <shampoos/mm/vmm.h>
 #include <common/string.h>
 
-#define vp_1 0xffffff7fbfdfe000
+#define vp_1    0xffffff7fbfdfe000
+#define vp_1_2M 0xffffff7fbfc00000
 /*this vpn address means four level index are all 1111 1111 0 */
 #define vp_2 0xffffff7fbfa00000
-/*this vpn address means the level 0 and 1 are all 1111 1111 0, and level 2 is 1111 1110 1,level 3 is 0*/
+/*this vpn address means the level 0 and 1 are all 1111 1111 0, and level 2 is
+ * 1111 1110 1,level 3 is 0*/
 
 union L0_entry l0;
 union L1_entry_huge l1_h;
@@ -65,9 +67,15 @@ void arch_vmm_test(void)
            try map ,expect success
         */
         paddr old_vspace_root = get_current_kernel_vspace_root();
-        u32 old_ppn_1 = buddy_pmm.pmm_alloc(1, ZONE_NORMAL);
+        /* actually we should lock this pmm_alloc, but it's a test, we think
+         * there's no preemt*/
+        int ppn_1 = buddy_pmm.pmm_alloc(1, ZONE_NORMAL);
+        if (ppn_1 <= 0) {
+                pr_error("[ ERROR ] ERROR:try get a ppn fail\n");
+                goto arch_vmm_test_error;
+        }
         if (map(&old_vspace_root,
-                old_ppn_1,
+                ppn_1,
                 VPN(vp_1),
                 3,
                 (struct pmm *)&buddy_pmm)) {
@@ -75,54 +83,133 @@ void arch_vmm_test(void)
                 goto arch_vmm_test_error;
         }
         memset((void *)vp_1, 0, PAGE_SIZE);
-
+        pr_info("[ TEST ] map 4K pass!\n");
         /*
                 then we alloc another page frame and try to map to same virtual
            region ,expect fail
         */
-        u32 old_ppn_2 = buddy_pmm.pmm_alloc(1, ZONE_NORMAL);
-		if (!map(&old_vspace_root,old_ppn_1,VPN(vp_1),3,(struct pmm *)&buddy_pmm)){
-			pr_error("[ TEST ] ERROR:try to map to same virtual page but no error return\n");
-			goto arch_vmm_test_error;
-		}
+        int ppn_2 = buddy_pmm.pmm_alloc(1, ZONE_NORMAL);
+        if (ppn_2 <= 0) {
+                pr_error("[ ERROR ] ERROR:try get a ppn fail\n");
+                goto arch_vmm_test_error;
+        }
+        if (!map(&old_vspace_root,
+                 ppn_2,
+                 VPN(vp_1),
+                 3,
+                 (struct pmm *)&buddy_pmm)) {
+                pr_error(
+                        "[ TEST ] ERROR:try to map to same virtual page but no error return\n");
+                goto arch_vmm_test_error;
+        }
 
         /*free the second page frame to buddy and do not unmap*/
-		if(!buddy_pmm.pmm_free(old_ppn_2,ZONE_NORMAL)){
-			pr_error("[ TEST ] ERROR:try to free a physical page fail\n");
-			goto arch_vmm_test_error;
-		}
+        if (buddy_pmm.pmm_free(ppn_2, ZONE_NORMAL)) {
+                pr_error("[ TEST ] ERROR:try to free a physical page fail\n");
+                goto arch_vmm_test_error;
+        }
+        pr_info("[ TEST ] remap 4K pass!\n");
         /*
                 this time alloc a new 2M virtual region
         */
+        int ppn_3 =
+                buddy_pmm.pmm_alloc(MIDDLE_PAGE_SIZE / PAGE_SIZE, ZONE_NORMAL);
+        if (ppn_3 <= 0) { /*we expect the ppn aligned*/
+                pr_error("[ ERROR ] ERROR:try get a ppn fail\n");
+                goto arch_vmm_test_error;
+        } else if (ppn_3 & mask_9_bit) {
+                pr_error(
+                        "[ ERROR ] ERROR:get a unaligned 2M page with ppn 0x%x\n",
+                        ppn_3);
+                goto arch_vmm_test_error;
+        }
+        if (map(&old_vspace_root,
+                ppn_3,
+                VPN(vp_2),
+                2,
+                (struct pmm *)&buddy_pmm)) {
+                pr_error("[ TEST ] ERROR:try to map to a 2M page and fail\n");
+                goto arch_vmm_test_error;
+        }
+        memset((void *)vp_2, 0, MIDDLE_PAGE_SIZE);
+        pr_info("[ TEST ] map 2M pass!\n");
 
         /*
                 another 2M page map to same virtual region
-				except same fail as 4K remap
+                                except same fail as 4K remap
         */
+        int ppn_4 =
+                buddy_pmm.pmm_alloc(MIDDLE_PAGE_SIZE / PAGE_SIZE, ZONE_NORMAL);
+        if (ppn_4 <= 0) { /*we expect the ppn aligned*/
+                pr_error("[ ERROR ] ERROR:try get a ppn fail\n");
+                goto arch_vmm_test_error;
+        } else if (ppn_4 & mask_9_bit) {
+                pr_error(
+                        "[ ERROR ] ERROR:get a unaligned 2M page with ppn 0x%x\n",
+                        ppn_4);
+                goto arch_vmm_test_error;
+        }
+        if (!map(&old_vspace_root,
+                 ppn_4,
+                 VPN(vp_2),
+                 2,
+                 (struct pmm *)&buddy_pmm)) {
+                pr_error(
+                        "[ TEST ] ERROR:try to map to same virtual page but no error return\n");
+                goto arch_vmm_test_error;
+        }
 
         /*free them and unmap*/
+        if (buddy_pmm.pmm_free(ppn_4, ZONE_NORMAL)) {
+                pr_error("[ TEST ] ERROR:try to free a physical page fail\n");
+                goto arch_vmm_test_error;
+        }
+        if (unmap(old_vspace_root, VPN(vp_2))) {
+                pr_error("[ TEST ] ERROR: try to unmap a 2M page fail\n");
+                goto arch_vmm_test_error;
+        }
+        if (buddy_pmm.pmm_free(ppn_3, ZONE_NORMAL)) {
+                pr_error("[ TEST ] ERROR:try to free a physical page fail\n");
+                goto arch_vmm_test_error;
+        }
+        pr_info("[ TEST ] remap 2M pass!\n");
 
-        /*
-                alloc a 4K but map to a level3 2M page (the same 2M virtual
-           region,but unmapped) , although unnormal, expect success
-        */
+        /*unmap the ppn_1 and free*/
+        if (unmap(old_vspace_root, VPN(vp_1))) {
+                pr_error("[ TEST ] ERROR: try to unmap a 4K page fail\n");
+                goto arch_vmm_test_error;
+        }
+        if (buddy_pmm.pmm_free(ppn_1, 1)) {
+                pr_error("[ TEST ] ERROR:try to free a physical page fail\n");
+                goto arch_vmm_test_error;
+        }
 
-        /*
-                let the vspace root page be empty, and try to map the same 4K
-           region(for it's another vspace), expect success
-        */
-        /*alloc a 4K and try to map at the new vspace with a level 1, expect
-         * fail*/
+        /* try to map a 2M page to the same vp of ppn_1 mapped*/
+        ppn_1 = buddy_pmm.pmm_alloc(MIDDLE_PAGE_SIZE / PAGE_SIZE, ZONE_NORMAL);
+        if (ppn_1 <= 0) {
+                pr_error("[ ERROR ] ERROR:try get a ppn fail\n");
+                goto arch_vmm_test_error;
+        }
+        if (map(&old_vspace_root,
+                ppn_1,
+                VPN(vp_1_2M),
+                2,
+                (struct pmm *)&buddy_pmm)) {
+                pr_error(
+                        "[ TEST ] ERROR:try to map a 2M after a 4K map and unmap\n");
+                goto arch_vmm_test_error;
+        }
+        /*unmap the 2M page and free*/
+        if (unmap(old_vspace_root, VPN(vp_1_2M))) {
+                pr_error("[ TEST ] ERROR: try to unmap a 4K page fail\n");
+                goto arch_vmm_test_error;
+        }
+        if (buddy_pmm.pmm_free(ppn_1, 1)) {
+                pr_error("[ TEST ] ERROR:try to free a physical page fail\n");
+                goto arch_vmm_test_error;
+        }
+        pr_info("[ TEST ] vmm:map a 4K and unmap and map 2M to same place pass!\n");
 
-        /*alloc a 4K and try to map at the new vspace with a level 0, expect
-         * fail*/
-
-        /*unmap the old_ppn_1 and free*/
-
-		/* try to map a 2M page to the same vp of old_ppn_1 mapped*/
-
-		/*unmap the 2M page and free*/
-		
         pr_info("[ TEST ] vmm:vmm map test pass!\n");
 
         return;
