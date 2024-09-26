@@ -304,7 +304,7 @@ error_t map(paddr *vspace_root_paddr, u64 ppn, u64 vpn, int level,
                 return -EINVAL;
         }
         pr_info("[ MAP ] remap same physical pages to a same virtual 4K page\n");
-        return 0;
+        return -ENOMEM;
 }
 
 error_t unmap(paddr vspace_root_paddr, u64 vpn)

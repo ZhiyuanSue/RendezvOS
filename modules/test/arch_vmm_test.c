@@ -15,8 +15,10 @@
 #include <shampoos/mm/vmm.h>
 #include <common/string.h>
 
-#define vpn_1 0xffffff7fbfdfe000
+#define vp_1 0xffffff7fbfdfe000
 /*this vpn address means four level index are all 1111 1111 0 */
+#define vp_2 0xffffff7fbfa00000
+/*this vpn address means the level 0 and 1 are all 1111 1111 0, and level 2 is 1111 1110 1,level 3 is 0*/
 
 union L0_entry l0;
 union L1_entry_huge l1_h;
@@ -66,28 +68,36 @@ void arch_vmm_test(void)
         u32 old_ppn_1 = buddy_pmm.pmm_alloc(1, ZONE_NORMAL);
         if (map(&old_vspace_root,
                 old_ppn_1,
-                VPN(vpn_1),
+                VPN(vp_1),
                 3,
                 (struct pmm *)&buddy_pmm)) {
                 pr_error("[ TEST ] ERROR:map 4K virtual error!\n");
                 goto arch_vmm_test_error;
         }
-        memset((void *)vpn_1, 0, PAGE_SIZE);
+        memset((void *)vp_1, 0, PAGE_SIZE);
 
         /*
                 then we alloc another page frame and try to map to same virtual
            region ,expect fail
         */
-        u32 ppn_2 = buddy_pmm.pmm_alloc(1, ZONE_NORMAL);
+        u32 old_ppn_2 = buddy_pmm.pmm_alloc(1, ZONE_NORMAL);
+		if (!map(&old_vspace_root,old_ppn_1,VPN(vp_1),3,(struct pmm *)&buddy_pmm)){
+			pr_error("[ TEST ] ERROR:try to map to same virtual page but no error return\n");
+			goto arch_vmm_test_error;
+		}
 
         /*free the second page frame to buddy and do not unmap*/
-
+		if(!buddy_pmm.pmm_free(old_ppn_2,ZONE_NORMAL)){
+			pr_error("[ TEST ] ERROR:try to free a physical page fail\n");
+			goto arch_vmm_test_error;
+		}
         /*
                 this time alloc a new 2M virtual region
         */
 
         /*
                 another 2M page map to same virtual region
+				except same fail as 4K remap
         */
 
         /*free them and unmap*/
@@ -107,7 +117,12 @@ void arch_vmm_test(void)
         /*alloc a 4K and try to map at the new vspace with a level 0, expect
          * fail*/
 
-        /*unmap the old_ppn_1*/
+        /*unmap the old_ppn_1 and free*/
+
+		/* try to map a 2M page to the same vp of old_ppn_1 mapped*/
+
+		/*unmap the 2M page and free*/
+		
         pr_info("[ TEST ] vmm:vmm map test pass!\n");
 
         return;
