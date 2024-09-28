@@ -59,7 +59,7 @@ void arch_vmm_test(void)
         if (*((u64 *)page_vaddr))
                 pr_error("[ TEST ] error memset in during init map test\n");
         buddy_pmm.pmm_free(ppn, 1);
-        arch_tlb_invalidate_page(0,page_vaddr);
+        arch_tlb_invalidate_page(0, page_vaddr);
         pr_info("[ TEST ] PASS: vmm:init map system ok!\n");
         /*=== === === ===*/
         /*

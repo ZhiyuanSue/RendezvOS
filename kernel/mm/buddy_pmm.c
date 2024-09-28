@@ -359,6 +359,7 @@ int pmm_alloc(size_t page_number, enum zone_type zone_number)
 
         /*calculate the upper 2^n size*/
         alloc_order = calculate_alloc_order(page_number);
+        pr_info("try pmm alloc zone\n");
         return (pmm_alloc_zone(alloc_order, zone_number));
 }
 static bool inline ppn_inrange(u32 ppn, int *zone_number)

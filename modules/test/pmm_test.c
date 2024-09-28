@@ -6,7 +6,7 @@
 extern struct buddy buddy_pmm;
 void pmm_test(void)
 {
-        u32 alloc_ppn[PPN_TEST_CASE_NUM];
+        int alloc_ppn[PPN_TEST_CASE_NUM];
 
         for (int i = 0; i < PPN_TEST_CASE_NUM; ++i) {
                 alloc_ppn[i] = buddy_pmm.pmm_alloc(i * 2 + 3, ZONE_NORMAL);
@@ -42,10 +42,16 @@ void pmm_test(void)
         }
         // try to alloc all the memory,then try to alloc will lead to an error
         // if no such an error, the boundary conditions is error
+        pr_info("before pmm while\n");
         while (buddy_pmm.zone->zone_total_avaliable_pages) {
+                int tmp = buddy_pmm.pmm_alloc(1, ZONE_NORMAL);
                 alloc_ppn[buddy_pmm.zone->zone_total_avaliable_pages
-                          % PPN_TEST_CASE_NUM] =
-                        buddy_pmm.pmm_alloc(1, ZONE_NORMAL);
+                          % PPN_TEST_CASE_NUM] = tmp;
+
+                if (tmp <= 0) {
+                        pr_error("[ ERROR ] pmm alloc error %d\n",
+                                 tmp) goto pmm_test_error;
+                }
         }
         if (buddy_pmm.pmm_alloc(1, ZONE_NORMAL) != -ENOMEM) {
                 pr_error("alloc boundary error\n");
