@@ -39,7 +39,7 @@ void arch_vmm_test(void)
                 pr_error("vmm entry align error\n");
                 goto arch_vmm_test_error;
         }
-        pr_info("[ TEST ] vmm:arch vmm test pass!\n");
+        pr_info("[ TEST ] PASS: vmm:arch vmm test ok!\n");
         /*=== === === ===*/
 
         /*TEST:memset the map l3 table to 0*/
@@ -59,8 +59,8 @@ void arch_vmm_test(void)
         if (*((u64 *)page_vaddr))
                 pr_error("[ TEST ] error memset in during init map test\n");
         buddy_pmm.pmm_free(ppn, 1);
-        arch_tlb_invalidate(page_vaddr);
-        pr_info("[ TEST ] vmm:init map system pass!\n");
+        arch_tlb_invalidate_page(0,page_vaddr);
+        pr_info("[ TEST ] PASS: vmm:init map system ok!\n");
         /*=== === === ===*/
         /*
                 first alloc one page frame, alloc a new 4K virtual region, and
@@ -83,7 +83,7 @@ void arch_vmm_test(void)
                 goto arch_vmm_test_error;
         }
         memset((void *)vp_1, 0, PAGE_SIZE);
-        pr_info("[ TEST ] map 4K pass!\n");
+        pr_info("[ TEST ] PASS: map 4K ok!\n");
         /*
                 then we alloc another page frame and try to map to same virtual
            region ,expect fail
@@ -108,7 +108,7 @@ void arch_vmm_test(void)
                 pr_error("[ TEST ] ERROR:try to free a physical page fail\n");
                 goto arch_vmm_test_error;
         }
-        pr_info("[ TEST ] remap 4K pass!\n");
+        pr_info("[ TEST ] PASS: remap 4K ok!\n");
         /*
                 this time alloc a new 2M virtual region
         */
@@ -132,7 +132,7 @@ void arch_vmm_test(void)
                 goto arch_vmm_test_error;
         }
         memset((void *)vp_2, 0, MIDDLE_PAGE_SIZE);
-        pr_info("[ TEST ] map 2M pass!\n");
+        pr_info("[ TEST ] PASS: map 2M ok!\n");
 
         /*
                 another 2M page map to same virtual region
@@ -172,7 +172,7 @@ void arch_vmm_test(void)
                 pr_error("[ TEST ] ERROR:try to free a physical page fail\n");
                 goto arch_vmm_test_error;
         }
-        pr_info("[ TEST ] remap 2M pass!\n");
+        pr_info("[ TEST ] PASS: remap 2M ok!\n");
 
         /*unmap the ppn_1 and free*/
         if (unmap(old_vspace_root, VPN(vp_1))) {
@@ -208,9 +208,9 @@ void arch_vmm_test(void)
                 pr_error("[ TEST ] ERROR:try to free a physical page fail\n");
                 goto arch_vmm_test_error;
         }
-        pr_info("[ TEST ] vmm:map a 4K and unmap and map 2M to same place pass!\n");
+        pr_info("[ TEST ] PASS: vmm:map a 4K and unmap and map 2M to same place ok!\n");
 
-        pr_info("[ TEST ] vmm:vmm map test pass!\n");
+        pr_info("[ TEST ] PASS: vmm:vmm map test ok!\n");
 
         return;
 arch_vmm_test_error:

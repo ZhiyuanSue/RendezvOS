@@ -61,7 +61,7 @@ error_t map(paddr *vspace_root_paddr, u64 ppn, u64 vpn, int level,
         /*for a new alloced page, we must memset to all 0, use this flag to
          * decide whether memset*/
         /*flush all the tlbs of those 4 pages*/
-        arch_tlb_invalidate_range(map_vaddr, map_vaddr + PAGE_SIZE * 4);
+        arch_tlb_invalidate_range(0, map_vaddr, map_vaddr + PAGE_SIZE * 4);
 
         /*=== === === L0 table === === ===*/
         /*some check*/
@@ -177,7 +177,7 @@ error_t map(paddr *vspace_root_paddr, u64 ppn, u64 vpn, int level,
                         }
                         arch_set_L2_entry(
                                 p, v, (union L2_entry *)map_vaddr, flags);
-                        arch_tlb_invalidate(v);
+                        arch_tlb_invalidate_page(0,v);
                         return 0;
                 }
                 if (next_level_paddr != p) {
@@ -295,7 +295,7 @@ error_t map(paddr *vspace_root_paddr, u64 ppn, u64 vpn, int level,
                                                   | PAGE_ENTRY_VALID
                                                   | PAGE_ENTRY_WRITE);
                 arch_set_L3_entry(p, v, (union L3_entry *)map_vaddr, flags);
-                arch_tlb_invalidate(v);
+                arch_tlb_invalidate_page(0,v);
                 return 0;
         }
         if (next_level_paddr != p) {
@@ -332,7 +332,7 @@ error_t unmap(paddr vspace_root_paddr, u64 vpn)
                         vspace_root_paddr);
                 return -EINVAL;
         }
-        arch_tlb_invalidate_range(map_vaddr, map_vaddr + PAGE_SIZE * 4);
+        arch_tlb_invalidate_range(0,map_vaddr, map_vaddr + PAGE_SIZE * 4);
         /*=== === === L0 table === === ===*/
         util_map(vspace_root_paddr, map_vaddr);
         L0_E = ((union L0_entry *)map_vaddr)[L0_INDEX(v)];
@@ -388,7 +388,7 @@ error_t unmap(paddr vspace_root_paddr, u64 vpn)
                         return -EINVAL;
                 }
                 ((union L2_entry *)map_vaddr)[L2_INDEX(v)].entry = 0;
-                arch_tlb_invalidate(v);
+                arch_tlb_invalidate_page(0,v);
                 return 0;
         }
 
@@ -407,6 +407,6 @@ error_t unmap(paddr vspace_root_paddr, u64 vpn)
                 return -EINVAL;
         }
         ((union L3_entry *)map_vaddr)[L3_INDEX(v)].entry = 0;
-        arch_tlb_invalidate(v);
+        arch_tlb_invalidate_page(0,v);
         return 0;
 }
