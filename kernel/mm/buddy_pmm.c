@@ -88,7 +88,7 @@ void generate_pmm_data(paddr kernel_phy_start, paddr kernel_phy_end,
                 sec_start_addr = reg.addr;
                 sec_end_addr = sec_start_addr + reg.len;
                 /*this end is not reachable,[ sec_end_addr , sec_end_addr) */
-                if (sec_start_addr <= kernel_phy_start
+                if (sec_start_addr <= buddy_phy_start
                     && sec_end_addr >= buddy_phy_end)
                         sec_start_addr = buddy_phy_end;
                 sec_start_addr = ROUND_UP(sec_start_addr, MIDDLE_PAGE_SIZE);
@@ -359,7 +359,6 @@ int pmm_alloc(size_t page_number, enum zone_type zone_number)
 
         /*calculate the upper 2^n size*/
         alloc_order = calculate_alloc_order(page_number);
-        pr_info("try pmm alloc zone\n");
         return (pmm_alloc_zone(alloc_order, zone_number));
 }
 static bool inline ppn_inrange(u32 ppn, int *zone_number)

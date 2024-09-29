@@ -8,6 +8,23 @@ void pmm_test(void)
 {
         int alloc_ppn[PPN_TEST_CASE_NUM];
 
+        for (int i = 0, pg_size = 1; i < PPN_TEST_CASE_NUM; ++i, pg_size *= 2) {
+                alloc_ppn[i] = buddy_pmm.pmm_alloc(pg_size, ZONE_NORMAL);
+                if (alloc_ppn[i] == -ENOMEM) {
+                        pr_error("alloc error\n");
+                        goto pmm_test_error;
+                } else
+                        debug("try to get %x pages ,and alloc ppn 0x%x\n",
+                              pg_size,
+                              alloc_ppn[i]);
+        }
+        for (int i = 0, pg_size = 1; i < PPN_TEST_CASE_NUM; ++i, pg_size *= 2) {
+                if (buddy_pmm.pmm_free(alloc_ppn[i], pg_size)) {
+                        pr_error("free error\n");
+                        goto pmm_test_error;
+                } else
+                        debug("free ppn 0x%x success\n", alloc_ppn[i]);
+        }
         for (int i = 0; i < PPN_TEST_CASE_NUM; ++i) {
                 alloc_ppn[i] = buddy_pmm.pmm_alloc(i * 2 + 3, ZONE_NORMAL);
                 if (alloc_ppn[i] == -ENOMEM) {
@@ -42,7 +59,6 @@ void pmm_test(void)
         }
         // try to alloc all the memory,then try to alloc will lead to an error
         // if no such an error, the boundary conditions is error
-        pr_info("before pmm while\n");
         while (buddy_pmm.zone->zone_total_avaliable_pages) {
                 int tmp = buddy_pmm.pmm_alloc(1, ZONE_NORMAL);
                 alloc_ppn[buddy_pmm.zone->zone_total_avaliable_pages
