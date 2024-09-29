@@ -2,11 +2,28 @@
 #include <common/types.h>
 
 /*a slow way for basic*/
-static inline __attribute__((optimize("O0"))) void basic_memset(char *str, u8 c,
-                                                                size_t n)
+static inline void basic_memset(char *str, u8 c, size_t count)
 {
-        for (size_t i = 0; i < n; i++) {
-                str[i] = c;
+        int n = (count + 7) / 8;
+        switch (count % 8) {
+        case 0:
+                do {
+                        *str++ = c;
+                case 7:
+                        *str++ = c;
+                case 6:
+                        *str++ = c;
+                case 5:
+                        *str++ = c;
+                case 4:
+                        *str++ = c;
+                case 3:
+                        *str++ = c;
+                case 2:
+                        *str++ = c;
+                case 1:
+                        *str++ = c;
+                } while (--n > 0);
         }
 }
 void *memset(void *str, int c, size_t n)
@@ -15,11 +32,28 @@ void *memset(void *str, int c, size_t n)
         return (str);
 }
 
-static inline __attribute__((optimize("O0"))) void
-basic_memcpy(char *str1, const char *str2, size_t n)
+static inline void basic_memcpy(char *str1, const char *str2, size_t count)
 {
-        for (size_t i = 0; i < n; i++) {
-                str1[i] = str2[i];
+        int n = (count + 7) / 8;
+        switch (count % 8) {
+        case 0:
+                do {
+                        *str1++ = *str2++;
+                case 7:
+                        *str1++ = *str2++;
+                case 6:
+                        *str1++ = *str2++;
+                case 5:
+                        *str1++ = *str2++;
+                case 4:
+                        *str1++ = *str2++;
+                case 3:
+                        *str1++ = *str2++;
+                case 2:
+                        *str1++ = *str2++;
+                case 1:
+                        *str1++ = *str2++;
+                } while (--n > 0);
         }
 }
 
