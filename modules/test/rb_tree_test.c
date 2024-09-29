@@ -117,7 +117,7 @@ void rb_tree_test_init()
         t_root.rb_root = NULL;
 }
 
-void rb_tree_test(void)
+int rb_tree_test(void)
 {
         for (int i = 0; i < max_loops; i++) {
                 rb_tree_test_init();
@@ -125,7 +125,7 @@ void rb_tree_test(void)
                         debug("====== insert round %d loop %d ======\n", j, i);
                         if (!check(j)) {
                                 pr_error("rb tree test insert error\n");
-                                return;
+                                return -1;
                         }
                         rb_tree_test_insert(&node_list[j], &t_root);
                 }
@@ -134,10 +134,10 @@ void rb_tree_test(void)
                         debug("====== delete round %d loop %d ======\n", j, i);
                         if (!check(j)) {
                                 pr_error("rb tree test remove error\n");
-                                return;
+                                return -1;
                         }
                         rb_tree_test_remove(&node_list[j - 1], &t_root);
                 }
         }
-        pr_info("[ TEST ] PASS: rb tree test ok!\n");
+        return 0;
 }

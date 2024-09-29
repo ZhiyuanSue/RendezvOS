@@ -8,10 +8,18 @@
 #else
 #define debug pr_off
 #endif
+#define MAX_TEST_CASE 4
 
-void pmm_test(void);
-void arch_vmm_test(void);
 void test(void);
-void rb_tree_test(void);
+
+int pmm_test(void);
+int arch_vmm_test(void);
+int rb_tree_test(void);
+int nexus_test(void);
+
+struct test_case {
+        int (*test)(void);
+        char name[32];
+};
 
 #endif

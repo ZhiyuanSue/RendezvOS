@@ -31,7 +31,7 @@ union L3_entry l3;
 extern char MAP_L3_table;
 extern struct buddy buddy_pmm;
 
-void arch_vmm_test(void)
+int arch_vmm_test(void)
 {
         if (sizeof(l0) != sizeof(u64) || sizeof(l1_h) != sizeof(u64)
             || sizeof(l1) != sizeof(u64) || sizeof(l2_h) != sizeof(u64)
@@ -211,9 +211,7 @@ void arch_vmm_test(void)
         }
         pr_info("[ TEST ] PASS: vmm:map a 4K and unmap and map 2M to same place ok!\n");
 
-        pr_info("[ TEST ] PASS: vmm:vmm map test ok!\n");
-
-        return;
+        return 0;
 arch_vmm_test_error:
-        pr_error("[ ERROR ] arch vmm test failed\n");
+        return -1;
 }

@@ -4,7 +4,7 @@
 #define PPN_TEST_CASE_NUM 10
 
 extern struct buddy buddy_pmm;
-void pmm_test(void)
+int pmm_test(void)
 {
         int alloc_ppn[PPN_TEST_CASE_NUM];
 
@@ -96,9 +96,7 @@ void pmm_test(void)
                 pr_error("alloc boundary error\n");
                 goto pmm_test_error;
         }
-        pr_info("[ TEST ] PASS: pmm test ok!\n");
-        return;
+        return 0;
 pmm_test_error:
-        pr_error("pmm test error!\n");
-        return;
+        return -1;
 }

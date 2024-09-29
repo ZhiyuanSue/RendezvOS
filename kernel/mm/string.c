@@ -2,6 +2,7 @@
 #include <common/types.h>
 
 /*a slow way for basic*/
+/*Just a simple Duff device code*/
 static inline void basic_memset(char *str, u8 c, size_t count)
 {
         int n = (count + 7) / 8;
