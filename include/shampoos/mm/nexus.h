@@ -12,21 +12,24 @@ struct nexus_node {
                 /* manager node */
                 struct {
                         struct rb_node _rb_node;
+                        struct list_entry manage_free_list;
                         struct list_entry _free_list;
                         vaddr start_addr;
-                        u32 size;
-                        u32 page_left_node;
-                } __attribute__((__packed__));
+                        u64 size;
+                        u64 page_left_node;
+                };
                 /* root node*/
                 struct {
                         struct rb_root _rb_root;
-                        vaddr backup_manage_page;
+                        void* backup_manage_page;
+                        struct list_entry manage_free_list_head;
                         struct pmm* pmm;
                 };
         };
 };
-void init_nexus();
-void get_free_page(int order, enum zone_type memory_zone);
-void free_pages(void* p);
+#define NEXUS_PER_PAGE (PAGE_SIZE / (sizeof(struct nexus_node)))
+error_t init_nexus();
+error_t get_free_page(int order, enum zone_type memory_zone);
+error_t free_pages(void* p);
 
 #endif

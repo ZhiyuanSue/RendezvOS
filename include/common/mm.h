@@ -29,6 +29,8 @@
 
 #define PPN(paddr) (paddr >> 12)
 #define VPN(vaddr) (vaddr >> 12)
+#define PADDR(ppn) (ppn << 12)
+#define VADDR(vpn) (vpn << 12)
 
 enum ENTRY_FLAGS {
         PAGE_ENTRY_VALID = 1 << 0,
