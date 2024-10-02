@@ -2,8 +2,9 @@
 #include <shampoos/mm/nexus.h>
 #include <modules/log/log.h>
 
+extern struct nexus_node* nexus_root;
 int nexus_test(void)
 {
-        pr_info("sizeof nexus node is 0x%x\n", sizeof(struct nexus_node));
+        nexus_print(nexus_root);
         return 0;
 }

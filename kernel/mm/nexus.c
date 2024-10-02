@@ -288,9 +288,6 @@ error_t free_pages(void* p, struct nexus_node* nexus_root)
         nexus_rb_tree_remove(node, &nexus_root->_rb_root);
         return 0;
 }
-static void nexus_rb_print(struct nexus_node* node){
-
-}
 void nexus_print(struct nexus_node* nexus_root)
 {
         if (!nexus_root) {
@@ -335,5 +332,15 @@ void nexus_print(struct nexus_node* nexus_root)
         pr_info("=== TOTAL: %d ===\n", manage_page_num);
         /*then print the rb tree*/
         pr_info("[ USED PAGES ]\n");    /*include the nexus pages*/
-        nexus_rb_print(nexus_root);
+        struct rb_node* tmp_rb=nexus_root->_rb_root.rb_root;
+        pr_info("used pages 1 0x%x 0x%x\n",(vaddr)tmp_rb,(vaddr)tmp_rb->left_child);
+        while(tmp_rb->left_child)
+        {
+                tmp_rb=tmp_rb->left_child;
+        }
+        pr_info("used pages 2\n");
+        while(tmp_rb){
+                pr_info("[ NEXUS ] Used page: start vaddr 0x%x, size 0x%x\n");
+                tmp_rb=RB_Next(tmp_rb);
+        }
 }
