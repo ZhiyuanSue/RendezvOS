@@ -8,6 +8,7 @@ extern int log_level;
 extern char _bss_start, _bss_end;
 extern char _end;
 extern struct buddy buddy_pmm;
+struct nexus_node* nexus_root;
 
 void cmain(struct setup_info *arch_setup_info)
 {
@@ -25,7 +26,7 @@ void cmain(struct setup_info *arch_setup_info)
                 return;
         }
         buddy_pmm.pmm_init(arch_setup_info);
-        init_nexus((struct pmm *)&buddy_pmm);
+        nexus_root=init_nexus((struct pmm *)&buddy_pmm);
         /*TODO:after we init the pmm module, we can alloc some pages for
          * stack,and no more boot stack：in x86,please use LSS, see
          * manual 6.8.3*/

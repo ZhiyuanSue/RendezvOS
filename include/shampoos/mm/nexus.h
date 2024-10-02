@@ -28,8 +28,9 @@ struct nexus_node {
         };
 };
 #define NEXUS_PER_PAGE (PAGE_SIZE / (sizeof(struct nexus_node)))
-error_t init_nexus();
-error_t get_free_page(int order, enum zone_type memory_zone);
-error_t free_pages(void* p);
+struct nexus_node* init_nexus(struct pmm* pmm);
+error_t get_free_page(int order, enum zone_type memory_zone, struct nexus_node* nexus_root);
+error_t free_pages(void* p, struct nexus_node* nexus_root);
+void nexus_print(void); /*print it for debug*/
 
 #endif
