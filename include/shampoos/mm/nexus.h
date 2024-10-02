@@ -21,8 +21,8 @@ struct nexus_node {
                 /* root node*/
                 struct {
                         struct rb_root _rb_root;
-                        void* backup_manage_page;
                         struct list_entry manage_free_list_head;
+                        void* backup_manage_page;
                         struct pmm* pmm;
                 };
         };

@@ -25,7 +25,7 @@ void cmain(struct setup_info *arch_setup_info)
                 return;
         }
         buddy_pmm.pmm_init(arch_setup_info);
-        init_nexus((struct buddy *)&buddy_pmm);
+        init_nexus((struct pmm *)&buddy_pmm);
         /*TODO:after we init the pmm module, we can alloc some pages for
          * stack,and no more boot stack：in x86,please use LSS, see
          * manual 6.8.3*/
