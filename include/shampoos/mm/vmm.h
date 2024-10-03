@@ -52,10 +52,10 @@ error_t map(paddr* vspace_root_paddr, u64 ppn, u64 vpn, int level,
 */
 error_t unmap(paddr vspace_root_paddr, u64 vpn, struct map_handler* handler);
 
-#define MM_COMMON                       \
-        void (*init)(struct pmm * pmm); \
-        void* (*m_alloc)(size_t Bytes); \
-        void (*m_free)(void* p)
+#define MM_COMMON                                                       \
+        struct allocator* (*init)(struct nexus_node * nexus_root);      \
+        void* (*m_alloc)(struct allocator * allocator_p, size_t Bytes); \
+        void (*m_free)(struct allocator * allocator_p, void* p)
 struct allocator {
         MM_COMMON;
 };
