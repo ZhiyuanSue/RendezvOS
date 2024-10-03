@@ -30,6 +30,7 @@ union L2_entry l2;
 union L3_entry l3;
 extern char MAP_L3_table;
 extern struct buddy buddy_pmm;
+extern struct map_handler Map_Handler;
 
 int arch_vmm_test(void)
 {
@@ -74,7 +75,7 @@ int arch_vmm_test(void)
                 pr_error("[ ERROR ] ERROR:try get a ppn fail\n");
                 goto arch_vmm_test_error;
         }
-        if (map(&vspace_root, ppn_1, VPN(vp_1), 3, (struct pmm *)&buddy_pmm)) {
+        if (map(&vspace_root, ppn_1, VPN(vp_1), 3, &Map_Handler)) {
                 pr_error("[ TEST ] ERROR:map 4K virtual error!\n");
                 goto arch_vmm_test_error;
         }
@@ -89,7 +90,7 @@ int arch_vmm_test(void)
                 pr_error("[ ERROR ] ERROR:try get a ppn fail\n");
                 goto arch_vmm_test_error;
         }
-        if (!map(&vspace_root, ppn_2, VPN(vp_1), 3, (struct pmm *)&buddy_pmm)) {
+        if (!map(&vspace_root, ppn_2, VPN(vp_1), 3, &Map_Handler)) {
                 pr_error(
                         "[ TEST ] ERROR:try to map to same virtual page but no error return\n");
                 goto arch_vmm_test_error;
@@ -115,7 +116,7 @@ int arch_vmm_test(void)
                         ppn_3);
                 goto arch_vmm_test_error;
         }
-        if (map(&vspace_root, ppn_3, VPN(vp_2), 2, (struct pmm *)&buddy_pmm)) {
+        if (map(&vspace_root, ppn_3, VPN(vp_2), 2, &Map_Handler)) {
                 pr_error("[ TEST ] ERROR:try to map to a 2M page and fail\n");
                 goto arch_vmm_test_error;
         }
@@ -137,7 +138,7 @@ int arch_vmm_test(void)
                         ppn_4);
                 goto arch_vmm_test_error;
         }
-        if (!map(&vspace_root, ppn_4, VPN(vp_2), 2, (struct pmm *)&buddy_pmm)) {
+        if (!map(&vspace_root, ppn_4, VPN(vp_2), 2, &Map_Handler)) {
                 pr_error(
                         "[ TEST ] ERROR:try to map to same virtual page but no error return\n");
                 goto arch_vmm_test_error;
@@ -148,7 +149,7 @@ int arch_vmm_test(void)
                 pr_error("[ TEST ] ERROR:try to free a physical page fail\n");
                 goto arch_vmm_test_error;
         }
-        if (unmap(vspace_root, VPN(vp_2))) {
+        if (unmap(vspace_root, VPN(vp_2), &Map_Handler)) {
                 pr_error("[ TEST ] ERROR: try to unmap a 2M page fail\n");
                 goto arch_vmm_test_error;
         }
@@ -159,7 +160,7 @@ int arch_vmm_test(void)
         pr_info("[ TEST ] PASS: remap 2M ok!\n");
 
         /*unmap the ppn_1 and free*/
-        if (unmap(vspace_root, VPN(vp_1))) {
+        if (unmap(vspace_root, VPN(vp_1), &Map_Handler)) {
                 pr_error("[ TEST ] ERROR: try to unmap a 4K page fail\n");
                 goto arch_vmm_test_error;
         }
@@ -174,13 +175,13 @@ int arch_vmm_test(void)
                 pr_error("[ ERROR ] ERROR:try get a ppn fail\n");
                 goto arch_vmm_test_error;
         }
-        if (map(&vspace_root, ppn_1, VPN(vp_1_2M), 2, (struct pmm *)&buddy_pmm)) {
+        if (map(&vspace_root, ppn_1, VPN(vp_1_2M), 2, &Map_Handler)) {
                 pr_error(
                         "[ TEST ] ERROR:try to map a 2M after a 4K map and unmap\n");
                 goto arch_vmm_test_error;
         }
         /*unmap the 2M page and free*/
-        if (unmap(vspace_root, VPN(vp_1_2M))) {
+        if (unmap(vspace_root, VPN(vp_1_2M), &Map_Handler)) {
                 pr_error("[ TEST ] ERROR: try to unmap a 4K page fail\n");
                 goto arch_vmm_test_error;
         }
