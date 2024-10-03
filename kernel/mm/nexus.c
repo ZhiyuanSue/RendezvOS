@@ -163,19 +163,22 @@ static void nexus_free_entry(struct nexus_node* nexus_entry,
                 return;
         }
         list_add_head(&nexus_entry->_free_list, &page_manage_node->_free_list);
-        if(!page_manage_node->page_left_node){
-                list_add_head(&page_manage_node->manage_free_list,&nexus_root->manage_free_list);
+        if (!page_manage_node->page_left_node) {
+                list_add_head(&page_manage_node->manage_free_list,
+                              &nexus_root->manage_free_list);
         }
         page_manage_node->page_left_node++;
-        if (page_manage_node->page_left_node==NEXUS_PER_PAGE-1) {
+        if (page_manage_node->page_left_node == NEXUS_PER_PAGE - 1) {
                 /*after this del, this manage page is empty*/
                 if (!(nexus_root->backup_manage_page)) {
                         /*if no backup page, just make it as the backup page*/
                         nexus_root->backup_manage_page =
                                 (void*)page_manage_node;
-                } else if((vaddr)(nexus_root->backup_manage_page) != (vaddr)page_manage_node) {
+                } else if ((vaddr)(nexus_root->backup_manage_page)
+                           != (vaddr)page_manage_node) {
                         /*if it's the backup page, no need to del it*/
-                        /*we also need to del it from the list and the rb tree first*/
+                        /*we also need to del it from the list and the rb tree
+                         * first*/
                         list_del_init(&page_manage_node->manage_free_list);
                         nexus_rb_tree_remove(page_manage_node,
                                              &nexus_root->_rb_root);
@@ -194,7 +197,7 @@ static void nexus_free_entry(struct nexus_node* nexus_entry,
         }
 }
 void* get_free_page(int page_num, enum zone_type memory_zone,
-                      struct nexus_node* nexus_root)
+                    struct nexus_node* nexus_root)
 {
         /*first check the input parameter*/
         if (page_num < 0 || page_num > MIDDLE_PAGE_SIZE / PAGE_SIZE
@@ -278,7 +281,10 @@ error_t free_pages(void* p, struct nexus_node* nexus_root)
         struct nexus_node* node =
                 nexus_rb_tree_search(&nexus_root->_rb_root, (vaddr)p);
         if (!node) {
-                pr_error("[ NEXUS ] ERROR: search the free page fail 0x%x 0x%x\n",(vaddr)p,(vaddr)nexus_root);
+                pr_error(
+                        "[ NEXUS ] ERROR: search the free page fail 0x%x 0x%x\n",
+                        (vaddr)p,
+                        (vaddr)nexus_root);
                 return -EINVAL;
         }
         paddr vspace_root = get_current_kernel_vspace_root();
@@ -292,60 +298,4 @@ error_t free_pages(void* p, struct nexus_node* nexus_root)
         nexus_rb_tree_remove(node, &nexus_root->_rb_root);
         nexus_free_entry(node, nexus_root);
         return 0;
-}
-void nexus_print(struct nexus_node* nexus_root)
-{
-        if (!nexus_root) {
-                pr_error(
-                        "[ NEXUS ] ERROR: expect a nexus root, pleas check or init one\n");
-                return;
-        }
-        pr_info("=== [ NEXUS ] ===\n");
-        pr_info("[ MANAGE PAGES ]\n");
-        if (nexus_root->backup_manage_page) {
-                pr_info("Backup Page: Yes 0x%x\n",
-                        (vaddr)nexus_root->backup_manage_page);
-        } else {
-                pr_info("Backup Page: No \n");
-        }
-        struct list_entry* manage_page_list_entry =
-                &nexus_root->manage_free_list;
-        struct list_entry* tmp_mp = manage_page_list_entry->next;
-        int manage_page_num = 0;
-        while (tmp_mp != manage_page_list_entry) {
-                manage_page_num++;
-                struct nexus_node* manage_page = container_of(
-                        tmp_mp, struct nexus_node, manage_free_list);
-                pr_info("\t[ NEXUS ] have empty entry manage page %d: %d record can use\n",
-                        manage_page_num,
-                        manage_page->page_left_node);
-                struct list_entry* free_entry = &manage_page->_free_list;
-                struct list_entry* tmp_fe = free_entry->next;
-                int free_entry_num = 0;
-                while (tmp_fe != free_entry) {
-                        free_entry_num++;
-                        tmp_fe = tmp_fe->next;
-                }
-                if (free_entry_num != manage_page->page_left_node) {
-                        pr_error(
-                                "[ NEXUS ] ERROR: this manage page declared free entry is unequal to counted entry\n");
-                }
-                tmp_mp = tmp_mp->next;
-        }
-        pr_info("=== TOTAL: %d ===\n", manage_page_num);
-        /*then print the rb tree*/
-        pr_info("[ USED PAGES ]\n"); /*include the nexus pages*/
-        struct rb_node* tmp_rb = nexus_root->_rb_root.rb_root;
-        while (tmp_rb->left_child) {
-                tmp_rb = tmp_rb->left_child;
-        }
-        while (tmp_rb) {
-                struct nexus_node* tmp_node =
-                        container_of(tmp_rb, struct nexus_node, _rb_node);
-                pr_info("\t[ NEXUS ] Used page: start vaddr 0x%x, size 0x%x\n",
-                        tmp_node->start_addr,
-                        tmp_node->size);
-                tmp_rb = RB_Next(tmp_rb);
-        }
-        pr_info("=== [ END ] ===\n")
 }
