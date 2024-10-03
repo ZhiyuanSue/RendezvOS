@@ -115,10 +115,9 @@ static struct nexus_node* nexus_get_free_entry(struct nexus_node* root_node)
                         }
                         vaddr vpage_addr =
                                 KERNEL_PHY_TO_VIRT(PADDR(nexus_new_page));
-                        int nexus_new_vpage = VPN(vpage_addr);
                         if (map(&vspace_root,
                                 nexus_new_page,
-                                nexus_new_vpage,
+                                VPN(vpage_addr),
                                 3,
                                 root_node->handler)) {
                                 pr_error("[ NEXUS ] ERROR: map error\n");
@@ -146,11 +145,9 @@ static struct nexus_node* nexus_get_free_entry(struct nexus_node* root_node)
         /*clean the entry,remember that we must del it first then clean the
          * entry*/
         list_del_init(usable_entry);
-        usable_manage_page->page_left_node++;
-        if (usable_manage_page->page_left_node >= NEXUS_PER_PAGE) {
-                pr_error(
-                        "[ NEXUS ] ERROR: unexpected no more space but still try to insert\n");
-                return NULL;
+        usable_manage_page->page_left_node--;
+        if (usable_manage_page->page_left_node == 0) {
+                list_del_init(&usable_manage_page->manage_free_list);
         }
         memset(usable_manage_entry, '\0', sizeof(struct nexus_node));
         return usable_manage_entry;
@@ -160,21 +157,29 @@ static void nexus_free_entry(struct nexus_node* nexus_entry,
 {
         struct nexus_node* page_manage_node =
                 (struct nexus_node*)ROUND_DOWN((vaddr)nexus_entry, PAGE_SIZE);
-        if (page_manage_node->page_left_node <= 0) {
+        if (page_manage_node->page_left_node >= NEXUS_PER_PAGE) {
                 pr_error(
                         "[ NEXUS ] unexpect case: a manage page have no entry to free but still try free it\n");
                 return;
         }
         list_add_head(&nexus_entry->_free_list, &page_manage_node->_free_list);
-        page_manage_node->page_left_node--;
-        if (!page_manage_node->page_left_node) {
+        if(!page_manage_node->page_left_node){
+                list_add_head(&page_manage_node->manage_free_list,&nexus_root->manage_free_list);
+        }
+        page_manage_node->page_left_node++;
+        if (page_manage_node->page_left_node==NEXUS_PER_PAGE-1) {
                 /*after this del, this manage page is empty*/
-                if (!nexus_root->backup_manage_page) {
+                if (!(nexus_root->backup_manage_page)) {
                         /*if no backup page, just make it as the backup page*/
                         nexus_root->backup_manage_page =
                                 (void*)page_manage_node;
-                } else {
-                        /*else free this manage page*/
+                } else if((vaddr)(nexus_root->backup_manage_page) != (vaddr)page_manage_node) {
+                        /*if it's the backup page, no need to del it*/
+                        /*we also need to del it from the list and the rb tree first*/
+                        list_del_init(&page_manage_node->manage_free_list);
+                        nexus_rb_tree_remove(page_manage_node,
+                                             &nexus_root->_rb_root);
+                        /*free this manage page*/
                         paddr vspace_root = get_current_kernel_vspace_root();
                         int ppn = PPN(
                                 KERNEL_VIRT_TO_PHY((vaddr)page_manage_node));
@@ -185,34 +190,32 @@ static void nexus_free_entry(struct nexus_node* nexus_entry,
                                 return;
                         }
                         nexus_root->handler->pmm->pmm_free(ppn, 1);
-                        /*we also need to del it from the list and the rb tree*/
-                        list_del_init(&page_manage_node->manage_free_list);
-                        nexus_rb_tree_remove(page_manage_node,
-                                             &nexus_root->_rb_root);
                 }
         }
 }
-error_t get_free_page(int page_num, enum zone_type memory_zone,
+void* get_free_page(int page_num, enum zone_type memory_zone,
                       struct nexus_node* nexus_root)
 {
         /*first check the input parameter*/
         if (page_num < 0 || page_num > MIDDLE_PAGE_SIZE / PAGE_SIZE
             || memory_zone < 0 || memory_zone > ZONE_NR_MAX) {
                 pr_error("[ NEXUS ] error input parameter\n");
-                return -EINVAL;
+                return NULL;
         }
         /*try get a free entry*/
         struct nexus_node* free_nexus_entry = nexus_get_free_entry(nexus_root);
         if (!free_nexus_entry) {
                 pr_error("[ NEXUS ] cannot find a new free nexus entry\n");
-                return -ENOMEM;
+                return NULL;
         }
         paddr vspace_root = get_current_kernel_vspace_root();
         /*get phy pages from pmm*/
         int ppn = nexus_root->handler->pmm->pmm_alloc(page_num, ZONE_NORMAL);
         if (ppn <= 0) {
                 pr_error("[ NEXUS ] ERROR: init error\n");
-                return -ENOMEM;
+                /*we have alloc a new usable entry ,we need to return back*/
+                nexus_free_entry(free_nexus_entry, nexus_root);
+                return NULL;
         }
         vaddr free_page_addr = KERNEL_PHY_TO_VIRT(PADDR(ppn));
         /*map, here remember, if alloc a 2M huge page, just map a level 2 page*/
@@ -225,7 +228,8 @@ error_t get_free_page(int page_num, enum zone_type memory_zone,
                         2,
                         nexus_root->handler)) {
                         pr_error("[ NEXUS ] ERROR: map error\n");
-                        return -ENOMEM;
+                        nexus_free_entry(free_nexus_entry, nexus_root);
+                        return NULL;
                 }
         } else {
                 int error_num = -1;
@@ -252,17 +256,18 @@ error_t get_free_page(int page_num, enum zone_type memory_zone,
                                           nexus_root->handler)) {
                                         pr_error(
                                                 "[ NEXUS ] ERROR: map success but unmap have error\n");
-                                        return -ENOMEM;
+                                        return NULL;
                                 }
                         }
-                        return -ENOMEM;
+                        nexus_free_entry(free_nexus_entry, nexus_root);
+                        return NULL;
                 }
         }
         /*fill in the entry and link it*/
         free_nexus_entry->start_addr = free_page_addr;
         free_nexus_entry->size = page_num;
         nexus_rb_tree_insert(free_nexus_entry, &nexus_root->_rb_root);
-        return 0;
+        return (void*)free_page_addr;
 }
 error_t free_pages(void* p, struct nexus_node* nexus_root)
 {
@@ -273,7 +278,7 @@ error_t free_pages(void* p, struct nexus_node* nexus_root)
         struct nexus_node* node =
                 nexus_rb_tree_search(&nexus_root->_rb_root, (vaddr)p);
         if (!node) {
-                pr_error("[ NEXUS ] ERROR: search the free page fail\n");
+                pr_error("[ NEXUS ] ERROR: search the free page fail 0x%x 0x%x\n",(vaddr)p,(vaddr)nexus_root);
                 return -EINVAL;
         }
         paddr vspace_root = get_current_kernel_vspace_root();
@@ -283,9 +288,9 @@ error_t free_pages(void* p, struct nexus_node* nexus_root)
                 return -ENOMEM;
         }
         nexus_root->handler->pmm->pmm_free(ppn, node->size);
-        nexus_free_entry(node, nexus_root);
         /*del from rb tree*/
         nexus_rb_tree_remove(node, &nexus_root->_rb_root);
+        nexus_free_entry(node, nexus_root);
         return 0;
 }
 void nexus_print(struct nexus_node* nexus_root)
@@ -311,7 +316,7 @@ void nexus_print(struct nexus_node* nexus_root)
                 manage_page_num++;
                 struct nexus_node* manage_page = container_of(
                         tmp_mp, struct nexus_node, manage_free_list);
-                pr_info("\tmanage page %d: %d record used\n",
+                pr_info("\t[ NEXUS ] have empty entry manage page %d: %d record can use\n",
                         manage_page_num,
                         manage_page->page_left_node);
                 struct list_entry* free_entry = &manage_page->_free_list;
@@ -321,8 +326,6 @@ void nexus_print(struct nexus_node* nexus_root)
                         free_entry_num++;
                         tmp_fe = tmp_fe->next;
                 }
-                pr_info("\tfree entry list linked number is %d\n",
-                        free_entry_num);
                 if (free_entry_num != manage_page->page_left_node) {
                         pr_error(
                                 "[ NEXUS ] ERROR: this manage page declared free entry is unequal to counted entry\n");
@@ -339,7 +342,7 @@ void nexus_print(struct nexus_node* nexus_root)
         while (tmp_rb) {
                 struct nexus_node* tmp_node =
                         container_of(tmp_rb, struct nexus_node, _rb_node);
-                pr_info("[ NEXUS ] Used page: start vaddr 0x%x, size 0x%x\n",
+                pr_info("\t[ NEXUS ] Used page: start vaddr 0x%x, size 0x%x\n",
                         tmp_node->start_addr,
                         tmp_node->size);
                 tmp_rb = RB_Next(tmp_rb);
