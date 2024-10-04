@@ -9,6 +9,64 @@
 #define MAX_GROUP_SLOTS 12
 static int slot_size[MAX_GROUP_SLOTS] =
         {8, 16, 24, 32, 48, 64, 96, 128, 256, 512, 1024, 2048};
+
+/*
+        In system there might have multiple spmalloc structs
+        e.x. as a per cpu allocator
+        so there's no lock here
+        but, it might have lock in get_free_page and free_page
+
+        and as for the spmalloc
+        in one spmalloc, it have NR_CHUNK linked list groups
+        and in those linked list groups, the objects size is defined in obj_size array
+   below
+
+        every linked list group have 2 linked list
+		one is full or partial, one is empty
+		for empty chunk might be reused
+
+		if one group lack of memory
+		it will first try to find other groups for pages
+		if no page, then try to use get free page
+
+		when a partial page is all empty
+		it also first put into the empty list
+		only the empty list have tooo many page will it return to the system
+
+		every linked list have some linked chunks
+        like:
+        | chunk | -> | chunk | -> ...
+        (actually, use double linked list)
+
+        in every chunk, it might have several pages
+        the page size of every chunk is difined as nr_chunk_page
+
+        (This is because, for a chunk is 1 page with 4096 size ,
+        and if the object in this chunk is 2048,
+        and I also have a header in every chunk,
+        so I will waste 2048 - header size space, it waste toooo much,
+        but if I use a chunk with 8 pages, only about 1/16 is wasted )
+
+        and in on chunk, the space is like :
+        -------------------------------------
+        | header | header padding | objects |
+        -------------------------------------
+        the header padding of every linked list with different object size is
+   different and is defined in chunk_header_padding_size array
+
+        then is the objects
+        +----------------------------+----------------------------+
+        || obj_header | obj_payload ||| obj_header | obj_payload ||...
+        +----------------------------+----------------------------+
+        the obj_header is just a list entry, for used list and empty list in
+   this chunk
+
+   Remember: there might have multiple allocator in system, and we do not do this part
+   - alloc is always success, but free might not
+   - for a free op, it will try to find the chunk in this allocator, but might in another allocator
+     we have to use lock to realize it
+*/
+
 struct object_header {};
 struct chunk {
         struct list_entry chunk_list;
