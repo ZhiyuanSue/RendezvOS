@@ -465,8 +465,8 @@ error_t free_pages(void* p, int page_num, struct nexus_node* nexus_root)
                                 return -ENOMEM;
                         }
                         nexus_root->handler->pmm->pmm_free(ppn, node->size);
-						nexus_rb_tree_remove(node, &nexus_root->_rb_root);
-						nexus_free_entry(node, nexus_root);
+                        nexus_rb_tree_remove(node, &nexus_root->_rb_root);
+                        nexus_free_entry(node, nexus_root);
                         page_num -= size;
                         if (page_num < 0) {
                                 pr_error(

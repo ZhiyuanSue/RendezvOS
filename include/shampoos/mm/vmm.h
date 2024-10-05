@@ -55,20 +55,10 @@ error_t unmap(paddr vspace_root_paddr, u64 vpn, struct map_handler* handler);
 #define MM_COMMON                                                       \
         struct allocator* (*init)(struct nexus_node * nexus_root);      \
         void* (*m_alloc)(struct allocator * allocator_p, size_t Bytes); \
-        void (*m_free)(struct allocator * allocator_p, void* p)
+        void (*m_free)(struct allocator * allocator_p, void* p);        \
+        int allocator_id
 struct allocator {
         MM_COMMON;
 };
 
-struct vma_struct {
-        struct mm_struct* mm;
-        struct rb_node vma_rb;
-};
-struct mm_struct {
-        struct rb_root mm_root;
-};
-
-struct mm_struct* create_mm();
-struct vma_struct* create_vma();
-void insert_vma(struct mm_struct* mm, struct vma_struct* vma);
 #endif

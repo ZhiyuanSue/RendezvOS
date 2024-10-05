@@ -24,6 +24,7 @@ struct nexus_node {
                         struct rb_root _rb_root;
                         void* backup_manage_page;
                         struct map_handler* handler;
+                        int nexus_id; /*should alloced by the upper level code*/
                 };
         };
 };

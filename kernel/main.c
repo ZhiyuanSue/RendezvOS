@@ -28,6 +28,7 @@ void cmain(struct setup_info *arch_setup_info)
         }
         buddy_pmm.pmm_init(arch_setup_info);
         nexus_root = init_nexus(&Map_Handler);
+        nexus_root->nexus_id = 0;
         /*TODO:after we init the pmm module, we can alloc some pages for
          * stack,and no more boot stack：in x86,please use LSS, see
          * manual 6.8.3*/

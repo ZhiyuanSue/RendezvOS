@@ -69,19 +69,31 @@ static int slot_size[MAX_GROUP_SLOTS] =
    in another allocator we have to use lock to realize it
 */
 
-struct object_header {};
-struct chunk {
-        struct list_entry chunk_list;
-        struct list_entry object_list;
+struct object_header {
+        struct list_entry obj_list;
+        char obj[];
 };
-struct sp_group {
+struct mem_chunk {
+        u64 magic;
+        int allocator_id;
+        int chunk_order;
+        int nr_max_objs;
+        int nr_used_objs;
+        struct list_entry chunk_list;
+        struct list_entry partial_obj_list;
+        struct list_entry empty_obj_list;
+        char padding[];
+};
+struct mem_group {
+        int allocator_id;
+        int chunk_order;
         struct list_entry partial_list;
         struct list_entry empty_list;
 };
-struct sp_allocator {
+struct mem_allocator {
         MM_COMMON;
         struct nexus_node* nexus_root;
-        struct sp_group groups[MAX_GROUP_SLOTS];
+        struct mem_group groups[MAX_GROUP_SLOTS];
 };
 struct allocator* sp_init(struct nexus_node* nexus_root);
 void* sp_alloc(struct allocator* allocator_p, size_t Bytes);
