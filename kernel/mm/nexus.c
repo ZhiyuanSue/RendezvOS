@@ -446,6 +446,46 @@ error_t free_pages(void* p, int page_num, struct nexus_node* nexus_root)
                 paddr vspace_root = get_current_user_vspace_root();
                 struct nexus_node* node =
                         nexus_rb_tree_search(&nexus_root->_rb_root, (vaddr)p);
+                if (!node) {
+                        pr_error(
+                                "[ NEXUS ] ERROR: search the free page fail 0x%x 0x%x\n",
+                                (vaddr)p,
+                                (vaddr)nexus_root);
+                        return -EINVAL;
+                }
+                while (1) {
+                        u32 ppn = node->ppn;
+                        vaddr map_addr = node->start_addr;
+                        u64 size = node->size;
+                        vaddr expect_next_addr = map_addr + size * PAGE_SIZE;
+                        if (unmap(vspace_root,
+                                  VPN(map_addr),
+                                  nexus_root->handler)) {
+                                pr_error("[ NEXUS ] ERROR: unmap error!\n");
+                                return -ENOMEM;
+                        }
+                        nexus_root->handler->pmm->pmm_free(ppn, node->size);
+						nexus_rb_tree_remove(node, &nexus_root->_rb_root);
+						nexus_free_entry(node, nexus_root);
+                        page_num -= size;
+                        if (page_num < 0) {
+                                pr_error(
+                                        "[ NEXUS ] ERROR: the size is unequal with the alloc time, this vspace might be wrong\n");
+                                return -EINVAL;
+                        } else if (page_num == 0) {
+                                break;
+                        }
+                        struct rb_node* next_rb = RB_Next(&node->_rb_node);
+                        if (!next_rb)
+                                break;
+                        node = container_of(
+                                next_rb, struct nexus_node, _rb_node);
+                        if (node->start_addr != expect_next_addr) {
+                                pr_error(
+                                        "[ NEXUS ] ERROR: the range is not continuous\n");
+                                return -EINVAL;
+                        }
+                }
         }
 
         return 0;
