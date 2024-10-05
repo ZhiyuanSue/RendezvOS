@@ -3,7 +3,7 @@
 #include <common/stdbool.h>
 #define PAGE_SIZE        0x1000
 #define MIDDLE_PAGE_SIZE 0x200000
-#define MIDDLE_PAGES	 0x200
+#define MIDDLE_PAGES     0x200
 #define HUGE_PAGE_SIZE   0x40000000
 
 #define KiloBytes 0x400

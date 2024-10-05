@@ -19,7 +19,8 @@ static inline paddr get_current_kernel_vspace_root()
         asm volatile("movq %%cr3,%0;" : "=&r"(cr3_tmp) :);
         return CR3_ADDR(cr3_tmp, max_phy_addr_width);
 }
-static inline paddr get_current_user_vspace_root(){
+static inline paddr get_current_user_vspace_root()
+{
         paddr cr3_tmp;
         asm volatile("movq %%cr3,%0;" : "=&r"(cr3_tmp) :);
         return CR3_ADDR(cr3_tmp, max_phy_addr_width);

@@ -18,22 +18,23 @@ static int slot_size[MAX_GROUP_SLOTS] =
 
         and as for the spmalloc
         in one spmalloc, it have NR_CHUNK linked list groups
-        and in those linked list groups, the objects size is defined in obj_size array
-   below
+        and in those linked list groups, the objects size is defined in obj_size
+   array below
 
         every linked list group have 2 linked list
-		one is full or partial, one is empty
-		for empty chunk might be reused
+                one is full or partial, one is empty
+                for empty chunk might be reused
 
-		if one group lack of memory
-		it will first try to find other groups for pages
-		if no page, then try to use get free page
+                if one group lack of memory
+                it will first try to find other groups for pages
+                if no page, then try to use get free page
 
-		when a partial page is all empty
-		it also first put into the empty list
-		only the empty list have tooo many page will it return to the system
+                when a partial page is all empty
+                it also first put into the empty list
+                only the empty list have tooo many page will it return to the
+   system
 
-		every linked list have some linked chunks
+                every linked list have some linked chunks
         like:
         | chunk | -> | chunk | -> ...
         (actually, use double linked list)
@@ -61,10 +62,11 @@ static int slot_size[MAX_GROUP_SLOTS] =
         the obj_header is just a list entry, for used list and empty list in
    this chunk
 
-   Remember: there might have multiple allocator in system, and we do not do this part
+   Remember: there might have multiple allocator in system, and we do not do
+   this part
    - alloc is always success, but free might not
-   - for a free op, it will try to find the chunk in this allocator, but might in another allocator
-     we have to use lock to realize it
+   - for a free op, it will try to find the chunk in this allocator, but might
+   in another allocator we have to use lock to realize it
 */
 
 struct object_header {};
