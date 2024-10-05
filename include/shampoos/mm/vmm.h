@@ -45,7 +45,7 @@ void init_map(struct map_handler* handler, int cpu_id, struct pmm* pmm);
         and if the vspace is not exist, it should try to alloc a new one
 */
 error_t map(paddr* vspace_root_paddr, u64 ppn, u64 vpn, int level,
-            struct map_handler* handler);
+            ENTRY_FLAGS_t eflags, struct map_handler* handler);
 /*
         here we think the vspace root paddr must exist.
         and we expect the vpn and the page number we need to unmap

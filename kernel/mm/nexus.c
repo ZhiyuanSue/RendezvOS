@@ -74,7 +74,12 @@ struct nexus_node* init_nexus(struct map_handler* handler)
         }
         /*get a vir page with Identical mapping*/
         vaddr vpage_addr = KERNEL_PHY_TO_VIRT(PADDR(nexus_init_page));
-        if (map(&vspace_root, nexus_init_page, VPN(vpage_addr), 3, handler)) {
+        if (map(&vspace_root,
+                nexus_init_page,
+                VPN(vpage_addr),
+                3,
+                PAGE_ENTRY_NONE,
+                handler)) {
                 pr_error("[ NEXUS ] ERROR: map error\n");
                 return NULL;
         }
@@ -126,6 +131,7 @@ static struct nexus_node* nexus_get_free_entry(struct nexus_node* root_node)
                                 nexus_new_page,
                                 VPN(vpage_addr),
                                 3,
+                                PAGE_ENTRY_NONE,
                                 root_node->handler)) {
                                 pr_error("[ NEXUS ] ERROR: map error\n");
                                 return NULL;
@@ -254,6 +260,7 @@ void* get_free_page(int page_num, enum zone_type memory_zone,
                                 ppn,
                                 VPN(free_page_addr),
                                 2,
+                                PAGE_ENTRY_NONE,
                                 nexus_root->handler)) {
                                 pr_error("[ NEXUS ] ERROR: map error\n");
                                 nexus_free_entry(free_nexus_entry, nexus_root);
@@ -269,6 +276,7 @@ void* get_free_page(int page_num, enum zone_type memory_zone,
                                         tmp_ppn,
                                         VPN(free_page_addr),
                                         3,
+                                        PAGE_ENTRY_NONE,
                                         nexus_root->handler)) {
                                         pr_error(
                                                 "[ NEXUS ] ERROR: map error\n");
@@ -333,6 +341,7 @@ void* get_free_page(int page_num, enum zone_type memory_zone,
                                 ppn,
                                 VPN(target_vaddr),
                                 2,
+                                PAGE_ENTRY_USER,
                                 nexus_root->handler)) {
                                 pr_error("[ NEXUS ] ERROR: map error\n");
                                 nexus_free_entry(free_nexus_entry, nexus_root);
@@ -368,6 +377,7 @@ void* get_free_page(int page_num, enum zone_type memory_zone,
                                 ppn,
                                 VPN(target_vaddr),
                                 3,
+                                PAGE_ENTRY_USER,
                                 nexus_root->handler)) {
                                 pr_error("[ NEXUS ] ERROR: map error\n");
                                 nexus_free_entry(free_nexus_entry, nexus_root);
