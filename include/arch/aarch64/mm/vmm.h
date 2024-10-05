@@ -9,6 +9,12 @@ static inline paddr get_current_kernel_vspace_root()
         __asm__("mrs %0, TTBR1_EL1\n" : "=r"(ttbr1_tmp) : :);
         return ttbr1_tmp;
 }
+static inline paddr get_current_user_vspace_root()
+{
+        u64 ttbr0_tmp;
+        __asm__("mrs %0, TTBR0_EL1\n" : "=r"(ttbr0_tmp) : :);
+        return ttbr0_tmp;
+}
 
 // here we only consider the 4K paging
 #define LOWER_BLOCK_ATTR   \

@@ -106,7 +106,7 @@ int arch_vmm_test(void)
                 this time alloc a new 2M virtual region
         */
         int ppn_3 =
-                buddy_pmm.pmm_alloc(MIDDLE_PAGE_SIZE / PAGE_SIZE, ZONE_NORMAL);
+                buddy_pmm.pmm_alloc(MIDDLE_PAGES, ZONE_NORMAL);
         if (ppn_3 <= 0) { /*we expect the ppn aligned*/
                 pr_error("[ ERROR ] ERROR:try get a ppn fail\n");
                 goto arch_vmm_test_error;
@@ -128,7 +128,7 @@ int arch_vmm_test(void)
                                 except same fail as 4K remap
         */
         int ppn_4 =
-                buddy_pmm.pmm_alloc(MIDDLE_PAGE_SIZE / PAGE_SIZE, ZONE_NORMAL);
+                buddy_pmm.pmm_alloc(MIDDLE_PAGES, ZONE_NORMAL);
         if (ppn_4 <= 0) { /*we expect the ppn aligned*/
                 pr_error("[ ERROR ] ERROR:try get a ppn fail\n");
                 goto arch_vmm_test_error;
@@ -170,7 +170,7 @@ int arch_vmm_test(void)
         }
 
         /* try to map a 2M page to the same vp of ppn_1 mapped*/
-        ppn_1 = buddy_pmm.pmm_alloc(MIDDLE_PAGE_SIZE / PAGE_SIZE, ZONE_NORMAL);
+        ppn_1 = buddy_pmm.pmm_alloc(MIDDLE_PAGES, ZONE_NORMAL);
         if (ppn_1 <= 0) {
                 pr_error("[ ERROR ] ERROR:try get a ppn fail\n");
                 goto arch_vmm_test_error;

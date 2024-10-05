@@ -29,7 +29,7 @@ void nexus_print(struct nexus_node* nexus_root)
                         tmp_mp, struct nexus_node, manage_free_list);
                 debug("\t[ NEXUS ] have empty entry manage page %d: %d record can use\n",
                       manage_page_num,
-                      manage_page->page_left_node);
+                      manage_page->page_left_nexus);
                 struct list_entry* free_entry = &manage_page->_free_list;
                 struct list_entry* tmp_fe = free_entry->next;
                 int free_entry_num = 0;
@@ -37,7 +37,7 @@ void nexus_print(struct nexus_node* nexus_root)
                         free_entry_num++;
                         tmp_fe = tmp_fe->next;
                 }
-                if (free_entry_num != manage_page->page_left_node) {
+                if (free_entry_num != manage_page->page_left_nexus) {
                         pr_error(
                                 "[ NEXUS ] ERROR: this manage page declared free entry is unequal to counted entry\n");
                 }
@@ -68,8 +68,8 @@ int nexus_test(void)
         for (int i = 0; i < NR_MAX_TEST; i++) {
                 int page_num = 1;
                 if (i % 2)
-                        page_num = MIDDLE_PAGE_SIZE / PAGE_SIZE;
-                test_ptrs[i] = get_free_page(page_num, ZONE_NORMAL, nexus_root);
+                        page_num = MIDDLE_PAGES;
+                test_ptrs[i] = get_free_page(page_num, ZONE_NORMAL,KERNEL_VIRT_OFFSET, nexus_root);
         }
         nexus_print(nexus_root);
         for (int i = 0; i < NR_MAX_TEST; i++) {
