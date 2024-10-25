@@ -1,5 +1,6 @@
 #include <modules/test/test.h>
 #include <shampoos/mm/buddy_pmm.h>
+#include <shampoos/mm/map_handler.h>
 
 #ifdef _AARCH64_
 #include <arch/aarch64/mm/vmm.h>

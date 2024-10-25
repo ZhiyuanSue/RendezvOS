@@ -1,3 +1,4 @@
+#include <shampoos/mm/map_handler.h>
 #include <shampoos/mm/vmm.h>
 #include <common/string.h>
 #include <shampoos/error.h>

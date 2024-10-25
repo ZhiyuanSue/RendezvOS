@@ -8,7 +8,7 @@
 #else
 #define debug pr_off
 #endif
-#define MAX_TEST_CASE 4
+#define MAX_TEST_CASE 5
 
 void test(void);
 
@@ -16,6 +16,7 @@ int pmm_test(void);
 int arch_vmm_test(void);
 int rb_tree_test(void);
 int nexus_test(void);
+int spmalloc_test(void);
 
 struct test_case {
         int (*test)(void);

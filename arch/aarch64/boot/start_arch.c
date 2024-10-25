@@ -10,6 +10,7 @@
 #include <modules/dtb/print_property.h>
 #include <modules/log/log.h>
 #include <shampoos/error.h>
+#include <shampoos/mm/map_handler.h>
 
 extern u64 L2_table;
 struct map_handler Map_Handler;

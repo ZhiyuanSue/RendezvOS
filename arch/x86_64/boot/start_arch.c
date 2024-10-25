@@ -10,6 +10,7 @@
 #include <modules/log/log.h>
 #include <shampoos/error.h>
 #include <shampoos/mm/vmm.h>
+#include <shampoos/mm/map_handler.h>
 
 extern u32 max_phy_addr_width;
 struct cpuinfo_x86 cpuinfo;

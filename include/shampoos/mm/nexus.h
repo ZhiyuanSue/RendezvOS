@@ -7,6 +7,7 @@
 #include <common/dsa/list.h>
 #include <common/dsa/rb_tree.h>
 #include <shampoos/mm/pmm.h>
+#include <shampoos/mm/map_handler.h>
 struct nexus_node {
         struct list_entry manage_free_list;
         struct list_entry _free_list;
