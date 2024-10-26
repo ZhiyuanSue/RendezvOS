@@ -8,6 +8,8 @@
 #include <common/dsa/list.h>
 #include <shampoos/mm/allocator.h>
 #define MAX_GROUP_SLOTS 12
+#define PAGE_PER_CHUNK  2
+#define CHUNK_MAGIC     0xa11ca11ca11ca11c
 static int slot_size[MAX_GROUP_SLOTS] =
         {8, 16, 24, 32, 48, 64, 96, 128, 256, 512, 1024, 2048};
 
@@ -75,7 +77,7 @@ struct object_header {
         char obj[];
 };
 struct mem_chunk {
-        u64 magic;
+        u64 magic; /*the magic of mem_chunk is 0xa11ca11ca11ca11c*/
         int allocator_id;
         int chunk_order;
         int nr_max_objs;
@@ -96,6 +98,10 @@ struct mem_allocator {
         struct nexus_node* nexus_root;
         struct mem_group groups[MAX_GROUP_SLOTS];
 };
+/*chunk*/
+error_t chunk_init(struct mem_chunk* chunk, int chunk_order, int allocator_id);
+struct object_header* chunk_get_obj(struct mem_chunk* chunk);
+error_t chunk_free_obj(struct object_header* obj);
 struct allocator* sp_init(void* nexus_root);
 void* sp_alloc(struct allocator* allocator_p, size_t Bytes);
 void sp_free(struct allocator* allocator_p, void* p);
