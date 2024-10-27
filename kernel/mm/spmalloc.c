@@ -1,7 +1,12 @@
 #include <shampoos/mm/spmalloc.h>
 #include <modules/log/log.h>
 #include <shampoos/error.h>
-struct mem_allocator tmp_sp_alloctor;
+#include <common/string.h>
+struct mem_allocator tmp_sp_alloctor = {
+        .init = sp_init,
+        .m_alloc = sp_alloc,
+        .m_free = sp_free,
+};
 static int slot_size[MAX_GROUP_SLOTS] =
         {8, 16, 24, 32, 48, 64, 96, 128, 256, 512, 1024, 2048};
 
@@ -94,17 +99,48 @@ error_t chunk_free_obj(struct object_header* obj, int allocator_id)
         return chunk->allocator_id;
 }
 
-struct allocator* sp_init(void* nexus_root)
+struct allocator* sp_init(struct nexus_node* nexus_root, int allocator_id)
 {
-        return (struct allocator*)&tmp_sp_alloctor;
+        if (!nexus_root || allocator_id < 0) {
+                pr_error("[ERROR]illegal sp init parameter\n");
+                return NULL;
+        }
+        tmp_sp_alloctor.allocator_id = allocator_id;
+        tmp_sp_alloctor.nexus_root = nexus_root;
+        for (int i = 0; i < MAX_GROUP_SLOTS; i++) {
+                tmp_sp_alloctor.groups[i].allocator_id = allocator_id;
+                tmp_sp_alloctor.groups[i].chunk_order = i;
+                INIT_LIST_HEAD(&tmp_sp_alloctor.groups[i].empty_list);
+                INIT_LIST_HEAD(&tmp_sp_alloctor.groups[i].partial_list);
+        }
+        /*bootstrap*/
+        struct mem_allocator* sp_allocator =
+                sp_alloc((struct allocator*)&tmp_sp_alloctor,
+                         sizeof(struct mem_allocator));
+        if (sp_allocator) {
+                memcpy(sp_allocator,
+                       &tmp_sp_alloctor,
+                       sizeof(struct mem_allocator));
+                /*
+                TODO:after sp_alloc the empty_list and partial_list have changed
+                and obviously, it must change the list head and tail node
+                */
+                return (struct allocator*)sp_allocator;
+        } else {
+                pr_error(
+                        "[ERROR]sp alloc cannot get a space of mem allocator\n");
+                return NULL;
+        }
 }
 void* sp_alloc(struct allocator* allocator_p, size_t Bytes)
 {
-        struct sp_allocator* sp_allocator_p = (struct sp_allocator*)allocator_p;
+        struct mem_allocator* sp_allocator_p =
+                (struct mem_allocator*)allocator_p;
 
         return NULL;
 }
 void sp_free(struct allocator* allocator_p, void* p)
 {
-        struct sp_allocator* sp_allocator_p = (struct sp_allocator*)allocator_p;
+        struct mem_allocator* sp_allocator_p =
+                (struct mem_allocator*)allocator_p;
 }

@@ -58,10 +58,10 @@ static inline void basic_memcpy(char *str1, const char *str2, size_t count)
         }
 }
 
-void *memcpy(void *str1, const void *str2, size_t n)
+void *memcpy(void *dst_str, const void *src_str, size_t n)
 {
-        basic_memcpy((char *)str1, (char *)str2, n);
-        return (str1);
+        basic_memcpy((char *)dst_str, (char *)src_str, n);
+        return (dst_str);
 }
 
 size_t strlen(const char *str)
