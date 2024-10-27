@@ -10,8 +10,6 @@
 #define MAX_GROUP_SLOTS 12
 #define PAGE_PER_CHUNK  2
 #define CHUNK_MAGIC     0xa11ca11ca11ca11c
-static int slot_size[MAX_GROUP_SLOTS] =
-        {8, 16, 24, 32, 48, 64, 96, 128, 256, 512, 1024, 2048};
 
 /*
         In system there might have multiple spmalloc structs

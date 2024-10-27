@@ -412,7 +412,12 @@ error_t free_pages(void* p, int page_num, struct nexus_node* nexus_root)
                                 (vaddr)nexus_root);
                         return -EINVAL;
                 }
-                if (page_num != node->size) {
+                if (page_num != node->size && page_num != 0) {
+                        /*
+                        for kernel space, nexus entry have record the page size
+                        and it must be free pages with num equal to that size
+                        so we let 0 also be legal
+                        */
                         pr_error(
                                 "[ NEXUS ] ERROR: we cannot free pages has different number when you alloc in kernel\n");
                         return -EINVAL;
