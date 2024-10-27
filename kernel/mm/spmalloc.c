@@ -57,9 +57,10 @@ struct object_header* chunk_get_obj(struct mem_chunk* chunk)
         chunk->nr_used_objs++;
         return get_obj;
 }
-error_t chunk_free_obj(struct object_header* obj)
+error_t chunk_free_obj(struct object_header* obj, int allocator_id)
 {
-        if (!obj) {
+        /*allocator id must exist*/
+        if (!obj || allocator_id < 0) {
                 pr_error("[ERROR]illegal chunk free obj parameter\n");
                 return -EPERM;
         }
@@ -79,11 +80,18 @@ error_t chunk_free_obj(struct object_header* obj)
         */
         struct mem_chunk* chunk =
                 (struct mem_chunk*)ROUND_DOWN((vaddr)obj, PAGE_SIZE);
+        if (chunk->magic != CHUNK_MAGIC) {
+                pr_error("[ERROR]illegal chunk magic\n");
+                return -EPERM;
+        }
+        /*this obj might be allocated by another allocator*/
+        if (allocator_id != chunk->allocator_id)
+                return chunk->allocator_id;
         list_del(&obj->obj_list);
         list_add_head(&obj->obj_list, &chunk->empty_obj_list);
         /*we do not clean it*/
         chunk->nr_used_objs--;
-        return 0;
+        return chunk->allocator_id;
 }
 
 struct allocator* sp_init(void* nexus_root)

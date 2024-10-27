@@ -99,7 +99,7 @@ struct mem_allocator {
 /*chunk*/
 error_t chunk_init(struct mem_chunk* chunk, int chunk_order, int allocator_id);
 struct object_header* chunk_get_obj(struct mem_chunk* chunk);
-error_t chunk_free_obj(struct object_header* obj);
+error_t chunk_free_obj(struct object_header* obj, int allocator_id);
 struct allocator* sp_init(void* nexus_root);
 void* sp_alloc(struct allocator* allocator_p, size_t Bytes);
 void sp_free(struct allocator* allocator_p, void* p);
