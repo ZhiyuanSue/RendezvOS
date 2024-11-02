@@ -7,10 +7,10 @@
 #include <common/types.h>
 #include <common/dsa/list.h>
 #include <shampoos/mm/allocator.h>
-#define MAX_GROUP_SLOTS 12
-#define PAGE_PER_CHUNK  2
-#define CHUNK_MAGIC     0xa11ca11ca11ca11c
-
+#define MAX_GROUP_SLOTS       12
+#define PAGE_PER_CHUNK        2
+#define CHUNK_MAGIC           0xa11ca11ca11ca11c
+#define ALLOC_CHUNK_PER_BATCH 0x10
 /*
         In system there might have multiple spmalloc structs
         e.x. as a per cpu allocator
@@ -88,6 +88,8 @@ struct mem_chunk {
 struct mem_group {
         int allocator_id;
         int chunk_order;
+        size_t empty_chunk_num;
+        size_t partial_chunk_num;
         struct list_entry partial_list;
         struct list_entry empty_list;
 };
