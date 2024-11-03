@@ -1,4 +1,4 @@
-#define DEBUG
+// #define DEBUG
 #include <modules/test/test.h>
 #include <shampoos/mm/nexus.h>
 #include <modules/log/log.h>
@@ -8,7 +8,8 @@ extern struct allocator* allocator_pool[SHAMPOOS_MAX_CPU_NUMBER];
 extern int slot_size[MAX_GROUP_SLOTS];
 static void sp_chunk_print(struct mem_chunk* tmp_chunk)
 {
-        debug("\t\t| obj total %d used %d\n",
+        debug("\t\t| chunk 0x%x obj total %d used %d\n",
+              (vaddr)tmp_chunk,
               tmp_chunk->nr_max_objs,
               tmp_chunk->nr_used_objs);
 }
@@ -49,6 +50,7 @@ int spmalloc_test(void)
         spmalloc_print();
         struct allocator* malloc = allocator_pool[0];
         void* test_alloc = malloc->m_alloc(malloc, 8);
+        spmalloc_print();
         *((u64*)test_alloc) = 0;
         malloc->m_free(malloc, test_alloc);
         return 0;

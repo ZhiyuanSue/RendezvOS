@@ -138,11 +138,8 @@ collect_chunk_from_other_group(struct mem_allocator* sp_allocator_p,
                                                            chunk_list);
                                 if (alloc_chunk->nr_used_objs == 0) {
                                         list_del(&alloc_chunk->chunk_list);
-                                        list_add_head(
-                                                &sp_allocator_p
-                                                         ->groups[slot_index]
-                                                         .empty_list,
-                                                &alloc_chunk->chunk_list);
+                                        sp_allocator_p->groups[group_id]
+                                                .empty_chunk_num--;
                                         break;
                                 }
                                 tmp_list_entry = tmp_list_entry->next;
@@ -264,6 +261,9 @@ static void* _sp_alloc(struct mem_allocator* sp_allocator_p, size_t Bytes)
                                 pr_error("[ERROR]re init the chunk fail\n");
                                 return NULL;
                         }
+                        list_add_head(
+                                &sp_allocator_p->groups[slot_index].empty_list,
+                                &alloc_chunk->chunk_list);
                 }
         } else {
                 alloc_chunk = container_of(
@@ -271,7 +271,7 @@ static void* _sp_alloc(struct mem_allocator* sp_allocator_p, size_t Bytes)
                         struct mem_chunk,
                         chunk_list);
         }
-        void* obj_ptr = chunk_get_obj(alloc_chunk);
+        struct object_header* obj_ptr = chunk_get_obj(alloc_chunk);
         if (alloc_chunk->nr_max_objs == alloc_chunk->nr_used_objs) {
                 /*all the obj in this chunk are used, move this chunk to full
                  * list*/
@@ -280,7 +280,7 @@ static void* _sp_alloc(struct mem_allocator* sp_allocator_p, size_t Bytes)
                 group->empty_chunk_num--;
                 group->full_chunk_num++;
         }
-        return obj_ptr;
+        return obj_ptr->obj;
 }
 void* sp_alloc(struct allocator* allocator_p, size_t Bytes)
 {
