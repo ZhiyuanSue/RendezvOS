@@ -9,7 +9,7 @@ struct mem_allocator tmp_sp_alloctor = {
         .m_alloc = sp_alloc,
         .m_free = sp_free,
 };
-static int slot_size[MAX_GROUP_SLOTS] =
+int slot_size[MAX_GROUP_SLOTS] =
         {8, 16, 24, 32, 48, 64, 96, 128, 256, 512, 1024, 2048};
 static int bytes_to_slot(size_t Bytes)
 {
@@ -17,7 +17,7 @@ static int bytes_to_slot(size_t Bytes)
         int slot_index = 0;
         for (; slot_index < MAX_GROUP_SLOTS; slot_index++) {
                 if (slot_index == MAX_GROUP_SLOTS - 1
-                    || slot_size[slot_index + 1] > Bytes)
+                    || slot_size[slot_index] >= Bytes)
                         break;
         }
         return slot_index;
@@ -40,13 +40,12 @@ error_t chunk_init(struct mem_chunk* chunk, int chunk_order, int allocator_id)
         INIT_LIST_HEAD(&chunk->chunk_list);
         INIT_LIST_HEAD(&chunk->full_obj_list);
         INIT_LIST_HEAD(&chunk->empty_obj_list);
-        chunk->nr_max_objs =
-                sizeof(struct object_header) + slot_size[chunk_order];
+        int obj_size = sizeof(struct object_header) + slot_size[chunk_order];
         chunk->nr_used_objs = 0;
         int obj_num = (PAGE_SIZE * PAGE_PER_CHUNK - sizeof(struct mem_chunk))
-                      / chunk->nr_max_objs;
-        int padding_start =
-                PAGE_SIZE * PAGE_PER_CHUNK - obj_num * chunk->nr_max_objs;
+                      / obj_size;
+        chunk->nr_max_objs = obj_num;
+        int padding_start = PAGE_SIZE * PAGE_PER_CHUNK - obj_num * obj_size;
         for (int i = 0; i < obj_num; i++) {
                 struct list_entry* obj_ptr =
                         (struct list_entry*)((vaddr)chunk + padding_start);
@@ -178,15 +177,15 @@ struct allocator* sp_init(struct nexus_node* nexus_root, int allocator_id)
                 memcpy(sp_allocator,
                        &tmp_sp_alloctor,
                        sizeof(struct mem_allocator));
-                /*
-                TODO:after sp_alloc the empty_list and full_list have changed
-                and obviously, it must change the list head and tail node
-                */
                 for (int i = 0; i < MAX_GROUP_SLOTS; i++) {
-                        if (!list_empty(
-                                    &sp_allocator->groups[i].full_list)) {
+                        if (!list_empty(&sp_allocator->groups[i].empty_list)) {
                                 list_replace(
-                                        &tmp_sp_alloctor.groups[i].full_list,
+                                        &tmp_sp_alloctor.groups[i].empty_list,
+                                        &sp_allocator->groups[i].empty_list);
+                        } else {
+                                INIT_LIST_HEAD(
+                                        &sp_allocator->groups[i].empty_list);
+                                INIT_LIST_HEAD(
                                         &sp_allocator->groups[i].full_list);
                         }
                 }
