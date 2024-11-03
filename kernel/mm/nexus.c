@@ -261,11 +261,12 @@ static void* _kernel_get_free_page(int page_num, enum zone_type memory_zone,
         } else {
                 int error_num = -1;
                 for (int i = 0, tmp_ppn = ppn; i < page_num;
-                     i++, tmp_ppn += PAGE_SIZE) {
-                        free_page_addr = KERNEL_PHY_TO_VIRT(PADDR(tmp_ppn));
+                     i++, tmp_ppn += 1) {
+                        vaddr tmp_free_page_addr =
+                                KERNEL_PHY_TO_VIRT(PADDR(tmp_ppn));
                         if (map(&vspace_root,
                                 tmp_ppn,
-                                VPN(free_page_addr),
+                                VPN(tmp_free_page_addr),
                                 3,
                                 PAGE_ENTRY_NONE,
                                 nexus_root->handler)) {
@@ -276,11 +277,11 @@ static void* _kernel_get_free_page(int page_num, enum zone_type memory_zone,
                 if (error_num != -1) {
                         /*unmap them all*/
                         for (int i = 0, tmp_ppn = ppn; i <= error_num;
-                             i++, tmp_ppn += PAGE_SIZE) {
-                                free_page_addr =
+                             i++, tmp_ppn += 1) {
+                                vaddr tmp_free_page_addr =
                                         KERNEL_PHY_TO_VIRT(PADDR(tmp_ppn));
                                 if (unmap(vspace_root,
-                                          VPN(free_page_addr),
+                                          VPN(tmp_free_page_addr),
                                           nexus_root->handler)) {
                                         pr_error(
                                                 "[ NEXUS ] ERROR: map success but unmap have error\n");
@@ -422,7 +423,9 @@ static error_t _kernel_free_pages(void* p, int page_num,
                 so we let 0 also be legal
                 */
                 pr_error(
-                        "[ NEXUS ] ERROR: we cannot free pages has different number when you alloc in kernel\n");
+                        "[ NEXUS ] ERROR: we cannot free pages has different number 0x%x when you alloc in kernel 0x%x\n",
+                        page_num,
+                        node->size);
                 return -EINVAL;
         }
         u32 ppn = node->ppn;

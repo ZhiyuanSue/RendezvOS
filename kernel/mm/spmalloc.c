@@ -17,7 +17,7 @@ static int bytes_to_slot(size_t Bytes)
         int slot_index = 0;
         for (; slot_index < MAX_GROUP_SLOTS; slot_index++) {
                 if (slot_index == MAX_GROUP_SLOTS - 1
-                    || slot_size[slot_index + 1] < Bytes)
+                    || slot_size[slot_index + 1] > Bytes)
                         break;
         }
         return slot_index;
@@ -51,15 +51,16 @@ error_t chunk_init(struct mem_chunk* chunk, int chunk_order, int allocator_id)
                 struct list_entry* obj_ptr =
                         (struct list_entry*)((vaddr)chunk + padding_start);
                 list_add_head(obj_ptr, &chunk->empty_obj_list);
-                padding_start += chunk->nr_max_objs;
+                padding_start += slot_size[chunk->chunk_order]
+                                 + sizeof(struct object_header);
         }
         return 0;
 }
 struct object_header* chunk_get_obj(struct mem_chunk* chunk)
 {
         if (!chunk) {
-                pr_error("[ERROR]the chunk get obj input parameter is wrong",
-                         "please check\n");
+                pr_error(
+                        "[ERROR]the chunk get obj input parameter is wrong please check\n");
                 return NULL;
         }
         if (chunk->magic != CHUNK_MAGIC) {
@@ -242,6 +243,10 @@ static void* _sp_alloc(struct mem_allocator* sp_allocator_p, size_t Bytes)
                                               &group->empty_list);
                                 group->empty_chunk_num++;
                         }
+                        /*get one alloc chunk*/
+                        alloc_chunk = container_of(group->empty_list.next,
+                                                   struct mem_chunk,
+                                                   chunk_list);
                 } else {
                         /*we get another group's chunk,
                         we need to re-init it*/
@@ -277,8 +282,7 @@ void* sp_alloc(struct allocator* allocator_p, size_t Bytes)
                 return NULL;
         }
         if (Bytes <= 0 || Bytes > MIDDLE_PAGE_SIZE) {
-                pr_error("[ERROR]want to alloc bytes <= 0",
-                         " or larger then 2M\n");
+                pr_error("[ERROR]want to alloc bytes <= 0 or larger then 2M\n");
                 return NULL;
         }
         struct mem_allocator* sp_allocator_p =
@@ -309,7 +313,7 @@ static error_t _sp_free(struct mem_allocator* sp_allocator_p, void* p)
                 container_of(p, struct object_header, obj);
         int free_allocator_id =
                 chunk_free_obj(header, sp_allocator_p->allocator_id);
-        if(free_allocator_id == sp_allocator_p->allocator_id){
+        if (free_allocator_id == sp_allocator_p->allocator_id) {
                 struct mem_chunk* chunk = (struct mem_chunk*)ROUND_DOWN(
                         ((vaddr)p), PAGE_SIZE * PAGE_PER_CHUNK);
                 int order = chunk->chunk_order;
@@ -323,19 +327,23 @@ static error_t _sp_free(struct mem_allocator* sp_allocator_p, void* p)
                 }
                 /*
                         then we calculate the free chunk numbers of that group
-                        if the free chunks num is tooo large ,we free some of the chunks
+                        if the free chunks num is tooo large ,we free some of
+                   the chunks
                 */
                 while (group->empty_chunk_num > ALLOC_CHUNK_PER_BATCH) {
-                        struct mem_chunk* free_chunk = container_of(
-                                group->empty_list.next, struct mem_chunk, chunk_list);
+                        struct mem_chunk* free_chunk =
+                                container_of(group->empty_list.next,
+                                             struct mem_chunk,
+                                             chunk_list);
                         list_del(&free_chunk->chunk_list);
                         group->empty_chunk_num--;
-                        free_pages(
-                                free_chunk, PAGE_PER_CHUNK, sp_allocator_p->nexus_root);
+                        free_pages(free_chunk,
+                                   PAGE_PER_CHUNK,
+                                   sp_allocator_p->nexus_root);
                 }
-                return 0; 
-        }else{
-                return _sp_free(sp_allocator_pool[free_allocator_id],p);
+                return 0;
+        } else {
+                return _sp_free(sp_allocator_pool[free_allocator_id], p);
         }
 }
 void sp_free(struct allocator* allocator_p, void* p)
