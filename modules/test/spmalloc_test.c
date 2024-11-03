@@ -10,10 +10,10 @@ and then check the sp_malloc
 */
 static int chunk_test(void)
 {
-        struct allocator* malloc=allocator_pool[0];
-        void* test_alloc = malloc->m_alloc(malloc,8);
-        *((u64*)test_alloc)=0;
-        malloc->m_free(malloc,test_alloc);
+        struct allocator* malloc = allocator_pool[0];
+        void* test_alloc = malloc->m_alloc(malloc, 8);
+        *((u64*)test_alloc) = 0;
+        malloc->m_free(malloc, test_alloc);
         return 0;
 }
 int spmalloc_test(void)

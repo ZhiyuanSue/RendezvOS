@@ -38,7 +38,7 @@ error_t chunk_init(struct mem_chunk* chunk, int chunk_order, int allocator_id)
         chunk->chunk_order = chunk_order;
         chunk->allocator_id = allocator_id;
         INIT_LIST_HEAD(&chunk->chunk_list);
-        INIT_LIST_HEAD(&chunk->partial_obj_list);
+        INIT_LIST_HEAD(&chunk->full_obj_list);
         INIT_LIST_HEAD(&chunk->empty_obj_list);
         chunk->nr_max_objs =
                 sizeof(struct object_header) + slot_size[chunk_order];
@@ -77,7 +77,7 @@ struct object_header* chunk_get_obj(struct mem_chunk* chunk)
         struct object_header* get_obj =
                 (struct object_header*)(chunk->empty_obj_list.next);
         list_del(&get_obj->obj_list);
-        list_add_head(&get_obj->obj_list, &chunk->partial_obj_list);
+        list_add_head(&get_obj->obj_list, &chunk->full_obj_list);
         chunk->nr_used_objs++;
         return get_obj;
 }
@@ -128,21 +128,29 @@ collect_chunk_from_other_group(struct mem_allocator* sp_allocator_p,
         */
         for (int group_id = 0; group_id < MAX_GROUP_SLOTS; group_id++) {
                 /*skip current group*/
-                if (group_id != slot_index) {
-                        if (sp_allocator_p->groups[group_id].empty_chunk_num) {
-                                alloc_chunk = container_of(
-                                        sp_allocator_p->groups[group_id]
-                                                .empty_list.next,
-                                        struct mem_chunk,
-                                        chunk_list);
-                                list_del(&alloc_chunk->chunk_list);
-                                list_add_head(&sp_allocator_p
-                                                       ->groups[slot_index]
-                                                       .empty_list,
-                                              &alloc_chunk->chunk_list);
-                                break;
+                if (group_id != slot_index
+                    && sp_allocator_p->groups[group_id].empty_chunk_num) {
+                        struct list_entry* tmp_list_entry =
+                                sp_allocator_p->groups[group_id].empty_list.next;
+                        while (tmp_list_entry
+                               != &sp_allocator_p->groups[group_id].empty_list) {
+                                alloc_chunk = container_of(tmp_list_entry,
+                                                           struct mem_chunk,
+                                                           chunk_list);
+                                if (alloc_chunk->nr_used_objs == 0) {
+                                        list_del(&alloc_chunk->chunk_list);
+                                        list_add_head(
+                                                &sp_allocator_p
+                                                         ->groups[slot_index]
+                                                         .empty_list,
+                                                &alloc_chunk->chunk_list);
+                                        break;
+                                }
+                                tmp_list_entry = tmp_list_entry->next;
                         }
                 }
+                if (alloc_chunk)
+                        break;
         }
         return alloc_chunk;
 }
@@ -157,10 +165,10 @@ struct allocator* sp_init(struct nexus_node* nexus_root, int allocator_id)
         for (int i = 0; i < MAX_GROUP_SLOTS; i++) {
                 tmp_sp_alloctor.groups[i].allocator_id = allocator_id;
                 tmp_sp_alloctor.groups[i].chunk_order = i;
-                tmp_sp_alloctor.groups[i].partial_chunk_num = 0;
+                tmp_sp_alloctor.groups[i].full_chunk_num = 0;
                 tmp_sp_alloctor.groups[i].empty_chunk_num = 0;
                 INIT_LIST_HEAD(&tmp_sp_alloctor.groups[i].empty_list);
-                INIT_LIST_HEAD(&tmp_sp_alloctor.groups[i].partial_list);
+                INIT_LIST_HEAD(&tmp_sp_alloctor.groups[i].full_list);
         }
         /*bootstrap*/
         struct mem_allocator* sp_allocator =
@@ -171,15 +179,15 @@ struct allocator* sp_init(struct nexus_node* nexus_root, int allocator_id)
                        &tmp_sp_alloctor,
                        sizeof(struct mem_allocator));
                 /*
-                TODO:after sp_alloc the empty_list and partial_list have changed
+                TODO:after sp_alloc the empty_list and full_list have changed
                 and obviously, it must change the list head and tail node
                 */
                 for (int i = 0; i < MAX_GROUP_SLOTS; i++) {
                         if (!list_empty(
-                                    &sp_allocator->groups[i].partial_list)) {
+                                    &sp_allocator->groups[i].full_list)) {
                                 list_replace(
-                                        &tmp_sp_alloctor.groups[i].partial_list,
-                                        &sp_allocator->groups[i].partial_list);
+                                        &tmp_sp_alloctor.groups[i].full_list,
+                                        &sp_allocator->groups[i].full_list);
                         }
                 }
                 if (allocator_pool[allocator_id]) {
@@ -266,12 +274,12 @@ static void* _sp_alloc(struct mem_allocator* sp_allocator_p, size_t Bytes)
         }
         void* obj_ptr = chunk_get_obj(alloc_chunk);
         if (alloc_chunk->nr_max_objs == alloc_chunk->nr_used_objs) {
-                /*all the obj in this chunk are used, move this chunk to partial
+                /*all the obj in this chunk are used, move this chunk to full
                  * list*/
                 list_del(&alloc_chunk->chunk_list);
-                list_add_head(&alloc_chunk->chunk_list, &group->partial_list);
+                list_add_head(&alloc_chunk->chunk_list, &group->full_list);
                 group->empty_chunk_num--;
-                group->partial_chunk_num++;
+                group->full_chunk_num++;
         }
         return obj_ptr;
 }
@@ -323,7 +331,7 @@ static error_t _sp_free(struct mem_allocator* sp_allocator_p, void* p)
                         list_del(&chunk->chunk_list);
                         list_add_head(&chunk->chunk_list, &group->empty_list);
                         group->empty_chunk_num++;
-                        group->partial_chunk_num--;
+                        group->full_chunk_num--;
                 }
                 /*
                         then we calculate the free chunk numbers of that group
@@ -343,7 +351,9 @@ static error_t _sp_free(struct mem_allocator* sp_allocator_p, void* p)
                 }
                 return 0;
         } else {
-                return _sp_free((struct mem_allocator*)allocator_pool[free_allocator_id], p);
+                return _sp_free((struct mem_allocator*)
+                                        allocator_pool[free_allocator_id],
+                                p);
         }
 }
 void sp_free(struct allocator* allocator_p, void* p)

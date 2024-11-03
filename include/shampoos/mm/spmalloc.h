@@ -81,7 +81,7 @@ struct mem_chunk {
         int nr_max_objs;
         int nr_used_objs;
         struct list_entry chunk_list;
-        struct list_entry partial_obj_list;
+        struct list_entry full_obj_list;
         struct list_entry empty_obj_list;
         char padding[];
 };
@@ -89,8 +89,8 @@ struct mem_group {
         int allocator_id;
         int chunk_order;
         size_t empty_chunk_num;
-        size_t partial_chunk_num;
-        struct list_entry partial_list;
+        size_t full_chunk_num;
+        struct list_entry full_list;
         struct list_entry empty_list;
 };
 struct mem_allocator {
