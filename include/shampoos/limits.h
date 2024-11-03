@@ -5,4 +5,5 @@
 #define _SHAMPOOS_LIMIT_H_
 
 #define SHAMPOOS_MAX_MEMORY_REGIONS 128
+#define SHAMPOOS_MAX_CPU_NUMBER     128
 #endif
