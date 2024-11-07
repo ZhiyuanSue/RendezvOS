@@ -2,6 +2,7 @@
 #include <common/dsa/rb_tree.h>
 #include <common/stddef.h>
 #include <modules/log/log.h>
+#include <common/rand.h>
 /*as we might have no kmalloc to use ,we just static alloc a lot of rb_nodes
  * array*/
 /*besides, unlike the tranditional rb tree,
@@ -108,8 +109,8 @@ void rb_tree_test_remove(struct t_node* node, struct rb_root* root)
 void rb_tree_test_init()
 {
         for (int i = 0; i < max_node_num; i++) {
-                next = (u64)next * 1103515245 + 12345;
-                node_list[i].key = ((next / 65536) % 32768);
+                next = rand64(next);
+                node_list[i].key = next;
                 node_list[i].rb.left_child = node_list[i].rb.right_child = NULL;
                 node_list[i].rb.black_height = 0;
                 node_list[i].rb.rb_parent_color = 0;
