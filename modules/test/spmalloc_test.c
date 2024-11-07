@@ -5,6 +5,7 @@
 #include <shampoos/mm/vmm.h>
 #include <shampoos/mm/spmalloc.h>
 #include <common/rand.h>
+#include <common/string.h>
 extern struct allocator* allocator_pool[SHAMPOOS_MAX_CPU_NUMBER];
 extern int slot_size[MAX_GROUP_SLOTS];
 struct bin {
@@ -77,6 +78,7 @@ int spmalloc_test(void)
                          sizeof(struct bin) * MAX_BIN);
                 return -1;
         }
+        memset(b_array,0,sizeof(struct bin) * MAX_BIN);
         /*the main loop*/
         for (int iter = 0; iter < ITER_COUNT; iter++) {
                 debug("spmalloc test iter %d\n", iter);
