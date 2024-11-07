@@ -25,7 +25,7 @@ static int bytes_to_slot(size_t Bytes)
 static int bytes_to_pages(size_t Bytes)
 {
         /*for 2048 - 2M, alloc pages ,checked by upper logical*/
-        return ROUND_UP(Bytes, PAGE_SIZE);
+        return ROUND_UP(Bytes, PAGE_SIZE) / PAGE_SIZE;
 }
 error_t chunk_init(struct mem_chunk* chunk, int chunk_order, int allocator_id)
 {

@@ -10,7 +10,7 @@
  and it's also an example of the usage of the rb tree*/
 #define max_node_num 128
 #define max_loops    128
-u64 next = 1;
+static u64 next = 1;
 struct t_node {
         struct rb_node rb;
         u32 key;
