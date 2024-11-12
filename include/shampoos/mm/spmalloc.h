@@ -88,10 +88,14 @@ struct mem_chunk {
 struct mem_group {
         int allocator_id;
         int chunk_order;
-        size_t empty_chunk_num;
-        size_t full_chunk_num;
+        size_t free_chunk_num; /*free chunk means which can freely moved between
+                                  groups*/
+        size_t empty_chunk_num; /*empty means we have empty objects chunk*/
+        size_t full_chunk_num; /*full means all the objects have been
+                                  allocated*/
         struct list_entry full_list;
         struct list_entry empty_list;
+        /*the free and empty chunks are all linked in empty_list*/
 };
 struct mem_allocator {
         MM_COMMON;

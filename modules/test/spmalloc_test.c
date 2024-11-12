@@ -78,7 +78,7 @@ int spmalloc_test(void)
                          sizeof(struct bin) * MAX_BIN);
                 return -1;
         }
-        memset(b_array,0,sizeof(struct bin) * MAX_BIN);
+        memset(b_array, 0, sizeof(struct bin) * MAX_BIN);
         /*the main loop*/
         for (int iter = 0; iter < ITER_COUNT; iter++) {
                 debug("spmalloc test iter %d\n", iter);
