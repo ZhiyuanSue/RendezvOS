@@ -209,7 +209,7 @@ static void* _sp_alloc(struct mem_allocator* sp_allocator_p, size_t Bytes)
         int slot_index = bytes_to_slot(Bytes);
         struct mem_group* group = &sp_allocator_p->groups[slot_index];
         struct mem_chunk* alloc_chunk = NULL;
-        if (!group->empty_chunk_num) {
+        if (!group->empty_chunk_num && !group->free_chunk_num) {
                 alloc_chunk = collect_chunk_from_other_group(sp_allocator_p,
                                                              slot_index);
                 if (!alloc_chunk) {
@@ -276,6 +276,10 @@ static void* _sp_alloc(struct mem_allocator* sp_allocator_p, size_t Bytes)
                         sp_allocator_p->groups[slot_index].empty_list.next,
                         struct mem_chunk,
                         chunk_list);
+                if (!group->empty_chunk_num) {
+                        group->free_chunk_num--;
+                        group->empty_chunk_num++;
+                }
         }
         struct object_header* obj_ptr = chunk_get_obj(alloc_chunk);
         if (alloc_chunk->nr_max_objs == alloc_chunk->nr_used_objs) {
