@@ -57,9 +57,19 @@ static void spmalloc_print(void)
                 }
         }
 }
-int bin_check(struct bin* b)
-{
+int bin_check(struct bin* b){
+        for(int i=0;i<b->size;i++){
+                if(((char*)(b->ptr))[i]!=(char)((vaddr)(b->ptr)+b->size+i*2))
+                {
+                        return -1;
+                }
+        }
         return 0;
+}
+void bin_write(struct bin* b){
+        for(int i=0;i<b->size;i++){
+                ((char*)(b->ptr))[i]=(char)((vaddr)(b->ptr)+b->size+i*2);
+        }
 }
 int spmalloc_test(void)
 {
@@ -102,6 +112,7 @@ int spmalloc_test(void)
                                 victim_b->size = rand64(next) % MAX_ALLOC_SIZE;
                                 victim_b->ptr =
                                         malloc->m_alloc(malloc, victim_b->size);
+                                bin_write(victim_b);
                         }
                 }
                 /*clean all data for next iter*/
