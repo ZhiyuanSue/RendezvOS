@@ -114,6 +114,8 @@ static struct nexus_node* nexus_get_free_entry(struct nexus_node* root_node)
                         lp = &((struct nexus_node*)backup_page)
                                       ->manage_free_list;
                         root_node->backup_manage_page = NULL;
+                        nexus_rb_tree_insert((struct nexus_node*)backup_page,
+                                             &root_node->_rb_root);
                 } else {
                         /*means no free manage can use, try alloc a new one*/
                         paddr vspace_root = get_current_kernel_vspace_root();
@@ -183,6 +185,10 @@ static void nexus_free_entry(struct nexus_node* nexus_entry,
         page_manage_node->page_left_nexus++;
         if (page_manage_node->page_left_nexus == NEXUS_PER_PAGE - 1) {
                 /*after this del, this manage page is empty*/
+                /*we also need to del it from the list and the rb tree
+                 * first*/
+                list_del_init(&page_manage_node->manage_free_list);
+                nexus_rb_tree_remove(page_manage_node, &nexus_root->_rb_root);
                 if (!(nexus_root->backup_manage_page)) {
                         /*if no backup page, just make it as the backup page*/
                         nexus_root->backup_manage_page =
@@ -190,11 +196,6 @@ static void nexus_free_entry(struct nexus_node* nexus_entry,
                 } else if ((vaddr)(nexus_root->backup_manage_page)
                            != (vaddr)page_manage_node) {
                         /*if it's the backup page, no need to del it*/
-                        /*we also need to del it from the list and the rb tree
-                         * first*/
-                        list_del_init(&page_manage_node->manage_free_list);
-                        nexus_rb_tree_remove(page_manage_node,
-                                             &nexus_root->_rb_root);
                         /*free this manage page*/
                         paddr vspace_root = get_current_kernel_vspace_root();
                         int ppn = PPN(

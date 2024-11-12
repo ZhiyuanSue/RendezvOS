@@ -339,6 +339,7 @@ static error_t _sp_free(struct mem_allocator* sp_allocator_p, void* p)
                         group->full_chunk_num--;
                 } else if (chunk->nr_used_objs == 0) {
                         group->free_chunk_num++;
+                        group->empty_chunk_num--;
                 }
                 /*
                         then we calculate the free chunk numbers of that group

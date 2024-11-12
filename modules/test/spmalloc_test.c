@@ -13,7 +13,7 @@ struct bin {
         size_t size;
 };
 #define MAX_BIN        10086
-#define MAX_ALLOC_SIZE 6166
+#define MAX_ALLOC_SIZE 3520
 #define PER_ITER_COUNT 96110
 #define ITER_COUNT     10
 static u64 next = 1;
@@ -26,7 +26,8 @@ static void sp_chunk_print(struct mem_chunk* tmp_chunk)
 }
 static void sp_allocator_group_print(struct mem_group* sp_group)
 {
-        debug("\t\t| chunk empty %d full %d\n",
+        debug("\t\t| chunk free %d empty %d full %d\n",
+              sp_group->free_chunk_num,
               sp_group->empty_chunk_num,
               sp_group->full_chunk_num);
         struct list_entry* list_head = &sp_group->empty_list;

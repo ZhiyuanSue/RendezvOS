@@ -28,8 +28,9 @@ void nexus_print(struct nexus_node* nexus_root)
                 manage_page_num++;
                 struct nexus_node* manage_page = container_of(
                         tmp_mp, struct nexus_node, manage_free_list);
-                debug("\t[ NEXUS ] have empty entry manage page %d: %d record can use\n",
+                debug("\t[ NEXUS ] have empty entry manage page %d with addr 0x%x: %d record can use\n",
                       manage_page_num,
+                      (vaddr)manage_page,
                       manage_page->page_left_nexus);
                 struct list_entry* free_entry = &manage_page->_free_list;
                 struct list_entry* tmp_fe = free_entry->next;
