@@ -342,6 +342,7 @@ static error_t _sp_free(struct mem_allocator* sp_allocator_p, void* p)
                                 container_of(group->empty_list.next,
                                              struct mem_chunk,
                                              chunk_list);
+                        // TODO： check the free_chunk's allocator_id
                         list_del(&free_chunk->chunk_list);
                         group->empty_chunk_num--;
                         free_pages(free_chunk,
