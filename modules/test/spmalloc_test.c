@@ -80,9 +80,9 @@ int spmalloc_test(void)
         spmalloc_print();
         struct allocator* malloc = allocator_pool[0];
         void* test_alloc = malloc->m_alloc(malloc, 8);
-        spmalloc_print();
         *((u64*)test_alloc) = 0;
         malloc->m_free(malloc, test_alloc);
+        spmalloc_print();
 
         /*Then we alloc the bins space*/
         struct bin* b_array = (struct bin*)(malloc->m_alloc(
@@ -93,18 +93,23 @@ int spmalloc_test(void)
                 return -1;
         }
         memset(b_array, 0, sizeof(struct bin) * MAX_BIN);
+        spmalloc_print();
         /*the main loop*/
         for (int iter = 0; iter < ITER_COUNT; iter++) {
                 debug("spmalloc test iter %d\n", iter);
                 /*alloc and free test*/
                 for (int i = 0; i < PER_ITER_COUNT; i++) {
+                        // debug("test num %d\n",i);
                         next = rand64(next);
                         struct bin* victim_b = &b_array[next % MAX_BIN];
                         if (victim_b->ptr) {
+                                // pr_info("mem free 0x%x size
+                                // %d\n",victim_b->ptr,victim_b->size);
                                 /*if have alloced ,just check and free it*/
                                 int res = bin_check(victim_b);
                                 if (res) {
                                         pr_error("check bin fail\n");
+                                        spmalloc_print();
                                         return -1;
                                 }
                                 malloc->m_free(malloc, victim_b->ptr);
@@ -116,11 +121,19 @@ int spmalloc_test(void)
                                 if (victim_b->size == 0) {
                                         continue;
                                 }
+                                // pr_info("mem alloc %d\n",victim_b->size);
                                 victim_b->ptr =
                                         malloc->m_alloc(malloc, victim_b->size);
+                                // pr_info("mem alloc 0x%x\n",victim_b->ptr);
+                                if (!(victim_b->ptr)) {
+                                        pr_error("cannot get a obj\n");
+                                        return -1;
+                                }
                                 bin_write(victim_b);
                         }
+                        // spmalloc_print();
                 }
+                // spmalloc_print();
                 /*clean all data for next iter*/
                 for (int i = 0; i < MAX_BIN; i++) {
                         struct bin* b = &b_array[i];
@@ -130,6 +143,7 @@ int spmalloc_test(void)
                                 b->size = 0;
                         }
                 }
+                // spmalloc_print();
         }
         /*free b array*/
         malloc->m_free(malloc, b_array);

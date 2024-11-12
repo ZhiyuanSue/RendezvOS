@@ -276,12 +276,16 @@ static void* _sp_alloc(struct mem_allocator* sp_allocator_p, size_t Bytes)
                         sp_allocator_p->groups[slot_index].empty_list.next,
                         struct mem_chunk,
                         chunk_list);
-                if (!group->empty_chunk_num) {
+                if (alloc_chunk->nr_used_objs == 0) {
                         group->free_chunk_num--;
                         group->empty_chunk_num++;
                 }
         }
         struct object_header* obj_ptr = chunk_get_obj(alloc_chunk);
+        if (!obj_ptr) {
+                pr_error("[ERROR]cannot get a object from chunk with \n");
+                return NULL;
+        }
         if (alloc_chunk->nr_max_objs == alloc_chunk->nr_used_objs) {
                 /*all the obj in this chunk are used, move this chunk to full
                  * list*/
