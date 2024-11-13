@@ -23,6 +23,9 @@ static void nexus_rb_tree_insert(struct nexus_node* node, struct rb_root* root)
 static void nexus_rb_tree_remove(struct nexus_node* node, struct rb_root* root)
 {
         RB_Remove(&node->_rb_node, root);
+		node->_rb_node.black_height=0;
+		node->_rb_node.left_child=node->_rb_node.right_child=NULL;
+		node->_rb_node.rb_parent_color=0;
 }
 static struct nexus_node* nexus_rb_tree_search(struct rb_root* root,
                                                vaddr start_addr)
@@ -114,8 +117,8 @@ static struct nexus_node* nexus_get_free_entry(struct nexus_node* root_node)
                         lp = &((struct nexus_node*)backup_page)
                                       ->manage_free_list;
                         root_node->backup_manage_page = NULL;
-                        memset((void*)backup_page, '\0', PAGE_SIZE);
-                        nexus_init_manage_page((vaddr)backup_page, root_node);
+						nexus_rb_tree_insert((struct nexus_node*)backup_page,
+                                             &root_node->_rb_root);
                 } else {
                         /*means no free manage can use, try alloc a new one*/
                         paddr vspace_root = get_current_kernel_vspace_root();

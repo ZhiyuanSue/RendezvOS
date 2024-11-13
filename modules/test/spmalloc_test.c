@@ -12,7 +12,7 @@ struct bin {
         void* ptr;
         size_t size;
 };
-#define MAX_BIN        110
+#define MAX_BIN        10086
 #define MAX_ALLOC_SIZE 3520
 #define PER_ITER_COUNT 96110
 #define ITER_COUNT     10
@@ -135,7 +135,7 @@ int spmalloc_test(void)
                 spmalloc_print();
                 /*clean all data for next iter*/
                 for (int i = 0; i < MAX_BIN; i++) {
-						// pr_info("free %d\n",i);
+						pr_info("free %d\n",i);
                         struct bin* b = &b_array[i];
                         if (b->ptr) {
                                 malloc->m_free(malloc, b->ptr);
