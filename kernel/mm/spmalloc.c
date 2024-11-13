@@ -326,20 +326,15 @@ void* sp_alloc(struct allocator* allocator_p, size_t Bytes)
 }
 static error_t _sp_free(struct mem_allocator* sp_allocator_p, void* p)
 {
-        // pr_info("sp free 1\n");
         if (!sp_allocator_p || !p) {
                 pr_error("[ERROR] sp free with error parameter\n");
                 return -EPERM;
         }
-        // pr_info("sp free 3\n");
         struct object_header* header =
                 container_of(p, struct object_header, obj);
-        // pr_info("sp free 4\n");
         struct mem_chunk* chunk = (struct mem_chunk*)ROUND_DOWN(
                 ((vaddr)p), PAGE_SIZE * PAGE_PER_CHUNK);
-        // pr_info("sp free 5 0x%x\n",chunk);
         bool full = (chunk->nr_max_objs == chunk->nr_used_objs);
-        // pr_info("sp free 2\n");
         int free_allocator_id =
                 chunk_free_obj(header, sp_allocator_p->allocator_id);
         if (free_allocator_id == sp_allocator_p->allocator_id) {
