@@ -1,4 +1,4 @@
-#define DEBUG
+// #define DEBUG
 #include <modules/test/test.h>
 #include <shampoos/mm/nexus.h>
 #include <modules/log/log.h>
@@ -96,7 +96,7 @@ int spmalloc_test(void)
         spmalloc_print();
         /*the main loop*/
         for (int iter = 0; iter < ITER_COUNT; iter++) {
-                debug("spmalloc test iter %d\n", iter);
+                pr_info("spmalloc test iter %d\n", iter);
                 /*alloc and free test*/
                 for (int i = 0; i < PER_ITER_COUNT; i++) {
                         next = rand64(next);
