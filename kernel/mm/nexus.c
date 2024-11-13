@@ -300,17 +300,18 @@ static void* _kernel_get_free_page(int page_num, enum zone_type memory_zone,
         free_nexus_entry->start_addr = free_page_addr;
         free_nexus_entry->size = page_num;
         free_nexus_entry->ppn = ppn;
+        free_nexus_entry->vspace_root = 0;
+        free_nexus_entry->nexus_id = nexus_root->nexus_id;
         nexus_rb_tree_insert(free_nexus_entry, &nexus_root->_rb_root);
         return (void*)free_page_addr;
 }
 static void* _user_get_free_page(int page_num, enum zone_type memory_zone,
-                                 vaddr target_vaddr,
+                                 vaddr target_vaddr, paddr vspace_root,
                                  struct nexus_node* nexus_root)
 {
         vaddr free_page_addr;
         /*and obviously, the address 0 should not accessed by any of the
          * user*/
-        paddr vspace_root = get_current_user_vspace_root();
         free_page_addr = (target_vaddr >> 12) << 12;
         if (free_page_addr != target_vaddr) {
                 return NULL;
@@ -350,6 +351,8 @@ static void* _user_get_free_page(int page_num, enum zone_type memory_zone,
                 free_nexus_entry->start_addr = target_vaddr;
                 free_nexus_entry->size = MIDDLE_PAGES;
                 free_nexus_entry->ppn = ppn;
+                free_nexus_entry->vspace_root = vspace_root;
+                free_nexus_entry->nexus_id = nexus_root->nexus_id;
                 nexus_rb_tree_insert(free_nexus_entry, &nexus_root->_rb_root);
                 target_vaddr += MIDDLE_PAGE_SIZE;
         }
@@ -384,13 +387,16 @@ static void* _user_get_free_page(int page_num, enum zone_type memory_zone,
                 free_nexus_entry->start_addr = target_vaddr;
                 free_nexus_entry->size = 1;
                 free_nexus_entry->ppn = ppn;
+                free_nexus_entry->vspace_root = vspace_root;
+                free_nexus_entry->nexus_id = nexus_root->nexus_id;
                 nexus_rb_tree_insert(free_nexus_entry, &nexus_root->_rb_root);
                 target_vaddr += PAGE_SIZE;
         }
         return (void*)free_page_addr;
 }
 void* get_free_page(int page_num, enum zone_type memory_zone,
-                    vaddr target_vaddr, struct nexus_node* nexus_root)
+                    vaddr target_vaddr, paddr vspace_root,
+                    struct nexus_node* nexus_root)
 {
         /*first check the input parameter*/
         if (page_num < 0 || memory_zone < 0 || memory_zone > ZONE_NR_MAX) {
@@ -401,8 +407,11 @@ void* get_free_page(int page_num, enum zone_type memory_zone,
                 return _kernel_get_free_page(
                         page_num, memory_zone, target_vaddr, nexus_root);
         } else {
-                return _user_get_free_page(
-                        page_num, memory_zone, target_vaddr, nexus_root);
+                return _user_get_free_page(page_num,
+                                           memory_zone,
+                                           target_vaddr,
+                                           vspace_root,
+                                           nexus_root);
         }
 }
 static error_t _kernel_free_pages(void* p, int page_num,
@@ -456,10 +465,9 @@ static error_t _kernel_free_pages(void* p, int page_num,
         nexus_free_entry(node, nexus_root);
         return 0;
 }
-static error_t _user_free_pages(void* p, int page_num,
+static error_t _user_free_pages(void* p, int page_num, paddr vspace_root,
                                 struct nexus_node* nexus_root)
 {
-        paddr vspace_root = get_current_user_vspace_root();
         struct nexus_node* node =
                 nexus_rb_tree_search(&nexus_root->_rb_root, (vaddr)p);
         if (!node) {
@@ -501,7 +509,8 @@ static error_t _user_free_pages(void* p, int page_num,
         }
         return 0;
 }
-error_t free_pages(void* p, int page_num, struct nexus_node* nexus_root)
+error_t free_pages(void* p, int page_num, paddr vspace_root,
+                   struct nexus_node* nexus_root)
 {
         if (!p || !nexus_root || (((vaddr)p) & 0xfff)) {
                 pr_error("[ ERROR ] ERROR: error input arg\n");
@@ -510,6 +519,6 @@ error_t free_pages(void* p, int page_num, struct nexus_node* nexus_root)
         if ((vaddr)p >= KERNEL_VIRT_OFFSET) {
                 return _kernel_free_pages(p, page_num, nexus_root);
         } else {
-                return _user_free_pages(p, page_num, nexus_root);
+                return _user_free_pages(p, page_num, vspace_root, nexus_root);
         }
 }

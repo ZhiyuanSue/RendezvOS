@@ -225,6 +225,7 @@ static void* _sp_alloc(struct mem_allocator* sp_allocator_p, size_t Bytes)
                                         PAGE_PER_CHUNK,
                                         ZONE_NORMAL,
                                         KERNEL_VIRT_OFFSET,
+                                        0,
                                         sp_allocator_p->nexus_root);
                                 if (!page_ptr) {
                                         pr_error(
@@ -240,6 +241,7 @@ static void* _sp_alloc(struct mem_allocator* sp_allocator_p, size_t Bytes)
                                         free_pages(page_ptr,
                                                    ALLOC_CHUNK_PER_BATCH
                                                            * PAGE_PER_CHUNK,
+                                                   0,
                                                    sp_allocator_p->nexus_root);
                                         pr_error(
                                                 "[ERROR]unknown reason lead to the chunk init fail\n");
@@ -315,6 +317,7 @@ void* sp_alloc(struct allocator* allocator_p, size_t Bytes)
                 void* page_ptr = get_free_page(page_num,
                                                ZONE_NORMAL,
                                                KERNEL_VIRT_OFFSET,
+                                               0,
                                                sp_allocator_p->nexus_root);
                 if (!page_ptr) {
                         pr_error("[ERROR] get free page fail\n");
@@ -367,6 +370,7 @@ static error_t _sp_free(struct mem_allocator* sp_allocator_p, void* p)
                                 group->free_chunk_num--;
                                 free_pages(free_chunk,
                                            PAGE_PER_CHUNK,
+                                           0,
                                            sp_allocator_p->nexus_root);
                         }
                         free_chunk = next_free_chunk;
@@ -394,7 +398,7 @@ void sp_free(struct allocator* allocator_p, void* p)
                 e = _sp_free(sp_allocator_p, p);
         } else {
                 /*free pages*/
-                e = free_pages(p, 0, sp_allocator_p->nexus_root);
+                e = free_pages(p, 0, 0, sp_allocator_p->nexus_root);
         }
         if (e) {
                 pr_error(

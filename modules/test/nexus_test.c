@@ -72,8 +72,11 @@ int nexus_test(void)
                 int page_num = 2;
                 if (i % 2)
                         page_num = MIDDLE_PAGES;
-                test_ptrs[i] = get_free_page(
-                        page_num, ZONE_NORMAL, KERNEL_VIRT_OFFSET, nexus_root);
+                test_ptrs[i] = get_free_page(page_num,
+                                             ZONE_NORMAL,
+                                             KERNEL_VIRT_OFFSET,
+                                             0,
+                                             nexus_root);
                 if (test_ptrs[i]) {
                         *((u64*)(test_ptrs[i])) = 0;
                         *((u64*)(test_ptrs[i] + PAGE_SIZE)) = 0;
@@ -82,12 +85,12 @@ int nexus_test(void)
         nexus_print(nexus_root);
         for (int i = 0; i < NR_MAX_TEST; i++) {
                 if (test_ptrs[i] && i % 2)
-                        free_pages(test_ptrs[i], MIDDLE_PAGES, nexus_root);
+                        free_pages(test_ptrs[i], MIDDLE_PAGES, 0, nexus_root);
         }
         nexus_print(nexus_root);
         for (int i = 0; i < NR_MAX_TEST; i++) {
                 if (test_ptrs[i] && !(i % 2))
-                        free_pages(test_ptrs[i], 2, nexus_root);
+                        free_pages(test_ptrs[i], 2, 0, nexus_root);
         }
         nexus_print(nexus_root);
         return 0;
