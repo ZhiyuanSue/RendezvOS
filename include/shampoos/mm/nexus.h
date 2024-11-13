@@ -34,5 +34,5 @@ struct nexus_node* init_nexus(struct map_handler* handler);
 void* get_free_page(int page_num, enum zone_type memory_zone,
                     vaddr target_vaddr, struct nexus_node* nexus_root);
 error_t free_pages(void* p, int page_num, struct nexus_node* nexus_root);
-void nexus_print(struct nexus_node* nexus_root);
+
 #endif
