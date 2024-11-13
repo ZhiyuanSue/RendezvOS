@@ -326,15 +326,20 @@ void* sp_alloc(struct allocator* allocator_p, size_t Bytes)
 }
 static error_t _sp_free(struct mem_allocator* sp_allocator_p, void* p)
 {
+        // pr_info("sp free 1\n");
         if (!sp_allocator_p || !p) {
                 pr_error("[ERROR] sp free with error parameter\n");
                 return -EPERM;
         }
+        // pr_info("sp free 3\n");
         struct object_header* header =
                 container_of(p, struct object_header, obj);
+        // pr_info("sp free 4\n");
         struct mem_chunk* chunk = (struct mem_chunk*)ROUND_DOWN(
                 ((vaddr)p), PAGE_SIZE * PAGE_PER_CHUNK);
+        // pr_info("sp free 5 0x%x\n",chunk);
         bool full = (chunk->nr_max_objs == chunk->nr_used_objs);
+        // pr_info("sp free 2\n");
         int free_allocator_id =
                 chunk_free_obj(header, sp_allocator_p->allocator_id);
         if (free_allocator_id == sp_allocator_p->allocator_id) {
@@ -354,16 +359,24 @@ static error_t _sp_free(struct mem_allocator* sp_allocator_p, void* p)
                         if the free chunks num is tooo large ,we free some of
                    the chunks
                 */
+                struct mem_chunk* free_chunk = container_of(
+                        group->empty_list.next, struct mem_chunk, chunk_list);
+                struct mem_chunk* next_free_chunk = free_chunk;
                 while (group->free_chunk_num > ALLOC_CHUNK_PER_BATCH) {
-                        struct mem_chunk* free_chunk =
-                                container_of(group->empty_list.next,
+                        next_free_chunk =
+                                container_of(free_chunk->chunk_list.next,
                                              struct mem_chunk,
                                              chunk_list);
-                        list_del(&free_chunk->chunk_list);
-                        group->free_chunk_num--;
-                        free_pages(free_chunk,
-                                   PAGE_PER_CHUNK,
-                                   sp_allocator_p->nexus_root);
+                        if (!(free_chunk->nr_used_objs)) {
+                                list_del(&free_chunk->chunk_list);
+                                group->free_chunk_num--;
+                                free_pages(free_chunk,
+                                           PAGE_PER_CHUNK,
+                                           sp_allocator_p->nexus_root);
+                        }
+                        free_chunk = next_free_chunk;
+                        if (&free_chunk->chunk_list == &group->empty_list)
+                                break;
                 }
                 return 0;
         } else {
