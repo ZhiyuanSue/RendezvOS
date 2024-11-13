@@ -354,16 +354,24 @@ static error_t _sp_free(struct mem_allocator* sp_allocator_p, void* p)
                         if the free chunks num is tooo large ,we free some of
                    the chunks
                 */
+                struct mem_chunk* free_chunk = container_of(
+                        group->empty_list.next, struct mem_chunk, chunk_list);
+                struct mem_chunk* next_free_chunk = free_chunk;
                 while (group->free_chunk_num > ALLOC_CHUNK_PER_BATCH) {
-                        struct mem_chunk* free_chunk =
-                                container_of(group->empty_list.next,
+                        next_free_chunk =
+                                container_of(free_chunk->chunk_list.next,
                                              struct mem_chunk,
                                              chunk_list);
-                        list_del(&free_chunk->chunk_list);
-                        group->free_chunk_num--;
-                        free_pages(free_chunk,
-                                   PAGE_PER_CHUNK,
-                                   sp_allocator_p->nexus_root);
+                        if (!(free_chunk->nr_used_objs)) {
+                                list_del(&free_chunk->chunk_list);
+                                group->free_chunk_num--;
+                                free_pages(free_chunk,
+                                           PAGE_PER_CHUNK,
+                                           sp_allocator_p->nexus_root);
+                        }
+                        free_chunk = next_free_chunk;
+                        if (&free_chunk->chunk_list == &group->empty_list)
+                                break;
                 }
                 return 0;
         } else {

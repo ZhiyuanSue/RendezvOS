@@ -23,6 +23,9 @@ static void nexus_rb_tree_insert(struct nexus_node* node, struct rb_root* root)
 static void nexus_rb_tree_remove(struct nexus_node* node, struct rb_root* root)
 {
         RB_Remove(&node->_rb_node, root);
+        node->_rb_node.black_height = 0;
+        node->_rb_node.left_child = node->_rb_node.right_child = NULL;
+        node->_rb_node.rb_parent_color = 0;
 }
 static struct nexus_node* nexus_rb_tree_search(struct rb_root* root,
                                                vaddr start_addr)
