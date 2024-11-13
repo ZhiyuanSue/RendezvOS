@@ -11,7 +11,6 @@
 struct nexus_node {
         struct list_entry manage_free_list;
         struct list_entry _free_list;
-        int nexus_id; /*should alloced by the upper level code*/
         union {
                 /* manager node */
                 struct {
@@ -27,6 +26,7 @@ struct nexus_node {
                         struct rb_root _rb_root;
                         void* backup_manage_page;
                         struct map_handler* handler;
+                        int nexus_id; /*should alloced by the upper level code*/
                 };
         };
 };
@@ -37,5 +37,7 @@ void* get_free_page(int page_num, enum zone_type memory_zone,
                     struct nexus_node* nexus_root);
 error_t free_pages(void* p, int page_num, paddr vspace_root,
                    struct nexus_node* nexus_root);
+struct nexus_node* nexus_rb_tree_search(struct rb_root* root, vaddr start_addr,
+                                        paddr vspace_root);
 
 #endif

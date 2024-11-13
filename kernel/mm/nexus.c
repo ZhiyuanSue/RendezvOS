@@ -7,15 +7,24 @@
 static void nexus_rb_tree_insert(struct nexus_node* node, struct rb_root* root)
 {
         struct rb_node** new = &root->rb_root, *parent = NULL;
-        u64 key = node->start_addr;
+        u64 key1 = node->vspace_root;
+        u64 key2 = node->start_addr;
         while (*new) {
                 parent = *new;
                 struct nexus_node* tmp_node =
                         container_of(parent, struct nexus_node, _rb_node);
-                if (key < (u64)tmp_node->start_addr)
+                if (key1 < (u64)tmp_node->vspace_root)
                         new = &parent->left_child;
-                else
+                else if (key1 > (u64)tmp_node->vspace_root)
                         new = &parent->right_child;
+                else {
+                        if (key2 < (u64)tmp_node->start_addr)
+                                new = &parent->left_child;
+                        else if (key2 > (u64)tmp_node->start_addr)
+                                new = &parent->right_child;
+                        else
+                                return;
+                }
         }
         RB_Link_Node(&node->_rb_node, parent, new);
         RB_SolveDoubleRed(&node->_rb_node, root);
@@ -27,22 +36,67 @@ static void nexus_rb_tree_remove(struct nexus_node* node, struct rb_root* root)
         node->_rb_node.left_child = node->_rb_node.right_child = NULL;
         node->_rb_node.rb_parent_color = 0;
 }
-static struct nexus_node* nexus_rb_tree_search(struct rb_root* root,
-                                               vaddr start_addr)
+struct nexus_node* nexus_rb_tree_search(struct rb_root* root, vaddr start_addr,
+                                        paddr vspace_root)
 {
         struct rb_node* node = root->rb_root;
         while (node) {
                 struct nexus_node* tmp_node =
                         container_of(node, struct nexus_node, _rb_node);
-                if (start_addr < tmp_node->start_addr) {
+                if (vspace_root < tmp_node->vspace_root) {
                         node = node->left_child;
-                } else if (start_addr > tmp_node->start_addr) {
+                } else if (vspace_root > tmp_node->vspace_root) {
                         node = node->right_child;
                 } else {
-                        return tmp_node;
+                        if (start_addr < tmp_node->start_addr)
+                                node = node->left_child;
+                        else if (start_addr > tmp_node->start_addr)
+                                node = node->right_child;
+                        else
+                                return tmp_node;
                 }
         }
         return NULL;
+}
+struct nexus_node* nexus_rb_tree_prev(struct nexus_node* node)
+{
+        struct rb_node* curr_rb = &node->_rb_node;
+        struct rb_node* prev_rb = RB_Prev(curr_rb);
+        if (!prev_rb)
+                return NULL;
+        return container_of(prev_rb, struct nexus_node, _rb_node);
+}
+struct nexus_node* nexus_rb_tree_next(struct nexus_node* node)
+{
+        struct rb_node* curr_rb = &node->_rb_node;
+        struct rb_node* next_rb = RB_Next(curr_rb);
+        if (!next_rb)
+                return NULL;
+        return container_of(next_rb, struct nexus_node, _rb_node);
+}
+struct nexus_node* nexus_rb_tree_search_vspace(struct rb_root* root,
+                                               paddr vspace_root)
+{
+        struct rb_node* node = root->rb_root;
+        struct nexus_node* curr_node = NULL;
+        while (node) {
+                struct nexus_node* tmp_node =
+                        container_of(node, struct nexus_node, _rb_node);
+                if (vspace_root < tmp_node->vspace_root) {
+                        node = node->left_child;
+                } else if (vspace_root > tmp_node->vspace_root) {
+                        node = node->right_child;
+                } else {
+                        curr_node = tmp_node;
+                }
+        }
+        struct nexus_node* prev_node = nexus_rb_tree_prev(curr_node);
+        while (curr_node && prev_node
+               && prev_node->vspace_root == vspace_root) {
+                curr_node = prev_node;
+                prev_node = nexus_rb_tree_prev(curr_node);
+        }
+        return curr_node;
 }
 static void nexus_init_manage_page(vaddr vpage_addr,
                                    struct nexus_node* nexus_root)
@@ -421,7 +475,7 @@ static error_t _kernel_free_pages(void* p, int page_num,
         /*in kernel alloc, only alloced one time but might mapped
          * several times*/
         struct nexus_node* node =
-                nexus_rb_tree_search(&nexus_root->_rb_root, (vaddr)p);
+                nexus_rb_tree_search(&nexus_root->_rb_root, (vaddr)p, 0);
         if (!node) {
                 pr_error(
                         "[ NEXUS ] ERROR: search the free page fail 0x%x 0x%x\n",
@@ -468,8 +522,8 @@ static error_t _kernel_free_pages(void* p, int page_num,
 static error_t _user_free_pages(void* p, int page_num, paddr vspace_root,
                                 struct nexus_node* nexus_root)
 {
-        struct nexus_node* node =
-                nexus_rb_tree_search(&nexus_root->_rb_root, (vaddr)p);
+        struct nexus_node* node = nexus_rb_tree_search(
+                &nexus_root->_rb_root, (vaddr)p, vspace_root);
         if (!node) {
                 pr_error(
                         "[ NEXUS ] ERROR: search the free page fail 0x%x 0x%x\n",
