@@ -14,8 +14,6 @@
 
 extern u32 max_phy_addr_width;
 struct cpuinfo_x86 cpuinfo;
-struct map_handler Map_Handler;
-extern struct buddy buddy_pmm;
 static void get_cpuinfo(void)
 {
         u32 eax;
@@ -93,7 +91,6 @@ error_t start_arch(struct setup_info *arch_setup_info)
         } else {
                 pr_info("no input cmdline\n");
         }
-        init_map(&Map_Handler, 0, (struct pmm *)&buddy_pmm);
         get_cpuinfo();
         init_interrupt();
         init_irq();

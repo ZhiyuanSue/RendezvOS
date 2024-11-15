@@ -5,10 +5,6 @@
 #include <common/stddef.h>
 #include <common/types.h>
 #include <shampoos/error.h>
-#include <shampoos/limits.h>
-#include <common/dsa/list.h>
-#include <shampoos/mm/buddy_pmm.h>
-#include <shampoos/mm/pmm.h>
 #include <shampoos/stdio.h>
 
 #ifdef _AARCH64_
@@ -30,5 +26,6 @@
 void parse_device(uintptr_t addr);
 void interrupt_init(void);
 void cpu_idle(void);
+void mm_init(struct setup_info *arch_setup_info);
 
 #endif

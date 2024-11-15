@@ -2,7 +2,7 @@
 #	qemu
 #  ---------
 
-SMP	?= 1
+SMP	?= 4
 LOG	?= false
 
 Qemulator	:= qemu-system-$(ARCH)

@@ -1,16 +1,10 @@
 #include <modules/driver/uart/uart_16550A.h>
 #include <modules/log/log.h>
 #include <shampoos/common.h>
-#include <shampoos/mm/vmm.h>
-#include <shampoos/mm/nexus.h>
-#include <shampoos/mm/spmalloc.h>
 
 extern int log_level;
 extern char _bss_start, _bss_end;
 extern char _end;
-extern struct buddy buddy_pmm;
-extern struct map_handler Map_Handler;
-struct nexus_node *nexus_root;
 
 void cmain(struct setup_info *arch_setup_info)
 {
@@ -27,10 +21,7 @@ void cmain(struct setup_info *arch_setup_info)
                 pr_error("error start arch\n");
                 return;
         }
-        buddy_pmm.pmm_init(arch_setup_info);
-        nexus_root = init_nexus(&Map_Handler);
-        nexus_root->nexus_id = 0;
-        sp_init(nexus_root, 0);
+		mm_init(arch_setup_info);
         /*TODO:after we init the pmm module, we can alloc some pages for
          * stack,and no more boot stack：in x86,please use LSS, see
          * manual 6.8.3*/

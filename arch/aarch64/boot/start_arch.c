@@ -13,8 +13,7 @@
 #include <shampoos/mm/map_handler.h>
 
 extern u64 L2_table;
-struct map_handler Map_Handler;
-extern struct buddy buddy_pmm;
+
 static void map_dtb(struct setup_info *arch_setup_info)
 {
         vaddr vaddr;
@@ -56,7 +55,6 @@ error_t start_arch(struct setup_info *arch_setup_info)
         }
         // parse_print_dtb(dtb_header_ptr,0,0);
         init_interrupt();
-        init_map(&Map_Handler, 0, (struct pmm *)&buddy_pmm);
 
         return (0);
 start_arch_error:
