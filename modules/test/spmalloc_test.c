@@ -16,6 +16,8 @@ struct bin {
 #define MAX_ALLOC_SIZE 3520
 #define PER_ITER_COUNT 96110
 #define ITER_COUNT     10
+u64 alloc_count = 0;
+u64 free_count = 0;
 static u64 next = 1;
 static void sp_chunk_print(struct mem_chunk* tmp_chunk)
 {
@@ -87,6 +89,7 @@ int spmalloc_test(void)
         /*Then we alloc the bins space*/
         struct bin* b_array = (struct bin*)(malloc->m_alloc(
                 malloc, sizeof(struct bin) * MAX_BIN));
+        alloc_count++;
         if (!b_array) {
                 pr_error("cannot alloc enough bins %d\n",
                          sizeof(struct bin) * MAX_BIN);
@@ -110,6 +113,7 @@ int spmalloc_test(void)
                                         return -1;
                                 }
                                 malloc->m_free(malloc, victim_b->ptr);
+                                free_count++;
                                 victim_b->ptr = NULL;
                                 victim_b->size = 0;
                         } else {
@@ -120,6 +124,7 @@ int spmalloc_test(void)
                                 }
                                 victim_b->ptr =
                                         malloc->m_alloc(malloc, victim_b->size);
+                                alloc_count++;
                                 if (!(victim_b->ptr)) {
                                         pr_error("cannot get a obj\n");
                                         return -1;
@@ -133,6 +138,7 @@ int spmalloc_test(void)
                         struct bin* b = &b_array[i];
                         if (b->ptr) {
                                 malloc->m_free(malloc, b->ptr);
+                                free_count++;
                                 b->ptr = NULL;
                                 b->size = 0;
                         }
@@ -141,7 +147,15 @@ int spmalloc_test(void)
         }
         /*free b array*/
         malloc->m_free(malloc, b_array);
+        free_count++;
         b_array = NULL;
         spmalloc_print();
+        pr_info("total alloc %d times, and free %d times\n",
+                alloc_count,
+                free_count);
+        if (alloc_count != free_count) {
+                pr_error("alloc and free time unequal\n");
+                return -1;
+        }
         return 0;
 }

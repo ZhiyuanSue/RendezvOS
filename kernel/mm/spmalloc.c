@@ -219,44 +219,34 @@ static void* _sp_alloc(struct mem_allocator* sp_allocator_p, size_t Bytes)
                         */
                         /* here we will change the group linked list, we
                          * also need to think the lock*/
-
-                        for (int i = 0; i < ALLOC_CHUNK_PER_BATCH; i++) {
-                                void* page_ptr = get_free_page(
-                                        PAGE_PER_CHUNK,
-                                        ZONE_NORMAL,
-                                        KERNEL_VIRT_OFFSET,
-                                        0,
-                                        sp_allocator_p->nexus_root);
-                                if (!page_ptr) {
-                                        pr_error(
-                                                "[ERROR] get free page fail\n");
-                                }
-                                error_t e =
-                                        chunk_init((struct mem_chunk*)page_ptr,
-                                                   group->chunk_order,
-                                                   group->allocator_id);
-                                if (e) {
-                                        /*just clean this time
-                                         * allocated*/
-                                        free_pages(page_ptr,
-                                                   ALLOC_CHUNK_PER_BATCH
-                                                           * PAGE_PER_CHUNK,
-                                                   0,
-                                                   sp_allocator_p->nexus_root);
-                                        pr_error(
-                                                "[ERROR]unknown reason lead to the chunk init fail\n");
-                                        return NULL;
-                                }
-                                list_add_head(&((struct mem_chunk*)page_ptr)
-                                                       ->chunk_list,
-                                              &group->empty_list);
-                                group->free_chunk_num++;
+                        void* page_ptr =
+                                get_free_page(PAGE_PER_CHUNK,
+                                              ZONE_NORMAL,
+                                              KERNEL_VIRT_OFFSET,
+                                              0,
+                                              sp_allocator_p->nexus_root);
+                        if (!page_ptr) {
+                                pr_error("[ERROR] get free page fail\n");
                         }
+                        error_t e = chunk_init((struct mem_chunk*)page_ptr,
+                                               group->chunk_order,
+                                               group->allocator_id);
+                        if (e) {
+                                /*just clean this time
+                                 * allocated*/
+                                free_pages(page_ptr,
+                                           PAGE_PER_CHUNK,
+                                           0,
+                                           sp_allocator_p->nexus_root);
+                                pr_error(
+                                        "[ERROR]unknown reason lead to the chunk init fail\n");
+                                return NULL;
+                        }
+                        list_add_head(
+                                &((struct mem_chunk*)page_ptr)->chunk_list,
+                                &group->empty_list);
                         /*get one alloc chunk*/
-                        alloc_chunk = container_of(group->empty_list.next,
-                                                   struct mem_chunk,
-                                                   chunk_list);
-                        group->free_chunk_num--;
+                        alloc_chunk = page_ptr;
                         group->empty_chunk_num++;
                 } else {
                         /*we get another group's chunk,
@@ -345,12 +335,14 @@ static error_t _sp_free(struct mem_allocator* sp_allocator_p, void* p)
                 struct mem_group* group = &sp_allocator_p->groups[order];
                 if (full) {
                         list_del(&chunk->chunk_list);
-                        list_add_head(&chunk->chunk_list, &group->empty_list);
+                        list_add_tail(&chunk->chunk_list, &group->empty_list);
                         group->empty_chunk_num++;
                         group->full_chunk_num--;
                 } else if (chunk->nr_used_objs == 0) {
                         group->free_chunk_num++;
                         group->empty_chunk_num--;
+                        list_del(&chunk->chunk_list);
+                        list_add_head(&chunk->chunk_list, &group->empty_list);
                 }
                 /*
                         then we calculate the free chunk numbers of that group
@@ -360,7 +352,7 @@ static error_t _sp_free(struct mem_allocator* sp_allocator_p, void* p)
                 struct mem_chunk* free_chunk = container_of(
                         group->empty_list.next, struct mem_chunk, chunk_list);
                 struct mem_chunk* next_free_chunk = free_chunk;
-                while (group->free_chunk_num > ALLOC_CHUNK_PER_BATCH) {
+                while (group->free_chunk_num > 1) {
                         next_free_chunk =
                                 container_of(free_chunk->chunk_list.next,
                                              struct mem_chunk,

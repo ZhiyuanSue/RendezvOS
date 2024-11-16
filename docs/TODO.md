@@ -7,5 +7,5 @@ TODO list:
 5、根据修改过的架构统一页表flag表示，修改原先的代码。(done)
 6、添加清理tlb的部分(紧急！！！因为试图反复把某些页面映射过去，所以必须刷新tlb，而不刷新就会出问题。实际上map函数较为工作良好)(done)
 7、添加map函数的test和unmap的实现(done)
-8、实现nexus
-9、实现spmalloc
+8、实现nexus(done)
+9、实现spmalloc(done)
