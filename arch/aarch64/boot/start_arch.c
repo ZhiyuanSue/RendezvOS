@@ -43,7 +43,7 @@ static void map_dtb(struct setup_info *arch_setup_info)
                 + MIDDLE_PAGE_SIZE * 2;
 }
 
-error_t start_arch(struct setup_info *arch_setup_info)
+error_t prepare_arch(struct setup_info *arch_setup_info)
 {
         map_dtb(arch_setup_info);
         struct fdt_header *dtb_header_ptr =
@@ -51,12 +51,21 @@ error_t start_arch(struct setup_info *arch_setup_info)
                                               ->boot_dtb_header_base_addr);
         if (fdt_check_header(dtb_header_ptr)) {
                 pr_info("check fdt header fail\n");
-                goto start_arch_error;
+                goto prepare_arch_error;
         }
         // parse_print_dtb(dtb_header_ptr,0,0);
-        init_interrupt();
 
         return (0);
-start_arch_error:
+prepare_arch_error:
         return (-EPERM);
+}
+
+error_t arch_parser_platform(struct setup_info *arch_setup_info)
+{
+        return 0;
+}
+error_t start_arch(struct setup_info *arch_setup_info)
+{
+        init_interrupt();
+        return (0);
 }

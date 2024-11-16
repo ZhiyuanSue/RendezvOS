@@ -6,7 +6,7 @@
 #define _ACPI_DEFS_H_
 
 /*define ACPI basic types*/
-#define APCI_SIG_RSDP "RAD PTR"
+#define APCI_SIG_RSDP "RSD PTR"
 
 /* The signatures assigned in acpi specification */
 #define ACPI_SIG_APIC "APIC" /* Multiple APIC Description Table */

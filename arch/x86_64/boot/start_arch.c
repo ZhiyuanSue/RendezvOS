@@ -72,7 +72,7 @@ static void start_simd(void)
 start_simd_fail:
         pr_error("start simd fail\n");
 }
-error_t start_arch(struct setup_info *arch_setup_info)
+error_t prepare_arch(struct setup_info *arch_setup_info)
 {
         u32 mtb_magic;
         struct multiboot_info *mtb_info;
@@ -91,6 +91,16 @@ error_t start_arch(struct setup_info *arch_setup_info)
         } else {
                 pr_info("no input cmdline\n");
         }
+
+        return (0);
+}
+
+error_t arch_parser_platform(struct setup_info *arch_setup_info)
+{
+        return 0;
+}
+error_t start_arch(struct setup_info *arch_setup_info)
+{
         get_cpuinfo();
         init_interrupt();
         init_irq();
