@@ -270,7 +270,7 @@ L2_table:
 		the start pos is 1111 1111 1111 1111 1111 1111 1000 0000 0000 0000 0000 0000 0000 0000 0000 0000 b
 		and the first  | 1...              1 | is pre 1 bits 
 		and the                             |1111 1111 1| is the PML4 addr, which will find the last entry of PDPT
-		and then                                       |000 0000 00| is the PDPT addr, which will find the last entry of PDE
+		and then                                       |000 0000 00| is the PDPT addr, which will find the first entry of PDE
 		and find the L2_table,and set this entry's PS bit 
 	*/
 	.section .boot.log

@@ -18,15 +18,24 @@ void cmain(struct setup_info *arch_setup_info)
         hello_world();
 #endif
         if (prepare_arch(arch_setup_info)) {
-                pr_error("error start arch\n");
+                pr_error("[ERROR] prapare arch\n");
                 return;
         }
-        mm_init(arch_setup_info);
-        arch_parser_platform(arch_setup_info);
+        if (mm_init(arch_setup_info)) {
+                pr_error("[ERROR] mm init\n");
+                return;
+        }
+        if (arch_parser_platform(arch_setup_info)) {
+                pr_error("[ERROR] arch parser platform\n");
+                return;
+        }
         /*TODO:after we init the pmm module, we can alloc some pages for
          * stack,and no more boot stack：in x86,please use LSS, see
          * manual 6.8.3*/
-        start_arch(arch_setup_info);
+        if (start_arch(arch_setup_info)) {
+                pr_error("[ERROR] start arch\n");
+                return;
+        }
         start_smp();
         test();
         arch_shutdown();

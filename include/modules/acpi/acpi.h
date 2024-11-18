@@ -7,4 +7,5 @@
 
 #include <modules/acpi/acpi_table.h>
 
+struct acpi_table_rsdp* acpi_probe_rsdp(vaddr search_start_vaddr);
 #endif

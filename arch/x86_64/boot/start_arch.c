@@ -10,7 +10,7 @@
 #include <modules/log/log.h>
 #include <shampoos/error.h>
 #include <shampoos/mm/vmm.h>
-#include <shampoos/mm/map_handler.h>
+#include <modules/acpi/acpi.h>
 
 extern u32 max_phy_addr_width;
 struct cpuinfo_x86 cpuinfo;
@@ -97,6 +97,12 @@ error_t prepare_arch(struct setup_info *arch_setup_info)
 
 error_t arch_parser_platform(struct setup_info *arch_setup_info)
 {
+        struct acpi_table_rsdp *rsdp = acpi_probe_rsdp(KERNEL_VIRT_OFFSET);
+        if (!rsdp) {
+                pr_info("not find any rsdp\n");
+                return -1;
+        }
+        pr_info("====== rsdp @[0x%x]] ======\n", rsdp);
         return 0;
 }
 error_t start_arch(struct setup_info *arch_setup_info)

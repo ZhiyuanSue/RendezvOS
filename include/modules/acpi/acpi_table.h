@@ -43,6 +43,9 @@
            Length field and beyond.                                            \
         The current  value for		this field is 2. */                            \
         u32 rsdt_address; /* 32 bit physical address of the RSDT. */
+struct acpi_table_rsdp {
+        ACPI_TABLE_RSDP_1
+};
 /*
  * For acpi version 2.0 RSDP table
  */
