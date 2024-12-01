@@ -12,7 +12,7 @@
 #define PML4E_PCD           (1ULL << 4)
 #define PML4E_A             (1ULL << 5)
 #define PML4E_PS            (1ULL << 7)
-#define PML4E_ADDR(addr, m) (((addr >> 12) << 12) & MAXPHYADDR_mask(m))
+#define PML4E_ADDR(addr, m) ((((u64)addr >> 12) << 12) & MAXPHYADDR_mask(m))
 #define PML4E_XD            (1ULL << 63)
 
 /*some bit of PDPT*/
@@ -25,7 +25,7 @@
 #define PDPTE_D             (1ULL << 6)
 #define PDPTE_PS            (1ULL << 7)
 #define PDPTE_G             (1ULL << 8) /*1G huge page only*/
-#define PDPTE_ADDR(addr, m) (((addr >> 12) << 12) & MAXPHYADDR_mask(m))
+#define PDPTE_ADDR(addr, m) ((((u64)addr >> 12) << 12) & MAXPHYADDR_mask(m))
 #define PDPTE_PAT           (1ULL << 12)
 /*1G huge page only*/
 #define PDPTE_ADDR_1G(addr, m) (((addr >> 30) << 30) & MAXPHYADDR_mask(m))
@@ -44,7 +44,7 @@
 #define PDE_D             (1ULL << 6)
 #define PDE_PS            (1ULL << 7)
 #define PDE_G             (1ULL << 8) /*2m huge page only*/
-#define PDE_ADDR(addr, m) (((addr >> 12) << 12) & MAXPHYADDR_mask(m))
+#define PDE_ADDR(addr, m) ((((u64)addr >> 12) << 12) & MAXPHYADDR_mask(m))
 #define PDE_PAT           (1ULL << 12)
 /*2m huge page only*/
 #define PDE_ADDR_2M(addr, m) (((addr >> 21) << 21) & MAXPHYADDR_mask(m))

@@ -366,7 +366,7 @@ static void* _user_get_free_page(int page_num, enum zone_type memory_zone,
         vaddr free_page_addr;
         /*and obviously, the address 0 should not accessed by any of the
          * user*/
-        free_page_addr = (target_vaddr >> 12) << 12;
+        free_page_addr = (((u64)target_vaddr) >> 12) << 12;
         if (free_page_addr != target_vaddr) {
                 return NULL;
         }

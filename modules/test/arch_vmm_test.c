@@ -46,7 +46,7 @@ int arch_vmm_test(void)
 
         /*TEST:memset the map l3 table to 0*/
         u32 ppn = buddy_pmm.pmm_alloc(1, ZONE_NORMAL);
-        paddr page_paddr = ((u64)ppn) << 12;
+        paddr page_paddr = PADDR(ppn);
         vaddr page_vaddr = map_pages;
         ENTRY_FLAGS_t flags = arch_decode_flags(
                 3, PAGE_ENTRY_READ | PAGE_ENTRY_VALID | PAGE_ENTRY_WRITE);
