@@ -113,7 +113,7 @@ error_t map(paddr *vspace_root_paddr, u64 ppn, u64 vpn, int level,
                         pr_error("[ ERROR ] try alloc ppn fail\n");
                         return -ENOMEM;
                 }
-                next_level_paddr = (pmm_res) << 12;
+                next_level_paddr = ((u64)pmm_res) << 12;
                 new_alloc = true;
                 flags = arch_decode_flags(0,
                                           PAGE_ENTRY_GLOBAL | PAGE_ENTRY_READ
@@ -143,7 +143,7 @@ error_t map(paddr *vspace_root_paddr, u64 ppn, u64 vpn, int level,
                         pr_error("[ ERROR ] try alloc ppn fail\n");
                         return -ENOMEM;
                 }
-                next_level_paddr = (pmm_res) << 12;
+                next_level_paddr = ((u64)pmm_res) << 12;
                 new_alloc = true;
                 flags = arch_decode_flags(1,
                                           PAGE_ENTRY_GLOBAL | PAGE_ENTRY_READ
@@ -274,7 +274,7 @@ error_t map(paddr *vspace_root_paddr, u64 ppn, u64 vpn, int level,
                                 pr_error("[ ERROR ] try alloc ppn fail\n");
                                 return -ENOMEM;
                         }
-                        next_level_paddr = (pmm_res) << 12;
+                        next_level_paddr = ((u64)pmm_res) << 12;
                         new_alloc = true;
                         flags = arch_decode_flags(
                                 2,

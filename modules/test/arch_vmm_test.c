@@ -46,7 +46,7 @@ int arch_vmm_test(void)
 
         /*TEST:memset the map l3 table to 0*/
         u32 ppn = buddy_pmm.pmm_alloc(1, ZONE_NORMAL);
-        paddr page_paddr = ppn << 12;
+        paddr page_paddr = ((u64)ppn) << 12;
         vaddr page_vaddr = map_pages;
         ENTRY_FLAGS_t flags = arch_decode_flags(
                 3, PAGE_ENTRY_READ | PAGE_ENTRY_VALID | PAGE_ENTRY_WRITE);
@@ -93,7 +93,7 @@ int arch_vmm_test(void)
         memset((void *)vp_1, 0, PAGE_SIZE);
         if (have_mapped(vspace_root, VPN(vp_1), &Map_Handler) != PADDR(ppn_1)) {
                 pr_error(
-                        "unexpected result have mapped check,here expect have mappedn\n");
+                        "unexpected result have mapped check,here expect have mapped\n");
                 goto arch_vmm_test_error;
         }
         pr_info("[ TEST ] PASS: map 4K ok!\n");

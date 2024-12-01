@@ -61,21 +61,21 @@ find_memory_node:
                         for (int index = 0; index < len;
                              index += sizeof(u32) * 4) {
                                 u32 u32_1, u32_2, u32_3, u32_4;
-                                u32 addr, len;
+                                u64 addr, mem_len;
                                 u32_1 = SWAP_ENDIANNESS_32(*u32_data);
                                 u32_data++;
                                 u32_2 = SWAP_ENDIANNESS_32(*u32_data);
                                 u32_data++;
-                                addr = u32_1 + u32_2;
+                                addr = (((u64)u32_1) << 32) + u32_2;
                                 u32_3 = SWAP_ENDIANNESS_32(*u32_data);
                                 u32_data++;
                                 u32_4 = SWAP_ENDIANNESS_32(*u32_data);
                                 u32_data++;
-                                len = u32_3 + u32_4;
+                                mem_len = (((u64)u32_3) << 32) + u32_4;
                                 pr_info("region start 0x%x,len 0x%x\n",
                                         addr,
-                                        len);
-                                m_regions.memory_regions_insert(addr, len);
+                                        mem_len);
+                                m_regions.memory_regions_insert(addr, mem_len);
                         }
                 }
         }
