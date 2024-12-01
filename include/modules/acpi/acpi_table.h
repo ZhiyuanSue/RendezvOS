@@ -142,30 +142,30 @@ struct acpi_gas {
                 For tables containing Definition Blocks,                     \
                     this is the                                              \
                 ID for the ASL Compiler. */                                  \
-        u32 Creator_revision;                                                \
-        /*Revision of utility that created the table.                        \
-                For tables containing Definition Blocks, this is             \
-                the revision for the ASL Compiler.*/
+        u32 Creator_revision
+/*Revision of utility that created the table.                        \
+        For tables containing Definition Blocks, this is             \
+        the revision for the ASL Compiler.*/
 /*Root System Description Tables*/
 struct acpi_table_rsdt {
-        ACPI_TABLE_HEAD
+        ACPI_TABLE_HEAD;
         u32 *entry;
 };
 #define ACPI_RSDT_ENTRY_SIZE (4)
 
 /*Extended System Description Table XSDT*/
 struct acpi_table_xsdt {
-        ACPI_TABLE_HEAD
+        ACPI_TABLE_HEAD;
         u64 *entry;
 };
 #define ACPI_XSDT_ENTRY_SIZE (8)
 
 /*Fixed ACPI Description Table(FADT)*/
 struct acpi_table_fadt {
-        ACPI_TABLE_HEAD /* The signature is "FACP",
+        ACPI_TABLE_HEAD; /* The signature is "FACP",
                              and the revision is 6 ,and it's the major
                              version,the minor version is at offset 131*/
-                u32 FIRMWARE_CTRL; /* Physical memory address of the
+        u32 FIRMWARE_CTRL; /* Physical memory address of the
                                         FACS, where OSPM and Firmware
                                         exchange control information. If
                                         the HARDWARE_REDUCED_ACPI flag is
@@ -243,6 +243,12 @@ struct acpi_table_fadt {
         struct acpi_gas SLEEP_CONTROL_REG;
         struct acpi_gas SLEEP_STATUS_REG;
         u64 Hypervisor_Vendor_Id;
+};
+struct acpi_table_madt {
+        ACPI_TABLE_HEAD;
+        u32 Local_int_ctrl_address;
+        u32 flags;
+#define MADT_PCAT_COMPAT 1
 };
 
 #endif

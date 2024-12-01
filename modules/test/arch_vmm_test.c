@@ -76,6 +76,11 @@ int arch_vmm_test(void)
                 pr_error("[ ERROR ] ERROR:try get a ppn fail\n");
                 goto arch_vmm_test_error;
         }
+        if (have_mapped(vspace_root, VPN(vp_1), &Map_Handler)) {
+                pr_error(
+                        "unexpected result have mapped check,here expect unmapped\n");
+                goto arch_vmm_test_error;
+        }
         if (map(&vspace_root,
                 ppn_1,
                 VPN(vp_1),
@@ -86,6 +91,11 @@ int arch_vmm_test(void)
                 goto arch_vmm_test_error;
         }
         memset((void *)vp_1, 0, PAGE_SIZE);
+        if (have_mapped(vspace_root, VPN(vp_1), &Map_Handler) != PADDR(ppn_1)) {
+                pr_error(
+                        "unexpected result have mapped check,here expect have mappedn\n");
+                goto arch_vmm_test_error;
+        }
         pr_info("[ TEST ] PASS: map 4K ok!\n");
         /*
                 then we alloc another page frame and try to map to same virtual

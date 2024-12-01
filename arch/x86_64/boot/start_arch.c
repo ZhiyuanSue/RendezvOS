@@ -97,12 +97,21 @@ error_t prepare_arch(struct setup_info *arch_setup_info)
 
 error_t arch_parser_platform(struct setup_info *arch_setup_info)
 {
-        struct acpi_table_rsdp *rsdp = acpi_probe_rsdp(KERNEL_VIRT_OFFSET);
-        if (!rsdp) {
+        struct acpi_table_rsdp *rsdp_table =
+                acpi_probe_rsdp(KERNEL_VIRT_OFFSET);
+        if (!rsdp_table) {
                 pr_info("not find any rsdp\n");
-                return -1;
+                return -EPERM;
         }
-        pr_info("====== rsdp @[0x%x]] ======\n", rsdp);
+        pr_info("====== rsdp @[0x%x]] ======\n", rsdp_table);
+        if (rsdp_table->revision == 0) {
+                pr_info("====== rsdt @[0x%x]] ======\n",
+                        rsdp_table->rsdt_address);
+        } else {
+                pr_error("[ ACPI ] unsupported vision: %d\n",
+                         rsdp_table->revision);
+                return -EPERM;
+        }
         return 0;
 }
 error_t start_arch(struct setup_info *arch_setup_info)

@@ -28,4 +28,9 @@ error_t map(paddr* vspace_root_paddr, u64 ppn, u64 vpn, int level,
 */
 error_t unmap(paddr vspace_root_paddr, u64 vpn, struct map_handler* handler);
 
+/*
+        check whether the vpn have mapped in this vspace
+*/
+paddr have_mapped(paddr vspace_root_paddr, u64 vpn,
+                  struct map_handler* handler);
 #endif
