@@ -32,5 +32,16 @@ SECTIONS {
 		*(.bss .bss.*)
 	}
 	_bss_end = .;
+	. =ALIGN(4K);
+	_per_cpu_start = .;
+	.percpu : 
+	{
+		*(.percpu..data)
+	}
+	. = ALIGN(64);
+	_per_cpu_end = .;
 	_end = .;
+	/DISCARD/ : {
+        *(.comment) *(.gnu*) *(.note*) *(.eh_frame*)
+    }
 }

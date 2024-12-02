@@ -24,6 +24,15 @@ SECTIONS {
 		*(.boot.map_util)
 		*(.data .data.*)
 	}
+	. =ALIGN(4K);
+	_per_cpu_start = .;
+	.percpu : 
+	{
+		*(.percpu..data)
+	}
+	. = ALIGN(64);
+	_per_cpu_end = .;
+	
 	_edata = .;
 	. = ALIGN(4K);
 	_bss_start = .;
@@ -33,4 +42,7 @@ SECTIONS {
 	}
 	_bss_end = .;
 	_end = .;
+	/DISCARD/ : {
+        *(.comment) *(.gnu*) *(.note*) *(.eh_frame*)
+    }
 }
