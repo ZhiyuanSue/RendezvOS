@@ -7,6 +7,7 @@
 #include <shampoos/limits.h>
 #include <shampoos/mm/pmm.h>
 #include <shampoos/mm/vmm.h>
+#include <shampoos/percpu.h>
 
 extern char _start, _end; /*the kernel end virt addr*/
 extern u64 L0_table, L1_table, L2_table;
@@ -81,35 +82,35 @@ find_memory_node:
         }
 }
 
-static void arch_map_pmm_data_space(paddr kernel_phy_start,
-                                    paddr kernel_phy_end,
-                                    paddr pmm_data_phy_start,
-                                    paddr pmm_data_phy_end)
+static void arch_map_extra_data_space(paddr kernel_phy_start,
+                                      paddr kernel_phy_end,
+                                      paddr extra_data_phy_start,
+                                      paddr extra_data_phy_end)
 {
-        paddr pmm_data_phy_start_addr;
+        paddr extra_data_phy_start_addr;
         paddr kernel_end_phy_addr_round_up;
-        paddr pmm_data_start_round_down_2m;
+        paddr extra_data_start_round_down_2m;
         ARCH_PFLAGS_t flags;
 
-        pmm_data_phy_start_addr = pmm_data_phy_start;
+        extra_data_phy_start_addr = extra_data_phy_start;
         kernel_end_phy_addr_round_up =
                 ROUND_UP(kernel_phy_end, MIDDLE_PAGE_SIZE);
-        if (pmm_data_phy_start_addr < kernel_end_phy_addr_round_up)
-                pmm_data_phy_start_addr = kernel_end_phy_addr_round_up;
+        if (extra_data_phy_start_addr < kernel_end_phy_addr_round_up)
+                extra_data_phy_start_addr = kernel_end_phy_addr_round_up;
         /*for we have mapped the 2m align space of kernel*/
         flags = arch_decode_flags(2,
                                   PAGE_ENTRY_GLOBAL | PAGE_ENTRY_HUGE
                                           | PAGE_ENTRY_READ | PAGE_ENTRY_VALID
                                           | PAGE_ENTRY_WRITE);
-        for (; pmm_data_phy_start_addr < pmm_data_phy_end;
-             pmm_data_phy_start_addr += MIDDLE_PAGE_SIZE) {
+        for (; extra_data_phy_start_addr < extra_data_phy_end;
+             extra_data_phy_start_addr += MIDDLE_PAGE_SIZE) {
                 /*As pmm and vmm part is not usable now, we still use boot page
                  * table*/
-                pmm_data_start_round_down_2m =
-                        ROUND_DOWN(pmm_data_phy_start_addr, MIDDLE_PAGE_SIZE);
+                extra_data_start_round_down_2m =
+                        ROUND_DOWN(extra_data_phy_start_addr, MIDDLE_PAGE_SIZE);
                 arch_set_L2_entry(
-                        pmm_data_start_round_down_2m,
-                        KERNEL_PHY_TO_VIRT(pmm_data_start_round_down_2m),
+                        extra_data_start_round_down_2m,
+                        KERNEL_PHY_TO_VIRT(extra_data_start_round_down_2m),
                         (union L2_entry *)&L2_table,
                         flags);
         }
@@ -121,6 +122,7 @@ void arch_init_pmm(struct setup_info *arch_setup_info)
         paddr pmm_data_phy_start;
         paddr kernel_phy_start;
         paddr kernel_phy_end;
+        paddr per_cpu_phy_start;
         paddr pmm_data_phy_end;
         int kernel_region;
         struct fdt_reserve_entry *entry;
@@ -131,6 +133,9 @@ void arch_init_pmm(struct setup_info *arch_setup_info)
         dtb_header_ptr =
                 (struct fdt_header *)(arch_setup_info
                                               ->boot_dtb_header_base_addr);
+        per_cpu_phy_start =
+                KERNEL_VIRT_TO_PHY(arch_setup_info->map_end_virt_addr);
+        reserve_per_cpu_region(&(arch_setup_info->map_end_virt_addr));
         pmm_data_phy_start =
                 ROUND_UP(KERNEL_VIRT_TO_PHY(arch_setup_info->map_end_virt_addr),
                          PAGE_SIZE);
@@ -205,10 +210,10 @@ void arch_init_pmm(struct setup_info *arch_setup_info)
                 pr_error("cannot load the pmm_data\n");
                 goto arch_init_pmm_error;
         }
-        arch_map_pmm_data_space(kernel_phy_start,
-                                kernel_phy_end,
-                                pmm_data_phy_start,
-                                pmm_data_phy_end);
+        arch_map_extra_data_space(kernel_phy_start,
+                                  kernel_phy_end,
+                                  per_cpu_phy_start,
+                                  pmm_data_phy_end);
         generate_pmm_data(kernel_phy_start,
                           kernel_phy_end,
                           pmm_data_phy_start,

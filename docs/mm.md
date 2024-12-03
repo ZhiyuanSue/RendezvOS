@@ -55,14 +55,38 @@
 high address
 	-- - -- - -- - -- -
 	buddy static part
-	-- - -- - -- - -- - _end ROUND_UP 4K
-	empty
+	-- - -- - -- - -- -	per cpu part end
+	per_cpu data
 	-- - -- - -- - -- -	_end
 	kernel
 	-- - -- - -- - -- - 0x100000
 	bios part	:we cannot use
 	-- - -- - -- - -- - 0x0
 low address
+
+# pmm内存的layout(aarch64)
+
+high address
+	-- - -- - -- - -- -
+	buddy static part
+	-- - -- - -- - -- -	per cpu part end
+	per_cpu data
+	-- - -- - -- - -- - _end ROUND_UP 2M+6M
+	dtb map(for dtb at most have 2M, but might not aligned ,so we should alloc 4M)
+	-- - -- - -- - -- - _end ROUND_UP 2M+2M
+	empty
+	-- - -- - -- - -- - _end ROUND_UP 2M+4K
+	pl011
+	-- - -- - -- - -- - _end ROUND_UP 2M
+	-- - -- - -- - -- -	_end
+	kernel
+	-- - -- - -- - -- - 0x40080000
+	-- - -- - -- - -- - 0x40000000
+	hardware part	:we cannot use
+	-- - -- - -- - -- - 0x0
+low address
+
+here we define the per_cpu part plus buddy as extra part
 
 # 这种静态buddy算法能够支持的物理空间
 在这里，我们允许每个bucket的位置都可以分离而不是所有的bucket都必须连续的进行分配
