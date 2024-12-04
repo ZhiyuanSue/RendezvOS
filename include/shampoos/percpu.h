@@ -11,6 +11,8 @@
 extern u64 __per_cpu_offset[SHAMPOOS_MAX_CPU_NUMBER];
 #define per_cpu_offset(x) (__per_cpu_offset[x])
 
+#define per_cpu(var, cpu) \
+        (*((__typeof__(var)*)((u64)(&var) + __per_cpu_offset[cpu])))
 #define get_cpu_var(var)
 // TODO
 
@@ -19,4 +21,5 @@ extern u64 __per_cpu_offset[SHAMPOOS_MAX_CPU_NUMBER];
 
 void reserve_per_cpu_region(paddr* phy_kernel_end);
 void calculate_per_cpu_offset();
+void clean_per_cpu_region(paddr per_cpu_phy_addr);
 #endif

@@ -3,8 +3,9 @@
 #include <shampoos/mm/map_handler.h>
 #include <shampoos/mm/nexus.h>
 #include <shampoos/mm/spmalloc.h>
+#include <shampoos/percpu.h>
 extern struct buddy buddy_pmm;
-struct map_handler Map_Handler;
+DEFINE_PER_CPU(struct map_handler, Map_Handler);
 struct nexus_node *nexus_root;
 error_t mm_init(struct setup_info *arch_setup_info)
 {

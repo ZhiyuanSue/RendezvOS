@@ -3,7 +3,8 @@
 #include <shampoos/error.h>
 #include <common/string.h>
 #include <shampoos/limits.h>
-struct allocator* allocator_pool[SHAMPOOS_MAX_CPU_NUMBER] = {NULL};
+#include <shampoos/percpu.h>
+DEFINE_PER_CPU(struct allocator*, kallocator);
 struct mem_allocator tmp_sp_alloctor = {
         .init = sp_init,
         .m_alloc = sp_alloc,
@@ -189,13 +190,14 @@ struct allocator* sp_init(struct nexus_node* nexus_root, int allocator_id)
                                         &sp_allocator->groups[i].full_list);
                         }
                 }
-                if (allocator_pool[allocator_id]) {
+                if (per_cpu(kallocator, allocator_id)) {
                         pr_error(
                                 "[ERROR]we have already have one allocator with id %d\n",
                                 allocator_id);
                         return NULL;
                 }
-                allocator_pool[allocator_id] = (struct allocator*)sp_allocator;
+                per_cpu(kallocator, allocator_id) =
+                        (struct allocator*)sp_allocator;
                 return (struct allocator*)sp_allocator;
         } else {
                 pr_error(
@@ -371,8 +373,8 @@ static error_t _sp_free(struct mem_allocator* sp_allocator_p, void* p)
                 }
                 return 0;
         } else {
-                return _sp_free((struct mem_allocator*)
-                                        allocator_pool[free_allocator_id],
+                return _sp_free((struct mem_allocator*)per_cpu(
+                                        kallocator, free_allocator_id),
                                 p);
         }
 }

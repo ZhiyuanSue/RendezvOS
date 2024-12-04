@@ -6,7 +6,8 @@
 #include <shampoos/mm/spmalloc.h>
 #include <common/rand.h>
 #include <common/string.h>
-extern struct allocator* allocator_pool[SHAMPOOS_MAX_CPU_NUMBER];
+#include <shampoos/percpu.h>
+extern struct allocator* kallocator;
 extern int slot_size[MAX_GROUP_SLOTS];
 struct bin {
         void* ptr;
@@ -52,10 +53,10 @@ static void sp_allocator_print(struct mem_allocator* sp_allocator_p)
 static void spmalloc_print(void)
 {
         for (int i = 0; i < SHAMPOOS_MAX_CPU_NUMBER; i++) {
-                if (allocator_pool[i]) {
+                if (per_cpu(kallocator, i)) {
                         debug("=== [ SPMALLOC ] ===\n");
                         sp_allocator_print(
-                                (struct mem_allocator*)allocator_pool[i]);
+                                (struct mem_allocator*)per_cpu(kallocator, i));
                 }
         }
 }
@@ -80,7 +81,7 @@ int spmalloc_test(void)
 {
         /*first we try to alloc one 8 Bytes as basic test*/
         spmalloc_print();
-        struct allocator* malloc = allocator_pool[0];
+        struct allocator* malloc = kallocator;
         void* test_alloc = malloc->m_alloc(malloc, 8);
         *((u64*)test_alloc) = 0;
         malloc->m_free(malloc, test_alloc);

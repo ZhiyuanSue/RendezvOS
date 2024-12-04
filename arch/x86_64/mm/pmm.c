@@ -158,6 +158,7 @@ void arch_init_pmm(struct setup_info *arch_setup_info)
                                   kernel_phy_end,
                                   per_cpu_phy_start,
                                   pmm_data_phy_end);
+        clean_per_cpu_region(per_cpu_phy_start);
         generate_pmm_data(kernel_phy_start,
                           kernel_phy_end,
                           pmm_data_phy_start,
