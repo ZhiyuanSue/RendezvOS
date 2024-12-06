@@ -33,6 +33,7 @@ struct memory_regions {
         error_t (*memory_regions_insert)(paddr addr, u64 len);
         void (*memory_regions_delete)(int index);
         bool (*memory_regions_entry_empty)(int index);
+        int (*memory_regions_reserve_region)(paddr phy_start,paddr phy_end);
 };
 
 enum zone_type { ZONE_NORMAL, ZONE_NR_MAX };

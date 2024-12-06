@@ -7,6 +7,7 @@
 #include <shampoos/mm/pmm.h>
 #include <shampoos/mm/vmm.h>
 #include <shampoos/percpu.h>
+#include <modules/acpi/acpi.h>
 
 extern char _start, _end; /*the kernel end virt addr*/
 extern u64 L0_table, L1_table, L2_table;
@@ -82,6 +83,34 @@ static void arch_map_extra_data_space(paddr kernel_phy_start,
                         flags);
         }
 }
+void reserve_arch_region(struct setup_info *arch_setup_info)
+{
+        // reserve acpi region
+        struct acpi_table_rsdp *rsdp_table =
+                acpi_probe_rsdp(KERNEL_VIRT_OFFSET);
+        if (!rsdp_table) {
+                pr_info("not find any rsdp\n");
+                return;
+        }
+        pr_info("====== rsdp @[0x%x]] ======\n", rsdp_table);
+        arch_setup_info->rsdp_addr = (vaddr)rsdp_table;
+        if (rsdp_table->revision == 0) {
+                pr_info("====== rsdt @[0x%x]] ======\n",
+                        rsdp_table->rsdt_address);
+                paddr acpi_reserve_phy_start =
+                        ROUND_DOWN(rsdp_table->rsdt_address, MIDDLE_PAGE_SIZE);
+                paddr acpi_reserve_phy_end =
+                        acpi_reserve_phy_start + MIDDLE_PAGE_SIZE;
+                int acpi_region = m_regions.memory_regions_reserve_region(acpi_reserve_phy_start,acpi_reserve_phy_end);
+                if (acpi_region == -1) {
+                        pr_info("cannot load kernel\n");
+                        return;
+                }
+        } else {
+                pr_error("[ ACPI ] unsupported vision: %d\n",
+                         rsdp_table->revision);
+        }
+}
 void arch_init_pmm(struct setup_info *arch_setup_info)
 {
         paddr kernel_phy_start;
@@ -90,8 +119,6 @@ void arch_init_pmm(struct setup_info *arch_setup_info)
         paddr pmm_data_phy_start;
         paddr pmm_data_phy_end;
         int kernel_region;
-        struct region *reg;
-        paddr region_end;
 
         kernel_phy_start = KERNEL_VIRT_TO_PHY((vaddr)(&_start));
         kernel_phy_end = KERNEL_VIRT_TO_PHY((vaddr)(&_end));
@@ -99,39 +126,12 @@ void arch_init_pmm(struct setup_info *arch_setup_info)
         reserve_per_cpu_region(&kernel_phy_end);
         pmm_data_phy_start = ROUND_UP(kernel_phy_end, PAGE_SIZE);
         pmm_data_phy_end = 0;
-        kernel_region = -1;
         if (arch_get_memory_regions(arch_setup_info) < 0)
                 goto arch_init_pmm_error;
         // adjust the memory regions, according to the kernel
-        for (int i = 0; i < m_regions.region_count; i++) {
-                if (m_regions.memory_regions_entry_empty(i))
-                        continue;
-                reg = &m_regions.memory_regions[i];
-                region_end = reg->addr + reg->len;
-                // find the region
-                if (kernel_phy_start >= reg->addr
-                    && kernel_phy_end <= region_end) {
-                        // the kernel used all the memeory
-                        if (kernel_phy_start == reg->addr
-                            && kernel_phy_end == region_end)
-                                m_regions.memory_regions_delete(i);
-                        // only one size is used, just change the region
-                        else if (kernel_phy_start == reg->addr) {
-                                reg->addr = kernel_phy_end;
-                        } else if (kernel_phy_end == region_end) {
-                                reg->len = kernel_phy_start - reg->addr;
-                        } else {
-                                // both side have space, adjust the region and
-                                // insert a new one
-                                m_regions.memory_regions_insert(
-                                        reg->addr,
-                                        kernel_phy_start - reg->addr);
-                                reg->addr = kernel_phy_end;
-                                reg->len = region_end - kernel_phy_end;
-                        }
-                        kernel_region = i;
-                }
-        }
+        kernel_region=m_regions.memory_regions_reserve_region(kernel_phy_start,kernel_phy_end);
+        
+        reserve_arch_region(arch_setup_info);
         /*You need to check whether the kernel have been loaded all
          * successfully*/
         if (kernel_region == -1) {

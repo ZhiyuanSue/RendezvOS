@@ -126,8 +126,6 @@ void arch_init_pmm(struct setup_info *arch_setup_info)
         paddr pmm_data_phy_end;
         int kernel_region;
         struct fdt_reserve_entry *entry;
-        struct region *reg;
-        paddr region_end;
         paddr map_end_phy_addr;
 
         dtb_header_ptr =
@@ -142,7 +140,6 @@ void arch_init_pmm(struct setup_info *arch_setup_info)
         kernel_phy_start = KERNEL_VIRT_TO_PHY((vaddr)(&_start));
         kernel_phy_end = KERNEL_VIRT_TO_PHY((vaddr)(&_end));
         pmm_data_phy_end = 0;
-        kernel_region = -1;
         pr_info("start arch init pmm\n");
         for (u64 off = SWAP_ENDIANNESS_32(dtb_header_ptr->off_mem_rsvmap);
              off < SWAP_ENDIANNESS_32(dtb_header_ptr->off_dt_struct);
@@ -157,37 +154,9 @@ void arch_init_pmm(struct setup_info *arch_setup_info)
         if (!m_regions.region_count)
                 goto arch_init_pmm_error;
         // adjust the memory regions, according to the kernel
-        for (int i = 0; i < m_regions.region_count; i++) {
-                if (m_regions.memory_regions_entry_empty(i))
-                        continue;
-                reg = &m_regions.memory_regions[i];
-                region_end = reg->addr + reg->len;
-                map_end_phy_addr =
+        map_end_phy_addr =
                         KERNEL_VIRT_TO_PHY(arch_setup_info->map_end_virt_addr);
-                // find the region
-                if (kernel_phy_start >= reg->addr
-                    && map_end_phy_addr <= region_end) {
-                        // the kernel used all the memeory
-                        if (kernel_phy_start == reg->addr
-                            && map_end_phy_addr == region_end)
-                                m_regions.memory_regions_delete(i);
-                        // only one size is used, just change the region
-                        else if (kernel_phy_start == reg->addr) {
-                                reg->addr = map_end_phy_addr;
-                        } else if (map_end_phy_addr == region_end) {
-                                reg->len = kernel_phy_start - reg->addr;
-                        } else {
-                                // both side have space, adjust the region and
-                                // insert a new one
-                                m_regions.memory_regions_insert(
-                                        reg->addr,
-                                        kernel_phy_start - reg->addr);
-                                reg->addr = map_end_phy_addr;
-                                reg->len = region_end - map_end_phy_addr;
-                        }
-                        kernel_region = i;
-                }
-        }
+        kernel_region=m_regions.memory_regions_reserve_region(kernel_phy_start,map_end_phy_addr);
         /*You need to check whether the kernel and dtb have been loaded all
          * successfully*/
         if (kernel_region == -1) {
