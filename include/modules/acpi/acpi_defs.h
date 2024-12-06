@@ -6,8 +6,9 @@
 #define _ACPI_DEFS_H_
 
 /*define ACPI basic types*/
-#define APCI_SIG_RSDP "RSD PTR "
+#define ACPI_SIG_RSDP "RSD PTR "
 
+#define ACPI_SIG_LENG 4
 /* The signatures assigned in acpi specification */
 #define ACPI_SIG_APIC "APIC" /* Multiple APIC Description Table */
 #define ACPI_SIG_BERT "BERT" /* Boot Error Record Table*/

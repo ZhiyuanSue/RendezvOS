@@ -155,8 +155,9 @@ void arch_init_pmm(struct setup_info *arch_setup_info)
                 goto arch_init_pmm_error;
         // adjust the memory regions, according to the kernel
         map_end_phy_addr =
-                        KERNEL_VIRT_TO_PHY(arch_setup_info->map_end_virt_addr);
-        kernel_region=m_regions.memory_regions_reserve_region(kernel_phy_start,map_end_phy_addr);
+                KERNEL_VIRT_TO_PHY(arch_setup_info->map_end_virt_addr);
+        kernel_region = m_regions.memory_regions_reserve_region(
+                kernel_phy_start, map_end_phy_addr);
         /*You need to check whether the kernel and dtb have been loaded all
          * successfully*/
         if (kernel_region == -1) {

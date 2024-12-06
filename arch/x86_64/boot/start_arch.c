@@ -99,7 +99,8 @@ error_t prepare_arch(struct setup_info *arch_setup_info)
 
 error_t arch_parser_platform(struct setup_info *arch_setup_info)
 {
-        struct acpi_table_rsdp *rsdp_table = (struct acpi_table_rsdp *)(arch_setup_info->rsdp_addr);
+        struct acpi_table_rsdp *rsdp_table =
+                (struct acpi_table_rsdp *)(arch_setup_info->rsdp_addr);
         if (rsdp_table->revision == 0) {
                 // we must use cpu 0 to map
                 paddr rsdt_page =
@@ -107,13 +108,9 @@ error_t arch_parser_platform(struct setup_info *arch_setup_info)
                 vaddr rsdt_map_page =
                         ROUND_DOWN(KERNEL_PHY_TO_VIRT(rsdp_table->rsdt_address),
                                    PAGE_SIZE);
-                pr_info("phy page 0x%x,virt page 0x%x\n",
-                        rsdt_page,
-                        rsdt_map_page);
                 if (!have_mapped(get_current_kernel_vspace_root(),
                                  VPN(rsdt_map_page),
                                  &Map_Handler)) {
-                        pr_info("not mapped rsdt\n");
                         paddr vspace_root = get_current_kernel_vspace_root();
                         map(&vspace_root,
                             PPN(rsdt_page),
@@ -123,12 +120,13 @@ error_t arch_parser_platform(struct setup_info *arch_setup_info)
                             &Map_Handler);
                 }
                 struct acpi_table_rsdt *rsdt_table =
-                        (struct acpi_table_rsdt
-                        *)KERNEL_PHY_TO_VIRT(rsdp_table->rsdt_address);
-                // if (rsdt_table->signature != ACPI_SIG_RSDT) {
-                //         pr_error("invalid signature of rsdt table\n");
-                //         return -EPERM;
-                // }
+                        (struct acpi_table_rsdt *)KERNEL_PHY_TO_VIRT(
+                                rsdp_table->rsdt_address);
+                if (!acpi_table_sig_check(rsdt_table->signature,
+                                          ACPI_SIG_RSDT)) {
+                        pr_error("invalid signature of rsdt table\n");
+                        return -EPERM;
+                }
         } else {
                 pr_error("[ ACPI ] unsupported vision: %d\n",
                          rsdp_table->revision);

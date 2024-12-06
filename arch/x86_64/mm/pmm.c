@@ -101,7 +101,8 @@ void reserve_arch_region(struct setup_info *arch_setup_info)
                         ROUND_DOWN(rsdp_table->rsdt_address, MIDDLE_PAGE_SIZE);
                 paddr acpi_reserve_phy_end =
                         acpi_reserve_phy_start + MIDDLE_PAGE_SIZE;
-                int acpi_region = m_regions.memory_regions_reserve_region(acpi_reserve_phy_start,acpi_reserve_phy_end);
+                int acpi_region = m_regions.memory_regions_reserve_region(
+                        acpi_reserve_phy_start, acpi_reserve_phy_end);
                 if (acpi_region == -1) {
                         pr_info("cannot load kernel\n");
                         return;
@@ -129,8 +130,9 @@ void arch_init_pmm(struct setup_info *arch_setup_info)
         if (arch_get_memory_regions(arch_setup_info) < 0)
                 goto arch_init_pmm_error;
         // adjust the memory regions, according to the kernel
-        kernel_region=m_regions.memory_regions_reserve_region(kernel_phy_start,kernel_phy_end);
-        
+        kernel_region = m_regions.memory_regions_reserve_region(
+                kernel_phy_start, kernel_phy_end);
+
         reserve_arch_region(arch_setup_info);
         /*You need to check whether the kernel have been loaded all
          * successfully*/

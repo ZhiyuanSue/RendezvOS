@@ -7,7 +7,7 @@ struct acpi_table_rsdp* acpi_probe_rsdp(vaddr search_start_vaddr)
         struct acpi_table_rsdp* rsdp = NULL;
         vaddr first_region_start = search_start_vaddr + 0x00080000;
         vaddr first_region_end = first_region_start + 0x400;
-        u8 cmp_str[8] = APCI_SIG_RSDP;
+        u8 cmp_str[8] = ACPI_SIG_RSDP;
 
         vaddr second_region_start = search_start_vaddr + 0x000E0000;
         vaddr second_region_end = search_start_vaddr + 0x000FFFFF + 1;
@@ -44,4 +44,13 @@ struct acpi_table_rsdp* acpi_probe_rsdp(vaddr search_start_vaddr)
                 }
         }
         return rsdp;
+}
+bool acpi_table_sig_check(char* acpi_table_sig_ptr, char* sig_chars)
+{
+        for (int i = 0; i < ACPI_SIG_LENG; i++) {
+                if (acpi_table_sig_ptr[i] != sig_chars[i]) {
+                        return false;
+                }
+        }
+        return true;
 }

@@ -6,6 +6,8 @@
 #define _ACPI_H_
 
 #include <modules/acpi/acpi_table.h>
+#include <common/stdbool.h>
 
 struct acpi_table_rsdp* acpi_probe_rsdp(vaddr search_start_vaddr);
+bool acpi_table_sig_check(char* acpi_table_sig_ptr, char* sig_chars);
 #endif
