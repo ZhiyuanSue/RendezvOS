@@ -5,7 +5,9 @@
 #ifndef _ACPI_H_
 #define _ACPI_H_
 
-#include <modules/acpi/acpi_table.h>
+#include "acpi_table.h"
+#include "acpi_fadt.h"
+#include "acpi_madt.h"
 #include <common/stdbool.h>
 
 struct acpi_table_rsdp* acpi_probe_rsdp(vaddr search_start_vaddr);
