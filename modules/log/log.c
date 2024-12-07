@@ -116,6 +116,13 @@ void log_print(char *buffer, const char *format, va_list arg_list)
                                 p = buf;
                                 goto string;
                         }
+                        case 'c': {
+                                uint8_t tmp_c = (uint8_t)va_arg(arg_list, int);
+                                *buf = tmp_c;
+                                *(buf + 1) = '\0';
+                                p = buf;
+                                goto string;
+                        }
                         case 's':
                                 p = va_arg(arg_list, char *);
                                 if (!p)

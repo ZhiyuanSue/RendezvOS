@@ -48,6 +48,47 @@
                         Extensions*/
 #define ACPI_SIG_XSDT "XSDT" /* Extended System Description Table */
 
+enum acpi_table_sig_enum {
+        ACPI_APIC,
+        ACPI_BERT,
+        ACPI_BGRT,
+        ACPI_CCEL,
+        ACPI_CPEP,
+        ACPI_DSDT,
+        ACPI_ECDT,
+        ACPI_EINJ,
+        ACPI_ERST,
+        ACPI_FACP,
+        ACPI_FACS,
+        ACPI_FPDT,
+        ACPI_GTDT,
+        ACPI_HEST,
+        ACPI_MISC,
+        ACPI_MSCT,
+        ACPI_MPST,
+        ACPI_NFIT,
+        ACPI_OEMx,
+        ACPI_PCCT,
+        ACPI_PHAT,
+        ACPI_PMTT,
+        ACPI_PPTT,
+        ACPI_PSDT,
+        ACPI_RASF,
+        ACPI_RAS2,
+        ACPI_RSDT,
+        ACPI_SBST,
+        ACPI_SDEV,
+        ACPI_SLIT,
+        ACPI_SRAT,
+        ACPI_SSDT,
+        ACPI_SVKL,
+        ACPI_XSDT,
+        ACPI_NR_TABLES,
+};
+struct acpi_table_sig {
+        enum acpi_table_sig_enum sig_enum;
+        char sig_char[ACPI_SIG_LENG];
+};
 /* The signatures reserved in acpi specification*/
 #define ACPI_SIG_RSV_AEST "AEST"
 #define ACPI_SIG_RSV_AGDI "AGDI"

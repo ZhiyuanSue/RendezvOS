@@ -150,7 +150,7 @@ struct acpi_gas {
 struct acpi_table_head {
         ACPI_TABLE_HEAD;
 };
-#define ACPI_HEAD_SIZE sizeof(acpi_table_head)
+#define ACPI_HEAD_SIZE sizeof(struct acpi_table_head)
 struct acpi_table_rsdt {
         ACPI_TABLE_HEAD;
         u32 *entry;

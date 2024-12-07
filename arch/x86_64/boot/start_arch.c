@@ -104,10 +104,10 @@ error_t arch_parser_platform(struct setup_info *arch_setup_info)
         if (rsdp_table->revision == 0) {
                 // we must use cpu 0 to map
                 paddr rsdt_page =
-                        ROUND_DOWN(rsdp_table->rsdt_address, PAGE_SIZE);
+                        ROUND_DOWN(rsdp_table->rsdt_address, MIDDLE_PAGE_SIZE);
                 vaddr rsdt_map_page =
                         ROUND_DOWN(KERNEL_PHY_TO_VIRT(rsdp_table->rsdt_address),
-                                   PAGE_SIZE);
+                                   MIDDLE_PAGE_SIZE);
                 if (!have_mapped(get_current_kernel_vspace_root(),
                                  VPN(rsdt_map_page),
                                  &Map_Handler)) {
@@ -115,7 +115,7 @@ error_t arch_parser_platform(struct setup_info *arch_setup_info)
                         map(&vspace_root,
                             PPN(rsdt_page),
                             VPN(rsdt_map_page),
-                            3,
+                            2,
                             PAGE_ENTRY_NONE,
                             &Map_Handler);
                 }
@@ -126,6 +126,28 @@ error_t arch_parser_platform(struct setup_info *arch_setup_info)
                                           ACPI_SIG_RSDT)) {
                         pr_error("invalid signature of rsdt table\n");
                         return -EPERM;
+                }
+
+                int nr_rsdt_entry = (rsdt_table->length - ACPI_HEAD_SIZE)
+                                    / ACPI_RSDT_ENTRY_SIZE;
+                for (int i = 0; i < nr_rsdt_entry; i++) {
+                        paddr entry_paddr = ((u32 *)&(rsdt_table->entry))[i];
+                        vaddr entry_vaddr =
+                                KERNEL_PHY_TO_VIRT((u64)entry_paddr);
+                        struct acpi_table_head *tmp_table_head =
+                                (struct acpi_table_head *)entry_vaddr;
+                        enum acpi_table_sig_enum sig =
+                                get_acpi_table_type_from_sig(tmp_table_head);
+                        if (sig == -1) {
+                                pr_error("undefined acpi table ");
+                                for (int j = 0; j < ACPI_SIG_LENG; j++) {
+                                        pr_error("%c",
+                                                 tmp_table_head->signature[j]);
+                                }
+                                pr_error("\n");
+                        } else {
+                                pr_info("acpi table type is %d\n", sig);
+                        }
                 }
         } else {
                 pr_error("[ ACPI ] unsupported vision: %d\n",
