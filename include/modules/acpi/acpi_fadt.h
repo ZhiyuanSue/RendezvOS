@@ -1,6 +1,7 @@
 #ifndef _ACPI_TABLE_FADT_H_
 #define _ACPI_TABLE_FADT_H_
 #include "acpi_table.h"
+#pragma pack(1)
 /*Fixed ACPI Description Table(FADT)*/
 struct acpi_table_fadt {
         ACPI_TABLE_HEAD; /* The signature is "FACP",

@@ -25,4 +25,5 @@ GET_MULTIBOOT_INFO(struct setup_info *setup_info)
 error_t prepare_arch(struct setup_info *arch_setup_info);
 error_t start_arch(struct setup_info *arch_setup_info);
 error_t arch_parser_platform(struct setup_info *arch_setup_info);
+error_t acpi_init(struct setup_info *arch_setup_info);
 #endif

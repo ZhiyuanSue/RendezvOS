@@ -10,7 +10,6 @@
 #include <modules/log/log.h>
 #include <shampoos/error.h>
 #include <shampoos/mm/vmm.h>
-#include <modules/acpi/acpi.h>
 #include <shampoos/mm/map_handler.h>
 
 extern u32 max_phy_addr_width;
@@ -96,65 +95,11 @@ error_t prepare_arch(struct setup_info *arch_setup_info)
 
         return (0);
 }
-
 error_t arch_parser_platform(struct setup_info *arch_setup_info)
 {
-        struct acpi_table_rsdp *rsdp_table =
-                (struct acpi_table_rsdp *)(arch_setup_info->rsdp_addr);
-        if (rsdp_table->revision == 0) {
-                // we must use cpu 0 to map
-                paddr rsdt_page =
-                        ROUND_DOWN(rsdp_table->rsdt_address, MIDDLE_PAGE_SIZE);
-                vaddr rsdt_map_page =
-                        ROUND_DOWN(KERNEL_PHY_TO_VIRT(rsdp_table->rsdt_address),
-                                   MIDDLE_PAGE_SIZE);
-                if (!have_mapped(get_current_kernel_vspace_root(),
-                                 VPN(rsdt_map_page),
-                                 &Map_Handler)) {
-                        paddr vspace_root = get_current_kernel_vspace_root();
-                        map(&vspace_root,
-                            PPN(rsdt_page),
-                            VPN(rsdt_map_page),
-                            2,
-                            PAGE_ENTRY_NONE,
-                            &Map_Handler);
-                }
-                struct acpi_table_rsdt *rsdt_table =
-                        (struct acpi_table_rsdt *)KERNEL_PHY_TO_VIRT(
-                                rsdp_table->rsdt_address);
-                if (!acpi_table_sig_check(rsdt_table->signature,
-                                          ACPI_SIG_RSDT)) {
-                        pr_error("invalid signature of rsdt table\n");
-                        return -EPERM;
-                }
+        error_t e = acpi_init(arch_setup_info);
 
-                int nr_rsdt_entry = (rsdt_table->length - ACPI_HEAD_SIZE)
-                                    / ACPI_RSDT_ENTRY_SIZE;
-                for (int i = 0; i < nr_rsdt_entry; i++) {
-                        paddr entry_paddr = ((u32 *)&(rsdt_table->entry))[i];
-                        vaddr entry_vaddr =
-                                KERNEL_PHY_TO_VIRT((u64)entry_paddr);
-                        struct acpi_table_head *tmp_table_head =
-                                (struct acpi_table_head *)entry_vaddr;
-                        enum acpi_table_sig_enum sig =
-                                get_acpi_table_type_from_sig(tmp_table_head);
-                        if (sig == -1) {
-                                pr_error("undefined acpi table ");
-                                for (int j = 0; j < ACPI_SIG_LENG; j++) {
-                                        pr_error("%c",
-                                                 tmp_table_head->signature[j]);
-                                }
-                                pr_error("\n");
-                        } else {
-                                pr_info("acpi table type is %d\n", sig);
-                        }
-                }
-        } else {
-                pr_error("[ ACPI ] unsupported vision: %d\n",
-                         rsdp_table->revision);
-                return -EPERM;
-        }
-        return 0;
+        return e;
 }
 error_t start_arch(struct setup_info *arch_setup_info)
 {
