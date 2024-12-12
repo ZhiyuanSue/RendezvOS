@@ -87,6 +87,9 @@ struct cpuinfo_x86 {
 #define X86_CPUID_MODEL_NAME_2 0x80000003
 #define X86_CPUID_MODEL_NAME_3 0x80000004
         u8 ModelName[48];
+#define X86_CPUID_Invariant_TSC     0x80000007
+#define X86_CPUID_Invariant_TSC_EDX (1 << 8)
+        u8 invariant_tsc_support;
 #define X86_CPUID_ADDR 0x80000008
         u8 VirtAddrBits;
         u8 PhyAddrBits;

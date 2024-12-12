@@ -45,8 +45,8 @@ enum madt_int_ctrl_type {
 };
 struct madt_Local_APIC { // type = 0
         MADT_CTRL_HEAD;
-        u8 ACPI_P_UID;
-        u8 APIC_ID;
+        u8 _ACPI_P_UID;
+        u8 _APIC_ID;
         u32 flags;
 #define Local_APIC_flags_enable         (1 << 0)
 #define Local_APIC_flags_online_capable (1 < 1)
@@ -63,7 +63,7 @@ struct madt_Source_Override {
         u8 Bus;
         u8 Source;
         u32 Global_Sys_Int;
-        u16 flags;      /*MPS INTI flags*/
+        u16 flags; /*MPS INTI flags*/
 };
 
 struct madt_int_ctrl_head*

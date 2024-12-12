@@ -5,11 +5,13 @@
 #include <shampoos/error.h>
 #include <modules/log/log.h>
 extern struct map_handler Map_Handler;
-static inline error_t parser_facp(struct acpi_table_fadt *fadt_table)
+struct acpi_table_fadt *fadt_table;
+struct acpi_table_madt *madt_table;
+static inline error_t parser_facp()
 {
         return 0;
 }
-static inline error_t parser_apic(struct acpi_table_madt *madt_table)
+static inline error_t parser_apic()
 {
         for_each_madt_ctrl_head(madt_table)
         {
@@ -18,7 +20,7 @@ static inline error_t parser_apic(struct acpi_table_madt *madt_table)
                 case madt_ctrl_type_Local_APIC:
                         pr_info("Local APIC id is %d\n",
                                 ((struct madt_Local_APIC *)curr_ctrl_head)
-                                        ->APIC_ID);
+                                        ->_APIC_ID);
                         break;
                 case madt_ctrl_type_IO_APIC:
                         break;
@@ -36,10 +38,12 @@ static inline error_t parser_acpi_tables(enum acpi_table_sig_enum sig_enum,
         pr_info("acpi table type is %d\n", sig_enum);
         switch (sig_enum) {
         case ACPI_FACP:
-                return parser_facp((struct acpi_table_fadt *)table_head);
+                fadt_table = (struct acpi_table_fadt *)table_head;
+                return parser_facp();
                 break;
         case ACPI_APIC:
-                return parser_apic((struct acpi_table_madt *)table_head);
+                madt_table = (struct acpi_table_madt *)table_head;
+                return parser_apic();
                 break;
         default:
                 return -EPERM;

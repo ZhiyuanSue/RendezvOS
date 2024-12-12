@@ -32,6 +32,13 @@ static void get_cpuinfo(void)
         cpuid(0x1, &eax, &ebx, &ecx, &edx);
         cpuinfo.feature_1 = ecx;
         cpuinfo.feature_2 = edx;
+        /*detect invariant tsc*/
+        cpuid(X86_CPUID_Invariant_TSC, &eax, &ebx, &ecx, &edx);
+        if (edx & X86_CPUID_Invariant_TSC_EDX) {
+                cpuinfo.invariant_tsc_support = 1;
+        } else {
+                cpuinfo.invariant_tsc_support = 0;
+        }
 }
 static void enable_cache(void)
 {
