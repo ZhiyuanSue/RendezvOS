@@ -87,6 +87,10 @@ static u32 inline get_mxcsr()
         asm volatile("stmxcsr	%0" : "=m"(mxcsr_tmp));
         return (mxcsr_tmp);
 }
+static void inline lgdt(struct pseudo_descriptor *desc)
+{
+        asm volatile("lgdt      (%0)" : : "r"(desc) : "memory");
+}
 static void inline lidt(struct pseudo_descriptor *desc)
 {
         asm volatile("lidt	(%0)" : : "r"(desc) : "memory");

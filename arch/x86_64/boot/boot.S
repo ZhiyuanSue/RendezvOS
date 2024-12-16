@@ -135,6 +135,8 @@ ERROR_CPUID:
 	.section .boot_64
 .code64
 x86_64_entry:
+	movabs	$(gdt_desc),%rax
+	lgdt	(%rax)
 	movabs	$(set_segments),%rax
 	jmp	*%rax
 set_segments:
@@ -189,6 +191,19 @@ tmp_gdt:
 tmp_gdt_desc:
 	.short	( . - tmp_gdt - 1)
 	.quad	tmp_gdt - kernel_virt_offset
+
+/*
+	the idt table need to use the gdt with a desc to find the segment
+	but we cancel the mapping of the tmp gdt at low addr
+	so we must use a new and real gdt with it's desc
+*/
+	.p2align 3
+gdt:
+	.quad 0x0	# 0x00: null
+	.quad ((1<<(32+12)) | (1<<(32+21)) | (1<<(32+15)) | (1<<(32+11)) | (1<<(32+10)) | (1<<(32+9)))	
+gdt_desc:
+	.short	( . - gdt - 1)
+	.quad	gdt
 
 
 

@@ -104,13 +104,13 @@ error_t prepare_arch(struct setup_info *arch_setup_info)
 }
 error_t arch_parser_platform(struct setup_info *arch_setup_info)
 {
+        get_cpuinfo();
         error_t e = acpi_init(arch_setup_info);
 
         return e;
 }
 error_t start_arch(struct setup_info *arch_setup_info)
 {
-        get_cpuinfo();
         init_interrupt();
         init_irq();
         init_timer();

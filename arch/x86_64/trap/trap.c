@@ -4,7 +4,7 @@
 #include <arch/x86_64/trap.h>
 #include <modules/log/log.h>
 
-extern u64 *trap_vec;
+extern u64 trap_vec;
 extern union idt_gate_desc trap_vec_table[IDT_LIMIT];
 const char *trap_name_string[TRAP_ARCH_USED + 2] = {
         "Fault:Divide Error\n\0",
@@ -45,7 +45,7 @@ void init_interrupt(void)
                 sel.table_indicator = 0;
                 sel.index = 1;
                 SET_IDT_GATE(trap_vec_table[i],
-                             (vaddr)&trap_vec[i],
+                             (vaddr)((u64 *)&trap_vec)[i],
                              sel,
                              KERNEL_PL,
                              0xe);
