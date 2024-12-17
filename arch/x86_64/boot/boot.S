@@ -198,12 +198,6 @@ tmp_gdt_desc:
 	so we must use a new and real gdt with it's desc
 */
 	.p2align 3
-gdt:
-	.quad 0x0	# 0x00: null
-	.quad ((1<<(32+12)) | (1<<(32+21)) | (1<<(32+15)) | (1<<(32+11)) | (1<<(32+10)) | (1<<(32+9)))	
-gdt_desc:
-	.short	( . - gdt - 1)
-	.quad	gdt
 
 
 

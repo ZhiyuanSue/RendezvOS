@@ -14,7 +14,7 @@ the phy position of per cpu data is placed between kernel end and the pmm data
 we only use SHAMPOOS_MAX_CPU_NUMBER-1
 because the index 0 is using the space allocated in linker script
 */
-void reserve_per_cpu_region(paddr* phy_kernel_end)
+void reserve_per_cpu_region(paddr *phy_kernel_end)
 {
         u64 per_cpu_size = (u64)(&_per_cpu_end) - (u64)(&_per_cpu_start);
         __per_cpu_offset[0] = 0;
@@ -34,7 +34,7 @@ void calculate_per_cpu_offset()
 void clean_per_cpu_region(paddr per_cpu_phy_addr)
 {
         u64 per_cpu_size = (u64)&_per_cpu_end - (u64)&_per_cpu_start;
-        memset((void*)KERNEL_PHY_TO_VIRT(per_cpu_phy_addr),
+        memset((void *)KERNEL_PHY_TO_VIRT(per_cpu_phy_addr),
                '\0',
                (SHAMPOOS_MAX_CPU_NUMBER - 1) * per_cpu_size);
 }

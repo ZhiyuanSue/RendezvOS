@@ -10,8 +10,5 @@ enum TIMER_SRC_type {
         HPET_timer = 0x8,
 };
 void init_timer(void);
-void ndelay(u64 ns);
-void udelay(u64 us);
-void mdelay(u64 ms);
 #endif
 #endif
