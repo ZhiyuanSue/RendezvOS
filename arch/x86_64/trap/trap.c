@@ -1,4 +1,4 @@
-#include <arch/x86_64/PIC/PIC.h>
+#include <arch/x86_64/PIC/PIT.h>
 #include <arch/x86_64/sys_ctrl.h>
 #include <arch/x86_64/sys_ctrl_def.h>
 #include <arch/x86_64/trap.h>

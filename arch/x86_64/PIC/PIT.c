@@ -1,4 +1,4 @@
-#include <arch/x86_64/PIC/PIC.h>
+#include <arch/x86_64/PIC/PIT.h>
 #include <arch/x86_64/io.h>
 #include <arch/x86_64/io_port.h>
 #include <common/bit.h>

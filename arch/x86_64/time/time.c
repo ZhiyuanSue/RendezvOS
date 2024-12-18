@@ -4,17 +4,21 @@
 #include <modules/log/log.h>
 
 extern int arch_irq_type;
+// Here we use PIT to calibration
+// if possible, use HPET instead
+static void PIT_delay(int ms)
+{
+        count = 0;
+        init_8254_one_shot(PIT_TICK_RATE / (1000 / ms));
+        init_8254_read();
+        i16 t = read_8254_val();
+        while (t >= 0) {
+                t = read_8254_val();
+        }
+}
 static void APIC_timer_calibration()
 {
-        init_8254_one_shot(PIT_TICK_RATE / 20);
-        init_8254_read();
-        // int original = read_8254_val();
-        int i=0;
-        for (; i < 10000; i++) {
-                if (read_8254_val()==0)
-                        break;
-        }
-        pr_info("here count 0 with i %d\n",i);
+        PIT_delay(50);
 }
 void init_timer(void)
 {

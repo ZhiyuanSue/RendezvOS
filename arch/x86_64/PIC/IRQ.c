@@ -17,6 +17,9 @@ static inline bool x2APIC_support(void)
 {
         return (cpuinfo.feature_1 & X86_CPUID_FEATURE_ECX_x2APIC);
 }
+static inline void reset_xAPIC(void)
+{
+}
 static inline void enable_xAPIC(void)
 {
         u64 APIC_BASE_val;
