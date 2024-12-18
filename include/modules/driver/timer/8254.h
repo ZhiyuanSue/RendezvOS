@@ -14,6 +14,10 @@
 #define _8254_CTL_SC_OFF_  (6)
 #define _8254_CTL_SC_MASK_ (0b11 << _8254_CTL_SC_OFF_)
 
-void init_8254(void);
+void init_8254_cyclical(int freq);
+void init_8254_one_shot(u16 t);
+void init_8254_read();
+u16 read_8254_val();
+#define PIT_TICK_RATE 1193181
 #endif
 #endif

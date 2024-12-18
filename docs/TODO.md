@@ -9,3 +9,5 @@ TODO list:
 7、添加map函数的test和unmap的实现(done)
 8、实现nexus(done)
 9、实现spmalloc(done)
+10、查看是否会修改一些页表项中的隔离域等问题
+11、启动PIT时钟，并用于校准APIC时钟
