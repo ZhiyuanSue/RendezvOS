@@ -8,7 +8,6 @@ extern int arch_irq_type;
 // if possible, use HPET instead
 static void PIT_delay(int ms)
 {
-        count = 0;
         init_8254_one_shot(PIT_TICK_RATE / (1000 / ms));
         init_8254_read();
         i16 t = read_8254_val();
