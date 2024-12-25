@@ -10,6 +10,7 @@
 #define APIC_PPR     (0xA)
 #define APIC_EOI     (0xB)
 #define APIC_LDR     (0xD)
+#define APIC_DFR     (0xE)
 #define APIC_SVR     (0xF)
 
 #define APIC_ISR_0 (0x10)
@@ -50,20 +51,37 @@
 #define APIC_LVT_LINT_0 (0x35)
 #define APIC_LVT_LINT_1 (0x36)
 #define APIC_LVT_ERR    (0x37)
-#define APIC_INIT_CNT   (0x38)
-#define APIC_CURR_CNT   (0x39)
-#define APIC_DCR        (0x3E)
-#define APIC_SELF_IPI   (0x3F) /*only in x2APIC*/
+
+// Some LVT Value
+#define APIC_LVT_TIMER_MODE_ONE_SHOT (0x0 << 17)
+#define APCI_LVT_TIMER_MODE_PERIODIC (0x1 << 17)
+#define APIC_LVT_TIMER_MODE_TSC_DDL  (0x2 << 17)
+#define APIC_LVT_MASKED              (0x00010000)
+#define APIC_LVT_TRIGGER_MODE_LEVEL  (0x1 << 15)
+#define APIC_LVT_REMOTE_IRR          (0x1 << 14)
+#define APIC_LVT_INT_PIN_POLARITY    (0x1 << 13)
+#define APIC_LVT_DEL_STATUS          (0x1 << 12)
+#define APIC_LVT_DEL_MODE_FIXED      (0x0 << 8)
+#define APIC_LVT_DEL_MODE_SMI        (0x2 << 8)
+#define APIC_LVT_DEL_MODE_NMI        (0x4 << 8)
+#define APIC_LVT_DEL_MODE_ExtINT     (0x7 << 8)
+#define APIC_LVT_DEL_MODE_INIT       (0x5 << 8)
+#define APIC_LVT_VECTOR_MASK         (0xFF)
+
+#define APIC_INIT_CNT (0x38)
+#define APIC_CURR_CNT (0x39)
+#define APIC_DCR      (0x3E)
+#define APIC_SELF_IPI (0x3F) /*only in x2APIC*/
 
 #define APIC_REG_INDEX(reg_name) (APIC_##reg_name)
 
 #define xAPIC_MMIO_BASE               0xFEE00000
 #define xAPIC_REG_PHY_ADDR(reg_index) (xAPIC_MMIO_BASE + reg_index * 0x10)
 #define xAPIC_RD_REG(reg_name, vaddr_off) \
-        (*((u32 *)(xAPIC_REG_PHY_ADDR(APIC_REG_INDEX(reg_name) + vaddr_off))))
-#define xAPIC_WR_REG(reg_name, vaddr_off, value)               \
-        (*((u32 *)(xAPIC_REG_PHY_ADDR(APIC_REG_INDEX(reg_name) \
-                                      + vaddr_off))) = value)
+        (*((u32 *)(xAPIC_REG_PHY_ADDR(APIC_REG_INDEX(reg_name)) + vaddr_off)))
+#define xAPIC_WR_REG(reg_name, vaddr_off, value)                \
+        (*((u32 *)(xAPIC_REG_PHY_ADDR(APIC_REG_INDEX(reg_name)) \
+                   + vaddr_off)) = value)
 
 #define x2APIC_MSR_BASE            0x800
 #define x2APIC_REG_ADDR(reg_index) (x2APIC_MSR_BASE + reg_index)
