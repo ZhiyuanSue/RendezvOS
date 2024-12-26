@@ -4,53 +4,74 @@
 #include <common/types.h>
 #include <common/stdbool.h>
 #include <arch/x86_64/sys_ctrl.h>
-#define APIC_ID      (0x2)
-#define APIC_VERSION (0x3)
-#define APIC_TPR     (0x8)
-#define APIC_PPR     (0xA)
-#define APIC_EOI     (0xB)
-#define APIC_LDR     (0xD)
-#define APIC_DFR     (0xE)
-#define APIC_SVR     (0xF)
+#define APIC_REG_SIZE 32
+#define APIC_REG_ID   (0x2)
+#define APIC_ID_MASK  (0xFF000000)
+/*
+        for apic id register, if xAPIC, only bit 31-24 is uesd, and all bit used
+   for x2APIC
+*/
 
-#define APIC_ISR_0 (0x10)
-#define APIC_ISR_1 (0x11)
-#define APIC_ISR_2 (0x12)
-#define APIC_ISR_3 (0x13)
-#define APIC_ISR_4 (0x14)
-#define APIC_ISR_5 (0x15)
-#define APIC_ISR_6 (0x16)
-#define APIC_ISR_7 (0x17)
+#define APIC_REG_VERSION        (0x3)
+#define APIC_VERSION_MASK       (0xFF)
+#define APIC_MAX_LVT_ENTRY_MASK (0xFF << 16)
+#define APCI_EOI_BC_SUPPORT     (0x1 << 24)
 
-#define APIC_TMR_0 (0x18)
-#define APIC_TMR_1 (0x19)
-#define APIC_TMR_2 (0x1A)
-#define APIC_TMR_3 (0x1B)
-#define APIC_TMR_4 (0x1C)
-#define APIC_TMR_5 (0x1D)
-#define APIC_TMR_6 (0x1E)
-#define APIC_TMR_7 (0x1F)
+#define APIC_REG_TPR (0x8)
+#define APIC_REG_PPR (0xA)
+#define APIC_REG_EOI (0xB)
+#define APIC_REG_LDR (0xD)
+#define APIC_REG_DFR (0xE)
+#define APIC_REG_SVR (0xF)
 
-#define APIC_IRR_0 (0x20)
-#define APIC_IRR_1 (0x21)
-#define APIC_IRR_2 (0x22)
-#define APIC_IRR_3 (0x23)
-#define APIC_IRR_4 (0x24)
-#define APIC_IRR_5 (0x25)
-#define APIC_IRR_6 (0x26)
-#define APIC_IRR_7 (0x27)
+#define APIC_REG_ISR_0 (0x10)
+#define APIC_REG_ISR_1 (0x11)
+#define APIC_REG_ISR_2 (0x12)
+#define APIC_REG_ISR_3 (0x13)
+#define APIC_REG_ISR_4 (0x14)
+#define APIC_REG_ISR_5 (0x15)
+#define APIC_REG_ISR_6 (0x16)
+#define APIC_REG_ISR_7 (0x17)
 
-#define APIC_ESR      (0x28)
-#define APIC_LVT_CMCI (0x2F)
-#define APIC_ICR      (0x30)
-#define APIC_ICR_HIGH (0x31) /*only used in xAPIC, no 831H MSR reg in x2APIC*/
+#define APIC_REG_TMR_0 (0x18)
+#define APIC_REG_TMR_1 (0x19)
+#define APIC_REG_TMR_2 (0x1A)
+#define APIC_REG_TMR_3 (0x1B)
+#define APIC_REG_TMR_4 (0x1C)
+#define APIC_REG_TMR_5 (0x1D)
+#define APIC_REG_TMR_6 (0x1E)
+#define APIC_REG_TMR_7 (0x1F)
 
-#define APIC_LVT_TIME   (0x32)
-#define APIC_LVT_THER   (0x33)
-#define APIC_LVT_PERF   (0x34)
-#define APIC_LVT_LINT_0 (0x35)
-#define APIC_LVT_LINT_1 (0x36)
-#define APIC_LVT_ERR    (0x37)
+#define APIC_REG_IRR_0 (0x20)
+#define APIC_REG_IRR_1 (0x21)
+#define APIC_REG_IRR_2 (0x22)
+#define APIC_REG_IRR_3 (0x23)
+#define APIC_REG_IRR_4 (0x24)
+#define APIC_REG_IRR_5 (0x25)
+#define APIC_REG_IRR_6 (0x26)
+#define APIC_REG_IRR_7 (0x27)
+
+#define APIC_REG_ESR              (0x28)
+#define APIC_ESR_SEND_CHECK_ERR   (0x1 << 0)
+#define APIC_ESR_RECV_CHECK_ERR   (0x1 << 1)
+#define APIC_ESR_SEND_ACCEPT_ERR  (0x1 << 2)
+#define APIC_ESR_RECV_ACCEPT_ERR  (0x1 << 3)
+#define APIC_ESR_REDIRECTABLE_IPI (0x1 << 4)
+#define APIC_ESR_SEND_ILLEGAL_VEC (0x1 << 5)
+#define APIC_ESR_RECV_ILLEGAL_VEC (0x1 << 6)
+#define APIC_ESR_ILLEGAL_REG_ADDR (0x1 << 7)
+
+#define APIC_REG_LVT_CMCI (0x2F)
+#define APIC_REG_ICR      (0x30)
+#define APIC_REG_ICR_HIGH \
+        (0x31) /*only used in xAPIC, no 831H MSR reg in x2APIC*/
+
+#define APIC_REG_LVT_TIME   (0x32)
+#define APIC_REG_LVT_THER   (0x33)
+#define APIC_REG_LVT_PERF   (0x34)
+#define APIC_REG_LVT_LINT_0 (0x35)
+#define APIC_REG_LVT_LINT_1 (0x36)
+#define APIC_REG_LVT_ERR    (0x37)
 
 // Some LVT Value
 #define APIC_LVT_TIMER_MODE_ONE_SHOT (0x0 << 17)
@@ -68,12 +89,12 @@
 #define APIC_LVT_DEL_MODE_INIT       (0x5 << 8)
 #define APIC_LVT_VECTOR_MASK         (0xFF)
 
-#define APIC_INIT_CNT (0x38)
-#define APIC_CURR_CNT (0x39)
-#define APIC_DCR      (0x3E)
-#define APIC_SELF_IPI (0x3F) /*only in x2APIC*/
+#define APIC_REG_INIT_CNT (0x38)
+#define APIC_REG_CURR_CNT (0x39)
+#define APIC_REG_DCR      (0x3E)
+#define APIC_REG_SELF_IPI (0x3F) /*only in x2APIC*/
 
-#define APIC_REG_INDEX(reg_name) (APIC_##reg_name)
+#define APIC_REG_INDEX(reg_name) (APIC_REG_##reg_name)
 
 #define xAPIC_MMIO_BASE               0xFEE00000
 #define xAPIC_REG_PHY_ADDR(reg_index) (xAPIC_MMIO_BASE + reg_index * 0x10)
@@ -96,9 +117,9 @@ enum lapic_vec_type {
         lapic_tmr_type,
         lapic_irr_type,
 };
-void lapic_get_vec(int bit, enum lapic_vec_type);
-void lapic_set_vec(int bit, enum lapic_vec_type);
-void lapci_clear_vec(int bit, enum lapic_vec_type);
+bool lapic_get_vec(int bit, enum lapic_vec_type t);
+void lapic_set_vec(int bit, enum lapic_vec_type t);
+void lapci_clear_vec(int bit, enum lapic_vec_type t);
 
 void reset_xAPIC(void);
 bool map_LAPIC(void);
