@@ -25,12 +25,24 @@ static inline void enable_xAPIC(void)
         APIC_BASE_val = set_mask(APIC_BASE_val, IA32_APIC_BASE_X_ENABLE);
         wrmsr(IA32_APIC_BASE_addr, APIC_BASE_val);
 }
-static inline void disable_xAPIC(void)
+static inline void enable_x2APIC(void)
 {
         u64 APIC_BASE_val;
 
         APIC_BASE_val = rdmsr(IA32_APIC_BASE_addr);
-        APIC_BASE_val = clear_mask(APIC_BASE_val, IA32_APIC_BASE_X_ENABLE);
+        APIC_BASE_val =
+                set_mask(APIC_BASE_val,
+                         IA32_APIC_BASE_X_ENABLE | IA32_APIC_BASE_X2_ENABLE);
+        wrmsr(IA32_APIC_BASE_addr, APIC_BASE_val);
+}
+static inline void disable_APIC(void)
+{
+        u64 APIC_BASE_val;
+
+        APIC_BASE_val = rdmsr(IA32_APIC_BASE_addr);
+        APIC_BASE_val = clear_mask(APIC_BASE_val,
+                                   (IA32_APIC_BASE_X_ENABLE
+                                    & IA32_APIC_BASE_X2_ENABLE));
         wrmsr(IA32_APIC_BASE_addr, APIC_BASE_val);
 }
 static inline bool xapic_check_base_addr(void)
@@ -54,6 +66,8 @@ void init_irq(void)
                         // seems the same like the xAPIC
                         // but no need to map the apic, and the address search
                         // is not the same
+                        reset_x2APIC();
+                        enable_x2APIC();
                 } else {
                         pr_info("no x2APIC support and we use the Local xAPIC\n");
                         arch_irq_type = xAPIC_IRQ;

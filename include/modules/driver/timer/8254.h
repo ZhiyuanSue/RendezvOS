@@ -1,7 +1,7 @@
-#ifdef _X86_64_
 #ifndef _SHAMPOOS_8254_H_
 #define _SHAMPOOS_8254_H_
 
+#include <common/types.h>
 #define _8254_CTL_BCD_OFF_ (0)
 #define _8254_CTL_BCD_     (1 << _8254_CTL_BCD_OFF_)
 
@@ -18,6 +18,6 @@ void init_8254_cyclical(int freq);
 void init_8254_one_shot(u16 t);
 void init_8254_read();
 u16 read_8254_val();
-#define PIT_TICK_RATE 1193181
-#endif
+#define PIT_TICK_RATE        1193181
+#define PIT_TICK_RATE_PER_MS (1193181 / 1000)
 #endif

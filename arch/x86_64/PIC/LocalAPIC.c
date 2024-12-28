@@ -20,6 +20,15 @@ void reset_xAPIC(void)
         xAPIC_WR_REG(LVT_LINT_0, KERNEL_VIRT_OFFSET, APIC_LVT_MASKED);
         xAPIC_WR_REG(TPR, KERNEL_VIRT_OFFSET, 0);
 }
+void reset_x2APIC(void)
+{
+        // DFR is not used in x2APIC mode, and LDR is read only
+        x2APIC_WR_REG(LVT_TIME, KERNEL_VIRT_OFFSET, APIC_LVT_MASKED);
+        x2APIC_WR_REG(LVT_PERF, KERNEL_VIRT_OFFSET, APIC_LVT_DEL_MODE_NMI);
+        x2APIC_WR_REG(LVT_LINT_0, KERNEL_VIRT_OFFSET, APIC_LVT_MASKED);
+        x2APIC_WR_REG(LVT_LINT_0, KERNEL_VIRT_OFFSET, APIC_LVT_MASKED);
+        x2APIC_WR_REG(TPR, KERNEL_VIRT_OFFSET, 0);
+}
 bool map_LAPIC(void)
 {
         if (arch_irq_type != xAPIC_IRQ)

@@ -77,6 +77,7 @@
 #define APIC_LVT_TIMER_MODE_ONE_SHOT (0x0 << 17)
 #define APCI_LVT_TIMER_MODE_PERIODIC (0x1 << 17)
 #define APIC_LVT_TIMER_MODE_TSC_DDL  (0x2 << 17)
+#define APIC_LVT_TIMER_MODE_MASK     (0x2 << 17)
 #define APIC_LVT_MASKED              (0x00010000)
 #define APIC_LVT_TRIGGER_MODE_LEVEL  (0x1 << 15)
 #define APIC_LVT_REMOTE_IRR          (0x1 << 14)
@@ -92,6 +93,17 @@
 #define APIC_REG_INIT_CNT (0x38)
 #define APIC_REG_CURR_CNT (0x39)
 #define APIC_REG_DCR      (0x3E)
+
+// APIC_DCR_DIV_VALUE
+#define APIC_DCR_DIV_1   (0b1011)
+#define APIC_DCR_DIV_2   (0b0000)
+#define APIC_DCR_DIV_4   (0b0001)
+#define APIC_DCR_DIV_8   (0b0010)
+#define APIC_DCR_DIV_16  (0b0011)
+#define APIC_DCR_DIV_32  (0b1000)
+#define APIC_DCR_DIV_64  (0b1001)
+#define APIC_DCR_DIV_128 (0b1010)
+
 #define APIC_REG_SELF_IPI (0x3F) /*only in x2APIC*/
 
 #define APIC_REG_INDEX(reg_name) (APIC_REG_##reg_name)
@@ -122,6 +134,7 @@ void lapic_set_vec(int bit, enum lapic_vec_type t);
 void lapci_clear_vec(int bit, enum lapic_vec_type t);
 
 void reset_xAPIC(void);
+void reset_x2APIC(void);
 bool map_LAPIC(void);
 
 #endif
