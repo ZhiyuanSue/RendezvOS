@@ -29,6 +29,34 @@ void reset_x2APIC(void)
         x2APIC_WR_REG(LVT_LINT_0, KERNEL_VIRT_OFFSET, APIC_LVT_MASKED);
         x2APIC_WR_REG(TPR, KERNEL_VIRT_OFFSET, 0);
 }
+void software_enable_APIC(void)
+{
+        u32 spurious_vec_reg_val;
+        u32 spurious_vec_irq_num = _8259A_MASTER_IRQ_NUM_ + _8259A_LPT_1_;
+        if (arch_irq_type == xAPIC_IRQ) {
+                spurious_vec_reg_val = xAPIC_RD_REG(SVR, KERNEL_VIRT_OFFSET);
+
+                spurious_vec_reg_val =
+                        set_mask(spurious_vec_reg_val, APIC_SVR_SW_ENABLE);
+                spurious_vec_reg_val =
+                        clear_mask(spurious_vec_reg_val, APIC_SVR_VEC_MASK);
+                spurious_vec_reg_val =
+                        set_mask(spurious_vec_reg_val, spurious_vec_irq_num);
+
+                xAPIC_WR_REG(SVR, KERNEL_VIRT_OFFSET, spurious_vec_reg_val);
+        } else if (arch_irq_type == x2APIC_IRQ) {
+                spurious_vec_reg_val = x2APIC_RD_REG(SVR, KERNEL_VIRT_OFFSET);
+
+                spurious_vec_reg_val =
+                        set_mask(spurious_vec_reg_val, APIC_SVR_SW_ENABLE);
+                spurious_vec_reg_val =
+                        clear_mask(spurious_vec_reg_val, APIC_SVR_VEC_MASK);
+                spurious_vec_reg_val =
+                        set_mask(spurious_vec_reg_val, spurious_vec_irq_num);
+
+                x2APIC_WR_REG(SVR, KERNEL_VIRT_OFFSET, spurious_vec_reg_val);
+        }
+}
 bool map_LAPIC(void)
 {
         if (arch_irq_type != xAPIC_IRQ)

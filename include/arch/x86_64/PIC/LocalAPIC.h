@@ -24,6 +24,12 @@
 #define APIC_REG_DFR (0xE)
 #define APIC_REG_SVR (0xF)
 
+// spurious vector register
+#define APIC_SVR_EOI_BC      (1 << 12)
+#define APIC_SVR_FOCUS_CHECK (1 << 9)
+#define APIC_SVR_SW_ENABLE   (1 << 8)
+#define APIC_SVR_VEC_MASK    (0xFF)
+
 #define APIC_REG_ISR_0 (0x10)
 #define APIC_REG_ISR_1 (0x11)
 #define APIC_REG_ISR_2 (0x12)
@@ -135,6 +141,7 @@ void lapci_clear_vec(int bit, enum lapic_vec_type t);
 
 void reset_xAPIC(void);
 void reset_x2APIC(void);
+void software_enable_APIC(void);
 bool map_LAPIC(void);
 
 #endif

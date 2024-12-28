@@ -11,7 +11,7 @@ extern int arch_irq_type;
 // if possible, use HPET instead
 static void PIT_delay(int ms)
 {
-        init_8254_one_shot(PIT_TICK_RATE_PER_MS * ms);
+        init_8254_one_shot((PIT_TICK_RATE * ms) / 1000);
         init_8254_read();
         i16 t = read_8254_val();
         while (t >= 0) {
@@ -20,7 +20,12 @@ static void PIT_delay(int ms)
 }
 static void APIC_timer_calibration()
 {
-#define APIC_CALIBRATE_MS 100
+#define APIC_CALIBRATE_MS 50
+        /*
+                for pic, only 16 bits, and the max is 65535
+                so if the tick is 1193181 / 1000 per ms
+                we can only count 50 time (59659)  every time
+        */
         u32 apic_timer_irq_num = _8259A_MASTER_IRQ_NUM_ + _8259A_TIMER_;
         u32 timer_value = 0;
         u32 timer_count = 0;
@@ -32,7 +37,7 @@ static void APIC_timer_calibration()
         timer_value = clear_mask(timer_value, APIC_LVT_MASKED);
         timer_value = clear_mask(timer_value, APIC_LVT_VECTOR_MASK);
         timer_value = set_mask(timer_value, apic_timer_irq_num);
-        // first set to one shot
+        // first set to one shot mode
         timer_value = clear_mask(timer_value, APIC_LVT_TIMER_MODE_MASK);
         timer_value = set_mask(timer_value, APIC_LVT_TIMER_MODE_ONE_SHOT);
         if (arch_irq_type == xAPIC_IRQ) {
@@ -57,6 +62,8 @@ static void APIC_timer_calibration()
         timer_count = -timer_count;
         timer_count = timer_count / (APIC_CALIBRATE_MS / SYS_TIME_MS_PER_INT);
         timer_value = clear_mask(timer_value, APIC_LVT_MASKED);
+        timer_value = set_mask(timer_value, APCI_LVT_TIMER_MODE_PERIODIC);
+        // TODO: tsc ddl mode, test and set part
         pr_info("timer count is %x\n", timer_count);
         if (arch_irq_type == xAPIC_IRQ) {
                 xAPIC_WR_REG(INIT_CNT, KERNEL_VIRT_OFFSET, timer_count);
@@ -75,7 +82,9 @@ void init_timer(void)
                 enable_IRQ(_8259A_MASTER_IRQ_NUM_ + _8259A_TIMER_);
         } else if (arch_irq_type == xAPIC_IRQ) {
                 APIC_timer_calibration();
+                software_enable_APIC();
         } else if (arch_irq_type == x2APIC_IRQ) {
                 APIC_timer_calibration();
+                software_enable_APIC();
         }
 }
