@@ -3,8 +3,10 @@
 #include <arch/x86_64/sys_ctrl_def.h>
 #include <arch/x86_64/trap.h>
 #include <modules/log/log.h>
+#include <arch/x86_64/PIC/IRQ.h>
 
 extern u64 trap_vec;
+extern int arch_irq_type;
 extern union idt_gate_desc trap_vec_table[IDT_LIMIT];
 const char *trap_name_string[TRAP_ARCH_USED + 2] = {
         "Fault:Divide Error\n\0",
@@ -61,5 +63,7 @@ void trap_handler(void)
 void time_irq(void)
 {
         pr_info("timer interrupt\n");
-        EOI(0x20);
+        if (arch_irq_type == PIC_IRQ) {
+                EOI(0x20);
+        }
 }

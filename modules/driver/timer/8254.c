@@ -26,16 +26,16 @@ void init_8254_one_shot(u16 t)
         outb(_X86_8254_COUNTER_0_, (t & 0xf));
         outb(_X86_8254_COUNTER_0_, ((t >> 8) & 0xf));
 }
-void init_8254_read()
+inline void init_8254_read()
 {
         u8 ctrl_data;
 
         ctrl_data = 0;
         outb(_X86_8254_CTRL_PORT_, ctrl_data);
 }
-u16 read_8254_val()
+inline u16 read_8254_val()
 {
-        u16 val = 0;
+        u16 val;
         val = inb(_X86_8254_COUNTER_0_);
         val |= inb(_X86_8254_COUNTER_0_) << 8;
         return val;

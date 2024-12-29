@@ -14,6 +14,7 @@
 #include <arch/x86_64/time.h>
 #endif
 
+typedef u64 tick_t;
 #define SYS_TIME_MS_PER_INT 10
 void ndelay(u64 ns);
 void udelay(u64 us);
