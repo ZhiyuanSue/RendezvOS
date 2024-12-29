@@ -139,6 +139,14 @@ bool lapic_get_vec(int bit, enum lapic_vec_type t);
 void lapic_set_vec(int bit, enum lapic_vec_type t);
 void lapci_clear_vec(int bit, enum lapic_vec_type t);
 
+bool xAPIC_support(void);
+bool x2APIC_support(void);
+bool TSC_DDL_support(void);
+
+void enable_xAPIC(void);
+void enable_x2APIC(void);
+void disable_APIC(void);
+
 void reset_xAPIC(void);
 void reset_x2APIC(void);
 void software_enable_APIC(void);

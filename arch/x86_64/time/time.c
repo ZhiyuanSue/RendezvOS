@@ -81,9 +81,23 @@ void init_timer(void)
                 init_8254_cyclical(1000);
                 enable_IRQ(_8259A_MASTER_IRQ_NUM_ + _8259A_TIMER_);
         } else if (arch_irq_type == xAPIC_IRQ) {
+                if (TSC_DDL_support()) {
+                        pr_info("tsc ddl mode is supported\n");
+                        /*
+                                TODO: but not supported in qemu platform
+                                and if we using tsc ddl mode
+                                the apic timer regs are no use anymore
+                        */
+                }
                 APIC_timer_calibration();
                 software_enable_APIC();
         } else if (arch_irq_type == x2APIC_IRQ) {
+                if (TSC_DDL_support()) {
+                        pr_info("tsc ddl mode is supported\n");
+                        /*
+                                same TODO
+                        */
+                }
                 APIC_timer_calibration();
                 software_enable_APIC();
         }

@@ -1,50 +1,10 @@
 #include <arch/x86_64/PIC/IRQ.h>
 #include <arch/x86_64/PIC/LocalAPIC.h>
-#include <arch/x86_64/cpuid.h>
-#include <arch/x86_64/msr.h>
-#include <arch/x86_64/sys_ctrl.h>
 #include <modules/log/log.h>
 #include <common/bit.h>
 #include <modules/acpi/acpi_madt.h>
 
-extern struct cpuinfo_x86 cpuinfo;
 int arch_irq_type = NO_IRQ;
-static inline bool xAPIC_support(void)
-{
-        return (cpuinfo.feature_2 & X86_CPUID_FEATURE_EDX_APIC);
-}
-static inline bool x2APIC_support(void)
-{
-        return (cpuinfo.feature_1 & X86_CPUID_FEATURE_ECX_x2APIC);
-}
-static inline void enable_xAPIC(void)
-{
-        u64 APIC_BASE_val;
-
-        APIC_BASE_val = rdmsr(IA32_APIC_BASE_addr);
-        APIC_BASE_val = set_mask(APIC_BASE_val, IA32_APIC_BASE_X_ENABLE);
-        wrmsr(IA32_APIC_BASE_addr, APIC_BASE_val);
-}
-static inline void enable_x2APIC(void)
-{
-        u64 APIC_BASE_val;
-
-        APIC_BASE_val = rdmsr(IA32_APIC_BASE_addr);
-        APIC_BASE_val =
-                set_mask(APIC_BASE_val,
-                         IA32_APIC_BASE_X_ENABLE | IA32_APIC_BASE_X2_ENABLE);
-        wrmsr(IA32_APIC_BASE_addr, APIC_BASE_val);
-}
-static inline void disable_APIC(void)
-{
-        u64 APIC_BASE_val;
-
-        APIC_BASE_val = rdmsr(IA32_APIC_BASE_addr);
-        APIC_BASE_val = clear_mask(APIC_BASE_val,
-                                   (IA32_APIC_BASE_X_ENABLE
-                                    & IA32_APIC_BASE_X2_ENABLE));
-        wrmsr(IA32_APIC_BASE_addr, APIC_BASE_val);
-}
 static inline bool xapic_check_base_addr(void)
 {
         extern struct acpi_table_madt *madt_table;
