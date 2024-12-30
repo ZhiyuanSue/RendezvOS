@@ -2,6 +2,8 @@
 #define _SHAMPOOS_X86_DESC_H_
 #include <common/types.h>
 
+#define GDT_SIZE 2
+
 struct pseudo_descriptor {
         u16 limit;
         u64 base_addr;

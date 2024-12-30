@@ -6,6 +6,8 @@
 #include <arch/x86_64/sys_ctrl_def.h>
 #include <arch/x86_64/time.h>
 #include <arch/x86_64/trap.h>
+#include <arch/x86_64/desc.h>
+#include <shampoos/percpu.h>
 #include <modules/driver/timer/8254.h>
 #include <modules/log/log.h>
 #include <shampoos/error.h>
@@ -15,6 +17,8 @@
 extern u32 max_phy_addr_width;
 struct cpuinfo_x86 cpuinfo;
 extern struct map_handler Map_Handler;
+extern struct pseudo_descriptor gdt_desc;
+extern struct seg_desc gdt[GDT_SIZE];
 static void get_cpuinfo(void)
 {
         u32 eax;
@@ -80,6 +84,17 @@ static void start_simd(void)
 start_simd_fail:
         pr_error("start simd fail\n");
 }
+static void prepare_per_cpu_new_gdt(struct pseudo_descriptor *desc,
+                                    struct seg_desc *gdt)
+{
+        gdt[1].type = 0xe;
+        gdt[1].p = 1;
+        gdt[1].s = 1;
+        gdt[1].l = 1;
+
+        desc->base_addr = (u64)gdt;
+        desc->limit = GDT_SIZE * sizeof(struct seg_desc) - 1;
+}
 error_t prepare_arch(struct setup_info *arch_setup_info)
 {
         u32 mtb_magic;
@@ -111,6 +126,8 @@ error_t arch_parser_platform(struct setup_info *arch_setup_info)
 }
 error_t start_arch(struct setup_info *arch_setup_info)
 {
+        prepare_per_cpu_new_gdt(&per_cpu(gdt_desc, 0), per_cpu(gdt, 0));
+        lgdt(&per_cpu(gdt_desc, 0));
         init_interrupt();
         init_irq();
         init_timer();
