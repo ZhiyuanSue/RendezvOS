@@ -128,7 +128,15 @@
         (rdmsr(x2APIC_REG_ADDR(APIC_REG_INDEX(reg_name))))
 #define x2APIC_WR_REG(reg_name, vaddr_off, value) \
         (wrmsr(x2APIC_REG_ADDR(APIC_REG_INDEX(reg_name)), value))
-
+#include <arch/x86_64/PIC/IRQ.h>
+extern enum IRQ_type arch_irq_type;
+#define APIC_RD_REG(reg_name, vaddr_off)                                    \
+        ((arch_irq_type == xAPIC_IRQ) ? xAPIC_RD_REG(reg_name, vaddr_off) : \
+                                        x2APIC_RD_REG(reg_name, vaddr_off))
+#define APIC_WR_REG(reg_name, vaddr_off, value)             \
+        ((arch_irq_type == xAPIC_IRQ) ?                     \
+                 xAPIC_WR_REG(reg_name, vaddr_off, value) : \
+                 x2APIC_WR_REG(reg_name, vaddr_off, value))
 // this is used to r/w the 256bits, include isr tmr irr regs
 enum lapic_vec_type {
         lapic_isr_type,
@@ -147,8 +155,8 @@ void enable_xAPIC(void);
 void enable_x2APIC(void);
 void disable_APIC(void);
 
-void reset_xAPIC(void);
-void reset_x2APIC(void);
+void reset_APIC(void);
+void reset_xAPIC_LDR(void);
 void software_enable_APIC(void);
 bool map_LAPIC(void);
 

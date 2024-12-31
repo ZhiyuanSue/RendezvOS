@@ -4,7 +4,7 @@
 #include <common/bit.h>
 #include <modules/acpi/acpi_madt.h>
 
-int arch_irq_type = NO_IRQ;
+enum IRQ_type arch_irq_type = NO_IRQ;
 static inline bool xapic_check_base_addr(void)
 {
         extern struct acpi_table_madt *madt_table;
@@ -26,7 +26,7 @@ void init_irq(void)
                         // seems the same like the xAPIC
                         // but no need to map the apic, and the address search
                         // is not the same
-                        reset_x2APIC();
+                        reset_APIC();
                         enable_x2APIC();
                 } else {
                         pr_info("no x2APIC support and we use the Local xAPIC\n");
@@ -37,7 +37,8 @@ void init_irq(void)
                         if (!map_LAPIC()) {
                                 return;
                         }
-                        reset_xAPIC();
+                        reset_xAPIC_LDR();
+                        reset_APIC();
                         enable_xAPIC();
                 }
         } else {

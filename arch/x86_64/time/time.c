@@ -6,7 +6,7 @@
 #include <common/bit.h>
 #include <shampoos/time.h>
 
-extern int arch_irq_type;
+extern enum IRQ_type arch_irq_type;
 // Here we use PIT to calibration
 // if possible, use HPET instead
 static void PIT_delay(int ms)
@@ -33,25 +33,13 @@ static tick_t APIC_timer_calibration()
         timer_value = set_mask(timer_value, apic_timer_irq_num);
         // first set to one shot mode
         timer_value = set_mask(timer_value, APIC_LVT_TIMER_MODE_ONE_SHOT);
-        if (arch_irq_type == xAPIC_IRQ) {
-                xAPIC_WR_REG(LVT_TIME, KERNEL_VIRT_OFFSET, timer_value);
-                timer_value = set_mask(timer_value, APIC_LVT_MASKED);
-                xAPIC_WR_REG(DCR, KERNEL_VIRT_OFFSET, APIC_DCR_DIV_16);
-                xAPIC_WR_REG(INIT_CNT, KERNEL_VIRT_OFFSET, 0xFFFFFFFF);
-        } else if (arch_irq_type == x2APIC_IRQ) {
-                x2APIC_WR_REG(LVT_TIME, KERNEL_VIRT_OFFSET, timer_value);
-                timer_value = set_mask(timer_value, APIC_LVT_MASKED);
-                x2APIC_WR_REG(DCR, KERNEL_VIRT_OFFSET, APIC_DCR_DIV_16);
-                x2APIC_WR_REG(INIT_CNT, KERNEL_VIRT_OFFSET, 0xFFFFFFFF);
-        }
+        APIC_WR_REG(LVT_TIME, KERNEL_VIRT_OFFSET, timer_value);
+        timer_value = set_mask(timer_value, APIC_LVT_MASKED);
+        APIC_WR_REG(DCR, KERNEL_VIRT_OFFSET, APIC_DCR_DIV_16);
+        APIC_WR_REG(INIT_CNT, KERNEL_VIRT_OFFSET, 0xFFFFFFFF);
         PIT_delay(APIC_CALIBRATE_MS);
-        if (arch_irq_type == xAPIC_IRQ) {
-                xAPIC_WR_REG(LVT_TIME, KERNEL_VIRT_OFFSET, timer_value);
-                timer_count = xAPIC_RD_REG(CURR_CNT, KERNEL_VIRT_OFFSET);
-        } else if (arch_irq_type == x2APIC_IRQ) {
-                x2APIC_WR_REG(LVT_TIME, KERNEL_VIRT_OFFSET, timer_value);
-                timer_count = x2APIC_RD_REG(CURR_CNT, KERNEL_VIRT_OFFSET);
-        }
+        APIC_WR_REG(LVT_TIME, KERNEL_VIRT_OFFSET, timer_value);
+        timer_count = APIC_RD_REG(CURR_CNT, KERNEL_VIRT_OFFSET);
         timer_count = -timer_count;
         timer_count = timer_count / (APIC_CALIBRATE_MS / SYS_TIME_MS_PER_INT);
         // TODO: tsc ddl mode, test and set part
@@ -64,15 +52,10 @@ void APIC_timer_init(u32 init_cnt)
         u32 apic_timer_irq_num = _8259A_MASTER_IRQ_NUM_ + _8259A_TIMER_;
         lvt_timer_val = set_mask(lvt_timer_val, apic_timer_irq_num);
         lvt_timer_val = set_mask(lvt_timer_val, APCI_LVT_TIMER_MODE_PERIODIC);
-        if (arch_irq_type == xAPIC_IRQ) {
-                xAPIC_WR_REG(INIT_CNT, KERNEL_VIRT_OFFSET, init_cnt);
-                xAPIC_WR_REG(DCR, KERNEL_VIRT_OFFSET, APIC_DCR_DIV_16);
-                xAPIC_WR_REG(LVT_TIME, KERNEL_VIRT_OFFSET, lvt_timer_val);
-        } else if (arch_irq_type == x2APIC_IRQ) {
-                x2APIC_WR_REG(INIT_CNT, KERNEL_VIRT_OFFSET, init_cnt);
-                x2APIC_WR_REG(DCR, KERNEL_VIRT_OFFSET, APIC_DCR_DIV_16);
-                x2APIC_WR_REG(LVT_TIME, KERNEL_VIRT_OFFSET, lvt_timer_val);
-        }
+
+        APIC_WR_REG(INIT_CNT, KERNEL_VIRT_OFFSET, init_cnt);
+        APIC_WR_REG(DCR, KERNEL_VIRT_OFFSET, APIC_DCR_DIV_16);
+        APIC_WR_REG(LVT_TIME, KERNEL_VIRT_OFFSET, lvt_timer_val);
 }
 void init_timer(void)
 {

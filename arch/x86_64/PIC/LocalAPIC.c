@@ -10,7 +10,6 @@
 #include <arch/x86_64/sys_ctrl.h>
 extern struct cpuinfo_x86 cpuinfo;
 extern struct map_handler Map_Handler;
-extern int arch_irq_type;
 inline bool xAPIC_support(void)
 {
         return (cpuinfo.feature_2 & X86_CPUID_FEATURE_EDX_APIC);
@@ -51,55 +50,37 @@ inline void disable_APIC(void)
                                     & IA32_APIC_BASE_X2_ENABLE));
         wrmsr(IA32_APIC_BASE_addr, APIC_BASE_val);
 }
-void reset_xAPIC(void)
+void reset_xAPIC_LDR(void)
 {
+        // DFR is not used in x2APIC mode, and LDR is read only in x2APIC mode
         xAPIC_WR_REG(DFR, KERNEL_VIRT_OFFSET, 0xFFFFFFFF);
-        u32 ldr_val = xAPIC_RD_REG(LDR, KERNEL_VIRT_OFFSET);
+        u32 ldr_val = APIC_RD_REG(LDR, KERNEL_VIRT_OFFSET);
         ldr_val = set_mask(ldr_val, 0xFFFFFF);
         ldr_val = ldr_val | 1;
         xAPIC_WR_REG(LDR, KERNEL_VIRT_OFFSET, ldr_val);
-        xAPIC_WR_REG(LVT_TIME, KERNEL_VIRT_OFFSET, APIC_LVT_MASKED);
-        xAPIC_WR_REG(LVT_PERF, KERNEL_VIRT_OFFSET, APIC_LVT_DEL_MODE_NMI);
-        xAPIC_WR_REG(LVT_LINT_0, KERNEL_VIRT_OFFSET, APIC_LVT_MASKED);
-        xAPIC_WR_REG(LVT_LINT_0, KERNEL_VIRT_OFFSET, APIC_LVT_MASKED);
-        xAPIC_WR_REG(TPR, KERNEL_VIRT_OFFSET, 0);
 }
-void reset_x2APIC(void)
+void reset_APIC(void)
 {
-        // DFR is not used in x2APIC mode, and LDR is read only
-        x2APIC_WR_REG(LVT_TIME, KERNEL_VIRT_OFFSET, APIC_LVT_MASKED);
-        x2APIC_WR_REG(LVT_PERF, KERNEL_VIRT_OFFSET, APIC_LVT_DEL_MODE_NMI);
-        x2APIC_WR_REG(LVT_LINT_0, KERNEL_VIRT_OFFSET, APIC_LVT_MASKED);
-        x2APIC_WR_REG(LVT_LINT_0, KERNEL_VIRT_OFFSET, APIC_LVT_MASKED);
-        x2APIC_WR_REG(TPR, KERNEL_VIRT_OFFSET, 0);
+        APIC_WR_REG(LVT_TIME, KERNEL_VIRT_OFFSET, APIC_LVT_MASKED);
+        APIC_WR_REG(LVT_PERF, KERNEL_VIRT_OFFSET, APIC_LVT_DEL_MODE_NMI);
+        APIC_WR_REG(LVT_LINT_0, KERNEL_VIRT_OFFSET, APIC_LVT_MASKED);
+        APIC_WR_REG(LVT_LINT_0, KERNEL_VIRT_OFFSET, APIC_LVT_MASKED);
+        APIC_WR_REG(TPR, KERNEL_VIRT_OFFSET, 0);
 }
 void software_enable_APIC(void)
 {
         u32 spurious_vec_reg_val;
         u32 spurious_vec_irq_num = _8259A_MASTER_IRQ_NUM_ + _8259A_LPT_1_;
-        if (arch_irq_type == xAPIC_IRQ) {
-                spurious_vec_reg_val = xAPIC_RD_REG(SVR, KERNEL_VIRT_OFFSET);
+        spurious_vec_reg_val = APIC_RD_REG(SVR, KERNEL_VIRT_OFFSET);
 
-                spurious_vec_reg_val =
-                        set_mask(spurious_vec_reg_val, APIC_SVR_SW_ENABLE);
-                spurious_vec_reg_val =
-                        clear_mask(spurious_vec_reg_val, APIC_SVR_VEC_MASK);
-                spurious_vec_reg_val =
-                        set_mask(spurious_vec_reg_val, spurious_vec_irq_num);
+        spurious_vec_reg_val =
+                set_mask(spurious_vec_reg_val, APIC_SVR_SW_ENABLE);
+        spurious_vec_reg_val =
+                clear_mask(spurious_vec_reg_val, APIC_SVR_VEC_MASK);
+        spurious_vec_reg_val =
+                set_mask(spurious_vec_reg_val, spurious_vec_irq_num);
 
-                xAPIC_WR_REG(SVR, KERNEL_VIRT_OFFSET, spurious_vec_reg_val);
-        } else if (arch_irq_type == x2APIC_IRQ) {
-                spurious_vec_reg_val = x2APIC_RD_REG(SVR, KERNEL_VIRT_OFFSET);
-
-                spurious_vec_reg_val =
-                        set_mask(spurious_vec_reg_val, APIC_SVR_SW_ENABLE);
-                spurious_vec_reg_val =
-                        clear_mask(spurious_vec_reg_val, APIC_SVR_VEC_MASK);
-                spurious_vec_reg_val =
-                        set_mask(spurious_vec_reg_val, spurious_vec_irq_num);
-
-                x2APIC_WR_REG(SVR, KERNEL_VIRT_OFFSET, spurious_vec_reg_val);
-        }
+        APIC_WR_REG(SVR, KERNEL_VIRT_OFFSET, spurious_vec_reg_val);
 }
 bool map_LAPIC(void)
 {

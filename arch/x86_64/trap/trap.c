@@ -6,7 +6,7 @@
 #include <arch/x86_64/PIC/IRQ.h>
 
 extern u64 trap_vec;
-extern int arch_irq_type;
+extern enum IRQ_type arch_irq_type;
 extern union idt_gate_desc trap_vec_table[IDT_LIMIT];
 const char *trap_name_string[TRAP_ARCH_USED + 2] = {
         "Fault:Divide Error\n\0",
