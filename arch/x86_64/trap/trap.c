@@ -39,7 +39,7 @@ void init_interrupt(void)
         struct pseudo_descriptor idtr_desc;
         union desc_selector sel;
 
-        idtr_desc.limit = IDT_LIMIT - 1;
+        idtr_desc.limit = IDT_LIMIT * sizeof(union idt_gate_desc) - 1;
         idtr_desc.base_addr = (u64)(&trap_vec_table);
         for (int i = 0; i < IDT_LIMIT; ++i) {
                 /*generate the IDT table*/

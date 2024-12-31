@@ -28,7 +28,7 @@ static tick_t APIC_timer_calibration()
         */
         u32 apic_timer_irq_num = _8259A_MASTER_IRQ_NUM_ + _8259A_TIMER_;
         u32 timer_value = 0;
-        u32 timer_count = 0;
+        u32 hz_cnt = 0;
 
         timer_value = set_mask(timer_value, apic_timer_irq_num);
         // first set to one shot mode
@@ -39,12 +39,13 @@ static tick_t APIC_timer_calibration()
         APIC_WR_REG(INIT_CNT, KERNEL_VIRT_OFFSET, 0xFFFFFFFF);
         PIT_delay(APIC_CALIBRATE_MS);
         APIC_WR_REG(LVT_TIME, KERNEL_VIRT_OFFSET, timer_value);
-        timer_count = APIC_RD_REG(CURR_CNT, KERNEL_VIRT_OFFSET);
-        timer_count = -timer_count;
-        timer_count = timer_count / (APIC_CALIBRATE_MS / SYS_TIME_MS_PER_INT);
+        hz_cnt = APIC_RD_REG(CURR_CNT, KERNEL_VIRT_OFFSET);
+        hz_cnt = -hz_cnt;
+        hz_cnt = hz_cnt << 4;
+        hz_cnt = hz_cnt * (1000 / APIC_CALIBRATE_MS);
         // TODO: tsc ddl mode, test and set part
-        pr_info("timer count is %x\n", timer_count);
-        return timer_count;
+        pr_info("bus hz count is %x\n", hz_cnt);
+        return hz_cnt;
 }
 void APIC_timer_init(u32 init_cnt)
 {
@@ -74,9 +75,11 @@ void init_timer(void)
                         */
                 }
                 u64 apic_hz_per_second = APIC_timer_calibration();
-                // TODO:calculate the apic hz and calculate the init_cnt to
-                // write in
-                APIC_timer_init((u32)apic_hz_per_second);
+                u32 timer_count =
+                        (apic_hz_per_second / (1000 / SYS_TIME_MS_PER_INT))
+                        >> 4;
+                pr_info("acpi timer init count is %x\n", timer_count);
+                APIC_timer_init(timer_count);
                 software_enable_APIC();
         } else if (arch_irq_type == x2APIC_IRQ) {
                 if (TSC_DDL_support()) {
