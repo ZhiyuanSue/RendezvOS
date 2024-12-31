@@ -107,4 +107,12 @@ static void inline wrmsr(u32 msr_id, u64 val)
 {
         asm volatile("wrmsr" ::"c"(msr_id), "A"(val));
 }
+static void inline cli(void)
+{
+        asm volatile("cli");
+}
+static void inline sti(void)
+{
+        asm volatile("sti");
+}
 #endif

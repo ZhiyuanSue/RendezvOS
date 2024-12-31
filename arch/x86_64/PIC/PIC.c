@@ -34,7 +34,7 @@ void disable_PIC(void)
         outb(_X86_8259A_SLAVE_1_, 0xFF);
 }
 
-error_t enable_IRQ(int irq_num)
+error_t enable_PIC_IRQ(int irq_num)
 {
         /*just clear the mask of the OCW 1*/
         if (irq_num >= _8259A_MASTER_IRQ_NUM_
@@ -57,7 +57,7 @@ error_t enable_IRQ(int irq_num)
         }
         return (0);
 }
-error_t disable_IRQ(int irq_num)
+error_t disable_PIC_IRQ(int irq_num)
 {
         if (irq_num >= _8259A_MASTER_IRQ_NUM_
             && irq_num < _8259A_MASTER_IRQ_NUM_ + _8259A_IRQ_NUM_) { /*master
@@ -77,7 +77,7 @@ error_t disable_IRQ(int irq_num)
         return (0);
 }
 
-error_t EOI(int irq_num)
+error_t PIC_EOI(int irq_num)
 { /*just send an EOI to OCW 2*/
         if (irq_num >= _8259A_MASTER_IRQ_NUM_
             && irq_num < _8259A_MASTER_IRQ_NUM_ + _8259A_IRQ_NUM_) { /*master

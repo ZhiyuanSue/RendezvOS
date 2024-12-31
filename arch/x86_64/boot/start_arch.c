@@ -134,5 +134,6 @@ error_t start_arch(struct setup_info *arch_setup_info)
         enable_cache();
         start_fp();
         start_simd();
+        sti();
         return (0);
 }

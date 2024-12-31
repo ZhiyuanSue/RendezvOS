@@ -1,4 +1,5 @@
 #include <arch/x86_64/PIC/PIC.h>
+#include <arch/x86_64/PIC/APIC.h>
 #include <arch/x86_64/sys_ctrl.h>
 #include <arch/x86_64/sys_ctrl_def.h>
 #include <arch/x86_64/trap.h>
@@ -64,6 +65,8 @@ void time_irq(void)
 {
         pr_info("timer interrupt\n");
         if (arch_irq_type == PIC_IRQ) {
-                EOI(0x20);
+                PIC_EOI(0x20);
+        } else if (arch_irq_type == xAPIC_IRQ) {
+                APIC_EOI();
         }
 }

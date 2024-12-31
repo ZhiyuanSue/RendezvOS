@@ -90,7 +90,7 @@ read ISR*/
 #include <common/types.h>
 void init_PIC(void);
 void disable_PIC(void);
-error_t enable_IRQ(int irq_num);
-error_t disable_IRQ(int irq_num);
-error_t EOI(int irq_num);
+error_t enable_PIC_IRQ(int irq_num);
+error_t disable_PIC_IRQ(int irq_num);
+error_t PIC_EOI(int irq_num);
 #endif

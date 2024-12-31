@@ -22,6 +22,13 @@ inline bool TSC_DDL_support(void)
 {
         return (cpuinfo.feature_1 & X86_CPUID_FEATURE_ECX_TSC_Deadline);
 }
+inline bool ARAT_support(void)
+{
+        /*
+                TODO: cpuid is 0x06 and eax.bit2 == 1 means the apic timer will
+           not be changed regardless of P-state
+        */
+}
 inline void enable_xAPIC(void)
 {
         u64 APIC_BASE_val;
@@ -257,4 +264,8 @@ void lapci_clear_vec(int bit, enum lapic_vec_type t)
                         return;
                 }
         }
+}
+void APIC_EOI()
+{
+        APIC_WR_REG(EOI, KERNEL_VIRT_OFFSET, 0);
 }

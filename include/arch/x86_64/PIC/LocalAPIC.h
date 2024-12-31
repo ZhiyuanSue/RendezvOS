@@ -81,7 +81,7 @@
 
 // Some LVT Value
 #define APIC_LVT_TIMER_MODE_ONE_SHOT (0x0 << 17)
-#define APCI_LVT_TIMER_MODE_PERIODIC (0x1 << 17)
+#define APIC_LVT_TIMER_MODE_PERIODIC (0x1 << 17)
 #define APIC_LVT_TIMER_MODE_TSC_DDL  (0x2 << 17)
 #define APIC_LVT_TIMER_MODE_MASK     (0x2 << 17)
 #define APIC_LVT_MASKED              (0x00010000)
@@ -159,5 +159,6 @@ void reset_APIC(void);
 void reset_xAPIC_LDR(void);
 void software_enable_APIC(void);
 bool map_LAPIC(void);
+void APIC_EOI(void);
 
 #endif

@@ -83,6 +83,8 @@ struct cpuinfo_x86 {
 #define X86_CPUID_CACHE 0x2
         u8 cache_tlb_info[16]; /*not all used, and might in unexpected order,so
                                     check them all*/
+#define x84_CPUID_THERMAL_AND_POWER 0x6
+        // cpuid 0x06 is TODO
 #define X86_CPUID_MODEL_NAME_1 0x80000002
 #define X86_CPUID_MODEL_NAME_2 0x80000003
 #define X86_CPUID_MODEL_NAME_3 0x80000004

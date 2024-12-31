@@ -26,8 +26,8 @@ void init_irq(void)
                         // seems the same like the xAPIC
                         // but no need to map the apic, and the address search
                         // is not the same
-                        reset_APIC();
                         enable_x2APIC();
+                        reset_APIC();
                 } else {
                         pr_info("no x2APIC support and we use the Local xAPIC\n");
                         arch_irq_type = xAPIC_IRQ;
@@ -37,9 +37,9 @@ void init_irq(void)
                         if (!map_LAPIC()) {
                                 return;
                         }
+                        enable_xAPIC();
                         reset_xAPIC_LDR();
                         reset_APIC();
-                        enable_xAPIC();
                 }
         } else {
                 pr_info("use 8259A\n");
