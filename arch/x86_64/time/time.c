@@ -51,7 +51,7 @@ static tick_t APIC_timer_calibration()
                 total_hz_cnt += hz_cnt;
         }
         total_hz_cnt = total_hz_cnt / APIC_CALIBRATE_TIME;
-        pr_debug("apic hz count is about %d,%03d KHZ\n",
+        pr_debug("apic hz count is about %d.%03d MHZ\n",
                  (total_hz_cnt / (1000 * 1000)),
                  (total_hz_cnt / 1000) % 1000);
         return total_hz_cnt;

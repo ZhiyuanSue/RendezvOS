@@ -54,6 +54,8 @@ union idt_gate_desc {
                 u32 res;
         };
 } __attribute__((packed));
+#define IA32E_IDT_GATE_TYPE_INT  0xE
+#define IA32E_IDT_GATE_TYPE_TRAP 0xF
 #define SET_IDT_GATE(gate, offset, sel, _dpl, _type)          \
         gate.res = 0;                                         \
         gate.offset_63_32 = (u32)((offset) >> 32);            \

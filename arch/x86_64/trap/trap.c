@@ -51,7 +51,7 @@ void init_interrupt(void)
                              (vaddr)((u64 *)&trap_vec)[i],
                              sel,
                              KERNEL_PL,
-                             0xe);
+                             IA32E_IDT_GATE_TYPE_INT);
         }
         lidt(&idtr_desc);
 }
