@@ -169,4 +169,85 @@ INT n指令可用于模拟软件中的异常；但有一个限制。如果INT n�
 
 中断严格支持重新启动中断的程序和任务，而不会失去连续性。为中断保存的返回指令指针指向处理器中断的指令边界处要执行的下一个指令。如果刚刚执行的指令有一个重复前缀，则在当前迭代结束时进行中断，并设置了用于执行下一个迭代的寄存器。
 
-# NMI 不可屏蔽中断
+### NMI 不可屏蔽中断
+NMI 可能产生于两种情况
+ - 外设通过NMI引脚
+ - 处理器得到一个NMI的APIC的bus的信号
+这些NMI的信号，不应该被IF所屏蔽
+#### 多重NMI
+会在IRET之前unblock下一个NMI
+甚至于，如果IRET指向了一个错误，也一样会阻止
+
+### 启用和禁用中断
+IF位会禁止处理器INTR和LAPIC的中断
+但是不会影响NMI的中断（包括NMI引脚以及APIC生成的NMI中断）也不会影响处理器自身产生的中断
+在处理器reset的时候，他会清理掉包括IF在内的EFLAGS的所有内容
+
+### 影响flag的指令
+CLI，STI，PUSHF，POPF，IRET
+
+### breakpoint
+RF标志位，影响instruction breakpoint条件
+当置位的时候，他阻止debug exception
+当清理掉之后，debug exception才会产生
+### 切换栈的时候阻止中断
+一般来说切换栈需要设置SS，ESP，这是两条命令，肯定中间可能引起中断
+（我看上去，这应该是32位的情况下）
+所以处理器为了阻止这个问题，在mov或者pop修改SS的时候，会禁止中断
+当然推荐的做法是使用LSS
+
+### IDT 描述符
+不做描述
+
+### 中断处理
+（按我的理解，这里涉及到的task gate等描述，应该是32位情况下的操作，在此不做详解）
+
+### ERROR code
+error code的模式为
+bit 0 ext 置位表明来自一个interrupt或者一个更早的exception。
+bit 1 idt 置位表明来自于一个gate描述符，否则表明来自于一个GDT或者LDT
+bit 2 ti 只有当IDTflag没有置位的时候才可以，如果置位，表明来自于一个LDT，否则来自于一个GDT
+segment表明来自于IDT，GDT，LDT的index
+如果是一个空的error code
+page-fault的error code则不一样
+bit 0 P =0 表明错误来自于一个不存在的page，=1表明错误来自于一个页表的保护
+bit 1 W/R =0 表明来自于一个read错误， =1 表明来自于一个write错误
+bit 2 U/S =0 表明来自于一个内核态的错误 =1 表明来自于一个用户态的错误
+bit 3 RSVD =0 表明错误不是来源于reserved bit violation， =1 表明保留位被设为了1
+bit 4 I/D =0 表明不是来自于一个instruction fetch， =1 表明来自于一个instruction fetch
+bit 5 PK =0 表明不是来自于一个protection keys，=1 表明来自于一个protection keys
+bit 15 SGX =0 表明跟SGX无关，=1表明来自于violation of SGX-specific access-control requirements
+其余均保留
+
+error code的size取决于中断的默认size来确定到底是双字或者是单字，但是，64位下应该都是8bytes
+
+另外需要注意一点（千万注意！！！），在iret指令下，不应该存在errorcode，所以需要软件手工弹出这个errorcode才能正常操作。
+（所以我觉得很奇怪的是，我应该如何处理这一点？？？如果他来自于一个int n？）
+
+### 64 bit和32位的差别
+首先一部分就是上文的 volumn 1中的64位模式下的中断和异常的表述（非常不精确）
+64位的IDT就不多描述了
+
+#### 64bit的stack frame
+首先说清楚了对齐这件事情，一定是8bytes对齐的
+#### iret
+也差不多
+允许了SS段寄存器的NULL
+同样的，作为栈切换机制的一部分，并不再从TSS中下载
+
+#### 栈切换机制
+IST（interrupt stack table）
+简单来说，在IDT字段里面有一个IST字段，总共3bit，最多能够提供7个
+如果ISTindex是0，那么仍然使用modified lagacy stack-switching mechanism
+
+## TSS in IA-32e mode
+实在一点的说
+我原本也以为TSS并不重要的
+不过64bit下的TSS被拿去做别的事情了
+主要就是拿来做这个stack切换的事情。
+具体布局非常简单，直接使用即可。
+显然，不同特权级的栈切换是必须的，并且手册也建议在每个操作系统中至少包含一个
+因此，我认为，这是需要实现的
+按照上述的说法，IDT表里面生成table的时候就需要设定好IST的index
+所以ist的值1-7应当被用于不同的stack，并且，tss的设定一定是在idt设定之前就做好的,所以需要先设置tss再搞idt
+除此之外,ist指定的堆栈一定是per_cpu的。否则会出问题。

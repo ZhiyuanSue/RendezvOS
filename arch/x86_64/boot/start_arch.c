@@ -5,8 +5,9 @@
 #include <arch/x86_64/sys_ctrl.h>
 #include <arch/x86_64/sys_ctrl_def.h>
 #include <arch/x86_64/time.h>
-#include <arch/x86_64/trap.h>
+#include <arch/x86_64/trap/trap.h>
 #include <arch/x86_64/desc.h>
+#include <arch/x86_64/trap/tss.h>
 #include <shampoos/percpu.h>
 #include <modules/driver/timer/8254.h>
 #include <modules/log/log.h>
@@ -128,6 +129,7 @@ error_t start_arch(struct setup_info *arch_setup_info)
 {
         prepare_per_cpu_new_gdt(&per_cpu(gdt_desc, 0), per_cpu(gdt, 0));
         lgdt(&per_cpu(gdt_desc, 0));
+        prepare_per_cpu_tss();
         init_interrupt();
         init_irq();
         init_timer();

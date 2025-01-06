@@ -2,7 +2,7 @@
 #include <arch/x86_64/PIC/APIC.h>
 #include <arch/x86_64/sys_ctrl.h>
 #include <arch/x86_64/sys_ctrl_def.h>
-#include <arch/x86_64/trap.h>
+#include <arch/x86_64/trap/trap.h>
 #include <modules/log/log.h>
 #include <arch/x86_64/PIC/IRQ.h>
 

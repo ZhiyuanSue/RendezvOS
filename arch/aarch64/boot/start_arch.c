@@ -2,7 +2,7 @@
 #include <arch/aarch64/mm/page_table_def.h>
 #include <arch/aarch64/mm/vmm.h>
 #include <arch/aarch64/power_ctrl.h>
-#include <arch/aarch64/trap.h>
+#include <arch/x86_64/trap/trap.h>
 #include <common/endianness.h>
 #include <shampoos/mm/vmm.h>
 #include <common/mm.h>
