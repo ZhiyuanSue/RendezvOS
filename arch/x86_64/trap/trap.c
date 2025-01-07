@@ -5,6 +5,7 @@
 #include <arch/x86_64/trap/trap.h>
 #include <modules/log/log.h>
 #include <arch/x86_64/PIC/IRQ.h>
+#include <arch/x86_64/trap/tss.h>
 
 extern u64 trap_vec;
 extern enum IRQ_type arch_irq_type;
@@ -51,7 +52,8 @@ void init_interrupt(void)
                              (vaddr)((u64 *)&trap_vec)[i],
                              sel,
                              KERNEL_PL,
-                             IA32E_IDT_GATE_TYPE_INT);
+                             IA32E_IDT_GATE_TYPE_INT,
+                             IST_INT_NUM);
         }
         lidt(&idtr_desc);
 }

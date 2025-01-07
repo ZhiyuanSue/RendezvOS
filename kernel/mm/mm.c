@@ -6,14 +6,13 @@
 #include <shampoos/percpu.h>
 extern struct buddy buddy_pmm;
 DEFINE_PER_CPU(struct map_handler, Map_Handler);
-struct nexus_node *nexus_root;
+DEFINE_PER_CPU(struct nexus_node *, nexus_root);
 error_t mm_init(struct setup_info *arch_setup_info)
 {
         // memory part init
         buddy_pmm.pmm_init(arch_setup_info);
         init_map(&Map_Handler, 0, (struct pmm *)&buddy_pmm);
         nexus_root = init_nexus(&Map_Handler);
-        nexus_root->nexus_id = 0;
-        sp_init(nexus_root, 0);
+        sp_init(nexus_root, Map_Handler.cpu_id);
         return 0;
 }

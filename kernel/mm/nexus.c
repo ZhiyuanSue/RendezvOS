@@ -148,6 +148,7 @@ struct nexus_node* init_nexus(struct map_handler* handler)
         struct nexus_node* root_node = &n_node[1];
         n_node[1].backup_manage_page = NULL;
         n_node[1].handler = handler;
+        n_node[1].nexus_id = handler->cpu_id;
         INIT_LIST_HEAD(&n_node[1].manage_free_list);
 
         nexus_init_manage_page(vpage_addr, &n_node[1]);

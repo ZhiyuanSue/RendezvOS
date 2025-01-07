@@ -2,7 +2,7 @@
 #define _SHAMPOOS_X86_DESC_H_
 #include <common/types.h>
 
-#define GDT_SIZE 2
+#define GDT_SIZE 5
 
 struct pseudo_descriptor {
         u16 limit;
@@ -56,7 +56,7 @@ union idt_gate_desc {
 } __attribute__((packed));
 #define IA32E_IDT_GATE_TYPE_INT  0xE
 #define IA32E_IDT_GATE_TYPE_TRAP 0xF
-#define SET_IDT_GATE(gate, offset, sel, _dpl, _type)          \
+#define SET_IDT_GATE(gate, offset, sel, _dpl, _type, _ist)    \
         gate.res = 0;                                         \
         gate.offset_63_32 = (u32)((offset) >> 32);            \
         gate.offset_31_16 = (u32)(offset & 0xffffffff) >> 16; \
@@ -65,7 +65,7 @@ union idt_gate_desc {
         gate.zero_1 = 0;                                      \
         gate.type = _type;                                    \
         gate.zero_0 = 0;                                      \
-        gate.ist = 0;                                         \
+        gate.ist = _ist;                                      \
         gate.seg_selector = sel;                              \
         gate.offset_15_0 = (u32)(offset & 0xffff)
 

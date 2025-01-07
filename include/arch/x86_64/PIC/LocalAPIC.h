@@ -116,11 +116,12 @@
 
 #define xAPIC_MMIO_BASE               0xFEE00000
 #define xAPIC_REG_PHY_ADDR(reg_index) (xAPIC_MMIO_BASE + reg_index * 0x10)
-#define xAPIC_RD_REG(reg_name, vaddr_off) \
-        (*((u32 *)(xAPIC_REG_PHY_ADDR(APIC_REG_INDEX(reg_name)) + vaddr_off)))
-#define xAPIC_WR_REG(reg_name, vaddr_off, value)                \
-        (*((u32 *)(xAPIC_REG_PHY_ADDR(APIC_REG_INDEX(reg_name)) \
-                   + vaddr_off)) = value)
+#define xAPIC_RD_REG(reg_name, vaddr_off)                                \
+        (*((volatile u32 *)(xAPIC_REG_PHY_ADDR(APIC_REG_INDEX(reg_name)) \
+                            + vaddr_off)))
+#define xAPIC_WR_REG(reg_name, vaddr_off, value)                         \
+        (*((volatile u32 *)(xAPIC_REG_PHY_ADDR(APIC_REG_INDEX(reg_name)) \
+                            + vaddr_off)) = value)
 
 #define x2APIC_MSR_BASE            0x800
 #define x2APIC_REG_ADDR(reg_index) (x2APIC_MSR_BASE + reg_index)

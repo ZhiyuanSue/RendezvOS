@@ -1,6 +1,7 @@
 #ifndef _SHAMPOOS_X86_SYS_CTRL_H_
 #define _SHAMPOOS_X86_SYS_CTRL_H_
 #include <arch/x86_64/desc.h>
+#include <arch/x86_64/trap/tss.h>
 #include <common/types.h>
 // #include <arch/x86_64/sys_ctrl_def.h>
 // /*cpuid*/
@@ -94,6 +95,10 @@ static void inline lgdt(struct pseudo_descriptor *desc)
 static void inline lidt(struct pseudo_descriptor *desc)
 {
         asm volatile("lidt	(%0)" : : "r"(desc) : "memory");
+}
+static void inline ltr(struct TSS *tss)
+{
+        asm volatile("ltr       (%0)" : : "r"(tss) : "memory");
 }
 
 static u64 inline rdmsr(u32 msr_id)

@@ -13,11 +13,11 @@
 #include <modules/log/log.h>
 #include <shampoos/error.h>
 #include <shampoos/mm/vmm.h>
-#include <shampoos/mm/map_handler.h>
+#include <shampoos/mm/nexus.h>
 
 extern u32 max_phy_addr_width;
 struct cpuinfo_x86 cpuinfo;
-extern struct map_handler Map_Handler;
+extern struct nexus_node *nexus_root;
 extern struct pseudo_descriptor gdt_desc;
 extern struct seg_desc gdt[GDT_SIZE];
 static void get_cpuinfo(void)
@@ -129,7 +129,7 @@ error_t start_arch(struct setup_info *arch_setup_info)
 {
         prepare_per_cpu_new_gdt(&per_cpu(gdt_desc, 0), per_cpu(gdt, 0));
         lgdt(&per_cpu(gdt_desc, 0));
-        prepare_per_cpu_tss();
+        prepare_per_cpu_tss(per_cpu(nexus_root, 0));
         init_interrupt();
         init_irq();
         init_timer();
