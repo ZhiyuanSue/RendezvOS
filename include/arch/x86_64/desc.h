@@ -2,8 +2,8 @@
 #define _SHAMPOOS_X86_DESC_H_
 #include <common/types.h>
 
-#define GDT_SIZE  5
-#define TSS_INDEX 2
+#define GDT_SIZE      5
+#define GDT_TSS_INDEX 2
 
 struct pseudo_descriptor {
         u16 limit;
@@ -20,7 +20,7 @@ union desc_selector {
 } __attribute__((packed));
 
 union desc {
-        u64 ldt[2];
+        u64 desc_value[2];
         /* segment descriptors */
         struct {
                 u32 limit_15_0 : 16; // low bits of segment limit
@@ -114,9 +114,9 @@ union idt_gate_desc {
                 _desc.zero_2 = 0;                                      \
                 _desc.zero_3 = 0;                                      \
                 _desc.dpl = _dpl;                                      \
-                _desc.type = IA32E_TSS_TYPE_IN_USE;                    \
-                _desc.limit_15_0 = (u32)(0x68 & 0xffff);               \
-                _desc.limit_19_16 = (u32)(0x68 & 0xf0000) >> 16;       \
+                _desc.type = IA32E_TSS_TYPE_VALID;                     \
+                _desc.limit_15_0 = (u32)(0x67 & 0xffff);               \
+                _desc.limit_19_16 = (u32)(0x67 & 0xf0000) >> 16;       \
                 _desc.p = 1;                                           \
                 _desc.avl = 1;                                         \
                 _desc.g = 0;                                           \

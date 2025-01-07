@@ -129,13 +129,13 @@ error_t start_arch(struct setup_info *arch_setup_info)
 {
         prepare_per_cpu_new_gdt(&per_cpu(gdt_desc, 0), per_cpu(gdt, 0));
         lgdt(&per_cpu(gdt_desc, 0));
-        prepare_per_cpu_tss_desc((&per_cpu(gdt, 0))[2], 0);
+        prepare_per_cpu_tss_desc((&per_cpu(gdt, 0))[GDT_TSS_INDEX], 0);
         union desc_selector tmp_sel = {
-                .rpl = 0, .index = TSS_INDEX, .table_indicator = 0, /*1 index
-                                                                       ldt will
-                                                                       cause
-                                                                       #GP*/
+                .rpl = 0,
+                .index = GDT_TSS_INDEX,
+                .table_indicator = 0,
         };
+        /*table_indicator = 1  will cause #GP*/
         prepare_per_cpu_tss(per_cpu(nexus_root, 0), &tmp_sel);
         init_interrupt();
         init_irq();
