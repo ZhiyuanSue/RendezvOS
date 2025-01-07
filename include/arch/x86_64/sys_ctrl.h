@@ -96,9 +96,9 @@ static void inline lidt(struct pseudo_descriptor *desc)
 {
         asm volatile("lidt	(%0)" : : "r"(desc) : "memory");
 }
-static void inline ltr(struct TSS *tss)
+static void inline ltr(union desc_selector *selector)
 {
-        asm volatile("ltr       (%0)" : : "r"(tss) : "memory");
+        asm volatile("ltr       (%0)" : : "r"(selector) : "memory");
 }
 
 static u64 inline rdmsr(u32 msr_id)

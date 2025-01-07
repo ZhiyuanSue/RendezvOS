@@ -19,7 +19,7 @@ extern u32 max_phy_addr_width;
 struct cpuinfo_x86 cpuinfo;
 extern struct nexus_node *nexus_root;
 extern struct pseudo_descriptor gdt_desc;
-extern struct seg_desc gdt[GDT_SIZE];
+extern union desc gdt[GDT_SIZE];
 static void get_cpuinfo(void)
 {
         u32 eax;
@@ -86,15 +86,15 @@ start_simd_fail:
         pr_error("start simd fail\n");
 }
 static void prepare_per_cpu_new_gdt(struct pseudo_descriptor *desc,
-                                    struct seg_desc *gdt)
+                                    union desc *gdt)
 {
-        gdt[1].type = 0xe;
-        gdt[1].p = 1;
-        gdt[1].s = 1;
-        gdt[1].l = 1;
+        gdt[1].seg_desc.type = 0xe;
+        gdt[1].seg_desc.p = 1;
+        gdt[1].seg_desc.s = 1;
+        gdt[1].seg_desc.l = 1;
 
         desc->base_addr = (u64)gdt;
-        desc->limit = GDT_SIZE * sizeof(struct seg_desc) - 1;
+        desc->limit = GDT_SIZE * sizeof(union desc) - 1;
 }
 error_t prepare_arch(struct setup_info *arch_setup_info)
 {
@@ -129,7 +129,14 @@ error_t start_arch(struct setup_info *arch_setup_info)
 {
         prepare_per_cpu_new_gdt(&per_cpu(gdt_desc, 0), per_cpu(gdt, 0));
         lgdt(&per_cpu(gdt_desc, 0));
-        prepare_per_cpu_tss(per_cpu(nexus_root, 0));
+        prepare_per_cpu_tss_desc((&per_cpu(gdt, 0))[2], 0);
+        union desc_selector tmp_sel = {
+                .rpl = 0, .index = TSS_INDEX, .table_indicator = 0, /*1 index
+                                                                       ldt will
+                                                                       cause
+                                                                       #GP*/
+        };
+        prepare_per_cpu_tss(per_cpu(nexus_root, 0), &tmp_sel);
         init_interrupt();
         init_irq();
         init_timer();

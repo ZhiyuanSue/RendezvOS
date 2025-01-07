@@ -50,5 +50,7 @@ struct TSS {
 /*the stack of interrupt*/
 #define IST_INT_NUM 1
 
-void prepare_per_cpu_tss(struct nexus_node *nexus_root);
+void prepare_per_cpu_tss(struct nexus_node* nexus_root,
+                         union desc_selector* sel);
+void prepare_per_cpu_tss_desc(union desc* desc, int cpu_id);
 #endif
