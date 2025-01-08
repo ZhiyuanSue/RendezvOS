@@ -127,16 +127,18 @@ error_t arch_parser_platform(struct setup_info *arch_setup_info)
 }
 error_t start_arch(struct setup_info *arch_setup_info)
 {
-        prepare_per_cpu_new_gdt(&per_cpu(gdt_desc, 0), per_cpu(gdt, 0));
-        lgdt(&per_cpu(gdt_desc, 0));
-        prepare_per_cpu_tss_desc((&per_cpu(gdt, 0))[GDT_TSS_INDEX], 0);
+        int cpu_id = 0;
+        prepare_per_cpu_new_gdt(&per_cpu(gdt_desc, cpu_id), per_cpu(gdt, cpu_id));
+        lgdt(&per_cpu(gdt_desc, cpu_id));
+        prepare_per_cpu_tss_desc((&per_cpu(gdt, cpu_id))[2],(&per_cpu(gdt, cpu_id))[3], cpu_id);
         union desc_selector tmp_sel = {
                 .rpl = 0,
                 .index = GDT_TSS_INDEX,
                 .table_indicator = 0,
         };
         /*table_indicator = 1  will cause #GP*/
-        prepare_per_cpu_tss(per_cpu(nexus_root, 0), &tmp_sel);
+        prepare_per_cpu_tss(per_cpu(nexus_root, cpu_id), &tmp_sel);
+        pr_info("finish prepare cpu tss\n");
         init_interrupt();
         init_irq();
         init_timer();

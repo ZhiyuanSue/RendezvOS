@@ -20,7 +20,7 @@ union desc_selector {
 } __attribute__((packed));
 
 union desc {
-        u64 desc_value[2];
+        u64 desc_value;
         /* segment descriptors */
         struct {
                 u32 limit_15_0 : 16; // low bits of segment limit
@@ -38,7 +38,7 @@ union desc {
                 u32 g : 1; // granularity: limit scaled by 4K when set
                 u32 base_address_31_24 : 8; // high bits of segment base address
         } seg_desc;
-        /*tss (and ldt) descriptor*/
+        /*tss (and ldt) descriptor lower part*/
         struct {
                 /*first u32*/
                 u16 limit_15_0;
@@ -55,13 +55,16 @@ union desc {
                 u32 zero_2 : 1;
                 u32 g : 1;
                 u32 offset_31_24 : 8;
+        } tss_ldt_desc_lower;
+        /*tss (and ldt) descriptor upper part*/
+        struct {
                 /*third u32*/
                 u32 offset_63_32;
                 /*forth u32*/
                 u32 res_0 : 8;
                 u32 zero_3 : 5;
                 u32 res_1 : 19;
-        } tss_ldt_desc;
+        } tss_ldt_desc_upper;
 } __attribute__((packed));
 /*idt gate descriptors*/
 union idt_gate_desc {
@@ -105,14 +108,11 @@ union idt_gate_desc {
 #define IA32E_LDT_TYPE        0x2
 #define IA32E_TSS_TYPE_VALID  0x9
 #define IA32E_TSS_TYPE_IN_USE 0xB
-#define SET_TSS_LDT_DESC(_desc, offset, _dpl)                          \
+#define SET_TSS_LDT_DESC_LOWER(_desc, offset, _dpl)                          \
         {                                                              \
-                _desc.res_0 = 0;                                       \
-                _desc.res_1 = 0;                                       \
                 _desc.zero_0 = 0;                                      \
                 _desc.zero_1 = 0;                                      \
                 _desc.zero_2 = 0;                                      \
-                _desc.zero_3 = 0;                                      \
                 _desc.dpl = _dpl;                                      \
                 _desc.type = IA32E_TSS_TYPE_VALID;                     \
                 _desc.limit_15_0 = (u32)(0x67 & 0xffff);               \
@@ -123,6 +123,12 @@ union idt_gate_desc {
                 _desc.offset_15_0 = (u32)(offset & 0xffff);            \
                 _desc.offset_23_16 = (u32)(offset & 0xff0000) >> 16;   \
                 _desc.offset_31_24 = (u32)(offset & 0xff000000) >> 24; \
+        }
+#define SET_TSS_LDT_DESC_UPPER(_desc, offset)                          \
+        {                                                              \
+                _desc.res_0 = 0;                                       \
+                _desc.res_1 = 0;                                       \
+                _desc.zero_3 = 0;                                      \
                 _desc.offset_63_32 = (u32)((offset) >> 32);            \
         }
 #endif

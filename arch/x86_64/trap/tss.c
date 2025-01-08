@@ -15,9 +15,11 @@ void prepare_per_cpu_tss(struct nexus_node* nexus_root,
         set_ist(&per_cpu(cpu_tss, nexus_root->nexus_id), 1, stack_top);
         ltr(sel);
 }
-void prepare_per_cpu_tss_desc(union desc* desc, int cpu_id)
+void prepare_per_cpu_tss_desc(union desc* desc_lower,union desc* desc_upper, int cpu_id)
 {
-        SET_TSS_LDT_DESC(((*desc).tss_ldt_desc),
+        SET_TSS_LDT_DESC_LOWER(((*desc_lower).tss_ldt_desc_lower),
                          (vaddr)(&per_cpu(cpu_tss, cpu_id)),
                          KERNEL_PL);
+        SET_TSS_LDT_DESC_UPPER(((*desc_upper).tss_ldt_desc_upper),
+                         (vaddr)(&per_cpu(cpu_tss, cpu_id)));
 }

@@ -52,5 +52,5 @@ struct TSS {
 
 void prepare_per_cpu_tss(struct nexus_node* nexus_root,
                          union desc_selector* sel);
-void prepare_per_cpu_tss_desc(union desc* desc, int cpu_id);
+void prepare_per_cpu_tss_desc(union desc* desc_lower,union desc* desc_upper, int cpu_id);
 #endif
