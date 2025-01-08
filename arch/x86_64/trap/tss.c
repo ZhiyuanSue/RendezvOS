@@ -5,21 +5,26 @@
 #include <arch/x86_64/sys_ctrl_def.h>
 
 DEFINE_PER_CPU(struct TSS, cpu_tss);
-void prepare_per_cpu_tss(struct nexus_node* nexus_root,
-                         union desc_selector* sel)
+void prepare_per_cpu_tss(struct nexus_node* nexus_root)
 {
         vaddr stack_top =
                 (vaddr)get_free_page(
                         2, ZONE_NORMAL, KERNEL_VIRT_OFFSET, 0, nexus_root)
                 + 2 * PAGE_SIZE;
         set_ist(&per_cpu(cpu_tss, nexus_root->nexus_id), 1, stack_top);
-        ltr(sel);
+        union desc_selector tmp_sel = {
+                .rpl = 0,
+                .index = GDT_TSS_LOWER_INDEX,
+                .table_indicator = 0,
+        };
+        ltr(&tmp_sel);
 }
-void prepare_per_cpu_tss_desc(union desc* desc_lower,union desc* desc_upper, int cpu_id)
+void prepare_per_cpu_tss_desc(union desc* desc_lower, union desc* desc_upper,
+                              int cpu_id)
 {
         SET_TSS_LDT_DESC_LOWER(((*desc_lower).tss_ldt_desc_lower),
-                         (vaddr)(&per_cpu(cpu_tss, cpu_id)),
-                         KERNEL_PL);
+                               (vaddr)(&per_cpu(cpu_tss, cpu_id)),
+                               KERNEL_PL);
         SET_TSS_LDT_DESC_UPPER(((*desc_upper).tss_ldt_desc_upper),
-                         (vaddr)(&per_cpu(cpu_tss, cpu_id)));
+                               (vaddr)(&per_cpu(cpu_tss, cpu_id)));
 }

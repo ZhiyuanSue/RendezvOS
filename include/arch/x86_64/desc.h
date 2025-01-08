@@ -2,8 +2,9 @@
 #define _SHAMPOOS_X86_DESC_H_
 #include <common/types.h>
 
-#define GDT_SIZE      5
-#define GDT_TSS_INDEX 2
+#define GDT_SIZE            5
+#define GDT_TSS_LOWER_INDEX 2
+#define GDT_TSS_UPPER_INDEX 3
 
 struct pseudo_descriptor {
         u16 limit;
@@ -42,9 +43,9 @@ union desc {
         struct {
                 /*first u32*/
                 u16 limit_15_0;
-                u16 offset_15_0;
+                u16 base_address_15_0;
                 /*second u32*/
-                u32 offset_23_16 : 8;
+                u32 base_address_23_16 : 8;
                 u32 type : 4;
                 u32 zero_0 : 1;
                 u32 dpl : 2;
@@ -54,12 +55,12 @@ union desc {
                 u32 zero_1 : 1;
                 u32 zero_2 : 1;
                 u32 g : 1;
-                u32 offset_31_24 : 8;
+                u32 base_address_31_24 : 8;
         } tss_ldt_desc_lower;
         /*tss (and ldt) descriptor upper part*/
         struct {
                 /*third u32*/
-                u32 offset_63_32;
+                u32 base_address_63_32;
                 /*forth u32*/
                 u32 res_0 : 8;
                 u32 zero_3 : 5;
@@ -108,27 +109,29 @@ union idt_gate_desc {
 #define IA32E_LDT_TYPE        0x2
 #define IA32E_TSS_TYPE_VALID  0x9
 #define IA32E_TSS_TYPE_IN_USE 0xB
-#define SET_TSS_LDT_DESC_LOWER(_desc, offset, _dpl)                          \
-        {                                                              \
-                _desc.zero_0 = 0;                                      \
-                _desc.zero_1 = 0;                                      \
-                _desc.zero_2 = 0;                                      \
-                _desc.dpl = _dpl;                                      \
-                _desc.type = IA32E_TSS_TYPE_VALID;                     \
-                _desc.limit_15_0 = (u32)(0x67 & 0xffff);               \
-                _desc.limit_19_16 = (u32)(0x67 & 0xf0000) >> 16;       \
-                _desc.p = 1;                                           \
-                _desc.avl = 1;                                         \
-                _desc.g = 0;                                           \
-                _desc.offset_15_0 = (u32)(offset & 0xffff);            \
-                _desc.offset_23_16 = (u32)(offset & 0xff0000) >> 16;   \
-                _desc.offset_31_24 = (u32)(offset & 0xff000000) >> 24; \
+#define SET_TSS_LDT_DESC_LOWER(_desc, base_address, _dpl)                   \
+        {                                                                   \
+                _desc.zero_0 = 0;                                           \
+                _desc.zero_1 = 0;                                           \
+                _desc.zero_2 = 0;                                           \
+                _desc.dpl = _dpl;                                           \
+                _desc.type = IA32E_TSS_TYPE_VALID;                          \
+                _desc.limit_15_0 = (u32)(0x67 & 0xffff);                    \
+                _desc.limit_19_16 = (u32)(0x67 & 0xf0000) >> 16;            \
+                _desc.p = 1;                                                \
+                _desc.avl = 1;                                              \
+                _desc.g = 0;                                                \
+                _desc.base_address_15_0 = (u32)(base_address & 0xffff);     \
+                _desc.base_address_23_16 = (u32)(base_address & 0xff0000)   \
+                                           >> 16;                           \
+                _desc.base_address_31_24 = (u32)(base_address & 0xff000000) \
+                                           >> 24;                           \
         }
-#define SET_TSS_LDT_DESC_UPPER(_desc, offset)                          \
-        {                                                              \
-                _desc.res_0 = 0;                                       \
-                _desc.res_1 = 0;                                       \
-                _desc.zero_3 = 0;                                      \
-                _desc.offset_63_32 = (u32)((offset) >> 32);            \
+#define SET_TSS_LDT_DESC_UPPER(_desc, base_address)                     \
+        {                                                               \
+                _desc.res_0 = 0;                                        \
+                _desc.res_1 = 0;                                        \
+                _desc.zero_3 = 0;                                       \
+                _desc.base_address_63_32 = (u32)((base_address) >> 32); \
         }
 #endif
