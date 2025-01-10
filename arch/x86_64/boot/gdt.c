@@ -13,6 +13,7 @@ DEFINE_PER_CPU(union desc, gdt[GDT_SIZE]) = {{.seg_desc = {0}},
                                              {.tss_ldt_desc_lower = {0}}, /* tss
                                                                            */
                                              {.tss_ldt_desc_upper = {0}}};
+
 DEFINE_PER_CPU(struct pseudo_descriptor, gdt_desc) = {
         .limit = GDT_SIZE * sizeof(union desc) - 1,
         .base_addr = (u64)&gdt,

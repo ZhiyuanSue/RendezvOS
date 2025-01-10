@@ -43,8 +43,8 @@ struct TSS {
         }
 #define set_rsp(tss_ptr, rsp_n, ss_ptr)                                     \
         {                                                                   \
-                (tss_ptr)->rsp##ist_n##_lower_32_bits = (u32)((u64)ss_ptr); \
-                (tss_ptr)->rsp##ist_n##_upper_32_bits =                     \
+                (tss_ptr)->rsp##rsp_n##_lower_32_bits = (u32)((u64)ss_ptr); \
+                (tss_ptr)->rsp##rsp_n##_upper_32_bits =                     \
                         (u32)(((u64)ss_ptr) >> 32);                         \
         }
 /*the stack of interrupt*/

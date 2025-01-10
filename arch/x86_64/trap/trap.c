@@ -88,7 +88,7 @@ void trap_handler(struct trap_frame *tf)
 
 void time_irq(void)
 {
-        pr_info("timer interrupt\n");
+        // pr_info("timer interrupt\n");
         if (arch_irq_type == PIC_IRQ) {
                 PIC_EOI(0x20);
         } else if (arch_irq_type == xAPIC_IRQ) {

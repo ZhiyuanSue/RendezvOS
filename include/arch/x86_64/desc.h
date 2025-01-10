@@ -106,9 +106,9 @@ union idt_gate_desc {
                 gate.offset_15_0 = (u32)(offset & 0xffff);            \
         }
 
-#define IA32E_LDT_TYPE        0x2
-#define IA32E_TSS_TYPE_VALID  0x9
-#define IA32E_TSS_TYPE_IN_USE 0xB
+#define IA32E_LDT_TYPE       0x2
+#define IA32E_TSS_TYPE_VALID 0x9
+#define IA32E_TSS_TYPE_BUSY  0xB
 #define SET_TSS_LDT_DESC_LOWER(_desc, base_address, _dpl)                   \
         {                                                                   \
                 _desc.zero_0 = 0;                                           \

@@ -159,12 +159,12 @@ trap_30:
 	.global	trap_31
 trap_31:
 	trap_entry
-	call time_irq
+	call trap_handler
 	trap_exit
 	.global	trap_32
 trap_32:
 	trap_entry
-	call trap_handler
+	call time_irq
 	trap_exit
 	.global	trap_33
 trap_33:
