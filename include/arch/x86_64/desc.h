@@ -2,7 +2,7 @@
 #define _SHAMPOOS_X86_DESC_H_
 #include <common/types.h>
 
-#define GDT_SIZE            5
+#define GDT_SIZE            4
 #define GDT_TSS_LOWER_INDEX 2
 #define GDT_TSS_UPPER_INDEX 3
 

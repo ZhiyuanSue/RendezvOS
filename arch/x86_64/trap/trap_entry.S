@@ -1,8 +1,5 @@
-#include <common/assemble.h>
-.code64
-	.section	.trap
-	.global	trap_entry
-trap_entry:
+
+.macro trap_entry
 	sub		$(15*8),	%rsp
 
 	mov		(%rsp),		%r15
@@ -22,10 +19,9 @@ trap_entry:
 	mov		112(%rsp),	%rdi
 	
 	mov		%rdi,%rsp	/*use the rsp as the trap frame pointer*/
-	call	trap_handler
+.endm
 
-	.global trap_exit
-trap_exit:
+.macro trap_exit
 	mov		%rdi,	112(%rsp)
 	mov		%rsi,	104(%rsp)
 	mov		%rdx,	96(%rsp)
@@ -44,4 +40,4 @@ trap_exit:
 
 	add		$(16*8),		%rsp	//also pop error code
 	iretq
-
+.endm

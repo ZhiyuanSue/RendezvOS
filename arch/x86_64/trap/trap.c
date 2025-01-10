@@ -58,9 +58,32 @@ void init_interrupt(void)
         lidt(&idtr_desc);
 }
 
-void trap_handler(void)
+void trap_handler(struct trap_frame *tf)
 {
         pr_info("go into trap handler\n");
+        pr_info("ss\t:\t0x%x\n", tf->ss);
+        pr_info("rsp\t:\t0x%x\n", tf->rsp);
+        pr_info("eflags\t:\t0x%x\n", tf->eflags);
+        pr_info("cs\t:\t0x%x\n", tf->cs);
+        pr_info("rip\t:\t0x%x\n", tf->rip);
+        pr_info("e code\t:\t0x%x\n", tf->error_code);
+
+        pr_info("rdi\t:\t0x%x\n", tf->rdi);
+        pr_info("rsi\t:\t0x%x\n", tf->rsi);
+        pr_info("rdx\t:\t0x%x\n", tf->rdx);
+        pr_info("rcx\t:\t0x%x\n", tf->rcx);
+        pr_info("rax\t:\t0x%x\n", tf->rax);
+        pr_info("r8\t:\t0x%x\n", tf->r8);
+        pr_info("r9\t:\t0x%x\n", tf->r9);
+        pr_info("r10\t:\t0x%x\n", tf->r10);
+        pr_info("r11\t:\t0x%x\n", tf->r11);
+
+        pr_info("rbx\t:\t0x%x\n", tf->rbx);
+        pr_info("rbp\t:\t0x%x\n", tf->rbp);
+        pr_info("r12\t:\t0x%x\n", tf->r12);
+        pr_info("r13\t:\t0x%x\n", tf->r13);
+        pr_info("r14\t:\t0x%x\n", tf->r14);
+        pr_info("r15\t:\t0x%x\n", tf->r15);
 }
 
 void time_irq(void)
