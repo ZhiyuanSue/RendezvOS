@@ -4,6 +4,7 @@
 #include <common/types.h>
 #include <common/stdbool.h>
 #include <arch/x86_64/sys_ctrl.h>
+#include <shampoos/time.h>
 #define APIC_REG_SIZE 32
 #define APIC_REG_ID   (0x2)
 #define APIC_ID_MASK  (0xFF000000)
@@ -158,6 +159,13 @@ void disable_APIC(void);
 
 void reset_APIC(void);
 void reset_xAPIC_LDR(void);
+
+/*apic timer part*/
+tick_t APIC_timer_calibration();
+void APIC_timer_reset();
+tick_t APIC_GET_HZ();
+tick_t APIC_GET_CUR_TIME();
+
 void software_enable_APIC(void);
 bool map_LAPIC(void);
 void APIC_EOI(void);

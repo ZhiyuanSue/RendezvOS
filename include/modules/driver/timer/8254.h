@@ -18,5 +18,6 @@ void init_8254_cyclical(int freq);
 void init_8254_one_shot(u16 t);
 void init_8254_read();
 u16 read_8254_val();
+void PIT_mdelay(int ms);
 #define PIT_TICK_RATE 1193181
 #endif

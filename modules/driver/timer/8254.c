@@ -40,4 +40,13 @@ inline u16 read_8254_val()
         val |= inb(_X86_8254_COUNTER_0_) << 8;
         return val;
 }
+inline void PIT_mdelay(int ms)
+{
+        init_8254_one_shot((PIT_TICK_RATE * ms) / 1000);
+        init_8254_read();
+        i16 t = read_8254_val();
+        while (t >= 0) {
+                t = read_8254_val();
+        }
+}
 #endif
