@@ -38,4 +38,5 @@ void init_timer(void)
                 APIC_timer_reset();
                 software_enable_APIC();
         }
+        get_rtc_time();
 }

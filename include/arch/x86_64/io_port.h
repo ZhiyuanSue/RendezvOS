@@ -37,4 +37,16 @@
 #define _X86_8254_COUNTER_2_ (_X86_8254_COUNTER_0_ + 2)
 #define _X86_8254_CTRL_PORT_ (_X86_8254_COUNTER_0_ + 3)
 
+/*RTC*/
+#define _X86_RTC_CMOS_RAM_IDX_REG_ 0x70
+#define _X86_RTC_CURR_SEC_REG      0x00
+#define _X86_RTC_CURR_MIN_REG      0x02
+#define _X86_RTC_CURR_HOUR_REG     0x04
+#define _X86_RTC_CURR_DAY_REG      0x07
+#define _X86_RTC_CURR_MONTH_REG    0x08
+#define _X86_RTC_CURR_YEAR_REG     0x09
+#define _X86_RTC_CURR_CENTURY_REG  0x32
+
+#define _X86_RTC_CMOS_RAM_DATA_ 0x71
+
 #endif
