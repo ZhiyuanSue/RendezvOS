@@ -21,6 +21,7 @@ extern u64 __per_cpu_offset[SHAMPOOS_MAX_CPU_NUMBER];
 
 #define per_cpu(var, cpu) \
         (*((__typeof__(var)*)((u64)(&var) + __per_cpu_offset[cpu])))
+#define percpu(var) (*((__typeof__(var)*)((vaddr)(&var) + get_per_cpu_base())))
 #define get_cpu_var(var)
 // TODO
 
