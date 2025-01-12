@@ -8,6 +8,7 @@
 #include <arch/x86_64/trap/trap.h>
 #include <arch/x86_64/desc.h>
 #include <arch/x86_64/trap/tss.h>
+#include <arch/x86_64/msr.h>
 #include <shampoos/percpu.h>
 #include <modules/driver/timer/8254.h>
 #include <modules/log/log.h>
@@ -88,11 +89,13 @@ start_simd_fail:
 static void prepare_per_cpu_new_gdt(struct pseudo_descriptor *desc,
                                     union desc *gdt)
 {
+        /*fill in the gdt table*/
         gdt[1].seg_desc.type = 0xe;
         gdt[1].seg_desc.p = 1;
         gdt[1].seg_desc.s = 1;
         gdt[1].seg_desc.l = 1;
 
+        /*fill in the gdt desc*/
         desc->base_addr = (u64)gdt;
         desc->limit = GDT_SIZE * sizeof(union desc) - 1;
 }
@@ -136,15 +139,21 @@ error_t start_arch(struct setup_info *arch_setup_info)
         prepare_per_cpu_tss_desc(&((per_cpu_gdt)[GDT_TSS_LOWER_INDEX]),
                                  &((per_cpu_gdt)[GDT_TSS_UPPER_INDEX]),
                                  cpu_id);
+        /*
+         gs
+         as it's per_cpu base
+         only after we set the gs base can we use percpu
+        */
+        wrmsr(MSR_GS_BASE, __per_cpu_offset[cpu_id]);
         /*table_indicator = 1  will cause #GP*/
         prepare_per_cpu_tss(per_cpu(nexus_root, cpu_id));
 
         init_interrupt();
         init_irq();
-        init_timer();
+        sti();
+        shampoos_time_init();
         enable_cache();
         start_fp();
         start_simd();
-        sti();
         return (0);
 }

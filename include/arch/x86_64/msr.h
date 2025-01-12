@@ -17,4 +17,9 @@
 #define IA32_APIC_BASE_X_ENABLE      (1 << 11)
 #define IA32_APIC_BASE_X2_ENABLE     (1 << 10)
 #define IA32_APIC_BASE_BSP           (1 << 8)
+
+/*FS and GS*/
+#define MSR_FS_BASE        0xC0000100
+#define MSR_GS_BASE        0xC0000101
+#define MSR_KERNEL_GS_BASE 0xC0000102
 #endif

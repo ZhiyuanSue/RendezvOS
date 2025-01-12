@@ -1,14 +1,12 @@
 #include <arch/x86_64/PIC/IRQ.h>
 #include <arch/x86_64/time.h>
 #include <modules/log/log.h>
-#include <arch/x86_64/PIC/LocalAPIC.h>
 #include <shampoos/mm/vmm.h>
 #include <common/bit.h>
 #include <shampoos/time.h>
 
 extern enum IRQ_type arch_irq_type;
-
-void init_timer(void)
+void arch_init_timer(void)
 {
         if (arch_irq_type == NO_IRQ) {
                 return;
@@ -39,4 +37,14 @@ void init_timer(void)
                 software_enable_APIC();
         }
         get_rtc_time();
+}
+void time_irq(void)
+{
+        // pr_info("timer interrupt\n");
+        shampoos_do_time_irq();
+        if (arch_irq_type == PIC_IRQ) {
+                PIC_EOI(0x20);
+        } else if (arch_irq_type == xAPIC_IRQ) {
+                APIC_EOI();
+        }
 }

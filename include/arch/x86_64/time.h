@@ -19,6 +19,7 @@ struct rtc_time {
                 u16 year;
         };
 };
-void init_timer(void);
+void arch_init_timer(void);
 struct rtc_time get_rtc_time();
+void arch_udelay(u64 us);
 #endif

@@ -1,0 +1,4 @@
+#ifndef _SHAMPOOS_AARCH64_PERCPU_H_
+#define _SHAMPOOS_AARCH64_PERCPU_H_
+
+#endif
