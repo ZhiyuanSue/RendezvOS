@@ -2,17 +2,18 @@
 #define _SHAMPOOS_ARCH_VMM_H_
 #include <common/types.h>
 #include <arch/aarch64/sync/tlb.h>
+#include <arch/aarch64/sys_ctrl.h>
 
 static inline paddr get_current_kernel_vspace_root()
 {
         u64 ttbr1_tmp;
-        __asm__("mrs %0, TTBR1_EL1\n" : "=r"(ttbr1_tmp) : :);
+        mrs("TTBR1_EL1",ttbr1_tmp);
         return ttbr1_tmp;
 }
 static inline paddr get_current_user_vspace_root()
 {
         u64 ttbr0_tmp;
-        __asm__("mrs %0, TTBR0_EL1\n" : "=r"(ttbr0_tmp) : :);
+        mrs("TTBR0_EL1",ttbr0_tmp);
         return ttbr0_tmp;
 }
 

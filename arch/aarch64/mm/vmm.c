@@ -1,5 +1,6 @@
 #include <arch/aarch64/mm/page_table_def.h>
 #include <arch/aarch64/sys_ctrl_def.h>
+#include <arch/aarch64/sys_ctrl.h>
 #include <arch/aarch64/mm/vmm.h>
 #include <common/mm.h>
 #include <common/bit.h>
@@ -46,7 +47,7 @@ void mair_init()
                 mair_reg_val = set_mask(mair_reg_val,
                                         ((u64)attr[index]) << (index * 8));
         }
-        asm volatile("msr mair_el1, %0;" : : "r"(mair_reg_val));
+        msr("mair_el1",mair_reg_val);
 }
 ARCH_PFLAGS_t arch_decode_flags(int entry_level, ENTRY_FLAGS_t ENTRY_FLAGS)
 {

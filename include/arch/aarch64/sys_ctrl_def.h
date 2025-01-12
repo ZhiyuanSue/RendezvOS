@@ -1,5 +1,5 @@
-#ifndef _SHAMPOOS_AARCH64_SYS_CTRL_DEF_H_
-#define _SHAMPOOS_AARCH64_SYS_CTRL_DEF_H_
+#ifndef _SHAMPOOS_SYS_CTRL_DEF_H_
+#define _SHAMPOOS_SYS_CTRL_DEF_H_
 
 /*CurrentEL*/
 #define CurrentEL_EL0 0x0
