@@ -47,7 +47,7 @@ void mair_init()
                 mair_reg_val = set_mask(mair_reg_val,
                                         ((u64)attr[index]) << (index * 8));
         }
-        msr("mair_el1",mair_reg_val);
+        msr("mair_el1", mair_reg_val);
 }
 ARCH_PFLAGS_t arch_decode_flags(int entry_level, ENTRY_FLAGS_t ENTRY_FLAGS)
 {

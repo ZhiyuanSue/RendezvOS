@@ -25,7 +25,11 @@ typedef u64 tick_t;
 void shampoos_time_init();
 void shampoos_do_time_irq();
 #define SYS_TIME_MS_PER_INT 10
-void ndelay(u64 ns);
+#define INT_PER_SECOND      (1000 / SYS_TIME_MS_PER_INT)
+#define UDELAY_MUL \
+        (2147ULL * INT_PER_SECOND + 483648ULL * INT_PER_SECOND / 1000000)
+#define UDELAY_SHIFT 31
+#define UDELAY_MAX   2000
 void udelay(u64 us);
 void mdelay(u64 ms);
 #endif

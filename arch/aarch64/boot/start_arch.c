@@ -10,6 +10,7 @@
 #include <modules/dtb/print_property.h>
 #include <modules/log/log.h>
 #include <shampoos/error.h>
+#include <shampoos/percpu.h>
 
 extern u64 L2_table;
 
@@ -65,6 +66,9 @@ error_t arch_parser_platform(struct setup_info *arch_setup_info)
 }
 error_t start_arch(struct setup_info *arch_setup_info)
 {
+        int cpu_id = 0;
         init_interrupt();
+        /*write in the cpuid*/
+        msr("TPIDR_EL1", __per_cpu_offset[cpu_id]);
         return (0);
 }

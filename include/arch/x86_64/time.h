@@ -21,5 +21,4 @@ struct rtc_time {
 };
 void arch_init_timer(void);
 struct rtc_time get_rtc_time();
-void arch_udelay(u64 us);
 #endif

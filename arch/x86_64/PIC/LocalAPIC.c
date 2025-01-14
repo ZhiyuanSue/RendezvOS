@@ -152,7 +152,7 @@ tick_t APIC_timer_calibration()
 }
 void APIC_timer_reset()
 {
-        u32 init_cnt = (apic_hz_per_second / (1000 / SYS_TIME_MS_PER_INT)) >> 4;
+        u32 init_cnt = (apic_hz_per_second / INT_PER_SECOND) >> 4;
         u32 lvt_timer_val = 0;
         u32 apic_timer_irq_num = _8259A_MASTER_IRQ_NUM_ + _8259A_TIMER_;
         lvt_timer_val = set_mask(lvt_timer_val, apic_timer_irq_num);

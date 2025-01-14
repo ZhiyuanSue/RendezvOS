@@ -7,13 +7,13 @@
 static inline paddr get_current_kernel_vspace_root()
 {
         u64 ttbr1_tmp;
-        mrs("TTBR1_EL1",ttbr1_tmp);
+        mrs("TTBR1_EL1", ttbr1_tmp);
         return ttbr1_tmp;
 }
 static inline paddr get_current_user_vspace_root()
 {
         u64 ttbr0_tmp;
-        mrs("TTBR0_EL1",ttbr0_tmp);
+        mrs("TTBR0_EL1", ttbr0_tmp);
         return ttbr0_tmp;
 }
 
