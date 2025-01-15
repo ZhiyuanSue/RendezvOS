@@ -3,17 +3,14 @@
 #include <modules/log/log.h>
 volatile i64 jeffies = 0;
 u64 loop_per_jeffies;
+u64 udelay_max_loop;
 DEFINE_PER_CPU(i64, tick_cnt);
 /*
     every core have a local apic, so every core have a tick_cnt
     but it must sync with jeffies
 */
-__attribute__((optimize("O0"))) void loop_delay(u64 loop_cnt)
-{
-        while (loop_cnt) {
-                loop_cnt--;
-        }
-}
+extern void arch_loop_delay(u64 us);
+extern void _udelay(u64 uml, u64 lpj, u64 us);
 u64 timer_calibration()
 {
         /*
@@ -35,7 +32,7 @@ u64 timer_calibration()
                 for (u64 try_in_round = 0;
                      tick_val == jeffies && try_in_round < (1 << round_expo);
                      try_in_round++) {
-                        loop_delay(lpj * round_expo);
+                        arch_loop_delay(lpj * round_expo);
                         nr_try += round_expo;
                 }
         } while (tick_val == jeffies);
@@ -51,12 +48,13 @@ u64 timer_calibration()
                         ; /*wait for next jeffies*/
                 tick_val = jeffies;
 
-                loop_delay(lpj);
+                arch_loop_delay(lpj);
 
                 if (tick_val != jeffies)
                         lpj -= loopadd;
                 loopadd >>= 1;
         }
+        pr_info("lpj is %d\n", lpj);
         return lpj;
 }
 void shampoos_time_init()
@@ -64,6 +62,8 @@ void shampoos_time_init()
         percpu(tick_cnt) = jeffies;
         arch_init_timer();
         loop_per_jeffies = timer_calibration();
+        udelay_max_loop = (loop_per_jeffies * UDELAY_MAX * UDELAY_MUL)
+                          >> UDELAY_SHIFT;
 }
 void shampoos_do_time_irq()
 {
@@ -74,20 +74,24 @@ void shampoos_do_time_irq()
         }
         /*TODO: maybe need add the unlock*/
 }
-void __udelay(u64 us)
-{
-        u64 loops = (loop_per_jeffies * us * UDELAY_MUL) >> UDELAY_SHIFT;
-        loop_delay(loops);
-}
+// void __udelay(u64 lpj,u64 us)
+// {
+//         u64 loops = (lpj * us * UDELAY_MUL) >> UDELAY_SHIFT;
+//         arch_loop_delay(loops);
+// }
+// void _udelay(u64 uml,u64 lpj,u64 us)
+// {
+//         while (us > UDELAY_MAX) {
+//                 arch_loop_delay(udelay_max_loop);
+//                 us -= UDELAY_MAX;
+//         }
+//         __udelay(lpj,us);
+// }
 void udelay(u64 us)
 {
-        while (us > UDELAY_MAX) {
-                __udelay(UDELAY_MAX);
-                us -= UDELAY_MAX;
-        }
-        __udelay(us);
+        _udelay(udelay_max_loop, loop_per_jeffies, us);
 }
 void mdelay(u64 ms)
 {
-        udelay(ms * 1000);
+        _udelay(udelay_max_loop, loop_per_jeffies, ms * 1000);
 }

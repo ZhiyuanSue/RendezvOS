@@ -5,6 +5,10 @@ all: init $(modules) ${OBJECTS}
 	@for mod in $(modules); do $(MAKE) -C $$mod all; done
 	@-rm -f *.d
 
+${BUILD}/time_asm.o: ./time_asm.S $(modules)
+	@echo "CC	${BUILD}/time_asm.o"
+	@$(CC) $(CFLAGS) -o $@ -c $<
+
 -include *.d
 ${BUILD}/%.o: ./%.c $(modules)
 	@echo "CC	"$@
