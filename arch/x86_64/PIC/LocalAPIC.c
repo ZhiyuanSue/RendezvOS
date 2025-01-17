@@ -113,13 +113,8 @@ static tick_t apic_hz_per_second;
 // if possible, use HPET instead
 tick_t APIC_timer_calibration()
 {
-#define APIC_CALIBRATE_MS   50
+#define APIC_CALIBRATE_MS   25
 #define APIC_CALIBRATE_TIME 10
-        /*
-                for pic, only 16 bits, and the max is 65535
-                so if the tick is 1193181 / 1000 per ms
-                we can only count 50 time (59659)  every time
-        */
         u32 apic_timer_irq_num = _8259A_MASTER_IRQ_NUM_ + _8259A_TIMER_;
         u32 timer_value = 0;
         u32 hz_cnt = 0;

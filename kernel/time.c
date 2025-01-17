@@ -9,24 +9,32 @@ DEFINE_PER_CPU(i64, tick_cnt);
     every core have a local apic, so every core have a tick_cnt
     but it must sync with jeffies
 */
-__attribute__((optimize("O0"))) void loop_delay(volatile u64 loop_cnt)
+__attribute__((optimize("O0"))) u64 loop_delay(volatile u64 loop_cnt)
 {
+        volatile u64 cnt = 0;
         while (loop_cnt--) {
-                ;
+                cnt++;
         }
+        return cnt;
 }
-__attribute__((optimize("O0"))) u64 timer_calibration(){
-		volatile u64 lpj=0;
-		i64 tick_val;
-		tick_val = jeffies;
-        while (tick_val == jeffies)
-                ; /*wait for next jeffies*/
-        tick_val = jeffies;
+__attribute__((optimize("O0"))) u64 timer_calibration()
+{
+        volatile u64 lpj = 0;
+        i64 tick_val;
+#define LPJ_CALIBRATION_CNT 25
+        for (int i = 0; i < LPJ_CALIBRATION_CNT; i++) {
+                tick_val = jeffies;
+                while (tick_val == jeffies)
+                        ; /*wait for next jeffies*/
+                tick_val = jeffies;
 
-		while(tick_val == jeffies){
-			lpj ++;
-		}
-		return lpj;
+                while (tick_val == jeffies) {
+                        lpj++;
+                }
+        }
+
+        pr_info("lpj is %d\n", lpj / 25);
+        return lpj / 25;
 }
 void shampoos_time_init()
 {
@@ -35,6 +43,7 @@ void shampoos_time_init()
         loop_per_jeffies = timer_calibration();
         udelay_max_loop = (loop_per_jeffies * UDELAY_MAX * UDELAY_MUL)
                           >> UDELAY_SHIFT;
+        pr_info("udelay_max loop is %d\n", udelay_max_loop);
 }
 void shampoos_do_time_irq()
 {
@@ -45,19 +54,18 @@ void shampoos_do_time_irq()
         }
         /*TODO: maybe need add the unlock*/
 }
-void __udelay(u64 lpj,u64 us)
+void __udelay(u64 lpj, u64 us)
 {
         u64 loops = (lpj * us * UDELAY_MUL) >> UDELAY_SHIFT;
         loop_delay(loops);
 }
-void _udelay(u64 uml,u64 lpj,volatile u64 us)
+void _udelay(u64 uml, u64 lpj, volatile u64 us)
 {
         while (us >= UDELAY_MAX) {
-				volatile u64 max = udelay_max_loop;
-                loop_delay(max);
+                loop_delay(uml);
                 us -= UDELAY_MAX;
         }
-        __udelay(lpj,us);
+        __udelay(lpj, us);
 }
 void udelay(u64 us)
 {
