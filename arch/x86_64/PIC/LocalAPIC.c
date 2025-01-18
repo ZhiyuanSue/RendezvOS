@@ -327,3 +327,27 @@ void APIC_EOI()
 {
         APIC_WR_REG(EOI, KERNEL_VIRT_OFFSET, 0);
 }
+void APIC_send_IPI(u32 dest_sh, u32 del_mode, u32 vector, u32 dest_mode,
+                   u32 level, u32 trigger_mode, u32 dest_field)
+{
+        /*
+                here we must deal with the x2APIC case
+                for the x2APIC mode, no ICR high reg
+                and ICR reg is a 64 bit MSR reg, so they are different
+        */
+        u64 icr_value = 0;
+        icr_value |= dest_sh | del_mode | vector | dest_mode | level
+                     | trigger_mode;
+        icr_value |= ((u64)dest_field) << 32;
+        if (arch_irq_type == xAPIC_IRQ) {
+                u32 icr_low_value = icr_value & 0xffffffff;
+                u32 icr_high_value = (icr_value >> 32) & 0xffffffff;
+                xAPIC_WR_REG(ICR, KERNEL_VIRT_OFFSET, icr_low_value);
+                xAPIC_WR_REG(ICR_HIGH, KERNEL_VIRT_OFFSET, icr_high_value);
+        } else if (arch_irq_type == x2APIC_IRQ) {
+                x2APIC_WR_REG(ICR, KERNEL_VIRT_OFFSET, icr_value);
+        } else {
+                /*unexpected irq type*/
+                return;
+        }
+}

@@ -1,6 +1,5 @@
 #include <shampoos/time.h>
 #include <shampoos/percpu.h>
-#include <modules/log/log.h>
 volatile i64 jeffies = 0;
 u64 loop_per_jeffies;
 u64 udelay_max_loop;
@@ -32,8 +31,6 @@ __attribute__((optimize("O0"))) u64 timer_calibration()
                         lpj++;
                 }
         }
-
-        pr_info("lpj is %d\n", lpj / 25);
         return lpj / 25;
 }
 void shampoos_time_init()
@@ -43,7 +40,6 @@ void shampoos_time_init()
         loop_per_jeffies = timer_calibration();
         udelay_max_loop = (loop_per_jeffies * UDELAY_MAX * UDELAY_MUL)
                           >> UDELAY_SHIFT;
-        pr_info("udelay_max loop is %d\n", udelay_max_loop);
 }
 void shampoos_do_time_irq()
 {

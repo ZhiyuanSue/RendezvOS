@@ -73,6 +73,27 @@
 #define APIC_REG_ICR_HIGH \
         (0x31) /*only used in xAPIC, no 831H MSR reg in x2APIC*/
 
+#define APIC_ICR_VECTOR_MASK              (0xff)
+#define APIC_ICR_DEL_MODE_SHIFT           (8)
+#define APIC_ICR_DEL_MODE_FIXED           (0x0 << APIC_ICR_DEL_MODE_SHIFT)
+#define APIC_ICR_DEL_MODE_LOW_PRIO        (0x1 << APIC_ICR_DEL_MODE_SHIFT)
+#define APIC_ICR_DEL_MODE_SMI             (0x2 << APIC_ICR_DEL_MODE_SHIFT)
+#define APIC_ICR_DEL_MODE_NMI             (0x4 << APIC_ICR_DEL_MODE_SHIFT)
+#define APIC_ICR_DEL_MODE_INIT            (0x5 << APIC_ICR_DEL_MODE_SHIFT)
+#define APIC_ICR_DEL_MODE_START_UP        (0x6 << APIC_ICR_DEL_MODE_SHIFT)
+#define APIC_ICR_DEST_MODE                (0x1 << 11)
+#define APIC_ICR_DELIVERY_STATUS          (0x1 << 12)
+#define APIC_ICR_LEVEL                    (0x1 << 14)
+#define APIC_ICR_TRIGGER_MODE             (0x1 << 15)
+#define APIC_ICR_DEST_SH_SHIFT            (18)
+#define APIC_ICR_DEST_SH_NO               (0x0 << APIC_ICR_DEST_SH_SHIFT)
+#define APIC_ICR_DEST_SH_SELF             (0x1 << APIC_ICR_DEST_SH_SHIFT)
+#define APIC_ICR_DEST_SH_ALL_INCLUDE_SELF (0x2 << APIC_ICR_DEST_SH_SHIFT)
+#define APIC_ICR_DEST_SH_ALL_EXCLUDE_SELF (0x3 << APIC_ICR_DEST_SH_SHIFT)
+
+#define APIC_ICR_HIGH_DEST_FIELD_SHIFT (56)
+#define APIC_ICR_HIGH_DEST_FIELD_MASKT (0xff << APIC_ICR_HIGH_DEST_FIELD_SHIFT)
+
 #define APIC_REG_LVT_TIME   (0x32)
 #define APIC_REG_LVT_THER   (0x33)
 #define APIC_REG_LVT_PERF   (0x34)
@@ -169,5 +190,7 @@ tick_t APIC_GET_CUR_TIME();
 void software_enable_APIC(void);
 bool map_LAPIC(void);
 void APIC_EOI(void);
+void APIC_send_IPI(u32 dest_sh, u32 del_mode, u32 vector, u32 dest_mode,
+                   u32 level, u32 trigger_mode, u32 dest_field);
 
 #endif

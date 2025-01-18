@@ -7,4 +7,5 @@ void start_smp(void)
 #endif
 
         pr_info("start smp\n");
+        arch_start_smp();
 }
