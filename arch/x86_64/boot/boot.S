@@ -153,9 +153,6 @@ run_main:
 	hlt
 	jmp	hlt
 
-ap_entry:
-	jmp hlt
-
 
 
 /* some infomation under 32 bit*/	
