@@ -190,7 +190,7 @@ tick_t APIC_GET_CUR_TIME();
 void software_enable_APIC(void);
 bool map_LAPIC(void);
 void APIC_EOI(void);
-void APIC_send_IPI(u32 dest_sh, u32 del_mode, u32 vector, u32 dest_mode,
-                   u32 level, u32 trigger_mode, u32 dest_field);
+void APIC_send_IPI(u8 dest_field, u32 dest_sh, u32 trigger_mode, u32 level,
+                   u32 dest_mode, u32 del_mode, u32 vector);
 
 #endif

@@ -327,8 +327,8 @@ void APIC_EOI()
 {
         APIC_WR_REG(EOI, KERNEL_VIRT_OFFSET, 0);
 }
-void APIC_send_IPI(u32 dest_sh, u32 del_mode, u32 vector, u32 dest_mode,
-                   u32 level, u32 trigger_mode, u32 dest_field)
+void APIC_send_IPI(u8 dest_field, u32 dest_sh, u32 trigger_mode, u32 level,
+                   u32 dest_mode, u32 del_mode, u32 vector)
 {
         /*
                 here we must deal with the x2APIC case
@@ -337,8 +337,8 @@ void APIC_send_IPI(u32 dest_sh, u32 del_mode, u32 vector, u32 dest_mode,
         */
         u64 icr_value = 0;
         icr_value |= dest_sh | del_mode | vector | dest_mode | level
-                     | trigger_mode;
-        icr_value |= ((u64)dest_field) << 32;
+                     | trigger_mode
+                     | (((u64)dest_field) << APIC_ICR_HIGH_DEST_FIELD_SHIFT);
         if (arch_irq_type == xAPIC_IRQ) {
                 u32 icr_low_value = icr_value & 0xffffffff;
                 u32 icr_high_value = (icr_value >> 32) & 0xffffffff;

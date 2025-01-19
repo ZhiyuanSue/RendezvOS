@@ -6,30 +6,9 @@
 #include <modules/log/log.h>
 extern struct map_handler Map_Handler;
 struct acpi_table_fadt *fadt_table;
-struct acpi_table_madt *madt_table;
+extern struct acpi_table_madt *madt_table;
 static inline error_t parser_facp()
 {
-        return 0;
-}
-static inline error_t parser_apic()
-{
-        for_each_madt_ctrl_head(madt_table)
-        {
-                pr_info("curr ctrl head type %d\n", curr_ctrl_head->type);
-                switch (curr_ctrl_head->type) {
-                case madt_ctrl_type_Local_APIC:
-                        pr_info("Local APIC id is %d\n",
-                                ((struct madt_Local_APIC *)curr_ctrl_head)
-                                        ->_APIC_ID);
-                        break;
-                case madt_ctrl_type_IO_APIC:
-                        break;
-                case madt_ctrl_type_Source_Override:
-                        break;
-                default:
-                        break;
-                }
-        }
         return 0;
 }
 static inline error_t parser_acpi_tables(enum acpi_table_sig_enum sig_enum,
