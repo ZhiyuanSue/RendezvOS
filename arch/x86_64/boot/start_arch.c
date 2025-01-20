@@ -18,6 +18,7 @@
 
 extern u32 max_phy_addr_width;
 struct cpuinfo_x86 cpuinfo;
+int BSP_ID;
 extern struct nexus_node *nexus_root;
 extern struct pseudo_descriptor gdt_desc;
 extern union desc gdt[GDT_SIZE];
@@ -28,14 +29,11 @@ static void get_cpuinfo(void)
         u32 ecx;
         u32 edx;
 
-        eax = 0;
-        ebx = 0;
-        ecx = 0;
-        edx = 0;
         /*TODO :rewite the check of cpuid*/
         /*first get the number that cpuid support*/
         cpuid(0x0, &eax, &ebx, &ecx, &edx);
         cpuid(0x1, &eax, &ebx, &ecx, &edx);
+        cpuinfo.APICID = ebx >> 24;
         cpuinfo.feature_1 = ecx;
         cpuinfo.feature_2 = edx;
         /*detect invariant tsc*/
@@ -124,29 +122,29 @@ error_t prepare_arch(struct setup_info *arch_setup_info)
 error_t arch_parser_platform(struct setup_info *arch_setup_info)
 {
         get_cpuinfo();
+        BSP_ID = cpuinfo.APICID;
         error_t e = acpi_init(arch_setup_info);
 
         return e;
 }
 error_t start_arch(struct setup_info *arch_setup_info)
 {
-        int cpu_id = 0;
-        union desc *per_cpu_gdt = per_cpu(gdt, cpu_id);
+        union desc *per_cpu_gdt = per_cpu(gdt, BSP_ID);
         /*gdt*/
-        prepare_per_cpu_new_gdt(&per_cpu(gdt_desc, cpu_id), per_cpu_gdt);
-        lgdt(&per_cpu(gdt_desc, cpu_id));
+        prepare_per_cpu_new_gdt(&per_cpu(gdt_desc, BSP_ID), per_cpu_gdt);
+        lgdt(&per_cpu(gdt_desc, BSP_ID));
         /*tss*/
         prepare_per_cpu_tss_desc(&((per_cpu_gdt)[GDT_TSS_LOWER_INDEX]),
                                  &((per_cpu_gdt)[GDT_TSS_UPPER_INDEX]),
-                                 cpu_id);
+                                 BSP_ID);
         /*
          gs
          as it's per_cpu base
          only after we set the gs base can we use percpu
         */
-        wrmsr(MSR_GS_BASE, __per_cpu_offset[cpu_id]);
+        wrmsr(MSR_GS_BASE, __per_cpu_offset[BSP_ID]);
         /*table_indicator = 1  will cause #GP*/
-        prepare_per_cpu_tss(per_cpu(nexus_root, cpu_id));
+        prepare_per_cpu_tss(per_cpu(nexus_root, BSP_ID));
 
         init_interrupt();
         init_irq();

@@ -18,13 +18,14 @@ error_t parser_apic()
                 pr_info("curr ctrl head type %d\n", curr_ctrl_head->type);
                 switch (curr_ctrl_head->type) {
                 case madt_ctrl_type_Local_APIC:
-                        pr_info("Local APIC id is %d\n",
+                        int cpu_apic_id =
                                 ((struct madt_Local_APIC *)curr_ctrl_head)
-                                        ->_APIC_ID);
-                        NR_CPU = MIN(NR_CPU + 1, SHAMPOOS_MAX_CPU_NUMBER);
-                        per_cpu(CPU_STATE,
-                                ((struct madt_Local_APIC *)curr_ctrl_head)
-                                        ->_APIC_ID) = cpu_disable;
+                                        ->_APIC_ID;
+                        pr_info("Local APIC id is %d\n", cpu_apic_id);
+                        if (cpu_apic_id < SHAMPOOS_MAX_CPU_NUMBER) {
+                                NR_CPU++;
+                                per_cpu(CPU_STATE, cpu_apic_id) = cpu_disable;
+                        }
                         break;
                 case madt_ctrl_type_IO_APIC:
                         break;

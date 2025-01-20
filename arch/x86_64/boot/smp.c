@@ -5,6 +5,7 @@
 extern char ap_start;
 extern char ap_start_end;
 extern int NR_CPU;
+extern int BSP_ID;
 extern enum cpu_status CPU_STATE;
 static void copy_ap_start_code()
 {
@@ -44,7 +45,7 @@ static void send_sipi(int cpu_id, paddr ap_start_addr)
 void arch_start_smp(void)
 {
         if (NR_CPU > 1) {
-                per_cpu(CPU_STATE, 0) = cpu_enable;
+                per_cpu(CPU_STATE, BSP_ID) = cpu_enable;
                 /*
                     if we only have one cpu,no need for this,
                     we only have one single cpu and we needn't mark that this
@@ -69,7 +70,8 @@ void arch_start_smp(void)
                         /*TODO: ap should fill in the cpu_enable, and bsp should
                          * wait*/
                 }
-
-                clean_ap_start_code();
+                /*TODO:if all ap is enabled, then we should clean ap start
+                 * code*/
+                // clean_ap_start_code();
         }
 }

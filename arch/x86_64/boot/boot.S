@@ -11,6 +11,35 @@
 #include	<arch/x86_64/msr.h>
 /* some definations */
 
+/* some macro */
+.macro load_kernel_page_table
+	movl	$(L0_table-kernel_virt_offset),%eax
+	movl	%eax,%cr3
+.endm
+
+.macro enable_pae
+	/*enable_pae*/
+	movl	%cr4,%eax
+	orl		$(CR4_PGE | CR4_PAE),%eax
+	movl	%eax,%cr4
+.endm
+
+.macro enable_lme
+	/*enable_lme*/
+	movl	$IA32_EFER_addr,%ecx
+	rdmsr
+	orl	$(IA32_EFER_SCE | IA32_EFER_LMR | IA32_EFER_NXE),%eax
+	/*IA32_EFER.SCE[bit0] and IA32_EFER.LMR[bit8] and IA32_EFER.NXE[bit11] should be set*/
+	wrmsr
+.endm
+
+.macro enable_pg
+	/*enable_pg*/
+	movl	%cr0,%eax
+	orl		$CR0_PG,%eax
+	movl	%eax,%cr0
+.endm
+
 /*code under 32bit*/
 	.section .boot
 	.global _start
@@ -99,28 +128,12 @@ change_kernel_page_table:
 	addl	$align_2m,%eax
 	cmp	%eax,%ebx
 	jge	change_kernel_page_table_loop
-load_kernel_page_table:
-	movl	$(L0_table-kernel_virt_offset),%eax
-	movl	%eax,%cr3
 
-enable_pae:
-	/*enable_pae*/
-	movl	%cr4,%eax
-	orl		$(CR4_PGE | CR4_PAE),%eax
-	movl	%eax,%cr4
-enable_lme:
-	/*enable_lme*/
-	movl	$IA32_EFER_addr,%ecx
-	rdmsr
-	orl	$(IA32_EFER_SCE | IA32_EFER_LMR | IA32_EFER_NXE),%eax
-	/*IA32_EFER.SCE[bit0] and IA32_EFER.LMR[bit8] and IA32_EFER.NXE[bit11] should be set*/
-	wrmsr
+	load_kernel_page_table
+	enable_pae
+	enable_lme
+	enable_pg
 
-enable_pg:
-	/*enable_pg*/
-	movl	%cr0,%eax
-	orl		$CR0_PG,%eax
-	movl	%eax,%cr0
 long_jmp_to_64:
 	lgdtl	tmp_gdt_desc-kernel_virt_offset
 	ljmp	$0x08,$(x86_64_entry-kernel_virt_offset)
@@ -152,6 +165,30 @@ run_main:
 	call	cmain
 	hlt
 	jmp	hlt
+
+	.section .boot.ap_code
+	.p2align 12
+	.global ap_start
+.code32
+ap_start:
+	load_kernel_page_table
+	enable_pae
+	enable_lme
+	enable_pg
+
+ap_long_jmp_to_64:
+	lgdtl	tmp_gdt_desc-kernel_virt_offset
+	ljmp	$0x08,$(ap_x86_64_entry-kernel_virt_offset)
+	jmp 	hlt
+
+    .p2align 3
+.code64
+ap_x86_64_entry:
+    jmp ap_x86_64_entry
+
+	.global ap_start_end
+ap_start_end:
+	hlt
 
 
 
