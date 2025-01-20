@@ -7,6 +7,7 @@ extern char ap_start_end;
 extern int NR_CPU;
 extern int BSP_ID;
 extern enum cpu_status CPU_STATE;
+extern void clean_tmp_page_table();
 static void copy_ap_start_code()
 {
         char* dest_ap_start_ptr =
@@ -73,5 +74,6 @@ void arch_start_smp(void)
                 /*TODO:if all ap is enabled, then we should clean ap start
                  * code*/
                 // clean_ap_start_code();
+                // clean_tmp_page_table();
         }
 }

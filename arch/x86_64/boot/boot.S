@@ -6,6 +6,7 @@
 #define	align_2m	0x200000
 #define	align_2m_minus_1	0x1fffff
 #define	align_bit32_not_2m_minus_1	0xffe00000
+#define ap_phy_addr 0x1000
 #include	<arch/x86_64/sys_ctrl_def.h>
 #include	<arch/x86_64/mm/page_table_def.h>
 #include	<arch/x86_64/msr.h>
@@ -129,9 +130,9 @@ change_kernel_page_table:
 	cmp	%eax,%ebx
 	jge	change_kernel_page_table_loop
 
-	load_kernel_page_table
 	enable_pae
 	enable_lme
+	load_kernel_page_table
 	enable_pg
 
 long_jmp_to_64:
@@ -158,28 +159,65 @@ set_segments:
 	movw	%ax,%gs
 set_new_stack:
 	movabs	$(_boot_stack_top),%rsp
-clean_tmp_page_table:
-	movabs	%rax,(L0_table)
 run_main:
 	movabs	$(setup_info),%rdi
 	call	cmain
 	hlt
 	jmp	hlt
 
+	.global clean_tmp_page_table
+clean_tmp_page_table:
+	movabs	%rax,(L0_table)
+	ret
+
 	.section .boot.ap_code
 	.p2align 12
 	.global ap_start
-.code32
+.code16
 ap_start:
-	load_kernel_page_table
+	wbinvd
+
+	xor %ax,%ax
+	mov %ax,%ds
+	mov %ax,%ss
+	mov %ax,%fs
+	mov %ax,%gs
+
+	lgdtl	ap_tmp_gdt_desc - ap_start + ap_phy_addr
+	movl	%cr0,%eax
+	orl		$CR0_PE,%eax
+	movl	%eax,%cr0
+	ljmp	$0x08,$(ap_start_32 - ap_start + ap_phy_addr)
+
+	.p2align 4
+.code32
+ap_start_32:
 	enable_pae
 	enable_lme
+	load_kernel_page_table
 	enable_pg
 
 ap_long_jmp_to_64:
-	lgdtl	tmp_gdt_desc-kernel_virt_offset
-	ljmp	$0x08,$(ap_x86_64_entry-kernel_virt_offset)
+	lgdtl	tmp_gdt_desc - kernel_virt_offset
+	ljmp	$0x08,$(ap_x86_64_entry - kernel_virt_offset)
 	jmp 	hlt
+
+ap_tmp_gdt:
+	.quad 0x0	# 0x00: null
+	.quad ((1<<(32+12))	| (1<<(32+23)) | (1<<(32+22)) | (1<<(32+15)) | (1<<(32+11)) | (1<<(32+10)) | (1<<(32+9)) | (0xf<<(32+16) | (0xffff))) 
+	/*
+		bit 44 means a code or data segment,and if it's a system segment,must be cleared
+		bit 54 means a 32bit mode
+		bit 55 means the granularity
+		bit 43 means a code segment
+		bit 42 means a coherant segment
+		bit 41 means R/W
+		bit 47 means P(present)
+		DPL=0
+	*/
+ap_tmp_gdt_desc:
+	.short	( . - ap_tmp_gdt - 1)
+	.quad	ap_tmp_gdt - ap_start + ap_phy_addr
 
     .p2align 3
 .code64
