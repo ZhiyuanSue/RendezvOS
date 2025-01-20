@@ -7,11 +7,6 @@
 /*
     we put the ap entry code at 0x1000 when we try to mp set up
 */
-enum cpu_status {
-        no_cpu, /*no this cpu exist*/
-        cpu_disable, /*this cpu is exist but not enable*/
-        cpu_enable, /*cpu is exist and enable*/
-};
 
-void arch_start_smp(void);
+void arch_start_smp(struct setup_info *arch_setup_info);
 #endif

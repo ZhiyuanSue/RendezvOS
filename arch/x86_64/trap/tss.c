@@ -1,7 +1,6 @@
 #include <arch/x86_64/sys_ctrl.h>
 #include <shampoos/percpu.h>
 #include <common/mm.h>
-#include <modules/log/log.h>
 #include <arch/x86_64/sys_ctrl_def.h>
 
 DEFINE_PER_CPU(struct TSS, cpu_tss);

@@ -8,6 +8,12 @@
 #else
 #include <arch/x86_64/smp.h>
 #endif
-void start_smp(void);
+enum cpu_status {
+        no_cpu, /*no this cpu exist*/
+        cpu_disable, /*this cpu is exist but not enable*/
+        cpu_enable, /*cpu is exist and enable*/
+};
+
+void start_smp(struct setup_info *arch_setup_info);
 
 #endif

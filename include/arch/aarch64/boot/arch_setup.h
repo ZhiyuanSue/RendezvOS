@@ -27,6 +27,7 @@ struct setup_info {
         u64 map_end_virt_addr; /*0x28*/
         u64 boot_uart_base_addr; /*0x30*/
         u64 boot_dtb_header_base_addr; /*0x38*/
+        u64 cpu_id;     /*0x40*/
 };
 
 error_t prepare_arch(struct setup_info *arch_setup_info);

@@ -222,7 +222,21 @@ ap_tmp_gdt_desc:
     .p2align 3
 .code64
 ap_x86_64_entry:
-    jmp ap_x86_64_entry
+	movabs	$(ap_set_segments),%rax
+	jmp	*%rax
+ap_set_segments:
+	xor	%rax,%rax
+	movw	%ax,%ds
+	movw	%ax,%ss
+	movw	%ax,%fs
+	movw	%ax,%gs
+ap_set_new_stack:
+	movabs	$(ap_boot_stack_ptr),%rax;
+	mov		(%rax),%rsp
+ap_run_main:
+	movabs	$(setup_info),%rdi
+	call	start_secondary_cpu
+	jmp hlt
 
 	.global ap_start_end
 ap_start_end:
@@ -232,7 +246,7 @@ ap_start_end:
 
 /* some infomation under 32 bit*/	
 	.section .boot.data
-	.p2align 2
+	.p2align 3
 	.global setup_info
 setup_info:
 	.long 0	/* multiboot magic */
@@ -240,6 +254,10 @@ setup_info:
 	.long 0	/* phy addr width */
 	.long 0	/* linear addr width*/
 	.quad log_buffer /*log buffer position*/
+	.quad 0	/*rsdp ptr*/
+ap_boot_stack_ptr:
+    .quad 0 /*ap_boot_stack_ptr*/;
+	.quad 0 /*cpu_id*/
 multiboot_error_magic:
 	.asciz "ERROR MAGIC NUM"
 multiboot_hello:

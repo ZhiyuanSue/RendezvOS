@@ -1,6 +1,6 @@
 #include <modules/acpi/acpi.h>
 #include <modules/log/log.h>
-#include <arch/x86_64/smp.h>
+#include <shampoos/smp.h>
 #include <common/stddef.h>
 #include <shampoos/percpu.h>
 struct acpi_table_madt *madt_table;

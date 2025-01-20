@@ -1,4 +1,5 @@
 #include <arch/x86_64/smp.h>
+#include <shampoos/smp.h>
 #include <shampoos/time.h>
 #include <modules/log/log.h>
 #include <common/string.h>
@@ -7,6 +8,7 @@ extern char ap_start_end;
 extern int NR_CPU;
 extern int BSP_ID;
 extern enum cpu_status CPU_STATE;
+extern struct nexus_node* nexus_root;
 extern void clean_tmp_page_table();
 static void copy_ap_start_code()
 {
@@ -43,7 +45,7 @@ static void send_sipi(int cpu_id, paddr ap_start_addr)
                       PPN(ap_start_addr));
 }
 
-void arch_start_smp(void)
+void arch_start_smp(struct setup_info* arch_setup_info)
 {
         if (NR_CPU > 1) {
                 per_cpu(CPU_STATE, BSP_ID) = cpu_enable;
@@ -66,14 +68,34 @@ void arch_start_smp(void)
 
                 for (int i = 0; i < SHAMPOOS_MAX_CPU_NUMBER; i++) {
                         if (per_cpu(CPU_STATE, i) == cpu_disable) {
+                                vaddr stack_top =
+                                        (vaddr)get_free_page(2,
+                                                             ZONE_NORMAL,
+                                                             KERNEL_VIRT_OFFSET,
+                                                             0,
+                                                             per_cpu(nexus_root,
+                                                                     BSP_ID))
+                                        + 2 * PAGE_SIZE;
+                                arch_setup_info->ap_boot_stack_ptr = stack_top;
+                                arch_setup_info->cpu_id = i;
                                 send_sipi(i, _SHAMPOOS_X86_64_AP_PHY_ADDR_);
+                                for (int j = 0;
+                                     j < 10
+                                     && per_cpu(CPU_STATE, i) == cpu_disable;
+                                     j++) {
+                                        mdelay(100);
+                                }
+                                if (per_cpu(CPU_STATE, i) == cpu_disable) {
+                                        pr_info("[ ERROR ]cpu %d cannot enable after 1s\n",
+                                                i);
+                                }
                         }
-                        /*TODO: ap should fill in the cpu_enable, and bsp should
-                         * wait*/
                 }
-                /*TODO:if all ap is enabled, then we should clean ap start
+                /* if all ap is enabled, then we should clean ap start
                  * code*/
-                // clean_ap_start_code();
-                // clean_tmp_page_table();
+                clean_ap_start_code();
         }
+        /*if no ap is used, we also need to clean the low address of tmp
+         * page table*/
+        clean_tmp_page_table();
 }

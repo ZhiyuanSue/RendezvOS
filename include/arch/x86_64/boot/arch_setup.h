@@ -14,6 +14,8 @@ struct setup_info {
         u32 vir_addr_width;
         u64 log_buffer_addr;
         vaddr rsdp_addr;
+        vaddr ap_boot_stack_ptr;
+        u64 cpu_id;
 } __attribute__((packed));
 
 static inline struct multiboot_info *

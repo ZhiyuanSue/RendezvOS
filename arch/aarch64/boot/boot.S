@@ -298,6 +298,7 @@ setup_info:
 	.quad	0	/*x3,reserved*/
 	.quad	log_buffer
 	.quad	0	/*the map address end*/
+	.quad	0	/*cpu_id*/
 
 	.section .boot.page
 	.p2align	12	/*2^12=4K*/

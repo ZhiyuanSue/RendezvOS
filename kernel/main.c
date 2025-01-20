@@ -36,7 +36,7 @@ void cmain(struct setup_info *arch_setup_info)
                 pr_error("[ERROR] start arch\n");
                 return;
         }
-        start_smp();
+        start_smp(arch_setup_info);
         test();
         arch_shutdown();
 }
