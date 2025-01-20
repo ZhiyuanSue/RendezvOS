@@ -19,6 +19,11 @@ BSP在IA32_APIC_BASE MSR寄存器的bit8里面表明
 3/SIPI本身传递的启动向量的位置，必须是在1M以下的，但是，shampoos本身的代码都在1M以上的位置
 而且启动的时候是实模式，不太可能直接跳转到1M以上的位置，所以在shampoos中需要进行一次内存拷贝，将AP的启动代码拷贝到具体位置（我这里设置了0x1000这个位置）并不超过一页。
 
+对于数据的传递，在x86中我需要传递两个参数，stack top和cpuid
+我选择在setup info那里增加两个字段
+并且使用逐个启动的方式
+而bsp则等待在那里，直到所有的ap都启动。
+
 ## aarch64的pcsi
 在aarch64的启动中，有spin-table和pcsi两种
 但是很显然，我的qemu里面dts打印出来发现他支持pcsi
