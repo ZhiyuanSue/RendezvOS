@@ -14,3 +14,4 @@ endif
 
 all:init
 	@$(MAKE) -C $(module) all
+	@rm -f $(shell find . -mindepth 2 -type f -name 'Makefile' )

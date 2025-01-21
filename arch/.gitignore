@@ -1,0 +1,4 @@
+./aarch64/**/Makefile
+./loongarch/**/Makefile
+./riscv64/**/Makefile
+./x86_64/**/Makefile

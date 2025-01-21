@@ -68,6 +68,7 @@ have_config:
 		then echo "No config file,please use make config first" \
 		& exit 2; \
 		fi
+	@python3 $(SCRIPT_MAKE_DIR)/gen_makefile.py $(ARCH_DIR) $(KERNEL_DIR) $(MODULES_DIR)
 
 run:qemu
 
