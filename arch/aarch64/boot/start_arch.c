@@ -64,9 +64,8 @@ error_t arch_parser_platform(struct setup_info *arch_setup_info)
 {
         return 0;
 }
-error_t start_arch(struct setup_info *arch_setup_info)
+error_t start_arch(int cpu_id)
 {
-        int cpu_id = 0;
         init_interrupt();
         /*write in the cpuid*/
         msr("TPIDR_EL1", __per_cpu_offset[cpu_id]);

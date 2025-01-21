@@ -14,4 +14,5 @@ struct acpi_table_rsdp* acpi_probe_rsdp(vaddr search_start_vaddr);
 bool acpi_table_sig_check(char* acpi_table_sig_ptr, char* sig_chars);
 enum acpi_table_sig_enum
 get_acpi_table_type_from_sig(struct acpi_table_head* acpi_head);
+error_t acpi_init(vaddr rsdp_addr);
 #endif

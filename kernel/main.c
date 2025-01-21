@@ -5,6 +5,7 @@
 extern int log_level;
 extern char _bss_start, _bss_end;
 extern char _end;
+extern int BSP_ID;
 
 void cmain(struct setup_info *arch_setup_info)
 {
@@ -21,8 +22,16 @@ void cmain(struct setup_info *arch_setup_info)
                 pr_error("[ERROR] prapare arch\n");
                 return;
         }
-        if (mm_init(arch_setup_info)) {
-                pr_error("[ERROR] mm init\n");
+        if (phy_mm_init(arch_setup_info)) {
+                pr_error("[ERROR] phy mm init error\n");
+                return;
+        }
+        if (arch_cpu_info(arch_setup_info)) {
+                pr_error("[ERROR] arch cpu info error\n");
+                return;
+        }
+        if (virt_mm_init(BSP_ID)) {
+                pr_error("[ERROR] virt mm init error\n");
                 return;
         }
         if (arch_parser_platform(arch_setup_info)) {
@@ -32,7 +41,7 @@ void cmain(struct setup_info *arch_setup_info)
         /*TODO:after we init the pmm module, we can alloc some pages for
          * stack,and no more boot stack：in x86,please use LSS, see
          * manual 6.8.3*/
-        if (start_arch(arch_setup_info)) {
+        if (start_arch(BSP_ID)) {
                 pr_error("[ERROR] start arch\n");
                 return;
         }

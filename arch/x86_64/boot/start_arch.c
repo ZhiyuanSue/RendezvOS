@@ -12,6 +12,7 @@
 #include <shampoos/percpu.h>
 #include <modules/driver/timer/8254.h>
 #include <modules/log/log.h>
+#include <modules/acpi/acpi.h>
 #include <shampoos/error.h>
 #include <shampoos/mm/vmm.h>
 #include <shampoos/mm/nexus.h>
@@ -119,32 +120,36 @@ error_t prepare_arch(struct setup_info *arch_setup_info)
 
         return (0);
 }
-error_t arch_parser_platform(struct setup_info *arch_setup_info)
+error_t arch_cpu_info(struct setup_info *arch_setup_info)
 {
         get_cpuinfo();
         BSP_ID = cpuinfo.APICID;
-        error_t e = acpi_init(arch_setup_info);
+        return 0;
+}
+error_t arch_parser_platform(struct setup_info *arch_setup_info)
+{
+        error_t e = acpi_init(arch_setup_info->rsdp_addr);
 
         return e;
 }
-error_t start_arch(struct setup_info *arch_setup_info)
+error_t start_arch(int cpu_id)
 {
-        union desc *per_cpu_gdt = per_cpu(gdt, BSP_ID);
+        union desc *per_cpu_gdt = per_cpu(gdt, cpu_id);
         /*gdt*/
-        prepare_per_cpu_new_gdt(&per_cpu(gdt_desc, BSP_ID), per_cpu_gdt);
-        lgdt(&per_cpu(gdt_desc, BSP_ID));
+        prepare_per_cpu_new_gdt(&per_cpu(gdt_desc, cpu_id), per_cpu_gdt);
+        lgdt(&per_cpu(gdt_desc, cpu_id));
         /*tss*/
         prepare_per_cpu_tss_desc(&((per_cpu_gdt)[GDT_TSS_LOWER_INDEX]),
                                  &((per_cpu_gdt)[GDT_TSS_UPPER_INDEX]),
-                                 BSP_ID);
+                                 cpu_id);
         /*
          gs
          as it's per_cpu base
          only after we set the gs base can we use percpu
         */
-        wrmsr(MSR_GS_BASE, __per_cpu_offset[BSP_ID]);
+        wrmsr(MSR_GS_BASE, __per_cpu_offset[cpu_id]);
         /*table_indicator = 1  will cause #GP*/
-        prepare_per_cpu_tss(per_cpu(nexus_root, BSP_ID));
+        prepare_per_cpu_tss(per_cpu(nexus_root, cpu_id));
 
         init_interrupt();
         init_irq();

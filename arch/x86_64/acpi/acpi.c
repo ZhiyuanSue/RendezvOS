@@ -1,4 +1,3 @@
-#include <arch/x86_64/boot/arch_setup.h>
 #include <modules/acpi/acpi.h>
 #include <shampoos/mm/vmm.h>
 #include <shampoos/mm/map_handler.h>
@@ -28,10 +27,10 @@ static inline error_t parser_acpi_tables(enum acpi_table_sig_enum sig_enum,
                 return -EPERM;
         }
 }
-error_t acpi_init(struct setup_info *arch_setup_info)
+error_t acpi_init(vaddr rsdp_addr)
 {
         struct acpi_table_rsdp *rsdp_table =
-                (struct acpi_table_rsdp *)(arch_setup_info->rsdp_addr);
+                (struct acpi_table_rsdp *)(rsdp_addr);
         if (rsdp_table->revision == 0) {
                 // we must use cpu 0 to map
                 paddr rsdt_page =

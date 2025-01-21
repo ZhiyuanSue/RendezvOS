@@ -20,6 +20,10 @@ void start_secondary_cpu(struct setup_info *arch_setup_info)
         pr_info("[ CPU%d ]", current_cpu_id);
         hello_world();
 #endif
+        if (virt_mm_init(current_cpu_id)) {
+                pr_error("[ERROR] virt mm init error\n");
+                return;
+        }
         per_cpu(CPU_STATE, current_cpu_id) = cpu_enable;
         cpu_idle();
 }
