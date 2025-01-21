@@ -1,5 +1,5 @@
 include $(SCRIPT_MAKE_DIR)/build.mk
-include ./Makefile.env
+-include ./Makefile.env
 module	:= x86_64
 
 ifeq ($(ARCH), x86_64)

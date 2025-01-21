@@ -87,4 +87,5 @@ mrproper: clean
 clean:	init
 	@echo "RM	OBJS"
 	@-rm -f $(shell find $(BUILD) -name *.o)
+	@-rm -f $(shell find $(BUILD) -name *.d)
 	@-rm -f ./qemu.log
