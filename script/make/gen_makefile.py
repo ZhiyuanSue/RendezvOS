@@ -2,21 +2,19 @@ import sys
 import os
 from pathlib import Path
 
-arch_string="include $(SCRIPT_MAKE_DIR)/build.mk\nmodules= $(shell find ./* -maxdepth 0 -type d)\n\nall: init $(modules) ${OBJECTS}\n\t@for mod in $(modules); do $(MAKE) -C $$mod all; done\n\n-include ${BUILD}/*.d\n${BUILD}/%.o: ./%.c $(modules)\n\t@echo \"CC	\"$@\n\t@$(CC) $(CFLAGS) -o $@ -c $< -MD -MF ${BUILD}/$*.d -MP\n"
+makefile_string="include $(SCRIPT_MAKE_DIR)/build.mk\n-include ./Makefile.env\nmodules= $(shell find ./* -maxdepth 0 -type d)\n\nall: init $(modules) ${OBJECTS}\n\t@for mod in $(modules); do $(MAKE) -C $$mod all; done\n\n-include ${BUILD}/*.d\n${BUILD}/%.o: ./%.c $(modules)\n\t@echo \"CC	\"$@\n\t@$(CC) $(CFLAGS) -o $@ -c $< -MD -MF ${BUILD}/$*.d -MP\n"
 
-modules_string="include $(SCRIPT_MAKE_DIR)/build.mk\ninclude ./Makefile.env\nmodules= $(shell find ./* -maxdepth 0 -type d)\n\nall: init $(modules) ${OBJECTS}\n\t@for mod in $(modules); do $(MAKE) -C $$mod all; done\n\n-include ${BUILD}/*.d\n${BUILD}/%.o: ./%.c $(modules)\n\t@echo \"CC	\"$@\n\t@$(CC) $(CFLAGS) -o $@ -c $< -MD -MF ${BUILD}/$*.d -MP\n"
-
-def gen_makefile_arch(arch_dir):
-    arch_dir = Path(arch_dir)
-    for item in arch_dir.iterdir():
+def gen_makefile(target_dir):
+    target_dir = Path(target_dir)
+    for item in target_dir.iterdir():
         if item.is_dir():
             path_string = f"{item}"
-            path_string = os.path.join(path_string,"Makefile")
-            makefile_file=open(path_string,"w")
-            makefile_file.write(arch_string)
+            makefile_file_path = os.path.join(path_string,"Makefile")
+            makefile_file=open(makefile_file_path,"w")
+            makefile_file.write(makefile_string)
             makefile_file.close()
             # Recursively traverse subdirectories
-            gen_makefile_arch(item)
+            gen_makefile(item)
         elif item.is_file():
             path_string = f"{item}"
             dir_path = os.path.dirname(path_string)
@@ -28,16 +26,14 @@ def gen_makefile_arch(arch_dir):
                 makefile_file=open(makefile_file_path,"a")
                 makefile_file.write(append_string)
                 makefile_file.close()
-                pass
-
 
 if __name__ =='__main__':
     print("GEN\tMakefile")
     arch_dir=sys.argv[1]
-    gen_makefile_arch(arch_dir)
+    gen_makefile(arch_dir)
 
     kernel_dir=sys.argv[2]
-    print(kernel_dir)
+    gen_makefile(kernel_dir)
 
     modules_dir=sys.argv[3]
-    print(modules_dir)
+    gen_makefile(modules_dir)

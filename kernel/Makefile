@@ -4,6 +4,7 @@ modules= $(shell find ./* -maxdepth 0 -type d)
 
 all: init $(modules) ${OBJECTS}
 	@for mod in $(modules); do $(MAKE) -C $$mod all; done
+	@rm -f $(shell find . -mindepth 2 -type f -name 'Makefile' )
 
 -include ${BUILD}/*.d
 ${BUILD}/%.o: ./%.c $(modules)

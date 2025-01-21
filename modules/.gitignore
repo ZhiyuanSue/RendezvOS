@@ -1,0 +1,6 @@
+./acpi/**/Makefile
+./driver/**/Makefile
+./dtb/**/Makefile
+./helloworld/**/Makefile
+./log/**/Makefile
+./test/**/Makefile
