@@ -88,7 +88,6 @@ struct device_node *build_device_tree(struct allocator *malloc,
 
         curr_node = malloc->m_alloc(malloc, sizeof(struct device_node));
         curr_node->name = ch;
-        curr_node->type = NULL;
         curr_node->property = NULL;
         curr_node->parent = parent;
         curr_node->child = NULL;
@@ -104,26 +103,33 @@ struct device_node *build_device_tree(struct allocator *malloc,
                 enum property_type_enum p_type =
                         get_property_type(property_name);
                 if (p_type) {
-                        head_property = curr_property;
                         curr_property = malloc->m_alloc(
                                 malloc, sizeof(struct property));
 
                         curr_property->name = (char *)property_name;
                         curr_property->data = prop->data;
-                        curr_property->len = prop->len;
+                        curr_property->len = SWAP_ENDIANNESS_32(prop->len);
 
-                        curr_property->next = head_property;
+                        if (!curr_node->property) {
+                                curr_node->property = curr_property;
+                        } else {
+                                head_property->next = curr_property;
+                        }
+                        head_property = curr_property;
                 }
         }
-        curr_node->property = curr_property;
+
         fdt_for_each_subnode(node, fdt, offset)
         {
-                head_child_node = curr_child_node;
                 curr_child_node = build_device_tree(
                         malloc, curr_node, fdt, node, depth + 1);
-                curr_child_node->sibling = head_child_node;
+                if (!curr_node->child) {
+                        curr_node->child = curr_child_node;
+                } else {
+                        head_child_node->sibling = curr_child_node;
+                }
+                head_child_node = curr_child_node;
         }
-        curr_node->child = curr_child_node;
         return curr_node;
 }
 
@@ -135,7 +141,7 @@ error_t arch_parser_platform(struct setup_info *arch_setup_info)
                                               ->boot_dtb_header_base_addr);
         device_root =
                 build_device_tree(malloc, NULL, (void *)dtb_header_ptr, 0, 0);
-        // print_device_tree(device_root);
+        print_device_tree(device_root);
         return 0;
 }
 error_t start_arch(int cpu_id)

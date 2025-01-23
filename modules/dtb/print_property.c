@@ -130,8 +130,7 @@ void print_property_value(const char *property_name, void *data, uint32_t len)
 
         p_type = get_property_type(property_name);
         p_value = property_types[p_type].value_enum[0];
-        print_property_value_list[p_value](
-                p_type, data, SWAP_ENDIANNESS_32(len));
+        print_property_value_list[p_value](p_type, data, len);
 }
 void parse_print_dtb(void *fdt, int offset, int depth)
 {
@@ -152,7 +151,9 @@ void parse_print_dtb(void *fdt, int offset, int depth)
                 property_name =
                         fdt_string(fdt, SWAP_ENDIANNESS_32(prop->nameoff));
                 print_property("%s\t:\t", property_name);
-                print_property_value(property_name, prop->data, prop->len);
+                print_property_value(property_name,
+                                     prop->data,
+                                     SWAP_ENDIANNESS_32(prop->len));
                 print_property("\n");
         }
         fdt_for_each_subnode(node, fdt, offset)

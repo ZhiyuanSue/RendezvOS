@@ -13,21 +13,18 @@
 #include <common/types.h>
 struct device_node {
         char* name;
-        char* type;
         struct property* property;
         struct { /*for the tree*/
                 struct device_node* parent;
                 struct device_node* child;
                 struct device_node* sibling;
         };
-
 } __attribute__((packed));
 
 struct property {
         char* name;
         void* data;
         int len;
-
         struct property* next;
 } __attribute__((packed));
 
