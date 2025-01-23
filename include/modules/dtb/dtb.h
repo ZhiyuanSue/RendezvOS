@@ -4,6 +4,7 @@
 #include "libfdt.h"
 #include "print_property.h"
 #include "property.h"
+#include "dev_tree.h"
 #include <common/endianness.h>
 #include <common/limits.h>
 #include <common/string.h>

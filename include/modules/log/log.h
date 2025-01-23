@@ -88,4 +88,7 @@ void printk(const char *format, int log_level, ...);
         }
 #define print(format, ...) printk(format, LOG_OFF, ##__VA_ARGS__)
 
+#define rep_print(n, ch, pr)        \
+        for (int i = 0; i < n; i++) \
+        pr("%c", ch)
 #endif

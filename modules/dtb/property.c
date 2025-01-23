@@ -64,8 +64,8 @@ enum property_type_enum get_property_type(const char *property_name)
                 if (!strcmp(property_types[i].property_string, property_name))
                         return (i);
         }
+        int len_src = strlen(property_name);
         for (; i < PROPERTY_TYPE_OTHER; ++i) {
-                int len_src = strlen(property_name);
                 int len_cmp = strlen(property_types[i].property_string);
                 if (len_cmp > len_src)
                         continue;

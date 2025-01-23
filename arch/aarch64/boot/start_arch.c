@@ -2,9 +2,10 @@
 #include <arch/aarch64/mm/page_table_def.h>
 #include <arch/aarch64/mm/vmm.h>
 #include <arch/aarch64/power_ctrl.h>
-#include <arch/x86_64/trap/trap.h>
+#include <arch/aarch64/trap/trap.h>
 #include <common/endianness.h>
 #include <shampoos/mm/vmm.h>
+#include <shampoos/mm/spmalloc.h>
 #include <common/mm.h>
 #include <modules/dtb/dtb.h>
 #include <modules/dtb/print_property.h>
@@ -14,6 +15,8 @@
 
 extern u64 L2_table;
 int BSP_ID;
+extern struct allocator *kallocator;
+struct device_node *device_root;
 
 static void map_dtb(struct setup_info *arch_setup_info)
 {
@@ -54,7 +57,7 @@ error_t prepare_arch(struct setup_info *arch_setup_info)
                 pr_info("check fdt header fail\n");
                 goto prepare_arch_error;
         }
-        // parse_print_dtb(dtb_header_ptr,0,0);
+        // parse_print_dtb(dtb_header_ptr, 0, 0);
 
         return (0);
 prepare_arch_error:
@@ -62,11 +65,77 @@ prepare_arch_error:
 }
 error_t arch_cpu_info(struct setup_info *arch_setup_info)
 {
+        BSP_ID = 0;
         return 0;
+}
+struct device_node *build_device_tree(struct allocator *malloc,
+                                      struct device_node *parent, void *fdt,
+                                      int offset, int depth)
+{
+        char *ch;
+        struct fdt_property *prop;
+        const char *property_name;
+
+        struct device_node *curr_node = NULL;
+        struct device_node *curr_child_node = NULL;
+        struct device_node *head_child_node = NULL;
+
+        struct property *curr_property = NULL;
+        struct property *head_property = NULL;
+
+        int property, node;
+        ch = (char *)fdt + fdt_off_dt_struct(fdt) + offset + FDT_TAGSIZE;
+
+        curr_node = malloc->m_alloc(malloc, sizeof(struct device_node));
+        curr_node->name = ch;
+        curr_node->type = NULL;
+        curr_node->property = NULL;
+        curr_node->parent = parent;
+        curr_node->child = NULL;
+        curr_node->sibling = NULL;
+
+        fdt_for_each_property_offset(property, fdt, offset)
+        {
+                prop = (struct fdt_property *)fdt_offset_ptr(
+                        fdt, property, FDT_TAGSIZE);
+                property_name = (char *)fdt_string(
+                        fdt, SWAP_ENDIANNESS_32(prop->nameoff));
+
+                enum property_type_enum p_type =
+                        get_property_type(property_name);
+                if (p_type) {
+                        head_property = curr_property;
+                        curr_property = malloc->m_alloc(
+                                malloc, sizeof(struct property));
+
+                        curr_property->name = (char *)property_name;
+                        curr_property->data = prop->data;
+                        curr_property->len = prop->len;
+
+                        curr_property->next = head_property;
+                }
+        }
+        curr_node->property = curr_property;
+        fdt_for_each_subnode(node, fdt, offset)
+        {
+                head_child_node = curr_child_node;
+                curr_child_node = build_device_tree(
+                        malloc, curr_node, fdt, node, depth + 1);
+                curr_child_node->sibling = head_child_node;
+        }
+        curr_node->child = curr_child_node;
+        return curr_node;
 }
 
 error_t arch_parser_platform(struct setup_info *arch_setup_info)
 {
+        struct allocator *malloc = per_cpu(kallocator, BSP_ID);
+        struct fdt_header *dtb_header_ptr =
+                (struct fdt_header *)(arch_setup_info
+                                              ->boot_dtb_header_base_addr);
+        device_root =
+                build_device_tree(malloc, NULL, (void *)dtb_header_ptr, 0, 0);
+        // print_device_tree(device_root);
         return 0;
 }
 error_t start_arch(int cpu_id)

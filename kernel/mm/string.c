@@ -64,7 +64,7 @@ void *memcpy(void *dst_str, const void *src_str, size_t n)
         return (dst_str);
 }
 
-size_t strlen(const char *str)
+__attribute__((optimize("O0"))) size_t strlen(const char *str)
 {
         const char *p = str;
         size_t len;
