@@ -141,7 +141,7 @@ error_t arch_parser_platform(struct setup_info *arch_setup_info)
                                               ->boot_dtb_header_base_addr);
         device_root =
                 build_device_tree(malloc, NULL, (void *)dtb_header_ptr, 0, 0);
-        print_device_tree(device_root);
+        // print_device_tree(device_root);
         return 0;
 }
 error_t start_arch(int cpu_id)

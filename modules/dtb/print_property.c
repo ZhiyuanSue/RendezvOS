@@ -59,15 +59,12 @@ void print_property_value_prop_encoded_array(enum property_type_enum p_type,
         switch (p_type) {
         case PROPERTY_TYPE_REG: {
                 u32_data = (u32 *)data;
-                for (int index = 0; index < len; index += sizeof(u32) * 2) {
+                for (int index = 0; index < len; index += sizeof(u32)) {
                         print_property("<");
-                        print_property("addr:0x%x ",
-                                       SWAP_ENDIANNESS_32(*u32_data));
+                        print_property("0x%x", SWAP_ENDIANNESS_32(*u32_data));
                         u32_data++;
-                        print_property("len:0x%x>",
-                                       SWAP_ENDIANNESS_32(*u32_data));
-                        u32_data++;
-                        if (index + sizeof(u32) * 2 < len)
+                        print_property(">");
+                        if (index + sizeof(u32) < len)
                                 print_property(" ");
                 }
                 break;
