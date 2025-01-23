@@ -27,5 +27,8 @@ BSP在IA32_APIC_BASE MSR寄存器的bit8里面表明
 ## aarch64的pcsi
 在aarch64的启动中，有spin-table和pcsi两种
 但是很显然，我的qemu里面dts打印出来发现他支持pcsi
+参考文档（官方）
+https://developer.arm.com/documentation/den0022/fb/?lang=en
+
 
 ## riscv直接使用sbi去多核启动即可

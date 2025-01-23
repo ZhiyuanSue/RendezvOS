@@ -40,7 +40,7 @@ static void arch_get_memory_regions(void *fdt, int offset, int depth)
                         fdt_string(fdt, SWAP_ENDIANNESS_32(prop->nameoff));
                 data = (const char *)(prop->data);
                 if (!strcmp(property_name, device_type_str)
-                    && !strcmp(data, memory_str)) {
+                    && !strcmp_s(data, memory_str, strlen(memory_str))) {
                         goto find_memory_node;
                 }
         }

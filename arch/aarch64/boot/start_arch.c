@@ -13,6 +13,7 @@
 #include <shampoos/percpu.h>
 
 extern u64 L2_table;
+int BSP_ID;
 
 static void map_dtb(struct setup_info *arch_setup_info)
 {
@@ -58,6 +59,10 @@ error_t prepare_arch(struct setup_info *arch_setup_info)
         return (0);
 prepare_arch_error:
         return (-EPERM);
+}
+error_t arch_cpu_info(struct setup_info *arch_setup_info)
+{
+        return 0;
 }
 
 error_t arch_parser_platform(struct setup_info *arch_setup_info)

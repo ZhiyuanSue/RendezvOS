@@ -82,3 +82,12 @@ int strcmp(const char *str1, const char *str2)
         }
         return (*str1 - *str2);
 }
+int strcmp_s(const char *str1, const char *str2, int n)
+{
+        while (n && *str1 && (*str1 == *str2)) {
+                str1++;
+                str2++;
+                n--;
+        }
+        return (*str1 - *str2);
+}

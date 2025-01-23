@@ -81,6 +81,17 @@
 				"log"
 			],
 			"path":"modules/dtb"
+		},
+		"psci":
+		{
+			"use":true,
+			"features":[
+				"DTB"
+			],
+			"depend_module":[
+				"log"
+			],
+			"path":"modules/psci"
 		}
 	}
 }

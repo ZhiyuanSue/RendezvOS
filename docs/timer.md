@@ -52,3 +52,72 @@ https://zhuanlan.zhihu.com/p/678583968
 arm的时钟其实有板级支持。
 也就是不同的平台不一样
 但是通用的称为generic timer
+这部分在Arm平台的手册中就有，我看的是Armv8.6，在D11，以及I2
+总共也没有多少页
+
+整体的架构上
+
+存在一个system level的时钟，以及每个PE都有的timer
+每个PE都有的timer包括如下几个
+ - An EL1 physical timer.
+ - A Non-secure EL2 physical timer.
+ - An EL3 physical timer.
+ - An EL1 virtual timer.
+ - A Non-secure EL2 virtual timer.
+ - A Secure EL2 virtual timer.
+ - A Secure EL2 physical timer.
+
+## CNTFRQ_EL0
+虽然是个EL0的
+但是在以下几种情况下可以读取
+Secure and Non-secure EL2.
+Secure and Non-secure EL1.
+When CNTKCTL_EL1.EL0PCTEN is set to 1, Secure and Non-secure EL0.
+这里又涉及到了CNTKCTL_EL1（Counter-timer Kernel Control register）
+对于这个的写入，只有在最高等级的EL才可以写入（实现了的最高等级），所以应该是不能写的
+
+## physical counter
+ - CNTPCT_EL0, Counter-timer Physical Count register
+这个寄存器用于存放当前的physical的计数
+整个64位都是
+
+ - CNTPOFF_EL2, Counter-timer Physical Offset register
+这个寄存器主要用于给physical count加上一个offset，处理虚拟化的情况
+
+下面给了个例子，大概是说，如果读取CNTPCTSS_EL0（这是一个用于替代读取CNTPCT_EL0的寄存器）
+那么，就无需ISB
+反之，需要在 MRS Xi, CNTPCT_EL0这样的指令之前，加上DSB和ISB
+否则，只需要DSB即可
+
+## virtual counter
+同样的CNTPOFF_EL2，设置了offset
+ - CNTVCT_EL0寄存器，存放了虚拟计数值
+对于同步相关，和物理计数器值相似
+
+## Event
+我确实没怎么看懂啥是event stream
+
+CNTKCTL_EL1.{EVNTEN, EVNTDIR, EVNTI, EVNTIS}这几位用于设置一个由virtual counter的中断事件
+
+CNTHCTL_EL2.{EVNTEN, EVNTDIR, EVNTI, EVNTIS}则用于设置由于物理计数器产生的中断事件
+
+## TimerValue 和 CompareValue 的对比
+ - CompareValue
+Is based around a 64-bit CompareValue that provides a 64-bit unsigned upcounter.
+ - TimerValue
+Provides an alternative view of the CompareValue, called the TimerValue, that appears to operate as a 32-bit downcounter.（也就是设置一个倒计时，递减到0就触发中断）
+
+相应的寄存器，我觉得表D11-1和D11-2已经很清楚了
+
+分CV，TV，控制，以及EL1-3，安全和非安全，phy和virt，就衍生出来很多个寄存器了
+
+TV的操作手法就是计算出来下一次需要何时中断，那么设置好相应的值，是增加的
+而CV，则是，隐含的倒计时，不过需要注意这是一个signed的值，可能溢出
+
+CTL，控制寄存器总共就三个bit，enable mask和status
+
+## 关于I2的内容
+看上去I2相关的内容，是关于EL2或者EL3中，如何设置好generic timer的部分，在EL1的OS按道理不应该考虑这一点。
+
+## 设置中断号
+这就需要去GIC中申请中断了。
