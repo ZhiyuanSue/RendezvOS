@@ -1,7 +1,7 @@
 #include <modules/dtb/dtb.h>
 #include <modules/log/log.h>
-
 extern struct device_node* device_root;
+extern struct property_type property_types[PROPERTY_TYPE_NUM];
 void _print_device_tree(struct device_node* node, int depth)
 {
         /*print the device tree below node*/
@@ -36,16 +36,47 @@ void print_device_tree(struct device_node* node)
 }
 
 /*device node part: search a node*/
-struct device_node* _dev_node_find_by_name(struct device_node* node,
-                                           char* prop_name)
+struct device_node* _dev_node_find(struct device_node* node,
+                                   char* search_string,
+                                   enum dev_node_finde_way way)
 {
-        if (!strcmp(node->name, prop_name))
-                return node;
+        if (!node || !search_string)
+                return NULL;
+        switch (way) {
+        case _dev_node_find_by_name: {
+                if (!strcmp(node->name, search_string))
+                        return node;
+                break;
+        }
+        case _dev_node_find_by_type: {
+                struct property* prop = dev_node_find_property(
+                        node,
+                        property_types[PROPERTY_TYPE_DEVICE_TYPE]
+                                .property_string,
+                        12);
+                if (prop && !strcmp(prop->data, search_string))
+                        return node;
+                break;
+        }
+        case _dev_node_find_by_compatible: {
+                struct property* prop = dev_node_find_property(
+                        node,
+                        property_types[PROPERTY_TYPE_COMPATIBLE].property_string,
+                        11);
+                if (prop && !strcmp(prop->data, search_string))
+                        return node;
+                break;
+        }
+        default:
+                pr_error("[ ERROR ] invalide dev node find way\n");
+                return NULL;
+        }
+
         struct device_node* res = NULL;
         /*first search childs,if have*/
         struct device_node* search = node->child;
         if (search) {
-                res = _dev_node_find_by_name(search, prop_name);
+                res = _dev_node_find(search, search_string, way);
                 if (res)
                         goto final;
                 /*
@@ -56,7 +87,7 @@ struct device_node* _dev_node_find_by_name(struct device_node* node,
         /*second search self's siblings,if have*/
         search = node->sibling;
         while (search) {
-                res = _dev_node_find_by_name(search, prop_name);
+                res = _dev_node_find(search, search_string, way);
                 if (res)
                         goto final;
                 search = search->sibling;
@@ -65,7 +96,7 @@ struct device_node* _dev_node_find_by_name(struct device_node* node,
         search = node->parent;
         if (search && search->sibling) {
                 search = search->sibling;
-                res = _dev_node_find_by_name(search, prop_name);
+                res = _dev_node_find(search, search_string, way);
                 if (res)
                         goto final;
         }
@@ -74,12 +105,29 @@ final:
         return res;
 }
 struct device_node* dev_node_find_by_name(struct device_node* node,
-                                          char* prop_name)
+                                          char* dev_node_name)
 {
         if (!node) {
                 node = device_root;
         }
-        return _dev_node_find_by_name(node, prop_name);
+        return _dev_node_find(node, dev_node_name, _dev_node_find_by_name);
+}
+struct device_node* dev_node_find_by_type(struct device_node* node,
+                                          char* type_name)
+{
+        if (!node) {
+                node = device_root;
+        }
+        return _dev_node_find(node, type_name, _dev_node_find_by_type);
+}
+struct device_node* dev_node_find_by_compatible(struct device_node* node,
+                                                char* compatible_name)
+{
+        if (!node) {
+                node = device_root;
+        }
+        return _dev_node_find(
+                node, compatible_name, _dev_node_find_by_compatible);
 }
 /*after we find a node, we should read the property*/
 struct property* dev_node_find_property(const struct device_node* node,
@@ -98,41 +146,50 @@ struct property* dev_node_find_property(const struct device_node* node,
         return NULL;
 }
 /*when we get the property, we should read the property value*/
-error_t property_read_string(const struct property* node, char** str)
+error_t property_read_string(const struct property* prop, char** str)
 {
+        *str = prop->data;
         return 0;
 }
 
-error_t property_read_u8_arr(const struct property* node, u8** arr, int n)
+error_t property_read_u8_arr(const struct property* prop, u8** arr, int n)
 {
+        memcpy(*arr, prop->data, n);
         return 0;
 }
-error_t property_read_u16_arr(const struct property* node, u16** arr, int n)
+error_t property_read_u16_arr(const struct property* prop, u16** arr, int n)
 {
+        memcpy(*arr, prop->data, n * sizeof(u16));
         return 0;
 }
-error_t property_read_u32_arr(const struct property* node, u32** arr, int n)
+error_t property_read_u32_arr(const struct property* prop, u32** arr, int n)
 {
+        memcpy(*arr, prop->data, n * sizeof(u32));
         return 0;
 }
-error_t property_read_u64_arr(const struct property* node, u64** arr, int n)
+error_t property_read_u64_arr(const struct property* prop, u64** arr, int n)
 {
+        memcpy(*arr, prop->data, n * sizeof(u64));
         return 0;
 }
 
-error_t property_read_u8(const struct property* node, u8* value)
+error_t property_read_u8(const struct property* prop, u8* value)
 {
+        *value = *((u8*)(prop->data));
         return 0;
 }
-error_t property_read_u16(const struct property* node, u16* value)
+error_t property_read_u16(const struct property* prop, u16* value)
 {
+        *value = *((u16*)(prop->data));
         return 0;
 }
-error_t property_read_u32(const struct property* node, u32* value)
+error_t property_read_u32(const struct property* prop, u32* value)
 {
+        *value = *((u32*)(prop->data));
         return 0;
 }
-error_t property_read_u64(const struct property* node, u64* value)
+error_t property_read_u64(const struct property* prop, u64* value)
 {
+        *value = *((u64*)(prop->data));
         return 0;
 }
