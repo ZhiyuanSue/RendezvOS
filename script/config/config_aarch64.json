@@ -89,7 +89,8 @@
 				"DTB"
 			],
 			"depend_module":[
-				"log"
+				"log",
+				"dtb"
 			],
 			"path":"modules/psci"
 		}

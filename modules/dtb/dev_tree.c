@@ -77,21 +77,11 @@ struct device_node* _dev_node_find(struct device_node* node,
                         char* dst_ch_end = prop->data + prop->len;
                         while (dst_ch < dst_ch_end) {
                                 if (*src_ch != *dst_ch) {
-                                        if (!*src_ch) {
-                                                src_ch = search_string;
-                                                while (*dst_ch)
-                                                        dst_ch++;
-                                                continue;
-                                        } else {
-                                                if (!*dst_ch) {
-                                                        src_ch = search_string;
-                                                } else {
-                                                        src_ch = search_string;
-                                                        while (*dst_ch)
-                                                                dst_ch++;
-                                                        continue;
-                                                }
-                                        }
+                                        src_ch = search_string;
+                                        while (*dst_ch)
+                                                dst_ch++;
+                                        dst_ch++;
+                                        continue;
                                 } else if (!*src_ch) {
                                         return node;
                                 }

@@ -10,6 +10,7 @@
 #include <modules/dtb/dtb.h>
 #include <modules/dtb/print_property.h>
 #include <modules/log/log.h>
+#include <modules/psci/psci.h>
 #include <shampoos/error.h>
 #include <shampoos/percpu.h>
 
@@ -142,6 +143,7 @@ error_t arch_parser_platform(struct setup_info *arch_setup_info)
         device_root =
                 build_device_tree(malloc, NULL, (void *)dtb_header_ptr, 0, 0);
         // print_device_tree(device_root);
+        psci_init();
         return 0;
 }
 error_t start_arch(int cpu_id)
