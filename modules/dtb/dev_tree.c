@@ -1,5 +1,6 @@
 #include <modules/dtb/dtb.h>
 #include <modules/log/log.h>
+#include <shampoos/error.h>
 extern struct device_node* device_root;
 extern struct property_type property_types[PROPERTY_TYPE_NUM];
 void _print_device_tree(struct device_node* node, int depth)
@@ -38,7 +39,7 @@ void print_device_tree(struct device_node* node)
 /*device node part: search a node*/
 struct device_node* _dev_node_find(struct device_node* node,
                                    char* search_string,
-                                   enum dev_node_finde_way way)
+                                   enum dev_node_find_way way)
 {
         if (!node || !search_string)
                 return NULL;
@@ -63,8 +64,41 @@ struct device_node* _dev_node_find(struct device_node* node,
                         node,
                         property_types[PROPERTY_TYPE_COMPATIBLE].property_string,
                         11);
-                if (prop && !strcmp(prop->data, search_string))
-                        return node;
+                /*
+                        here compatible data is a string list
+                        which means we have to compare more then once
+                        and the point is the two string conjuncted with ','
+                        is one compatible string
+                        two compatible string is seperated by '\0'
+                */
+                if (prop) {
+                        char* src_ch = search_string;
+                        char* dst_ch = prop->data;
+                        char* dst_ch_end = prop->data + prop->len;
+                        while (dst_ch < dst_ch_end) {
+                                if (*src_ch != *dst_ch) {
+                                        if (!*src_ch) {
+                                                src_ch = search_string;
+                                                while (*dst_ch)
+                                                        dst_ch++;
+                                                continue;
+                                        } else {
+                                                if (!*dst_ch) {
+                                                        src_ch = search_string;
+                                                } else {
+                                                        src_ch = search_string;
+                                                        while (*dst_ch)
+                                                                dst_ch++;
+                                                        continue;
+                                                }
+                                        }
+                                } else if (!*src_ch) {
+                                        return node;
+                                }
+                                src_ch++;
+                                dst_ch++;
+                        }
+                }
                 break;
         }
         default:
@@ -74,28 +108,24 @@ struct device_node* _dev_node_find(struct device_node* node,
 
         struct device_node* res = NULL;
         /*first search childs,if have*/
-        struct device_node* search = node->child;
+        struct device_node* search = NULL;
+
+        if (node->child) {
+                search = node->child;
+        } else if (node->sibling) {
+                search = node->sibling;
+        } else {
+                search = node;
+                while (search->parent && !search->parent->sibling)
+                        search = search->parent;
+                if (search->parent) {
+                        search = search->parent->sibling;
+                } else { /*this if-else is used for root*/
+                        search = NULL;
+                }
+        }
+
         if (search) {
-                res = _dev_node_find(search, search_string, way);
-                if (res)
-                        goto final;
-                /*
-                        no need to search the child's siblings
-                        for the recursive search,the same as the uncle
-                */
-        }
-        /*second search self's siblings,if have*/
-        search = node->sibling;
-        while (search) {
-                res = _dev_node_find(search, search_string, way);
-                if (res)
-                        goto final;
-                search = search->sibling;
-        }
-        /*third consider parent's siblings,if have*/
-        search = node->parent;
-        if (search && search->sibling) {
-                search = search->sibling;
                 res = _dev_node_find(search, search_string, way);
                 if (res)
                         goto final;
@@ -133,12 +163,12 @@ struct device_node* dev_node_find_by_compatible(struct device_node* node,
 struct property* dev_node_find_property(const struct device_node* node,
                                         char* prop_name, int n)
 {
-        if (!node) {
+        if (!node || !prop_name || !n) {
                 return NULL;
         }
         struct property* search = node->property;
         while (search) {
-                if (!strcmp(prop_name, search->name)) {
+                if (!strcmp_s(prop_name, search->name, n)) {
                         return search;
                 }
                 search = search->next;
@@ -148,48 +178,74 @@ struct property* dev_node_find_property(const struct device_node* node,
 /*when we get the property, we should read the property value*/
 error_t property_read_string(const struct property* prop, char** str)
 {
+        if (!prop || !str)
+                return -EPERM;
         *str = prop->data;
         return 0;
 }
 
 error_t property_read_u8_arr(const struct property* prop, u8** arr, int n)
 {
+        if (!prop || !arr || !n)
+                return -EPERM;
+        if (n > prop->len)
+                n = prop->len;
         memcpy(*arr, prop->data, n);
         return 0;
 }
 error_t property_read_u16_arr(const struct property* prop, u16** arr, int n)
 {
+        if (!prop || !arr || !n)
+                return -EPERM;
+        if ((n * sizeof(u16)) > prop->len)
+                n = prop->len / sizeof(u16);
         memcpy(*arr, prop->data, n * sizeof(u16));
         return 0;
 }
 error_t property_read_u32_arr(const struct property* prop, u32** arr, int n)
 {
+        if (!prop || !arr || !n)
+                return -EPERM;
+        if ((n * sizeof(u32)) > prop->len)
+                n = prop->len / sizeof(u32);
         memcpy(*arr, prop->data, n * sizeof(u32));
         return 0;
 }
 error_t property_read_u64_arr(const struct property* prop, u64** arr, int n)
 {
+        if (!prop || !arr || !n)
+                return -EPERM;
+        if ((n * sizeof(u64)) > prop->len)
+                n = prop->len / sizeof(u64);
         memcpy(*arr, prop->data, n * sizeof(u64));
         return 0;
 }
 
 error_t property_read_u8(const struct property* prop, u8* value)
 {
+        if (!prop || !value)
+                return -EPERM;
         *value = *((u8*)(prop->data));
         return 0;
 }
 error_t property_read_u16(const struct property* prop, u16* value)
 {
+        if (!prop || !value)
+                return -EPERM;
         *value = *((u16*)(prop->data));
         return 0;
 }
 error_t property_read_u32(const struct property* prop, u32* value)
 {
+        if (!prop || !value)
+                return -EPERM;
         *value = *((u32*)(prop->data));
         return 0;
 }
 error_t property_read_u64(const struct property* prop, u64* value)
 {
+        if (!prop || !value)
+                return -EPERM;
         *value = *((u64*)(prop->data));
         return 0;
 }

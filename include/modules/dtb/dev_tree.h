@@ -31,7 +31,7 @@ struct property {
 void print_device_tree(struct device_node* node);
 
 /*device node part: search a node*/
-enum dev_node_finde_way {
+enum dev_node_find_way {
         _dev_node_find_by_name = 1,
         _dev_node_find_by_type = 2,
         _dev_node_find_by_compatible = 3,

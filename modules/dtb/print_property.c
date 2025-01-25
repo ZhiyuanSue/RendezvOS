@@ -104,7 +104,12 @@ void print_property_value_stringlist(enum property_type_enum p_type, void *data,
 
         print_property("<");
         while (ch < ch_data_end) {
-                print_property("%c", *ch);
+                if (*ch) {
+                        print_property("%c", *ch);
+                } else {
+                        if (ch + 1 < ch_data_end)
+                                print_property(" | ");
+                }
                 ch++;
         }
         print_property(">");
