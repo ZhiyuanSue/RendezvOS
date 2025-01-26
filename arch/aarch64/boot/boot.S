@@ -13,8 +13,8 @@
 	.global	_start
 _start:
 _boot_header:
-	b _entry
-	b _entry
+	b bsp_entry
+	b bsp_entry
 	.quad	0x80000
 	.quad	0	/*image size*/
 	.quad	0	/*flags*/
@@ -23,7 +23,7 @@ _boot_header:
 	.quad	0
 	.long	0x644d5241
 	.long	0
-_entry:
+bsp_entry:
 	/*save some info:x0(dtb),mpidr_el1*/
 	adr	x4,setup_info
 	stp	x0,x1,[x4]
@@ -72,6 +72,9 @@ EL2_setup:
 EL1_setup:
 	ret
 
+	.global ap_entry
+ap_entry:
+	b ap_entry
 
 	.global prepare_page_table
 prepare_page_table:
