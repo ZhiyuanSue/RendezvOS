@@ -4,7 +4,7 @@
 
 static inline void arch_shutdown(void)
 {
-        psci_system_off();
+        psci_func.system_off();
 }
 
 static inline void arch_reset(void)

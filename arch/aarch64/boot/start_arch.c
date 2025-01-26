@@ -18,6 +18,7 @@ extern u64 L2_table;
 int BSP_ID;
 extern struct allocator *kallocator;
 struct device_node *device_root;
+struct psci_func_64 psci_func;
 
 static void map_dtb(struct setup_info *arch_setup_info)
 {

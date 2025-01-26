@@ -7,6 +7,33 @@
 #include "psci_error.h"
 /*although I think the 32 version will not be used, I still record it*/
 enum psci_call_method { psci_call_none = 0, psci_call_smc, psci_call_hvc };
+struct psci_func_64 {
+        bool enable;
+        u32 (*version)(void);
+        i64 (*cpu_suspend_64)(u32 power_state, u64 entry_point_address,
+                              u32 context_id);
+        i32 (*cpu_off)(void);
+        i64 (*cpu_on)(u64 target_cpu, u64 entry_point_address, u64 context_id);
+        i64 (*affinity_info)(u64 target_affinity, u32 lowest_affinity_level);
+        i64 (*migrate)(u64 target_cpu);
+        i32 (*migrate_info_type)(void);
+        i64 (*migrate_info_up_cpu)(void);
+        void (*system_off)(void);
+        i64 (*system_off_2)(u32 type, u64 cookie);
+        void (*system_reset)(void);
+        i64 (*system_reset_2)(u32 reset_type, u64 cookie);
+        i32 (*mem_protect)(u32 enable);
+        i64 (*mem_protect_check_range)(u64 base, u64 length);
+        i32 (*feature)(u32 psci_feature_id);
+        i32 (*cpu_freeze)(void);
+        i64 (*cpu_default_suspend)(u64 entry_point_address, u64 context_id);
+        i64 (*node_hw_state)(u64 target_cpu, u32 power_level);
+        i64 (*system_suspend)(u64 entry_point_address, u64 context_id);
+        i32 (*set_suspend_mode)(u32 mode);
+        u64 (*state_residency)(u64 target_cpu, u32 power_state);
+        u64 (*state_count)(u64 target_cpu, u32 power_state);
+};
+extern struct psci_func_64 psci_func;
 void psci_init(void);
 
 #define psci_version_func_id 0x84000000

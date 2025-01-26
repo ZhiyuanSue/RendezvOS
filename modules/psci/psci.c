@@ -34,19 +34,26 @@ void psci_init(void)
         char* method_smc = "smc";
         char* method_hvc = "hvc";
         char* method_name;
+        char* migrate_char = "migrate";
+        char* cpu_on_char = "cpu_on";
+        char* cpu_off_char = "cpu_off";
+        char* cpu_suspend_char = "cpu_suspend";
         struct device_node* node =
                 dev_node_find_by_compatible(NULL, compatible);
         if (!node) {
                 pr_error("[ PSCI ] cannot find psci node in dtb\n");
+                psci_func.enable = false;
                 return;
         }
         struct property* prop = dev_node_find_property(node, method, 7);
         if (!prop) {
                 pr_error("[ PSCI ] cannot find method property in this node\n");
+                psci_func.enable = false;
                 return;
         }
         if (property_read_string(prop, &method_name)) {
                 pr_error("[ PSCI ] property read string error\n");
+                psci_func.enable = false;
                 return;
         }
         if (!strcmp(method_name, method_smc)) {
@@ -57,8 +64,46 @@ void psci_init(void)
                 pr_info("[ PSCI ] use hvc call\n");
         } else {
                 pr_error("[ PSCI ] unknown psci call method\n");
+                psci_func.enable = false;
                 return;
         }
+        psci_func.enable = true;
+        psci_func.version = psci_version;
+        psci_func.system_off = psci_system_off;
+        psci_func.system_reset = psci_system_reset;
+
+        prop = dev_node_find_property(node, migrate_char, 8);
+        if (!prop) {
+                pr_info("[ PSCI ] cannot find migrate property in this node\n");
+                return;
+        } else {
+                psci_func.migrate = psci_migrate_64;
+        }
+
+        prop = dev_node_find_property(node, cpu_on_char, 7);
+        if (!prop) {
+                pr_info("[ PSCI ] cannot find cpu on property in this node\n");
+                return;
+        } else {
+                psci_func.cpu_on = psci_cpu_on_64;
+        }
+
+        prop = dev_node_find_property(node, cpu_off_char, 8);
+        if (!prop) {
+                pr_info("[ PSCI ] cannot find cpu off property in this node\n");
+                return;
+        } else {
+                psci_func.cpu_off = psci_cpu_off;
+        }
+
+        prop = dev_node_find_property(node, cpu_suspend_char, 12);
+        if (!prop) {
+                pr_info("[ PSCI ] cannot find cpu suspend property in this node\n");
+                return;
+        } else {
+                psci_func.cpu_suspend_64 = psci_cpu_suspend_64;
+        }
+
         psci_print_version();
 }
 u32 psci_version(void)
