@@ -3,9 +3,8 @@
 #include <arch/aarch64/mm/vmm.h>
 #include <arch/aarch64/power_ctrl.h>
 #include <arch/aarch64/trap/trap.h>
+#include <arch/aarch64/cpuinfo.h>
 #include <common/endianness.h>
-#include <shampoos/mm/vmm.h>
-#include <shampoos/mm/spmalloc.h>
 #include <common/mm.h>
 #include <modules/dtb/dtb.h>
 #include <modules/dtb/print_property.h>
@@ -13,13 +12,31 @@
 #include <modules/psci/psci.h>
 #include <shampoos/error.h>
 #include <shampoos/percpu.h>
+#include <shampoos/mm/vmm.h>
+#include <shampoos/mm/spmalloc.h>
 
 extern u64 L2_table;
 int BSP_ID;
 extern struct allocator *kallocator;
 struct device_node *device_root;
 struct psci_func_64 psci_func;
+struct cpuinfo cpu_info;
 
+static void get_cpu_info(void)
+{
+        u64 MPIDR_VAL;
+        mrs("MPIDR_EL1", MPIDR_VAL);
+        if (MPIDR_EL1_MT(MPIDR_VAL)) {
+                cpu_info.MT = true;
+        } else {
+                cpu_info.MT = false;
+        }
+        if (MPIDR_EL1_U(MPIDR_VAL)) {
+                cpu_info.MP = false;
+        } else {
+                cpu_info.MP = true;
+        }
+}
 static void map_dtb(struct setup_info *arch_setup_info)
 {
         vaddr vaddr;
@@ -67,6 +84,8 @@ prepare_arch_error:
 }
 error_t arch_cpu_info(struct setup_info *arch_setup_info)
 {
+        /*read MPIDR to get the cpu affinity*/
+        get_cpu_info();
         BSP_ID = 0;
         return 0;
 }

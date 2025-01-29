@@ -149,6 +149,18 @@ struct device_node* dev_node_find_by_compatible(struct device_node* node,
         return _dev_node_find(
                 node, compatible_name, _dev_node_find_by_compatible);
 }
+struct device_node* dev_node_get_first_child(struct device_node* node)
+{
+        if (!node)
+                return NULL;
+        return node->child;
+}
+struct device_node* dev_node_get_sibling(struct device_node* node)
+{
+        if (!node)
+                return NULL;
+        return node->sibling;
+}
 /*after we find a node, we should read the property*/
 struct property* dev_node_find_property(const struct device_node* node,
                                         char* prop_name, int n)

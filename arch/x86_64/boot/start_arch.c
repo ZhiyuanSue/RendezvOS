@@ -1,7 +1,7 @@
 #include <arch/x86_64/PIC/IRQ.h>
 #include <arch/x86_64/boot/arch_setup.h>
 #include <arch/x86_64/boot/multiboot.h>
-#include <arch/x86_64/cpuid.h>
+#include <arch/x86_64/cpuinfo.h>
 #include <arch/x86_64/sys_ctrl.h>
 #include <arch/x86_64/sys_ctrl_def.h>
 #include <arch/x86_64/time.h>
@@ -18,12 +18,12 @@
 #include <shampoos/mm/nexus.h>
 
 extern u32 max_phy_addr_width;
-struct cpuinfo_x86 cpuinfo;
+struct cpuinfo cpu_info;
 int BSP_ID;
 extern struct nexus_node *nexus_root;
 extern struct pseudo_descriptor gdt_desc;
 extern union desc gdt[GDT_SIZE];
-static void get_cpuinfo(void)
+static void get_cpu_info(void)
 {
         u32 eax;
         u32 ebx;
@@ -34,15 +34,15 @@ static void get_cpuinfo(void)
         /*first get the number that cpuid support*/
         cpuid(0x0, &eax, &ebx, &ecx, &edx);
         cpuid(0x1, &eax, &ebx, &ecx, &edx);
-        cpuinfo.APICID = ebx >> 24;
-        cpuinfo.feature_1 = ecx;
-        cpuinfo.feature_2 = edx;
+        cpu_info.APICID = ebx >> 24;
+        cpu_info.feature_1 = ecx;
+        cpu_info.feature_2 = edx;
         /*detect invariant tsc*/
         cpuid(X86_CPUID_Invariant_TSC, &eax, &ebx, &ecx, &edx);
         if (edx & X86_CPUID_Invariant_TSC_EDX) {
-                cpuinfo.invariant_tsc_support = 1;
+                cpu_info.invariant_tsc_support = 1;
         } else {
-                cpuinfo.invariant_tsc_support = 0;
+                cpu_info.invariant_tsc_support = 0;
         }
 }
 static void enable_cache(void)
@@ -58,10 +58,10 @@ static void start_simd(void)
         u64 xcr_value;
 
         /*use cpuinfo to check the simd support or not*/
-        if (((cpuinfo.feature_2)
+        if (((cpu_info.feature_2)
              & (X86_CPUID_FEATURE_EDX_SSE | X86_CPUID_FEATURE_EDX_SSE2
                 | X86_CPUID_FEATURE_EDX_FXSR | X86_CPUID_FEATURE_EDX_CLFSH))
-            && ((cpuinfo.feature_1)
+            && ((cpu_info.feature_1)
                 & (X86_CPUID_FEATURE_ECX_SSE3 | X86_CPUID_FEATURE_ECX_SSSE3))) {
                 pr_info("have simd feature,starting...\n");
                 /*set osfxsr : cr4 bit 9*/
@@ -72,7 +72,7 @@ static void start_simd(void)
                 set_mxcsr(MXCSR_IM | MXCSR_DM | MXCSR_ZM | MXCSR_OM | MXCSR_UM
                           | MXCSR_PM);
                 /*the following codes seems useless for enable sse,emmm*/
-                if ((cpuinfo.feature_1) & X86_CPUID_FEATURE_ECX_XSAVE) {
+                if ((cpu_info.feature_1) & X86_CPUID_FEATURE_ECX_XSAVE) {
                         /*to enable the xcr0, must set the cr4 osxsave*/
                         set_cr4_bit(CR4_OSXSAVE);
                         xcr_value = get_xcr(0);
@@ -123,7 +123,7 @@ error_t prepare_arch(struct setup_info *arch_setup_info)
 error_t arch_cpu_info(struct setup_info *arch_setup_info)
 {
         get_cpuinfo();
-        BSP_ID = cpuinfo.APICID;
+        BSP_ID = cpu_info.APICID;
         return 0;
 }
 error_t arch_parser_platform(struct setup_info *arch_setup_info)

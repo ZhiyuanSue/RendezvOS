@@ -2,25 +2,25 @@
 #include <shampoos/mm/map_handler.h>
 #include <arch/x86_64/PIC/IRQ.h>
 #include <common/types.h>
-#include <arch/x86_64/cpuid.h>
+#include <arch/x86_64/cpuinfo.h>
 #include <shampoos/mm/vmm.h>
 #include <modules/log/log.h>
 #include <common/bit.h>
 #include <arch/x86_64/msr.h>
 #include <arch/x86_64/sys_ctrl.h>
-extern struct cpuinfo_x86 cpuinfo;
+extern struct cpuinfo cpu_info;
 extern struct map_handler Map_Handler;
 inline bool xAPIC_support(void)
 {
-        return (cpuinfo.feature_2 & X86_CPUID_FEATURE_EDX_APIC);
+        return (cpu_info.feature_2 & X86_CPUID_FEATURE_EDX_APIC);
 }
 inline bool x2APIC_support(void)
 {
-        return (cpuinfo.feature_1 & X86_CPUID_FEATURE_ECX_x2APIC);
+        return (cpu_info.feature_1 & X86_CPUID_FEATURE_ECX_x2APIC);
 }
 inline bool TSC_DDL_support(void)
 {
-        return (cpuinfo.feature_1 & X86_CPUID_FEATURE_ECX_TSC_Deadline);
+        return (cpu_info.feature_1 & X86_CPUID_FEATURE_ECX_TSC_Deadline);
 }
 inline bool ARAT_support(void)
 {

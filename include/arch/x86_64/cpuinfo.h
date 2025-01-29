@@ -1,11 +1,11 @@
-#ifndef _SHAMPOOS_X86_CPUID_H_
-#define _SHAMPOOS_X86_CPUID_H_
+#ifndef _SHAMPOOS_CPUID_H_
+#define _SHAMPOOS_CPUID_H_
 #include <common/types.h>
 /*
     A reference website is https://www.felixcloutier.com/x86/cpuid, Thanks for
    that
 */
-struct cpuinfo_x86 {
+struct cpuinfo {
 #define X86_CPUID_VENDOR 0x0
         u8 MaxBasicCPUID[0x4];
         u8 Vendor[0xC];

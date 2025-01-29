@@ -143,4 +143,12 @@
 #define ESR_EL1_IL       (1 << 25)
 #define ESR_EL1_ISS_MASK (0x1ffffff)
 
+/*MPIDR,read only*/
+#define MPIDR_EL1_AFF3(MPIDR_VAL) ((MPIDR_VAL & (0xffUL << 32)) >> 32)
+#define MPIDR_EL1_AFF2(MPIDR_VAL) ((MPIDR_VAL & (0xffUL << 16)) >> 16)
+#define MPIDR_EL1_AFF1(MPIDR_VAL) ((MPIDR_VAL & (0xffUL << 8)) >> 8)
+#define MPIDR_EL1_AFF0(MPIDR_VAL) (MPIDR_VAL & 0xffUL)
+#define MPIDR_EL1_U(MPIDR_VAL)    ((MPIDR_VAL & (0x1UL << 30)) >> 30)
+#define MPIDR_EL1_MT(MPIDR_VAL)   ((MPIDR_VAL & (0x1UL << 24)) >> 24)
+
 #endif
