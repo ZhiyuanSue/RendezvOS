@@ -35,7 +35,26 @@ void print_device_tree(struct device_node* node)
                 node = device_root;
         _print_device_tree(node, 0);
 }
+struct device_node* dev_tree_get_next(struct device_node* node)
+{
+        struct device_node* next = NULL;
 
+        if (node->child) {
+                next = node->child;
+        } else if (node->sibling) {
+                next = node->sibling;
+        } else {
+                next = node;
+                while (next->parent && !next->parent->sibling)
+                        next = next->parent;
+                if (next->parent) {
+                        next = next->parent->sibling;
+                } else { /*this if-else is used for root*/
+                        next = NULL;
+                }
+        }
+        return next;
+}
 /*device node part: search a node*/
 struct device_node* _dev_node_find(struct device_node* node,
                                    char* search_string,
@@ -98,22 +117,7 @@ struct device_node* _dev_node_find(struct device_node* node,
 
         struct device_node* res = NULL;
         /*first search childs,if have*/
-        struct device_node* search = NULL;
-
-        if (node->child) {
-                search = node->child;
-        } else if (node->sibling) {
-                search = node->sibling;
-        } else {
-                search = node;
-                while (search->parent && !search->parent->sibling)
-                        search = search->parent;
-                if (search->parent) {
-                        search = search->parent->sibling;
-                } else { /*this if-else is used for root*/
-                        search = NULL;
-                }
-        }
+        struct device_node* search = dev_tree_get_next(node);
 
         if (search) {
                 res = _dev_node_find(search, search_string, way);
@@ -201,7 +205,10 @@ error_t property_read_u16_arr(const struct property* prop, u16** arr, int n)
                 return -EPERM;
         if ((n * sizeof(u16)) > prop->len)
                 n = prop->len / sizeof(u16);
-        memcpy(*arr, prop->data, n * sizeof(u16));
+        u16* src_ptr = prop->data;
+        for (int i = 0; i < n; i++) {
+                (*arr)[i] = SWAP_ENDIANNESS_16(src_ptr[i]);
+        }
         return 0;
 }
 error_t property_read_u32_arr(const struct property* prop, u32** arr, int n)
@@ -210,7 +217,10 @@ error_t property_read_u32_arr(const struct property* prop, u32** arr, int n)
                 return -EPERM;
         if ((n * sizeof(u32)) > prop->len)
                 n = prop->len / sizeof(u32);
-        memcpy(*arr, prop->data, n * sizeof(u32));
+        u32* src_ptr = prop->data;
+        for (int i = 0; i < n; i++) {
+                (*arr)[i] = SWAP_ENDIANNESS_32(src_ptr[i]);
+        }
         return 0;
 }
 error_t property_read_u64_arr(const struct property* prop, u64** arr, int n)
@@ -219,7 +229,10 @@ error_t property_read_u64_arr(const struct property* prop, u64** arr, int n)
                 return -EPERM;
         if ((n * sizeof(u64)) > prop->len)
                 n = prop->len / sizeof(u64);
-        memcpy(*arr, prop->data, n * sizeof(u64));
+        u64* src_ptr = prop->data;
+        for (int i = 0; i < n; i++) {
+                (*arr)[i] = SWAP_ENDIANNESS_64(src_ptr[i]);
+        }
         return 0;
 }
 
@@ -234,20 +247,20 @@ error_t property_read_u16(const struct property* prop, u16* value)
 {
         if (!prop || !value)
                 return -EPERM;
-        *value = *((u16*)(prop->data));
+        *value = SWAP_ENDIANNESS_16(*((u16*)(prop->data)));
         return 0;
 }
 error_t property_read_u32(const struct property* prop, u32* value)
 {
         if (!prop || !value)
                 return -EPERM;
-        *value = *((u32*)(prop->data));
+        *value = SWAP_ENDIANNESS_32(*((u32*)(prop->data)));
         return 0;
 }
 error_t property_read_u64(const struct property* prop, u64* value)
 {
         if (!prop || !value)
                 return -EPERM;
-        *value = *((u64*)(prop->data));
+        *value = SWAP_ENDIANNESS_64(*((u64*)(prop->data)));
         return 0;
 }
