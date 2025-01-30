@@ -1,4 +1,3 @@
-#include <arch/x86_64/smp.h>
 #include <shampoos/smp.h>
 #include <shampoos/time.h>
 #include <modules/log/log.h>

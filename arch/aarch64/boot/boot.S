@@ -72,10 +72,6 @@ EL2_setup:
 EL1_setup:
 	ret
 
-	.global ap_entry
-ap_entry:
-	b ap_entry
-
 	.global prepare_page_table
 prepare_page_table:
 	/*with the example of the qemu*/
@@ -289,6 +285,42 @@ set_stack:
 	mov	sp,x0
 	ret
 
+/*======ap_start======*/
+	.global ap_entry
+ap_entry:
+	adr	x4,setup_info
+	add x4,x4,#0x48
+	str x0,[x4]
+	bl drop_to_el1
+	bl sel_stack
+	bl ap_set_stack_phy
+	bl  mair_init
+	bl	init_mmu
+	bl	enable_fp
+	bl	ap_set_stack_virt
+	adr	x0,#setup_info
+	bl	start_secondary_cpu
+	b boot_Error
+
+	.global ap_set_stack
+ap_set_stack_phy:
+	adr	x4,setup_info
+	add x4,x4,#0x40
+	ldr x0,[x4]
+	mov x4,#kernel_virt_offset
+	sub x0,x0,x4
+	mov sp,x0
+	ret
+
+	.global ap_set_stack
+ap_set_stack_virt:
+	adr	x4,setup_info
+	add x4,x4,#0x40
+	ldr x0,[x4]
+	mov sp,x0
+	ret
+
+
 /*======data======*/	
 
 	.section .boot.data
@@ -301,7 +333,8 @@ setup_info:
 	.quad	0	/*x3,reserved*/
 	.quad	log_buffer
 	.quad	0	/*the map address end*/
-	.quad	0	/*cpu_id*/
+	.quad	0	/*ap_boot_stack_ptr*/
+	.quad	0	/*cpu id*/
 
 	.section .boot.page
 	.p2align	12	/*2^12=4K*/
