@@ -1,8 +1,11 @@
 #include <modules/acpi/acpi.h>
 #include <shampoos/mm/vmm.h>
 #include <shampoos/mm/map_handler.h>
+#include <shampoos/percpu.h>
 #include <shampoos/error.h>
 #include <modules/log/log.h>
+#include <shampoos/percpu.h>
+extern int BSP_ID;
 extern struct map_handler Map_Handler;
 struct acpi_table_fadt *fadt_table;
 extern struct acpi_table_madt *madt_table;
@@ -40,14 +43,14 @@ error_t acpi_init(vaddr rsdp_addr)
                                    MIDDLE_PAGE_SIZE);
                 if (!have_mapped(get_current_kernel_vspace_root(),
                                  VPN(rsdt_map_page),
-                                 &Map_Handler)) {
+                                 &per_cpu(Map_Handler, BSP_ID))) {
                         paddr vspace_root = get_current_kernel_vspace_root();
                         map(&vspace_root,
                             PPN(rsdt_page),
                             VPN(rsdt_map_page),
                             2,
                             PAGE_ENTRY_NONE,
-                            &Map_Handler);
+                            &per_cpu(Map_Handler, BSP_ID));
                 }
                 struct acpi_table_rsdt *rsdt_table =
                         (struct acpi_table_rsdt *)KERNEL_PHY_TO_VIRT(

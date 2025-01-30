@@ -3,14 +3,6 @@
 #include <common/types.h>
 #include "limits.h"
 
-#ifdef _AARCH64_
-#include <arch/aarch64/percpu.h>
-#elif defined _X86_64_
-#include <arch/x86_64/percpu.h>
-#else
-#include <arch/x86_64/percpu.h>
-#endif
-
 #define PER_CPU_SECTION ".percpu..data"
 
 #define DEFINE_PER_CPU(type, name) \
@@ -28,6 +20,7 @@ extern u64 __per_cpu_offset[SHAMPOOS_MAX_CPU_NUMBER];
 #define put_cpu_var(var)
 // TODO
 
+vaddr get_per_cpu_base();
 void reserve_per_cpu_region(paddr* phy_kernel_end);
 void calculate_per_cpu_offset();
 void clean_per_cpu_region(paddr per_cpu_phy_addr);

@@ -16,8 +16,11 @@ error_t phy_mm_init(struct setup_info *arch_setup_info)
 }
 error_t virt_mm_init(int cpu_id)
 {
-        init_map(&Map_Handler, cpu_id, (struct pmm *)&buddy_pmm);
-        nexus_root = init_nexus(&Map_Handler);
-        sp_init(nexus_root, Map_Handler.cpu_id);
+        init_map(&per_cpu(Map_Handler, cpu_id),
+                 cpu_id,
+                 (struct pmm *)&buddy_pmm);
+        per_cpu(nexus_root, cpu_id) = init_nexus(&per_cpu(Map_Handler, cpu_id));
+        sp_init(per_cpu(nexus_root, cpu_id),
+                per_cpu(Map_Handler, cpu_id).cpu_id);
         return 0;
 }

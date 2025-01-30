@@ -85,7 +85,8 @@ void arch_start_smp(struct setup_info* arch_setup_info)
                                         mdelay(10);
                                 }
                                 if (per_cpu(CPU_STATE, i) == cpu_disable) {
-                                        pr_info("[ ERROR ]cpu %d cannot enable after 1s\n",
+                                        pr_error(
+                                                "[ ERROR ]cpu %d cannot enable after 1s\n",
                                                 i);
                                 }
                         }

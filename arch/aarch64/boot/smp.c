@@ -39,10 +39,6 @@ void arch_start_smp(struct setup_info* arch_setup_info)
                                 "[ SMP ] we only support psci smp setup method now\n");
                         continue;
                 }
-                struct property* phandle_prop =
-                        dev_node_find_property(cpu_node, "phandle", 9);
-                u32 phandle;
-                property_read_u32(phandle_prop, &phandle);
 
                 u32 reg_val;
                 int err = property_read_u32(reg_prop, &reg_val);

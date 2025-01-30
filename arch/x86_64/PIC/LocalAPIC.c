@@ -1,5 +1,6 @@
 #include <arch/x86_64/PIC/APIC.h>
 #include <shampoos/mm/map_handler.h>
+#include <shampoos/percpu.h>
 #include <arch/x86_64/PIC/IRQ.h>
 #include <common/types.h>
 #include <arch/x86_64/cpuinfo.h>
@@ -96,14 +97,18 @@ bool map_LAPIC(void)
         paddr vspace_root = get_current_kernel_vspace_root();
         paddr lapic_phy_page = xAPIC_MMIO_BASE;
         vaddr lapic_virt_page = KERNEL_PHY_TO_VIRT(xAPIC_MMIO_BASE);
-        if (map(&vspace_root,
-                PPN(lapic_phy_page),
-                VPN(lapic_virt_page),
-                3,
-                PAGE_ENTRY_UNCACHED, // the LAPIC should be set as uncached
-                &Map_Handler)) {
-                pr_error("[ LAPIC ] ERROR: map error\n");
-                return false;
+        if (!have_mapped(
+                    vspace_root, VPN(lapic_virt_page), &percpu(Map_Handler))) {
+                if (map(&vspace_root,
+                        PPN(lapic_phy_page),
+                        VPN(lapic_virt_page),
+                        3,
+                        PAGE_ENTRY_UNCACHED, // the LAPIC should be set as
+                                             // uncached
+                        &percpu(Map_Handler))) {
+                        pr_error("[ LAPIC ] ERROR: map error\n");
+                        return false;
+                }
         }
         return true;
 }
