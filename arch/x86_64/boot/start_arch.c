@@ -122,7 +122,7 @@ error_t prepare_arch(struct setup_info *arch_setup_info)
 }
 error_t arch_cpu_info(struct setup_info *arch_setup_info)
 {
-        get_cpuinfo();
+        get_cpu_info();
         BSP_ID = cpu_info.APICID;
         return 0;
 }
