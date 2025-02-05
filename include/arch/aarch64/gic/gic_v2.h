@@ -1,5 +1,8 @@
 #include <common/types.h>
-
+/*
+here is some ref codes:
+https://developer.aliyun.com/article/1532907
+*/
 struct gic_distributor {
         u32 GICD_CTRL; /*RW	0x000*/
         u32 GICD_TYPER; /*RO	0x004*/
@@ -65,7 +68,7 @@ struct gic_cpu_interface {
         u32 GICC_IIDR; /*RO	0x00FC*/
         u32 Res_2[0x3C0]; /*	0x100-0x1000*/
         u32 GICC_DIR; /*WO	0x1000*/
-};
+} __attribute__((packed));
 
 struct gic_virtual_interface {
         u32 GICH_HCR; /*RW	0x00*/
@@ -83,4 +86,17 @@ struct gic_virtual_interface {
         u32 GICH_APR; /*RW	0xF0*/
         u32 Res_4[0x3]; /*		0xF4-0xFC*/
         u32 GICH_LR[0x40]; /*RW	0x100-0x1FC*/
+} __attribute__((packed));
+
+struct gic_v2 {
+        struct gic_distributor* gicd;
+        struct gic_cpu_interface* gicc;
+        char* compatible;
+        void (*probe)(void);
+        void (*init_distributor)(void);
+        void (*init_cpu_interface)(void);
+        u32 (*read_irq_num)(void);
+        void (*eoi)(void);
 };
+
+extern struct gic_v2 gic;

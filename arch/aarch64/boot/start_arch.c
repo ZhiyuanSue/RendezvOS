@@ -4,6 +4,7 @@
 #include <arch/aarch64/power_ctrl.h>
 #include <arch/aarch64/trap/trap.h>
 #include <arch/aarch64/cpuinfo.h>
+#include <arch/aarch64/gic/gic_v2.h>
 #include <common/endianness.h>
 #include <common/mm.h>
 #include <modules/dtb/dtb.h>
@@ -18,8 +19,6 @@
 extern u64 L2_table;
 int BSP_ID;
 extern struct allocator *kallocator;
-struct device_node *device_root;
-struct psci_func_64 psci_func;
 struct cpuinfo cpu_info;
 
 static void get_cpu_info(void)
@@ -164,12 +163,17 @@ error_t arch_parser_platform(struct setup_info *arch_setup_info)
                 build_device_tree(malloc, NULL, (void *)dtb_header_ptr, 0, 0);
         // print_device_tree(device_root);
         psci_init();
+        gic.probe();
+        gic.init_distributor();
         return 0;
 }
 error_t start_arch(int cpu_id)
 {
         init_interrupt();
         /*write in the cpuid*/
+        dsb(NSH);
         msr("TPIDR_EL1", __per_cpu_offset[cpu_id]);
+        dsb(NSH);
+        gic.init_cpu_interface();
         return (0);
 }

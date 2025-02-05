@@ -1,5 +1,7 @@
 #include <modules/psci/psci.h>
 
+struct psci_func_64 psci_func;
+
 static int psci_call_type;
 static u64 (*psci_call_func)(u64 func_id, u64 arg1, u64 arg2, u64 arg3);
 

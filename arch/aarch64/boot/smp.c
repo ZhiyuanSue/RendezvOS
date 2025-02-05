@@ -10,7 +10,6 @@ extern int BSP_ID;
 extern int NR_CPU;
 extern enum cpu_status CPU_STATE;
 extern struct cpuinfo cpu_info;
-extern struct device_node* device_root;
 extern struct nexus_node* nexus_root;
 DEFINE_PER_CPU(struct device_node*, cpu_device_node);
 void arch_start_smp(struct setup_info* arch_setup_info)

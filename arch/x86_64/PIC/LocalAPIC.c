@@ -10,7 +10,6 @@
 #include <arch/x86_64/msr.h>
 #include <arch/x86_64/sys_ctrl.h>
 extern struct cpuinfo cpu_info;
-extern struct map_handler Map_Handler;
 inline bool xAPIC_support(void)
 {
         return (cpu_info.feature_2 & X86_CPUID_FEATURE_EDX_APIC);

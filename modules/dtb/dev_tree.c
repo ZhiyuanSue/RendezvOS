@@ -1,8 +1,8 @@
 #include <modules/dtb/dtb.h>
 #include <modules/log/log.h>
 #include <shampoos/error.h>
-extern struct device_node* device_root;
 extern struct property_type property_types[PROPERTY_TYPE_NUM];
+struct device_node* device_root;
 void _print_device_tree(struct device_node* node, int depth)
 {
         /*print the device tree below node*/
@@ -190,16 +190,16 @@ error_t property_read_string(const struct property* prop, char** str)
         return 0;
 }
 
-error_t property_read_u8_arr(const struct property* prop, u8** arr, int n)
+error_t property_read_u8_arr(const struct property* prop, u8* arr, int n)
 {
         if (!prop || !arr || !n)
                 return -EPERM;
         if (n > prop->len)
                 n = prop->len;
-        memcpy(*arr, prop->data, n);
+        memcpy(arr, prop->data, n);
         return 0;
 }
-error_t property_read_u16_arr(const struct property* prop, u16** arr, int n)
+error_t property_read_u16_arr(const struct property* prop, u16* arr, int n)
 {
         if (!prop || !arr || !n)
                 return -EPERM;
@@ -207,11 +207,11 @@ error_t property_read_u16_arr(const struct property* prop, u16** arr, int n)
                 n = prop->len / sizeof(u16);
         u16* src_ptr = prop->data;
         for (int i = 0; i < n; i++) {
-                (*arr)[i] = SWAP_ENDIANNESS_16(src_ptr[i]);
+                arr[i] = SWAP_ENDIANNESS_16(src_ptr[i]);
         }
         return 0;
 }
-error_t property_read_u32_arr(const struct property* prop, u32** arr, int n)
+error_t property_read_u32_arr(const struct property* prop, u32* arr, int n)
 {
         if (!prop || !arr || !n)
                 return -EPERM;
@@ -219,11 +219,11 @@ error_t property_read_u32_arr(const struct property* prop, u32** arr, int n)
                 n = prop->len / sizeof(u32);
         u32* src_ptr = prop->data;
         for (int i = 0; i < n; i++) {
-                (*arr)[i] = SWAP_ENDIANNESS_32(src_ptr[i]);
+                arr[i] = SWAP_ENDIANNESS_32(src_ptr[i]);
         }
         return 0;
 }
-error_t property_read_u64_arr(const struct property* prop, u64** arr, int n)
+error_t property_read_u64_arr(const struct property* prop, u64* arr, int n)
 {
         if (!prop || !arr || !n)
                 return -EPERM;
@@ -231,7 +231,7 @@ error_t property_read_u64_arr(const struct property* prop, u64** arr, int n)
                 n = prop->len / sizeof(u64);
         u64* src_ptr = prop->data;
         for (int i = 0; i < n; i++) {
-                (*arr)[i] = SWAP_ENDIANNESS_64(src_ptr[i]);
+                arr[i] = SWAP_ENDIANNESS_64(src_ptr[i]);
         }
         return 0;
 }

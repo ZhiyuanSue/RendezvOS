@@ -20,6 +20,7 @@ struct device_node {
                 struct device_node* sibling;
         };
 } __attribute__((packed));
+extern struct device_node* device_root;
 
 struct property {
         char* name;
@@ -51,10 +52,10 @@ struct property* dev_node_find_property(const struct device_node* node,
 /*when we get the property, we should read the property value*/
 error_t property_read_string(const struct property* prop, char** str);
 
-error_t property_read_u8_arr(const struct property* prop, u8** arr, int n);
-error_t property_read_u16_arr(const struct property* prop, u16** arr, int n);
-error_t property_read_u32_arr(const struct property* prop, u32** arr, int n);
-error_t property_read_u64_arr(const struct property* prop, u64** arr, int n);
+error_t property_read_u8_arr(const struct property* prop, u8* arr, int n);
+error_t property_read_u16_arr(const struct property* prop, u16* arr, int n);
+error_t property_read_u32_arr(const struct property* prop, u32* arr, int n);
+error_t property_read_u64_arr(const struct property* prop, u64* arr, int n);
 
 error_t property_read_u8(const struct property* prop, u8* value);
 error_t property_read_u16(const struct property* prop, u16* value);

@@ -1,6 +1,7 @@
 #ifndef _SHAMPOOS_MM_H_
 #define _SHAMPOOS_MM_H_
 #include <common/stdbool.h>
+#include <common/types.h>
 #define PAGE_SIZE        0x1000
 #define MIDDLE_PAGE_SIZE 0x200000
 #define MIDDLE_PAGES     0x200

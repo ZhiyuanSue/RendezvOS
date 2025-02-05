@@ -6,7 +6,6 @@
 #include <modules/log/log.h>
 #include <shampoos/percpu.h>
 extern int BSP_ID;
-extern struct map_handler Map_Handler;
 struct acpi_table_fadt *fadt_table;
 extern struct acpi_table_madt *madt_table;
 static inline error_t parser_facp()

@@ -31,7 +31,6 @@ union L2_entry l2;
 union L3_entry l3;
 extern char MAP_L3_table;
 extern struct buddy buddy_pmm;
-extern struct map_handler Map_Handler;
 
 int arch_vmm_test(void)
 {
