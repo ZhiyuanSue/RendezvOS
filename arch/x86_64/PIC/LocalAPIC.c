@@ -10,6 +10,7 @@
 #include <arch/x86_64/msr.h>
 #include <arch/x86_64/sys_ctrl.h>
 extern struct cpuinfo cpu_info;
+extern u32 timer_irq_num;
 inline bool xAPIC_support(void)
 {
         return (cpu_info.feature_2 & X86_CPUID_FEATURE_EDX_APIC);
@@ -119,12 +120,11 @@ tick_t APIC_timer_calibration()
 {
 #define APIC_CALIBRATE_MS   25
 #define APIC_CALIBRATE_TIME 10
-        u32 apic_timer_irq_num = _8259A_MASTER_IRQ_NUM_ + _8259A_TIMER_;
         u32 timer_value = 0;
         u32 hz_cnt = 0;
         u64 total_hz_cnt = 0;
 
-        timer_value = set_mask(timer_value, apic_timer_irq_num);
+        timer_value = set_mask(timer_value, timer_irq_num);
         // first set to one shot mode
         timer_value = set_mask(timer_value, APIC_LVT_TIMER_MODE_ONE_SHOT);
         APIC_WR_REG(DCR, KERNEL_VIRT_OFFSET, APIC_DCR_DIV_16);
@@ -153,8 +153,7 @@ void APIC_timer_reset()
 {
         u32 init_cnt = (apic_hz_per_second / INT_PER_SECOND) >> 4;
         u32 lvt_timer_val = 0;
-        u32 apic_timer_irq_num = _8259A_MASTER_IRQ_NUM_ + _8259A_TIMER_;
-        lvt_timer_val = set_mask(lvt_timer_val, apic_timer_irq_num);
+        lvt_timer_val = set_mask(lvt_timer_val, timer_irq_num);
         lvt_timer_val = set_mask(lvt_timer_val, APIC_LVT_TIMER_MODE_PERIODIC);
 
         APIC_WR_REG(INIT_CNT, KERNEL_VIRT_OFFSET, init_cnt);

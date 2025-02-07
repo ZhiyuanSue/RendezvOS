@@ -14,7 +14,10 @@
 #include <arch/x86_64/time.h>
 #endif
 
+#include "trap.h"
+
 extern volatile i64 jeffies;
+extern u32 timer_irq_num;
 /*in shampoos we only use 64 bit time cnt*/
 #define time_after(a, b)     ((i64)b - (i64)a < 0)
 #define time_after_eq(a, b)  ((i64)b - (i64)a <= 0)
@@ -22,8 +25,8 @@ extern volatile i64 jeffies;
 #define time_before_eq(a, b) time_after_eq(b, a)
 
 typedef u64 tick_t;
-void shampoos_time_init();
-void shampoos_do_time_irq();
+void shampoos_time_init(void);
+void shampoos_do_time_irq(struct trap_frame *tf);
 #define SYS_TIME_MS_PER_INT 10
 #define INT_PER_SECOND      (1000 / SYS_TIME_MS_PER_INT)
 #define UDELAY_MUL \

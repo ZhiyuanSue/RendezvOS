@@ -7,7 +7,7 @@
 
 extern u64 trap_vec;
 extern enum IRQ_type arch_irq_type;
-extern union idt_gate_desc trap_vec_table[IDT_LIMIT];
+extern union idt_gate_desc trap_vec_table[NR_IRQ];
 const char *trap_name_string[TRAP_ARCH_USED + 2] = {
         "Fault:Divide Error\n\0",
         "Fault/Trap:Debug Exception\n\0",
@@ -39,9 +39,9 @@ void init_interrupt(void)
         struct pseudo_descriptor idtr_desc;
         union desc_selector sel;
 
-        idtr_desc.limit = IDT_LIMIT * sizeof(union idt_gate_desc) - 1;
+        idtr_desc.limit = NR_IRQ * sizeof(union idt_gate_desc) - 1;
         idtr_desc.base_addr = (u64)(&trap_vec_table);
-        for (int i = 0; i < IDT_LIMIT; ++i) {
+        for (int i = 0; i < NR_IRQ; ++i) {
                 /*generate the IDT table*/
                 sel.rpl = KERNEL_PL;
                 sel.table_indicator = 0;
@@ -84,7 +84,8 @@ void trap_handler(struct trap_frame *tf)
         pr_info("r15\t:\t0x%x\n", tf->r15);
 }
 
-void arch_eoi_irq(void){
+void arch_eoi_irq(void)
+{
         if (arch_irq_type == PIC_IRQ) {
                 PIC_EOI(0x20);
         } else if (arch_irq_type == xAPIC_IRQ) {

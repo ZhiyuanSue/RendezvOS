@@ -40,8 +40,9 @@ void shampoos_time_init()
         loop_per_jeffies = timer_calibration();
         udelay_max_loop = (loop_per_jeffies * UDELAY_MAX * UDELAY_MUL)
                           >> UDELAY_SHIFT;
+        register_irq_handler(timer_irq_num, shampoos_do_time_irq);
 }
-void shampoos_do_time_irq()
+void shampoos_do_time_irq(struct trap_frame *tf)
 {
         percpu(tick_cnt)++;
         /*TODO: maybe need add the lock*/

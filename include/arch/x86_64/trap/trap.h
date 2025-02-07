@@ -1,7 +1,7 @@
 #ifndef _SHAMPOOS_TRAP_H_
 #define _SHAMPOOS_TRAP_H_
 #include <common/types.h>
-#define IDT_LIMIT 256
+#define NR_IRQ 256
 enum TRAP_NUM {
         TRAP_DE,
         TRAP_DB,
