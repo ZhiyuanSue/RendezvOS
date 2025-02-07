@@ -38,13 +38,3 @@ void arch_init_timer(void)
         }
         get_rtc_time();
 }
-void time_irq(void)
-{
-        // pr_info("timer interrupt\n");
-        shampoos_do_time_irq();
-        if (arch_irq_type == PIC_IRQ) {
-                PIC_EOI(0x20);
-        } else if (arch_irq_type == xAPIC_IRQ) {
-                APIC_EOI();
-        }
-}

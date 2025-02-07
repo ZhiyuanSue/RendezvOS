@@ -8,9 +8,9 @@ Shanpu Xu is my senior brother, a 2020 master's student in the Department of Com
 
 # Start
 ## run
-First you need to config it,choose one config file under script/config, e.g. 
+First you need to config it,choose an arch, e.g. 
 ```
-make config CONFIG=config_x86_64.json
+make config ARCH=x86_64
 ```
 then 
 ```

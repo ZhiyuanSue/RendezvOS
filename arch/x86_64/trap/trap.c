@@ -83,3 +83,11 @@ void trap_handler(struct trap_frame *tf)
         pr_info("r14\t:\t0x%x\n", tf->r14);
         pr_info("r15\t:\t0x%x\n", tf->r15);
 }
+
+void arch_eoi_irq(void){
+        if (arch_irq_type == PIC_IRQ) {
+                PIC_EOI(0x20);
+        } else if (arch_irq_type == xAPIC_IRQ) {
+                APIC_EOI();
+        }
+}

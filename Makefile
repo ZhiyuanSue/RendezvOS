@@ -4,7 +4,7 @@ BUILD	?=	$(ROOT_DIR)/build
 CONFIG_FILE	:=	$(ROOT_DIR)/Makefile.env
 SCRIPT_DIR	:=	$(ROOT_DIR)/script
 SCRIPT_CONFIG_DIR	:=	$(SCRIPT_DIR)/config
-ARCH	?=	
+ARCH	?=	null
 CONFIG	?=
 SCRIPT_MAKE_DIR		:=	$(SCRIPT_DIR)/make
 SCRIPT_LINK_DIR		:=	$(SCRIPT_DIR)/link
@@ -38,8 +38,8 @@ else ifeq ($(ARCH), riscv64)
 	CONFIG = config_riscv64.json
 else ifeq ($(ARCH), loongarch)
 	CONFIG = config_loongarch.json
-else
-	$(error the arch is not support)
+else ifeq ($(ARCH), null)
+$(error the arch is not supportted or haven't configured)
 endif
 CFLAGS	+= -Wall -Os -nostdlib -nostdinc
 CFLAGS	+= -fno-stack-protector

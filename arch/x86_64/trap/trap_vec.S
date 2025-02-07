@@ -164,7 +164,8 @@ trap_31:
 	.global	trap_32
 trap_32:
 	trap_entry
-	call time_irq
+	call shampoos_do_time_irq
+	call arch_eoi_irq
 	trap_exit
 	.global	trap_33
 trap_33:
