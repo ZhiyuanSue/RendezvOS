@@ -2,7 +2,6 @@
 #include <arch/aarch64/mm/page_table_def.h>
 #include <arch/aarch64/mm/vmm.h>
 #include <arch/aarch64/power_ctrl.h>
-#include <arch/aarch64/trap/trap.h>
 #include <arch/aarch64/cpuinfo.h>
 #include <arch/aarch64/gic/gic_v2.h>
 #include <common/endianness.h>
@@ -15,6 +14,7 @@
 #include <shampoos/percpu.h>
 #include <shampoos/mm/vmm.h>
 #include <shampoos/mm/spmalloc.h>
+#include <shampoos/trap.h>
 
 extern u64 L2_table;
 int BSP_ID;
@@ -169,7 +169,9 @@ error_t arch_parser_platform(struct setup_info *arch_setup_info)
 }
 error_t start_arch(int cpu_id)
 {
+        pr_info("start arch\n");
         init_interrupt();
+        pr_info("finish init interrupt\n");
         /*write in the cpuid*/
         dsb(NSH);
         msr("TPIDR_EL1", __per_cpu_offset[cpu_id]);

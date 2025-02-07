@@ -34,7 +34,7 @@ const char *trap_name_string[TRAP_ARCH_USED + 2] = {
         "Intel reserved\n\0",
         /*for trap number between 21-31*/
         "User Defined interrupts\n\0"};
-void init_interrupt(void)
+void arch_init_interrupt(void)
 {
         struct pseudo_descriptor idtr_desc;
         union desc_selector sel;
@@ -56,9 +56,8 @@ void init_interrupt(void)
         lidt(&idtr_desc);
 }
 
-void trap_handler(struct trap_frame *tf)
+void arch_unknown_trap_handler(struct trap_frame *tf)
 {
-        pr_info("go into trap handler\n");
         pr_info("ss\t:\t0x%x\n", tf->ss);
         pr_info("rsp\t:\t0x%x\n", tf->rsp);
         pr_info("eflags\t:\t0x%x\n", tf->eflags);

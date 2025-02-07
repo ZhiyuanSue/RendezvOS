@@ -3,1283 +3,1283 @@
 	.section	.trap.vec
 	.global	trap_0
 trap_0:
-	trap_entry
+	trap_entry 0
 	call trap_handler
 	trap_exit
 	.global	trap_1
 trap_1:
-	trap_entry
+	trap_entry 1
 	call trap_handler
 	trap_exit
 	.global	trap_2
 trap_2:
-	trap_entry
+	trap_entry 2
 	call trap_handler
 	trap_exit
 	.global	trap_3
 trap_3:
-	trap_entry
+	trap_entry 3
 	call trap_handler
 	trap_exit
 	.global	trap_4
 trap_4:
-	trap_entry
+	trap_entry 4
 	call trap_handler
 	trap_exit
 	.global	trap_5
 trap_5:
-	trap_entry
+	trap_entry 5
 	call trap_handler
 	trap_exit
 	.global	trap_6
 trap_6:
-	trap_entry
+	trap_entry 6
 	call trap_handler
 	trap_exit
 	.global	trap_7
 trap_7:
-	trap_entry
+	trap_entry 7
 	call trap_handler
 	trap_exit
 	.global	trap_8
 trap_8:
-	trap_entry
+	trap_entry 8
 	call trap_handler
 	trap_exit
 	.global	trap_9
 trap_9:
-	trap_entry
+	trap_entry 9
 	call trap_handler
 	trap_exit
 	.global	trap_10
 trap_10:
-	trap_entry
+	trap_entry 10
 	call trap_handler
 	trap_exit
 	.global	trap_11
 trap_11:
-	trap_entry
+	trap_entry 11
 	call trap_handler
 	trap_exit
 	.global	trap_12
 trap_12:
-	trap_entry
+	trap_entry 12
 	call trap_handler
 	trap_exit
 	.global	trap_13
 trap_13:
-	trap_entry
+	trap_entry 13
 	call trap_handler
 	trap_exit
 	.global	trap_14
 trap_14:
-	trap_entry
+	trap_entry 14
 	call trap_handler
 	trap_exit
 	.global	trap_15
 trap_15:
-	trap_entry
+	trap_entry 15
 	call trap_handler
 	trap_exit
 	.global	trap_16
 trap_16:
-	trap_entry
+	trap_entry 16
 	call trap_handler
 	trap_exit
 	.global	trap_17
 trap_17:
-	trap_entry
+	trap_entry 17
 	call trap_handler
 	trap_exit
 	.global	trap_18
 trap_18:
-	trap_entry
+	trap_entry 18
 	call trap_handler
 	trap_exit
 	.global	trap_19
 trap_19:
-	trap_entry
+	trap_entry 19
 	call trap_handler
 	trap_exit
 	.global	trap_20
 trap_20:
-	trap_entry
+	trap_entry 20
 	call trap_handler
 	trap_exit
 	.global	trap_21
 trap_21:
-	trap_entry
+	trap_entry 21
 	call trap_handler
 	trap_exit
 	.global	trap_22
 trap_22:
-	trap_entry
+	trap_entry 22
 	call trap_handler
 	trap_exit
 	.global	trap_23
 trap_23:
-	trap_entry
+	trap_entry 23
 	call trap_handler
 	trap_exit
 	.global	trap_24
 trap_24:
-	trap_entry
+	trap_entry 24
 	call trap_handler
 	trap_exit
 	.global	trap_25
 trap_25:
-	trap_entry
+	trap_entry 25
 	call trap_handler
 	trap_exit
 	.global	trap_26
 trap_26:
-	trap_entry
+	trap_entry 26
 	call trap_handler
 	trap_exit
 	.global	trap_27
 trap_27:
-	trap_entry
+	trap_entry 27
 	call trap_handler
 	trap_exit
 	.global	trap_28
 trap_28:
-	trap_entry
+	trap_entry 28
 	call trap_handler
 	trap_exit
 	.global	trap_29
 trap_29:
-	trap_entry
+	trap_entry 29
 	call trap_handler
 	trap_exit
 	.global	trap_30
 trap_30:
-	trap_entry
+	trap_entry 30
 	call trap_handler
 	trap_exit
 	.global	trap_31
 trap_31:
-	trap_entry
+	trap_entry 31
 	call trap_handler
 	trap_exit
 	.global	trap_32
 trap_32:
-	trap_entry
-	call shampoos_do_time_irq
+	trap_entry 32
+	call trap_handler
 	call arch_eoi_irq
 	trap_exit
 	.global	trap_33
 trap_33:
-	trap_entry
+	trap_entry 33
 	call trap_handler
 	trap_exit
 	.global	trap_34
 trap_34:
-	trap_entry
+	trap_entry 34
 	call trap_handler
 	trap_exit
 	.global	trap_35
 trap_35:
-	trap_entry
+	trap_entry 35
 	call trap_handler
 	trap_exit
 	.global	trap_36
 trap_36:
-	trap_entry
+	trap_entry 36
 	call trap_handler
 	trap_exit
 	.global	trap_37
 trap_37:
-	trap_entry
+	trap_entry 37
 	call trap_handler
 	trap_exit
 	.global	trap_38
 trap_38:
-	trap_entry
+	trap_entry 38
 	call trap_handler
 	trap_exit
 	.global	trap_39
 trap_39:
-	trap_entry
+	trap_entry 39
 	call trap_handler
 	trap_exit
 	.global	trap_40
 trap_40:
-	trap_entry
+	trap_entry 40
 	call trap_handler
 	trap_exit
 	.global	trap_41
 trap_41:
-	trap_entry
+	trap_entry 41
 	call trap_handler
 	trap_exit
 	.global	trap_42
 trap_42:
-	trap_entry
+	trap_entry 42
 	call trap_handler
 	trap_exit
 	.global	trap_43
 trap_43:
-	trap_entry
+	trap_entry 43
 	call trap_handler
 	trap_exit
 	.global	trap_44
 trap_44:
-	trap_entry
+	trap_entry 44
 	call trap_handler
 	trap_exit
 	.global	trap_45
 trap_45:
-	trap_entry
+	trap_entry 45
 	call trap_handler
 	trap_exit
 	.global	trap_46
 trap_46:
-	trap_entry
+	trap_entry 46
 	call trap_handler
 	trap_exit
 	.global	trap_47
 trap_47:
-	trap_entry
+	trap_entry 47
 	call trap_handler
 	trap_exit
 	.global	trap_48
 trap_48:
-	trap_entry
+	trap_entry 48
 	call trap_handler
 	trap_exit
 	.global	trap_49
 trap_49:
-	trap_entry
+	trap_entry 49
 	call trap_handler
 	trap_exit
 	.global	trap_50
 trap_50:
-	trap_entry
+	trap_entry 50
 	call trap_handler
 	trap_exit
 	.global	trap_51
 trap_51:
-	trap_entry
+	trap_entry 51
 	call trap_handler
 	trap_exit
 	.global	trap_52
 trap_52:
-	trap_entry
+	trap_entry 52
 	call trap_handler
 	trap_exit
 	.global	trap_53
 trap_53:
-	trap_entry
+	trap_entry 53
 	call trap_handler
 	trap_exit
 	.global	trap_54
 trap_54:
-	trap_entry
+	trap_entry 54
 	call trap_handler
 	trap_exit
 	.global	trap_55
 trap_55:
-	trap_entry
+	trap_entry 55
 	call trap_handler
 	trap_exit
 	.global	trap_56
 trap_56:
-	trap_entry
+	trap_entry 56
 	call trap_handler
 	trap_exit
 	.global	trap_57
 trap_57:
-	trap_entry
+	trap_entry 57
 	call trap_handler
 	trap_exit
 	.global	trap_58
 trap_58:
-	trap_entry
+	trap_entry 58
 	call trap_handler
 	trap_exit
 	.global	trap_59
 trap_59:
-	trap_entry
+	trap_entry 59
 	call trap_handler
 	trap_exit
 	.global	trap_60
 trap_60:
-	trap_entry
+	trap_entry 60
 	call trap_handler
 	trap_exit
 	.global	trap_61
 trap_61:
-	trap_entry
+	trap_entry 61
 	call trap_handler
 	trap_exit
 	.global	trap_62
 trap_62:
-	trap_entry
+	trap_entry 62
 	call trap_handler
 	trap_exit
 	.global	trap_63
 trap_63:
-	trap_entry
+	trap_entry 63
 	call trap_handler
 	trap_exit
 	.global	trap_64
 trap_64:
-	trap_entry
+	trap_entry 64
 	call trap_handler
 	trap_exit
 	.global	trap_65
 trap_65:
-	trap_entry
+	trap_entry 65
 	call trap_handler
 	trap_exit
 	.global	trap_66
 trap_66:
-	trap_entry
+	trap_entry 66
 	call trap_handler
 	trap_exit
 	.global	trap_67
 trap_67:
-	trap_entry
+	trap_entry 67
 	call trap_handler
 	trap_exit
 	.global	trap_68
 trap_68:
-	trap_entry
+	trap_entry 68
 	call trap_handler
 	trap_exit
 	.global	trap_69
 trap_69:
-	trap_entry
+	trap_entry 69
 	call trap_handler
 	trap_exit
 	.global	trap_70
 trap_70:
-	trap_entry
+	trap_entry 70
 	call trap_handler
 	trap_exit
 	.global	trap_71
 trap_71:
-	trap_entry
+	trap_entry 71
 	call trap_handler
 	trap_exit
 	.global	trap_72
 trap_72:
-	trap_entry
+	trap_entry 72
 	call trap_handler
 	trap_exit
 	.global	trap_73
 trap_73:
-	trap_entry
+	trap_entry 73
 	call trap_handler
 	trap_exit
 	.global	trap_74
 trap_74:
-	trap_entry
+	trap_entry 74
 	call trap_handler
 	trap_exit
 	.global	trap_75
 trap_75:
-	trap_entry
+	trap_entry 75
 	call trap_handler
 	trap_exit
 	.global	trap_76
 trap_76:
-	trap_entry
+	trap_entry 76
 	call trap_handler
 	trap_exit
 	.global	trap_77
 trap_77:
-	trap_entry
+	trap_entry 77
 	call trap_handler
 	trap_exit
 	.global	trap_78
 trap_78:
-	trap_entry
+	trap_entry 78
 	call trap_handler
 	trap_exit
 	.global	trap_79
 trap_79:
-	trap_entry
+	trap_entry 79
 	call trap_handler
 	trap_exit
 	.global	trap_80
 trap_80:
-	trap_entry
+	trap_entry 80
 	call trap_handler
 	trap_exit
 	.global	trap_81
 trap_81:
-	trap_entry
+	trap_entry 81
 	call trap_handler
 	trap_exit
 	.global	trap_82
 trap_82:
-	trap_entry
+	trap_entry 82
 	call trap_handler
 	trap_exit
 	.global	trap_83
 trap_83:
-	trap_entry
+	trap_entry 83
 	call trap_handler
 	trap_exit
 	.global	trap_84
 trap_84:
-	trap_entry
+	trap_entry 84
 	call trap_handler
 	trap_exit
 	.global	trap_85
 trap_85:
-	trap_entry
+	trap_entry 85
 	call trap_handler
 	trap_exit
 	.global	trap_86
 trap_86:
-	trap_entry
+	trap_entry 86
 	call trap_handler
 	trap_exit
 	.global	trap_87
 trap_87:
-	trap_entry
+	trap_entry 87
 	call trap_handler
 	trap_exit
 	.global	trap_88
 trap_88:
-	trap_entry
+	trap_entry 88
 	call trap_handler
 	trap_exit
 	.global	trap_89
 trap_89:
-	trap_entry
+	trap_entry 89
 	call trap_handler
 	trap_exit
 	.global	trap_90
 trap_90:
-	trap_entry
+	trap_entry 90
 	call trap_handler
 	trap_exit
 	.global	trap_91
 trap_91:
-	trap_entry
+	trap_entry 91
 	call trap_handler
 	trap_exit
 	.global	trap_92
 trap_92:
-	trap_entry
+	trap_entry 92
 	call trap_handler
 	trap_exit
 	.global	trap_93
 trap_93:
-	trap_entry
+	trap_entry 93
 	call trap_handler
 	trap_exit
 	.global	trap_94
 trap_94:
-	trap_entry
+	trap_entry 94
 	call trap_handler
 	trap_exit
 	.global	trap_95
 trap_95:
-	trap_entry
+	trap_entry 95
 	call trap_handler
 	trap_exit
 	.global	trap_96
 trap_96:
-	trap_entry
+	trap_entry 96
 	call trap_handler
 	trap_exit
 	.global	trap_97
 trap_97:
-	trap_entry
+	trap_entry 97
 	call trap_handler
 	trap_exit
 	.global	trap_98
 trap_98:
-	trap_entry
+	trap_entry 98
 	call trap_handler
 	trap_exit
 	.global	trap_99
 trap_99:
-	trap_entry
+	trap_entry 99
 	call trap_handler
 	trap_exit
 	.global	trap_100
 trap_100:
-	trap_entry
+	trap_entry 100
 	call trap_handler
 	trap_exit
 	.global	trap_101
 trap_101:
-	trap_entry
+	trap_entry 101
 	call trap_handler
 	trap_exit
 	.global	trap_102
 trap_102:
-	trap_entry
+	trap_entry 102
 	call trap_handler
 	trap_exit
 	.global	trap_103
 trap_103:
-	trap_entry
+	trap_entry 103
 	call trap_handler
 	trap_exit
 	.global	trap_104
 trap_104:
-	trap_entry
+	trap_entry 104
 	call trap_handler
 	trap_exit
 	.global	trap_105
 trap_105:
-	trap_entry
+	trap_entry 105
 	call trap_handler
 	trap_exit
 	.global	trap_106
 trap_106:
-	trap_entry
+	trap_entry 106
 	call trap_handler
 	trap_exit
 	.global	trap_107
 trap_107:
-	trap_entry
+	trap_entry 107
 	call trap_handler
 	trap_exit
 	.global	trap_108
 trap_108:
-	trap_entry
+	trap_entry 108
 	call trap_handler
 	trap_exit
 	.global	trap_109
 trap_109:
-	trap_entry
+	trap_entry 109
 	call trap_handler
 	trap_exit
 	.global	trap_110
 trap_110:
-	trap_entry
+	trap_entry 110
 	call trap_handler
 	trap_exit
 	.global	trap_111
 trap_111:
-	trap_entry
+	trap_entry 111
 	call trap_handler
 	trap_exit
 	.global	trap_112
 trap_112:
-	trap_entry
+	trap_entry 112
 	call trap_handler
 	trap_exit
 	.global	trap_113
 trap_113:
-	trap_entry
+	trap_entry 113
 	call trap_handler
 	trap_exit
 	.global	trap_114
 trap_114:
-	trap_entry
+	trap_entry 114
 	call trap_handler
 	trap_exit
 	.global	trap_115
 trap_115:
-	trap_entry
+	trap_entry 115
 	call trap_handler
 	trap_exit
 	.global	trap_116
 trap_116:
-	trap_entry
+	trap_entry 116
 	call trap_handler
 	trap_exit
 	.global	trap_117
 trap_117:
-	trap_entry
+	trap_entry 117
 	call trap_handler
 	trap_exit
 	.global	trap_118
 trap_118:
-	trap_entry
+	trap_entry 118
 	call trap_handler
 	trap_exit
 	.global	trap_119
 trap_119:
-	trap_entry
+	trap_entry 119
 	call trap_handler
 	trap_exit
 	.global	trap_120
 trap_120:
-	trap_entry
+	trap_entry 120
 	call trap_handler
 	trap_exit
 	.global	trap_121
 trap_121:
-	trap_entry
+	trap_entry 121
 	call trap_handler
 	trap_exit
 	.global	trap_122
 trap_122:
-	trap_entry
+	trap_entry 122
 	call trap_handler
 	trap_exit
 	.global	trap_123
 trap_123:
-	trap_entry
+	trap_entry 123
 	call trap_handler
 	trap_exit
 	.global	trap_124
 trap_124:
-	trap_entry
+	trap_entry 124
 	call trap_handler
 	trap_exit
 	.global	trap_125
 trap_125:
-	trap_entry
+	trap_entry 125
 	call trap_handler
 	trap_exit
 	.global	trap_126
 trap_126:
-	trap_entry
+	trap_entry 126
 	call trap_handler
 	trap_exit
 	.global	trap_127
 trap_127:
-	trap_entry
+	trap_entry 127
 	call trap_handler
 	trap_exit
 	.global	trap_128
 trap_128:
-	trap_entry
+	trap_entry 128
 	call trap_handler
 	trap_exit
 	.global	trap_129
 trap_129:
-	trap_entry
+	trap_entry 129
 	call trap_handler
 	trap_exit
 	.global	trap_130
 trap_130:
-	trap_entry
+	trap_entry 130
 	call trap_handler
 	trap_exit
 	.global	trap_131
 trap_131:
-	trap_entry
+	trap_entry 131
 	call trap_handler
 	trap_exit
 	.global	trap_132
 trap_132:
-	trap_entry
+	trap_entry 132
 	call trap_handler
 	trap_exit
 	.global	trap_133
 trap_133:
-	trap_entry
+	trap_entry 133
 	call trap_handler
 	trap_exit
 	.global	trap_134
 trap_134:
-	trap_entry
+	trap_entry 134
 	call trap_handler
 	trap_exit
 	.global	trap_135
 trap_135:
-	trap_entry
+	trap_entry 135
 	call trap_handler
 	trap_exit
 	.global	trap_136
 trap_136:
-	trap_entry
+	trap_entry 136
 	call trap_handler
 	trap_exit
 	.global	trap_137
 trap_137:
-	trap_entry
+	trap_entry 137
 	call trap_handler
 	trap_exit
 	.global	trap_138
 trap_138:
-	trap_entry
+	trap_entry 138
 	call trap_handler
 	trap_exit
 	.global	trap_139
 trap_139:
-	trap_entry
+	trap_entry 139
 	call trap_handler
 	trap_exit
 	.global	trap_140
 trap_140:
-	trap_entry
+	trap_entry 140
 	call trap_handler
 	trap_exit
 	.global	trap_141
 trap_141:
-	trap_entry
+	trap_entry 141
 	call trap_handler
 	trap_exit
 	.global	trap_142
 trap_142:
-	trap_entry
+	trap_entry 142
 	call trap_handler
 	trap_exit
 	.global	trap_143
 trap_143:
-	trap_entry
+	trap_entry 143
 	call trap_handler
 	trap_exit
 	.global	trap_144
 trap_144:
-	trap_entry
+	trap_entry 144
 	call trap_handler
 	trap_exit
 	.global	trap_145
 trap_145:
-	trap_entry
+	trap_entry 145
 	call trap_handler
 	trap_exit
 	.global	trap_146
 trap_146:
-	trap_entry
+	trap_entry 146
 	call trap_handler
 	trap_exit
 	.global	trap_147
 trap_147:
-	trap_entry
+	trap_entry 147
 	call trap_handler
 	trap_exit
 	.global	trap_148
 trap_148:
-	trap_entry
+	trap_entry 148
 	call trap_handler
 	trap_exit
 	.global	trap_149
 trap_149:
-	trap_entry
+	trap_entry 149
 	call trap_handler
 	trap_exit
 	.global	trap_150
 trap_150:
-	trap_entry
+	trap_entry 150
 	call trap_handler
 	trap_exit
 	.global	trap_151
 trap_151:
-	trap_entry
+	trap_entry 151
 	call trap_handler
 	trap_exit
 	.global	trap_152
 trap_152:
-	trap_entry
+	trap_entry 152
 	call trap_handler
 	trap_exit
 	.global	trap_153
 trap_153:
-	trap_entry
+	trap_entry 153
 	call trap_handler
 	trap_exit
 	.global	trap_154
 trap_154:
-	trap_entry
+	trap_entry 154
 	call trap_handler
 	trap_exit
 	.global	trap_155
 trap_155:
-	trap_entry
+	trap_entry 155
 	call trap_handler
 	trap_exit
 	.global	trap_156
 trap_156:
-	trap_entry
+	trap_entry 156
 	call trap_handler
 	trap_exit
 	.global	trap_157
 trap_157:
-	trap_entry
+	trap_entry 157
 	call trap_handler
 	trap_exit
 	.global	trap_158
 trap_158:
-	trap_entry
+	trap_entry 158
 	call trap_handler
 	trap_exit
 	.global	trap_159
 trap_159:
-	trap_entry
+	trap_entry 159
 	call trap_handler
 	trap_exit
 	.global	trap_160
 trap_160:
-	trap_entry
+	trap_entry 160
 	call trap_handler
 	trap_exit
 	.global	trap_161
 trap_161:
-	trap_entry
+	trap_entry 161
 	call trap_handler
 	trap_exit
 	.global	trap_162
 trap_162:
-	trap_entry
+	trap_entry 162
 	call trap_handler
 	trap_exit
 	.global	trap_163
 trap_163:
-	trap_entry
+	trap_entry 163
 	call trap_handler
 	trap_exit
 	.global	trap_164
 trap_164:
-	trap_entry
+	trap_entry 164
 	call trap_handler
 	trap_exit
 	.global	trap_165
 trap_165:
-	trap_entry
+	trap_entry 165
 	call trap_handler
 	trap_exit
 	.global	trap_166
 trap_166:
-	trap_entry
+	trap_entry 166
 	call trap_handler
 	trap_exit
 	.global	trap_167
 trap_167:
-	trap_entry
+	trap_entry 167
 	call trap_handler
 	trap_exit
 	.global	trap_168
 trap_168:
-	trap_entry
+	trap_entry 168
 	call trap_handler
 	trap_exit
 	.global	trap_169
 trap_169:
-	trap_entry
+	trap_entry 169
 	call trap_handler
 	trap_exit
 	.global	trap_170
 trap_170:
-	trap_entry
+	trap_entry 170
 	call trap_handler
 	trap_exit
 	.global	trap_171
 trap_171:
-	trap_entry
+	trap_entry 171
 	call trap_handler
 	trap_exit
 	.global	trap_172
 trap_172:
-	trap_entry
+	trap_entry 172
 	call trap_handler
 	trap_exit
 	.global	trap_173
 trap_173:
-	trap_entry
+	trap_entry 173
 	call trap_handler
 	trap_exit
 	.global	trap_174
 trap_174:
-	trap_entry
+	trap_entry 174
 	call trap_handler
 	trap_exit
 	.global	trap_175
 trap_175:
-	trap_entry
+	trap_entry 175
 	call trap_handler
 	trap_exit
 	.global	trap_176
 trap_176:
-	trap_entry
+	trap_entry 176
 	call trap_handler
 	trap_exit
 	.global	trap_177
 trap_177:
-	trap_entry
+	trap_entry 177
 	call trap_handler
 	trap_exit
 	.global	trap_178
 trap_178:
-	trap_entry
+	trap_entry 178
 	call trap_handler
 	trap_exit
 	.global	trap_179
 trap_179:
-	trap_entry
+	trap_entry 179
 	call trap_handler
 	trap_exit
 	.global	trap_180
 trap_180:
-	trap_entry
+	trap_entry 180
 	call trap_handler
 	trap_exit
 	.global	trap_181
 trap_181:
-	trap_entry
+	trap_entry 181
 	call trap_handler
 	trap_exit
 	.global	trap_182
 trap_182:
-	trap_entry
+	trap_entry 182
 	call trap_handler
 	trap_exit
 	.global	trap_183
 trap_183:
-	trap_entry
+	trap_entry 183
 	call trap_handler
 	trap_exit
 	.global	trap_184
 trap_184:
-	trap_entry
+	trap_entry 184
 	call trap_handler
 	trap_exit
 	.global	trap_185
 trap_185:
-	trap_entry
+	trap_entry 185
 	call trap_handler
 	trap_exit
 	.global	trap_186
 trap_186:
-	trap_entry
+	trap_entry 186
 	call trap_handler
 	trap_exit
 	.global	trap_187
 trap_187:
-	trap_entry
+	trap_entry 187
 	call trap_handler
 	trap_exit
 	.global	trap_188
 trap_188:
-	trap_entry
+	trap_entry 188
 	call trap_handler
 	trap_exit
 	.global	trap_189
 trap_189:
-	trap_entry
+	trap_entry 189
 	call trap_handler
 	trap_exit
 	.global	trap_190
 trap_190:
-	trap_entry
+	trap_entry 190
 	call trap_handler
 	trap_exit
 	.global	trap_191
 trap_191:
-	trap_entry
+	trap_entry 191
 	call trap_handler
 	trap_exit
 	.global	trap_192
 trap_192:
-	trap_entry
+	trap_entry 192
 	call trap_handler
 	trap_exit
 	.global	trap_193
 trap_193:
-	trap_entry
+	trap_entry 193
 	call trap_handler
 	trap_exit
 	.global	trap_194
 trap_194:
-	trap_entry
+	trap_entry 194
 	call trap_handler
 	trap_exit
 	.global	trap_195
 trap_195:
-	trap_entry
+	trap_entry 195
 	call trap_handler
 	trap_exit
 	.global	trap_196
 trap_196:
-	trap_entry
+	trap_entry 196
 	call trap_handler
 	trap_exit
 	.global	trap_197
 trap_197:
-	trap_entry
+	trap_entry 197
 	call trap_handler
 	trap_exit
 	.global	trap_198
 trap_198:
-	trap_entry
+	trap_entry 198
 	call trap_handler
 	trap_exit
 	.global	trap_199
 trap_199:
-	trap_entry
+	trap_entry 199
 	call trap_handler
 	trap_exit
 	.global	trap_200
 trap_200:
-	trap_entry
+	trap_entry 200
 	call trap_handler
 	trap_exit
 	.global	trap_201
 trap_201:
-	trap_entry
+	trap_entry 201
 	call trap_handler
 	trap_exit
 	.global	trap_202
 trap_202:
-	trap_entry
+	trap_entry 202
 	call trap_handler
 	trap_exit
 	.global	trap_203
 trap_203:
-	trap_entry
+	trap_entry 203
 	call trap_handler
 	trap_exit
 	.global	trap_204
 trap_204:
-	trap_entry
+	trap_entry 204
 	call trap_handler
 	trap_exit
 	.global	trap_205
 trap_205:
-	trap_entry
+	trap_entry 205
 	call trap_handler
 	trap_exit
 	.global	trap_206
 trap_206:
-	trap_entry
+	trap_entry 206
 	call trap_handler
 	trap_exit
 	.global	trap_207
 trap_207:
-	trap_entry
+	trap_entry 207
 	call trap_handler
 	trap_exit
 	.global	trap_208
 trap_208:
-	trap_entry
+	trap_entry 208
 	call trap_handler
 	trap_exit
 	.global	trap_209
 trap_209:
-	trap_entry
+	trap_entry 209
 	call trap_handler
 	trap_exit
 	.global	trap_210
 trap_210:
-	trap_entry
+	trap_entry 210
 	call trap_handler
 	trap_exit
 	.global	trap_211
 trap_211:
-	trap_entry
+	trap_entry 211
 	call trap_handler
 	trap_exit
 	.global	trap_212
 trap_212:
-	trap_entry
+	trap_entry 212
 	call trap_handler
 	trap_exit
 	.global	trap_213
 trap_213:
-	trap_entry
+	trap_entry 213
 	call trap_handler
 	trap_exit
 	.global	trap_214
 trap_214:
-	trap_entry
+	trap_entry 214
 	call trap_handler
 	trap_exit
 	.global	trap_215
 trap_215:
-	trap_entry
+	trap_entry 215
 	call trap_handler
 	trap_exit
 	.global	trap_216
 trap_216:
-	trap_entry
+	trap_entry 216
 	call trap_handler
 	trap_exit
 	.global	trap_217
 trap_217:
-	trap_entry
+	trap_entry 217
 	call trap_handler
 	trap_exit
 	.global	trap_218
 trap_218:
-	trap_entry
+	trap_entry 218
 	call trap_handler
 	trap_exit
 	.global	trap_219
 trap_219:
-	trap_entry
+	trap_entry 219
 	call trap_handler
 	trap_exit
 	.global	trap_220
 trap_220:
-	trap_entry
+	trap_entry 220
 	call trap_handler
 	trap_exit
 	.global	trap_221
 trap_221:
-	trap_entry
+	trap_entry 221
 	call trap_handler
 	trap_exit
 	.global	trap_222
 trap_222:
-	trap_entry
+	trap_entry 222
 	call trap_handler
 	trap_exit
 	.global	trap_223
 trap_223:
-	trap_entry
+	trap_entry 223
 	call trap_handler
 	trap_exit
 	.global	trap_224
 trap_224:
-	trap_entry
+	trap_entry 224
 	call trap_handler
 	trap_exit
 	.global	trap_225
 trap_225:
-	trap_entry
+	trap_entry 225
 	call trap_handler
 	trap_exit
 	.global	trap_226
 trap_226:
-	trap_entry
+	trap_entry 226
 	call trap_handler
 	trap_exit
 	.global	trap_227
 trap_227:
-	trap_entry
+	trap_entry 227
 	call trap_handler
 	trap_exit
 	.global	trap_228
 trap_228:
-	trap_entry
+	trap_entry 228
 	call trap_handler
 	trap_exit
 	.global	trap_229
 trap_229:
-	trap_entry
+	trap_entry 229
 	call trap_handler
 	trap_exit
 	.global	trap_230
 trap_230:
-	trap_entry
+	trap_entry 230
 	call trap_handler
 	trap_exit
 	.global	trap_231
 trap_231:
-	trap_entry
+	trap_entry 231
 	call trap_handler
 	trap_exit
 	.global	trap_232
 trap_232:
-	trap_entry
+	trap_entry 232
 	call trap_handler
 	trap_exit
 	.global	trap_233
 trap_233:
-	trap_entry
+	trap_entry 233
 	call trap_handler
 	trap_exit
 	.global	trap_234
 trap_234:
-	trap_entry
+	trap_entry 234
 	call trap_handler
 	trap_exit
 	.global	trap_235
 trap_235:
-	trap_entry
+	trap_entry 235
 	call trap_handler
 	trap_exit
 	.global	trap_236
 trap_236:
-	trap_entry
+	trap_entry 236
 	call trap_handler
 	trap_exit
 	.global	trap_237
 trap_237:
-	trap_entry
+	trap_entry 237
 	call trap_handler
 	trap_exit
 	.global	trap_238
 trap_238:
-	trap_entry
+	trap_entry 238
 	call trap_handler
 	trap_exit
 	.global	trap_239
 trap_239:
-	trap_entry
+	trap_entry 239
 	call trap_handler
 	trap_exit
 	.global	trap_240
 trap_240:
-	trap_entry
+	trap_entry 240
 	call trap_handler
 	trap_exit
 	.global	trap_241
 trap_241:
-	trap_entry
+	trap_entry 241
 	call trap_handler
 	trap_exit
 	.global	trap_242
 trap_242:
-	trap_entry
+	trap_entry 242
 	call trap_handler
 	trap_exit
 	.global	trap_243
 trap_243:
-	trap_entry
+	trap_entry 243
 	call trap_handler
 	trap_exit
 	.global	trap_244
 trap_244:
-	trap_entry
+	trap_entry 244
 	call trap_handler
 	trap_exit
 	.global	trap_245
 trap_245:
-	trap_entry
+	trap_entry 245
 	call trap_handler
 	trap_exit
 	.global	trap_246
 trap_246:
-	trap_entry
+	trap_entry 246
 	call trap_handler
 	trap_exit
 	.global	trap_247
 trap_247:
-	trap_entry
+	trap_entry 247
 	call trap_handler
 	trap_exit
 	.global	trap_248
 trap_248:
-	trap_entry
+	trap_entry 248
 	call trap_handler
 	trap_exit
 	.global	trap_249
 trap_249:
-	trap_entry
+	trap_entry 249
 	call trap_handler
 	trap_exit
 	.global	trap_250
 trap_250:
-	trap_entry
+	trap_entry 250
 	call trap_handler
 	trap_exit
 	.global	trap_251
 trap_251:
-	trap_entry
+	trap_entry 251
 	call trap_handler
 	trap_exit
 	.global	trap_252
 trap_252:
-	trap_entry
+	trap_entry 252
 	call trap_handler
 	trap_exit
 	.global	trap_253
 trap_253:
-	trap_entry
+	trap_entry 253
 	call trap_handler
 	trap_exit
 	.global	trap_254
 trap_254:
-	trap_entry
+	trap_entry 254
 	call trap_handler
 	trap_exit
 	.global	trap_255
 trap_255:
-	trap_entry
+	trap_entry 255
 	call trap_handler
 	trap_exit
 

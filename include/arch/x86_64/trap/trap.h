@@ -27,6 +27,7 @@ enum TRAP_NUM {
         TRAP_ARCH_USED,
 };
 struct trap_frame {
+        u64 trap_id;
         u64 r15;
         u64 r14;
         u64 r13;
@@ -51,7 +52,7 @@ struct trap_frame {
         u64 rsp;
         u64 ss;
 };
-void init_interrupt(void);
-void trap_handler(struct trap_frame* tf);
+void arch_init_interrupt(void);
+void arch_unknown_trap_handler(struct trap_frame *tf);
 void arch_eor_irq(void);
 #endif

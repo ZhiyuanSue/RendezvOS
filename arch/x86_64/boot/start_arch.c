@@ -5,7 +5,6 @@
 #include <arch/x86_64/sys_ctrl.h>
 #include <arch/x86_64/sys_ctrl_def.h>
 #include <arch/x86_64/time.h>
-#include <arch/x86_64/trap/trap.h>
 #include <arch/x86_64/desc.h>
 #include <arch/x86_64/trap/tss.h>
 #include <arch/x86_64/msr.h>
@@ -16,6 +15,7 @@
 #include <shampoos/error.h>
 #include <shampoos/mm/vmm.h>
 #include <shampoos/mm/nexus.h>
+#include <shampoos/trap.h>
 
 extern u32 max_phy_addr_width;
 struct cpuinfo cpu_info;
