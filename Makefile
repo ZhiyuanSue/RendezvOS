@@ -6,6 +6,7 @@ SCRIPT_DIR	:=	$(ROOT_DIR)/script
 SCRIPT_CONFIG_DIR	:=	$(SCRIPT_DIR)/config
 ARCH	?=	null
 CONFIG	?=
+SMP		?=	4
 SCRIPT_MAKE_DIR		:=	$(SCRIPT_DIR)/make
 SCRIPT_LINK_DIR		:=	$(SCRIPT_DIR)/link
 ARCH_DIR	:=	$(ROOT_DIR)/arch
@@ -43,7 +44,7 @@ $(error the arch is not supportted or haven't configured)
 endif
 CFLAGS	+= -Wall -Os -nostdlib -nostdinc
 CFLAGS	+= -fno-stack-protector
-CFLAGS	+=	-I $(INCLUDE_DIR)
+CFLAGS	+=	-I $(INCLUDE_DIR) -DNR_CPUS=$(SMP)
 
 LDFLAGS	+=	-T $(SCRIPT_LINK_DIR)/$(ARCH)_linker.ld
 
