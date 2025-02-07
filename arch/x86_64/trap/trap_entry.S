@@ -1,6 +1,6 @@
 
 .macro trap_entry
-	sub		$(15*8),%rsp
+	sub		$(16*8),%rsp
 
 	mov		%r15,	(%rsp)
 	mov		%r14,	8(%rsp)
@@ -38,6 +38,6 @@
 	mov		8(%rsp),	%r14
 	mov		(%rsp),		%r15
 
-	add		$(15*8),%rsp		//also pop error code
+	add		$(16*8),%rsp		//also pop error code
 	iretq
 .endm
