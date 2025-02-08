@@ -135,6 +135,8 @@ void arch_init_pmm(struct setup_info *arch_setup_info)
                 KERNEL_VIRT_TO_PHY(arch_setup_info->map_end_virt_addr);
         reserve_per_cpu_region(&per_cpu_phy_start);
         pmm_data_phy_start = ROUND_UP(per_cpu_phy_start, PAGE_SIZE);
+        per_cpu_phy_start =
+                KERNEL_VIRT_TO_PHY(arch_setup_info->map_end_virt_addr);
         kernel_phy_start = KERNEL_VIRT_TO_PHY((vaddr)(&_start));
         kernel_phy_end = KERNEL_VIRT_TO_PHY((vaddr)(&_end));
         pmm_data_phy_end = 0;

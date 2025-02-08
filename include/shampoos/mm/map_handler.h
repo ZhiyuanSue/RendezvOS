@@ -11,10 +11,10 @@
         and we think we should not have more than 512 cores
 */
 struct map_handler {
-        int cpu_id;
+        u64 cpu_id;
         vaddr map_vaddr[4];
         struct pmm* pmm;
-};
+} __attribute__((packed));
 extern struct map_handler Map_Handler;
 void init_map(struct map_handler* handler, int cpu_id, struct pmm* pmm);
 /*
