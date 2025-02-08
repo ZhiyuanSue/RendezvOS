@@ -1,11 +1,36 @@
+#ifndef _SHAMPOOS_GIC_V2_H_
+#define _SHAMPOOS_GIC_V2_H_
 #include <common/types.h>
+#include <common/stdbool.h>
 /*
 here is some ref codes:
 https://developer.aliyun.com/article/1532907
 */
+#define GIC_V2_NR_CPU_MAX 8
+
+#define GIC_V2_SGI_START 0
+#define GIC_V2_SGI_END   15
+#define GIC_V2_PPI_START 16
+#define GIC_V2_PPI_END   31
+#define GIC_V2_SPI_START 32
+#define GIC_V2_SPI_END   1019
+
+static inline bool gic_v2_is_sgi(u32 irq_num)
+{
+        return (irq_num >= GIC_V2_SGI_START && irq_num <= GIC_V2_SGI_END);
+}
+static inline bool gic_v2_is_ppi(u32 irq_num)
+{
+        return (irq_num >= GIC_V2_PPI_START && irq_num <= GIC_V2_PPI_END);
+}
+static inline bool gic_v2_is_spi(u32 irq_num)
+{
+        return (irq_num >= GIC_V2_SPI_START && irq_num <= GIC_V2_SPI_END);
+}
+
 struct gic_distributor {
-#define GIC_GICD_CTLR_GROUP0_ENABLE (0x1)
-#define GIC_GICD_CTLR_GROUP1_ENABLE (0x2)
+#define GIC_V2_GICD_CTLR_GROUP0_ENABLE (0x1)
+#define GIC_V2_GICD_CTLR_GROUP1_ENABLE (0x2)
         volatile u32 GICD_CTLR; /*RW	0x000*/
         volatile u32 GICD_TYPER; /*RO	0x004*/
         volatile u32 GICD_IIDR; /*RO	0x008*/
@@ -23,11 +48,15 @@ struct gic_distributor {
         volatile u32 GICD_ICPENDRn[0x20]; /*RW	0x280 - 0x2FC*/
         volatile u32 GICD_ISACTIVERn[0x20]; /*RW	0x300 - 0x37C*/
         volatile u32 GICD_ICACTIVERn[0x20]; /*RW	0x380 - 0x3FC*/
+#define GIC_V2_IPRIORITYR_MASK (0xff)
         volatile u32 GICD_IPRIORITYRn[0xFF]; /*RW	0x400 - 0x7F8*/
         u32 Res_2; /*RW	0x7FC*/
+#define GIC_V2_ITARGETSR_MASK (0xff)
         volatile u32 GICD_ITARGETSRn_RO[0x8]; /*RO	0x800 - 0x81C*/
         volatile u32 GICD_ITARGETSRn_RW[0xF7]; /*RW	0x820 - 0xBF8*/
         u32 Res_3; /*		0xBFC*/
+#define GIC_V2_GICD_1_N          (1)
+#define GIC_V2_GICD_EDGE_TRIGGER (1 << 1)
         volatile u32 GICD_ICFGRn[0x40]; /*RW	0xC00 - 0xCFC*/
 
         volatile u32 Impl_1[0x40]; /*		0xD00 - 0xDFC*/
@@ -49,14 +78,20 @@ struct gic_distributor {
 
 struct gic_cpu_interface {
         /*this is no secure extension*/
-#define GIC_GICC_CTLR_ENABLE_GROUP1         (0x1)
-#define GIC_GICC_CTLR_FIQ_BYPASS_DIS_GROUP1 (0x1 << 5)
-#define GIC_GICC_CTLR_IRQ_BYPASS_DIS_GROUP1 (0x1 << 6)
-#define GIC_GICC_CTLR_EOI_MODE_NON_SECURE   (0x1 << 9)
+#define GIC_V2_GICC_CTLR_ENABLE_GROUP1         (0x1)
+#define GIC_V2_GICC_CTLR_FIQ_BYPASS_DIS_GROUP1 (0x1 << 5)
+#define GIC_V2_GICC_CTLR_IRQ_BYPASS_DIS_GROUP1 (0x1 << 6)
+#define GIC_V2_GICC_CTLR_EOI_MODE_NON_SECURE   (0x1 << 9)
         volatile u32 GICC_CTLR; /*RW	0x0000*/
         volatile u32 GICC_PMR; /*RW	0x0004*/
         volatile u32 GICC_BPR; /*RW	0x0008*/
+#define GIC_V2_GICC_IAR_INT_ID_MASK  (0x3ff)
+#define GIC_V2_GICC_IAR_CPU_ID_SHIFT (10)
+#define GIC_V2_GICC_IAR_CPU_ID_MASK  (0x7 << GIC_V2_GICC_IAR_CPU_ID_SHIFT)
         volatile u32 GICC_IAR; /*RO	0x000C	reset - 0x000003FF*/
+#define GIC_V2_GICC_EOIR_INT_ID_MASK  (0x3ff)
+#define GIC_V2_GICC_EOIR_CPU_ID_SHIFT (10)
+#define GIC_V2_GICC_EOIR_CPU_ID_MASK  (0x7 << GIC_V2_GICC_EOIR_CPU_ID_SHIFT)
         volatile u32 GICC_EOIR; /*WO	0x0010*/
         volatile u32 GICC_RPR; /*RO	0x0014	reset - 0x000000FF*/
         volatile u32 GICC_HPPIR; /*RO	0x0018	reset - 0x000003FF*/
@@ -107,3 +142,10 @@ struct gic_v2 {
 };
 
 extern struct gic_v2 gic;
+
+struct irq_source {
+        u32 cpu_id;
+        u32 irq_id;
+};
+
+#endif
