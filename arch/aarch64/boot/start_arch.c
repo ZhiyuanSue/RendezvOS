@@ -171,9 +171,8 @@ error_t start_arch(int cpu_id)
 {
         init_interrupt();
         /*write in the cpuid*/
-        dsb(NSH);
         msr("TPIDR_EL1", __per_cpu_offset[cpu_id]);
-        dsb(NSH);
+        isb();
         gic.init_cpu_interface();
         return (0);
 }

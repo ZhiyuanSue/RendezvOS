@@ -32,6 +32,12 @@ struct gic_distributor {
 #define GIC_V2_GICD_CTLR_GROUP0_ENABLE (0x1)
 #define GIC_V2_GICD_CTLR_GROUP1_ENABLE (0x2)
         volatile u32 GICD_CTLR; /*RW	0x000*/
+#define GIC_V2_GICD_TYPER_IT_LINE_MASK  (0x1f)
+#define GIC_V2_GICD_TYPER_CPU_NUM_SHIFT (5)
+#define GIC_V2_GICD_TYPER_CPU_NUM_MASK  (0x7 << GIC_V2_GICD_TYPER_CPU_NUM_SHIFT)
+#define GIC_V2_GICD_TYPER_SECURE_EXT    (1 << 10)
+#define GIC_V2_GICD_TYPER_LSPI_SHIFT    (11)
+#define GIC_V2_GICD_TYPER_LSPI_MASK     (0x1f << GIC_V2_GICD_TYPER_LSPI_SHIFT)
         volatile u32 GICD_TYPER; /*RO	0x004*/
         volatile u32 GICD_IIDR; /*RO	0x008*/
         u32 Res_0[0x5]; /*		0x00C - 0x01C*/
@@ -63,6 +69,17 @@ struct gic_distributor {
         /*IMPLEMENTATION DEFINED registers*/
 
         volatile u32 GICD_NSACRn[0x40]; /*RW	0xE00 - 0xEFC*/
+#define GIC_V2_GICD_SGIR_TARGET_LIST_FLITER_SHIFT (24)
+#define GIC_V2_GICD_SGIR_TARGET_LIST_FLITER_MASK \
+        (0x3 << GIC_V2_GICD_SGIR_TARGET_LIST_FLITER_SHIFT)
+#define GIC_V2_GICD_SGIR_TARGET_LIST_SHIFT (16)
+#define GIC_V2_GICD_SGIR_TARGET_LIST_MASK \
+        (0xff << GIC_V2_GICD_SGIR_TARGET_LIST_SHIFT)
+#define GIC_V2_GICD_SGIR_TARGET_SPECIFIED (0)
+#define GIC_V2_GICD_SGIR_TARGET_OTHER \
+        (1 << GIC_V2_GICD_SGIR_TARGET_LIST_FLITER_SHIFT)
+#define GIC_V2_GICD_SGIR_TARGET_SELF \
+        (2 << GIC_V2_GICD_SGIR_TARGET_LIST_FLITER_SHIFT)
         volatile u32 GICD_SGIR; /*WO	0xF00*/
         u32 Res_4[0x3]; /*		0xF04 - 0xF0C*/
         volatile u32 GICD_CPENDSGIRn[0x4]; /*RW	0xF10 - 0xF1C*/
@@ -130,6 +147,12 @@ struct gic_virtual_interface {
         volatile u32 GICH_LR[0x40]; /*RW	0x100-0x1FC*/
 } __attribute__((packed));
 
+
+struct irq_source {
+        u32 cpu_id;
+        u32 irq_id;
+};
+
 struct gic_v2 {
         struct gic_distributor* gicd;
         struct gic_cpu_interface* gicc;
@@ -137,15 +160,17 @@ struct gic_v2 {
         void (*probe)(void);
         void (*init_distributor)(void);
         void (*init_cpu_interface)(void);
-        u32 (*read_irq_num)(void);
-        void (*eoi)(void);
+        void (*unmask_irq)(u32 irq_num);
+        void (*mask_irq)(u32 irq_num);
+        void (*set_type)(u32 irq_num, u32 type);
+        void (*set_priority)(u32 irq_num, u32 prio);
+        void (*set_affinity)(u32 irq_num, u32 cpu_id_mask);
+        void (*send_sgi)(u32 irq_num, u32 target_mode, u32 target_list_bit);
+        struct irq_source (*read_irq_num)(void);
+        void (*eoi)(struct irq_source source);
 };
 
 extern struct gic_v2 gic;
 
-struct irq_source {
-        u32 cpu_id;
-        u32 irq_id;
-};
 
 #endif
