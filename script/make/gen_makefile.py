@@ -2,7 +2,15 @@ import sys
 import os
 from pathlib import Path
 
-makefile_string="include $(SCRIPT_MAKE_DIR)/build.mk\n-include ./Makefile.env\nmodules= $(shell find ./* -maxdepth 0 -type d)\n\nall: init $(modules) ${OBJECTS}\n\t@for mod in $(modules); do $(MAKE) -C $$mod all; done\n\n-include ${BUILD}/*.d\n${BUILD}/%.o: ./%.c $(modules)\n\t@echo \"CC	\"$@\n\t@$(CC) $(CFLAGS) -o $@ -c $< -MD -MF ${BUILD}/$*.d -MP\n"
+makefile_string="include $(SCRIPT_MAKE_DIR)/build.mk\n" \
+            +   "-include ./Makefile.env\n" \
+            +   "modules= $(shell find ./* -maxdepth 0 -type d)\n\n"    \
+            +   "all: init $(modules) ${OBJECTS}\n" \
+            +   "\t@for mod in $(modules); do $(MAKE) -C $$mod all; done\n\n" \
+            +   "-include ${BUILD}/*.d\n" \
+            +   "${BUILD}/%.o: ./%.c $(modules)\n" \
+            +   "\t@echo \"CC	\"$@\n" \
+            +   "\t@$(CC) $(CFLAGS) -o $@ -c $< -MD -MF ${BUILD}/$*.d -MP\n"
 
 def gen_makefile(target_dir):
     target_dir = Path(target_dir)
