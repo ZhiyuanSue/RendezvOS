@@ -39,17 +39,17 @@ BEGIN_FUNC(trap_vec_table)
 END_FUNC(trap_vec_table)
 
 BEGIN_FUNC(sync)
-
+	b trap_handler
 END_FUNC(sync)
 
 BEGIN_FUNC(irq)
-
+	b trap_handler
 END_FUNC(irq)
 
 BEGIN_FUNC(fiq)
-
+	b trap_handler
 END_FUNC(fiq)
 
 BEGIN_FUNC(unexpected_trap)
-
+	b arch_unknown_trap_handler
 END_FUNC(unexpected_trap)

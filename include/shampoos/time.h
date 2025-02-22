@@ -10,8 +10,8 @@
 
 #elif defined _X86_64_
 #include <arch/x86_64/time.h>
-#else /*for default config is x86_64*/
-#include <arch/x86_64/time.h>
+#else
+
 #endif
 
 #include "trap.h"

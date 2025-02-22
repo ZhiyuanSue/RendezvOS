@@ -15,6 +15,7 @@
 #include <shampoos/mm/vmm.h>
 #include <shampoos/mm/spmalloc.h>
 #include <shampoos/trap.h>
+#include <shampoos/time.h>
 
 extern u64 L2_table;
 int BSP_ID;
@@ -174,5 +175,6 @@ error_t start_arch(int cpu_id)
         msr("TPIDR_EL1", __per_cpu_offset[cpu_id]);
         isb();
         gic.init_cpu_interface();
+        arch_init_timer();
         return (0);
 }

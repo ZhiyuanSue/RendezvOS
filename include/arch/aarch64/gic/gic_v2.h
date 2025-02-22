@@ -147,7 +147,6 @@ struct gic_virtual_interface {
         volatile u32 GICH_LR[0x40]; /*RW	0x100-0x1FC*/
 } __attribute__((packed));
 
-
 struct irq_source {
         u32 cpu_id;
         u32 irq_id;
@@ -171,6 +170,5 @@ struct gic_v2 {
 };
 
 extern struct gic_v2 gic;
-
 
 #endif
