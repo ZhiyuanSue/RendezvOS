@@ -54,12 +54,12 @@ void gic_v2_probe()
 void gicd_v2_unmask_irq(u32 irq_num)
 {
         /*write the GICD_ISENABLER reg to unmask*/
-        gic.gicd->GICD_ICENABLERn[irq_num / 32] |= 1 << (irq_num % 32);
+        gic.gicd->GICD_ISENABLERn[irq_num / 32] |= 1 << (irq_num % 32);
 }
 void gicd_v2_mask_irq(u32 irq_num)
 {
         /*write the GICD_ICENABLER reg to mask*/
-        gic.gicd->GICD_ISENABLERn[irq_num / 32] |= 1 << (irq_num % 32);
+        gic.gicd->GICD_ICENABLERn[irq_num / 32] |= 1 << (irq_num % 32);
         isb();
 }
 void gicd_v2_set_type(u32 irq_num, u32 type)
@@ -136,7 +136,8 @@ void gic_v2_init_distributor(void)
 
         /*read the gicd type reg*/
         u32 gicd_typer_value = gic.gicd->GICD_TYPER;
-        u32 nr_it_lines = gicd_typer_value & GIC_V2_GICD_TYPER_IT_LINE_MASK;
+        u32 nr_it_lines =
+                (gicd_typer_value & GIC_V2_GICD_TYPER_IT_LINE_MASK) + 1;
         u32 irq_num = nr_it_lines << 5;
         if (irq_num > GIC_V2_SPI_END)
                 irq_num = GIC_V2_SPI_END;
