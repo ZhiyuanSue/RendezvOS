@@ -6,26 +6,26 @@
 #include "barrier.h"
 static inline void arch_tlb_invalidate_all()
 {
-        // TODO:dsb
+        dsb(SY);
         asm volatile("tlbi alle1;");
-        // TODO:dsb
-        // TODO:isb
+        dsb(SY);
+        isb();
 }
 static inline void arch_tlb_invalidate_page(uint64_t vspace_id, vaddr addr)
 {
         uint64_t tmp = (vspace_id << 16) | (addr >> 12);
-        // TODO:dsb
+        dsb(SY);
         asm volatile("tlbi vae1,%0;" : : "r"(tmp));
-        // TODO:dsb
-        // TODO:isb
+        dsb(SY);
+        isb();
 }
 static inline void arch_tlb_invalidate_kernel_page(vaddr addr)
 {
         uint64_t tmp = (addr >> 12);
-        // TODO:dsb
+        dsb(SY);
         asm volatile("tlbi vae1,%0;" : : "r"(tmp));
-        // TODO:dsb
-        // TODO:isb
+        dsb(SY);
+        isb();
 }
 static inline void arch_tlb_invalidate_vspace_page(uint64_t vspace_id,
                                                    vaddr addr)
@@ -33,10 +33,10 @@ static inline void arch_tlb_invalidate_vspace_page(uint64_t vspace_id,
         if (vspace_id >= (1 << 16))
                 return;
         uint64_t tmp = (vspace_id << 48);
-        // TODO:dsb
+        dsb(SY);
         asm volatile("tlbi aside1, %0;" : : "r"(tmp));
-        // TODO:dsb
-        // TODO:isb
+        dsb(SY);
+        isb();
 }
 
 static inline void arch_tlb_invalidate_range(u_int64_t vspace_id, vaddr start,
@@ -44,13 +44,13 @@ static inline void arch_tlb_invalidate_range(u_int64_t vspace_id, vaddr start,
 {
         if (vspace_id >= (1 << 16))
                 return;
-        // TODO:dsb
+        dsb(SY);
         /*the tlbi rvae1 is only supported when ARMv8.4 TLBI is implemented*/
         for (vaddr addr = start; addr < end; addr += PAGE_SIZE) {
                 uint64_t tmp = (vspace_id << 16) | (addr >> 12);
                 asm volatile("tlbi vae1,%0;" : : "r"(tmp));
         }
-        // TODO:dsb
-        // TODO:isb
+        dsb(SY);
+        isb();
 }
 #endif

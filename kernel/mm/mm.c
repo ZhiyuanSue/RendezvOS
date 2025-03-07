@@ -16,6 +16,9 @@ error_t phy_mm_init(struct setup_info *arch_setup_info)
 }
 error_t virt_mm_init(int cpu_id)
 {
+        if (cpu_id == BSP_ID) {
+                sys_init_map();
+        }
         init_map(&per_cpu(Map_Handler, cpu_id),
                  cpu_id,
                  (struct pmm *)&buddy_pmm);

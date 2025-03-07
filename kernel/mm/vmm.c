@@ -4,7 +4,7 @@
 #include <shampoos/error.h>
 #include <modules/log/log.h>
 extern u64 *MAP_L1_table, *MAP_L2_table, *MAP_L3_table;
-void init_map(struct map_handler *handler, int cpu_id, struct pmm *pmm)
+void sys_init_map()
 {
         ARCH_PFLAGS_t flags;
         paddr vspace_root = get_current_kernel_vspace_root();
@@ -32,6 +32,9 @@ void init_map(struct map_handler *handler, int cpu_id, struct pmm *pmm)
                           map_pages,
                           (union L2_entry *)&MAP_L2_table,
                           flags);
+}
+void init_map(struct map_handler *handler, int cpu_id, struct pmm *pmm)
+{
         handler->cpu_id = cpu_id;
         handler->pmm = pmm;
         vaddr map_vaddr = map_pages + cpu_id * PAGE_SIZE * 4;
