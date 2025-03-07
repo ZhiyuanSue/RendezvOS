@@ -251,3 +251,36 @@ IST（interrupt stack table）
 按照上述的说法，IDT表里面生成table的时候就需要设定好IST的index
 所以ist的值1-7应当被用于不同的stack，并且，tss的设定一定是在idt设定之前就做好的,所以需要先设置tss再搞idt
 除此之外,ist指定的堆栈一定是per_cpu的。否则会出问题。
+
+# aarch64
+这个主要是在D1这里头
+
+## D1.10 exception entry
+当一个异常发生的时候
+ - CPSR寄存器（当前状态寄存器，包括NZCVQ等标志位等等情况，都会保存到SPSR_ELx中，x是目标异常状态
+ - 返回地址保存在ELR_ELx
+ - DAIR都默认设为1，表示禁止嵌套中断
+ - PSTATE的SSBS会保存SCTLR_ELx的DSSBS（虽然sctlr比较重要，但是ssbs这个位看上去只是个扩展，用于确认分支预测是否是安全的）
+ - UAO扩展如果启用，那么PSTATE的UAO会设为0（好像也没啥用）
+ - ESR_ELx表示了SError以及同步异常的原因
+ - 其他若干跟扩展相关的内容
+ - 会自动选择对应的SP_ELx寄存器指向的地址
+ - 然后PC跳转到对应异常等级的异常向量表
+ - 如果是一个abort，data abort，pc alignment fault 或者watchpoint会存储报错的地址到FAR_ELx
+ - 另外，对于路由到EL2的情况，如果同样有instruction abort或者data abort（我的理解需要建立虚拟机的页面映射），还会保存早HPFAR_EL2
+
+### 返回地址
+对于异步异常，返回地址是中断发生的下一条指令或者没有执行的第一条指令
+对于不是syscall的同步异常，返回的是触发同步异常的那条指令，而对于system call，返回的是svc指令的下一条指令
+
+### ESR寄存器
+bit 0:24 ISS
+bit 25 IL，指明64还是32位的指令，不做兼容的话无需考虑这一位
+bit 26:31 EC, 指明exception的原因（其中包括了svc在aarch64下的使用，相当于syscall了）
+
+## D1.11 exception return
+异常返回既包括返回到原先的执行流，也包括初始化的时候构造一个新的执行流。
+
+PSTATE和PC都需要恢复到原先的值
+PSTATE使用存储的SPSR，PC使用ELR
+
