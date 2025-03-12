@@ -8,11 +8,8 @@ struct list_entry {
         struct list_entry *prev, *next;
 };
 
-#define LIST_HEAD_INIT(name)     \
-        {                        \
-                &(name), &(name) \
-        }
-#define LIST_HEAD(name) struct list_entry name = LIST_HEAD_INIT(name);
+#define LIST_HEAD_INIT(name) {&(name), &(name)}
+#define LIST_HEAD(name)      struct list_entry name = LIST_HEAD_INIT(name);
 
 static inline void INIT_LIST_HEAD(struct list_entry *list_node)
 {
