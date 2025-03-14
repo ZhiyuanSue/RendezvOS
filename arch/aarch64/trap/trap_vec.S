@@ -42,25 +42,28 @@ END_FUNC(trap_vec_table)
 
 BEGIN_FUNC(curr_el_sync)
 	el1_trap_entry TRAP_TYPE_SYNC
-	bl get_curr_el_trap_info
+	bl 	get_curr_el_trap_info
 	mov x0,SP
-	bl trap_handler
+	bl 	trap_handler
 	el1_trap_exit
 END_FUNC(curr_el_sync)
 
 BEGIN_FUNC(curr_el_irq)
 	el1_trap_entry TRAP_TYPE_IRQ
-	bl get_curr_el_trap_info
+	bl 	get_curr_el_trap_info
 	mov x0,SP
-	bl trap_handler
+	bl 	trap_handler
+	ldr x0,[SP]
+	orr x0,x0,#AARCH64_TRAP_SRC_MASK
+	bl	arch_eoi_irq
 	el1_trap_exit
 END_FUNC(curr_el_irq)
 
 BEGIN_FUNC(curr_el_fiq)
 	el1_trap_entry TRAP_TYPE_FIQ
-	bl get_curr_el_trap_info
+	bl 	get_curr_el_trap_info
 	mov x0,SP
-	bl trap_handler
+	bl 	trap_handler
 	el1_trap_exit
 END_FUNC(curr_el_fiq)
 

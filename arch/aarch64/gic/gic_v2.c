@@ -105,26 +105,21 @@ void gicd_v2_send_sgi(u32 irq_num, u32 target_mode, u32 target_list_bit)
         }
         isb();
 }
-void gicc_v2_eoi(struct irq_source source)
+void gicc_v2_eoi(union irq_source source)
 {
         /*
             here we should set the EOI mode and then just use GICC_EOIR reg
             without the GICC_DIR reg
         */
-        u32 eoir_value = ((source.cpu_id << GIC_V2_GICC_EOIR_CPU_ID_SHIFT)
-                          & GIC_V2_GICC_EOIR_CPU_ID_MASK)
-                         + (source.irq_id & GIC_V2_GICC_EOIR_INT_ID_MASK);
-        gic.gicc->GICC_EOIR = eoir_value;
+        gic.gicc->GICC_EOIR = source.irq_source_value;
         isb();
 }
-struct irq_source gicc_v2_read_irq()
+union irq_source gicc_v2_read_irq()
 {
         /*read the GICC_IAR reg*/
         u32 gicc_iar_value = gic.gicc->GICC_IAR;
-        struct irq_source source = {
-                .cpu_id = (gicc_iar_value & GIC_V2_GICC_IAR_CPU_ID_MASK)
-                          >> GIC_V2_GICC_IAR_CPU_ID_SHIFT,
-                .irq_id = gicc_iar_value & GIC_V2_GICC_IAR_INT_ID_MASK,
+        union irq_source source = {
+                .irq_source_value = gicc_iar_value,
         };
         isb();
         return source;

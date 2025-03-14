@@ -147,10 +147,13 @@ struct gic_virtual_interface {
         volatile u32 GICH_LR[0x40]; /*RW	0x100-0x1FC*/
 } __attribute__((packed));
 
-struct irq_source {
-        u32 cpu_id;
-        u32 irq_id;
-};
+union irq_source {
+        u64 irq_source_value;
+        struct {
+                u64 irq_id : 10;
+                u64 cpu_id : 3;
+        } __attribute__((packed));
+} __attribute__((packed));
 
 struct gic_v2 {
         struct gic_distributor* gicd;
@@ -165,8 +168,8 @@ struct gic_v2 {
         void (*set_priority)(u32 irq_num, u32 prio);
         void (*set_affinity)(u32 irq_num, u32 cpu_id_mask);
         void (*send_sgi)(u32 irq_num, u32 target_mode, u32 target_list_bit);
-        struct irq_source (*read_irq_num)(void);
-        void (*eoi)(struct irq_source source);
+        union irq_source (*read_irq_num)(void);
+        void (*eoi)(union irq_source source);
 };
 
 extern struct gic_v2 gic;

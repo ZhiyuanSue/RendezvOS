@@ -20,6 +20,7 @@
 extern u64 L2_table;
 int BSP_ID;
 extern struct allocator *kallocator;
+extern int cpu_number;
 struct cpuinfo cpu_info;
 
 static void get_cpu_info(void)
@@ -173,6 +174,7 @@ error_t start_arch(int cpu_id)
         init_interrupt();
         /*write in the cpuid*/
         msr("TPIDR_EL1", __per_cpu_offset[cpu_id]);
+        per_cpu(cpu_number, cpu_id) = cpu_id;
         isb();
         arch_init_timer();
         gic.init_cpu_interface();
