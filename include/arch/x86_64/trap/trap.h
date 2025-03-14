@@ -1,7 +1,8 @@
 #ifndef _SHAMPOOS_TRAP_H_
 #define _SHAMPOOS_TRAP_H_
 #include <common/types.h>
-#define NR_IRQ 256
+#define NR_IRQ              256
+#define TRAP_ID(trap_frame) (trap_frame->trap_info)
 enum TRAP_NUM {
         TRAP_DE,
         TRAP_DB,
@@ -27,7 +28,7 @@ enum TRAP_NUM {
         TRAP_ARCH_USED,
 };
 struct trap_frame {
-        u64 trap_id;
+        u64 trap_info;
         u64 r15;
         u64 r14;
         u64 r13;
