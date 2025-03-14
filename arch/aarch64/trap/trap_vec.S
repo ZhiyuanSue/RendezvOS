@@ -1,4 +1,5 @@
 #include <common/assemble.h>
+#include <arch/aarch64/trap/trap_def.h>
 #include "./trap_entry.S"
 
 BEGIN_FUNC(trap_vec_table)
@@ -40,7 +41,7 @@ BEGIN_FUNC(trap_vec_table)
 END_FUNC(trap_vec_table)
 
 BEGIN_FUNC(curr_el_sync)
-	el1_trap_entry
+	el1_trap_entry TRAP_TYPE_SYNC
 	bl get_curr_el_trap_info
 	mov x0,SP
 	bl trap_handler
@@ -48,7 +49,7 @@ BEGIN_FUNC(curr_el_sync)
 END_FUNC(curr_el_sync)
 
 BEGIN_FUNC(curr_el_irq)
-	el1_trap_entry
+	el1_trap_entry TRAP_TYPE_IRQ
 	bl get_curr_el_trap_info
 	mov x0,SP
 	bl trap_handler
@@ -56,7 +57,7 @@ BEGIN_FUNC(curr_el_irq)
 END_FUNC(curr_el_irq)
 
 BEGIN_FUNC(curr_el_fiq)
-	el1_trap_entry
+	el1_trap_entry TRAP_TYPE_FIQ
 	bl get_curr_el_trap_info
 	mov x0,SP
 	bl trap_handler

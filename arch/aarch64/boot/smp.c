@@ -18,6 +18,8 @@ void arch_start_smp(struct setup_info* arch_setup_info)
         per_cpu(CPU_STATE, BSP_ID) = cpu_enable;
         if (!cpu_info.MP) {
                 /*not a smp system*/
+                // TODO: try to fix the bug of smp, when I set the smp in
+                // makefile to 1, it fails
                 return;
         }
         struct device_node* cpu_node = dev_node_find_by_type(NULL, "cpu");

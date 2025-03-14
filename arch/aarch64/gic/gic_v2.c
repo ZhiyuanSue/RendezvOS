@@ -147,7 +147,7 @@ void gic_v2_init_distributor(void)
 
         /*set all the irq type , */
         for (u32 irq = GIC_V2_SPI_START; irq < irq_num; irq++) {
-                gic.set_type(irq, GIC_V2_GICD_EDGE_TRIGGER|GIC_V2_GICD_1_N);
+                gic.set_type(irq, GIC_V2_GICD_EDGE_TRIGGER | GIC_V2_GICD_1_N);
         }
         /*set all the irq send to core 0*/
         for (u32 irq = GIC_V2_SPI_START; irq < irq_num; irq++) {

@@ -2,6 +2,7 @@
 #define _SHAMPOOS_TRAP_H_
 #include <common/types.h>
 #include <arch/aarch64/gic/gic_v2.h>
+#include "trap_def.h"
 
 /*
         we let the highest 8 bits(bit 56-63) represent the source el
@@ -9,10 +10,6 @@
         for the trap number, 0-63 is the sync error
         and the 64-1083 used for gic irq number + 64
 */
-#define NR_IRQ                                                                 \
-        1084 /*in gic(v2) we can only use 0-1019, and we use 64 as the sync ec \
-                trap*/
-#define AARCH64_IRQ_OFFSET  64
 #define TRAP_ID(trap_frame) (trap_frame->trap_info & AARCH64_TRAP_ID_MASK)
 #define AARCH64_TRAP_GET_SRC_EL(trap_frame)                 \
         ((trap_frame->trap_info & AARCH64_TRAP_SRC_EL_MASK) \

@@ -1,4 +1,4 @@
-.macro el1_trap_entry
+.macro el1_trap_entry trap_type
     
     sub sp,sp,#(39*8)
 
@@ -23,7 +23,9 @@
     mov x21,SP
     mrs x22,ESR_EL1
     mrs x23,FAR_EL1
+	mov x0,#(\trap_type)
 
+	str x0,[sp]
     stp x30,x19,[sp,#8*31]
     stp x20,x21,[sp,#8*33]
     stp x22,x23,[sp,#8*35]
