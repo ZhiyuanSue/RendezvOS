@@ -11,7 +11,7 @@ void arch_init_interrupt(void)
 void arch_unknown_trap_handler(struct trap_frame *tf)
 {
         /*print the trap frames*/
-        // pr_info("arch unknown trap handler 0x%x\n",tf->trap_info);
+        // pr_info("arch unknown trap handler trap info 0x%x\n",tf->trap_info);
         // pr_info("x0\t:\t0x%x\n", tf->REGS[0]);
         // pr_info("x1\t:\t0x%x\n", tf->REGS[1]);
         // pr_info("x2\t:\t0x%x\n", tf->REGS[2]);
@@ -79,5 +79,5 @@ void get_curr_el_trap_info(struct trap_frame *tf)
         default:
                 break;
         }
-        tf->trap_info &= AARCH64_TRAP_SRC_EL_1 << AARCH64_TRAP_SRC_EL_SHIFT;
+        tf->trap_info |= AARCH64_TRAP_SRC_EL_1 << AARCH64_TRAP_SRC_EL_SHIFT;
 }

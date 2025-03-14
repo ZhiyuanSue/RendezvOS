@@ -19,8 +19,9 @@ void reserve_per_cpu_region(paddr *phy_kernel_end)
         u64 per_cpu_size = (u64)(&_per_cpu_end) - (u64)(&_per_cpu_start);
         __per_cpu_offset[0] = 0;
         *phy_kernel_end = ROUND_UP(*phy_kernel_end, 64);
-        __per_cpu_offset[1] =
-                KERNEL_PHY_TO_VIRT(*phy_kernel_end) - (u64)(&_per_cpu_start);
+        if (SHAMPOOS_MAX_CPU_NUMBER > 1)
+                __per_cpu_offset[1] = KERNEL_PHY_TO_VIRT(*phy_kernel_end)
+                                      - (u64)(&_per_cpu_start);
         *phy_kernel_end += (SHAMPOOS_MAX_CPU_NUMBER - 1) * per_cpu_size;
         calculate_per_cpu_offset();
 }
