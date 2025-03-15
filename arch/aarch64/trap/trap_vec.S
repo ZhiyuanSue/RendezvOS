@@ -67,20 +67,36 @@ BEGIN_FUNC(curr_el_fiq)
 	el1_trap_exit
 END_FUNC(curr_el_fiq)
 
-/*trap entry with lower el*/
+/*=== === === === === === trap entry with lower el === === === === === ===*/
 
 BEGIN_FUNC(low_el_sync)
-	bl trap_handler
+	el0_trap_entry TRAP_TYPE_SYNC
+	bl 	get_curr_el_trap_info
+	mov x0,SP
+	bl 	trap_handler
+	el0_trap_exit
 END_FUNC(low_el_sync)
 
 BEGIN_FUNC(low_el_irq)
-	bl trap_handler
+	el0_trap_entry TRAP_TYPE_IRQ
+	bl 	get_curr_el_trap_info
+	mov x0,SP
+	bl 	trap_handler
+	ldr x0,[SP]
+	orr x0,x0,#AARCH64_TRAP_SRC_MASK
+	bl	arch_eoi_irq
+	el0_trap_exit
 END_FUNC(low_el_irq)
 
 BEGIN_FUNC(low_el_fiq)
-	bl trap_handler
+	el0_trap_entry TRAP_TYPE_FIQ
+	bl 	get_curr_el_trap_info
+	mov x0,SP
+	bl 	trap_handler
+	el0_trap_exit
 END_FUNC(low_el_fiq)
 
+/*no need to store context, for it must be kernel panic*/
 BEGIN_FUNC(unexpected_trap)
 	bl arch_unknown_trap_handler
 END_FUNC(unexpected_trap)

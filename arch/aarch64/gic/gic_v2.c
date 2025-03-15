@@ -79,7 +79,7 @@ void gicd_v2_set_affinity(u32 irq_num, u32 cpu_id_mask)
         if (!gic_v2_is_spi(irq_num) || cpu_id_mask >= GIC_V2_ITARGETSR_MASK)
                 return; /*must >= 32 as spi*/
         u32 spi_irq_num = irq_num - GIC_V2_SPI_START;
-        gic.gicd->GICD_ITARGETSRn_RW[irq_num / 4] |=
+        gic.gicd->GICD_ITARGETSRn_RW[spi_irq_num / 4] |=
                 (cpu_id_mask & GIC_V2_ITARGETSR_MASK)
                 << ((spi_irq_num % 4) * 8);
 }
