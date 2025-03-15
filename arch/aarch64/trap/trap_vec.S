@@ -54,7 +54,7 @@ BEGIN_FUNC(curr_el_irq)
 	mov x0,SP
 	bl 	trap_handler
 	ldr x0,[SP]
-	orr x0,x0,#AARCH64_TRAP_SRC_MASK
+	and x0,x0,#AARCH64_TRAP_SRC_MASK
 	bl	arch_eoi_irq
 	el1_trap_exit
 END_FUNC(curr_el_irq)
@@ -83,7 +83,7 @@ BEGIN_FUNC(low_el_irq)
 	mov x0,SP
 	bl 	trap_handler
 	ldr x0,[SP]
-	orr x0,x0,#AARCH64_TRAP_SRC_MASK
+	and x0,x0,#AARCH64_TRAP_SRC_MASK
 	bl	arch_eoi_irq
 	el0_trap_exit
 END_FUNC(low_el_irq)

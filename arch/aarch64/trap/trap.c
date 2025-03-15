@@ -61,6 +61,7 @@ void arch_unknown_trap_handler(struct trap_frame *tf)
 }
 void arch_eoi_irq(union irq_source source)
 {
+        source.irq_id = AARCH64_TRAP_ID_TO_IRQ(source.irq_id);
         gic.eoi(source);
 }
 

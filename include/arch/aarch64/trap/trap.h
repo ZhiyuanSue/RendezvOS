@@ -5,6 +5,7 @@
 #include "trap_def.h"
 
 #define AARCH64_IRQ_TO_TRAP_ID(irq_number) (irq_number + AARCH64_IRQ_OFFSET)
+#define AARCH64_TRAP_ID_TO_IRQ(trap_id)    (trap_id - AARCH64_IRQ_OFFSET)
 
 #define TRAP_ID(trap_frame)  (trap_frame->trap_info & AARCH64_TRAP_ID_MASK)
 #define TRAP_SRC(trap_frame) (trap_frame->trap_info & AARCH64_TRAP_SRC_MASK)
