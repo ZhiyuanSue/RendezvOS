@@ -1,8 +1,8 @@
 #ifndef _SHAMPOOS_TRAP_H_
 #define _SHAMPOOS_TRAP_H_
 #include <common/types.h>
-#define NR_IRQ              256
-#define TRAP_ID(trap_frame) (trap_frame->trap_info)
+#define NR_IRQ             256
+#define TRAP_ID(trap_info) (trap_info)
 enum TRAP_NUM {
         TRAP_DE,
         TRAP_DB,

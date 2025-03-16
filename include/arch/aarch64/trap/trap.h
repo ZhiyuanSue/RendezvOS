@@ -7,14 +7,12 @@
 #define AARCH64_IRQ_TO_TRAP_ID(irq_number) (irq_number + AARCH64_IRQ_OFFSET)
 #define AARCH64_TRAP_ID_TO_IRQ(trap_id)    (trap_id - AARCH64_IRQ_OFFSET)
 
-#define TRAP_ID(trap_frame)  (trap_frame->trap_info & AARCH64_TRAP_ID_MASK)
-#define TRAP_SRC(trap_frame) (trap_frame->trap_info & AARCH64_TRAP_SRC_MASK)
-#define TRAP_CPU(trap_frame)                             \
-        ((trap_frame->trap_info & AARCH64_TRAP_CPU_MASK) \
-         >> AARCH64_TRAP_CPU_SHIFT)
-#define AARCH64_TRAP_GET_SRC_EL(trap_frame)                 \
-        ((trap_frame->trap_info & AARCH64_TRAP_SRC_EL_MASK) \
-         >> AARCH64_TRAP_SRC_EL_SHIFT)
+#define TRAP_ID(trap_info)  (trap_info & AARCH64_TRAP_ID_MASK)
+#define TRAP_SRC(trap_info) (trap_info & AARCH64_TRAP_SRC_MASK)
+#define TRAP_CPU(trap_info) \
+        ((trap_info & AARCH64_TRAP_CPU_MASK) >> AARCH64_TRAP_CPU_SHIFT)
+#define AARCH64_TRAP_GET_SRC_EL(trap_info) \
+        ((trap_info & AARCH64_TRAP_SRC_EL_MASK) >> AARCH64_TRAP_SRC_EL_SHIFT)
 
 struct trap_frame {
 #define AARCH64_TRAP_SRC_EL_SHIFT (56)

@@ -1,6 +1,7 @@
 #include <arch/aarch64/sys_ctrl.h>
 #include <arch/aarch64/trap/trap.h>
 #include <modules/log/log.h>
+#include <arch/aarch64/power_ctrl.h>
 
 extern u64 trap_vec_table;
 void arch_init_interrupt(void)
@@ -11,7 +12,7 @@ void arch_init_interrupt(void)
 void arch_unknown_trap_handler(struct trap_frame *tf)
 {
         /*print the trap frames*/
-        // pr_info("arch unknown trap handler trap info 0x%x\n",tf->trap_info);
+        pr_info("arch unknown trap handler trap info 0x%x\n", tf->trap_info);
         // pr_info("x0\t:\t0x%x\n", tf->REGS[0]);
         // pr_info("x1\t:\t0x%x\n", tf->REGS[1]);
         // pr_info("x2\t:\t0x%x\n", tf->REGS[2]);
@@ -61,6 +62,7 @@ void arch_unknown_trap_handler(struct trap_frame *tf)
 }
 void arch_eoi_irq(union irq_source source)
 {
+        source.irq_id = TRAP_SRC(source.irq_id);
         source.irq_id = AARCH64_TRAP_ID_TO_IRQ(source.irq_id);
         gic.eoi(source);
 }

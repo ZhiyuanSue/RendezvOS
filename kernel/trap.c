@@ -10,7 +10,7 @@ void register_irq_handler(int irq_num, void (*handler)(struct trap_frame *tf))
 }
 void trap_handler(struct trap_frame *tf)
 {
-        u64 trap_id = TRAP_ID(tf);
+        u64 trap_id = TRAP_ID((tf->trap_info));
         if (percpu(irq_handler[trap_id])) {
                 percpu(irq_handler[trap_id])(tf);
         } else {

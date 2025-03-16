@@ -170,6 +170,7 @@ struct gic_v2 {
         void (*send_sgi)(u32 irq_num, u32 target_mode, u32 target_list_bit);
         union irq_source (*read_irq_num)(void);
         void (*eoi)(union irq_source source);
+        void (*pending_clr)(u32 irq_number);
 };
 
 extern struct gic_v2 gic;

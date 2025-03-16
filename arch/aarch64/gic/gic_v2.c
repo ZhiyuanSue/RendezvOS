@@ -83,6 +83,11 @@ void gicd_v2_set_affinity(u32 irq_num, u32 cpu_id_mask)
                 (cpu_id_mask & GIC_V2_ITARGETSR_MASK)
                 << ((spi_irq_num % 4) * 8);
 }
+void gicd_v2_pending_clr(u32 irq_num)
+{
+        gic.gicd->GICD_ICPENDRn[irq_num / 32] |= 1 << (irq_num % 32);
+        isb();
+}
 void gicd_v2_send_sgi(u32 irq_num, u32 target_mode, u32 target_list_bit)
 {
         /*write the GICD_SGIR reg*/
@@ -157,26 +162,29 @@ void gic_v2_init_distributor(void)
                 gic.mask_irq(irq);
         }
         /*enable gicd*/
-        gic.gicd->GICD_CTLR = GIC_V2_GICD_CTLR_GROUP0_ENABLE
-                              | GIC_V2_GICD_CTLR_GROUP1_ENABLE;
+        gic.gicd->GICD_CTLR = GIC_V2_GICD_CTLR_GROUP0_ENABLE;
         isb();
 }
 void gic_v2_init_cpu_interface(void)
 {
         /*set the sgi priority*/
-        for (u32 irq = GIC_V2_SGI_START; irq < GIC_V2_SGI_END; irq++) {
+        for (u32 irq = GIC_V2_SGI_START; irq <= GIC_V2_SGI_END; irq++) {
                 gic.set_priority(irq, irq / 8);
         }
         /*set the ppi priority*/
-        for (u32 irq = GIC_V2_PPI_START; irq < GIC_V2_PPI_END; irq++) {
+        for (u32 irq = GIC_V2_PPI_START; irq <= GIC_V2_PPI_END; irq++) {
                 gic.set_priority(irq, irq / 8);
         }
         /*enable ppi and sgi*/
-        for (u32 irq = GIC_V2_SGI_START; irq < GIC_V2_SGI_END; irq++) {
+        for (u32 irq = GIC_V2_SGI_START; irq <= GIC_V2_SGI_END; irq++) {
                 gic.unmask_irq(irq);
         }
-        for (u32 irq = GIC_V2_PPI_START; irq < GIC_V2_PPI_END; irq++) {
+        for (u32 irq = GIC_V2_PPI_START; irq <= GIC_V2_PPI_END; irq++) {
                 gic.unmask_irq(irq);
+        }
+        /*set all the ppi and sgi type */
+        for (u32 irq = GIC_V2_SGI_START; irq <= GIC_V2_PPI_END; irq++) {
+                gic.set_type(irq, GIC_V2_GICD_EDGE_TRIGGER);
         }
 
         gic.gicc->GICC_BPR = 0x3; /*we set 8 irq as the same priority group*/
@@ -196,4 +204,5 @@ struct gic_v2 gic = {.compatible = "arm,cortex-a15-gic",
                      .set_affinity = gicd_v2_set_affinity,
                      .send_sgi = gicd_v2_send_sgi,
                      .read_irq_num = gicc_v2_read_irq,
-                     .eoi = gicc_v2_eoi};
+                     .eoi = gicc_v2_eoi,
+                     .pending_clr = gicd_v2_pending_clr};
