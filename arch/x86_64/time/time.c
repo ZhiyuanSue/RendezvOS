@@ -39,3 +39,7 @@ void arch_init_timer(void)
         }
         get_rtc_time();
 }
+void arch_reset_timer(void)
+{
+        /*Do nothing*/
+}

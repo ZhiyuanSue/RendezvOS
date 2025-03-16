@@ -55,5 +55,4 @@ struct trap_frame {
 };
 void arch_init_interrupt(void);
 void arch_unknown_trap_handler(struct trap_frame *tf);
-void arch_eor_irq(void);
 #endif

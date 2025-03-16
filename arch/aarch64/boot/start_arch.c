@@ -176,7 +176,7 @@ error_t start_arch(int cpu_id)
         msr("TPIDR_EL1", __per_cpu_offset[cpu_id]);
         per_cpu(cpu_number, cpu_id) = cpu_id;
         isb();
-        arch_init_timer();
+        shampoos_time_init();
         gic.init_cpu_interface();
         return (0);
 }

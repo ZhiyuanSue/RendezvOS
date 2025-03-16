@@ -26,6 +26,7 @@ extern u32 timer_irq_num;
 
 typedef u64 tick_t;
 void shampoos_time_init(void);
+void arch_reset_timer(void);
 void shampoos_do_time_irq(struct trap_frame *tf);
 #define SYS_TIME_MS_PER_INT 10
 #define INT_PER_SECOND      (1000 / SYS_TIME_MS_PER_INT)

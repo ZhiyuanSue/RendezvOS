@@ -1,5 +1,6 @@
 #include <modules/test/test.h>
 
+extern volatile i64 jeffies;
 static struct test_case all_test[MAX_TEST_CASE] = {
         {rb_tree_test, "rb_tree\0"},
         {arch_vmm_test, "arch_vmm\0"},
@@ -18,12 +19,14 @@ void test(void)
         for (int i = 0; i < MAX_TEST_CASE; i++) {
                 if ((u64)(all_test[i].test)) {
                         if (all_test[i].test()) {
-                                pr_error("[ TEST ] ERROR: test %s fail!\n",
+                                pr_error("[ TEST @%8x ] ERROR: test %s fail!\n",
+                                         jeffies,
                                          all_test[i].name);
                                 test_pass = false;
                                 break;
                         } else {
-                                pr_info("[ TEST ] PASS: test %s ok!\n",
+                                pr_info("[ TEST @%8x ] PASS: test %s ok!\n",
+                                        jeffies,
                                         all_test[i].name);
                         }
                 }
