@@ -264,4 +264,5 @@ log_buffer:
 	.zero 0x10000
 stack_field:
 	.p2align 12	/*2^12=4096*/
-	.comm boot_stack,boot_stack_size
+boot_stack:
+	.zero 0x10000

@@ -21,9 +21,9 @@ struct log_buffer_desc {
         u64 length;
 };
 struct log_buffer {
-        int log_level;
-        int cur_buffer_idx;
-        int cur_buffer_offset;
+        u64 log_level;
+        u64 cur_buffer_idx;
+        u64 cur_buffer_offset;
         struct log_buffer_desc LOG_BUF[LOG_BUFFER_SIZE];
 };
 
