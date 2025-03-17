@@ -176,7 +176,7 @@ error_t start_arch(int cpu_id)
         per_cpu(cpu_number, cpu_id) = cpu_id;
         isb();
         init_interrupt();
-        shampoos_time_init();
         gic.init_cpu_interface();
+        shampoos_time_init();
         return (0);
 }

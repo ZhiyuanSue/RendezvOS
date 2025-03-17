@@ -79,14 +79,14 @@ void arch_start_smp(struct setup_info* arch_setup_info)
                                 arch_setup_info->cpu_id = i;
                                 send_sipi(i, _SHAMPOOS_X86_64_AP_PHY_ADDR_);
                                 for (int j = 0;
-                                     j < 100
+                                     j < 1000
                                      && per_cpu(CPU_STATE, i) == cpu_disable;
                                      j++) {
                                         mdelay(10);
                                 }
                                 if (per_cpu(CPU_STATE, i) == cpu_disable) {
                                         pr_error(
-                                                "[ ERROR ]cpu %d cannot enable after 1s\n",
+                                                "[ ERROR ]cpu %d cannot enable after 10s\n",
                                                 i);
                                 }
                         }
