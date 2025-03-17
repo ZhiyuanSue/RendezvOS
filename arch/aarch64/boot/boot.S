@@ -1,12 +1,6 @@
 #define	kernel_virt_offset	0xffff800000000000
 #define	boot_stack_size	0x10000
-#define	align_4k	0x1000
-#define	align_2m	0x200000
-#define	align_2m_minus_1	0x1fffff
-#define	align_not_2m_minus_1	0xffffffffffe00000
 #include <arch/aarch64/sys_ctrl_def.h>
-#include <arch/aarch64/mm/page_table_def.h>
-#include <common/platform/aarch64_qemu_virt.h>
 /* some definations */
 
 	.section	.boot
@@ -83,107 +77,15 @@ prepare_page_table:
 	/*1111 1111 1111 1111 1000 0000 0000 0000 0100 0000 0000 1000 0000 0000 0000 0000*/
 	/*1111 1111 1111 1111 unused*/
 	/*                    1000 0000 0 index of the level0*/
-	/*other levels are the same*/
-	/*calculate the address region*/
-	/*x1 record the (align-1), x2 record the ~(align-1)*/
-	mov	x1,#align_2m
-	sub	x1,x1,#1
-	mvn	x2,x1
-	/*round down start and store in x6*/
-	adr	x6,#_start
-	and	x6,x6,x2
-	/*round up end and store in x7*/
-	adr	x7,#_end
-	add	x7,x7,x1
-	and x7,x7,x2
-
-	/*we assume the start and end is in the same 1GB region,so check*/
-	mov x0,x6
-	lsr	x0,x0,#30
-	mov x1,x7
-	lsr	x1,x1,#30
-	cmp	x0,x1
-	b.ne	boot_Error
-	/*======first identity mapping======*/
-	/*update L0_table and L1_table*/
-	/*======L0======*/
-
-	adr	x0,#L1_table
-	mov	x1,x6
+	adr	x0,#_start
+	adr	x1,#_end
 	adr	x2,#L0_table
-	mov	x3,#PT_DESC_V
-	orr	x3,x3,#PT_DESC_BLOCK_OR_TABLE
-	bl	arch_set_L0_entry
-
-	/*======L1======*/
-
-	adr	x0,#L2_table
-	mov	x1,x6
-	adr	x2,#L1_table
-	mov	x3,#PT_DESC_V
-	orr	x3,x3,#PT_DESC_BLOCK_OR_TABLE
-	bl	arch_set_L1_entry
-
-	/*======loop and add entries into the L2 block======*/
-	mov	x4,x6
-fill_in_entry_loop:
-	cmp	x7,x4
-	b.ls	#finish_fill_in_entry_loop
-
-	mov	x0,x4
-	mov x1,x4
-	adr	x2,#L2_table
-	mov	x3,#PT_DESC_V
-	orr	x3,x3,#PT_DESC_ATTR_LOWER_AF
-	bl	arch_set_L2_entry
-
-	add x4,x4,#align_2m
-	b	fill_in_entry_loop
-
-finish_fill_in_entry_loop:
-	adr	x1,#setup_info
-	mov	x2,#kernel_virt_offset
-	add	x4,x4,x2
-	str	x4,[x1,0x28]
-	str	x4,[x1,0x30]
-	/*======map some necessary range,like the pl011 uart,and now the x4 is the end of the kernel(round up)======*/
-	/*map the 2m range*/
-
-	adr	x0,#L3_table
-	mov x1,x4
-	adr	x2,#L2_table
-	mov	x3,#PT_DESC_V
-	orr	x3,x3,#PT_DESC_BLOCK_OR_TABLE
-	orr	x3,x3,#PT_DESC_ATTR_LOWER_AF
-	bl	arch_set_L2_entry
-
-	/*map the 4k range of the pl011*/
-
-	mov	x0,#QEMU_VIRT_PL011_BASE_ADDR
-	mov x1,x4
-	adr	x2,#L3_table
-	mov	x3,#PT_DESC_V
-	orr	x3,x3,#PT_DESC_PAGE
-	orr	x3,x3,#PT_DESC_ATTR_LOWER_AF
-	bl	arch_set_L3_entry
-
-	adr	x1,#setup_info
-	add	x4,x4,#align_4k
-	str	x4,[x1,0x28]
-	/*======second map to the real virtual addr=======*/
-	/*as kernel_virt_offset is 0xffff800000000000, so we just need to update L0_table*/
-
-	adr	x0,#L1_table
-	mov	x1,x6
-	mov	x2,#kernel_virt_offset
-	add x1,x1,x2
-	adr	x2,#L0_table
-	mov x3,#PT_DESC_V
-	orr	x3,x3,#PT_DESC_BLOCK_OR_TABLE
-	orr	x3,x3,#PT_DESC_ATTR_LOWER_AF
-	bl	arch_set_L0_entry
-	
-	b	finish_prepare_page_table
+	adr	x3,#L1_table
+	adr	x4,#L2_table
+	adr	x5,#L3_table
+	adr	x6,#setup_info
+	bl	boot_map_pg_table
+	b finish_prepare_page_table
 
 	.global init_mmu
 init_mmu:
@@ -352,6 +254,7 @@ L2_table:
 L3_table:
 	.zero 8*512
 
+	.global boot_Error
 boot_Error:
 	b	boot_Error
 
