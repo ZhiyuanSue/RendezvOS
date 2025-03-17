@@ -1,5 +1,5 @@
-#ifndef _SHAMPOOS_TRAP_H_
-#define _SHAMPOOS_TRAP_H_
+#ifndef _SHAMPOOS_AARCH64_TRAP_H_
+#define _SHAMPOOS_AARCH64_TRAP_H_
 #include <common/types.h>
 #include <arch/aarch64/gic/gic_v2.h>
 #include "trap_def.h"

@@ -171,11 +171,11 @@ error_t arch_parser_platform(struct setup_info *arch_setup_info)
 }
 error_t start_arch(int cpu_id)
 {
-        init_interrupt();
         /*write in the cpuid*/
         msr("TPIDR_EL1", __per_cpu_offset[cpu_id]);
         per_cpu(cpu_number, cpu_id) = cpu_id;
         isb();
+        init_interrupt();
         shampoos_time_init();
         gic.init_cpu_interface();
         return (0);
