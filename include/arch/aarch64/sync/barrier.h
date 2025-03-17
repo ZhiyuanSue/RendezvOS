@@ -1,7 +1,7 @@
 #ifndef _SHAMPOOS_BARRIER_H_
 #define _SHAMPOOS_BARRIER_H_
 
-#define isb()    asm volatile("isb" : : : "memory")
-#define dmb(opt) asm volatile("dmb " #opt : : : "memory")
-#define dsb(opt) asm volatile("dsb " #opt : : : "memory")
+#define isb()    __asm__ __volatile__("isb" : : : "memory")
+#define dmb(opt) __asm__ __volatile__("dmb " #opt : : : "memory")
+#define dsb(opt) __asm__ __volatile__("dsb " #opt : : : "memory")
 #endif

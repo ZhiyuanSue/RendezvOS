@@ -7,7 +7,7 @@
 static inline void arch_tlb_invalidate_all()
 {
         dsb(SY);
-        asm volatile("tlbi alle1;");
+        __asm__ __volatile__("tlbi alle1;");
         dsb(SY);
         isb();
 }
@@ -15,7 +15,7 @@ static inline void arch_tlb_invalidate_page(uint64_t vspace_id, vaddr addr)
 {
         uint64_t tmp = (vspace_id << 16) | (addr >> 12);
         dsb(SY);
-        asm volatile("tlbi vae1,%0;" : : "r"(tmp));
+        __asm__ __volatile__("tlbi vae1,%0;" : : "r"(tmp));
         dsb(SY);
         isb();
 }
@@ -23,7 +23,7 @@ static inline void arch_tlb_invalidate_kernel_page(vaddr addr)
 {
         uint64_t tmp = (addr >> 12);
         dsb(SY);
-        asm volatile("tlbi vae1,%0;" : : "r"(tmp));
+        __asm__ __volatile__("tlbi vae1,%0;" : : "r"(tmp));
         dsb(SY);
         isb();
 }
@@ -34,7 +34,7 @@ static inline void arch_tlb_invalidate_vspace_page(uint64_t vspace_id,
                 return;
         uint64_t tmp = (vspace_id << 48);
         dsb(SY);
-        asm volatile("tlbi aside1, %0;" : : "r"(tmp));
+        __asm__ __volatile__("tlbi aside1, %0;" : : "r"(tmp));
         dsb(SY);
         isb();
 }
@@ -48,7 +48,7 @@ static inline void arch_tlb_invalidate_range(u_int64_t vspace_id, vaddr start,
         /*the tlbi rvae1 is only supported when ARMv8.4 TLBI is implemented*/
         for (vaddr addr = start; addr < end; addr += PAGE_SIZE) {
                 uint64_t tmp = (vspace_id << 16) | (addr >> 12);
-                asm volatile("tlbi vae1,%0;" : : "r"(tmp));
+                __asm__ __volatile__("tlbi vae1,%0;" : : "r"(tmp));
         }
         dsb(SY);
         isb();

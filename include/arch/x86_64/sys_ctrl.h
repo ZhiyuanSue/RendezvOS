@@ -14,7 +14,7 @@
 
 // static inline struct cpuid_result cpuid(u32 cpuid_op) {
 // 	struct cpuid_result tmp_result;
-// 	asm volatile("cpuid"
+// 	__asm__ __volatile__("cpuid"
 // 					: "=a"(tmp_result.eax),
 // "=b"(tmp_result.ebx),
 // 					"=c"(tmp_result.ecx),
@@ -26,7 +26,7 @@ static void inline set_cr0_bit(u64 cr0_bit)
 {
         u64 cr0_tmp;
 
-        asm volatile("movq %%cr0,%0;"
+        __asm__ __volatile__("movq %%cr0,%0;"
                      "orq %1,%0;"
                      "movq %0,%%cr0;"
                      : "=&r"(cr0_tmp)
@@ -37,7 +37,7 @@ static void inline set_cr3_bit(u64 cr3_bit)
 {
         u64 cr3_tmp;
 
-        asm volatile("movq %%cr3,%0;"
+        __asm__ __volatile__("movq %%cr3,%0;"
                      "orq %1,%0;"
                      "movq %0,%%cr3;"
                      : "=&r"(cr3_tmp)
@@ -48,7 +48,7 @@ static void inline set_cr4_bit(u64 cr4_bit)
 {
         u64 cr4_tmp;
 
-        asm volatile("movq %%cr4,%0;"
+        __asm__ __volatile__("movq %%cr4,%0;"
                      "orq %1,%0;"
                      "movq %0,%%cr4;"
                      : "=&r"(cr4_tmp)
@@ -62,7 +62,7 @@ static void inline set_xcr(u32 xcr_number, u64 xcr_value)
 
         xcr_low = (u32)xcr_value;
         xcr_high = (u32)(xcr_value >> 32);
-        asm volatile("xsetbv" : : "a"(xcr_low), "c"(xcr_number), "d"(xcr_high));
+        __asm__ __volatile__("xsetbv" : : "a"(xcr_low), "c"(xcr_number), "d"(xcr_high));
 }
 static u64 inline get_xcr(u32 xcr_number)
 {
@@ -70,7 +70,7 @@ static u64 inline get_xcr(u32 xcr_number)
         u32 xcr_high;
         u32 xcr_low;
 
-        asm volatile("xgetbv"
+        __asm__ __volatile__("xgetbv"
                      : "=a"(xcr_low), "=d"(xcr_high)
                      : "c"(xcr_number));
         xcr_value = (((u64)xcr_high) << 32) | xcr_low;
@@ -79,45 +79,45 @@ static u64 inline get_xcr(u32 xcr_number)
 
 static void inline set_mxcsr(u32 mxcsr_value) /*not bits*/
 {
-        asm volatile("ldmxcsr	%0" : : "m"(mxcsr_value));
+	__asm__ __volatile__("ldmxcsr	%0" : : "m"(mxcsr_value));
 }
 static u32 inline get_mxcsr()
 {
         u32 mxcsr_tmp;
 
-        asm volatile("stmxcsr	%0" : "=m"(mxcsr_tmp));
+        __asm__ __volatile__("stmxcsr	%0" : "=m"(mxcsr_tmp));
         return (mxcsr_tmp);
 }
 static void inline lgdt(struct pseudo_descriptor *desc)
 {
-        asm volatile("lgdt      (%0)" : : "r"(desc) : "memory");
+	__asm__ __volatile__("lgdt      (%0)" : : "r"(desc) : "memory");
 }
 static void inline lidt(struct pseudo_descriptor *desc)
 {
-        asm volatile("lidt	(%0)" : : "r"(desc) : "memory");
+	__asm__ __volatile__("lidt	(%0)" : : "r"(desc) : "memory");
 }
 static void inline ltr(union desc_selector *selector)
 {
-        asm volatile("ltr       %0" : : "r"(*selector) : "memory");
+	__asm__ __volatile__("ltr       %0" : : "r"(*selector) : "memory");
 }
 
 static u64 inline rdmsr(u32 msr_id)
 {
         u64 val;
 
-        asm volatile("rdmsr" : "=A"(val) : "c"(msr_id));
+        __asm__ __volatile__("rdmsr" : "=A"(val) : "c"(msr_id));
         return (val);
 }
 static void inline wrmsr(u32 msr_id, u64 val)
 {
-        asm volatile("wrmsr" ::"c"(msr_id), "A"(val));
+	__asm__ __volatile__("wrmsr" ::"c"(msr_id), "A"(val));
 }
 static void inline cli(void)
 {
-        asm volatile("cli");
+	__asm__ __volatile__("cli");
 }
 static void inline sti(void)
 {
-        asm volatile("sti");
+	__asm__ __volatile__("sti");
 }
 #endif

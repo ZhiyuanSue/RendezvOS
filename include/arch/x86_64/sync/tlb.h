@@ -4,12 +4,12 @@
 #include <common/mm.h>
 static inline void invlpg(vaddr addr)
 {
-        asm volatile("invlpg (%0)" ::"r"(addr) : "memory");
+	__asm__ __volatile__("invlpg (%0)" ::"r"(addr) : "memory");
 }
 
 static inline void arch_tlb_invalidate_all()
 {
-        asm volatile("mov %eax,%cr3;"
+	__asm__ __volatile__("mov %eax,%cr3;"
                      "mov %cr3,%eax;"
                      :
                      :

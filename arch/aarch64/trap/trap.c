@@ -7,7 +7,7 @@ extern u64 trap_vec_table;
 void arch_init_interrupt(void)
 {
         set_vbar_el1((vaddr)(&trap_vec_table));
-        asm volatile("msr DAIFCLR,0x7");
+        __asm__ __volatile__("msr DAIFCLR,0x7");
 }
 void arch_unknown_trap_handler(struct trap_frame *tf)
 {

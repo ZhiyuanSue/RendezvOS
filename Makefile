@@ -43,7 +43,7 @@ else ifeq ($(ARCH), null)
 $(error the arch is not supportted or haven't configured)
 endif
 CFLAGS	+= -Wall -Os -nostdlib -nostdinc
-CFLAGS	+= -fno-stack-protector
+CFLAGS	+= -fno-stack-protector -std=c11
 CFLAGS	+=	-I $(INCLUDE_DIR) -DNR_CPUS=$(SMP)
 
 LDFLAGS	+=	-T $(SCRIPT_LINK_DIR)/$(ARCH)_linker.ld
