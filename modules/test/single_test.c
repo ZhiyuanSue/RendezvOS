@@ -1,7 +1,7 @@
 #include <modules/test/test.h>
 
 extern volatile i64 jeffies;
-static struct test_case all_test[MAX_TEST_CASE] = {
+static struct test_case single_test[MAX_SINGLE_TEST_CASE] = {
         {rb_tree_test, "rb_tree\0"},
         {arch_vmm_test, "arch_vmm\0"},
         // {nexus_test, "nexus\0"},
@@ -12,25 +12,25 @@ static struct test_case all_test[MAX_TEST_CASE] = {
         // {pmm_test, "pmm\0"},
 };
 
-void test(void)
+void single_cpu_test(void)
 {
-        pr_info("====== [ KERNEL TEST ] ======\n");
+        pr_info("====== [ KERNEL SINGLE CPU TEST ] ======\n");
         bool test_pass = true;
-        for (int i = 0; i < MAX_TEST_CASE; i++) {
-                if ((u64)(all_test[i].test)) {
-                        if (all_test[i].test()) {
+        for (int i = 0; i < MAX_SINGLE_TEST_CASE; i++) {
+                if ((u64)(single_test[i].test)) {
+                        if (single_test[i].test()) {
                                 pr_error("[ TEST @%8x ] ERROR: test %s fail!\n",
                                          jeffies,
-                                         all_test[i].name);
+                                         single_test[i].name);
                                 test_pass = false;
                                 break;
                         } else {
                                 pr_info("[ TEST @%8x ] PASS: test %s ok!\n",
                                         jeffies,
-                                        all_test[i].name);
+                                        single_test[i].name);
                         }
                 }
         }
         if (test_pass)
-                pr_info("====== [ TEST PASS ] ======\n");
+                pr_info("====== [ SINGLE CPU TEST PASS ] ======\n");
 }

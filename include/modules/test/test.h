@@ -8,9 +8,11 @@
 #else
 #define debug pr_off
 #endif
-#define MAX_TEST_CASE 5
+#define MAX_SINGLE_TEST_CASE 5
+#define MAX_SMP_TEST_CASE    5
 
-void test(void);
+void single_cpu_test(void);
+void multi_cpu_test(void);
 
 int pmm_test(void);
 int arch_vmm_test(void);

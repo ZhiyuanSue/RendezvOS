@@ -1,4 +1,5 @@
 #include <modules/log/log.h>
+#include <modules/test/test.h>
 #include <shampoos/smp.h>
 #include <shampoos/percpu.h>
 #include <shampoos/common.h>
@@ -30,5 +31,6 @@ void start_secondary_cpu(struct setup_info *arch_setup_info)
         }
         pr_info("successfully start secondary cpu %d\n", current_cpu_id);
         per_cpu(CPU_STATE, current_cpu_id) = cpu_enable;
+        multi_cpu_test();
         cpu_idle();
 }
