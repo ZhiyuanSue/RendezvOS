@@ -1,5 +1,5 @@
-#ifndef _SHAMPOOS_X86_64_IO_H_
-#define _SHAMPOOS_X86_64_IO_H_
+#ifndef _RENDEZVOS_X86_64_IO_H_
+#define _RENDEZVOS_X86_64_IO_H_
 #include <common/types.h>
 
 static inline u_int8_t inb(u_int16_t port) __attribute__((always_inline));

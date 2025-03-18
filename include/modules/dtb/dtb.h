@@ -1,5 +1,5 @@
-#ifndef _SHAMPOOS_DTB_H_
-#define _SHAMPOOS_DTB_H_
+#ifndef _RENDEZVOS_DTB_H_
+#define _RENDEZVOS_DTB_H_
 #include "fdt.h"
 #include "libfdt.h"
 #include "print_property.h"

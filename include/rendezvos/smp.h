@@ -1,5 +1,5 @@
-#ifndef _SHAMPOOS_SMP_H_
-#define _SHAMPOOS_SMP_H_
+#ifndef _RENDEZVOS_SMP_H_
+#define _RENDEZVOS_SMP_H_
 
 #ifdef _AARCH64_
 #include <arch/aarch64/smp.h>

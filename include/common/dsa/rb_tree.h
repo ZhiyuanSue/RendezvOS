@@ -1,5 +1,5 @@
-#ifndef _SHAMPOOS_RB_H_
-#define _SHAMPOOS_RB_H_
+#ifndef _RENDEZVOS_RB_H_
+#define _RENDEZVOS_RB_H_
 #include <common/types.h>
 /*my implementation of a red black tree,of course it referenced the Linux*/
 struct rb_node {

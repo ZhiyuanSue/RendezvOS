@@ -1,5 +1,5 @@
-#ifndef _SHAMPOOS_FDT_H_
-#define _SHAMPOOS_FDT_H_
+#ifndef _RENDEZVOS_FDT_H_
+#define _RENDEZVOS_FDT_H_
 #include <common/types.h>
 /*
  * For the devicetree specification,the version are all 17 from 0.1-0.4(the

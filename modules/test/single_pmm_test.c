@@ -1,6 +1,6 @@
 #include <modules/test/test.h>
-#include <shampoos/error.h>
-#include <shampoos/mm/buddy_pmm.h>
+#include <rendezvos/error.h>
+#include <rendezvos/mm/buddy_pmm.h>
 #define PPN_TEST_CASE_NUM 10
 
 extern struct buddy buddy_pmm;

@@ -1,6 +1,6 @@
 // #define DEBUG
 #include <modules/test/test.h>
-#include <shampoos/mm/nexus.h>
+#include <rendezvos/mm/nexus.h>
 #include <modules/log/log.h>
 #define NR_MAX_TEST NEXUS_PER_PAGE * 3
 extern struct nexus_node* nexus_root;

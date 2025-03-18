@@ -1,5 +1,5 @@
-#ifndef _SHAMPOOS_PER_CPU_
-#define _SHAMPOOS_PER_CPU_
+#ifndef _RENDEZVOS_PER_CPU_
+#define _RENDEZVOS_PER_CPU_
 #include <common/types.h>
 #include "limits.h"
 
@@ -8,7 +8,7 @@
 #define DEFINE_PER_CPU(type, name) \
         __attribute__((section(PER_CPU_SECTION))) __typeof__(type) name
 
-extern u64 __per_cpu_offset[SHAMPOOS_MAX_CPU_NUMBER];
+extern u64 __per_cpu_offset[RENDEZVOS_MAX_CPU_NUMBER];
 #define per_cpu_offset(x) (__per_cpu_offset[x])
 
 #define per_cpu(var, cpu) \

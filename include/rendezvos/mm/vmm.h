@@ -1,5 +1,5 @@
-#ifndef _SHAMPOOS_VMM_H_
-#define _SHAMPOOS_VMM_H_
+#ifndef _RENDEZVOS_VMM_H_
+#define _RENDEZVOS_VMM_H_
 #include "pmm.h"
 
 #ifdef _AARCH64_

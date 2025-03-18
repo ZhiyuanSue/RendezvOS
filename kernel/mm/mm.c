@@ -1,9 +1,9 @@
-#include <shampoos/common.h>
-#include <shampoos/mm/buddy_pmm.h>
-#include <shampoos/mm/map_handler.h>
-#include <shampoos/mm/nexus.h>
-#include <shampoos/mm/spmalloc.h>
-#include <shampoos/percpu.h>
+#include <rendezvos/common.h>
+#include <rendezvos/mm/buddy_pmm.h>
+#include <rendezvos/mm/map_handler.h>
+#include <rendezvos/mm/nexus.h>
+#include <rendezvos/mm/spmalloc.h>
+#include <rendezvos/percpu.h>
 extern struct buddy buddy_pmm;
 extern int BSP_ID;
 DEFINE_PER_CPU(struct map_handler, Map_Handler);

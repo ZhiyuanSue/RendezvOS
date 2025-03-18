@@ -1,5 +1,5 @@
-#ifndef _SHAMPOOS_MM_H_
-#define _SHAMPOOS_MM_H_
+#ifndef _RENDEZVOS_MM_H_
+#define _RENDEZVOS_MM_H_
 #include <common/stdbool.h>
 #include <common/types.h>
 #define PAGE_SIZE        0x1000

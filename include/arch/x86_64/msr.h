@@ -1,5 +1,5 @@
-#ifndef _SHAMPOOS_MSR_H_
-#define _SHAMPOOS_MSR_H_
+#ifndef _RENDEZVOS_MSR_H_
+#define _RENDEZVOS_MSR_H_
 
 /*
     we will not use all the msr,and here is one of the reference of msr

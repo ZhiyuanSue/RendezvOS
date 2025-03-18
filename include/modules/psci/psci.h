@@ -1,5 +1,5 @@
-#ifndef _SHAMPOOS_PSCI_H_
-#define _SHAMPOOS_PSCI_H_
+#ifndef _RENDEZVOS_PSCI_H_
+#define _RENDEZVOS_PSCI_H_
 
 #include <common/types.h>
 #include <modules/dtb/dtb.h>

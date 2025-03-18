@@ -1,5 +1,5 @@
-#ifndef _SHAMPOOS_SYS_CTRL_DEF_H_
-#define _SHAMPOOS_SYS_CTRL_DEF_H_
+#ifndef _RENDEZVOS_SYS_CTRL_DEF_H_
+#define _RENDEZVOS_SYS_CTRL_DEF_H_
 /*Privilege Level*/
 #define KERNEL_PL (0)
 #define USER_PL   (3)

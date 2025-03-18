@@ -1,5 +1,5 @@
-#ifndef _SHAMPOOS_8254_H_
-#define _SHAMPOOS_8254_H_
+#ifndef _RENDEZVOS_8254_H_
+#define _RENDEZVOS_8254_H_
 
 #include <common/types.h>
 #define _8254_CTL_BCD_OFF_ (0)

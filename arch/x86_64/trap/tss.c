@@ -1,5 +1,5 @@
 #include <arch/x86_64/sys_ctrl.h>
-#include <shampoos/percpu.h>
+#include <rendezvos/percpu.h>
 #include <common/mm.h>
 #include <arch/x86_64/sys_ctrl_def.h>
 

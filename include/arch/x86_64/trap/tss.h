@@ -1,7 +1,7 @@
 #ifndef _X86_TSS_H_
 #define _X86_TSS_H_
 #include <common/types.h>
-#include <shampoos/mm/nexus.h>
+#include <rendezvos/mm/nexus.h>
 /*
         here we only use ia-32e mode tss
 */

@@ -1,8 +1,8 @@
-#include <shampoos/mm/nexus.h>
-#include <shampoos/mm/vmm.h>
+#include <rendezvos/mm/nexus.h>
+#include <rendezvos/mm/vmm.h>
 #include <common/string.h>
 #include <modules/log/log.h>
-#include <shampoos/error.h>
+#include <rendezvos/error.h>
 
 static void nexus_rb_tree_insert(struct nexus_node* node, struct rb_root* root)
 {

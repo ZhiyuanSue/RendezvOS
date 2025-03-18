@@ -2,5 +2,5 @@
 
 void hello_world(void)
 {
-        pr_info("Shampoos\n");
+        pr_info("RendezvOS\n");
 }

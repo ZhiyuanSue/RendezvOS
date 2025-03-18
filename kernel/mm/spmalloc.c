@@ -1,9 +1,9 @@
-#include <shampoos/mm/spmalloc.h>
+#include <rendezvos/mm/spmalloc.h>
 #include <modules/log/log.h>
-#include <shampoos/error.h>
+#include <rendezvos/error.h>
 #include <common/string.h>
-#include <shampoos/limits.h>
-#include <shampoos/percpu.h>
+#include <rendezvos/limits.h>
+#include <rendezvos/percpu.h>
 DEFINE_PER_CPU(struct allocator*, kallocator);
 struct mem_allocator tmp_sp_alloctor = {
         .init = sp_init,

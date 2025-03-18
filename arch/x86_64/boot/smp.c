@@ -1,5 +1,5 @@
-#include <shampoos/smp.h>
-#include <shampoos/time.h>
+#include <rendezvos/smp.h>
+#include <rendezvos/time.h>
 #include <modules/log/log.h>
 #include <common/string.h>
 extern char ap_start;
@@ -12,7 +12,7 @@ extern void clean_tmp_page_table();
 static void copy_ap_start_code()
 {
         char* dest_ap_start_ptr =
-                (char*)KERNEL_PHY_TO_VIRT(_SHAMPOOS_X86_64_AP_PHY_ADDR_);
+                (char*)KERNEL_PHY_TO_VIRT(_RENDEZVOS_X86_64_AP_PHY_ADDR_);
         char* src_ap_start_ptr = &ap_start;
         memcpy(dest_ap_start_ptr,
                src_ap_start_ptr,
@@ -22,7 +22,7 @@ static void clean_ap_start_code()
 {
         /*clean the ap start code for avoid atteck*/
         char* dest_ap_start_ptr =
-                (char*)KERNEL_PHY_TO_VIRT(_SHAMPOOS_X86_64_AP_PHY_ADDR_);
+                (char*)KERNEL_PHY_TO_VIRT(_RENDEZVOS_X86_64_AP_PHY_ADDR_);
         memset(dest_ap_start_ptr, 0x0, (vaddr)&ap_start_end - (vaddr)&ap_start);
 }
 static void send_sipi(int cpu_id, paddr ap_start_addr)
@@ -65,7 +65,7 @@ void arch_start_smp(struct setup_info* arch_setup_info)
                               0);
                 mdelay(10);
 
-                for (int i = 0; i < SHAMPOOS_MAX_CPU_NUMBER; i++) {
+                for (int i = 0; i < RENDEZVOS_MAX_CPU_NUMBER; i++) {
                         if (per_cpu(CPU_STATE, i) == cpu_disable) {
                                 vaddr stack_top =
                                         (vaddr)get_free_page(2,
@@ -77,7 +77,7 @@ void arch_start_smp(struct setup_info* arch_setup_info)
                                         + 2 * PAGE_SIZE;
                                 arch_setup_info->ap_boot_stack_ptr = stack_top;
                                 arch_setup_info->cpu_id = i;
-                                send_sipi(i, _SHAMPOOS_X86_64_AP_PHY_ADDR_);
+                                send_sipi(i, _RENDEZVOS_X86_64_AP_PHY_ADDR_);
                                 for (int j = 0;
                                      j < 1000
                                      && per_cpu(CPU_STATE, i) == cpu_disable;

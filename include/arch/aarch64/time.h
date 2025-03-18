@@ -1,5 +1,5 @@
-#ifndef _SHAMPOOS_ARCH_TIME_
-#define _SHAMPOOS_ARCH_TIME_
+#ifndef _RENDEZVOS_ARCH_TIME_
+#define _RENDEZVOS_ARCH_TIME_
 #include <common/types.h>
 #include <arch/aarch64/sys_ctrl.h>
 /*CNTFRQ_EL0*/

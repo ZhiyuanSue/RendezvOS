@@ -1,5 +1,5 @@
-#ifndef _SHAMPOOS_LOG_H_
-#define _SHAMPOOS_LOG_H_
+#ifndef _RENDEZVOS_LOG_H_
+#define _RENDEZVOS_LOG_H_
 #include <common/stdarg.h>
 #include <common/types.h>
 #include <common/dsa/list.h>

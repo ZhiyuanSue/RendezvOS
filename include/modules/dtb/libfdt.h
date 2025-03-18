@@ -1,5 +1,5 @@
-#ifndef _SHAMPOOS_LIBFDT_H_
-#define _SHAMPOOS_LIBFDT_H_
+#ifndef _RENDEZVOS_LIBFDT_H_
+#define _RENDEZVOS_LIBFDT_H_
 #include <common/endianness.h>
 /*
     I copied most of the following code from

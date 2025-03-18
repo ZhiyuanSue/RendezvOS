@@ -1,5 +1,5 @@
-#ifndef _SHAMPOOS_TEST_H_
-#define _SHAMPOOS_TEST_H_
+#ifndef _RENDEZVOS_TEST_H_
+#define _RENDEZVOS_TEST_H_
 
 #include <modules/log/log.h>
 // #define DEBUG

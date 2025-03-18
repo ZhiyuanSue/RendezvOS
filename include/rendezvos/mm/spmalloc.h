@@ -1,12 +1,12 @@
-#ifndef _SHAMPOOS_SLUB_H_
-#define _SHAMPOOS_SLUB_H_
+#ifndef _RENDEZVOS_SLUB_H_
+#define _RENDEZVOS_SLUB_H_
 
 #include "pmm.h"
 #include "vmm.h"
 #include "nexus.h"
 #include <common/types.h>
 #include <common/dsa/list.h>
-#include <shampoos/mm/allocator.h>
+#include <rendezvos/mm/allocator.h>
 #define MAX_GROUP_SLOTS 12
 #define PAGE_PER_CHUNK  2
 #define CHUNK_MAGIC     0xa11ca11ca11ca11c

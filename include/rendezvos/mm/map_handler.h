@@ -1,5 +1,5 @@
-#ifndef _SHAMPOOS_MAP_HANDLER_
-#define _SHAMPOOS_MAP_HANDLER_
+#ifndef _RENDEZVOS_MAP_HANDLER_
+#define _RENDEZVOS_MAP_HANDLER_
 #include <common/types.h>
 #include <common/mm.h>
 

@@ -1,5 +1,5 @@
-#include <shampoos/time.h>
-#include <shampoos/percpu.h>
+#include <rendezvos/time.h>
+#include <rendezvos/percpu.h>
 volatile i64 jeffies = 0;
 u64 loop_per_jeffies;
 u64 udelay_max_loop;
@@ -33,16 +33,17 @@ __attribute__((optimize("O0"))) u64 timer_calibration()
         }
         return lpj / 25;
 }
-void shampoos_time_init()
+void rendezvos_time_init()
 {
         percpu(tick_cnt) = jeffies;
-        register_irq_handler(timer_irq_num, shampoos_do_time_irq, IRQ_NEED_EOI);
+        register_irq_handler(
+                timer_irq_num, rendezvos_do_time_irq, IRQ_NEED_EOI);
         arch_init_timer();
         loop_per_jeffies = timer_calibration();
         udelay_max_loop = (loop_per_jeffies * UDELAY_MAX * UDELAY_MUL)
                           >> UDELAY_SHIFT;
 }
-void shampoos_do_time_irq(struct trap_frame *tf)
+void rendezvos_do_time_irq(struct trap_frame *tf)
 {
         percpu(tick_cnt)++;
         /*TODO: maybe need add the lock*/

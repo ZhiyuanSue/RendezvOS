@@ -1,5 +1,5 @@
-#ifndef _SHAMPOOS_PRINT_PROPERTY_H_
-#define _SHAMPOOS_PRINT_PROPERTY_H_
+#ifndef _RENDEZVOS_PRINT_PROPERTY_H_
+#define _RENDEZVOS_PRINT_PROPERTY_H_
 #include "property.h"
 #include <modules/log/log.h>
 

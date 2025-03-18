@@ -1,6 +1,6 @@
 #include <modules/log/log.h>
-#include <shampoos/error.h>
-#include <shampoos/mm/buddy_pmm.h>
+#include <rendezvos/error.h>
+#include <rendezvos/mm/buddy_pmm.h>
 
 struct buddy buddy_pmm;
 extern struct memory_regions m_regions;

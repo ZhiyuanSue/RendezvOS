@@ -1,10 +1,10 @@
 #include <arch/x86_64/PIC/APIC.h>
-#include <shampoos/mm/map_handler.h>
-#include <shampoos/percpu.h>
+#include <rendezvos/mm/map_handler.h>
+#include <rendezvos/percpu.h>
 #include <arch/x86_64/PIC/IRQ.h>
 #include <common/types.h>
 #include <arch/x86_64/cpuinfo.h>
-#include <shampoos/mm/vmm.h>
+#include <rendezvos/mm/vmm.h>
 #include <modules/log/log.h>
 #include <common/bit.h>
 #include <arch/x86_64/msr.h>

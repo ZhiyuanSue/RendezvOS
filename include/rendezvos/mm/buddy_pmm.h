@@ -1,5 +1,5 @@
-#ifndef _SHAMPOOS_BUDDY_PMM_H_
-#define _SHAMPOOS_BUDDY_PMM_H_
+#ifndef _RENDEZVOS_BUDDY_PMM_H_
+#define _RENDEZVOS_BUDDY_PMM_H_
 
 #include "pmm.h"
 

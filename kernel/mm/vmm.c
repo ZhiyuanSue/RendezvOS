@@ -1,7 +1,7 @@
-#include <shampoos/mm/map_handler.h>
-#include <shampoos/mm/vmm.h>
+#include <rendezvos/mm/map_handler.h>
+#include <rendezvos/mm/vmm.h>
 #include <common/string.h>
-#include <shampoos/error.h>
+#include <rendezvos/error.h>
 #include <modules/log/log.h>
 extern u64 *MAP_L1_table, *MAP_L2_table, *MAP_L3_table;
 void sys_init_map()

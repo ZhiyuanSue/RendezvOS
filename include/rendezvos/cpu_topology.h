@@ -1,5 +1,5 @@
-#ifndef _SHAMPOOS_CPU_TOPOLOGY_H_
-#define _SHAMPOOS_CPU_TOPOLOGY_H_
+#ifndef _RENDEZVOS_CPU_TOPOLOGY_H_
+#define _RENDEZVOS_CPU_TOPOLOGY_H_
 
 struct cpu_topology_root {
         struct cpu_socket* first_socket;

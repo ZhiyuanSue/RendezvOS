@@ -1,6 +1,6 @@
 #include <modules/test/test.h>
-#include <shampoos/mm/buddy_pmm.h>
-#include <shampoos/mm/map_handler.h>
+#include <rendezvos/mm/buddy_pmm.h>
+#include <rendezvos/mm/map_handler.h>
 
 #ifdef _AARCH64_
 #include <arch/aarch64/mm/vmm.h>
@@ -13,7 +13,7 @@
 #else /*for default config is x86_64*/
 #include <arch/x86_64/mm/vmm.h>
 #endif
-#include <shampoos/mm/vmm.h>
+#include <rendezvos/mm/vmm.h>
 #include <common/string.h>
 
 #define vp_1    0xffffff7fbfdfe000

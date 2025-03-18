@@ -1,6 +1,6 @@
-#include <shampoos/trap.h>
+#include <rendezvos/trap.h>
 #include <common/stddef.h>
-#include <shampoos/percpu.h>
+#include <rendezvos/percpu.h>
 
 // void (*irq_handler[NR_IRQ])(struct trap_frame *tf);
 DEFINE_PER_CPU(struct irq, irq_vector[NR_IRQ]);

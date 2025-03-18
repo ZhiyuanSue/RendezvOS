@@ -1,5 +1,5 @@
-#ifndef _SHAMPOOS_CPUID_H_
-#define _SHAMPOOS_CPUID_H_
+#ifndef _RENDEZVOS_CPUID_H_
+#define _RENDEZVOS_CPUID_H_
 #include <common/types.h>
 /*
     A reference website is https://www.felixcloutier.com/x86/cpuid, Thanks for

@@ -261,7 +261,7 @@ ap_boot_stack_ptr:
 multiboot_error_magic:
 	.asciz "ERROR MAGIC NUM"
 multiboot_hello:
-	.asciz "HELLO SHAMPOOS"
+	.asciz "HELLO RENDEZVOS"
 	
 	.p2align 3
 tmp_gdt:

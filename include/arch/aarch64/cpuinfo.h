@@ -1,5 +1,5 @@
-#ifndef _SHAMPOOS_CPUID_H_
-#define _SHAMPOOS_CPUID_H_
+#ifndef _RENDEZVOS_CPUID_H_
+#define _RENDEZVOS_CPUID_H_
 #include <common/stdbool.h>
 /*
     there's no cpuid instruction in aarch64

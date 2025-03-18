@@ -1,5 +1,5 @@
-#ifndef _SHAMPOOS_ALLOCATOR_H_
-#define _SHAMPOOS_ALLOCATOR_H_
+#ifndef _RENDEZVOS_ALLOCATOR_H_
+#define _RENDEZVOS_ALLOCATOR_H_
 #include <common/types.h>
 #include <common/stddef.h>
 

@@ -1,5 +1,5 @@
-#ifndef _SHAMPOOS_TRAP_H_
-#define _SHAMPOOS_TRAP_H_
+#ifndef _RENDEZVOS_TRAP_H_
+#define _RENDEZVOS_TRAP_H_
 #ifdef _AARCH64_
 #include <arch/aarch64/trap/trap.h>
 #elif defined _LOONGARCH_

@@ -10,12 +10,12 @@
 #include <modules/dtb/print_property.h>
 #include <modules/log/log.h>
 #include <modules/psci/psci.h>
-#include <shampoos/error.h>
-#include <shampoos/percpu.h>
-#include <shampoos/mm/vmm.h>
-#include <shampoos/mm/spmalloc.h>
-#include <shampoos/trap.h>
-#include <shampoos/time.h>
+#include <rendezvos/error.h>
+#include <rendezvos/percpu.h>
+#include <rendezvos/mm/vmm.h>
+#include <rendezvos/mm/spmalloc.h>
+#include <rendezvos/trap.h>
+#include <rendezvos/time.h>
 
 extern u64 L2_table;
 int BSP_ID;
@@ -177,6 +177,6 @@ error_t start_arch(int cpu_id)
         isb();
         init_interrupt();
         gic.init_cpu_interface();
-        shampoos_time_init();
+        rendezvos_time_init();
         return (0);
 }

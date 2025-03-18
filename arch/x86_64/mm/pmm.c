@@ -2,11 +2,11 @@
 #include <arch/x86_64/mm/vmm.h>
 #include <arch/x86_64/power_ctrl.h>
 #include <modules/log/log.h>
-#include <shampoos/error.h>
-#include <shampoos/limits.h>
-#include <shampoos/mm/pmm.h>
-#include <shampoos/mm/vmm.h>
-#include <shampoos/percpu.h>
+#include <rendezvos/error.h>
+#include <rendezvos/limits.h>
+#include <rendezvos/mm/pmm.h>
+#include <rendezvos/mm/vmm.h>
+#include <rendezvos/percpu.h>
 #include <modules/acpi/acpi.h>
 
 extern char _start, _end; /*the kernel end virt addr*/

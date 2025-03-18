@@ -1,5 +1,5 @@
-#ifndef _SHAMPOOS_SYS_CTRL_H_
-#define _SHAMPOOS_SYS_CTRL_H_
+#ifndef _RENDEZVOS_SYS_CTRL_H_
+#define _RENDEZVOS_SYS_CTRL_H_
 #include "sys_ctrl_def.h"
 #include <common/types.h>
 

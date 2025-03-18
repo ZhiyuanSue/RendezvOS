@@ -1,5 +1,5 @@
-#ifndef _SHAMPOOS_X86_64_TRAP_H_
-#define _SHAMPOOS_X86_64_TRAP_H_
+#ifndef _RENDEZVOS_X86_64_TRAP_H_
+#define _RENDEZVOS_X86_64_TRAP_H_
 #include <common/types.h>
 #define NR_IRQ             256
 #define TRAP_ID(trap_info) (trap_info)

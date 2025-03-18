@@ -1,9 +1,9 @@
 #include <arch/x86_64/PIC/IRQ.h>
 #include <arch/x86_64/time.h>
 #include <modules/log/log.h>
-#include <shampoos/mm/vmm.h>
+#include <rendezvos/mm/vmm.h>
 #include <common/bit.h>
-#include <shampoos/time.h>
+#include <rendezvos/time.h>
 
 extern enum IRQ_type arch_irq_type;
 u32 timer_irq_num = _8259A_MASTER_IRQ_NUM_ + _8259A_TIMER_;

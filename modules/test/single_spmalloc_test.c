@@ -1,12 +1,12 @@
 // #define DEBUG
 #include <modules/test/test.h>
-#include <shampoos/mm/nexus.h>
+#include <rendezvos/mm/nexus.h>
 #include <modules/log/log.h>
-#include <shampoos/mm/vmm.h>
-#include <shampoos/mm/spmalloc.h>
+#include <rendezvos/mm/vmm.h>
+#include <rendezvos/mm/spmalloc.h>
 #include <common/rand.h>
 #include <common/string.h>
-#include <shampoos/percpu.h>
+#include <rendezvos/percpu.h>
 extern struct allocator* kallocator;
 extern int slot_size[MAX_GROUP_SLOTS];
 struct bin {
@@ -52,7 +52,7 @@ static void sp_allocator_print(struct mem_allocator* sp_allocator_p)
 }
 static void spmalloc_print(void)
 {
-        for (int i = 0; i < SHAMPOOS_MAX_CPU_NUMBER; i++) {
+        for (int i = 0; i < RENDEZVOS_MAX_CPU_NUMBER; i++) {
                 if (per_cpu(kallocator, i)) {
                         debug("=== [ SPMALLOC ] ===\n");
                         sp_allocator_print(

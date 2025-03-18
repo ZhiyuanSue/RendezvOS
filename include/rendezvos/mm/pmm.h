@@ -1,5 +1,5 @@
-#ifndef _SHAMPOOS_PMM_H_
-#define _SHAMPOOS_PMM_H_
+#ifndef _RENDEZVOS_PMM_H_
+#define _RENDEZVOS_PMM_H_
 
 #include <common/stdbool.h>
 #include <common/stddef.h>
@@ -18,7 +18,7 @@
 #endif
 
 #include <common/mm.h>
-#include <shampoos/limits.h>
+#include <rendezvos/limits.h>
 
 struct region {
         paddr addr;
@@ -29,7 +29,7 @@ struct memory_regions {
         // region_count record continuous memory regions number
         int region_count;
         // memory_regions record the memory regions
-        struct region memory_regions[SHAMPOOS_MAX_MEMORY_REGIONS];
+        struct region memory_regions[RENDEZVOS_MAX_MEMORY_REGIONS];
         error_t (*memory_regions_insert)(paddr addr, u64 len);
         void (*memory_regions_delete)(int index);
         bool (*memory_regions_entry_empty)(int index);

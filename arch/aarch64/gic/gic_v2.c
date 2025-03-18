@@ -1,8 +1,8 @@
 #include <arch/aarch64/gic/gic_v2.h>
-#include <shampoos/mm/vmm.h>
-#include <shampoos/mm/map_handler.h>
+#include <rendezvos/mm/vmm.h>
+#include <rendezvos/mm/map_handler.h>
 #include <modules/dtb/dtb.h>
-#include <shampoos/percpu.h>
+#include <rendezvos/percpu.h>
 #include <arch/aarch64/sync/barrier.h>
 extern int BSP_ID;
 

@@ -166,6 +166,6 @@ TLBI VAE1：和之前一样bit [63:48]表示为ASID，指定ASID
 
 TLBI VMALLE1：根据VMID进行无效，xt参数必须是0b11111
 带有inner和outer版本
-后面带VM的均是虚拟机情况下的，shampoos目前并不涉及虚拟化相关内容，在此不做展开。
+后面带VM的均是虚拟机情况下的，rendezvos目前并不涉及虚拟化相关内容，在此不做展开。
 
 # aarch64的缓存发现

@@ -1,10 +1,10 @@
-#include <shampoos/error.h>
-#include <shampoos/mm/pmm.h>
+#include <rendezvos/error.h>
+#include <rendezvos/mm/pmm.h>
 
 struct memory_regions m_regions;
 error_t memory_regions_insert(paddr addr, u64 len)
 {
-        if (m_regions.region_count >= SHAMPOOS_MAX_MEMORY_REGIONS)
+        if (m_regions.region_count >= RENDEZVOS_MAX_MEMORY_REGIONS)
                 return (-ENOMEM);
         m_regions.memory_regions[m_regions.region_count].addr = addr;
         m_regions.memory_regions[m_regions.region_count].len = len;

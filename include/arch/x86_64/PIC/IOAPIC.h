@@ -1,4 +1,4 @@
-#ifndef _SHAMPOOS_IO_APIC_H_
-#define _SHAMPOOS_IO_APIC_H_
+#ifndef _RENDEZVOS_IO_APIC_H_
+#define _RENDEZVOS_IO_APIC_H_
 
 #endif

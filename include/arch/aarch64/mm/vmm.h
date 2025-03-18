@@ -1,5 +1,5 @@
-#ifndef _SHAMPOOS_ARCH_VMM_H_
-#define _SHAMPOOS_ARCH_VMM_H_
+#ifndef _RENDEZVOS_ARCH_VMM_H_
+#define _RENDEZVOS_ARCH_VMM_H_
 #include <common/types.h>
 #include <arch/aarch64/sync/tlb.h>
 #include <arch/aarch64/sys_ctrl.h>

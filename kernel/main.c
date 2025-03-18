@@ -1,6 +1,6 @@
 #include <modules/driver/uart/uart_16550A.h>
 #include <modules/log/log.h>
-#include <shampoos/common.h>
+#include <rendezvos/common.h>
 
 extern int log_level;
 extern char _bss_start, _bss_end;

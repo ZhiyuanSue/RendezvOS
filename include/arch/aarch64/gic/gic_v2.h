@@ -1,5 +1,5 @@
-#ifndef _SHAMPOOS_GIC_V2_H_
-#define _SHAMPOOS_GIC_V2_H_
+#ifndef _RENDEZVOS_GIC_V2_H_
+#define _RENDEZVOS_GIC_V2_H_
 #include <common/types.h>
 #include <common/stdbool.h>
 /*

@@ -5,7 +5,7 @@
 #include <common/mm.h>
 #include <common/bit.h>
 #include <common/stdbool.h>
-#include <shampoos/mm/vmm.h>
+#include <rendezvos/mm/vmm.h>
 
 void inline arch_set_L0_entry(paddr p, vaddr v, union L0_entry *pt_addr,
                               ARCH_PFLAGS_t flags)

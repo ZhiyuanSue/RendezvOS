@@ -1,5 +1,5 @@
-#ifndef _SHAMPOOS_STDDEF_H_
-#define _SHAMPOOS_STDDEF_H_
+#ifndef _RENDEZVOS_STDDEF_H_
+#define _RENDEZVOS_STDDEF_H_
 
 typedef long unsigned int size_t;
 

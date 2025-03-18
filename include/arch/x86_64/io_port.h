@@ -1,5 +1,5 @@
-#ifndef _SHAMPOOS_X86_64_IO_PORT_H_
-#define _SHAMPOOS_X86_64_IO_PORT_H_
+#ifndef _RENDEZVOS_X86_64_IO_PORT_H_
+#define _RENDEZVOS_X86_64_IO_PORT_H_
 
 /*
     define some of the ports in X86_64 here, which might be platform decided

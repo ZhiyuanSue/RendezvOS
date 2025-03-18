@@ -1,5 +1,5 @@
-#ifndef _SHAMPOOS_TLB_H_
-#define _SHAMPOOS_TLB_H_
+#ifndef _RENDEZVOS_TLB_H_
+#define _RENDEZVOS_TLB_H_
 
 #include <common/types.h>
 #include <common/mm.h>

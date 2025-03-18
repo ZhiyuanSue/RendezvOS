@@ -1,5 +1,5 @@
-#ifndef _SHAMPOOS_BARRIER_H_
-#define _SHAMPOOS_BARRIER_H_
+#ifndef _RENDEZVOS_BARRIER_H_
+#define _RENDEZVOS_BARRIER_H_
 
 #define barrier() __asm__ __volatile__("" : : : "memory")
 #define sfence()  __asm__ __volatile__("sfence" : : : "memory")

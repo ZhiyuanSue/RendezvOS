@@ -1,5 +1,5 @@
-#ifndef _SHAMPOOS_ARCH_VMM_H_
-#define _SHAMPOOS_ARCH_VMM_H_
+#ifndef _RENDEZVOS_ARCH_VMM_H_
+#define _RENDEZVOS_ARCH_VMM_H_
 #include "page_table_def.h"
 #include <common/types.h>
 #include <common/mm.h>

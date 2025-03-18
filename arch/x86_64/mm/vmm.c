@@ -2,7 +2,7 @@
 #include <arch/x86_64/mm/vmm.h>
 #include <common/mm.h>
 #include <common/bit.h>
-#include <shampoos/mm/vmm.h>
+#include <rendezvos/mm/vmm.h>
 
 u32 max_phy_addr_width;
 void inline arch_set_L0_entry(paddr p, vaddr v, union L0_entry *pt_addr,

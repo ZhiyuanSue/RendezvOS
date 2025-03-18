@@ -1,5 +1,5 @@
-#ifndef _SHAMPOOS_ERROR_H_
-#define _SHAMPOOS_ERROR_H_
+#ifndef _RENDEZVOS_ERROR_H_
+#define _RENDEZVOS_ERROR_H_
 /*I have to tell you that all the definations are copied from the linux error
  * part*/
 

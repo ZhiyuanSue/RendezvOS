@@ -1,5 +1,5 @@
-#ifndef _SHAMPOOS_ARCH_SMP_H_
-#define _SHAMPOOS_ARCH_SMP_H_
+#ifndef _RENDEZVOS_ARCH_SMP_H_
+#define _RENDEZVOS_ARCH_SMP_H_
 #include <arch/aarch64/boot/arch_setup.h>
 #include <modules/dtb/dtb.h>
 #include <modules/psci/psci.h>

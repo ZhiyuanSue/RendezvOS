@@ -1,10 +1,10 @@
 #include <modules/acpi/acpi.h>
-#include <shampoos/mm/vmm.h>
-#include <shampoos/mm/map_handler.h>
-#include <shampoos/percpu.h>
-#include <shampoos/error.h>
+#include <rendezvos/mm/vmm.h>
+#include <rendezvos/mm/map_handler.h>
+#include <rendezvos/percpu.h>
+#include <rendezvos/error.h>
 #include <modules/log/log.h>
-#include <shampoos/percpu.h>
+#include <rendezvos/percpu.h>
 extern int BSP_ID;
 struct acpi_table_fadt *fadt_table;
 extern struct acpi_table_madt *madt_table;

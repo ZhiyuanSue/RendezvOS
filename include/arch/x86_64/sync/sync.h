@@ -1,5 +1,5 @@
-#ifndef _SHAMPOOS_SYNC_
-#define _SHAMPOOS_SYNC_
+#ifndef _RENDEZVOS_SYNC_
+#define _RENDEZVOS_SYNC_
 
 #define LOCK_FREE 1
 

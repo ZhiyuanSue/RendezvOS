@@ -1,6 +1,6 @@
 # x86架构下
 ## 关于multiboot2
-我试图shampoos中使用multiboot2协议来引导，但是，当我按照multiboot2的格式写了引导程序之后，发现事情并没有那么简单，现有的qemu版本并不能支持这个协议。
+我试图rendezvos中使用multiboot2协议来引导，但是，当我按照multiboot2的格式写了引导程序之后，发现事情并没有那么简单，现有的qemu版本并不能支持这个协议。
 同时我发现multiboot1协议在qemu中无法直接支持x86_64的启动引导。
 我找到了一个可能存在的RFC：
 https://lore.kernel.org/qemu-devel/20240206135231.234184-1-jens.nyberg@gmail.com/

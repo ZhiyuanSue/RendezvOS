@@ -1,5 +1,5 @@
-#ifndef _SHAMPOOS_LIMITS_H_
-#define _SHAMPOOS_LIMITS_H_
+#ifndef _RENDEZVOS_LIMITS_H_
+#define _RENDEZVOS_LIMITS_H_
 
 #define USHRT_MAX  ((u16)(~0U))
 #define SHRT_MAX   ((s16)(USHRT_MAX >> 1))

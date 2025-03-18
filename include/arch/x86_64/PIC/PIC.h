@@ -1,5 +1,5 @@
-#ifndef _SHAMPOOS_PIC_H_
-#define _SHAMPOOS_PIC_H_
+#ifndef _RENDEZVOS_PIC_H_
+#define _RENDEZVOS_PIC_H_
 /*
     pic is also called 8259A, the even port and odd port is defined in
    ../io_port.h I think it's platform related

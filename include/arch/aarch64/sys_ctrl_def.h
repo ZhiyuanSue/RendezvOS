@@ -1,5 +1,5 @@
-#ifndef _SHAMPOOS_SYS_CTRL_DEF_H_
-#define _SHAMPOOS_SYS_CTRL_DEF_H_
+#ifndef _RENDEZVOS_SYS_CTRL_DEF_H_
+#define _RENDEZVOS_SYS_CTRL_DEF_H_
 
 /*CurrentEL*/
 #define CurrentEL_EL0 0x0
@@ -105,7 +105,7 @@
 #define CPACR_EL1_ZEN_TRAP_NONE    (0x3 << 16)
 
 /*ESR_EL1*/
-/*some are used for aarch32, acturally ignore them in shampoos*/
+/*some are used for aarch32, acturally ignore them in rendezvos*/
 #define ESR_EL1_MASK                   (0xfc000000) /*bit 31-26*/
 #define ESR_EL1_EC_OFF                 (26) /*The following EC code must offset 26*/
 #define ESR_EL1_UNKNOWN_REASON         (0 << ESR_EL1_EC_OFF)

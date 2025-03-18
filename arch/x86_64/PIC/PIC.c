@@ -2,7 +2,7 @@
 #include <arch/x86_64/io.h>
 #include <arch/x86_64/io_port.h>
 #include <common/bit.h>
-#include <shampoos/error.h>
+#include <rendezvos/error.h>
 
 u8 _8259A_IMR_MASTER_, _8259A_IMR_SLAVE_;
 void init_PIC(void)

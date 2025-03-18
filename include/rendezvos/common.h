@@ -1,11 +1,11 @@
-#ifndef _SHAMPOOS_COMMON_H_
-#define _SHAMPOOS_COMMON_H_
+#ifndef _RENDEZVOS_COMMON_H_
+#define _RENDEZVOS_COMMON_H_
 #define _K_KERNEL_
 #include <common/stdarg.h>
 #include <common/stddef.h>
 #include <common/types.h>
-#include <shampoos/error.h>
-#include <shampoos/stdio.h>
+#include <rendezvos/error.h>
+#include <rendezvos/stdio.h>
 
 #ifdef _AARCH64_
 #include <arch/aarch64/arch_common.h>
@@ -20,7 +20,7 @@
 #endif
 #include <modules/modules.h>
 #ifdef SMP
-#include <shampoos/smp.h>
+#include <rendezvos/smp.h>
 #endif
 
 void parse_device(uintptr_t addr);

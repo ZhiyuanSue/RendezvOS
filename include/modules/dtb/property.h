@@ -1,5 +1,5 @@
-#ifndef _SHAMPOOS_PROPERTY_H_
-#define _SHAMPOOS_PROPERTY_H_
+#ifndef _RENDEZVOS_PROPERTY_H_
+#define _RENDEZVOS_PROPERTY_H_
 #include <common/types.h>
 enum property_value_type {
         PROPERTY_VALUE_EMPTY,

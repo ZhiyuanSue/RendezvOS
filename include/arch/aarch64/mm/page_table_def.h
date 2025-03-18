@@ -1,5 +1,5 @@
-#ifndef _SHAMPOOS_ARCH_PAGE_TABLE_DEF_H_
-#define _SHAMPOOS_ARCH_PAGE_TABLE_DEF_H_
+#ifndef _RENDEZVOS_ARCH_PAGE_TABLE_DEF_H_
+#define _RENDEZVOS_ARCH_PAGE_TABLE_DEF_H_
 
 /*we only use 4K page,and 2M and 1G block*/
 #define PT_DESC_V (1)

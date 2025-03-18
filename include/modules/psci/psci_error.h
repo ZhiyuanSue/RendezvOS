@@ -1,5 +1,5 @@
-#ifndef _SHAMPOOS_PSCI_ERROR_H_
-#define _SHAMPOOS_PSCI_ERROR_H_
+#ifndef _RENDEZVOS_PSCI_ERROR_H_
+#define _RENDEZVOS_PSCI_ERROR_H_
 
 enum psci_error_code {
         psci_succ = 0,

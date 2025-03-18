@@ -1,10 +1,10 @@
-#ifndef _SHAMPOOS_LOCAL_APIC_H_
-#define _SHAMPOOS_LOCAL_APIC_H_
+#ifndef _RENDEZVOS_LOCAL_APIC_H_
+#define _RENDEZVOS_LOCAL_APIC_H_
 
 #include <common/types.h>
 #include <common/stdbool.h>
 #include <arch/x86_64/sys_ctrl.h>
-#include <shampoos/time.h>
+#include <rendezvos/time.h>
 #define APIC_REG_SIZE 32
 #define APIC_REG_ID   (0x2)
 #define APIC_ID_MASK  (0xFF000000)

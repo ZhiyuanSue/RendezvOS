@@ -1,5 +1,5 @@
-#ifndef _SHAMPOOS_X86_DESC_H_
-#define _SHAMPOOS_X86_DESC_H_
+#ifndef _RENDEZVOS_X86_DESC_H_
+#define _RENDEZVOS_X86_DESC_H_
 #include <common/types.h>
 
 #define GDT_SIZE            4

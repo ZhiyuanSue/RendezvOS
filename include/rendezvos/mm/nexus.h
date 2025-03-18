@@ -1,13 +1,13 @@
-#ifndef _SHAMPOOS_NEXUS_H_
-#define _SHAMPOOS_NEXUS_H_
+#ifndef _RENDEZVOS_NEXUS_H_
+#define _RENDEZVOS_NEXUS_H_
 /* This is a simple virture page allocator,  and the designation is in the
  * docs/mm.md */
 
 #include <common/types.h>
 #include <common/dsa/list.h>
 #include <common/dsa/rb_tree.h>
-#include <shampoos/mm/pmm.h>
-#include <shampoos/mm/map_handler.h>
+#include <rendezvos/mm/pmm.h>
+#include <rendezvos/mm/map_handler.h>
 struct nexus_node {
         struct list_entry manage_free_list;
         struct list_entry _free_list;

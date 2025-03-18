@@ -1,8 +1,8 @@
 #include <modules/log/log.h>
 #include <modules/test/test.h>
-#include <shampoos/smp.h>
-#include <shampoos/percpu.h>
-#include <shampoos/common.h>
+#include <rendezvos/smp.h>
+#include <rendezvos/percpu.h>
+#include <rendezvos/common.h>
 int NR_CPU;
 DEFINE_PER_CPU(enum cpu_status, CPU_STATE);
 void start_smp(struct setup_info *arch_setup_info)

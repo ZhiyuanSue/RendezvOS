@@ -1,4 +1,4 @@
-#include <shampoos/percpu.h>
+#include <rendezvos/percpu.h>
 #include <arch/x86_64/desc.h>
 
 DEFINE_PER_CPU(union desc, gdt[GDT_SIZE]) = {{.seg_desc = {0}},

@@ -1,5 +1,5 @@
-#ifndef _SHAMPOOS_LIST_H_
-#define _SHAMPOOS_LIST_H_
+#ifndef _RENDEZVOS_LIST_H_
+#define _RENDEZVOS_LIST_H_
 #include <common/stdbool.h>
 #include <common/types.h>
 

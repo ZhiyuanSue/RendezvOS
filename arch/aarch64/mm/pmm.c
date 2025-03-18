@@ -4,10 +4,10 @@
 #include <arch/aarch64/power_ctrl.h>
 #include <common/endianness.h>
 #include <modules/dtb/dtb.h>
-#include <shampoos/limits.h>
-#include <shampoos/mm/pmm.h>
-#include <shampoos/mm/vmm.h>
-#include <shampoos/percpu.h>
+#include <rendezvos/limits.h>
+#include <rendezvos/mm/pmm.h>
+#include <rendezvos/mm/vmm.h>
+#include <rendezvos/percpu.h>
 
 extern char _start, _end; /*the kernel end virt addr*/
 extern u64 L0_table, L1_table, L2_table;

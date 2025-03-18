@@ -1,4 +1,4 @@
-#include <shampoos/common.h>
+#include <rendezvos/common.h>
 
 void cpu_idle(void)
 {

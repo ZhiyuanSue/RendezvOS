@@ -1,4 +1,4 @@
-#ifndef _SHAMPOOS_TRAP_DEF_H_
+#ifndef _RENDEZVOS_TRAP_DEF_H_
 
 /*in gic(v2) we only use 0-1019, and we use 64 as the sync trap*/
 #define NR_IRQ             1084

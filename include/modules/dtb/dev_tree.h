@@ -7,8 +7,8 @@
     I don't want to change too much
     because the format of dtb is all the same
 */
-#ifndef _SHAMPOOS_DEV_TREE_H_
-#define _SHAMPOOS_DEV_TREE_H_
+#ifndef _RENDEZVOS_DEV_TREE_H_
+#define _RENDEZVOS_DEV_TREE_H_
 
 #include <common/types.h>
 struct device_node {

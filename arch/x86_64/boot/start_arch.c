@@ -8,14 +8,14 @@
 #include <arch/x86_64/desc.h>
 #include <arch/x86_64/trap/tss.h>
 #include <arch/x86_64/msr.h>
-#include <shampoos/percpu.h>
+#include <rendezvos/percpu.h>
 #include <modules/driver/timer/8254.h>
 #include <modules/log/log.h>
 #include <modules/acpi/acpi.h>
-#include <shampoos/error.h>
-#include <shampoos/mm/vmm.h>
-#include <shampoos/mm/nexus.h>
-#include <shampoos/trap.h>
+#include <rendezvos/error.h>
+#include <rendezvos/mm/vmm.h>
+#include <rendezvos/mm/nexus.h>
+#include <rendezvos/trap.h>
 
 extern u32 max_phy_addr_width;
 struct cpuinfo cpu_info;
@@ -156,7 +156,7 @@ error_t start_arch(int cpu_id)
         init_interrupt();
         init_irq();
         sti();
-        shampoos_time_init();
+        rendezvos_time_init();
         enable_cache();
         start_fp();
         start_simd();

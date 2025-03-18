@@ -1,5 +1,5 @@
-#ifndef _SHAMPOOS_MULTIBOOT_
-#define _SHAMPOOS_MULTIBOOT_
+#ifndef _RENDEZVOS_MULTIBOOT_
+#define _RENDEZVOS_MULTIBOOT_
 #include <common/types.h>
 #define MULTIBOOT_MAGIC 0x2BADB002
 

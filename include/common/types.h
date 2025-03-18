@@ -1,9 +1,9 @@
 /*
- * This file is used to define all kinds of basic types used in ShamPoOS, as we
+ * This file is used to define all kinds of basic types used in RendezvOS, as we
  * use no std
  */
-#ifndef _SHAMPOOS_TYPES_H_
-#define _SHAMPOOS_TYPES_H_
+#ifndef _RENDEZVOS_TYPES_H_
+#define _RENDEZVOS_TYPES_H_
 
 typedef signed char i8;
 typedef unsigned char u8;
