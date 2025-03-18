@@ -1,6 +1,6 @@
 #include <common/dsa/rb_tree.h>
 #include <common/stddef.h>
-#include <modules/log/log.h>
+#include <common/stdbool.h>
 static u64 update_height(struct rb_node* rb_p)
 {
         rb_p->black_height =

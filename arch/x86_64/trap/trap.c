@@ -83,10 +83,10 @@ void arch_unknown_trap_handler(struct trap_frame *tf)
         pr_info("r15\t:\t0x%x\n", tf->r15);
 }
 
-void arch_eoi_irq(int irq_num)
+void arch_eoi_irq(u64 trap_info)
 {
         if (arch_irq_type == PIC_IRQ) {
-                PIC_EOI(irq_num);
+                PIC_EOI(TRAP_ID(trap_info));
         } else if (arch_irq_type == xAPIC_IRQ) {
                 APIC_EOI();
         }

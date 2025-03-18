@@ -60,8 +60,9 @@ void arch_unknown_trap_handler(struct trap_frame *tf)
         // pr_info("far\t:\t0x%x\n", tf->FAR);
         // pr_info("tpidr\t:\t0x%x\n", tf->TPIDR_EL0);
 }
-void arch_eoi_irq(union irq_source source)
+void arch_eoi_irq(u64 trap_info)
 {
+        union irq_source source = {.irq_source_value = trap_info};
         source.irq_id = TRAP_SRC(source.irq_id);
         source.irq_id = AARCH64_TRAP_ID_TO_IRQ(source.irq_id);
         gic.eoi(source);

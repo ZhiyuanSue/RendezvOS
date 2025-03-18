@@ -101,9 +101,9 @@ static inline void cpuid(u32 op, u32 *eax, u32 *ebx, u32 *ecx, u32 *edx)
         *eax = op;
         *ecx = 0;
         __asm__ __volatile__("cpuid"
-                     : "=a"(*eax), "=b"(*ebx), "=c"(*ecx), "=d"(*edx)
-                     : "0"(*eax), "2"(*ecx)
-                     : "memory");
+                             : "=a"(*eax), "=b"(*ebx), "=c"(*ecx), "=d"(*edx)
+                             : "0"(*eax), "2"(*ecx)
+                             : "memory");
 }
 
 #endif

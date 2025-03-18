@@ -23,8 +23,7 @@ void multi_cpu_test(void)
                         }
                 }
         }
-        if (test_pass){
-
-			// pr_info("====== [ MULTI CPU TEST PASS ] ======\n");
-		}
+        if (test_pass) {
+                // pr_info("====== [ MULTI CPU TEST PASS ] ======\n");
+        }
 }

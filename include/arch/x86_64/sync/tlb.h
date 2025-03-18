@@ -4,16 +4,16 @@
 #include <common/mm.h>
 static inline void invlpg(vaddr addr)
 {
-	__asm__ __volatile__("invlpg (%0)" ::"r"(addr) : "memory");
+        __asm__ __volatile__("invlpg (%0)" ::"r"(addr) : "memory");
 }
 
 static inline void arch_tlb_invalidate_all()
 {
-	__asm__ __volatile__("mov %eax,%cr3;"
-                     "mov %cr3,%eax;"
-                     :
-                     :
-                     : "a");
+        __asm__ __volatile__("mov %eax,%cr3;"
+                             "mov %cr3,%eax;"
+                             :
+                             :
+                             : "a");
 }
 
 static inline void arch_tlb_invalidate_page(uint64_t vspace_id, vaddr addr)

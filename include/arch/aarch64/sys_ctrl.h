@@ -4,10 +4,11 @@
 #include <common/types.h>
 
 /*write reg*/
-#define msr(sys_reg, value) __asm__ __volatile__("msr " sys_reg ", %0;" : : "r"(value))
+#define msr(sys_reg, value) \
+        __asm__ __volatile__("msr " sys_reg ", %0;" : : "r"(value))
 /*read reg*/
 #define mrs(sys_reg, value) \
-__asm__ __volatile__("mrs %0, " sys_reg "\n" : "=r"(value) : :)
+        __asm__ __volatile__("mrs %0, " sys_reg "\n" : "=r"(value) : :)
 
 static void inline set_vbar_el1(vaddr trap_vec)
 {

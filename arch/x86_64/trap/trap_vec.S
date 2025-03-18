@@ -165,8 +165,6 @@ trap_31:
 trap_32:
 	trap_entry 32
 	call trap_handler
-	mov	 $0x20,%rax
-	call arch_eoi_irq
 	trap_exit
 	.global	trap_33
 trap_33:

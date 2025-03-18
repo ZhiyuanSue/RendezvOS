@@ -36,5 +36,4 @@ struct trap_frame {
 
 void arch_init_interrupt(void);
 void arch_unknown_trap_handler(struct trap_frame *tf);
-void arch_eoi_irq(union irq_source source);
 #endif

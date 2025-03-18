@@ -36,7 +36,7 @@ __attribute__((optimize("O0"))) u64 timer_calibration()
 void shampoos_time_init()
 {
         percpu(tick_cnt) = jeffies;
-        register_irq_handler(timer_irq_num, shampoos_do_time_irq);
+        register_irq_handler(timer_irq_num, shampoos_do_time_irq, IRQ_NEED_EOI);
         arch_init_timer();
         loop_per_jeffies = timer_calibration();
         udelay_max_loop = (loop_per_jeffies * UDELAY_MAX * UDELAY_MUL)
