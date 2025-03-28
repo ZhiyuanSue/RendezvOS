@@ -28,3 +28,4 @@ TODO list:
 26、测试内存分配器的cacheline的碰撞概率。
 27、算是上一条的子任务，因为测试内存分配器的cache碰撞概率，需要知道cpu核心的cache大小，而这点在smp上可能是不同的，因此，需要把cpu info改为percpu的，并且添加相应cache的内容。
 28、根据上述的cacheline碰撞概率测试，优化malloc分配器的行为。
+29、已经有了相关dtb解析的代码，可以在启动的时候，动态解析aarch64下的dtb中的uart的位置，以让内核更通用化。(Done)我在这里使用的代码跟查找memory那里的主要逻辑基本相同，需要继续封装
