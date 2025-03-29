@@ -9,75 +9,48 @@ extern void boot_Error();
 
 extern struct property_type property_types[255];
 const char *uart_compatible = "arm,pl011\0";
-bool boot_get_uart_info(void *fdt, int offset, int depth, u64 *uart_phy_addr,
-                        u64 *uart_len)
+static void boot_get_uart_info(struct setup_info *setup_info_paddr,
+                               u64 *uart_phy_addr, u64 *uart_len)
 {
         struct property_type *property_types_paddr =
                 (struct property_type *)(KERNEL_VIRT_TO_PHY(
                         (u64)(property_types)));
+
         const char *uart_compatible_phyaddr =
                 (const char *)(KERNEL_VIRT_TO_PHY((u64)uart_compatible));
+
         const char *compatible_type_str =
                 property_types_paddr[PROPERTY_TYPE_COMPATIBLE].property_string;
-        const char *reg_str =
-                property_types_paddr[PROPERTY_TYPE_REG].property_string;
-        struct fdt_property *prop;
-        const char *property_name;
-        const char *data;
-        const char *s;
-        u_int32_t len;
-        u32 *u32_data;
+        struct fdt_property *uart_prop_ptr =
+                raw_get_prop_from_dtb((void *)(setup_info_paddr->dtb_ptr),
+                                      0,
+                                      0,
+                                      property_types_paddr,
+                                      uart_compatible_phyaddr,
+                                      compatible_type_str,
+                                      DTB_RAW_GET_PROP_MODE_SINGLE,
+                                      NULL);
+        if (!uart_prop_ptr || *uart_len > MIDDLE_PAGE_SIZE)
+                boot_Error(); /*not find uart, or uart len is tooo large*/
 
-        int property, node;
-        fdt_for_each_property_offset(property, fdt, offset)
-        {
-                prop = (struct fdt_property *)fdt_offset_ptr(
-                        fdt, property, FDT_TAGSIZE);
-                property_name =
-                        fdt_string(fdt, SWAP_ENDIANNESS_32(prop->nameoff));
-                data = (const char *)(prop->data);
-                if (!strcmp(property_name, compatible_type_str)
-                    && !strcmp_s(data,
-                                 uart_compatible_phyaddr,
-                                 strlen(uart_compatible_phyaddr))) {
-                        goto find_node;
-                }
+        const char *data = (const char *)(uart_prop_ptr->data);
+
+        u_int32_t len = SWAP_ENDIANNESS_32(uart_prop_ptr->len);
+
+        u32 *u32_data = (u32 *)data;
+        for (int index = 0; index < len; index += sizeof(u32) * 4) {
+                u32 u32_1, u32_2, u32_3, u32_4;
+                u32_1 = SWAP_ENDIANNESS_32(*u32_data);
+                u32_data++;
+                u32_2 = SWAP_ENDIANNESS_32(*u32_data);
+                u32_data++;
+                *uart_phy_addr = (((u64)u32_1) << 32) + u32_2;
+                u32_3 = SWAP_ENDIANNESS_32(*u32_data);
+                u32_data++;
+                u32_4 = SWAP_ENDIANNESS_32(*u32_data);
+                u32_data++;
+                *uart_len = (((u64)u32_3) << 32) + u32_4;
         }
-        fdt_for_each_subnode(node, fdt, offset)
-        {
-                if (boot_get_uart_info(
-                            fdt, node, depth + 1, uart_phy_addr, uart_len))
-                        return true;
-        }
-        return false;
-find_node:
-        fdt_for_each_property_offset(property, fdt, offset)
-        {
-                prop = (struct fdt_property *)fdt_offset_ptr(
-                        fdt, property, FDT_TAGSIZE);
-                s = fdt_string(fdt, SWAP_ENDIANNESS_32(prop->nameoff));
-                data = (const char *)(prop->data);
-                len = SWAP_ENDIANNESS_32(prop->len);
-                if (!strcmp(s, reg_str)) {
-                        u32_data = (u32 *)data;
-                        for (int index = 0; index < len;
-                             index += sizeof(u32) * 4) {
-                                u32 u32_1, u32_2, u32_3, u32_4;
-                                u32_1 = SWAP_ENDIANNESS_32(*u32_data);
-                                u32_data++;
-                                u32_2 = SWAP_ENDIANNESS_32(*u32_data);
-                                u32_data++;
-                                *uart_phy_addr = (((u64)u32_1) << 32) + u32_2;
-                                u32_3 = SWAP_ENDIANNESS_32(*u32_data);
-                                u32_data++;
-                                u32_4 = SWAP_ENDIANNESS_32(*u32_data);
-                                u32_data++;
-                                *uart_len = (((u64)u32_3) << 32) + u32_4;
-                        }
-                        return true;
-                }
-        }
-        return false;
 }
 /*take care of the vaddr and paddr ,here most are paddr*/
 void boot_map_pg_table(u64 kernel_start_addr, u64 kernel_end_addr,
@@ -118,14 +91,10 @@ void boot_map_pg_table(u64 kernel_start_addr, u64 kernel_end_addr,
                           L2_table_paddr,
                           PT_DESC_V | PT_DESC_BLOCK_OR_TABLE
                                   | PT_DESC_ATTR_LOWER_AF);
-        u64 uart_phy_addr, uart_len;
-        if (!boot_get_uart_info((void *)(setup_info_paddr->dtb_ptr),
-                                0,
-                                0,
-                                &uart_phy_addr,
-                                &uart_len)
-            || uart_len > MIDDLE_PAGE_SIZE)
-                boot_Error(); /*not find uart, or uart len is tooo large*/
+        /*get the uart addr and len*/
+        u64 uart_phy_addr = 0, uart_len = 0;
+        boot_get_uart_info(setup_info_paddr, &uart_phy_addr, &uart_len);
+        /*map the uart regs*/
         for (vaddr offset = 0; offset < uart_len; offset += PAGE_SIZE) {
                 arch_set_L3_entry(uart_phy_addr + offset,
                                   kernel_end_page + offset,

@@ -14,72 +14,42 @@ extern u64 L0_table, L1_table, L2_table;
 extern struct memory_regions m_regions;
 
 extern struct property_type property_types[PROPERTY_TYPE_NUM];
-static void arch_get_memory_regions(void *fdt, int offset, int depth)
+static void get_mem_prop_and_insert_region(struct fdt_property *fdt_prop)
 {
+        const char *data = (const char *)(fdt_prop->data);
+        u_int32_t len = SWAP_ENDIANNESS_32(fdt_prop->len);
+        u32 *u32_data = (u32 *)data;
+        for (int index = 0; index < len; index += sizeof(u32) * 4) {
+                u32 u32_1, u32_2, u32_3, u32_4;
+                u64 addr, mem_len;
+                u32_1 = SWAP_ENDIANNESS_32(*u32_data);
+                u32_data++;
+                u32_2 = SWAP_ENDIANNESS_32(*u32_data);
+                u32_data++;
+                addr = (((u64)u32_1) << 32) + u32_2;
+                u32_3 = SWAP_ENDIANNESS_32(*u32_data);
+                u32_data++;
+                u32_4 = SWAP_ENDIANNESS_32(*u32_data);
+                u32_data++;
+                mem_len = (((u64)u32_3) << 32) + u32_4;
+                pr_info("region start 0x%x,len 0x%x\n", addr, mem_len);
+                m_regions.memory_regions_insert(addr, mem_len);
+        }
+}
+static void arch_get_memory_regions(void *fdt)
+{
+        const char *memory_str = "memory\0";
+
         const char *device_type_str =
                 property_types[PROPERTY_TYPE_DEVICE_TYPE].property_string;
-        const char *memory_str = "memory\0";
-        const char *reg_str = property_types[PROPERTY_TYPE_REG].property_string;
-        struct fdt_property *prop;
-        const char *property_name;
-        const char *data;
-        const char *s;
-        u_int32_t len;
-        u32 *u32_data;
-
-        int property, node;
-        /*
-            actually we seems to use something like of_find_node_by_type
-            but now we have no memory to alloc any struct of device_node
-        */
-        fdt_for_each_property_offset(property, fdt, offset)
-        {
-                prop = (struct fdt_property *)fdt_offset_ptr(
-                        fdt, property, FDT_TAGSIZE);
-                property_name =
-                        fdt_string(fdt, SWAP_ENDIANNESS_32(prop->nameoff));
-                data = (const char *)(prop->data);
-                if (!strcmp(property_name, device_type_str)
-                    && !strcmp_s(data, memory_str, strlen(memory_str))) {
-                        goto find_memory_node;
-                }
-        }
-        fdt_for_each_subnode(node, fdt, offset)
-        {
-                arch_get_memory_regions(fdt, node, depth + 1);
-        }
-        return;
-find_memory_node:
-        fdt_for_each_property_offset(property, fdt, offset)
-        {
-                prop = (struct fdt_property *)fdt_offset_ptr(
-                        fdt, property, FDT_TAGSIZE);
-                s = fdt_string(fdt, SWAP_ENDIANNESS_32(prop->nameoff));
-                data = (const char *)(prop->data);
-                len = SWAP_ENDIANNESS_32(prop->len);
-                if (!strcmp(s, reg_str)) {
-                        u32_data = (u32 *)data;
-                        for (int index = 0; index < len;
-                             index += sizeof(u32) * 4) {
-                                u32 u32_1, u32_2, u32_3, u32_4;
-                                u64 addr, mem_len;
-                                u32_1 = SWAP_ENDIANNESS_32(*u32_data);
-                                u32_data++;
-                                u32_2 = SWAP_ENDIANNESS_32(*u32_data);
-                                u32_data++;
-                                addr = (((u64)u32_1) << 32) + u32_2;
-                                u32_3 = SWAP_ENDIANNESS_32(*u32_data);
-                                u32_data++;
-                                u32_4 = SWAP_ENDIANNESS_32(*u32_data);
-                                u32_data++;
-                                mem_len = (((u64)u32_3) << 32) + u32_4;
-                                pr_info("region start 0x%x,len 0x%x\n",
-                                        addr,
-                                        mem_len);
-                                m_regions.memory_regions_insert(addr, mem_len);
-                        }
-                }
-        }
+        raw_get_prop_from_dtb(fdt,
+                              0,
+                              0,
+                              property_types,
+                              memory_str,
+                              device_type_str,
+                              0,
+                              get_mem_prop_and_insert_region);
 }
 
 static void arch_map_extra_data_space(paddr kernel_phy_start,
@@ -150,7 +120,7 @@ void arch_init_pmm(struct setup_info *arch_setup_info)
                         entry->size);
         }
         m_regions.region_count = 0;
-        arch_get_memory_regions(dtb_header_ptr, 0, 0);
+        arch_get_memory_regions(dtb_header_ptr);
         if (!m_regions.region_count)
                 goto arch_init_pmm_error;
         // adjust the memory regions, according to the kernel

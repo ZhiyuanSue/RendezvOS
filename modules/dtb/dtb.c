@@ -272,3 +272,62 @@ const char *fdt_string(const void *fdt, int stroffset)
 {
         return (fdt_get_string(fdt, stroffset, NULL));
 }
+struct fdt_property *
+raw_get_prop_from_dtb(void *fdt, int offset, int depth,
+                      struct property_type *property_types_addr,
+                      const char *cmp_str, const char *cmp_type_str,
+                      u64 raw_get_mode,
+                      void (*f)(struct fdt_property *fdt_prop))
+{
+        const char *reg_str =
+                property_types_addr[PROPERTY_TYPE_REG].property_string;
+        struct fdt_property *prop;
+        const char *property_name;
+        const char *data;
+        const char *s;
+
+        int property, node;
+        fdt_for_each_property_offset(property, fdt, offset)
+        {
+                prop = (struct fdt_property *)fdt_offset_ptr(
+                        fdt, property, FDT_TAGSIZE);
+                property_name =
+                        fdt_string(fdt, SWAP_ENDIANNESS_32(prop->nameoff));
+                data = (const char *)(prop->data);
+                if (!strcmp(property_name, cmp_type_str)
+                    && !strcmp_s(data, cmp_str, strlen(cmp_str))) {
+                        goto find_node;
+                }
+        }
+        fdt_for_each_subnode(node, fdt, offset)
+        {
+                struct fdt_property *prop_ptr =
+                        raw_get_prop_from_dtb(fdt,
+                                              node,
+                                              depth + 1,
+                                              property_types_addr,
+                                              cmp_str,
+                                              cmp_type_str,
+                                              raw_get_mode,
+                                              f);
+                if ((raw_get_mode & DTB_RAW_GET_PROP_MODE_SINGLE) && prop_ptr)
+                        return prop_ptr;
+        }
+        return NULL;
+find_node:
+        fdt_for_each_property_offset(property, fdt, offset)
+        {
+                prop = (struct fdt_property *)fdt_offset_ptr(
+                        fdt, property, FDT_TAGSIZE);
+                s = fdt_string(fdt, SWAP_ENDIANNESS_32(prop->nameoff));
+
+                if (!strcmp(s, reg_str)) {
+                        if (raw_get_mode & DTB_RAW_GET_PROP_MODE_SINGLE) {
+                                return prop;
+                        } else {
+                                f(prop);
+                        }
+                }
+        }
+        return NULL;
+}
