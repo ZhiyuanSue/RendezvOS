@@ -44,7 +44,6 @@ static void arch_get_memory_regions(void *fdt)
                 property_types[PROPERTY_TYPE_DEVICE_TYPE].property_string;
         raw_get_prop_from_dtb(fdt,
                               0,
-                              0,
                               property_types,
                               memory_str,
                               device_type_str,

@@ -1,0 +1,4 @@
+#ifndef _RENDEZVOS_ARCH_BITMAP_
+#define _RENDEZVOS_ARCH_BITMAP_
+
+#endif

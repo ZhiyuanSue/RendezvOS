@@ -15,15 +15,12 @@ static void boot_get_uart_info(struct setup_info *setup_info_paddr,
         struct property_type *property_types_paddr =
                 (struct property_type *)(KERNEL_VIRT_TO_PHY(
                         (u64)(property_types)));
-
         const char *uart_compatible_phyaddr =
                 (const char *)(KERNEL_VIRT_TO_PHY((u64)uart_compatible));
-
         const char *compatible_type_str =
                 property_types_paddr[PROPERTY_TYPE_COMPATIBLE].property_string;
         struct fdt_property *uart_prop_ptr =
                 raw_get_prop_from_dtb((void *)(setup_info_paddr->dtb_ptr),
-                                      0,
                                       0,
                                       property_types_paddr,
                                       uart_compatible_phyaddr,

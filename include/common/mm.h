@@ -2,6 +2,7 @@
 #define _RENDEZVOS_MM_H_
 #include <common/stdbool.h>
 #include <common/types.h>
+#include <common/align.h>
 #define PAGE_SIZE        0x1000
 #define MIDDLE_PAGE_SIZE 0x200000
 #define MIDDLE_PAGES     0x200
@@ -10,11 +11,6 @@
 #define KiloBytes 0x400
 #define MegaBytes 0x100000
 #define GigaBytes 0x40000000
-
-#define ROUND_UP(x, align)   ((x + (align - 1)) & ~(align - 1))
-#define ROUND_DOWN(x, align) (x & ~(align - 1))
-
-#define ALIGNED(x, align) ((x & (align - 1)) == 0)
 
 #define mask_9_bit     0x1ff
 #define L0_INDEX(addr) ((addr >> 39) & mask_9_bit)

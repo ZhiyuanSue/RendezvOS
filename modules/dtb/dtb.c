@@ -272,12 +272,10 @@ const char *fdt_string(const void *fdt, int stroffset)
 {
         return (fdt_get_string(fdt, stroffset, NULL));
 }
-struct fdt_property *
-raw_get_prop_from_dtb(void *fdt, int offset, int depth,
-                      struct property_type *property_types_addr,
-                      const char *cmp_str, const char *cmp_type_str,
-                      u64 raw_get_mode,
-                      void (*f)(struct fdt_property *fdt_prop))
+struct fdt_property *raw_get_prop_from_dtb(
+        void *fdt, int offset, struct property_type *property_types_addr,
+        const char *cmp_str, const char *cmp_type_str, u64 raw_get_mode,
+        void (*f)(struct fdt_property *fdt_prop))
 {
         const char *reg_str =
                 property_types_addr[PROPERTY_TYPE_REG].property_string;
@@ -304,7 +302,6 @@ raw_get_prop_from_dtb(void *fdt, int offset, int depth,
                 struct fdt_property *prop_ptr =
                         raw_get_prop_from_dtb(fdt,
                                               node,
-                                              depth + 1,
                                               property_types_addr,
                                               cmp_str,
                                               cmp_type_str,
