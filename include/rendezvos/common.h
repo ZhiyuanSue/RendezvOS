@@ -4,6 +4,7 @@
 #include <common/stdarg.h>
 #include <common/stddef.h>
 #include <common/types.h>
+#include <common/spin.h>
 #include <rendezvos/error.h>
 #include <rendezvos/stdio.h>
 
@@ -25,8 +26,8 @@
 
 void parse_device(uintptr_t addr);
 void interrupt_init(void);
-void cpu_idle(void);
 error_t phy_mm_init(struct setup_info *arch_setup_info);
 error_t virt_mm_init(int cpu_id);
+
 
 #endif

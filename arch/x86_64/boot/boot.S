@@ -140,7 +140,7 @@ long_jmp_to_64:
 	ljmp	$0x08,$(x86_64_entry-kernel_virt_offset)
 	jmp 	hlt
 hlt:
-	call 	cpu_idle
+	jmp		hlt
 ERROR_CPUID:
 	jmp hlt
 
