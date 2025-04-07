@@ -20,6 +20,8 @@ int rb_tree_test(void);
 int nexus_test(void);
 int spmalloc_test(void);
 
+int smp_lock_test(void);
+
 struct test_case {
         int (*test)(void);
         char name[32];
