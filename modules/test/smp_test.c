@@ -2,7 +2,6 @@
 #include <rendezvos/percpu.h>
 #include <rendezvos/limits.h>
 
-extern int cpu_number;
 extern int BSP_ID;
 extern int NR_CPU;
 extern volatile i64 jeffies;

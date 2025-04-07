@@ -23,7 +23,6 @@ int BSP_ID;
 extern struct nexus_node *nexus_root;
 extern struct pseudo_descriptor gdt_desc;
 extern union desc gdt[GDT_SIZE];
-extern int cpu_number;
 static void get_cpu_info(void)
 {
         u32 eax;

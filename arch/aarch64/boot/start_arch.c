@@ -20,7 +20,6 @@
 extern u64 L2_table;
 int BSP_ID;
 extern struct allocator *kallocator;
-extern int cpu_number;
 struct cpuinfo cpu_info;
 
 static void get_cpu_info(void)
