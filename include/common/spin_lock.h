@@ -12,7 +12,6 @@
 */
 #include <common/stddef.h>
 #include <common/atomic.h>
-#include <common/spin.h>
 #include <common/barrier.h>
 
 typedef struct spin_lock_t spin_lock_t;
@@ -43,7 +42,7 @@ static inline void lock_mcs(spin_lock *m, spin_lock_t *me)
 
         /* Spin on my spin variable */
         while (!me->spin)
-                cpu_idle();
+                arch_cpu_relax();
 
         return;
 }
@@ -65,7 +64,7 @@ static inline void unlock_mcs(spin_lock *m, spin_lock_t *me)
 
                 /* Wait for successor to appear */
                 while (!me->next)
-                        cpu_idle();
+                        arch_cpu_relax();
         }
 
         /* Unlock next one */
