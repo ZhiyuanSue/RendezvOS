@@ -105,7 +105,8 @@ void multi_cpu_test(void)
                                 ;
                 }
         }
-        if (test_pass && percpu(cpu_number) == BSP_ID) {
+        if (percpu(cpu_number) == BSP_ID) {
+			if(test_pass)
                 pr_info("====== [ MULTI CPU TEST PASS ] ======\n");
         }
 }
