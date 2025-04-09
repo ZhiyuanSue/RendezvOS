@@ -1,7 +1,7 @@
 #include <modules/test/test.h>
 
 extern volatile i64 jeffies;
-static struct test_case single_test[MAX_SINGLE_TEST_CASE] = {
+static struct single_test_case single_test[MAX_SINGLE_TEST_CASE] = {
         {rb_tree_test, "rb_tree\0"},
         {arch_vmm_test, "arch_vmm\0"},
         // {nexus_test, "nexus\0"},

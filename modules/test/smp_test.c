@@ -5,8 +5,8 @@
 extern int BSP_ID;
 extern int NR_CPU;
 extern volatile i64 jeffies;
-static struct test_case smp_test[MAX_SMP_TEST_CASE] = {
-        {smp_lock_test, "smp spin_lock"},
+static struct smp_test_case smp_test[MAX_SMP_TEST_CASE] = {
+        {smp_lock_test, "smp spin_lock", smp_lock_check},
 };
 enum multi_cpu_test_state {
         multi_cpu_test_not_start,
@@ -42,11 +42,21 @@ void multi_cpu_test(void)
                 }
                 if (cpu_id == BSP_ID)
                         last_test_finished = false;
-                if (smp_test[i].test()) {
-                        test_state[cpu_id] = multi_cpu_test_fail;
+                if (!smp_test[i].check_result) {
+                        /* if no cpu 0 check function, just run it on every core
+                         * and check the return value */
+                        if (smp_test[i].test()) {
+                                test_state[cpu_id] = multi_cpu_test_fail;
+                        } else {
+                                test_state[cpu_id] = multi_cpu_test_success;
+                        }
                 } else {
+                        /* if some check function exist, we just run them on
+                         * every core */
+                        smp_test[i].test();
                         test_state[cpu_id] = multi_cpu_test_success;
                 }
+
                 /*finish this test and sync*/
                 if (cpu_id == BSP_ID) {
                         bool all_test_success = true;
@@ -63,17 +73,23 @@ void multi_cpu_test(void)
                                 if (!have_cpu_not_finish)
                                         break;
                         }
-                        for (int j = 0; j < NR_CPU; j++) {
-                                if (test_state[j] == multi_cpu_test_fail) {
-                                        all_test_success = false;
-                                        pr_error(
-                                                "[ TEST @%8x ] ERROR: test %s on cpu: %d fail!\n",
-                                                jeffies,
-                                                smp_test[i].name,
-                                                cpu_id);
-                                        break;
+                        if (!smp_test[i].check_result) {
+                                for (int j = 0; j < NR_CPU; j++) {
+                                        if (test_state[j]
+                                            == multi_cpu_test_fail) {
+                                                all_test_success = false;
+                                                pr_error(
+                                                        "[ TEST @%8x ] ERROR: test %s on cpu: %d fail!\n",
+                                                        jeffies,
+                                                        smp_test[i].name,
+                                                        cpu_id);
+                                                break;
+                                        }
                                 }
+                        } else {
+                                all_test_success = smp_test[i].check_result();
                         }
+
                         if (!all_test_success) {
                                 test_pass = false;
                                 break;

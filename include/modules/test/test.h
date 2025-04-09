@@ -20,11 +20,25 @@ int rb_tree_test(void);
 int nexus_test(void);
 int spmalloc_test(void);
 
+/*in smp case
+one test function cannot easily be checked
+so we designed two ways
+if each smp_test can return a value,just check all the values for every cpu
+else if the smp test case check function can work,
+we use that check the result at cpu 0
+*/
 int smp_lock_test(void);
+int smp_lock_check(void);
 
-struct test_case {
+struct single_test_case {
         int (*test)(void);
         char name[32];
+};
+
+struct smp_test_case {
+        int (*test)(void);
+        char name[32];
+        int (*check_result)(void);
 };
 
 #endif
