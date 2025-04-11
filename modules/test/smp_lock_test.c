@@ -20,5 +20,5 @@ int smp_lock_test(void)
 }
 int smp_lock_check(void)
 {
-        return NR_CPU* TEST_ROUND == add_value;
+        return NR_CPU * TEST_ROUND == add_value;
 }

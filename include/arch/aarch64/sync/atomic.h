@@ -12,16 +12,15 @@ static inline uint64_t atomic64_cas(volatile uint64_t *addr, uint64_t expected,
         uint64_t result;
         dsb(SY);
 
-        __asm__ volatile(
-                "atomic64_cas: ldxr %0, [%2]\n"
-                "   cmp %0, %3\n"
-                "   b.ne atomic64_cas_end\n"
-                "   stxr %w1, %4, [%2]\n"
-                "   cbnz %w1, atomic64_cas\n"
-                "atomic64_cas_end:"
-                : "=&r"(oldval), "=&r"(result)
-                : "r"(addr), "r"(expected), "r"(newval)
-                : "memory", "cc");
+        __asm__ volatile("atomic64_cas: ldxr %0, [%2]\n"
+                         "   cmp %0, %3\n"
+                         "   b.ne atomic64_cas_end\n"
+                         "   stxr %w1, %4, [%2]\n"
+                         "   cbnz %w1, atomic64_cas\n"
+                         "atomic64_cas_end:"
+                         : "=&r"(oldval), "=&r"(result)
+                         : "r"(addr), "r"(expected), "r"(newval)
+                         : "memory", "cc");
         dsb(SY);
         return oldval;
 }

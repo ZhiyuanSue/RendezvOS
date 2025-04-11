@@ -28,7 +28,7 @@ static inline void lock_mcs(spin_lock *m, spin_lock_t *me)
         me->next = (spin_lock_t *)NULL;
         me->spin = 0;
 
-		tail = (spin_lock_t*)atomic64_exchange((volatile u64*)m,(u64)me);
+        tail = (spin_lock_t *)atomic64_exchange((volatile u64 *)m, (u64)me);
 
         /* No one there? */
         if (!tail)
@@ -52,8 +52,9 @@ static inline void unlock_mcs(spin_lock *m, spin_lock_t *me)
         /* No successor yet? */
         if (!me->next) {
                 /* Try to atomically unlock */
-				if (atomic64_cas((volatile u64*)m,(u64)me,(u64)NULL) == (u64)me)
-						return;
+                if (atomic64_cas((volatile u64 *)m, (u64)me, (u64)NULL)
+                    == (u64)me)
+                        return;
 
                 /* Wait for successor to appear */
                 while (!me->next)
@@ -66,12 +67,16 @@ static inline void unlock_mcs(spin_lock *m, spin_lock_t *me)
 
 static inline int trylock_mcs(spin_lock *m, spin_lock_t *me)
 {
+        spin_lock_t *tail;
+
         me->next = (spin_lock_t *)NULL;
         me->spin = 0;
 
+        /* Try to lock */
+        tail = (spin_lock_t *)atomic64_cas(
+                (volatile u64 *)m, (u64)NULL, (u64)&me);
         /* No one was there - can quickly return */
-        if (!__atomic_compare_exchange_n(
-                    m, NULL, me, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST))
+        if (!tail)
                 return 0;
 
         return 1; // Busy
