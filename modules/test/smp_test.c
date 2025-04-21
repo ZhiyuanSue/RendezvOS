@@ -99,7 +99,7 @@ void multi_cpu_test(void)
                                 smp_test[i].name);
                         for (int j = 0; j < NR_CPU; j++)
                                 test_state[j] = multi_cpu_test_not_start;
-						curr_test ++;
+                        curr_test++;
                 } else {
                         while (curr_test == i)
                                 ;

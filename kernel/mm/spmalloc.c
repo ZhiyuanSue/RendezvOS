@@ -64,7 +64,7 @@ struct object_header* chunk_get_obj(struct mem_chunk* chunk)
                 return NULL;
         }
         if (chunk->magic != CHUNK_MAGIC) {
-                pr_error("bad chunk magic, please check\n");
+                pr_error("[ERROR]bad chunk magic, please check\n");
                 return NULL;
         }
         if (chunk->nr_used_objs >= chunk->nr_max_objs) {
@@ -277,7 +277,7 @@ static void* _sp_alloc(struct mem_allocator* sp_allocator_p, size_t Bytes)
         }
         struct object_header* obj_ptr = chunk_get_obj(alloc_chunk);
         if (!obj_ptr) {
-                pr_error("[ERROR]cannot get a object from chunk with \n");
+                pr_error("[ERROR]cannot get a object from chunk \n");
                 return NULL;
         }
         if (alloc_chunk->nr_max_objs == alloc_chunk->nr_used_objs) {

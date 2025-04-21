@@ -59,7 +59,7 @@ void arch_init_interrupt(void)
 
 void arch_unknown_trap_handler(struct trap_frame *tf)
 {
-		pr_info("trap_info\t:\t0x%x\n",tf->trap_info);
+        pr_info("trap_info\t:\t0x%x\n", tf->trap_info);
         pr_info("ss\t:\t0x%x\n", tf->ss);
         pr_info("rsp\t:\t0x%x\n", tf->rsp);
         pr_info("eflags\t:\t0x%x\n", tf->eflags);
