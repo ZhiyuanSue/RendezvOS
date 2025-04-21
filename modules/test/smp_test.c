@@ -8,7 +8,7 @@ extern volatile i64 jeffies;
 static struct smp_test_case smp_test[MAX_SMP_TEST_CASE] = {
         {smp_lock_test, "smp spin_lock", smp_lock_check},
         // {smp_log_test, "smp log test", smp_log_check}, // just see the output
-        // {smp_spmalloc_test, "smp spmalloc", NULL},
+        {smp_spmalloc_test, "smp spmalloc", NULL},
 };
 enum multi_cpu_test_state {
         multi_cpu_test_not_start,
@@ -17,7 +17,7 @@ enum multi_cpu_test_state {
         multi_cpu_test_fail
 };
 volatile enum multi_cpu_test_state test_state[RENDEZVOS_MAX_CPU_NUMBER];
-volatile bool last_test_finished = true;
+volatile u64 curr_test = 0;
 void multi_cpu_test(void)
 {
         int cpu_id = percpu(cpu_number);
@@ -31,7 +31,7 @@ void multi_cpu_test(void)
                         pr_info("[ MULTI CPU TEST %s ]\n", smp_test[i].name);
                 test_state[cpu_id] = multi_cpu_test_running;
                 /*wait for other cpu start test*/
-                while (last_test_finished) {
+                while (curr_test == i) {
                         bool have_cpu_not_start = false;
                         for (int j = 0; j < NR_CPU; j++) {
                                 if (test_state[j] == multi_cpu_test_not_start) {
@@ -42,8 +42,6 @@ void multi_cpu_test(void)
                         if (!have_cpu_not_start)
                                 break;
                 }
-                if (cpu_id == BSP_ID)
-                        last_test_finished = false;
                 if (!smp_test[i].check_result) {
                         /* if no cpu 0 check function, just run it on every core
                          * and check the return value */
@@ -99,11 +97,11 @@ void multi_cpu_test(void)
                         pr_info("[ TEST @%8x ] PASS: test %s ok!\n",
                                 jeffies,
                                 smp_test[i].name);
-                        last_test_finished = true;
                         for (int j = 0; j < NR_CPU; j++)
                                 test_state[j] = multi_cpu_test_not_start;
+						curr_test ++;
                 } else {
-                        while (!last_test_finished)
+                        while (curr_test == i)
                                 ;
                 }
         }

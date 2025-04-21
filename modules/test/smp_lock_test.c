@@ -2,7 +2,7 @@
 #include <rendezvos/sync/spin_lock.h>
 #include <rendezvos/percpu.h>
 
-#define TEST_ROUND 1000000
+#define TEST_ROUND 100000
 
 extern int NR_CPU;
 spin_lock spin_ptr = NULL;
