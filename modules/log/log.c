@@ -3,6 +3,8 @@
 #include <modules/log/log.h>
 
 struct log_buffer LOG_BUFFER;
+DEFINE_PER_CPU(struct spin_lock_t, log_spin_lock);
+spin_lock log_spin_lock_ptr = NULL;
 #ifdef _LOG_OFF_
 int log_level = LOG_OFF;
 #elif defined _LOG_EMERG_

@@ -83,9 +83,9 @@ error_t map(paddr *vspace_root_paddr, u64 ppn, u64 vpn, int level,
         /*for the buddy can only alloc 2M at most*/
         /*if no root page, try to allocator one with the pmm allocator*/
         if (!(*vspace_root_paddr)) {
-                // TOOD:lock pmm alloctor
+                lock_mcs(&handler->pmm->spin_ptr, &percpu(pmm_spin_lock));
                 pmm_res = handler->pmm->pmm_alloc(1, ZONE_NORMAL);
-                // TODO:unlock pmm allocator
+                unlock_mcs(&handler->pmm->spin_ptr, &percpu(pmm_spin_lock));
                 if (pmm_res <= 0) {
                         pr_error("[ ERROR ] try alloc vspace root ppn fail\n");
                         return -ENOMEM;
@@ -109,9 +109,9 @@ error_t map(paddr *vspace_root_paddr, u64 ppn, u64 vpn, int level,
                 ((union L0_entry *)(handler->map_vaddr[0]))[L0_INDEX(v)]);
         if (!next_level_paddr) {
                 /*no next level page, need alloc one*/
-                // TOOD:lock pmm alloctor
+                lock_mcs(&handler->pmm->spin_ptr, &percpu(pmm_spin_lock));
                 pmm_res = handler->pmm->pmm_alloc(1, ZONE_NORMAL);
-                // TODO:unlock pmm allocator
+                unlock_mcs(&handler->pmm->spin_ptr, &percpu(pmm_spin_lock));
                 if (pmm_res <= 0) {
                         pr_error("[ ERROR ] try alloc ppn fail\n");
                         return -ENOMEM;
@@ -139,9 +139,9 @@ error_t map(paddr *vspace_root_paddr, u64 ppn, u64 vpn, int level,
                 ((union L1_entry *)(handler->map_vaddr[1]))[L1_INDEX(v)]);
         if (!next_level_paddr) {
                 /*no next level page, need alloc one*/
-                // TOOD:lock pmm alloctor
+                lock_mcs(&handler->pmm->spin_ptr, &percpu(pmm_spin_lock));
                 pmm_res = handler->pmm->pmm_alloc(1, ZONE_NORMAL);
-                // TODO:unlock pmm allocator
+                unlock_mcs(&handler->pmm->spin_ptr, &percpu(pmm_spin_lock));
                 if (pmm_res <= 0) {
                         pr_error("[ ERROR ] try alloc ppn fail\n");
                         return -ENOMEM;
@@ -270,9 +270,11 @@ error_t map(paddr *vspace_root_paddr, u64 ppn, u64 vpn, int level,
                         union L2_entry *)(handler->map_vaddr[2]))[L2_INDEX(v)]);
                 if (!next_level_paddr) {
                         /*no next level page, need alloc one*/
-                        // TOOD:lock pmm alloctor
+                        lock_mcs(&handler->pmm->spin_ptr,
+                                 &percpu(pmm_spin_lock));
                         pmm_res = handler->pmm->pmm_alloc(1, ZONE_NORMAL);
-                        // TODO:unlock pmm allocator
+                        unlock_mcs(&handler->pmm->spin_ptr,
+                                   &percpu(pmm_spin_lock));
                         if (pmm_res <= 0) {
                                 pr_error("[ ERROR ] try alloc ppn fail\n");
                                 return -ENOMEM;

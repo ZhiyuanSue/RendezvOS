@@ -122,9 +122,9 @@ struct nexus_node* init_nexus(struct map_handler* handler)
 {
         paddr vspace_root = get_current_kernel_vspace_root();
         /*get a phy page*/
-        // TODO: add lock
+        lock_mcs(&handler->pmm->spin_ptr, &percpu(pmm_spin_lock));
         int nexus_init_page = handler->pmm->pmm_alloc(1, ZONE_NORMAL);
-        // TODO: add unlock
+        unlock_mcs(&handler->pmm->spin_ptr, &percpu(pmm_spin_lock));
         if (nexus_init_page <= 0) {
                 pr_error("[ NEXUS ] ERROR: init error\n");
                 return NULL;
@@ -177,10 +177,13 @@ static struct nexus_node* nexus_get_free_entry(struct nexus_node* root_node)
                 } else {
                         /*means no free manage can use, try alloc a new one*/
                         paddr vspace_root = get_current_kernel_vspace_root();
-                        // TODO:add lock
+
+                        lock_mcs(&root_node->handler->pmm->spin_ptr,
+                                 &percpu(pmm_spin_lock));
                         int nexus_new_page = root_node->handler->pmm->pmm_alloc(
                                 1, ZONE_NORMAL);
-                        // TODO:add unlock
+                        unlock_mcs(&root_node->handler->pmm->spin_ptr,
+                                   &percpu(pmm_spin_lock));
                         if (nexus_new_page <= 0) {
                                 pr_error("[ NEXUS ] ERROR: init error\n");
                                 return NULL;
@@ -291,9 +294,9 @@ static void* _kernel_get_free_page(int page_num, enum zone_type memory_zone,
                 nexus_free_entry(free_nexus_entry, nexus_root);
                 return NULL;
         }
-        // TODO: add lock
+        lock_mcs(&nexus_root->handler->pmm->spin_ptr, &percpu(pmm_spin_lock));
         int ppn = nexus_root->handler->pmm->pmm_alloc(page_num, ZONE_NORMAL);
-        // TODO: add lock
+        unlock_mcs(&nexus_root->handler->pmm->spin_ptr, &percpu(pmm_spin_lock));
         if (ppn <= 0) {
                 pr_error("[ NEXUS ] ERROR: init error\n");
                 /*we have alloc a new usable entry ,we need to return
@@ -382,10 +385,12 @@ static void* _user_get_free_page(int page_num, enum zone_type memory_zone,
                                 "[ NEXUS ] cannot find a new free nexus entry\n");
                         return NULL;
                 }
-                // TODO: add lock
+                lock_mcs(&nexus_root->handler->pmm->spin_ptr,
+                         &percpu(pmm_spin_lock));
                 int ppn = nexus_root->handler->pmm->pmm_alloc(MIDDLE_PAGES,
                                                               ZONE_NORMAL);
-                // TODO: add lock
+                unlock_mcs(&nexus_root->handler->pmm->spin_ptr,
+                           &percpu(pmm_spin_lock));
                 if (ppn <= 0) {
                         pr_error("[ NEXUS ] ERROR: init error\n");
                         /*we have alloc a new usable entry ,we need to
@@ -419,9 +424,11 @@ static void* _user_get_free_page(int page_num, enum zone_type memory_zone,
                                 "[ NEXUS ] cannot find a new free nexus entry\n");
                         return NULL;
                 }
-                // TODO: add lock
+                lock_mcs(&nexus_root->handler->pmm->spin_ptr,
+                         &percpu(pmm_spin_lock));
                 int ppn = nexus_root->handler->pmm->pmm_alloc(1, ZONE_NORMAL);
-                // TODO: add lock
+                unlock_mcs(&nexus_root->handler->pmm->spin_ptr,
+                           &percpu(pmm_spin_lock));
                 if (ppn <= 0) {
                         pr_error("[ NEXUS ] ERROR: init error\n");
                         /*we have alloc a new usable entry ,we need to

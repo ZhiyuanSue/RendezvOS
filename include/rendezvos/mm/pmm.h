@@ -19,6 +19,8 @@
 
 #include <common/mm.h>
 #include <rendezvos/limits.h>
+#include <rendezvos/sync/spin_lock.h>
+#include <rendezvos/percpu.h>
 
 struct region {
         paddr addr;
@@ -41,8 +43,10 @@ enum zone_type { ZONE_NORMAL, ZONE_NR_MAX };
 #define PMM_COMMON                                                        \
         void (*pmm_init)(struct setup_info * arch_setup_info);            \
         int (*pmm_alloc)(size_t page_number, enum zone_type zone_number); \
-        error_t (*pmm_free)(u32 ppn, size_t page_number)
+        error_t (*pmm_free)(u32 ppn, size_t page_number);                 \
+        spin_lock spin_ptr
 
+extern struct spin_lock_t pmm_spin_lock;
 struct pmm {
         PMM_COMMON;
 };

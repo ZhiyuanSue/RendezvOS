@@ -2,12 +2,12 @@
 #include <rendezvos/sync/spin_lock.h>
 #include <rendezvos/percpu.h>
 
-#define TEST_ROUND 100000
+#define TEST_ROUND 1000000
 
 extern int NR_CPU;
 spin_lock spin_ptr = NULL;
 DEFINE_PER_CPU(struct spin_lock_t, test_spin_lock);
-int add_value = 0;
+volatile int add_value = 0;
 int smp_lock_test(void)
 {
         struct spin_lock_t *my_spin_lock = &percpu(test_spin_lock);

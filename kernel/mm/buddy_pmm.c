@@ -5,6 +5,7 @@
 struct buddy buddy_pmm;
 extern struct memory_regions m_regions;
 u64 entry_per_bucket[BUDDY_MAXORDER + 1], pages_per_bucket[BUDDY_MAXORDER + 1];
+DEFINE_PER_CPU(struct spin_lock_t, pmm_spin_lock);
 /*some public functions in arch init, you can see some example in arch pmm*/
 static void calculate_avaliable_phy_addr_end(void)
 {
@@ -477,4 +478,5 @@ error_t pmm_free(u32 ppn, size_t page_number)
 struct buddy buddy_pmm = {.m_regions = &m_regions,
                           .pmm_init = pmm_init,
                           .pmm_alloc = pmm_alloc,
-                          .pmm_free = pmm_free};
+                          .pmm_free = pmm_free,
+                          .spin_ptr = NULL};

@@ -1,6 +1,7 @@
 #include <arch/x86_64/sys_ctrl.h>
 #include <arch/x86_64/sys_ctrl_def.h>
 #include <arch/x86_64/trap/trap.h>
+#include <arch/x86_64/power_ctrl.h>
 #include <modules/log/log.h>
 #include <arch/x86_64/PIC/IRQ.h>
 #include <arch/x86_64/trap/tss.h>
@@ -81,6 +82,7 @@ void arch_unknown_trap_handler(struct trap_frame *tf)
         pr_info("r13\t:\t0x%x\n", tf->r13);
         pr_info("r14\t:\t0x%x\n", tf->r14);
         pr_info("r15\t:\t0x%x\n", tf->r15);
+        arch_shutdown();
 }
 
 void arch_eoi_irq(u64 trap_info)
