@@ -18,9 +18,9 @@
 #include <rendezvos/time.h>
 
 extern u64 L2_table;
-int BSP_ID;
+int BSP_ID = 0;
 extern struct allocator *kallocator;
-struct cpuinfo cpu_info;
+struct cpuinfo cpu_info = {0};
 
 static void get_cpu_info(void)
 {

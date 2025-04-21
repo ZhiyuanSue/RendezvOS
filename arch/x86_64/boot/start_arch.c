@@ -18,8 +18,8 @@
 #include <rendezvos/trap.h>
 
 extern u32 max_phy_addr_width;
-struct cpuinfo cpu_info;
-int BSP_ID;
+struct cpuinfo cpu_info = {0};
+int BSP_ID = 0;
 extern struct nexus_node *nexus_root;
 extern struct pseudo_descriptor gdt_desc;
 extern union desc gdt[GDT_SIZE];

@@ -4,7 +4,7 @@
 #include <common/bit.h>
 #include <rendezvos/mm/vmm.h>
 
-u32 max_phy_addr_width;
+u32 max_phy_addr_width = 0;
 void inline arch_set_L0_entry(paddr p, vaddr v, union L0_entry *pt_addr,
                               ARCH_PFLAGS_t flags)
 {
