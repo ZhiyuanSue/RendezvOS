@@ -81,7 +81,7 @@ int smp_spmalloc_test(void)
 {
         /*first we try to alloc one 8 Bytes as basic test*/
         spmalloc_print();
-		percpu(smp_next)=1;
+        percpu(smp_next) = 1;
         struct allocator* malloc = percpu(kallocator);
         pr_info("[CPU:%d]\t[allocator\t@\t%x]\n\t[nexus_root\t@\t%x]\n\t[handler\t@\t%x]\n",
                 percpu(cpu_number),

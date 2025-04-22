@@ -267,7 +267,11 @@ static void nexus_free_entry(struct nexus_node* nexus_entry,
                                 pr_error("[ NEXUS ] ERROR: unmap error!\n");
                                 return;
                         }
+                        lock_mcs(&nexus_root->handler->pmm->spin_ptr,
+                                 &percpu(pmm_spin_lock));
                         nexus_root->handler->pmm->pmm_free(ppn, 1);
+                        unlock_mcs(&nexus_root->handler->pmm->spin_ptr,
+                                   &percpu(pmm_spin_lock));
                 }
         }
 }
@@ -521,7 +525,9 @@ static error_t _kernel_free_pages(void* p, int page_num,
                         map_addr += PAGE_SIZE;
                 }
         }
+        lock_mcs(&nexus_root->handler->pmm->spin_ptr, &percpu(pmm_spin_lock));
         nexus_root->handler->pmm->pmm_free(ppn, node->size);
+        unlock_mcs(&nexus_root->handler->pmm->spin_ptr, &percpu(pmm_spin_lock));
         /*del from rb tree*/
         nexus_rb_tree_remove(node, &nexus_root->_rb_root);
         nexus_free_entry(node, nexus_root);
@@ -548,7 +554,11 @@ static error_t _user_free_pages(void* p, int page_num, paddr vspace_root,
                         pr_error("[ NEXUS ] ERROR: unmap error!\n");
                         return -ENOMEM;
                 }
+                lock_mcs(&nexus_root->handler->pmm->spin_ptr,
+                         &percpu(pmm_spin_lock));
                 nexus_root->handler->pmm->pmm_free(ppn, node->size);
+                unlock_mcs(&nexus_root->handler->pmm->spin_ptr,
+                           &percpu(pmm_spin_lock));
                 nexus_rb_tree_remove(node, &nexus_root->_rb_root);
                 nexus_free_entry(node, nexus_root);
                 page_num -= size;

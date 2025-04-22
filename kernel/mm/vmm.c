@@ -238,8 +238,12 @@ error_t map(paddr *vspace_root_paddr, u64 ppn, u64 vpn, int level,
                                                 "[ MAP ] mapping 2M page have had a mapped level 3 page table and have a existed 4K entry\n");
                                         return -EINVAL;
                                 }
+                                lock_mcs(&handler->pmm->spin_ptr,
+                                         &percpu(pmm_spin_lock));
                                 pmm_res = handler->pmm->pmm_free(
                                         PPN(next_level_paddr), 1);
+                                unlock_mcs(&handler->pmm->spin_ptr,
+                                           &percpu(pmm_spin_lock));
                                 if (pmm_res) {
                                         pr_error(
                                                 "[ MAP ] pmm free error with a ppn 0x%x\n",
