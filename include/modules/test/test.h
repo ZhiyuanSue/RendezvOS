@@ -29,6 +29,7 @@ we use that check the result at cpu 0
 */
 int smp_lock_test(void);
 int smp_lock_check(void);
+int smp_nexus_test(void);
 int smp_spmalloc_test(void);
 int smp_log_test(void);
 int smp_log_check(void);

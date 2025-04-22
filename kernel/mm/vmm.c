@@ -192,6 +192,7 @@ error_t map(paddr *vspace_root_paddr, u64 ppn, u64 vpn, int level,
                                 v,
                                 (union L2_entry *)(handler->map_vaddr[2]),
                                 flags);
+                        res = 0;
                         goto map_succ;
                 }
                 if (next_level_paddr != p) {

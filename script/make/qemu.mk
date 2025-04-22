@@ -5,7 +5,7 @@
 LOG	?= false
 
 Qemulator	:= qemu-system-$(ARCH)
-QemuFlags	:= -kernel $(Target_BIN) -smp $(SMP)
+QemuFlags	:= -kernel $(Target_BIN) -smp $(SMP) -m $(MEM_SIZE)
 ifeq ($(LOG), true)
 	QemuFlags	+= -D qemu.log -d in_asm,int,pcall,cpu_reset,guest_errors
 endif
