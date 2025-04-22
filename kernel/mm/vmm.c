@@ -3,6 +3,7 @@
 #include <common/string.h>
 #include <rendezvos/error.h>
 #include <modules/log/log.h>
+#include <rendezvos/percpu.h>
 extern u64 *MAP_L1_table, *MAP_L2_table, *MAP_L3_table;
 void sys_init_map()
 {
@@ -53,7 +54,6 @@ static void util_map(paddr p, vaddr v)
                                           | PAGE_ENTRY_VALID
                                           | PAGE_ENTRY_WRITE);
         arch_set_L3_entry(p, v, (union L3_entry *)&MAP_L3_table, flags);
-        // TODO:flush tlb
 }
 error_t map(paddr *vspace_root_paddr, u64 ppn, u64 vpn, int level,
             ENTRY_FLAGS_t eflags, struct map_handler *handler)
@@ -66,6 +66,7 @@ error_t map(paddr *vspace_root_paddr, u64 ppn, u64 vpn, int level,
         paddr next_level_paddr = 0;
         int pmm_res = 0;
         bool new_alloc = false;
+        error_t res = 0;
         /*for a new alloced page, we must memset to all 0, use this flag to
          * decide whether memset*/
 
@@ -73,11 +74,13 @@ error_t map(paddr *vspace_root_paddr, u64 ppn, u64 vpn, int level,
         /*some check*/
         if (level != 2 && level != 3) {
                 pr_error("[ ERROR ] we only support 2M/4K mapping\n");
-                return -EINVAL;
+                res = -EINVAL;
+                goto map_clean;
         }
         if (!ppn | !vpn | !handler) {
                 pr_error("[ ERROR ] input arguments error\n");
-                return -EINVAL;
+                res = -EINVAL;
+                goto map_clean;
         }
 
         /*for the buddy can only alloc 2M at most*/
@@ -88,7 +91,8 @@ error_t map(paddr *vspace_root_paddr, u64 ppn, u64 vpn, int level,
                 unlock_mcs(&handler->pmm->spin_ptr, &percpu(pmm_spin_lock));
                 if (pmm_res <= 0) {
                         pr_error("[ ERROR ] try alloc vspace root ppn fail\n");
-                        return -ENOMEM;
+                        res = -ENOMEM;
+                        goto map_clean;
                 }
                 *vspace_root_paddr = PADDR(pmm_res);
                 new_alloc = true;
@@ -96,7 +100,8 @@ error_t map(paddr *vspace_root_paddr, u64 ppn, u64 vpn, int level,
                    != *vspace_root_paddr) {
                 pr_error(
                         "[ ERROR ] wrong vspace root paddr in mapping, please check\n");
-                return -EINVAL;
+                res = -EINVAL;
+                goto map_clean;
         }
         /*map the L0 table to one L3 table entry*/
         util_map(*vspace_root_paddr, handler->map_vaddr[0]);
@@ -114,7 +119,8 @@ error_t map(paddr *vspace_root_paddr, u64 ppn, u64 vpn, int level,
                 unlock_mcs(&handler->pmm->spin_ptr, &percpu(pmm_spin_lock));
                 if (pmm_res <= 0) {
                         pr_error("[ ERROR ] try alloc ppn fail\n");
-                        return -ENOMEM;
+                        res = -ENOMEM;
+                        goto map_clean;
                 }
                 next_level_paddr = PADDR(pmm_res);
                 new_alloc = true;
@@ -144,7 +150,8 @@ error_t map(paddr *vspace_root_paddr, u64 ppn, u64 vpn, int level,
                 unlock_mcs(&handler->pmm->spin_ptr, &percpu(pmm_spin_lock));
                 if (pmm_res <= 0) {
                         pr_error("[ ERROR ] try alloc ppn fail\n");
-                        return -ENOMEM;
+                        res = -ENOMEM;
+                        goto map_clean;
                 }
                 next_level_paddr = PADDR(pmm_res);
                 new_alloc = true;
@@ -177,14 +184,15 @@ error_t map(paddr *vspace_root_paddr, u64 ppn, u64 vpn, int level,
                         if ((vpn & mask_9_bit) || (ppn & mask_9_bit)) {
                                 pr_error(
                                         "the vpn and ppn must all 2M aligned\n");
-                                return -EINVAL;
+                                res = -EINVAL;
+                                goto map_clean;
                         }
                         arch_set_L2_entry(
                                 p,
                                 v,
                                 (union L2_entry *)(handler->map_vaddr[2]),
                                 flags);
-                        goto map_succ;
+                        goto map_clean;
                 }
                 if (next_level_paddr != p) {
                         /*
@@ -236,7 +244,8 @@ error_t map(paddr *vspace_root_paddr, u64 ppn, u64 vpn, int level,
                                 if (have_filled_entry) {
                                         pr_error(
                                                 "[ MAP ] mapping 2M page have had a mapped level 3 page table and have a existed 4K entry\n");
-                                        return -EINVAL;
+                                        res = -EINVAL;
+                                        goto map_clean;
                                 }
                                 lock_mcs(&handler->pmm->spin_ptr,
                                          &percpu(pmm_spin_lock));
@@ -248,7 +257,8 @@ error_t map(paddr *vspace_root_paddr, u64 ppn, u64 vpn, int level,
                                         pr_error(
                                                 "[ MAP ] pmm free error with a ppn 0x%x\n",
                                                 PPN(next_level_paddr));
-                                        return -EINVAL;
+                                        res = -EINVAL;
+                                        goto map_clean;
                                 }
                                 arch_set_L2_entry(
                                         p,
@@ -256,7 +266,8 @@ error_t map(paddr *vspace_root_paddr, u64 ppn, u64 vpn, int level,
                                         (union L2_entry
                                                  *)(handler->map_vaddr[2]),
                                         flags);
-                                return 0;
+                                res = 0;
+                                goto map_clean;
                         } else {
                                 pr_error(
                                         "[ MAP ] mapping two different physical pages to a same virtual 2M page\n");
@@ -264,11 +275,13 @@ error_t map(paddr *vspace_root_paddr, u64 ppn, u64 vpn, int level,
                                         "[ MAP ] arguments: old 0x%x new 0x%x\n",
                                         next_level_paddr,
                                         p);
-                                return -EINVAL;
+                                res = -EINVAL;
+                                goto map_clean;
                         }
                 }
                 pr_info("[ MAP ] remap same physical pages to a same virtual 2M page\n");
-                return 0;
+                res = 0;
+                goto map_clean;
         } else {
                 next_level_paddr = L2_entry_addr(((
                         union L2_entry *)(handler->map_vaddr[2]))[L2_INDEX(v)]);
@@ -281,7 +294,8 @@ error_t map(paddr *vspace_root_paddr, u64 ppn, u64 vpn, int level,
                                    &percpu(pmm_spin_lock));
                         if (pmm_res <= 0) {
                                 pr_error("[ ERROR ] try alloc ppn fail\n");
-                                return -ENOMEM;
+                                res = -ENOMEM;
+                                goto map_clean;
                         }
                         next_level_paddr = PADDR(pmm_res);
                         new_alloc = true;
@@ -315,7 +329,7 @@ error_t map(paddr *vspace_root_paddr, u64 ppn, u64 vpn, int level,
                                                   | PAGE_ENTRY_WRITE | eflags);
                 arch_set_L3_entry(
                         p, v, (union L3_entry *)(handler->map_vaddr[3]), flags);
-                goto map_succ;
+                goto map_clean;
         }
         if (next_level_paddr != p) {
                 pr_error(
@@ -323,18 +337,19 @@ error_t map(paddr *vspace_root_paddr, u64 ppn, u64 vpn, int level,
                 pr_error("[ MAP ] arguments: old 0x%x new 0x%x\n",
                          next_level_paddr,
                          p);
-                return -EINVAL;
+                res = -EINVAL;
+                goto map_clean;
         }
         pr_error(
                 "[ MAP ] remap same physical pages to a same virtual 4K page\n");
-        return -ENOMEM;
-map_succ:
+        res = -ENOMEM;
+map_clean:
         arch_tlb_invalidate_page(0, v);
         /*flush all the tlbs of those 4 pages*/
         arch_tlb_invalidate_range(0,
                                   handler->map_vaddr[0],
                                   handler->map_vaddr[0] + PAGE_SIZE * 4);
-        return 0;
+        return res;
 }
 
 error_t unmap(paddr vspace_root_paddr, u64 vpn, struct map_handler *handler)
@@ -346,15 +361,18 @@ error_t unmap(paddr vspace_root_paddr, u64 vpn, struct map_handler *handler)
         union L1_entry L1_E;
         union L2_entry L2_E;
         union L3_entry L3_E;
+        error_t res = 0;
         if (!vspace_root_paddr || !vpn) {
                 pr_error("[ ERROR ] unmap input is not right\n");
-                return -EINVAL;
+                res = -EINVAL;
+                goto unmap_clean;
         } else if (ROUND_DOWN(vspace_root_paddr, PAGE_SIZE)
                    != vspace_root_paddr) {
                 pr_error(
                         "[ ERROR ] wrong vspace root paddr 0x%x in mapping, please check\n",
                         vspace_root_paddr);
-                return -EINVAL;
+                res = -EINVAL;
+                goto unmap_clean;
         }
         /*=== === === L0 table === === ===*/
         util_map(vspace_root_paddr, handler->map_vaddr[0]);
@@ -369,7 +387,8 @@ error_t unmap(paddr vspace_root_paddr, u64 vpn, struct map_handler *handler)
                 pr_error(
                         "[ ERROR ] L0 entry not mapped, entry is 0x%x, unmap error\n",
                         L0_E);
-                return -EINVAL;
+                res = -EINVAL;
+                goto unmap_clean;
         }
 
         /*=== === === L1 table === === ===*/
@@ -383,10 +402,12 @@ error_t unmap(paddr vspace_root_paddr, u64 vpn, struct map_handler *handler)
                                                                        l1 page*/
         {
                 pr_error("[ ERROR ] L1 entry not mapped, unmap error\n");
-                return -EINVAL;
+                res = -EINVAL;
+                goto unmap_clean;
         } else if (is_final_level_pt(1, entry_flags)) {
                 pr_error("[ ERROR ] we do not use 1G huge page, unmap error\n");
-                return -EINVAL;
+                res = -EINVAL;
+                goto unmap_clean;
         }
 
         /*=== === === L2 table === === ===*/
@@ -400,17 +421,23 @@ error_t unmap(paddr vspace_root_paddr, u64 vpn, struct map_handler *handler)
                                                                        l2 page*/
         {
                 pr_error("[ ERROR ] L2 entry not mapped, unmap error\n");
-                return -EINVAL;
+                res = -EINVAL;
+                goto unmap_clean;
         } else if (is_final_level_pt(1, entry_flags)) {
                 /*check the vpn 2M aligned*/
                 if (vpn & mask_9_bit) {
                         pr_error(
-                                "[ ERROR ] try to unmap a 2M entry, but vpn is not 2M  aligned\n");
-                        return -EINVAL;
+                                "[ ERROR ] try to unmap a 2M entry %x %x %x %d, but vpn is not 2M  aligned\n",
+                                L2_E.entry,
+                                entry_flags,
+                                v,
+                                percpu(cpu_number));
+                        res = -EINVAL;
+                        goto unmap_clean;
                 }
                 ((union L2_entry *)(handler->map_vaddr[2]))[L2_INDEX(v)].entry =
                         0;
-                goto unmap_succ;
+                goto unmap_clean;
         }
 
         /*=== === === L3 table === === ===*/
@@ -424,15 +451,16 @@ error_t unmap(paddr vspace_root_paddr, u64 vpn, struct map_handler *handler)
                                                                        l3 page*/
         {
                 pr_error("[ ERROR ] L3 entry not mapped, unmap error\n");
-                return -EINVAL;
+                res = -EINVAL;
+                goto unmap_clean;
         }
         ((union L3_entry *)(handler->map_vaddr[3]))[L3_INDEX(v)].entry = 0;
-unmap_succ:
+unmap_clean:
         arch_tlb_invalidate_page(0, v);
         arch_tlb_invalidate_range(0,
                                   handler->map_vaddr[0],
                                   handler->map_vaddr[0] + PAGE_SIZE * 4);
-        return 0;
+        return res;
 }
 // find one vpn have mapped in one vspace or not
 paddr have_mapped(paddr vspace_root_paddr, u64 vpn, struct map_handler *handler)
@@ -444,23 +472,28 @@ paddr have_mapped(paddr vspace_root_paddr, u64 vpn, struct map_handler *handler)
         union L1_entry L1_E;
         union L2_entry L2_E;
         union L3_entry L3_E;
+        error_t res = 0;
         if (!vspace_root_paddr || !vpn) {
                 pr_error("[ ERROR ] check input is not right\n");
-                return 0;
+                res = 0;
+                goto have_mapped_clean;
         } else if (ROUND_DOWN(vspace_root_paddr, PAGE_SIZE)
                    != vspace_root_paddr) {
                 pr_error(
                         "[ ERROR ] wrong vspace root paddr 0x%x in mapping, please check\n",
                         vspace_root_paddr);
-                return 0;
+                res = 0;
+                goto have_mapped_clean;
         }
         /*=== === === L0 table === === ===*/
         util_map(vspace_root_paddr, handler->map_vaddr[0]);
         L0_E = ((union L0_entry *)(handler->map_vaddr[0]))[L0_INDEX(v)];
         entry_flags = arch_encode_flags(0, (ARCH_PFLAGS_t)L0_E.entry);
         next_level_paddr = L0_entry_addr(L0_E);
-        if (!next_level_paddr || !(entry_flags & PAGE_ENTRY_VALID))
-                return 0;
+        if (!next_level_paddr || !(entry_flags & PAGE_ENTRY_VALID)) {
+                res = 0;
+                goto have_mapped_clean;
+        }
 
         /*=== === === L1 table === === ===*/
         util_map(next_level_paddr, handler->map_vaddr[1]);
@@ -468,10 +501,12 @@ paddr have_mapped(paddr vspace_root_paddr, u64 vpn, struct map_handler *handler)
         entry_flags = arch_encode_flags(1, (ARCH_PFLAGS_t)L1_E.entry);
         next_level_paddr = L1_entry_addr(L1_E);
         if (!next_level_paddr || !(entry_flags & PAGE_ENTRY_VALID)) {
-                return 0;
+                res = 0;
+                goto have_mapped_clean;
         } else if (is_final_level_pt(1, entry_flags)) {
                 pr_error("[ ERROR ] we do not use 1G huge page, check error\n");
-                return 0;
+                res = 0;
+                goto have_mapped_clean;
         }
 
         /*=== === === L2 table === === ===*/
@@ -480,9 +515,10 @@ paddr have_mapped(paddr vspace_root_paddr, u64 vpn, struct map_handler *handler)
         entry_flags = arch_encode_flags(2, (ARCH_PFLAGS_t)L2_E.entry);
         next_level_paddr = L2_entry_addr(L2_E);
         if (!next_level_paddr || !(entry_flags & PAGE_ENTRY_VALID)) {
-                return 0;
+                res = 0;
+                goto have_mapped_clean;
         } else if (is_final_level_pt(1, entry_flags)) {
-                goto have_mapped;
+                goto have_mapped_clean;
         }
 
         /*=== === === L3 table === === ===*/
@@ -491,8 +527,8 @@ paddr have_mapped(paddr vspace_root_paddr, u64 vpn, struct map_handler *handler)
         entry_flags = arch_encode_flags(3, (ARCH_PFLAGS_t)L3_E.entry);
         next_level_paddr = L3_entry_addr(L3_E);
         if (!next_level_paddr || !(entry_flags & PAGE_ENTRY_VALID))
-                return false;
-have_mapped:
+                res = false;
+have_mapped_clean:
         arch_tlb_invalidate_page(0, v);
         arch_tlb_invalidate_range(0,
                                   handler->map_vaddr[0],
