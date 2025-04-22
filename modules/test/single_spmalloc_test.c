@@ -78,7 +78,7 @@ static void bin_write(struct bin* b)
                         (char)((vaddr)(b->ptr) + b->size + i * 2);
         }
 }
-int smp_spmalloc_test(void)
+int spmalloc_test(void)
 {
         /*first we try to alloc one 8 Bytes as basic test*/
         spmalloc_print();

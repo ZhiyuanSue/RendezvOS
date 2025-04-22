@@ -77,11 +77,16 @@ static void bin_write(struct bin* b)
                         (char)((vaddr)(b->ptr) + b->size + i * 2);
         }
 }
-int spmalloc_test(void)
+int smp_spmalloc_test(void)
 {
         /*first we try to alloc one 8 Bytes as basic test*/
-        spmalloc_print();
+        // spmalloc_print();
         struct allocator* malloc = percpu(kallocator);
+        pr_info("[CPU:%d]\t[allocator\t@\t%x]\n\t[nexus_root\t@\t%x]\n\t[handler\t@\t%x]\n",
+                percpu(cpu_number),
+                malloc,
+                ((struct mem_allocator*)malloc)->nexus_root,
+                ((struct mem_allocator*)malloc)->nexus_root->handler);
         void* test_alloc = malloc->m_alloc(malloc, 8);
         *((u64*)test_alloc) = 0;
         malloc->m_free(malloc, test_alloc);

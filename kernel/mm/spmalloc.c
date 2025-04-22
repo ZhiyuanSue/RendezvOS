@@ -64,7 +64,8 @@ struct object_header* chunk_get_obj(struct mem_chunk* chunk)
                 return NULL;
         }
         if (chunk->magic != CHUNK_MAGIC) {
-                pr_error("[ERROR]bad chunk magic, please check\n");
+                pr_error("[ERROR]bad chunk magic %x, please check\n",
+                         chunk->magic);
                 return NULL;
         }
         if (chunk->nr_used_objs >= chunk->nr_max_objs) {
