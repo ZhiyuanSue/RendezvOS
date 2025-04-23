@@ -128,7 +128,7 @@ change_kernel_page_table:
 	movl	%ecx,%eax
 	addl	$align_2m,%eax
 	cmp	%eax,%ebx
-	jge	change_kernel_page_table_loop
+	jg	change_kernel_page_table_loop
 
 	enable_pae
 	enable_lme
