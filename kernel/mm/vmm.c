@@ -339,7 +339,7 @@ error_t map(paddr *vspace_root_paddr, u64 ppn, u64 vpn, int level,
                                                   | PAGE_ENTRY_WRITE | eflags);
                 arch_set_L3_entry(
                         p, v, (union L3_entry *)(handler->map_vaddr[3]), flags);
-                goto map_l3_fail;
+                goto map_succ;
         }
         if (next_level_paddr != p) {
                 pr_error(

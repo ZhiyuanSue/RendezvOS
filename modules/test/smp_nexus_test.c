@@ -7,23 +7,23 @@
 #define NR_MAX_TEST NEXUS_PER_PAGE * 3
 extern struct nexus_node* nexus_root;
 DEFINE_PER_CPU(void*, smp_test_ptrs[NR_MAX_TEST]);
-void smp_nexus_print(struct nexus_node* nexus_root)
+void smp_nexus_print(struct nexus_node* n_root)
 {
-        if (!nexus_root) {
+        if (!n_root) {
                 pr_error(
                         "[ NEXUS ] ERROR: expect a nexus root, pleas check or init one\n");
                 return;
         }
         debug("=== [ NEXUS ] ===\n");
         debug("[ MANAGE PAGES ]\n");
-        if (nexus_root->backup_manage_page) {
+        if (n_root->backup_manage_page) {
                 debug("Backup Page: Yes 0x%x\n",
-                      (vaddr)nexus_root->backup_manage_page);
+                      (vaddr)n_root->backup_manage_page);
         } else {
                 debug("Backup Page: No \n");
         }
         struct list_entry* manage_page_list_entry =
-                &nexus_root->manage_free_list;
+                &n_root->manage_free_list;
         struct list_entry* tmp_mp = manage_page_list_entry->next;
         int manage_page_num = 0;
         while (tmp_mp != manage_page_list_entry) {
@@ -50,7 +50,7 @@ void smp_nexus_print(struct nexus_node* nexus_root)
         debug("=== TOTAL: %d ===\n", manage_page_num);
         /*then print the rb tree*/
         debug("[ USED PAGES ]\n"); /*include the nexus pages*/
-        struct rb_node* tmp_rb = nexus_root->_rb_root.rb_root;
+        struct rb_node* tmp_rb = n_root->_rb_root.rb_root;
         while (tmp_rb->left_child) {
                 tmp_rb = tmp_rb->left_child;
         }
