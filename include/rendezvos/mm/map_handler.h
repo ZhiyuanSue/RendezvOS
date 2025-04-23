@@ -33,7 +33,9 @@ struct vspace {
         struct list_entry vspace_node;
         // TODO: we just use list entry to orginize the vspaces now
 };
+extern spin_lock kspace_spin_lock_ptr;
 extern struct vspace* current_vspace; // per cpu pointer
+extern struct spin_lock_t vspace_spin_lock; // per cpu pointer
 void init_vspace(struct vspace* vs, paddr vspace_root_addr, uint64_t vspace_id);
 
 error_t map(struct vspace* vs, u64 ppn, u64 vpn, int level,

@@ -5,6 +5,8 @@
 #include <modules/log/log.h>
 #include <rendezvos/percpu.h>
 extern u64 *MAP_L1_table, *MAP_L2_table, *MAP_L3_table;
+spin_lock kspace_spin_lock_ptr = NULL;
+DEFINE_PER_CPU(struct spin_lock_t, vspace_spin_lock);
 void sys_init_map()
 {
         ARCH_PFLAGS_t flags;
