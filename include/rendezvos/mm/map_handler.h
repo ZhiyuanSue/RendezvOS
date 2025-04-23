@@ -22,17 +22,30 @@ void init_map(struct map_handler* handler, int cpu_id, struct pmm* pmm);
         kernel might try to mapping one page to a different vspace
         and if the vspace is not exist, it should try to alloc a new one
 */
-error_t map(paddr* vspace_root_paddr, u64 ppn, u64 vpn, int level,
+
+#include <common/dsa/list.h>
+
+#include <rendezvos/sync/spin_lock.h>
+struct vspace {
+        paddr vspace_root;
+        uint64_t vspace_id;
+        spin_lock vspace_lock;
+        struct list_entry vspace_node;
+        // TODO: we just use list entry to orginize the vspaces now
+};
+extern struct vspace* current_vspace; // per cpu pointer
+void init_vspace(struct vspace* vs, paddr vspace_root_addr, uint64_t vspace_id);
+
+error_t map(struct vspace* vs, u64 ppn, u64 vpn, int level,
             ENTRY_FLAGS_t eflags, struct map_handler* handler);
 /*
         here we think the vspace root paddr must exist.
         and we expect the vpn and the page number we need to unmap
 */
-error_t unmap(paddr vspace_root_paddr, u64 vpn, struct map_handler* handler);
+error_t unmap(struct vspace* vs, u64 vpn, struct map_handler* handler);
 
 /*
         check whether the vpn have mapped in this vspace
 */
-paddr have_mapped(paddr vspace_root_paddr, u64 vpn,
-                  struct map_handler* handler);
+paddr have_mapped(struct vspace* vs, u64 vpn, struct map_handler* handler);
 #endif

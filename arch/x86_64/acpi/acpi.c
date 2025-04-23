@@ -40,11 +40,10 @@ error_t acpi_init(vaddr rsdp_addr)
                 vaddr rsdt_map_page =
                         ROUND_DOWN(KERNEL_PHY_TO_VIRT(rsdp_table->rsdt_address),
                                    MIDDLE_PAGE_SIZE);
-                if (!have_mapped(get_current_kernel_vspace_root(),
+                if (!have_mapped(current_vspace,
                                  VPN(rsdt_map_page),
                                  &per_cpu(Map_Handler, BSP_ID))) {
-                        paddr vspace_root = get_current_kernel_vspace_root();
-                        map(&vspace_root,
+                        map(current_vspace,
                             PPN(rsdt_page),
                             VPN(rsdt_map_page),
                             2,

@@ -22,8 +22,7 @@ void smp_nexus_print(struct nexus_node* n_root)
         } else {
                 debug("Backup Page: No \n");
         }
-        struct list_entry* manage_page_list_entry =
-                &n_root->manage_free_list;
+        struct list_entry* manage_page_list_entry = &n_root->manage_free_list;
         struct list_entry* tmp_mp = manage_page_list_entry->next;
         int manage_page_num = 0;
         while (tmp_mp != manage_page_list_entry) {

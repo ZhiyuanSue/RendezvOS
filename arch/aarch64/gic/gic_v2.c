@@ -9,11 +9,10 @@ extern int BSP_ID;
 void map_gic_mem(u64 gicd_base_addr, u64 gicd_len, u64 gicc_base_addr,
                  u64 gicc_len)
 {
-        paddr vspace_root = get_current_kernel_vspace_root();
         /*here we set it as device memory to avoid dsb and dmb*/
         for (paddr base = gicd_base_addr; base < gicd_base_addr + gicd_len;
              base += PAGE_SIZE) {
-                map(&vspace_root,
+                map(percpu(current_vspace),
                     PPN(base),
                     VPN(KERNEL_PHY_TO_VIRT(base)),
                     3,
@@ -22,7 +21,7 @@ void map_gic_mem(u64 gicd_base_addr, u64 gicd_len, u64 gicc_base_addr,
         }
         for (paddr base = gicc_base_addr; base < gicc_base_addr + gicc_len;
              base += PAGE_SIZE) {
-                map(&vspace_root,
+                map(percpu(current_vspace),
                     PPN(base),
                     VPN(KERNEL_PHY_TO_VIRT(base)),
                     3,
