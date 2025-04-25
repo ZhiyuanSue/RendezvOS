@@ -7,6 +7,8 @@ SCRIPT_CONFIG_DIR	:=	$(SCRIPT_DIR)/config
 ARCH	?=	null
 CONFIG	?=
 SMP		?=	4
+DUMP	?=
+DUMPFILE	?= $(ROOT_DIR)/objdump.log
 MEM_SIZE	?= 128M
 SCRIPT_MAKE_DIR		:=	$(SCRIPT_DIR)/make
 SCRIPT_LINK_DIR		:=	$(SCRIPT_DIR)/link
@@ -30,6 +32,10 @@ OBJDUMP	:=$(CROSS_COMPLIER)objdump
 ifeq ($(DBG), true)
 	CFLAGS	+= -g
 	CFLAGS	+= --verbose
+endif
+
+ifeq ($(DUMP), true)
+	CFLAGS	+= -g
 endif
 
 ifeq ($(ARCH), aarch64)
@@ -92,6 +98,10 @@ config: clean
 fmt:
 	@find . -name '*.c' -print0 | xargs -0 clang-format -i -style=file
 	@find . -name '*.h' -print0 | xargs -0 clang-format -i -style=file
+
+#if you want to use dump, please use 'make run DUMP=true'(maybe with other flags) first and then 'make dump'
+dump:
+	@$(OBJDUMP) -d -S $(Target_ELF) > $(DUMPFILE)
 
 mrproper: clean
 	@echo "RM	Makefile.env"
