@@ -1,8 +1,12 @@
 #ifndef _RENDEZVOS_RB_H_
 #define _RENDEZVOS_RB_H_
 #include <common/types.h>
+// #define DEBUG
 /*my implementation of a red black tree,of course it referenced the Linux*/
 struct rb_node {
+#ifdef DEBUG
+        u64 id;
+#endif
         u64 rb_parent_color;
         u64 black_height;
 #define RB_RED   0

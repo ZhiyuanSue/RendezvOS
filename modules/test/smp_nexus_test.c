@@ -9,13 +9,25 @@ extern struct nexus_node* nexus_root;
 DEFINE_PER_CPU(void*, smp_test_ptrs[NR_MAX_TEST]);
 bool smp_check_rb(struct rb_node* node, int* height, int* count, int level)
 {
+        for (int i = 0; i < level; i++)
+                debug("\t");
+
         if (node == NULL) {
+                debug("[NULL]\n");
                 *height = 0;
                 return true;
         }
+        debug("[Id:%d] [Color:%d] ", node->id, RB_COLOR(node));
+        if (RB_PARENT(node)) {
+                debug(" [Parent:%d]\n", RB_PARENT(node)->id);
+        } else {
+                debug("\n");
+        }
 
         int left_height, right_height;
+        debug("[L]");
         bool l = smp_check_rb(node->left_child, &left_height, count, level + 1);
+        debug("[R]");
         bool r = smp_check_rb(
                 node->right_child, &right_height, count, level + 1);
 
@@ -59,6 +71,19 @@ int smp_nexus_test(void)
                 if (percpu(smp_test_ptrs)[i]) {
                         *((u64*)(percpu(smp_test_ptrs)[i])) = 0;
                         *((u64*)(percpu(smp_test_ptrs)[i] + PAGE_SIZE)) = 0;
+                }
+        }
+
+        if (percpu(cpu_number) == 0) {
+                int height;
+                int count = 0;
+                if (smp_check_rb((percpu(nexus_root)->_rb_root.rb_root),
+                                 &height,
+                                 &count,
+                                 0)) {
+                        pr_info("pass smp rb check\n");
+                } else {
+                        pr_error("smp rb check fail\n");
                 }
         }
         for (int i = 0; i < NR_MAX_TEST; i++) {
