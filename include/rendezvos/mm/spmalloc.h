@@ -72,7 +72,7 @@
 struct object_header {
         struct list_entry obj_list;
         char obj[];
-};
+}__attribute__((aligned(sizeof(u64))));
 struct mem_chunk {
         u64 magic; /*the magic of mem_chunk is 0xa11ca11ca11ca11c*/
         int allocator_id;
@@ -83,7 +83,7 @@ struct mem_chunk {
         struct list_entry full_obj_list;
         struct list_entry empty_obj_list;
         char padding[];
-};
+}__attribute__((aligned(sizeof(u64))));
 struct mem_group {
         int allocator_id;
         int chunk_order;
@@ -95,12 +95,12 @@ struct mem_group {
         struct list_entry full_list;
         struct list_entry empty_list;
         /*the free and empty chunks are all linked in empty_list*/
-};
+}__attribute__((aligned(sizeof(u64))));
 struct mem_allocator {
         MM_COMMON;
         struct nexus_node* nexus_root;
         struct mem_group groups[MAX_GROUP_SLOTS];
-};
+}__attribute__((aligned(sizeof(u64))));
 /*chunk*/
 error_t chunk_init(struct mem_chunk* chunk, int chunk_order, int allocator_id);
 struct object_header* chunk_get_obj(struct mem_chunk* chunk);

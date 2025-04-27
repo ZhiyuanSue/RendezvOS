@@ -36,10 +36,12 @@ void sys_init_map()
                           (union L2_entry *)&MAP_L2_table,
                           flags);
 }
-void init_map(struct map_handler *handler, int cpu_id, struct pmm *pmm)
+void init_map(struct map_handler *handler, int cpu_id, int pt_zone,
+              struct pmm *pmm)
 {
         handler->cpu_id = cpu_id;
         handler->pmm = pmm;
+        handler->page_table_zone = pt_zone;
         vaddr map_vaddr = map_pages + cpu_id * PAGE_SIZE * 4;
         for (int i = 0; i < 4; i++) {
                 handler->map_vaddr[i] = map_vaddr;
@@ -89,7 +91,7 @@ error_t map(struct vspace *vs, u64 ppn, u64 vpn, int level,
         /*if no root page, try to allocator one with the pmm allocator*/
         if (!(vs->vspace_root)) {
                 lock_mcs(&handler->pmm->spin_ptr, &percpu(pmm_spin_lock));
-                pmm_res = handler->pmm->pmm_alloc(1, ZONE_NORMAL);
+                pmm_res = handler->pmm->pmm_alloc(1, handler->page_table_zone);
                 unlock_mcs(&handler->pmm->spin_ptr, &percpu(pmm_spin_lock));
                 if (pmm_res <= 0) {
                         pr_error("[ ERROR ] try alloc vspace root ppn fail\n");
@@ -116,7 +118,7 @@ error_t map(struct vspace *vs, u64 ppn, u64 vpn, int level,
         if (!next_level_paddr) {
                 /*no next level page, need alloc one*/
                 lock_mcs(&handler->pmm->spin_ptr, &percpu(pmm_spin_lock));
-                pmm_res = handler->pmm->pmm_alloc(1, ZONE_NORMAL);
+                pmm_res = handler->pmm->pmm_alloc(1, handler->page_table_zone);
                 unlock_mcs(&handler->pmm->spin_ptr, &percpu(pmm_spin_lock));
                 if (pmm_res <= 0) {
                         pr_error("[ ERROR ] try alloc ppn fail\n");
@@ -147,7 +149,7 @@ error_t map(struct vspace *vs, u64 ppn, u64 vpn, int level,
         if (!next_level_paddr) {
                 /*no next level page, need alloc one*/
                 lock_mcs(&handler->pmm->spin_ptr, &percpu(pmm_spin_lock));
-                pmm_res = handler->pmm->pmm_alloc(1, ZONE_NORMAL);
+                pmm_res = handler->pmm->pmm_alloc(1, handler->page_table_zone);
                 unlock_mcs(&handler->pmm->spin_ptr, &percpu(pmm_spin_lock));
                 if (pmm_res <= 0) {
                         pr_error("[ ERROR ] try alloc ppn fail\n");
@@ -300,7 +302,8 @@ error_t map(struct vspace *vs, u64 ppn, u64 vpn, int level,
                         /*no next level page, need alloc one*/
                         lock_mcs(&handler->pmm->spin_ptr,
                                  &percpu(pmm_spin_lock));
-                        pmm_res = handler->pmm->pmm_alloc(1, ZONE_NORMAL);
+                        pmm_res = handler->pmm->pmm_alloc(
+                                1, handler->page_table_zone);
                         unlock_mcs(&handler->pmm->spin_ptr,
                                    &percpu(pmm_spin_lock));
                         if (pmm_res <= 0) {

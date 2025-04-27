@@ -25,6 +25,7 @@ error_t virt_mm_init(int cpu_id)
         per_cpu(current_vspace, cpu_id) = &root_vspace;
         init_map(&per_cpu(Map_Handler, cpu_id),
                  cpu_id,
+                 ZONE_NORMAL,
                  (struct pmm *)&buddy_pmm);
         per_cpu(nexus_root, cpu_id) = init_nexus(&per_cpu(Map_Handler, cpu_id));
         sp_init(per_cpu(nexus_root, cpu_id),

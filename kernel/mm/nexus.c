@@ -4,6 +4,8 @@
 #include <modules/log/log.h>
 #include <rendezvos/error.h>
 
+spin_lock nexus_spin_lock_ptr;
+DEFINE_PER_CPU(struct spin_lock_t, nexus_spin_lock);
 static void nexus_rb_tree_insert(struct nexus_node* node, struct rb_root* root)
 {
         struct rb_node** new = &root->rb_root, *parent = NULL;
@@ -293,7 +295,7 @@ static void* _kernel_get_free_page(int page_num, enum zone_type memory_zone,
         struct nexus_node* free_nexus_entry = nexus_get_free_entry(nexus_root);
         if (!free_nexus_entry) {
                 pr_error("[ NEXUS ] cannot find a new free nexus entry\n");
-                return NULL;
+                goto fail;
         }
         struct vspace* vs = percpu(current_vspace);
         /*get phy pages from pmm*/
@@ -304,18 +306,16 @@ static void* _kernel_get_free_page(int page_num, enum zone_type memory_zone,
                         "[ NEXUS ] ERROR: try to get tooo much pages in kernel\n");
                 /*we have alloc a new usable entry ,we need to return
                  * back*/
-                nexus_free_entry(free_nexus_entry, nexus_root);
-                return NULL;
+                goto fail_free_nexus_entry;
         }
         lock_mcs(&nexus_root->handler->pmm->spin_ptr, &percpu(pmm_spin_lock));
-        int ppn = nexus_root->handler->pmm->pmm_alloc(page_num, ZONE_NORMAL);
+        int ppn = nexus_root->handler->pmm->pmm_alloc(page_num, memory_zone);
         unlock_mcs(&nexus_root->handler->pmm->spin_ptr, &percpu(pmm_spin_lock));
         if (ppn <= 0) {
                 pr_error("[ NEXUS ] ERROR: init error\n");
                 /*we have alloc a new usable entry ,we need to return
                  * back*/
-                nexus_free_entry(free_nexus_entry, nexus_root);
-                return NULL;
+                goto fail_free_nexus_entry;
         }
         free_page_addr = KERNEL_PHY_TO_VIRT(PADDR(ppn));
         /*map, here remember, if alloc a 2M huge page, just map a level
@@ -333,8 +333,7 @@ static void* _kernel_get_free_page(int page_num, enum zone_type memory_zone,
                 unlock_mcs(&kspace_spin_lock_ptr, &percpu(vspace_spin_lock));
                 if (map_res) {
                         pr_error("[ NEXUS ] ERROR: map error\n");
-                        nexus_free_entry(free_nexus_entry, nexus_root);
-                        return NULL;
+                        goto fail_free_nexus_entry;
                 }
         } else {
                 int error_num = -1;
@@ -374,11 +373,10 @@ static void* _kernel_get_free_page(int page_num, enum zone_type memory_zone,
                                 if (unmap_res) {
                                         pr_error(
                                                 "[ NEXUS ] ERROR: map success but unmap have error\n");
-                                        return NULL;
+                                        goto fail_free_nexus_entry;
                                 }
                         }
-                        nexus_free_entry(free_nexus_entry, nexus_root);
-                        return NULL;
+                        goto fail_free_nexus_entry;
                 }
         }
         /*fill in the entry and link it*/
@@ -389,6 +387,10 @@ static void* _kernel_get_free_page(int page_num, enum zone_type memory_zone,
         free_nexus_entry->nexus_id = nexus_root->nexus_id;
         nexus_rb_tree_insert(free_nexus_entry, &nexus_root->_rb_root);
         return (void*)free_page_addr;
+fail_free_nexus_entry:
+        nexus_free_entry(free_nexus_entry, nexus_root);
+fail:
+        return NULL;
 }
 static void* _user_get_free_page(int page_num, enum zone_type memory_zone,
                                  vaddr target_vaddr, struct vspace* vs,
@@ -415,7 +417,7 @@ static void* _user_get_free_page(int page_num, enum zone_type memory_zone,
                 lock_mcs(&nexus_root->handler->pmm->spin_ptr,
                          &percpu(pmm_spin_lock));
                 int ppn = nexus_root->handler->pmm->pmm_alloc(MIDDLE_PAGES,
-                                                              ZONE_NORMAL);
+                                                              memory_zone);
                 unlock_mcs(&nexus_root->handler->pmm->spin_ptr,
                            &percpu(pmm_spin_lock));
                 if (ppn <= 0) {
@@ -458,7 +460,7 @@ static void* _user_get_free_page(int page_num, enum zone_type memory_zone,
                 }
                 lock_mcs(&nexus_root->handler->pmm->spin_ptr,
                          &percpu(pmm_spin_lock));
-                int ppn = nexus_root->handler->pmm->pmm_alloc(1, ZONE_NORMAL);
+                int ppn = nexus_root->handler->pmm->pmm_alloc(1, memory_zone);
                 unlock_mcs(&nexus_root->handler->pmm->spin_ptr,
                            &percpu(pmm_spin_lock));
                 if (ppn <= 0) {
@@ -634,7 +636,7 @@ error_t free_pages(void* p, int page_num, struct vspace* vs,
                 return -EINVAL;
         }
         if ((vaddr)p >= KERNEL_VIRT_OFFSET) {
-                return _kernel_free_pages(p, page_num, nexus_root);
+                return _kernel_free_pages(p, page_num, nexus_root);;
         } else {
                 return _user_free_pages(p, page_num, vs, nexus_root);
         }

@@ -20,16 +20,16 @@ struct nexus_node {
                         paddr vspace_root;
                         u64 size;
                         u64 page_left_nexus;
-                };
+                }__attribute__((aligned(sizeof(u64))));
                 /* root node*/
                 struct {
                         struct rb_root _rb_root;
                         void* backup_manage_page;
                         struct map_handler* handler;
                         int nexus_id; /*should alloced by the upper level code*/
-                };
+                }__attribute__((aligned(sizeof(u64))));
         };
-};
+}__attribute__((aligned(sizeof(u64))));
 #define NEXUS_PER_PAGE (PAGE_SIZE / (sizeof(struct nexus_node)))
 struct nexus_node* init_nexus(struct map_handler* handler);
 void* get_free_page(int page_num, enum zone_type memory_zone,
