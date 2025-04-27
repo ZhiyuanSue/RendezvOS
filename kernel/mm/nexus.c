@@ -34,9 +34,8 @@ static void nexus_rb_tree_insert(struct nexus_node* node, struct rb_root* root)
 static void nexus_rb_tree_remove(struct nexus_node* node, struct rb_root* root)
 {
         RB_Remove(&node->_rb_node, root);
-        node->_rb_node.black_height = 0;
+        node->_rb_node.black_height = node->_rb_node.rb_parent_color = 0;
         node->_rb_node.left_child = node->_rb_node.right_child = NULL;
-        node->_rb_node.rb_parent_color = 0;
 }
 struct nexus_node* nexus_rb_tree_search(struct rb_root* root, vaddr start_addr,
                                         paddr vspace_root)
@@ -636,7 +635,8 @@ error_t free_pages(void* p, int page_num, struct vspace* vs,
                 return -EINVAL;
         }
         if ((vaddr)p >= KERNEL_VIRT_OFFSET) {
-                return _kernel_free_pages(p, page_num, nexus_root);;
+                return _kernel_free_pages(p, page_num, nexus_root);
+                ;
         } else {
                 return _user_free_pages(p, page_num, vs, nexus_root);
         }

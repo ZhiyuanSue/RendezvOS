@@ -9,7 +9,7 @@ static struct smp_test_case smp_test[MAX_SMP_TEST_CASE] = {
         {smp_lock_test, "smp spin_lock", smp_lock_check},
         // {smp_log_test, "smp log test", smp_log_check}, // just see the output
         {smp_nexus_test, "smp nexus test", NULL},
-        // {smp_spmalloc_test, "smp spmalloc", NULL},
+        {smp_spmalloc_test, "smp spmalloc", NULL},
 };
 enum multi_cpu_test_state {
         multi_cpu_test_not_start,

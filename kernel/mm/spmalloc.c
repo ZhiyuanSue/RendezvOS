@@ -230,6 +230,7 @@ static void* _sp_alloc(struct mem_allocator* sp_allocator_p, size_t Bytes)
                                               sp_allocator_p->nexus_root);
                         if (!page_ptr) {
                                 pr_error("[ERROR] get free page fail\n");
+                                return NULL;
                         }
                         error_t e = chunk_init((struct mem_chunk*)page_ptr,
                                                group->chunk_order,

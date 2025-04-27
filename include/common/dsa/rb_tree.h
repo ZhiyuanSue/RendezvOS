@@ -3,8 +3,8 @@
 #include <common/types.h>
 /*my implementation of a red black tree,of course it referenced the Linux*/
 struct rb_node {
-        u64 black_height;
         u64 rb_parent_color;
+        u64 black_height;
 #define RB_RED   0
 #define RB_BLACK 1
         struct rb_node* left_child;

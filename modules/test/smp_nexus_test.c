@@ -16,7 +16,8 @@ bool smp_check_rb(struct rb_node* node, int* height, int* count, int level)
 
         int left_height, right_height;
         bool l = smp_check_rb(node->left_child, &left_height, count, level + 1);
-        bool r = smp_check_rb(node->right_child, &right_height, count, level + 1);
+        bool r = smp_check_rb(
+                node->right_child, &right_height, count, level + 1);
 
         /*update the height*/
         (*height) = RB_COLOR(node) ? (left_height + 1) : left_height;
