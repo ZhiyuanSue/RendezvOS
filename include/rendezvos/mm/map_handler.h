@@ -15,7 +15,7 @@ struct map_handler {
         vaddr map_vaddr[4];
         int page_table_zone;
         struct pmm* pmm;
-} __attribute__((packed));
+};
 extern struct map_handler Map_Handler;
 void sys_init_map();
 void init_map(struct map_handler* handler, int cpu_id, int pt_zone,

@@ -1,5 +1,5 @@
 
-// #define DEBUG
+#define DEBUG
 #include <modules/test/test.h>
 #include <rendezvos/mm/nexus.h>
 #include <modules/log/log.h>
@@ -17,17 +17,18 @@ bool smp_check_rb(struct rb_node* node, int* height, int* count, int level)
                 *height = 0;
                 return true;
         }
-        debug("[Id:%d] [Color:%d] ", node->id, RB_COLOR(node));
+        debug("[Color:%d] ", RB_COLOR(node));
+        // debug("[Id:%d] [Color:%d] ", node->id, RB_COLOR(node));
         if (RB_PARENT(node)) {
-                debug(" [Parent:%d]\n", RB_PARENT(node)->id);
+                debug(" [Parent:%x]\n", RB_PARENT(node));
         } else {
                 debug("\n");
         }
 
         int left_height, right_height;
-        debug("[L]");
+        debug("[L @ %x]", node->left_child);
         bool l = smp_check_rb(node->left_child, &left_height, count, level + 1);
-        debug("[R]");
+        debug("[R @ %x]", node->left_child);
         bool r = smp_check_rb(
                 node->right_child, &right_height, count, level + 1);
 
@@ -60,6 +61,16 @@ bool smp_check_rb(struct rb_node* node, int* height, int* count, int level)
 int smp_nexus_test(void)
 {
         debug("sizeof struct nexus_node is 0x%x\n", sizeof(struct nexus_node));
+
+        if (percpu(cpu_number) == 0) {
+                int height;
+                int count = 0;
+                smp_check_rb((percpu(nexus_root)->_rb_root.rb_root),
+                             &height,
+                             &count,
+                             0);
+        }
+
         /*after the nexus init, we try to print it first*/
         for (int i = 0; i < NR_MAX_TEST; i++) {
                 int page_num = 2;
