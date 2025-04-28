@@ -13,9 +13,9 @@
 struct map_handler {
         u64 cpu_id;
         vaddr map_vaddr[4];
-        int page_table_zone;
         struct pmm* pmm;
-};
+        int page_table_zone;
+} __attribute__((packed));
 extern struct map_handler Map_Handler;
 void sys_init_map();
 void init_map(struct map_handler* handler, int cpu_id, int pt_zone,

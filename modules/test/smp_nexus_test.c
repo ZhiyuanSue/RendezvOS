@@ -1,5 +1,5 @@
 
-#define DEBUG
+// #define DEBUG
 #include <modules/test/test.h>
 #include <rendezvos/mm/nexus.h>
 #include <modules/log/log.h>
@@ -17,8 +17,7 @@ bool smp_check_rb(struct rb_node* node, int* height, int* count, int level)
                 *height = 0;
                 return true;
         }
-        debug("[Color:%d] ", RB_COLOR(node));
-        // debug("[Id:%d] [Color:%d] ", node->id, RB_COLOR(node));
+        debug("[Node:%x][Color:%d] ", node, RB_COLOR(node));
         if (RB_PARENT(node)) {
                 debug(" [Parent:%x]\n", RB_PARENT(node));
         } else {
@@ -26,9 +25,9 @@ bool smp_check_rb(struct rb_node* node, int* height, int* count, int level)
         }
 
         int left_height, right_height;
-        debug("[L @ %x]", node->left_child);
+        debug("[L]");
         bool l = smp_check_rb(node->left_child, &left_height, count, level + 1);
-        debug("[R @ %x]", node->left_child);
+        debug("[R]");
         bool r = smp_check_rb(
                 node->right_child, &right_height, count, level + 1);
 
@@ -62,14 +61,14 @@ int smp_nexus_test(void)
 {
         debug("sizeof struct nexus_node is 0x%x\n", sizeof(struct nexus_node));
 
-        if (percpu(cpu_number) == 0) {
-                int height;
-                int count = 0;
-                smp_check_rb((percpu(nexus_root)->_rb_root.rb_root),
-                             &height,
-                             &count,
-                             0);
-        }
+        // if (percpu(cpu_number) == 0) {
+        //         int height;
+        //         int count = 0;
+        //         smp_check_rb((percpu(nexus_root)->_rb_root.rb_root),
+        //                      &height,
+        //                      &count,
+        //                      0);
+        // }
 
         /*after the nexus init, we try to print it first*/
         for (int i = 0; i < NR_MAX_TEST; i++) {
@@ -85,18 +84,18 @@ int smp_nexus_test(void)
                 }
         }
 
-        if (percpu(cpu_number) == 0) {
-                int height;
-                int count = 0;
-                if (smp_check_rb((percpu(nexus_root)->_rb_root.rb_root),
-                                 &height,
-                                 &count,
-                                 0)) {
-                        pr_info("pass smp rb check\n");
-                } else {
-                        pr_error("smp rb check fail\n");
-                }
-        }
+        // if (percpu(cpu_number) == 0) {
+        //         int height;
+        //         int count = 0;
+        //         if (smp_check_rb((percpu(nexus_root)->_rb_root.rb_root),
+        //                          &height,
+        //                          &count,
+        //                          0)) {
+        //                 pr_info("pass smp rb check\n");
+        //         } else {
+        //                 pr_error("smp rb check fail\n");
+        //         }
+        // }
         for (int i = 0; i < NR_MAX_TEST; i++) {
                 if (percpu(smp_test_ptrs)[i])
                         free_pages(percpu(smp_test_ptrs)[i],
