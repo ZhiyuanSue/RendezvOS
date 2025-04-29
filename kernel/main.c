@@ -46,7 +46,7 @@ void cmain(struct setup_info *arch_setup_info)
                 return;
         }
 
-        // single_cpu_test();
+        single_cpu_test();
         start_smp(arch_setup_info);
         multi_cpu_test();
         arch_shutdown();

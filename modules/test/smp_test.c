@@ -24,12 +24,12 @@ void multi_cpu_test(void)
         int cpu_id = percpu(cpu_number);
         bool test_pass = true;
         if (cpu_id == BSP_ID)
-                pr_info("====== [ KERNEL MULTI CPU TEST ] ======\n");
+                pr_notice("====== [ KERNEL MULTI CPU TEST ] ======\n");
         for (int i = 0; i < MAX_SMP_TEST_CASE; i++) {
                 if (!(u64)(smp_test[i].test))
                         break;
                 if (cpu_id == BSP_ID)
-                        pr_info("[ MULTI CPU TEST %s ]\n", smp_test[i].name);
+                        pr_notice("[ MULTI CPU TEST %s ]\n", smp_test[i].name);
                 test_state[cpu_id] = multi_cpu_test_running;
                 /*wait for other cpu start test*/
                 while (curr_test == i) {
@@ -95,9 +95,9 @@ void multi_cpu_test(void)
                                 test_pass = false;
                                 break;
                         }
-                        pr_info("[ TEST @%8x ] PASS: test %s ok!\n",
-                                jeffies,
-                                smp_test[i].name);
+                        pr_notice("[ TEST @%8x ] PASS: test %s ok!\n",
+                                  jeffies,
+                                  smp_test[i].name);
                         for (int j = 0; j < NR_CPU; j++)
                                 test_state[j] = multi_cpu_test_not_start;
                         curr_test++;
@@ -108,6 +108,6 @@ void multi_cpu_test(void)
         }
         if (percpu(cpu_number) == BSP_ID) {
                 if (test_pass)
-                        pr_info("====== [ MULTI CPU TEST PASS ] ======\n");
+                        pr_notice("====== [ MULTI CPU TEST PASS ] ======\n");
         }
 }

@@ -48,7 +48,8 @@ error_t acpi_init(vaddr rsdp_addr)
                             VPN(rsdt_map_page),
                             2,
                             PAGE_ENTRY_NONE,
-                            &per_cpu(Map_Handler, BSP_ID));
+                            &per_cpu(Map_Handler, BSP_ID),
+                            NULL);
                 }
                 struct acpi_table_rsdt *rsdt_table =
                         (struct acpi_table_rsdt *)KERNEL_PHY_TO_VIRT(

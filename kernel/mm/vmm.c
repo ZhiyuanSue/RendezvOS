@@ -60,7 +60,7 @@ static void util_map(paddr p, vaddr v)
         arch_set_L3_entry(p, v, (union L3_entry *)&MAP_L3_table, flags);
 }
 error_t map(struct vspace *vs, u64 ppn, u64 vpn, int level,
-            ENTRY_FLAGS_t eflags, struct map_handler *handler)
+            ENTRY_FLAGS_t eflags, struct map_handler *handler, spin_lock *lock)
 {
         ARCH_PFLAGS_t flags = 0;
         ENTRY_FLAGS_t entry_flags = 0;
@@ -89,6 +89,10 @@ error_t map(struct vspace *vs, u64 ppn, u64 vpn, int level,
 
         /*for the buddy can only alloc 2M at most*/
         /*if no root page, try to allocator one with the pmm allocator*/
+        /*
+                actually we should not use two core to init an empty vspace
+                so we have no need to add lock here
+        */
         if (!(vs->vspace_root)) {
                 lock_mcs(&handler->pmm->spin_ptr, &percpu(pmm_spin_lock));
                 pmm_res = handler->pmm->pmm_alloc(1, handler->page_table_zone);
@@ -113,6 +117,8 @@ error_t map(struct vspace *vs, u64 ppn, u64 vpn, int level,
                 new_alloc = false;
         }
         /*use map util table to change the L0 table*/
+        if (lock)
+                lock_mcs(lock, &percpu(vspace_spin_lock));
         next_level_paddr = L0_entry_addr(
                 ((union L0_entry *)(handler->map_vaddr[0]))[L0_INDEX(v)]);
         if (!next_level_paddr) {
@@ -367,12 +373,17 @@ map_l1_fail:
         arch_tlb_invalidate_page(vs->vspace_id, handler->map_vaddr[1]);
 map_l0_fail:
         arch_tlb_invalidate_page(vs->vspace_id, handler->map_vaddr[0]);
+        if (lock)
+                unlock_mcs(lock, &percpu(vspace_spin_lock));
 map_fail:
         return res;
 }
 
-error_t unmap(struct vspace *vs, u64 vpn, struct map_handler *handler)
+error_t unmap(struct vspace *vs, u64 vpn, struct map_handler *handler,
+              spin_lock *lock)
 {
+        if (lock)
+                lock_mcs(lock, &percpu(vspace_spin_lock));
         vaddr v = vpn << 12;
         paddr next_level_paddr = 0;
         ENTRY_FLAGS_t entry_flags = 0;
@@ -484,6 +495,8 @@ unmap_l1_fail:
 unmap_l0_fail:
         arch_tlb_invalidate_page(vs->vspace_id, handler->map_vaddr[0]);
 unmap_fail:
+        if (lock)
+                unlock_mcs(lock, &percpu(vspace_spin_lock));
         return res;
 }
 // find one vpn have mapped in one vspace or not

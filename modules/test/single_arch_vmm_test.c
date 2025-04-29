@@ -80,7 +80,7 @@ int arch_vmm_test(void)
                         "unexpected result have mapped check,here expect unmapped\n");
                 goto arch_vmm_test_error;
         }
-        if (map(vs, ppn_1, VPN(vp_1), 3, PAGE_ENTRY_NONE, &Map_Handler)) {
+        if (map(vs, ppn_1, VPN(vp_1), 3, PAGE_ENTRY_NONE, &Map_Handler, NULL)) {
                 pr_error("[ TEST ] ERROR:map 4K virtual error!\n");
                 goto arch_vmm_test_error;
         }
@@ -100,7 +100,7 @@ int arch_vmm_test(void)
                 pr_error("[ ERROR ] ERROR:try get a ppn fail\n");
                 goto arch_vmm_test_error;
         }
-        if (!map(vs, ppn_2, VPN(vp_1), 3, PAGE_ENTRY_NONE, &Map_Handler)) {
+        if (!map(vs, ppn_2, VPN(vp_1), 3, PAGE_ENTRY_NONE, &Map_Handler, NULL)) {
                 pr_error(
                         "[ TEST ] ERROR:try to map to same virtual page but no error return\n");
                 goto arch_vmm_test_error;
@@ -125,7 +125,7 @@ int arch_vmm_test(void)
                         ppn_3);
                 goto arch_vmm_test_error;
         }
-        if (map(vs, ppn_3, VPN(vp_2), 2, PAGE_ENTRY_NONE, &Map_Handler)) {
+        if (map(vs, ppn_3, VPN(vp_2), 2, PAGE_ENTRY_NONE, &Map_Handler, NULL)) {
                 pr_error("[ TEST ] ERROR:try to map to a 2M page and fail\n");
                 goto arch_vmm_test_error;
         }
@@ -146,7 +146,7 @@ int arch_vmm_test(void)
                         ppn_4);
                 goto arch_vmm_test_error;
         }
-        if (!map(vs, ppn_4, VPN(vp_2), 2, PAGE_ENTRY_NONE, &Map_Handler)) {
+        if (!map(vs, ppn_4, VPN(vp_2), 2, PAGE_ENTRY_NONE, &Map_Handler, NULL)) {
                 pr_error(
                         "[ TEST ] ERROR:try to map to same virtual page but no error return\n");
                 goto arch_vmm_test_error;
@@ -157,7 +157,7 @@ int arch_vmm_test(void)
                 pr_error("[ TEST ] ERROR:try to free a physical page fail\n");
                 goto arch_vmm_test_error;
         }
-        if (unmap(vs, VPN(vp_2), &Map_Handler)) {
+        if (unmap(vs, VPN(vp_2), &Map_Handler, NULL)) {
                 pr_error("[ TEST ] ERROR: try to unmap a 2M page fail\n");
                 goto arch_vmm_test_error;
         }
@@ -168,7 +168,7 @@ int arch_vmm_test(void)
         pr_info("[ TEST ] PASS: remap 2M ok!\n");
 
         /*unmap the ppn_1 and free*/
-        if (unmap(vs, VPN(vp_1), &Map_Handler)) {
+        if (unmap(vs, VPN(vp_1), &Map_Handler, NULL)) {
                 pr_error("[ TEST ] ERROR: try to unmap a 4K page fail\n");
                 goto arch_vmm_test_error;
         }
@@ -183,13 +183,19 @@ int arch_vmm_test(void)
                 pr_error("[ ERROR ] ERROR:try get a ppn fail\n");
                 goto arch_vmm_test_error;
         }
-        if (map(vs, ppn_1, VPN(vp_1_2M), 2, PAGE_ENTRY_NONE, &Map_Handler)) {
+        if (map(vs,
+                ppn_1,
+                VPN(vp_1_2M),
+                2,
+                PAGE_ENTRY_NONE,
+                &Map_Handler,
+                NULL)) {
                 pr_error(
                         "[ TEST ] ERROR:try to map a 2M after a 4K map and unmap\n");
                 goto arch_vmm_test_error;
         }
         /*unmap the 2M page and free*/
-        if (unmap(vs, VPN(vp_1_2M), &Map_Handler)) {
+        if (unmap(vs, VPN(vp_1_2M), &Map_Handler, NULL)) {
                 pr_error("[ TEST ] ERROR: try to unmap a 4K page fail\n");
                 goto arch_vmm_test_error;
         }

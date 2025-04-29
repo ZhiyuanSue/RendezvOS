@@ -41,12 +41,13 @@ extern struct spin_lock_t vspace_spin_lock; // per cpu pointer
 void init_vspace(struct vspace* vs, paddr vspace_root_addr, uint64_t vspace_id);
 
 error_t map(struct vspace* vs, u64 ppn, u64 vpn, int level,
-            ENTRY_FLAGS_t eflags, struct map_handler* handler);
+            ENTRY_FLAGS_t eflags, struct map_handler* handler, spin_lock* lock);
 /*
         here we think the vspace root paddr must exist.
         and we expect the vpn and the page number we need to unmap
 */
-error_t unmap(struct vspace* vs, u64 vpn, struct map_handler* handler);
+error_t unmap(struct vspace* vs, u64 vpn, struct map_handler* handler,
+              spin_lock* lock);
 
 /*
         check whether the vpn have mapped in this vspace

@@ -137,7 +137,8 @@ struct nexus_node* init_nexus(struct map_handler* handler)
                 VPN(vpage_addr),
                 3,
                 PAGE_ENTRY_NONE,
-                handler)) {
+                handler,
+                NULL)) {
                 pr_error("[ NEXUS ] ERROR: map error\n");
                 return NULL;
         }
@@ -191,16 +192,13 @@ static struct nexus_node* nexus_get_free_entry(struct nexus_node* root_node)
                         }
                         vaddr vpage_addr =
                                 KERNEL_PHY_TO_VIRT(PADDR(nexus_new_page));
-                        lock_mcs(&kspace_spin_lock_ptr,
-                                 &percpu(vspace_spin_lock));
                         error_t map_res = map(vs,
                                               nexus_new_page,
                                               VPN(vpage_addr),
                                               3,
                                               PAGE_ENTRY_NONE,
-                                              root_node->handler);
-                        unlock_mcs(&kspace_spin_lock_ptr,
-                                   &percpu(vspace_spin_lock));
+                                              root_node->handler,
+                                              &kspace_spin_lock_ptr);
                         if (map_res) {
                                 pr_error("[ NEXUS ] ERROR: map error\n");
                                 return NULL;
@@ -266,13 +264,10 @@ static void nexus_free_entry(struct nexus_node* nexus_entry,
                         /*free this manage page*/
                         int ppn = PPN(
                                 KERNEL_VIRT_TO_PHY((vaddr)page_manage_node));
-                        lock_mcs(&kspace_spin_lock_ptr,
-                                 &percpu(vspace_spin_lock));
                         error_t unmap_res = unmap(percpu(current_vspace),
                                                   VPN((vaddr)page_manage_node),
-                                                  nexus_root->handler);
-                        unlock_mcs(&kspace_spin_lock_ptr,
-                                   &percpu(vspace_spin_lock));
+                                                  nexus_root->handler,
+                                                  &kspace_spin_lock_ptr);
                         if (unmap_res) {
                                 pr_error("[ NEXUS ] ERROR: unmap error!\n");
                                 return;
@@ -322,14 +317,13 @@ static void* _kernel_get_free_page(int page_num, enum zone_type memory_zone,
         if (page_num > MIDDLE_PAGES / 2) /*buddy pmm must alloc a 2M
                                             page*/
         {
-                lock_mcs(&kspace_spin_lock_ptr, &percpu(vspace_spin_lock));
                 error_t map_res = map(vs,
                                       ppn,
                                       VPN(free_page_addr),
                                       2,
                                       PAGE_ENTRY_NONE,
-                                      nexus_root->handler);
-                unlock_mcs(&kspace_spin_lock_ptr, &percpu(vspace_spin_lock));
+                                      nexus_root->handler,
+                                      &kspace_spin_lock_ptr);
                 if (map_res) {
                         pr_error("[ NEXUS ] ERROR: map error\n");
                         goto fail_free_nexus_entry;
@@ -340,16 +334,13 @@ static void* _kernel_get_free_page(int page_num, enum zone_type memory_zone,
                      i++, tmp_ppn += 1) {
                         vaddr tmp_free_page_addr =
                                 KERNEL_PHY_TO_VIRT(PADDR(tmp_ppn));
-                        lock_mcs(&kspace_spin_lock_ptr,
-                                 &percpu(vspace_spin_lock));
                         error_t map_res = map(vs,
                                               tmp_ppn,
                                               VPN(tmp_free_page_addr),
                                               3,
                                               PAGE_ENTRY_NONE,
-                                              nexus_root->handler);
-                        unlock_mcs(&kspace_spin_lock_ptr,
-                                   &percpu(vspace_spin_lock));
+                                              nexus_root->handler,
+                                              &kspace_spin_lock_ptr);
                         if (map_res) {
                                 pr_error("[ NEXUS ] ERROR: map error\n");
                                 error_num = i;
@@ -361,14 +352,11 @@ static void* _kernel_get_free_page(int page_num, enum zone_type memory_zone,
                              i++, tmp_ppn += 1) {
                                 vaddr tmp_free_page_addr =
                                         KERNEL_PHY_TO_VIRT(PADDR(tmp_ppn));
-                                lock_mcs(&kspace_spin_lock_ptr,
-                                         &percpu(vspace_spin_lock));
                                 error_t unmap_res =
                                         unmap(vs,
                                               VPN(tmp_free_page_addr),
-                                              nexus_root->handler);
-                                lock_mcs(&kspace_spin_lock_ptr,
-                                         &percpu(vspace_spin_lock));
+                                              nexus_root->handler,
+                                              &kspace_spin_lock_ptr);
                                 if (unmap_res) {
                                         pr_error(
                                                 "[ NEXUS ] ERROR: map success but unmap have error\n");
@@ -426,16 +414,13 @@ static void* _user_get_free_page(int page_num, enum zone_type memory_zone,
                         nexus_free_entry(free_nexus_entry, nexus_root);
                         return NULL;
                 }
-                lock_mcs(&(percpu(current_vspace)->vspace_lock),
-                         &percpu(vspace_spin_lock));
                 error_t map_res = map(vs,
                                       ppn,
                                       VPN(target_vaddr),
                                       2,
                                       PAGE_ENTRY_USER,
-                                      nexus_root->handler);
-                unlock_mcs(&(percpu(current_vspace)->vspace_lock),
-                           &percpu(vspace_spin_lock));
+                                      nexus_root->handler,
+                                      &(percpu(current_vspace)->vspace_lock));
                 if (map_res) {
                         pr_error("[ NEXUS ] ERROR: map error\n");
                         nexus_free_entry(free_nexus_entry, nexus_root);
@@ -469,17 +454,13 @@ static void* _user_get_free_page(int page_num, enum zone_type memory_zone,
                         nexus_free_entry(free_nexus_entry, nexus_root);
                         return NULL;
                 }
-                lock_mcs(&(percpu(current_vspace)->vspace_lock),
-                         &percpu(vspace_spin_lock));
                 error_t map_res = map(vs,
                                       ppn,
                                       VPN(target_vaddr),
                                       3,
                                       PAGE_ENTRY_USER,
-                                      nexus_root->handler);
-
-                unlock_mcs(&(percpu(current_vspace)->vspace_lock),
-                           &percpu(vspace_spin_lock));
+                                      nexus_root->handler,
+                                      &(percpu(current_vspace)->vspace_lock));
                 if (map_res) {
                         pr_error("[ NEXUS ] ERROR: map error\n");
                         nexus_free_entry(free_nexus_entry, nexus_root);
@@ -542,22 +523,20 @@ static error_t _kernel_free_pages(void* p, int page_num,
         u32 ppn = node->ppn;
         vaddr map_addr = node->start_addr;
         if (node->size > MIDDLE_PAGES / 2) {
-                lock_mcs(&kspace_spin_lock_ptr, &percpu(vspace_spin_lock));
-                error_t unmap_res =
-                        unmap(vs, VPN(map_addr), nexus_root->handler);
-                unlock_mcs(&kspace_spin_lock_ptr, &percpu(vspace_spin_lock));
+                error_t unmap_res = unmap(vs,
+                                          VPN(map_addr),
+                                          nexus_root->handler,
+                                          &kspace_spin_lock_ptr);
                 if (unmap_res) {
                         pr_error("[ NEXUS ] ERROR: unmap error!\n");
                         return -ENOMEM;
                 }
         } else {
                 for (int i = 0; i < node->size; i++) {
-                        lock_mcs(&kspace_spin_lock_ptr,
-                                 &percpu(vspace_spin_lock));
-                        error_t unmap_res =
-                                unmap(vs, VPN(map_addr), nexus_root->handler);
-                        unlock_mcs(&kspace_spin_lock_ptr,
-                                   &percpu(vspace_spin_lock));
+                        error_t unmap_res = unmap(vs,
+                                                  VPN(map_addr),
+                                                  nexus_root->handler,
+                                                  &kspace_spin_lock_ptr);
                         if (unmap_res) {
                                 pr_error("[ NEXUS ] ERROR: unmap error!\n");
                                 return -ENOMEM;
@@ -590,12 +569,11 @@ static error_t _user_free_pages(void* p, int page_num, struct vspace* vs,
                 vaddr map_addr = node->start_addr;
                 u64 size = node->size;
                 vaddr expect_next_addr = map_addr + size * PAGE_SIZE;
-                lock_mcs(&(percpu(current_vspace)->vspace_lock),
-                         &percpu(vspace_spin_lock));
                 error_t unmap_res =
-                        unmap(vs, VPN(map_addr), nexus_root->handler);
-                unlock_mcs(&(percpu(current_vspace)->vspace_lock),
-                           &percpu(vspace_spin_lock));
+                        unmap(vs,
+                              VPN(map_addr),
+                              nexus_root->handler,
+                              &(percpu(current_vspace)->vspace_lock));
                 if (unmap_res) {
                         pr_error("[ NEXUS ] ERROR: unmap error!\n");
                         return -ENOMEM;

@@ -14,7 +14,7 @@ static struct single_test_case single_test[MAX_SINGLE_TEST_CASE] = {
 
 void single_cpu_test(void)
 {
-        pr_info("====== [ KERNEL SINGLE CPU TEST ] ======\n");
+        pr_notice("====== [ KERNEL SINGLE CPU TEST ] ======\n");
         bool test_pass = true;
         for (int i = 0; i < MAX_SINGLE_TEST_CASE; i++) {
                 if ((u64)(single_test[i].test)) {
@@ -25,12 +25,12 @@ void single_cpu_test(void)
                                 test_pass = false;
                                 break;
                         } else {
-                                pr_info("[ TEST @%8x ] PASS: test %s ok!\n",
-                                        jeffies,
-                                        single_test[i].name);
+                                pr_notice("[ TEST @%8x ] PASS: test %s ok!\n",
+                                          jeffies,
+                                          single_test[i].name);
                         }
                 }
         }
         if (test_pass)
-                pr_info("====== [ SINGLE CPU TEST PASS ] ======\n");
+                pr_notice("====== [ SINGLE CPU TEST PASS ] ======\n");
 }

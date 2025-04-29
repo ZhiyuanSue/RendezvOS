@@ -104,7 +104,8 @@ bool map_LAPIC(void)
                         3,
                         PAGE_ENTRY_UNCACHED, // the LAPIC should be set as
                                              // uncached
-                        &percpu(Map_Handler))) {
+                        &percpu(Map_Handler),
+                        NULL)) {
                         pr_error("[ LAPIC ] ERROR: map error\n");
                         return false;
                 }
