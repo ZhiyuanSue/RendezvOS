@@ -93,6 +93,17 @@
 				"dtb"
 			],
 			"path":"modules/psci"
+		},
+		"elf":
+		{
+			"use":true,
+			"features":[
+				"elf"
+			],
+			"depend_module":[
+				"log"
+			],
+			"path":"modules/elf"
 		}
 	}
 }

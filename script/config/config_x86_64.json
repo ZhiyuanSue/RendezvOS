@@ -82,6 +82,17 @@
 				"log"
 			],
 			"path":"modules/dtb"
+		},
+		"elf":
+		{
+			"use":true,
+			"features":[
+				"elf"
+			],
+			"depend_module":[
+				"log"
+			],
+			"path":"modules/elf"
 		}
 	}
 }
