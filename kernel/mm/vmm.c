@@ -68,7 +68,7 @@ error_t map(struct vspace *vs, u64 ppn, u64 vpn, int level,
         vaddr v = vpn << 12;
         u64 pt_entry = 0;
         paddr next_level_paddr = 0;
-        int pmm_res = 0;
+        i64 pmm_res = 0;
         bool new_alloc = false;
         error_t res = 0;
         /*for a new alloced page, we must memset to all 0, use this flag to
@@ -269,7 +269,7 @@ error_t map(struct vspace *vs, u64 ppn, u64 vpn, int level,
                                 lock_mcs(&handler->pmm->spin_ptr,
                                          &percpu(pmm_spin_lock));
                                 pmm_res = handler->pmm->pmm_free(
-                                        PPN(next_level_paddr), 1);
+                                        (i64)PPN(next_level_paddr), 1);
                                 unlock_mcs(&handler->pmm->spin_ptr,
                                            &percpu(pmm_spin_lock));
                                 if (pmm_res) {

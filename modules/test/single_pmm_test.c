@@ -6,7 +6,7 @@
 extern struct buddy buddy_pmm;
 int pmm_test(void)
 {
-        int alloc_ppn[PPN_TEST_CASE_NUM];
+        i64 alloc_ppn[PPN_TEST_CASE_NUM];
 
         for (int i = 0, pg_size = 1; i < PPN_TEST_CASE_NUM; ++i, pg_size *= 2) {
                 alloc_ppn[i] = buddy_pmm.pmm_alloc(pg_size, ZONE_NORMAL);
@@ -60,7 +60,7 @@ int pmm_test(void)
         // try to alloc all the memory,then try to alloc will lead to an error
         // if no such an error, the boundary conditions is error
         while (buddy_pmm.zone->zone_total_avaliable_pages) {
-                int tmp = buddy_pmm.pmm_alloc(1, ZONE_NORMAL);
+                i64 tmp = buddy_pmm.pmm_alloc(1, ZONE_NORMAL);
                 alloc_ppn[buddy_pmm.zone->zone_total_avaliable_pages
                           % PPN_TEST_CASE_NUM] = tmp;
 

@@ -227,7 +227,7 @@ static inline error_t mark_childs(int zone_number, int order, u64 index)
 
         return (0);
 }
-int pmm_alloc_zone(int alloc_order, int zone_number)
+i64 pmm_alloc_zone(int alloc_order, int zone_number)
 {
         int tmp_order;
         bool find_an_order;
@@ -337,9 +337,9 @@ int pmm_alloc_zone(int alloc_order, int zone_number)
         buddy_pmm.zone[zone_number].zone_total_avaliable_pages -=
                 1 << alloc_order;
 
-        return (PPN_FROM_IDX(alloc_order, index));
+        return (i64)(PPN_FROM_IDX(alloc_order, index));
 }
-int pmm_alloc(size_t page_number, enum zone_type zone_number)
+i64 pmm_alloc(size_t page_number, enum zone_type zone_number)
 {
         int alloc_order;
 
@@ -378,7 +378,7 @@ static bool inline ppn_inrange(u32 ppn, int *zone_number)
         }
         return (ppn_inrange);
 }
-static error_t pmm_free_one(u32 ppn)
+static error_t pmm_free_one(i64 ppn)
 {
         struct page_frame *buddy_node;
 
@@ -438,7 +438,7 @@ static error_t pmm_free_one(u32 ppn)
 
         return (0);
 }
-error_t pmm_free(u32 ppn, size_t page_number)
+error_t pmm_free(i64 ppn, size_t page_number)
 {
         int alloc_order;
         int free_one_result;

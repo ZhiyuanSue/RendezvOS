@@ -3,7 +3,7 @@
 
 #include "pmm.h"
 
-#define IDX_FROM_PPN(order, ppn)           (ppn >> order)
+#define IDX_FROM_PPN(order, ppn)           ((u64)ppn >> order)
 #define PPN_FROM_IDX(order, idx)           (idx << order)
 #define BUCKET_FRAME_FROM_PPN(bucket, ppn) (bucket.pages[IDX_FROM_PPN(ppn)])
 

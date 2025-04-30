@@ -121,11 +121,9 @@ static void nexus_init_manage_page(vaddr vpage_addr,
 /*return a nexus root node*/
 struct nexus_node* init_nexus(struct map_handler* handler)
 {
-        struct vspace* vs = percpu(current_vspace);
+        struct vspace* vs = current_vspace;
         /*get a phy page*/
-        lock_mcs(&handler->pmm->spin_ptr, &percpu(pmm_spin_lock));
-        int nexus_init_page = handler->pmm->pmm_alloc(1, ZONE_NORMAL);
-        unlock_mcs(&handler->pmm->spin_ptr, &percpu(pmm_spin_lock));
+        i64 nexus_init_page = handler->pmm->pmm_alloc(1, ZONE_NORMAL);
         if (nexus_init_page <= 0) {
                 pr_error("[ NEXUS ] ERROR: init error\n");
                 return NULL;
@@ -182,7 +180,7 @@ static struct nexus_node* nexus_get_free_entry(struct nexus_node* root_node)
 
                         lock_mcs(&root_node->handler->pmm->spin_ptr,
                                  &percpu(pmm_spin_lock));
-                        int nexus_new_page = root_node->handler->pmm->pmm_alloc(
+                        i64 nexus_new_page = root_node->handler->pmm->pmm_alloc(
                                 1, ZONE_NORMAL);
                         unlock_mcs(&root_node->handler->pmm->spin_ptr,
                                    &percpu(pmm_spin_lock));
@@ -262,7 +260,7 @@ static void nexus_free_entry(struct nexus_node* nexus_entry,
                            != (vaddr)page_manage_node) {
                         /*if it's the backup page, no need to del it*/
                         /*free this manage page*/
-                        int ppn = PPN(
+                        i64 ppn = (i64)PPN(
                                 KERNEL_VIRT_TO_PHY((vaddr)page_manage_node));
                         error_t unmap_res = unmap(percpu(current_vspace),
                                                   VPN((vaddr)page_manage_node),
@@ -303,7 +301,7 @@ static void* _kernel_get_free_page(int page_num, enum zone_type memory_zone,
                 goto fail_free_nexus_entry;
         }
         lock_mcs(&nexus_root->handler->pmm->spin_ptr, &percpu(pmm_spin_lock));
-        int ppn = nexus_root->handler->pmm->pmm_alloc(page_num, memory_zone);
+        i64 ppn = nexus_root->handler->pmm->pmm_alloc(page_num, memory_zone);
         unlock_mcs(&nexus_root->handler->pmm->spin_ptr, &percpu(pmm_spin_lock));
         if (ppn <= 0) {
                 pr_error("[ NEXUS ] ERROR: init error\n");
@@ -403,7 +401,7 @@ static void* _user_get_free_page(int page_num, enum zone_type memory_zone,
                 }
                 lock_mcs(&nexus_root->handler->pmm->spin_ptr,
                          &percpu(pmm_spin_lock));
-                int ppn = nexus_root->handler->pmm->pmm_alloc(MIDDLE_PAGES,
+                i64 ppn = nexus_root->handler->pmm->pmm_alloc(MIDDLE_PAGES,
                                                               memory_zone);
                 unlock_mcs(&nexus_root->handler->pmm->spin_ptr,
                            &percpu(pmm_spin_lock));
@@ -444,7 +442,7 @@ static void* _user_get_free_page(int page_num, enum zone_type memory_zone,
                 }
                 lock_mcs(&nexus_root->handler->pmm->spin_ptr,
                          &percpu(pmm_spin_lock));
-                int ppn = nexus_root->handler->pmm->pmm_alloc(1, memory_zone);
+                i64 ppn = nexus_root->handler->pmm->pmm_alloc(1, memory_zone);
                 unlock_mcs(&nexus_root->handler->pmm->spin_ptr,
                            &percpu(pmm_spin_lock));
                 if (ppn <= 0) {
@@ -520,7 +518,7 @@ static error_t _kernel_free_pages(void* p, int page_num,
                         node->size);
                 return -EINVAL;
         }
-        u32 ppn = node->ppn;
+        i64 ppn = (i64)(node->ppn);
         vaddr map_addr = node->start_addr;
         if (node->size > MIDDLE_PAGES / 2) {
                 error_t unmap_res = unmap(vs,
@@ -565,7 +563,7 @@ static error_t _user_free_pages(void* p, int page_num, struct vspace* vs,
                 return -EINVAL;
         }
         while (1) {
-                u32 ppn = node->ppn;
+                i64 ppn = (i64)(node->ppn);
                 vaddr map_addr = node->start_addr;
                 u64 size = node->size;
                 vaddr expect_next_addr = map_addr + size * PAGE_SIZE;
