@@ -13,6 +13,7 @@
 struct map_handler {
         u64 cpu_id;
         vaddr map_vaddr[4];
+        i64 handler_ppn[4];
         struct pmm* pmm;
         int page_table_zone;
 } __attribute__((packed));

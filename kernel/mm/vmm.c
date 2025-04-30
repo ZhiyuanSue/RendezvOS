@@ -45,6 +45,10 @@ void init_map(struct map_handler *handler, int cpu_id, int pt_zone,
         vaddr map_vaddr = map_pages + cpu_id * PAGE_SIZE * 4;
         for (int i = 0; i < 4; i++) {
                 handler->map_vaddr[i] = map_vaddr;
+                handler->handler_ppn[i] = pmm->pmm_alloc(1, pt_zone);
+                if (handler->handler_ppn[i] <= 0) {
+                        pr_error("[ERROR] init map no ppn can alloc\n");
+                }
                 map_vaddr += PAGE_SIZE;
         }
 }
@@ -94,15 +98,14 @@ error_t map(struct vspace *vs, u64 ppn, u64 vpn, int level,
                 so we have no need to add lock here
         */
         if (!(vs->vspace_root)) {
-                lock_mcs(&handler->pmm->spin_ptr, &percpu(pmm_spin_lock));
-                pmm_res = handler->pmm->pmm_alloc(1, handler->page_table_zone);
-                unlock_mcs(&handler->pmm->spin_ptr, &percpu(pmm_spin_lock));
-                if (pmm_res <= 0) {
-                        pr_error("[ ERROR ] try alloc vspace root ppn fail\n");
+                if (handler->handler_ppn[0] <= 0) {
+                        pr_error(
+                                "[ ERROR ] L0 try alloc vspace root ppn fail\n");
                         res = -ENOMEM;
                         goto map_fail;
                 }
-                vs->vspace_root = PADDR(pmm_res);
+                vs->vspace_root = PADDR(handler->handler_ppn[0]);
+                handler->handler_ppn[0] = -ENOMEM;
                 new_alloc = true;
         } else if (ROUND_DOWN(vs->vspace_root, PAGE_SIZE) != vs->vspace_root) {
                 pr_error(
@@ -123,15 +126,13 @@ error_t map(struct vspace *vs, u64 ppn, u64 vpn, int level,
                 ((union L0_entry *)(handler->map_vaddr[0]))[L0_INDEX(v)]);
         if (!next_level_paddr) {
                 /*no next level page, need alloc one*/
-                lock_mcs(&handler->pmm->spin_ptr, &percpu(pmm_spin_lock));
-                pmm_res = handler->pmm->pmm_alloc(1, handler->page_table_zone);
-                unlock_mcs(&handler->pmm->spin_ptr, &percpu(pmm_spin_lock));
-                if (pmm_res <= 0) {
-                        pr_error("[ ERROR ] try alloc ppn fail\n");
+                if (handler->handler_ppn[1] <= 0) {
+                        pr_error("[ ERROR ] L1 try alloc ppn fail\n");
                         res = -ENOMEM;
                         goto map_l0_fail;
                 }
-                next_level_paddr = PADDR(pmm_res);
+                next_level_paddr = PADDR(handler->handler_ppn[1]);
+                handler->handler_ppn[1] = -ENOMEM;
                 new_alloc = true;
                 flags = arch_decode_flags(0,
                                           PAGE_ENTRY_GLOBAL | PAGE_ENTRY_READ
@@ -154,15 +155,13 @@ error_t map(struct vspace *vs, u64 ppn, u64 vpn, int level,
                 ((union L1_entry *)(handler->map_vaddr[1]))[L1_INDEX(v)]);
         if (!next_level_paddr) {
                 /*no next level page, need alloc one*/
-                lock_mcs(&handler->pmm->spin_ptr, &percpu(pmm_spin_lock));
-                pmm_res = handler->pmm->pmm_alloc(1, handler->page_table_zone);
-                unlock_mcs(&handler->pmm->spin_ptr, &percpu(pmm_spin_lock));
-                if (pmm_res <= 0) {
-                        pr_error("[ ERROR ] try alloc ppn fail\n");
+                if (handler->handler_ppn[2] <= 0) {
+                        pr_error("[ ERROR ] L2 try alloc ppn fail\n");
                         res = -ENOMEM;
                         goto map_l1_fail;
                 }
-                next_level_paddr = PADDR(pmm_res);
+                next_level_paddr = PADDR(handler->handler_ppn[2]);
+                handler->handler_ppn[2] = -ENOMEM;
                 new_alloc = true;
                 flags = arch_decode_flags(1,
                                           PAGE_ENTRY_GLOBAL | PAGE_ENTRY_READ
@@ -306,18 +305,13 @@ error_t map(struct vspace *vs, u64 ppn, u64 vpn, int level,
                         union L2_entry *)(handler->map_vaddr[2]))[L2_INDEX(v)]);
                 if (!next_level_paddr) {
                         /*no next level page, need alloc one*/
-                        lock_mcs(&handler->pmm->spin_ptr,
-                                 &percpu(pmm_spin_lock));
-                        pmm_res = handler->pmm->pmm_alloc(
-                                1, handler->page_table_zone);
-                        unlock_mcs(&handler->pmm->spin_ptr,
-                                   &percpu(pmm_spin_lock));
-                        if (pmm_res <= 0) {
-                                pr_error("[ ERROR ] try alloc ppn fail\n");
+                        if (handler->handler_ppn[3] <= 0) {
+                                pr_error("[ ERROR ] L3 try alloc ppn fail\n");
                                 res = -ENOMEM;
                                 goto map_l2_fail;
                         }
-                        next_level_paddr = PADDR(pmm_res);
+                        next_level_paddr = PADDR(handler->handler_ppn[3]);
+                        handler->handler_ppn[3] = -ENOMEM;
                         new_alloc = true;
                         flags = arch_decode_flags(
                                 2,
@@ -376,6 +370,16 @@ map_l0_fail:
         if (lock)
                 unlock_mcs(lock, &percpu(vspace_spin_lock));
 map_fail:
+        for (int i = 0; i < 4; i++) {
+                if (handler->handler_ppn[i] == -ENOMEM) {
+                        lock_mcs(&handler->pmm->spin_ptr,
+                                 &percpu(pmm_spin_lock));
+                        handler->handler_ppn[i] = handler->pmm->pmm_alloc(
+                                1, handler->page_table_zone);
+                        unlock_mcs(&handler->pmm->spin_ptr,
+                                   &percpu(pmm_spin_lock));
+                }
+        }
         return res;
 }
 
