@@ -122,6 +122,11 @@ error_t map(struct vspace *vs, u64 ppn, u64 vpn, int level,
         /*use map util table to change the L0 table*/
         if (lock)
                 lock_mcs(lock, &percpu(vspace_spin_lock));
+        /*
+                Do not try to add a small lock between l2 and l3 table
+                for it might memset to clean it
+                so actually all the code need to be locked
+        */
         next_level_paddr = L0_entry_addr(
                 ((union L0_entry *)(handler->map_vaddr[0]))[L0_INDEX(v)]);
         if (!next_level_paddr) {
@@ -513,7 +518,7 @@ paddr have_mapped(struct vspace *vs, u64 vpn, struct map_handler *handler)
         union L1_entry L1_E;
         union L2_entry L2_E;
         union L3_entry L3_E;
-        if (!vs->vspace_root || !vpn) {
+        if (!vs || !vs->vspace_root || !vpn) {
                 pr_error("[ ERROR ] check input is not right\n");
                 next_level_paddr = 0;
                 goto have_mapped_fail;
