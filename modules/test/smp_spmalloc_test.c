@@ -16,7 +16,7 @@ struct bin {
 #define MAX_BIN        10086
 #define MAX_ALLOC_SIZE 3520
 #define PER_ITER_COUNT 96110
-#define ITER_COUNT     10
+#define ITER_COUNT     2
 DEFINE_PER_CPU(u64, smp_alloc_count);
 DEFINE_PER_CPU(u64, smp_free_count);
 DEFINE_PER_CPU(u64, smp_next);
@@ -52,13 +52,8 @@ static void sp_allocator_print(struct mem_allocator* sp_allocator_p)
 }
 static void spmalloc_print(void)
 {
-        for (int i = 0; i < RENDEZVOS_MAX_CPU_NUMBER; i++) {
-                if (per_cpu(kallocator, i)) {
-                        debug("=== [ SPMALLOC ] ===\n");
-                        sp_allocator_print(
-                                (struct mem_allocator*)per_cpu(kallocator, i));
-                }
-        }
+        debug("=== [ SPMALLOC ] ===\n");
+        sp_allocator_print((struct mem_allocator*)percpu(kallocator));
 }
 static int bin_check(struct bin* b)
 {
