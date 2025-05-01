@@ -93,6 +93,17 @@
 				"log"
 			],
 			"path":"modules/elf"
+		},
+		"RendezvOS_Linux":{
+			"use":true,
+			"features":[
+				"RendezvOS_Linux"
+			],
+			"depend_module":[
+				"log"
+			],
+			"path":"modules/RendezvOS_Linux",
+			"git":"git@github.com:ZhiyuanSue/RendezvOS_Linux.git"
 		}
 	}
 }

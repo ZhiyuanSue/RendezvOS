@@ -47,7 +47,9 @@ void cmain(struct setup_info *arch_setup_info)
         }
 
         start_smp(arch_setup_info);
+#ifdef TEST
         single_cpu_test();
         multi_cpu_test();
+#endif
         arch_shutdown();
 }

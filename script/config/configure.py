@@ -1,6 +1,7 @@
 import sys
 import os
 import json
+import shutil
 
 target_config_file_name="Makefile.env"
 target_config_arch_list=[
@@ -136,9 +137,47 @@ def configure_module(module_name,module_config,root_dir):
 	target_module_dir=module_config['path']
 	target_module_dir=os.path.join(root_dir,target_module_dir)
 	if os.path.isdir(target_module_dir)==False:
-		print("ERROR:no such a module dir exist:",target_module_dir)
-		exit(2)
-	# add the module config file
+		if 'git' not in module_config.keys():
+			print("ERROR:no such a module dir exist:",target_module_dir)
+			exit(2)
+		else:
+			git_repo_link = module_config['git']
+			git_repo_clone_cmd = f'git clone {git_repo_link} {target_module_dir}'
+			status = os.system(git_repo_clone_cmd)
+			if status != 0:
+				print("ERROR:git clone repo "+git_repo_link+" fail")
+				exit(2)
+	if 'git' in module_config.keys():
+		# add git ignore
+		repo_git_ignore_file_path = os.path.join(target_module_dir,".gitignore")
+		with open(repo_git_ignore_file_path, "w", encoding="utf-8") as f:
+			f.write("*\n")
+		# copy the include files to include dir
+		include_dir_path = os.path.join(root_dir,"include")
+		if os.path.isdir(include_dir_path)==False:
+			print("ERROR:cannot find include dir")
+			exit(2)
+		include_dir_path = os.path.join(include_dir_path,module_config['path'])
+		if os.path.isdir(include_dir_path)==False:
+			os.mkdir(include_dir_path)
+		# we also need to add git ignore here
+		repo_git_ignore_file_path=os.path.join(include_dir_path,".gitignore")
+		with open(repo_git_ignore_file_path, "w", encoding="utf-8") as f:
+			f.write("*\n")
+		# copy all the include file to target
+		target_module_include_dir = os.path.join(target_module_dir,"include")
+		if os.path.isdir(target_module_include_dir) == False:
+			print("ERROR:target module include dir is not exist")
+			exit(2)
+		shutil.copytree(target_module_include_dir, include_dir_path, dirs_exist_ok=True, copy_function=shutil.copy2)
+		# rm .git to avoid the git submodule
+		target_module_dir_git = os.path.join(target_module_dir,".git")
+		git_repo_rm_cmd = f'rm -rf {target_module_dir_git}'
+		status = os.system(git_repo_rm_cmd)
+		if status != 0:
+			print("ERROR:rm git "+target_module_dir_git+" fail")
+			exit(2)
+ 	# add the module config file
 	target_config_file_path=os.path.join(target_module_dir,target_config_file_name)
 
 	module_config_str=""

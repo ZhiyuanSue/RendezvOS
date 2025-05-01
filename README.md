@@ -12,11 +12,19 @@ First you need to config it,choose an arch, e.g.
 ```
 make config ARCH=x86_64
 ```
+now you can choose 'x86_64' or 'aarch64'
+
 then 
 ```
 make run
 ```
 no more other steps
+
+if you have change the config under script/config/xxx.json, you should reconfig it,but no need to give the arch again
+
+```
+make config
+```
 
 ## config
 The config file, which is read by configure.py, is the config file for the kernel
