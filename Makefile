@@ -95,6 +95,9 @@ run:qemu
 
 config: clean
 	@python3 $(SCRIPT_CONFIG_DIR)/configure.py ${ROOT_DIR} ${SCRIPT_CONFIG_DIR} $(SCRIPT_CONFIG_DIR)/${CONFIG}
+# user must get the ARCH info and then use cross complier
+user: config
+	@python3 $(SCRIPT_CONFIG_DIR)/user.py ${ROOT_DIR} $(SCRIPT_CONFIG_DIR)/user.json
 fmt:
 	@find . -name '*.c' -print0 | xargs -0 clang-format -i -style=file
 	@find . -name '*.h' -print0 | xargs -0 clang-format -i -style=file
