@@ -10,6 +10,8 @@ target_config_arch_list=[
 	'riscv64',
 	'x86_64'
 ]
+target_ignore_file_name = ".gitignore"
+module_ignore_str = "*\n!./Makefile\n!./.gitignore\n"
 usable_module_list={}
 module_features=[]
 kernel_features=[]
@@ -148,10 +150,6 @@ def configure_module(module_name,module_config,root_dir):
 				print("ERROR:git clone repo "+git_repo_link+" fail")
 				exit(2)
 	if 'git' in module_config.keys():
-		# add git ignore
-		repo_git_ignore_file_path = os.path.join(target_module_dir,".gitignore")
-		with open(repo_git_ignore_file_path, "w", encoding="utf-8") as f:
-			f.write("*\n")
 		# copy the include files to include dir
 		include_dir_path = os.path.join(root_dir,"include")
 		if os.path.isdir(include_dir_path)==False:
@@ -160,7 +158,7 @@ def configure_module(module_name,module_config,root_dir):
 		include_dir_path = os.path.join(include_dir_path,module_config['path'])
 		if os.path.isdir(include_dir_path)==False:
 			os.mkdir(include_dir_path)
-		# we also need to add git ignore here
+		# we also need to add git ignore in include dir
 		repo_git_ignore_file_path=os.path.join(include_dir_path,".gitignore")
 		with open(repo_git_ignore_file_path, "w", encoding="utf-8") as f:
 			f.write("*\n")
@@ -170,11 +168,14 @@ def configure_module(module_name,module_config,root_dir):
 			print("ERROR:target module include dir is not exist")
 			exit(2)
 		shutil.copytree(target_module_include_dir, include_dir_path, dirs_exist_ok=True, copy_function=shutil.copy2)
-		# rename .git to .~git to avoid the git submodule
-		# and it will be renamed back for update the module
-		target_module_dir_git_old = os.path.join(target_module_dir,".git")
-		target_module_dir_git_new = os.path.join(target_module_dir,".~git")
-		os.rename(target_module_dir_git_old,target_module_dir_git_new)
+	else:
+		# append the gitignore rule at modules/.gitignore
+		target_ignore_file_path = os.path.join(root_dir,"modules",target_ignore_file_name)
+		ignore_rule = "!./"+ module_name + "/\n!./" + module_name + "/**\n" 
+		target_ignore_file = open(target_ignore_file_path,'a')
+		target_ignore_file.write(ignore_rule)
+		target_ignore_file.close()
+
  	# add the module config file
 	target_config_file_path=os.path.join(target_module_dir,target_config_file_name)
 
@@ -233,6 +234,11 @@ def configure_modules(module_configs,root_dir):
 	target_config_file=open(target_config_file_path,'w')
 	target_config_file.write(kernel_config_str)
 	target_config_file.close()
+ 
+	target_ignore_file_path = os.path.join(modules_dir,target_ignore_file_name)
+	target_ignore_file = open(target_ignore_file_path,'w')
+	target_ignore_file.write(module_ignore_str)
+	target_ignore_file.close()
 	
 	modules_header_file_path=os.path.join(root_dir,"include","modules","modules.h")
 	modules_header_file=open(modules_header_file_path,'w')

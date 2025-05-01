@@ -1,2 +1,15 @@
-*Makefile
+*
 !./Makefile
+!./.gitignore
+!./log/
+!./log/**
+!./helloworld/
+!./helloworld/**
+!./test/
+!./test/**
+!./driver/
+!./driver/**
+!./acpi/
+!./acpi/**
+!./elf/
+!./elf/**
