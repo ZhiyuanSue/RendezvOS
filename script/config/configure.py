@@ -170,13 +170,11 @@ def configure_module(module_name,module_config,root_dir):
 			print("ERROR:target module include dir is not exist")
 			exit(2)
 		shutil.copytree(target_module_include_dir, include_dir_path, dirs_exist_ok=True, copy_function=shutil.copy2)
-		# rm .git to avoid the git submodule
-		target_module_dir_git = os.path.join(target_module_dir,".git")
-		git_repo_rm_cmd = f'rm -rf {target_module_dir_git}'
-		status = os.system(git_repo_rm_cmd)
-		if status != 0:
-			print("ERROR:rm git "+target_module_dir_git+" fail")
-			exit(2)
+		# rename .git to .~git to avoid the git submodule
+		# and it will be renamed back for update the module
+		target_module_dir_git_old = os.path.join(target_module_dir,".git")
+		target_module_dir_git_new = os.path.join(target_module_dir,".~git")
+		os.rename(target_module_dir_git_old,target_module_dir_git_new)
  	# add the module config file
 	target_config_file_path=os.path.join(target_module_dir,target_config_file_name)
 
