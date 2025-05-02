@@ -68,6 +68,13 @@ if __name__ =='__main__':
 				print("ERROR:make all fail")
 				exit(2)
 
+			os.chdir(user_dir)
+			make_all_cmd = f'make all'
+			status = os.system(make_all_cmd)
+			if status != 0:
+				print("ERROR:make all fail")
+				exit(2)
+			
 			os.chdir(pwd)
 			pass
 		else:
