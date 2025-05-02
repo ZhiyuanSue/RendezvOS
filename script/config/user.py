@@ -27,9 +27,7 @@ if __name__ =='__main__':
 	arch=sys.argv[1]
 	root_dir=sys.argv[2]
 	user_config_file=sys.argv[3]
-	print(arch)
-	print(root_dir)
-	print(user_config_file)
+	pwd = os.getcwd()
     
 	if os.path.isfile(user_config_file)==False:
 		print("ERROR:no such an user config file")
@@ -48,8 +46,29 @@ if __name__ =='__main__':
 				print("ERROR:git clone repo "+git_repo_link+" fail")
 				exit(2)
 		using_file_system = user_json['filesystem']
+		user_user_dir = os.path.join(user_dir,"user")
+		user_user_build_dir = os.path.join(user_user_dir,"build")
+		user_user_build_arch_dir = os.path.join(user_user_build_dir,arch)
+		user_user_build_bin_dir = os.path.join(user_user_dir,"bin")
+  
+		kernel_build_dir = os.path.join(root_dir,"build")
+
 		if using_file_system == False:
 			# using incbin
+			os.chdir(user_user_dir)
+   
+			make_clean_cmd = f'make clean'
+			status = os.system(make_clean_cmd)
+			if status != 0:
+				print("ERROR:make clean fail")
+				exit(2)
+			make_all_cmd = f'make all ARCH={arch}'
+			status = os.system(make_all_cmd)
+			if status != 0:
+				print("ERROR:make all fail")
+				exit(2)
+
+			os.chdir(pwd)
 			pass
 		else:
 			# using file system to test
