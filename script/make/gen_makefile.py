@@ -12,17 +12,19 @@ makefile_string="include $(SCRIPT_MAKE_DIR)/build.mk\n" \
             +   "\t@echo \"CC	\"$@\n" \
             +   "\t@$(CC) $(CFLAGS) -o $@ -c $< -MD -MF ${BUILD}/$*.d -MP\n"
 
-def gen_makefile(target_dir):
+def gen_makefile(target_dir,exclude_dir_list):
     target_dir = Path(target_dir)
     for item in target_dir.iterdir():
         if item.is_dir():
             path_string = f"{item}"
+            if path_string in exclude_dir_list:
+                continue
             makefile_file_path = os.path.join(path_string,"Makefile")
             makefile_file=open(makefile_file_path,"w")
             makefile_file.write(makefile_string)
             makefile_file.close()
             # Recursively traverse subdirectories
-            gen_makefile(item)
+            gen_makefile(item,exclude_dir_list)
         elif item.is_file():
             path_string = f"{item}"
             dir_path = os.path.dirname(path_string)
@@ -38,10 +40,11 @@ def gen_makefile(target_dir):
 if __name__ =='__main__':
     print("GEN\tMakefile")
     arch_dir=sys.argv[1]
-    gen_makefile(arch_dir)
+    gen_makefile(arch_dir,[])
 
     kernel_dir=sys.argv[2]
-    gen_makefile(kernel_dir)
+    gen_makefile(kernel_dir,[])
 
     modules_dir=sys.argv[3]
-    gen_makefile(modules_dir)
+    exclude_user_dir = os.path.join(modules_dir,"user")
+    gen_makefile(modules_dir,[exclude_user_dir])

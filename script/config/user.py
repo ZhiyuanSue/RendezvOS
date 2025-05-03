@@ -67,6 +67,10 @@ if __name__ =='__main__':
 			if status != 0:
 				print("ERROR:make all fail")
 				exit(2)
+    
+			build_obj_dir = os.path.join(root_dir,"build/user")
+			if os.path.isdir(build_obj_dir) == False:
+				os.mkdir(build_obj_dir)
 
 			os.chdir(user_dir)
 			make_all_cmd = f'make all'
