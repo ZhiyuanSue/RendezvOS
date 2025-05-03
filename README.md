@@ -14,6 +14,11 @@ make config ARCH=x86_64
 ```
 now you can choose 'x86_64' or 'aarch64'
 
+if you need the user test cases,just run
+```
+make user
+```
+which can be configured in script/script/user.json and script/script/user.py
 then 
 ```
 make run
