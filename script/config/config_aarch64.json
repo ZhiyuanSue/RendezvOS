@@ -5,8 +5,7 @@
 		"CROSS_COMPLIER":"aarch64-linux-gnu-",
 		"DBG":false,
 		"CFLAGS":[
-			"-mgeneral-regs-only",
-			"-mcmodel=large"
+			"-mgeneral-regs-only"
 		],
 		"features":[
 			"_AARCH64_",

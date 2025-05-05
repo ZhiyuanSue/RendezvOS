@@ -78,7 +78,8 @@ prepare_page_table:
 	/*1111 1111 1111 1111 unused*/
 	/*                    1000 0000 0 index of the level0*/
 	adr	x0,#_start
-	adr	x1,#_end
+	adrp	x1,_end
+	add x1,x1, :lo12:_end
 	adr	x2,#L0_table
 	adr	x3,#L1_table
 	adr	x4,#L2_table
@@ -154,8 +155,10 @@ enable_fp:
 
 	.global	clear_bss
 clear_bss:
-	adr	x0,#_bss_start
-	adr	x1,#_bss_end
+	adrp	x0,_bss_start
+	add	x0,x0, :lo12:_bss_start
+	adrp	x1,_bss_end
+	add	x1,x1, :lo12:_bss_end
 	mov	x2,#0
 	mov x3,x2
 	mov	x4,#0x10
