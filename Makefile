@@ -69,12 +69,13 @@ include $(SCRIPT_MAKE_DIR)/qemu.mk
 # here's another makefile cmd 'user'
 # we hope you first run 'make user'
 # and you will generate the $(SCRIPT_MAKE_DIR)/user.mk file
-# and then this user.mk file should also have a user_mk cmd
+# and then this user.mk file should also have a USER_CMD defination
 # which will override the user_mk
 # if you needn't generate the user files, just not generate this file
 # this design is used for separation architecture
+USER_CMD ?= @echo "No User test"
 user_mk:
-	@echo "No User test"
+	${USER_CMD}
 -include $(SCRIPT_MAKE_DIR)/user.mk
 
 build_objs:
