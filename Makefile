@@ -66,6 +66,16 @@ all:  init have_config $(Target_BIN) clean
 include $(SCRIPT_MAKE_DIR)/qemu.mk
 .PHONY:all
 
+# here's another makefile cmd 'user'
+# we hope you first run 'make user'
+# and you will generate the $(SCRIPT_MAKE_DIR)/user.mk file
+# and then this user.mk file should also have a user_mk cmd
+# which will override the user_mk
+# if you needn't generate the user files, just not generate this file
+# this design is used for separation architecture
+user_mk:
+	@echo "No User test"
+-include $(SCRIPT_MAKE_DIR)/user.mk
 
 build_objs:
 	@python3 $(SCRIPT_MAKE_DIR)/gen_makefile.py $(ARCH_DIR) $(KERNEL_DIR) $(MODULES_DIR)
@@ -73,7 +83,7 @@ build_objs:
 	@$(MAKE) -C $(KERNEL_DIR) all
 	@$(MAKE) -C $(MODULES_DIR) all
 	
-$(Target_ELF): build_objs
+$(Target_ELF): user_mk build_objs
 	@echo "LD	" $(Target_ELF)
 	@${LD} ${LDFLAGS} -o $@ $(shell find $(BUILD) -name *.o)
 
@@ -110,7 +120,7 @@ mrproper: clean
 	@echo "RM	Makefile.env"
 	@-rm -f $(shell find $(ROOT_DIR) -name Makefile.env) 
 	@-rm -rf $(BUILD)/*
-	@-rm -f $(ROOT_DIR)/include/modules/modules.h
+	@-rm -f $(ROOT_DIR)/include/modules/modules.h $(SCRIPT_DIR)/make/user.mk
 
 clean:	init
 	@echo "RM	OBJS"

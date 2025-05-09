@@ -16,6 +16,8 @@ import json
 import shutil
 
 target_dir = "modules/user"
+target_script_file = "script/make/user.mk"
+target_script_file_str = "user_mk:\n\t@cp $(MODULES_DIR)/user/link_app.o $(BUILD)\n"
 target_config_arch_list=[
 	'aarch64',
 	'longarch',
@@ -55,6 +57,11 @@ if __name__ =='__main__':
 
 		if using_file_system == False:
 			# using incbin
+			# generate user.mk
+			target_script_file_path = os.path.join(root_dir,target_script_file)
+			with open(target_script_file_path,'w') as script_file:
+				script_file.write(target_script_file_str)
+			# run make
 			os.chdir(user_user_dir)
    
 			make_clean_cmd = f'make clean'
@@ -67,10 +74,6 @@ if __name__ =='__main__':
 			if status != 0:
 				print("ERROR:make all fail")
 				exit(2)
-    
-			build_obj_dir = os.path.join(root_dir,"build/user")
-			if os.path.isdir(build_obj_dir) == False:
-				os.mkdir(build_obj_dir)
 
 			os.chdir(user_dir)
 			make_all_cmd = f'make all'
