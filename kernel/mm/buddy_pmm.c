@@ -19,10 +19,10 @@ static void calculate_avaliable_phy_addr_end(void)
                         continue;
 
                 reg = buddy_pmm.m_regions->memory_regions[i];
-                pr_info("Aviable Mem:base_phy_addr is 0x%x, length = "
-                        "0x%x\n",
-                        reg.addr,
-                        reg.len);
+                // pr_debug("Aviable Mem:base_phy_addr is 0x%x, length = "
+                //         "0x%x\n",
+                //         reg.addr,
+                //         reg.len);
                 /* end is not reachable,[ sec_end_addr , sec_end_addr ) */
                 sec_start_addr = reg.addr;
                 sec_end_addr = sec_start_addr + reg.len;
@@ -124,8 +124,8 @@ static void pmm_init_zones(void)
                         zone->zone_lower_addr = 0;
                         zone->zone_upper_addr =
                                 buddy_pmm.avaliable_phy_addr_end;
-                        pr_info("avaliable phy addr end 0x%x\n",
-                                zone->zone_upper_addr);
+                        // pr_info("avaliable phy addr end 0x%x\n",
+                        //         zone->zone_upper_addr);
                         break;
                 default:
                         break;

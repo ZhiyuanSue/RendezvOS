@@ -109,7 +109,6 @@ error_t prepare_arch(struct setup_info *arch_setup_info)
                 pr_info("not using the multiboot protocol, stop\n");
                 return (-EPERM);
         }
-        pr_info("finish check the magic:%x\n", mtb_magic);
         max_phy_addr_width = arch_setup_info->phy_addr_width;
         if (!(mtb_info->flags & MULTIBOOT_INFO_FLAG_CMD)) {
                 pr_info("cmdline:%s\n",
