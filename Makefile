@@ -73,7 +73,8 @@ include $(SCRIPT_MAKE_DIR)/qemu.mk
 # which will override the user_mk
 # if you needn't generate the user files, just not generate this file
 # this design is used for separation architecture
-USER_CMD ?= @echo "No User test"
+USER_CMD ?= @echo "WARNING\t:\tNo User test"
+USER_CLEAN_CMD ?=@echo ""
 user_mk:
 	${USER_CMD}
 -include $(SCRIPT_MAKE_DIR)/user.mk
@@ -104,7 +105,7 @@ have_config:
 
 run:qemu
 
-config: clean
+config: mrproper
 	@python3 $(SCRIPT_CONFIG_DIR)/configure.py ${ROOT_DIR} ${SCRIPT_CONFIG_DIR} $(SCRIPT_CONFIG_DIR)/${CONFIG}
 # user must get the ARCH info and then use cross complier
 user: have_config
@@ -121,6 +122,7 @@ mrproper: clean
 	@echo "RM	Makefile.env"
 	@-rm -f $(shell find $(ROOT_DIR) -name Makefile.env) 
 	@-rm -rf $(BUILD)/*
+	$(USER_CLEAN_CMD)
 	@-rm -f $(ROOT_DIR)/include/modules/modules.h $(SCRIPT_DIR)/make/user.mk
 
 clean:	init

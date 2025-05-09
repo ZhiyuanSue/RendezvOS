@@ -17,7 +17,8 @@ import shutil
 
 target_dir = "modules/user"
 target_script_file = "script/make/user.mk"
-target_script_file_str = "USER_CMD =\t@cp $(MODULES_DIR)/user/link_app.o $(BUILD)\t"
+target_script_file_str = "USER_CMD =\t@cp $(MODULES_DIR)/user/link_app.o $(BUILD)\t\n\
+USER_CLEAN_CMD = @rm -rf $(MODULES_DIR)/user/link_app.o $(MODULES_DIR)/user/link_app.S\n"
 target_config_arch_list=[
 	'aarch64',
 	'longarch',
