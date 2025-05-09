@@ -10,6 +10,7 @@ static struct single_test_case single_test[MAX_SINGLE_TEST_CASE] = {
         /*the pmm test will use almost all of the memory frame, so it must put
          * at the end*/
         // {pmm_test, "pmm\0"},
+		{elf_read_test, "elf_read\0"},
 };
 
 void single_cpu_test(void)

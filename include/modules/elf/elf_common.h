@@ -11,4 +11,6 @@ typedef u32 Elf64_Sword;
 typedef u64 Elf64_Xword;
 typedef u64 Elf64_Sxword;
 
+#define E_IDENT_LEN 16
+
 #endif

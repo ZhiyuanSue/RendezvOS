@@ -11,7 +11,8 @@ target_config_arch_list=[
 	'x86_64'
 ]
 target_ignore_file_name = ".gitignore"
-module_ignore_str = "*\n!./Makefile\n!./.gitignore\n"
+module_ignore_str = "*\n!/Makefile\n!/.gitignore\n"
+module_ignore_env_str = "*.env\n"
 usable_module_list={}
 module_features=[]
 kernel_features=[]
@@ -171,7 +172,7 @@ def configure_module(module_name,module_config,root_dir):
 	else:
 		# append the gitignore rule at modules/.gitignore
 		target_ignore_file_path = os.path.join(root_dir,"modules",target_ignore_file_name)
-		ignore_rule = "!./"+ module_name + "/\n!./" + module_name + "/**\n" 
+		ignore_rule = "!/"+ module_name + "/\n!/" + module_name + "/**\n" 
 		target_ignore_file = open(target_ignore_file_path,'a')
 		target_ignore_file.write(ignore_rule)
 		target_ignore_file.close()
@@ -244,6 +245,13 @@ def configure_modules(module_configs,root_dir):
 	modules_header_file=open(modules_header_file_path,'w')
 	modules_header_file.write(modules_header_file_str)
 	modules_header_file.close()
+	for module_name,module_config in module_configs.items():
+		# print(module_name,module_config)
+		configure_module(module_name,module_config,root_dir)
+
+	target_ignore_file = open(target_ignore_file_path,'a')
+	target_ignore_file.write(module_ignore_env_str)
+	target_ignore_file.close()
 
 def configure(config_file):
 	script_config_dir=sys.argv[2]
@@ -268,9 +276,6 @@ def configure(config_file):
 			return
 		module_configs=config_json['modules']
 		configure_modules(module_configs,root_dir)
-		for module_name,module_config in module_configs.items():
-			# print(module_name,module_config)
-			configure_module(module_name,module_config,root_dir)
 		#config kernel feature
 		configure_kernel_feature(kernel_config,root_dir)
 				
