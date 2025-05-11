@@ -48,6 +48,15 @@ if __name__ =='__main__':
 			if status != 0:
 				print("ERROR:git clone repo "+git_repo_link+" fail")
 				exit(2)
+		else:
+			#check the update
+			os.chdir(user_dir)
+			git_pull_cmd = f'git pull'
+			status = os.system(git_pull_cmd)
+			if status != 0:
+				print("ERROR:git pull repo "+git_repo_link+" fail")
+				exit(2)
+			os.chdir(pwd)
 		using_file_system = user_json['filesystem']
 		user_user_dir = os.path.join(user_dir,"user")
 		user_user_build_dir = os.path.join(user_user_dir,"build")

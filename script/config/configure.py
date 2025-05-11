@@ -151,6 +151,15 @@ def configure_module(module_name,module_config,root_dir):
 				print("ERROR:git clone repo "+git_repo_link+" fail")
 				exit(2)
 	if 'git' in module_config.keys():
+		# check the update
+		pwd = os.getcwd()
+		os.chdir(target_module_dir)
+		git_pull_cmd = f'git pull'
+		status = os.system(git_pull_cmd)
+		if status != 0:
+			print("ERROR:git pull repo "+git_repo_link+" fail")
+			exit(2)
+		os.chdir(pwd)
 		# copy the include files to include dir
 		include_dir_path = os.path.join(root_dir,"include")
 		if os.path.isdir(include_dir_path)==False:
