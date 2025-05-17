@@ -131,25 +131,25 @@ def configure_module(module_name,module_config,root_dir):
 		exit(1)
 	use_module_config=module_config['use']
 	if use_module_config==False:
-		return
+		return 0
 	usable_module_list[module_name]=[]
 	# test weather the target module dir exist
 	if 'path' not in module_config.keys():
 		print("Error: the ",module_name," module must have a 'path' attribute")
-		exit(1)
+		return 1
 	target_module_dir=module_config['path']
 	target_module_dir=os.path.join(root_dir,target_module_dir)
 	if os.path.isdir(target_module_dir)==False:
 		if 'git' not in module_config.keys():
 			print("ERROR:no such a module dir exist:",target_module_dir)
-			exit(2)
+			return 2
 		else:
 			git_repo_link = module_config['git']
 			git_repo_clone_cmd = f'git clone {git_repo_link} {target_module_dir}'
 			status = os.system(git_repo_clone_cmd)
 			if status != 0:
 				print("ERROR:git clone repo "+git_repo_link+" fail")
-				exit(2)
+				return 2
 	if 'git' in module_config.keys():
 		# check the update
 		pwd = os.getcwd()
@@ -157,14 +157,15 @@ def configure_module(module_name,module_config,root_dir):
 		git_pull_cmd = f'git pull'
 		status = os.system(git_pull_cmd)
 		if status != 0:
+			git_repo_link = module_config['git']
 			print("ERROR:git pull repo "+git_repo_link+" fail")
-			exit(2)
+			return 2
 		os.chdir(pwd)
 		# copy the include files to include dir
 		include_dir_path = os.path.join(root_dir,"include")
 		if os.path.isdir(include_dir_path)==False:
 			print("ERROR:cannot find include dir")
-			exit(2)
+			return 2
 		include_dir_path = os.path.join(include_dir_path,module_config['path'])
 		if os.path.isdir(include_dir_path)==False:
 			os.mkdir(include_dir_path)
@@ -176,7 +177,7 @@ def configure_module(module_name,module_config,root_dir):
 		target_module_include_dir = os.path.join(target_module_dir,"include")
 		if os.path.isdir(target_module_include_dir) == False:
 			print("ERROR:target module include dir is not exist")
-			exit(2)
+			return 2
 		shutil.copytree(target_module_include_dir, include_dir_path, dirs_exist_ok=True, copy_function=shutil.copy2)
 	else:
 		# append the gitignore rule at modules/.gitignore
@@ -254,13 +255,16 @@ def configure_modules(module_configs,root_dir):
 	modules_header_file=open(modules_header_file_path,'w')
 	modules_header_file.write(modules_header_file_str)
 	modules_header_file.close()
+	cfg_module_res = 0
 	for module_name,module_config in module_configs.items():
 		# print(module_name,module_config)
-		configure_module(module_name,module_config,root_dir)
+		cfg_module_res = configure_module(module_name,module_config,root_dir)
 
 	target_ignore_file = open(target_ignore_file_path,'a')
 	target_ignore_file.write(module_ignore_env_str)
 	target_ignore_file.close()
+	if cfg_module_res!=0:
+		exit(cfg_module_res)
 
 def configure(config_file):
 	script_config_dir=sys.argv[2]
