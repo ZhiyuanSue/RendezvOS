@@ -10,3 +10,62 @@ unsigned long elf64_hash(const unsigned char *name)
         }
         return h;
 }
+bool check_elf_header(vaddr elf_header_ptr)
+{
+        unsigned char *elf_ident = (unsigned char *)elf_header_ptr;
+        if (elf_ident[EI_MAG0] != ELFMAG0 || elf_ident[EI_MAG1] != ELFMAG1
+            || elf_ident[EI_MAG2] != ELFMAG2 || elf_ident[EI_MAG3] != ELFMAG3)
+                goto check_fail;
+        if (elf_ident[EI_VERSION] != EV_CURRENT)
+                goto check_fail;
+
+        return true;
+check_fail:
+        return false;
+}
+u8 get_elf_class(vaddr elf_header_ptr)
+{
+        unsigned char *elf_ident = (unsigned char *)elf_header_ptr;
+        return elf_ident[EI_CLASS];
+}
+u8 get_elf_data_encode(vaddr elf_header_ptr)
+{
+        unsigned char *elf_ident = (unsigned char *)elf_header_ptr;
+        return elf_ident[EI_DATA];
+}
+
+u8 get_elf_osabi(vaddr elf_header_ptr)
+{
+        unsigned char *elf_ident = (unsigned char *)elf_header_ptr;
+        return elf_ident[EI_OSABI];
+}
+
+u8 get_elf_abi_version(vaddr elf_header_ptr)
+{
+        unsigned char *elf_ident = (unsigned char *)elf_header_ptr;
+        return elf_ident[EI_ABIVERSION];
+}
+u16 get_elf_type(vaddr elf_header_ptr){
+        unsigned char *elf_ident = (unsigned char *)elf_header_ptr;
+        if(elf_ident[EI_CLASS]==ELFCLASS32){
+                Elf32_Ehdr* elf_header = (Elf32_Ehdr*)elf_header_ptr;
+                return elf_header->e_type;
+        }else if(elf_ident[EI_CLASS]==ELFCLASS64){
+                Elf64_Ehdr* elf_header = (Elf64_Ehdr*)elf_header_ptr;
+                return elf_header->e_type;
+        }else{
+                return ET_NONE;
+        }
+}
+u16 get_elf_machine(vaddr elf_header_ptr){
+        unsigned char *elf_ident = (unsigned char *)elf_header_ptr;
+        if(elf_ident[EI_CLASS]==ELFCLASS32){
+                Elf32_Ehdr* elf_header = (Elf32_Ehdr*)elf_header_ptr;
+                return elf_header->e_machine;
+        }else if(elf_ident[EI_CLASS]==ELFCLASS64){
+                Elf64_Ehdr* elf_header = (Elf64_Ehdr*)elf_header_ptr;
+                return elf_header->e_machine;
+        }else{
+                return ET_NONE;
+        }
+}

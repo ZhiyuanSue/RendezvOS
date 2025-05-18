@@ -2,6 +2,7 @@
 #define _RENDEZVOS_ELF_TYPES_H_
 
 #include <common/types.h>
+#include <common/stdbool.h>
 
 typedef u32 Elf32_Addr;
 typedef u16 Elf32_Half;

@@ -45,19 +45,19 @@ typedef struct {
 } Elf32_Sym;
 
 #define ELF32_ST_BIND(i)    ((i) >> 4)
-#define ELF32_ST_TYPE(i)    ((i) & 0xf)
-#define ELF32_ST_INFO(b, t) (((b) << 4) + ((t) & 0xf))
+#define ELF32_ST_TYPE(i)    ((i)&0xf)
+#define ELF32_ST_INFO(b, t) (((b) << 4) + ((t)&0xf))
 
 // === === relocation entries
 typedef struct {
         Elf32_Addr r_offset; /* Address of reference */
         Elf32_Word r_info; /* Symbol index and type of relocation */
-} Elf64_Rel;
+} Elf32_Rel;
 typedef struct {
         Elf32_Addr r_offset; /* Address of reference */
         Elf32_Word r_info; /* Symbol index and type of relocation */
         Elf32_Sword r_addend; /* Constant part of expression */
-} Elf64_Rela;
+} Elf32_Rela;
 
 #define ELF32_R_SYM(i)     ((i) >> 8)
 #define ELF32_R_TYPE(i)    ((unsigned char)(i))
@@ -73,6 +73,6 @@ typedef struct {
         Elf32_Word p_memsz; /* Size of segment in memory */
         Elf32_Word p_flags; /* Segment attributes */
         Elf32_Word p_align; /* Alignment of segment */
-} Elf64_Phdr;
+} Elf32_Phdr;
 
 #endif
