@@ -124,6 +124,7 @@ def configure_kernel_feature(kernel_config,root_dir):
 	target_config_file=open(target_config_file_path,'w')
 	target_config_file.write(kernel_config_str)
 	target_config_file.close()
+	return 0
 
 def configure_module(module_name,module_config,root_dir):
 	if 'use' not in module_config.keys():
@@ -222,6 +223,7 @@ def configure_module(module_name,module_config,root_dir):
 	target_config_file=open(target_config_file_path,'w')
 	target_config_file.write(module_config_str)
 	target_config_file.close()
+	return 0
 
 def configure_modules(module_configs,root_dir):
 	# we have to add a makefile.env under modules dir
@@ -264,7 +266,8 @@ def configure_modules(module_configs,root_dir):
 	target_ignore_file.write(module_ignore_env_str)
 	target_ignore_file.close()
 	if cfg_module_res!=0:
-		exit(cfg_module_res)
+		return cfg_module_res
+	return 0
 
 def configure(config_file):
 	script_config_dir=sys.argv[2]
@@ -287,12 +290,16 @@ def configure(config_file):
 			# the config file have no modules is reasonable
 			print("Warning:no modules in the config file")
 			return
-		module_configs=config_json['modules']
-		configure_modules(module_configs,root_dir)
+		module_configs = config_json['modules']
+		cfg_modules_res = configure_modules(module_configs,root_dir)
 		#config kernel feature
-		configure_kernel_feature(kernel_config,root_dir)
-				
-					
+		cfg_kernel_res = configure_kernel_feature(kernel_config,root_dir)
+		if cfg_modules_res!=0:
+			print("configure modules fail")
+			exit(1)
+		if cfg_kernel_res!=0:
+			print("configure kernel fail")
+			exit(1)		
 
 if __name__ =='__main__':
 	if(len(sys.argv)<=3):

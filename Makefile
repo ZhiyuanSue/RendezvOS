@@ -107,6 +107,10 @@ run:qemu
 
 config: mrproper
 	@python3 $(SCRIPT_CONFIG_DIR)/configure.py ${ROOT_DIR} ${SCRIPT_CONFIG_DIR} $(SCRIPT_CONFIG_DIR)/${CONFIG}
+	@if [ $$? -eq 0 ]; \
+		then echo "Config Success";  \
+	else $(MAKE) mrproper;  \
+	fi
 # user must get the ARCH info and then use cross complier
 user: have_config
 	@python3 $(SCRIPT_CONFIG_DIR)/user.py $(ARCH) ${ROOT_DIR} $(SCRIPT_CONFIG_DIR)/user.json

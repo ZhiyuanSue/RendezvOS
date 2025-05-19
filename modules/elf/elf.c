@@ -18,7 +18,6 @@ bool check_elf_header(vaddr elf_header_ptr)
                 goto check_fail;
         if (elf_ident[EI_VERSION] != EV_CURRENT)
                 goto check_fail;
-
         return true;
 check_fail:
         return false;
