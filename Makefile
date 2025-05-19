@@ -64,6 +64,7 @@ export ARCH KERNELVERSION ROOT_DIR BUILD SCRIPT_MAKE_DIR INCLUDE_DIR CC LD AR CF
 all:  init have_config $(Target_BIN) clean
 
 include $(SCRIPT_MAKE_DIR)/qemu.mk
+include $(SCRIPT_MAKE_DIR)/utils.mk
 .PHONY:all
 
 # here's another makefile cmd 'user'
@@ -73,7 +74,7 @@ include $(SCRIPT_MAKE_DIR)/qemu.mk
 # which will override the user_mk
 # if you needn't generate the user files, just not generate this file
 # this design is used for separation architecture
-USER_CMD ?= @echo "WARNING\t:\tNo User test"
+USER_CMD ?= @echo "$(RED_CHAR)WARNING\t:\tNo User test$(END_CHAR)"
 USER_CLEAN_CMD ?=@echo ""
 user_mk:
 	${USER_CMD}
@@ -99,7 +100,7 @@ init:
 	@$(shell if [ ! -d $(BUILD) ];then mkdir $(BUILD); fi)
 have_config:
 	@if [ ! -f ${CONFIG_FILE} ]; \
-		then echo "No config file,please use make config first" \
+		then echo "$(RED_CHAR)No config file,please use make config first$(END_CHAR)" \
 		& exit 2; \
 		fi
 
@@ -108,7 +109,7 @@ run:qemu
 config: mrproper
 	@python3 $(SCRIPT_CONFIG_DIR)/configure.py ${ROOT_DIR} ${SCRIPT_CONFIG_DIR} $(SCRIPT_CONFIG_DIR)/${CONFIG}
 	@if [ $$? -eq 0 ]; \
-		then echo "Config Success";  \
+		then echo "$(GREEN_CHAR)Config Success$(END_CHAR)";  \
 	else $(MAKE) mrproper;  \
 	fi
 # user must get the ARCH info and then use cross complier

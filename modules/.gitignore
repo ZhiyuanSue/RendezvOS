@@ -9,10 +9,8 @@
 !/test/**
 !/driver/
 !/driver/**
-!/dtb/
-!/dtb/**
-!/psci/
-!/psci/**
+!/acpi/
+!/acpi/**
 !/elf/
 !/elf/**
 *.env
