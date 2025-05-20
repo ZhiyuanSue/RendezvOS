@@ -16,10 +16,18 @@ void elf_read(vaddr elf_start)
                 {
                         print_elf_ph32(phdr_ptr);
                 }
+                for_each_section_header_32(elf_start)
+                {
+                        print_elf_sh32(shdr_ptr);
+                }
         } else if (get_elf_class(elf_start) == ELFCLASS64) {
                 for_each_program_header_64(elf_start)
                 {
                         print_elf_ph64(phdr_ptr);
+                }
+                for_each_section_header_64(elf_start)
+                {
+                        print_elf_sh64(shdr_ptr);
                 }
         } else {
                 pr_error("[ERROR] bad elf file class\n");

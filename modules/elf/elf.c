@@ -22,28 +22,6 @@ bool check_elf_header(vaddr elf_header_ptr)
 check_fail:
         return false;
 }
-u8 get_elf_class(vaddr elf_header_ptr)
-{
-        unsigned char *elf_ident = (unsigned char *)elf_header_ptr;
-        return elf_ident[EI_CLASS];
-}
-u8 get_elf_data_encode(vaddr elf_header_ptr)
-{
-        unsigned char *elf_ident = (unsigned char *)elf_header_ptr;
-        return elf_ident[EI_DATA];
-}
-
-u8 get_elf_osabi(vaddr elf_header_ptr)
-{
-        unsigned char *elf_ident = (unsigned char *)elf_header_ptr;
-        return elf_ident[EI_OSABI];
-}
-
-u8 get_elf_abi_version(vaddr elf_header_ptr)
-{
-        unsigned char *elf_ident = (unsigned char *)elf_header_ptr;
-        return elf_ident[EI_ABIVERSION];
-}
 u16 get_elf_type(vaddr elf_header_ptr)
 {
         unsigned char *elf_ident = (unsigned char *)elf_header_ptr;
