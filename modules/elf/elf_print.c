@@ -126,10 +126,12 @@ void print_elf_ph32(Elf32_Phdr* phdr)
 }
 void print_elf_ph64(Elf64_Phdr* phdr)
 {
+	pr_info("phdr addr 0x%x\n",phdr);
 }
-void print_elf_sh32(Elf32_Shdr* phdr)
+void print_elf_sh32(Elf32_Shdr* shdr)
 {
 }
-void print_elf_sh64(Elf64_Shdr* phdr)
+void print_elf_sh64(Elf64_Shdr* shdr)
 {
+	pr_info("shdr addr 0x%x\n",shdr);
 }
