@@ -44,27 +44,29 @@ u8 get_elf_abi_version(vaddr elf_header_ptr)
         unsigned char *elf_ident = (unsigned char *)elf_header_ptr;
         return elf_ident[EI_ABIVERSION];
 }
-u16 get_elf_type(vaddr elf_header_ptr){
+u16 get_elf_type(vaddr elf_header_ptr)
+{
         unsigned char *elf_ident = (unsigned char *)elf_header_ptr;
-        if(elf_ident[EI_CLASS]==ELFCLASS32){
-                Elf32_Ehdr* elf_header = (Elf32_Ehdr*)elf_header_ptr;
+        if (elf_ident[EI_CLASS] == ELFCLASS32) {
+                Elf32_Ehdr *elf_header = (Elf32_Ehdr *)elf_header_ptr;
                 return elf_header->e_type;
-        }else if(elf_ident[EI_CLASS]==ELFCLASS64){
-                Elf64_Ehdr* elf_header = (Elf64_Ehdr*)elf_header_ptr;
+        } else if (elf_ident[EI_CLASS] == ELFCLASS64) {
+                Elf64_Ehdr *elf_header = (Elf64_Ehdr *)elf_header_ptr;
                 return elf_header->e_type;
-        }else{
+        } else {
                 return ET_NONE;
         }
 }
-u16 get_elf_machine(vaddr elf_header_ptr){
+u16 get_elf_machine(vaddr elf_header_ptr)
+{
         unsigned char *elf_ident = (unsigned char *)elf_header_ptr;
-        if(elf_ident[EI_CLASS]==ELFCLASS32){
-                Elf32_Ehdr* elf_header = (Elf32_Ehdr*)elf_header_ptr;
+        if (elf_ident[EI_CLASS] == ELFCLASS32) {
+                Elf32_Ehdr *elf_header = (Elf32_Ehdr *)elf_header_ptr;
                 return elf_header->e_machine;
-        }else if(elf_ident[EI_CLASS]==ELFCLASS64){
-                Elf64_Ehdr* elf_header = (Elf64_Ehdr*)elf_header_ptr;
+        } else if (elf_ident[EI_CLASS] == ELFCLASS64) {
+                Elf64_Ehdr *elf_header = (Elf64_Ehdr *)elf_header_ptr;
                 return elf_header->e_machine;
-        }else{
+        } else {
                 return ET_NONE;
         }
 }

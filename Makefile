@@ -61,7 +61,7 @@ MAKEFLAGS += --no-print-directory
 
 export ARCH KERNELVERSION ROOT_DIR BUILD SCRIPT_MAKE_DIR INCLUDE_DIR CC LD AR CFLAGS ARFLAGS LDFLAGS LIBS DBG MEM_SIZE
 
-all:  init have_config $(Target_BIN) clean
+all:  init have_config $(Target_BIN)
 
 include $(SCRIPT_MAKE_DIR)/qemu.mk
 include $(SCRIPT_MAKE_DIR)/utils.mk
@@ -112,6 +112,10 @@ config: mrproper
 		then echo "$(GREEN_CHAR)Config Success$(END_CHAR)";  \
 	else $(MAKE) mrproper;  \
 	fi
+config_show:
+	@echo "arch\t=\t"$(ARCH)
+	@echo "kernel_version\t=\t"$(KERNELVERSION)
+	@echo "config_file\t=\t"$(CONFIG_FILE)
 # user must get the ARCH info and then use cross complier
 user: have_config
 	@python3 $(SCRIPT_CONFIG_DIR)/user.py $(ARCH) ${ROOT_DIR} $(SCRIPT_CONFIG_DIR)/user.json
