@@ -13,6 +13,60 @@ char elf_e_ident_data_str[ELF_E_IDENT_DATA_NUM][ELF_STR_LEN] = {
         {"LSB data"},
         {"MSB data"},
 };
+char elf_pt_type_str[ELF_PT_TYPE_NUM][ELF_STR_LEN] = {
+        {"NULL"},
+        {"LOAD"},
+        {"DYNAMIC"},
+        {"INTERP"},
+        {"NOTE"},
+        {"SHLIB"},
+        {"PHDR"},
+        {"TLS"},
+};
+void print_ph_type(u32 p_type)
+{
+        if (p_type <= 7) {
+                debug("p_type\t\t:\t%s\n", elf_pt_type_str[p_type]);
+        } else {
+                switch (p_type) {
+                case PT_GNU_EH_FRAME:
+                        debug("p_type\t\t:\tGNU_EH_FRAME\n");
+                        break;
+                case PT_GNU_STACK:
+                        debug("p_type\t\t:\tGNU_STACK\n");
+                        break;
+                case PT_GNU_RELRO:
+                        debug("p_type\t\t:\tGNU_RELRO\n");
+                        break;
+                case PT_LOOS:
+                        debug("p_type\t\t:\tLOOS\n");
+                        break;
+                case PT_HIOS:
+                        debug("p_type\t\t:\tHIOS\n");
+                        break;
+                case LOPROC:
+                        debug("p_type\t\t:\tLOPROC\n");
+                        break;
+                case HIPROC:
+                        debug("p_type\t\t:\tHIPROC\n");
+                        break;
+                default:
+                        debug("p_type\t\t:\tUNKNOWN 0x%x\n", p_type);
+                        break;
+                }
+        }
+}
+void print_ph_flags(u32 p_flags)
+{
+        debug("p_flags\t\t:\t");
+        if (p_flags & PF_X)
+                debug("X");
+        if (p_flags & PF_X)
+                debug("W");
+        if (p_flags & PF_X)
+                debug("R");
+        debug("\n");
+}
 void print_elf_type(u16 elf_type)
 {
         switch (elf_type) {
@@ -71,6 +125,7 @@ void print_elf_machine(u16 elf_machine_type)
 /*please use elf check header function check it before print*/
 void print_elf_header(vaddr elf_header_ptr)
 {
+        debug("=== === elf header start === ===\n");
         debug("e_ident\t\t:\t");
         unsigned char* e_ident_ptr = (unsigned char*)elf_header_ptr;
         for (int i = 0; i < EI_NIDENT; i++) {
@@ -120,9 +175,20 @@ void print_elf_header(vaddr elf_header_ptr)
         } else {
                 return;
         }
+        debug("=== === elf header end === ===\n");
 }
 void print_elf_ph32(Elf32_Phdr* phdr)
 {
+        debug("=== === program header start === ===\n");
+        print_ph_type(phdr->p_type);
+        print_ph_flags(phdr->p_flags);
+        debug("p_off\t\t:\t0x%x\n", phdr->p_offset);
+        debug("p_vaddr\t\t:\t0x%x\n", phdr->p_vaddr);
+        debug("p_paddr\t\t:\t0x%x\n", phdr->p_paddr);
+        debug("p_filesz\t:\t0x%x\n", phdr->p_filesz);
+        debug("p_memsz\t\t:\t0x%x\n", phdr->p_memsz);
+        debug("p_align\t\t:\t0x%x\n", phdr->p_align);
+        debug("=== === program header end === ===\n");
 }
 void print_elf_ph64(Elf64_Phdr* phdr)
 {
