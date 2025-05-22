@@ -1,7 +1,11 @@
 #include <modules/elf/elf.h>
 #include <modules/elf/elf_print.h>
+// #define DEBUG
+#ifdef DEBUG
 #define debug pr_debug
-// #define debug pr_off
+#else
+#define debug pr_off
+#endif
 char elf_e_ident_class_str[ELF_E_IDENT_CLASS_NUM][ELF_STR_LEN] = {
         {"No class"},
         {"Elf 32 file"},

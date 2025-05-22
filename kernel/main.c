@@ -51,5 +51,6 @@ void cmain(struct setup_info *arch_setup_info)
         single_cpu_test();
         multi_cpu_test();
 #endif
+        main_init();
         arch_shutdown();
 }

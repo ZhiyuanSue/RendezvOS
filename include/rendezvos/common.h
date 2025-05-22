@@ -28,5 +28,12 @@ void parse_device(uintptr_t addr);
 void interrupt_init(void);
 error_t phy_mm_init(struct setup_info *arch_setup_info);
 error_t virt_mm_init(int cpu_id);
+/*
+        the main_init is used for the outer kernel module init,
+        remember that the rendezvos is a kernel that only include some necessery
+   part, and other part of the kernel should all put into the outer module like
+   rendezvos_linux, so this part init is done here
+*/
+void main_init();
 
 #endif
