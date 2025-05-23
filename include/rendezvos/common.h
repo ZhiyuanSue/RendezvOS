@@ -19,6 +19,7 @@
 #else /*for default config is x86_64*/
 #include <arch/x86_64/arch_common.h>
 #endif
+
 #include <modules/modules.h>
 #ifdef SMP
 #include <rendezvos/smp.h>
