@@ -12,5 +12,5 @@ typedef struct {
         u64 r12;
         u64 rbp;
         u64 rbx;
-} Arch_Context;
+} Arch_Task_Context;
 #endif

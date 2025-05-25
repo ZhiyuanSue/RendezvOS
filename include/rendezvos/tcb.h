@@ -25,10 +25,10 @@ enum tcb_status_base {
         u64 pid;    \
         u64 tid;    \
         u64 status; \
-        Arch_Context ctx;
+        Arch_Task_Context ctx;
 
-extern void context_switch(Arch_Context* old_context,
-                           Arch_Context* new_context);
+extern void context_switch(Arch_Task_Context* old_context,
+                           Arch_Task_Context* new_context);
 /* as the base class of tcb */
 struct tcb_base {
         TCB_COMMON
