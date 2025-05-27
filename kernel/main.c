@@ -1,6 +1,7 @@
 #include <modules/driver/uart/uart_16550A.h>
 #include <modules/log/log.h>
 #include <rendezvos/common.h>
+#include <rendezvos/task/tcb.h>
 
 extern int log_level;
 extern char _bss_start, _bss_end;
@@ -51,6 +52,8 @@ void cmain(struct setup_info *arch_setup_info)
         single_cpu_test();
         multi_cpu_test();
 #endif
+        init_proc();
+
         main_init();
         arch_shutdown();
 }

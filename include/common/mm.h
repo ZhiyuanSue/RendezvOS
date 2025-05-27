@@ -1,5 +1,5 @@
-#ifndef _RENDEZVOS_MM_H_
-#define _RENDEZVOS_MM_H_
+#ifndef _RENDEZVOS_COMMON_MM_H_
+#define _RENDEZVOS_COMMON_MM_H_
 #include <common/stdbool.h>
 #include <common/types.h>
 #include <common/align.h>

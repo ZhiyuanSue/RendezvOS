@@ -2,6 +2,7 @@
 #define _RENDEZVOS_MAP_HANDLER_
 #include <common/types.h>
 #include <common/mm.h>
+#include <rendezvos/mm/mm.h>
 
 #define map_pages 0xFFFFFFFFFFE00000
 /*
@@ -25,21 +26,7 @@ void init_map(struct map_handler* handler, int cpu_id, int pt_zone,
         kernel might try to mapping one page to a different vspace
         and if the vspace is not exist, it should try to alloc a new one
 */
-
-#include <common/dsa/list.h>
-
-#include <rendezvos/sync/spin_lock.h>
-struct vspace {
-        paddr vspace_root;
-        uint64_t vspace_id;
-        spin_lock vspace_lock;
-        struct list_entry vspace_node;
-        // TODO: we just use list entry to orginize the vspaces now
-};
 extern spin_lock kspace_spin_lock_ptr;
-extern struct vspace* current_vspace; // per cpu pointer
-extern struct spin_lock_t vspace_spin_lock; // per cpu pointer
-void init_vspace(struct vspace* vs, paddr vspace_root_addr, uint64_t vspace_id);
 
 error_t map(struct vspace* vs, u64 ppn, u64 vpn, int level,
             ENTRY_FLAGS_t eflags, struct map_handler* handler, spin_lock* lock);
