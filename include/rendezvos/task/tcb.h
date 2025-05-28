@@ -17,6 +17,7 @@
 #endif
 
 enum tcb_status_base {
+        tcb_status_init,
         tcb_status_running,
         tcb_status_active_ready,
         tcb_status_suspend_ready,
@@ -24,12 +25,14 @@ enum tcb_status_base {
         tcb_status_suspend_blocked,
 };
 /* thread */
+#define INVALID_ID -1
 #define THERAD_SCHE_COMMON                           \
         struct {                                     \
                 struct list_entry sched_thread_list; \
         };
 #define THREAD_COMMON                       \
-        u64 tid;                            \
+        i64 tid;                            \
+        i64 belong_pid;                     \
         u64 status;                         \
         struct list_entry thread_list_node; \
         Arch_Task_Context ctx;              \
@@ -45,7 +48,7 @@ typedef struct {
                 struct list_entry sched_task_list; \
         };
 #define TCB_COMMON                          \
-        u64 pid;                            \
+        i64 pid;                            \
         struct list_entry thread_head_node; \
         struct vspace* vs;                  \
         TASK_SCHE_COMMON
@@ -85,6 +88,12 @@ Thread_Base* round_robin_schedule(Task_Manager* tm);
 /*return the root task, here we design the root task have only one thread --
  * idle thread*/
 Tcb_Base* init_proc();
+/* general task and thread new function */
+Tcb_Base* new_task();
+Thread_Base* new_thread();
+error_t add_thread_to_task(Tcb_Base* task, Thread_Base* thread);
+error_t del_thread_from_task(Tcb_Base* task, Thread_Base* thread);
+
 error_t create_idle_thread(Tcb_Base* root_task);
 
 #endif

@@ -1,8 +1,9 @@
 #include <rendezvos/trap.h>
 #include <common/stddef.h>
 #include <rendezvos/percpu.h>
-
+#include <rendezvos/task/tcb.h>
 // void (*irq_handler[NR_IRQ])(struct trap_frame *tf);
+extern Task_Manager *core_tm;
 DEFINE_PER_CPU(struct irq, irq_vector[NR_IRQ]);
 void register_irq_handler(int irq_num, void (*handler)(struct trap_frame *tf),
                           u64 irq_attr)
@@ -20,6 +21,9 @@ void trap_handler(struct trap_frame *tf)
         }
         if (percpu(irq_vector[trap_id].irq_attr) & IRQ_NEED_EOI) {
                 arch_eoi_irq(tf->trap_info);
+        }
+        if (percpu(core_tm) && percpu(core_tm)->schedule) {
+                percpu(core_tm)->schedule(percpu(core_tm));
         }
 }
 void init_interrupt()
