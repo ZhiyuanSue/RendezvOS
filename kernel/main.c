@@ -52,7 +52,7 @@ void cmain(struct setup_info *arch_setup_info)
         single_cpu_test();
         multi_cpu_test();
 #endif
-        init_proc();
+        percpu(core_tm) = init_proc();
 
         main_init();
         arch_shutdown();

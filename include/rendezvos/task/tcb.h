@@ -17,6 +17,8 @@
 #include <arch/x86_64/tcb_arch.h>
 #endif
 
+#include "id.h"
+
 enum tcb_status_base {
         tcb_status_init,
         tcb_status_running,
@@ -40,7 +42,6 @@ typedef struct task_manager Task_Manager;
 extern Task_Manager* core_tm;
 
 /* thread */
-#define INVALID_ID -1
 #define THERAD_SCHE_COMMON                           \
         struct {                                     \
                 struct list_entry sched_thread_list; \
@@ -74,7 +75,7 @@ typedef struct {
         TCB_COMMON
 } Tcb_Base;
 
-extern Tcb_Base* current_task;
+extern Thread_Base* current_thread;
 struct task_manager {
         TASK_MANAGER_SCHE_COMMON
         Thread_Base* (*schedule)(Task_Manager* tm);
@@ -85,10 +86,11 @@ extern void context_switch(Arch_Task_Context* old_context,
 /* scheduler */
 /* rr scheduler */
 Thread_Base* round_robin_schedule(Task_Manager* tm);
+void choose_schedule(Task_Manager* tm);
 
 /*return the root task, here we design the root task have only one thread --
  * idle thread*/
-Tcb_Base* init_proc();
+Task_Manager* init_proc();
 /* general task and thread new function */
 Tcb_Base* new_task();
 Thread_Base* new_thread();
