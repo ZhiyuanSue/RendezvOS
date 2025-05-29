@@ -22,8 +22,10 @@ void trap_handler(struct trap_frame *tf)
         if (percpu(irq_vector[trap_id].irq_attr) & IRQ_NEED_EOI) {
                 arch_eoi_irq(tf->trap_info);
         }
-        if (percpu(core_tm) && percpu(core_tm)->schedule) {
-                percpu(core_tm)->schedule(percpu(core_tm));
+        if (!arch_int_from_kernel(tf)) {
+                if (percpu(core_tm) && percpu(core_tm)->schedule) {
+                        percpu(core_tm)->schedule(percpu(core_tm));
+                }
         }
 }
 void init_interrupt()

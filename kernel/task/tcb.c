@@ -44,6 +44,29 @@ error_t del_thread_from_task(Tcb_Base* task, Thread_Base* thread)
         thread->belong_pid = INVALID_ID;
         return 0;
 }
+error_t add_task_to_manager(Task_Manager* core_tm, Tcb_Base* task)
+{
+        if (!core_tm || !task)
+                return 0;
+        if (task->tm) {
+                pr_error("[ERROR] this task have has a manager\n");
+                return -EPERM;
+        }
+        list_add_tail(&(task->sched_task_list), &(core_tm->sched_task_list));
+        return 0;
+}
+error_t add_thread_to_manager(Task_Manager* core_tm, Thread_Base* thread)
+{
+        if (!core_tm || !thread)
+                return 0;
+        if (thread->tm) {
+                pr_error("[ERROR] this thread have hase a manager\n");
+                return -EPERM;
+        }
+        list_add_tail(&(thread->sched_thread_list),
+                      &(core_tm->sched_task_list));
+        return 0;
+}
 
 Tcb_Base* new_task()
 {

@@ -3,6 +3,7 @@
 #include <common/types.h>
 
 #define GDT_SIZE            4
+#define GDT_KERNEL_CS_INDEX 1
 #define GDT_TSS_LOWER_INDEX 2
 #define GDT_TSS_UPPER_INDEX 3
 

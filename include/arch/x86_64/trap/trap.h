@@ -1,6 +1,8 @@
 #ifndef _RENDEZVOS_X86_64_TRAP_H_
 #define _RENDEZVOS_X86_64_TRAP_H_
 #include <common/types.h>
+#include <common/stdbool.h>
+#include <arch/x86_64/desc.h>
 #define NR_IRQ             256
 #define TRAP_ID(trap_info) (trap_info)
 enum TRAP_NUM {
@@ -55,4 +57,8 @@ struct trap_frame {
 };
 void arch_init_interrupt(void);
 void arch_unknown_trap_handler(struct trap_frame *tf);
+static inline bool arch_int_from_kernel(struct trap_frame *tf)
+{
+        return tf->cs == sizeof(union desc) * GDT_KERNEL_CS_INDEX;
+}
 #endif

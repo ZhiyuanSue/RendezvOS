@@ -151,4 +151,16 @@
 #define MPIDR_EL1_U(MPIDR_VAL)    ((MPIDR_VAL & (0x1UL << 30)) >> 30)
 #define MPIDR_EL1_MT(MPIDR_VAL)   ((MPIDR_VAL & (0x1UL << 24)) >> 24)
 
+/*SPSR*/
+#define SPSR_EL1_UINJ(SPSR_VAL)  ((SPSR_VAL & (0x1UL << 36)) >> 36)
+#define SPSR_EL1_M_3_0(SPSR_VAL) (SPSR_VAL & 0xfUL)
+/*The M value under 32 and 64 is different,but we do not consider aarch32*/
+#define SPSR_EL1_M_64_EL0      (0)
+#define SPSR_EL1_M_64_EL1T     (0x4)
+#define SPSR_EL1_M_64_EL1H     (0x5)
+#define SPSR_EL1_M_64_EL1T_HCR (0x8)
+#define SPSR_EL1_M_64_EL1H_HCR (0x9)
+#define SPSR_EL1_M_4(SPSR_VAL) ((SPSR_VAL & (0x1UL << 4)) >> 4)
+#define SPSR_EL1_M_4_AARCH64   (0)
+#define SPSR_EL1_M_4_AARCH32   (1)
 #endif

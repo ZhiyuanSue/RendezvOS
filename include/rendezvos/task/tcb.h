@@ -3,6 +3,7 @@
 
 #include <common/types.h>
 #include <common/dsa/list.h>
+#include <common/dsa/rb_tree.h>
 #include <rendezvos/mm/mm.h>
 #ifdef _AARCH64_
 #include <arch/aarch64/tcb_arch.h>
@@ -24,6 +25,20 @@ enum tcb_status_base {
         tcb_status_active_blocked,
         tcb_status_suspend_blocked,
 };
+
+/*
+we define a task manager ,
+which is used to manage all the tasks and all the threads
+it is a percpu structure and have a percpu schedule algorithm
+*/
+#define TASK_MANAGER_SCHE_COMMON                     \
+        struct {                                     \
+                struct list_entry sched_task_list;   \
+                struct list_entry sched_thread_list; \
+        };
+typedef struct task_manager Task_Manager;
+extern Task_Manager* core_tm;
+
 /* thread */
 #define INVALID_ID -1
 #define THERAD_SCHE_COMMON                           \
@@ -33,6 +48,7 @@ enum tcb_status_base {
 #define THREAD_COMMON                       \
         i64 tid;                            \
         i64 belong_pid;                     \
+        Task_Manager* tm;                   \
         u64 status;                         \
         struct list_entry thread_list_node; \
         Arch_Task_Context ctx;              \
@@ -49,6 +65,7 @@ typedef struct {
         };
 #define TCB_COMMON                          \
         i64 pid;                            \
+        Task_Manager* tm;                   \
         struct list_entry thread_head_node; \
         struct vspace* vs;                  \
         TASK_SCHE_COMMON
@@ -58,28 +75,12 @@ typedef struct {
 } Tcb_Base;
 
 extern Tcb_Base* current_task;
-
-extern void context_switch(Arch_Task_Context* old_context,
-                           Arch_Task_Context* new_context);
-
-/*
-we define a task manager ,
-which is used to manage all the tasks and all the threads
-it is a percpu structure and have a percpu schedule algorithm
-*/
-#include <common/types.h>
-#include <rendezvos/task/tcb.h>
-#define TASK_MANAGER_SCHE_COMMON                     \
-        struct {                                     \
-                struct list_entry sched_task_list;   \
-                struct list_entry sched_thread_list; \
-        };
-typedef struct task_manager Task_Manager;
 struct task_manager {
         TASK_MANAGER_SCHE_COMMON
         Thread_Base* (*schedule)(Task_Manager* tm);
 };
-extern Task_Manager* core_tm;
+extern void context_switch(Arch_Task_Context* old_context,
+                           Arch_Task_Context* new_context);
 
 /* scheduler */
 /* rr scheduler */
@@ -93,6 +94,8 @@ Tcb_Base* new_task();
 Thread_Base* new_thread();
 error_t add_thread_to_task(Tcb_Base* task, Thread_Base* thread);
 error_t del_thread_from_task(Tcb_Base* task, Thread_Base* thread);
+error_t add_task_to_manager(Task_Manager* core_tm, Tcb_Base* task);
+error_t add_thread_to_manager(Task_Manager* core_tm, Thread_Base* thread);
 
 error_t create_idle_thread(Tcb_Base* root_task);
 

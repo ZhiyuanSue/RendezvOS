@@ -2,6 +2,7 @@
 #define _RENDEZVOS_AARCH64_TRAP_H_
 #include <common/types.h>
 #include <arch/aarch64/gic/gic_v2.h>
+#include <arch/aarch64/sys_ctrl_def.h>
 #include "trap_def.h"
 
 #define AARCH64_IRQ_TO_TRAP_ID(irq_number) (irq_number + AARCH64_IRQ_OFFSET)
@@ -36,4 +37,8 @@ struct trap_frame {
 
 void arch_init_interrupt(void);
 void arch_unknown_trap_handler(struct trap_frame *tf);
+static inline bool arch_int_from_kernel(struct trap_frame *tf)
+{
+        return SPSR_EL1_M_3_0(tf->SPSR) != SPSR_EL1_M_64_EL0;
+}
 #endif
