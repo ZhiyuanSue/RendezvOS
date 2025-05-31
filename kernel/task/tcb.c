@@ -10,9 +10,8 @@ Task_Manager* init_proc()
         percpu(core_tm) = new_task_manager();
         /*create the root task and init it*/
         Tcb_Base* root_task = new_task();
-        root_task->tm = percpu(core_tm);
         root_task->pid = get_new_pid();
-        root_task->vs = current_vspace;
+        root_task->vs = percpu(current_vspace);
         add_task_to_manager(percpu(core_tm), root_task);
         return percpu(core_tm);
 }
@@ -66,7 +65,7 @@ error_t add_thread_to_manager(Task_Manager* core_tm, Thread_Base* thread)
         if (!core_tm || !thread)
                 return 0;
         if (thread->tm) {
-                pr_error("[ERROR] this thread have hase a manager\n");
+                pr_error("[ERROR] this thread have has a manager\n");
                 return -EPERM;
         }
         list_add_tail(&(thread->sched_thread_list),
@@ -84,6 +83,7 @@ Tcb_Base* new_task()
                 INIT_LIST_HEAD(&(tcb->sched_task_list));
                 INIT_LIST_HEAD(&(tcb->thread_head_node));
                 tcb->vs = NULL;
+                tcb->tm = NULL;
         }
         return tcb;
 }
@@ -98,6 +98,8 @@ Thread_Base* new_thread()
                 thread->status = tcb_status_init;
                 INIT_LIST_HEAD(&(thread->sched_thread_list));
                 INIT_LIST_HEAD(&(thread->thread_list_node));
+                thread->belong_pid=INVALID_ID;
+                thread->tm=NULL;
         }
         return thread;
 }

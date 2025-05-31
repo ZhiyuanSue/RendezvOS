@@ -47,10 +47,10 @@ void cmain(struct setup_info *arch_setup_info)
                 return;
         }
 
-        start_smp(arch_setup_info);
         percpu(core_tm) = init_proc();
 
         main_init();
+        start_smp(arch_setup_info);
 #ifdef TEST
         single_cpu_test();
         multi_cpu_test();
