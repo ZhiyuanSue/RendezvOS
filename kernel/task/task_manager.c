@@ -25,3 +25,12 @@ void choose_schedule(Task_Manager* tm)
 {
         tm->schedule = round_robin_schedule;
 }
+void schedule(Task_Manager* tm)
+{
+        if (!tm)
+                return;
+        Thread_Base* next = tm->schedule(tm);
+        Thread_Base* curr = percpu(current_thread);
+        percpu(current_thread) = next;
+        context_switch(&(curr->ctx), &(next->ctx));
+}

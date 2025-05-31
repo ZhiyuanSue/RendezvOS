@@ -43,17 +43,19 @@ typedef struct task_manager Task_Manager;
 extern Task_Manager* core_tm;
 
 /* thread */
+extern u64 thread_kstack_size;
 #define THERAD_SCHE_COMMON                           \
         struct {                                     \
                 struct list_entry sched_thread_list; \
         };
-#define THREAD_COMMON                       \
-        i64 tid;                            \
-        i64 belong_pid;                     \
-        Task_Manager* tm;                   \
-        u64 status;                         \
-        struct list_entry thread_list_node; \
-        Arch_Task_Context ctx;              \
+#define THREAD_COMMON                                   \
+        i64 tid;                                        \
+        i64 belong_pid;                                 \
+        Task_Manager* tm;                               \
+        u64 status;                                     \
+        struct list_entry thread_list_node;             \
+        u64 kstack_bottom; /*for stack,it's high addr*/ \
+        Arch_Task_Context ctx;                          \
         THERAD_SCHE_COMMON
 
 typedef struct {
@@ -77,10 +79,13 @@ typedef struct {
 } Tcb_Base;
 
 extern Thread_Base* current_thread;
+extern Thread_Base* init_thread_ptr;
+extern Thread_Base* idle_thread_ptr;
 struct task_manager {
         TASK_MANAGER_SCHE_COMMON
         Thread_Base* (*schedule)(Task_Manager* tm);
 };
+void schedule(Task_Manager* tm);
 extern void context_switch(Arch_Task_Context* old_context,
                            Arch_Task_Context* new_context);
 
@@ -101,6 +106,7 @@ error_t del_thread_from_task(Tcb_Base* task, Thread_Base* thread);
 error_t add_task_to_manager(Task_Manager* core_tm, Tcb_Base* task);
 error_t add_thread_to_manager(Task_Manager* core_tm, Thread_Base* thread);
 
+error_t create_init_thread(Tcb_Base* root_task);
 error_t create_idle_thread(Tcb_Base* root_task);
 
 #endif
