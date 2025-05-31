@@ -1,6 +1,5 @@
 #include <rendezvos/task/tcb.h>
 #include <rendezvos/percpu.h>
-#include <rendezvos/mm/spmalloc.h>
 #include <modules/log/log.h>
 #include <rendezvos/error.h>
 extern struct allocator* kallocator;
@@ -8,18 +7,14 @@ DEFINE_PER_CPU(Thread_Base*, current_thread);
 
 Task_Manager* init_proc()
 {
-        struct allocator* cpu_allocator = percpu(kallocator);
-        Task_Manager* tm = (Task_Manager*)(cpu_allocator->m_alloc(
-                cpu_allocator, sizeof(Task_Manager)));
-        choose_schedule(tm);
-        INIT_LIST_HEAD(&(tm->sched_task_list));
-        INIT_LIST_HEAD(&(tm->sched_thread_list));
-        /*create the root task and idle thread*/
+        percpu(core_tm) = new_task_manager();
+        /*create the root task and init it*/
         Tcb_Base* root_task = new_task();
-        root_task->tm=tm;
-        root_task->pid=0;
-        
-        return tm;
+        root_task->tm = percpu(core_tm);
+        root_task->pid = get_new_pid();
+        root_task->vs = current_vspace;
+        add_task_to_manager(percpu(core_tm), root_task);
+        return percpu(core_tm);
 }
 error_t add_thread_to_task(Tcb_Base* task, Thread_Base* thread)
 {

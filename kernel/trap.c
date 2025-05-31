@@ -2,6 +2,7 @@
 #include <common/stddef.h>
 #include <rendezvos/percpu.h>
 #include <rendezvos/task/tcb.h>
+#include <modules/log/log.h>
 // void (*irq_handler[NR_IRQ])(struct trap_frame *tf);
 extern Task_Manager *core_tm;
 DEFINE_PER_CPU(struct irq, irq_vector[NR_IRQ]);
@@ -23,6 +24,7 @@ void trap_handler(struct trap_frame *tf)
                 arch_eoi_irq(tf->trap_info);
         }
         if (!arch_int_from_kernel(tf)) {
+                pr_info("user int and schedule\n");
                 if (percpu(core_tm) && percpu(core_tm)->schedule) {
                         percpu(core_tm)->schedule(percpu(core_tm));
                 }

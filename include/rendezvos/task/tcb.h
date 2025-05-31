@@ -5,6 +5,7 @@
 #include <common/dsa/list.h>
 #include <common/dsa/rb_tree.h>
 #include <rendezvos/mm/mm.h>
+#include <rendezvos/mm/spmalloc.h>
 #ifdef _AARCH64_
 #include <arch/aarch64/tcb_arch.h>
 #elif defined _LOONGARCH_
@@ -93,6 +94,7 @@ void choose_schedule(Task_Manager* tm);
 Task_Manager* init_proc();
 /* general task and thread new function */
 Tcb_Base* new_task();
+Task_Manager* new_task_manager();
 Thread_Base* new_thread();
 error_t add_thread_to_task(Tcb_Base* task, Thread_Base* thread);
 error_t del_thread_from_task(Tcb_Base* task, Thread_Base* thread);

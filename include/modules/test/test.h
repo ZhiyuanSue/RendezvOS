@@ -20,6 +20,7 @@ int rb_tree_test(void);
 int nexus_test(void);
 int spmalloc_test(void);
 int elf_read_test(void);
+int task_test(void);
 
 /*in smp case
 one test function cannot easily be checked
