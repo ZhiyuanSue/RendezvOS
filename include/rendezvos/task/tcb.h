@@ -43,7 +43,7 @@ typedef struct task_manager Task_Manager;
 extern Task_Manager* core_tm;
 
 /* thread */
-extern u64 thread_kstack_size;
+extern u64 thread_kstack_page_num ;
 #define THERAD_SCHE_COMMON                           \
         struct {                                     \
                 struct list_entry sched_thread_list; \

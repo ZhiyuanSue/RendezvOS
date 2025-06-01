@@ -2,6 +2,7 @@
     .global     context_switch
 context_switch:
     // save the old
+    pushf
     mov %rsp,   (%rdi)
     mov %r15,   8(%rdi)
     mov %r14,   16(%rdi)
@@ -10,6 +11,7 @@ context_switch:
     mov %rbp,   40(%rdi)
     mov %rbx,   48(%rdi)
 
+    
     // load the new
     mov 48(%rsi),   %rbx
     mov 40(%rsi),   %rbp
@@ -18,5 +20,6 @@ context_switch:
     mov 16(%rsi),   %r14
     mov 8(%rsi),    %r15
     mov (%rsi),     %rsp
+    popf
     // return
     ret

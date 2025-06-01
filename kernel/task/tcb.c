@@ -3,7 +3,7 @@
 #include <modules/log/log.h>
 #include <rendezvos/error.h>
 
-u64 thread_kstack_size = PAGE_SIZE * 2;
+u64 thread_kstack_page_num = 2;
 extern struct allocator* kallocator;
 DEFINE_PER_CPU(Thread_Base*, current_thread);
 
@@ -20,6 +20,7 @@ Task_Manager* init_proc()
         create_idle_thread(root_task);
         pr_info("start context_switch\n");
         if (percpu(init_thread_ptr) && percpu(idle_thread_ptr)) {
+                percpu(current_thread) = idle_thread_ptr;
                 context_switch(&(percpu(init_thread_ptr)->ctx),
                                &(percpu(idle_thread_ptr)->ctx));
         } else {
@@ -112,6 +113,7 @@ Thread_Base* new_thread()
                 INIT_LIST_HEAD(&(thread->thread_list_node));
                 thread->belong_pid = INVALID_ID;
                 thread->tm = NULL;
+                thread->kstack_bottom = 0;
         }
         return thread;
 }

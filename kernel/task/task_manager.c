@@ -2,6 +2,8 @@
 #include <rendezvos/percpu.h>
 #include <rendezvos/sync/spin_lock.h>
 extern struct allocator* kallocator;
+extern Thread_Base* init_thread_ptr;
+extern Thread_Base* idle_thread_ptr;
 DEFINE_PER_CPU(Task_Manager*, core_tm);
 Thread_Base* round_robin_schedule(Task_Manager* tm)
 {
@@ -29,8 +31,8 @@ void schedule(Task_Manager* tm)
 {
         if (!tm)
                 return;
-        Thread_Base* next = tm->schedule(tm);
-        Thread_Base* curr = percpu(current_thread);
-        percpu(current_thread) = next;
-        context_switch(&(curr->ctx), &(next->ctx));
+        // Thread_Base* next = tm->schedule(tm);
+        // Thread_Base* curr = percpu(current_thread);
+        // percpu(current_thread) = next;
+        context_switch(&(percpu(idle_thread_ptr)->ctx), &(percpu(init_thread_ptr)->ctx));
 }
