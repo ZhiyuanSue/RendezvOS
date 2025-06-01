@@ -35,6 +35,7 @@ static inline void arch_set_idle_thread_ctx(Arch_Task_Context* ctx,
                                             void* stack_bottom)
 {
         ctx->sp_el1 = (u64)stack_bottom;
-        ctx->spsr_el1 = ctx->regs[aarch64_task_ctx_lr] = (u64)idle_thread_ptr;
+        ctx->regs[aarch64_task_ctx_lr] = (u64)idle_thread_ptr;
+        /*TODO:should I add spsr el1???*/
 }
 #endif

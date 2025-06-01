@@ -18,7 +18,6 @@ Task_Manager* init_proc()
 
         create_init_thread(root_task);
         create_idle_thread(root_task);
-        pr_info("start context_switch\n");
         if (percpu(init_thread_ptr) && percpu(idle_thread_ptr)) {
                 percpu(current_thread) = idle_thread_ptr;
                 context_switch(&(percpu(init_thread_ptr)->ctx),

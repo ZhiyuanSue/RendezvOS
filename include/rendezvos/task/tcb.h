@@ -43,7 +43,7 @@ typedef struct task_manager Task_Manager;
 extern Task_Manager* core_tm;
 
 /* thread */
-extern u64 thread_kstack_page_num ;
+extern u64 thread_kstack_page_num;
 #define THERAD_SCHE_COMMON                           \
         struct {                                     \
                 struct list_entry sched_thread_list; \
@@ -108,5 +108,8 @@ error_t add_thread_to_manager(Task_Manager* core_tm, Thread_Base* thread);
 
 error_t create_init_thread(Tcb_Base* root_task);
 error_t create_idle_thread(Tcb_Base* root_task);
+
+Thread_Base* create_thread(void* __func);
+error_t thread_join(Tcb_Base* task, Thread_Base* thread);
 
 #endif

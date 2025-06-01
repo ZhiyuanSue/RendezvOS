@@ -34,5 +34,6 @@ void schedule(Task_Manager* tm)
         // Thread_Base* next = tm->schedule(tm);
         // Thread_Base* curr = percpu(current_thread);
         // percpu(current_thread) = next;
-        context_switch(&(percpu(idle_thread_ptr)->ctx), &(percpu(init_thread_ptr)->ctx));
+        context_switch(&(percpu(idle_thread_ptr)->ctx),
+                       &(percpu(init_thread_ptr)->ctx));
 }

@@ -2,6 +2,7 @@
 #include <rendezvos/percpu.h>
 #include <modules/log/log.h>
 #include <common/string.h>
+#include <rendezvos/error.h>
 
 extern struct nexus_node* nexus_root;
 DEFINE_PER_CPU(Thread_Base*, init_thread_ptr);
@@ -23,9 +24,19 @@ error_t create_init_thread(Tcb_Base* root_task)
 }
 error_t create_idle_thread(Tcb_Base* root_task)
 {
-        Thread_Base* idle_ptr = percpu(idle_thread_ptr) = new_thread();
-        add_thread_to_task(root_task, idle_ptr);
-        add_thread_to_manager(percpu(core_tm), idle_ptr);
+        Thread_Base* idle_t = percpu(idle_thread_ptr) =
+                create_thread((void*)idle_thread);
+        if (!idle_t) {
+                pr_error("[Error] create idle thread fail\n");
+                return -EPERM;
+        }
+        error_t e = thread_join(root_task, idle_t);
+        return e;
+}
+/*general thread create function*/
+Thread_Base* create_thread(void* __func)
+{
+        Thread_Base* thread = new_thread();
         /*
                 TODO: we alloc a page as idle thread's stack, we must record
                 although idle thread is always exist.
@@ -36,10 +47,18 @@ error_t create_idle_thread(Tcb_Base* root_task)
                                         0,
                                         percpu(nexus_root));
         memset(stack_ptr, '\0', thread_kstack_page_num * PAGE_SIZE);
-        arch_set_idle_thread_ctx(&(idle_ptr->ctx),
-                                 (void*)(idle_thread),
+        arch_set_idle_thread_ctx(&(thread->ctx),
+                                 (void*)(__func),
                                  stack_ptr
                                          + thread_kstack_page_num * PAGE_SIZE);
-
-        return 0;
+        return thread;
+}
+error_t thread_join(Tcb_Base* task, Thread_Base* thread)
+{
+        error_t res = 0;
+        res = add_thread_to_task(task, thread);
+        if (res)
+                return res;
+        res = add_thread_to_manager(percpu(core_tm), thread);
+        return res;
 }
