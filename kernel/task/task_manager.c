@@ -7,7 +7,7 @@ extern Thread_Base* idle_thread_ptr;
 DEFINE_PER_CPU(Task_Manager*, core_tm);
 Thread_Base* round_robin_schedule(Task_Manager* tm)
 {
-        struct list_entry* next = current_thread->sched_thread_list.next;
+        struct list_entry* next = tm->current_thread->sched_thread_list.next;
         if (next == &(tm->sched_thread_list)) {
                 next = next->next;
         }
@@ -31,9 +31,7 @@ void schedule(Task_Manager* tm)
 {
         if (!tm)
                 return;
-        // Thread_Base* next = tm->schedule(tm);
-        // Thread_Base* curr = percpu(current_thread);
-        // percpu(current_thread) = next;
-        context_switch(&(percpu(idle_thread_ptr)->ctx),
-                       &(percpu(init_thread_ptr)->ctx));
+        Thread_Base* curr = tm->current_thread;
+        tm->current_thread = tm->schedule(tm);
+        context_switch(&(curr->ctx), &(tm->current_thread->ctx));
 }

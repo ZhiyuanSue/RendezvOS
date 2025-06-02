@@ -41,16 +41,15 @@ Thread_Base* create_thread(void* __func)
                 TODO: we alloc a page as idle thread's stack, we must record
                 although idle thread is always exist.
         */
-        void* stack_ptr = get_free_page(thread_kstack_page_num,
-                                        ZONE_NORMAL,
-                                        KERNEL_VIRT_OFFSET,
-                                        0,
-                                        percpu(nexus_root));
-        memset(stack_ptr, '\0', thread_kstack_page_num * PAGE_SIZE);
-        arch_set_idle_thread_ctx(&(thread->ctx),
-                                 (void*)(__func),
-                                 stack_ptr
-                                         + thread_kstack_page_num * PAGE_SIZE);
+        void* stack = get_free_page(thread_kstack_page_num,
+                                    ZONE_NORMAL,
+                                    KERNEL_VIRT_OFFSET,
+                                    0,
+                                    percpu(nexus_root));
+        memset(stack, '\0', thread_kstack_page_num * PAGE_SIZE);
+        arch_set_new_thread_ctx(&(thread->ctx),
+                                (void*)(__func),
+                                stack + thread_kstack_page_num * PAGE_SIZE);
         return thread;
 }
 error_t thread_join(Tcb_Base* task, Thread_Base* thread)

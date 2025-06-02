@@ -78,11 +78,12 @@ typedef struct {
         TCB_COMMON
 } Tcb_Base;
 
-extern Thread_Base* current_thread;
 extern Thread_Base* init_thread_ptr;
 extern Thread_Base* idle_thread_ptr;
 struct task_manager {
         TASK_MANAGER_SCHE_COMMON
+        Tcb_Base* current_task;
+        Thread_Base* current_thread;
         Thread_Base* (*schedule)(Task_Manager* tm);
 };
 void schedule(Task_Manager* tm);

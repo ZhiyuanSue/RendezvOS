@@ -5,7 +5,6 @@
 
 u64 thread_kstack_page_num = 2;
 extern struct allocator* kallocator;
-DEFINE_PER_CPU(Thread_Base*, current_thread);
 
 Task_Manager* init_proc()
 {
@@ -15,11 +14,12 @@ Task_Manager* init_proc()
         root_task->pid = get_new_pid();
         root_task->vs = percpu(current_vspace);
         add_task_to_manager(percpu(core_tm), root_task);
+        percpu(core_tm)->current_task = root_task;
 
         create_init_thread(root_task);
         create_idle_thread(root_task);
         if (percpu(init_thread_ptr) && percpu(idle_thread_ptr)) {
-                percpu(current_thread) = idle_thread_ptr;
+                percpu(core_tm)->current_thread = idle_thread_ptr;
                 context_switch(&(percpu(init_thread_ptr)->ctx),
                                &(percpu(idle_thread_ptr)->ctx));
         } else {
@@ -81,7 +81,7 @@ error_t add_thread_to_manager(Task_Manager* core_tm, Thread_Base* thread)
                 return -EPERM;
         }
         list_add_tail(&(thread->sched_thread_list),
-                      &(core_tm->sched_task_list));
+                      &(core_tm->sched_thread_list));
         return 0;
 }
 

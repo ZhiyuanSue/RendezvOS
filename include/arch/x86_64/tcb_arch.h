@@ -15,12 +15,14 @@ typedef struct {
 } Arch_Task_Context;
 static inline void arch_task_ctx_init(Arch_Task_Context* ctx)
 {
-        ctx->rsp = ctx->r15 = ctx->r14 = ctx->r13 = ctx->r12 = ctx->rbp =
-                ctx->rbx = 0;
+        ctx->rsp = 0;
+        ctx->rbp = ctx->rbx = 0;
+        ctx->r15 = ctx->r14 = 0;
+        ctx->r13 = ctx->r12 = 0;
 }
-static inline void arch_set_idle_thread_ctx(Arch_Task_Context* ctx,
-                                            void* idle_thread_ptr,
-                                            void* stack_bottom)
+static inline void arch_set_new_thread_ctx(Arch_Task_Context* ctx,
+                                           void* idle_thread_ptr,
+                                           void* stack_bottom)
 {
         /*here the stack_bottom - 16 is rflags, and the stack_bottom - 8 is
          * return address*/

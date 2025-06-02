@@ -30,9 +30,9 @@ static inline void arch_task_ctx_init(Arch_Task_Context* ctx)
         ctx->sp_el1 = ctx->spsr_el1 = 0;
         memset(&(ctx->regs), 0, sizeof(u64) * NR_AARCH64_CALLEE_SAVED_REGS);
 }
-static inline void arch_set_idle_thread_ctx(Arch_Task_Context* ctx,
-                                            void* idle_thread_ptr,
-                                            void* stack_bottom)
+static inline void arch_set_new_thread_ctx(Arch_Task_Context* ctx,
+                                           void* idle_thread_ptr,
+                                           void* stack_bottom)
 {
         ctx->sp_el1 = (u64)stack_bottom;
         ctx->regs[aarch64_task_ctx_lr] = (u64)idle_thread_ptr;
