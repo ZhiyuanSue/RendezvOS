@@ -185,7 +185,7 @@ struct property* dev_node_find_property(const struct device_node* node,
 error_t property_read_string(const struct property* prop, char** str)
 {
         if (!prop || !str)
-                return -EPERM;
+                return -E_IN_PARAM;
         *str = prop->data;
         return 0;
 }
@@ -193,7 +193,7 @@ error_t property_read_string(const struct property* prop, char** str)
 error_t property_read_u8_arr(const struct property* prop, u8* arr, int n)
 {
         if (!prop || !arr || !n)
-                return -EPERM;
+                return -E_IN_PARAM;
         if (n > prop->len)
                 n = prop->len;
         memcpy(arr, prop->data, n);
@@ -202,7 +202,7 @@ error_t property_read_u8_arr(const struct property* prop, u8* arr, int n)
 error_t property_read_u16_arr(const struct property* prop, u16* arr, int n)
 {
         if (!prop || !arr || !n)
-                return -EPERM;
+                return -E_IN_PARAM;
         if ((n * sizeof(u16)) > prop->len)
                 n = prop->len / sizeof(u16);
         u16* src_ptr = prop->data;
@@ -214,7 +214,7 @@ error_t property_read_u16_arr(const struct property* prop, u16* arr, int n)
 error_t property_read_u32_arr(const struct property* prop, u32* arr, int n)
 {
         if (!prop || !arr || !n)
-                return -EPERM;
+                return -E_IN_PARAM;
         if ((n * sizeof(u32)) > prop->len)
                 n = prop->len / sizeof(u32);
         u32* src_ptr = prop->data;
@@ -226,7 +226,7 @@ error_t property_read_u32_arr(const struct property* prop, u32* arr, int n)
 error_t property_read_u64_arr(const struct property* prop, u64* arr, int n)
 {
         if (!prop || !arr || !n)
-                return -EPERM;
+                return -E_IN_PARAM;
         if ((n * sizeof(u64)) > prop->len)
                 n = prop->len / sizeof(u64);
         u64* src_ptr = prop->data;
@@ -239,28 +239,28 @@ error_t property_read_u64_arr(const struct property* prop, u64* arr, int n)
 error_t property_read_u8(const struct property* prop, u8* value)
 {
         if (!prop || !value)
-                return -EPERM;
+                return -E_IN_PARAM;
         *value = *((u8*)(prop->data));
         return 0;
 }
 error_t property_read_u16(const struct property* prop, u16* value)
 {
         if (!prop || !value)
-                return -EPERM;
+                return -E_IN_PARAM;
         *value = SWAP_ENDIANNESS_16(*((u16*)(prop->data)));
         return 0;
 }
 error_t property_read_u32(const struct property* prop, u32* value)
 {
         if (!prop || !value)
-                return -EPERM;
+                return -E_IN_PARAM;
         *value = SWAP_ENDIANNESS_32(*((u32*)(prop->data)));
         return 0;
 }
 error_t property_read_u64(const struct property* prop, u64* value)
 {
         if (!prop || !value)
-                return -EPERM;
+                return -E_IN_PARAM;
         *value = SWAP_ENDIANNESS_64(*((u64*)(prop->data)));
         return 0;
 }

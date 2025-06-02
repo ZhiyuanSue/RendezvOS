@@ -218,12 +218,12 @@ static inline error_t mark_childs(int zone_number, int order, u64 index)
                 return (0);
 
         if (del_node->flags & PAGE_FRAME_ALLOCED)
-                return (-ENOMEM);
+                return (-E_RENDEZVOS);
 
         del_node->flags |= PAGE_FRAME_ALLOCED;
         if (mark_childs(zone_number, order - 1, index << 1)
             || mark_childs(zone_number, order - 1, (index << 1) + 1))
-                return (-ENOMEM);
+                return (-E_RENDEZVOS);
 
         return (0);
 }
@@ -257,7 +257,7 @@ i64 pmm_alloc_zone(int alloc_order, int zone_number)
 
         if (!find_an_order) {
                 pr_info("not find an order\n");
-                return (-ENOMEM);
+                return (-E_RENDEZVOS);
         }
 
         /*second, if the order is bigger, split it*/
@@ -269,7 +269,7 @@ i64 pmm_alloc_zone(int alloc_order, int zone_number)
                 avaliable_header = GET_AVALI_HEAD_PTR(zone_number, tmp_order);
                 header = GET_HEAD_PTR(zone_number, tmp_order);
                 if (!avaliable_header)
-                        return (-ENOMEM);
+                        return (-E_RENDEZVOS);
 
                 del_node = avaliable_header;
                 index = del_node - header;
@@ -281,7 +281,7 @@ i64 pmm_alloc_zone(int alloc_order, int zone_number)
 
                 if ((left_child->flags & PAGE_FRAME_ALLOCED)
                     || (right_child->flags & PAGE_FRAME_ALLOCED))
-                        return (-ENOMEM);
+                        return (-E_RENDEZVOS);
 
                 if (frame_list_only_one(GET_ORDER_PAGES(tmp_order), del_node))
                         GET_AVALI_HEAD_PTR(zone_number, tmp_order) = NULL;
@@ -317,7 +317,7 @@ i64 pmm_alloc_zone(int alloc_order, int zone_number)
         header = (struct page_frame *)GET_HEAD_PTR(zone_number, tmp_order);
 
         if (!header)
-                return (-ENOMEM);
+                return (-E_RENDEZVOS);
 
         del_node = avaliable_header;
         index = del_node - header;
@@ -332,7 +332,7 @@ i64 pmm_alloc_zone(int alloc_order, int zone_number)
 
         /*Forth,mark all the child node alloced*/
         if (mark_childs(zone_number, tmp_order, index))
-                return (-ENOMEM);
+                return (-E_RENDEZVOS);
 
         buddy_pmm.zone[zone_number].zone_total_avaliable_pages -=
                 1 << alloc_order;
@@ -352,11 +352,11 @@ i64 pmm_alloc(size_t page_number, enum zone_type zone_number)
             < page_number) {
                 pr_error("[ BUDDY ]this zone have no memory to alloc\n");
                 /*TODO:if so ,we need to swap the memory*/
-                return (-ENOMEM);
+                return (-E_RENDEZVOS);
         }
 
         if (page_number > (1 << BUDDY_MAXORDER))
-                return (-ENOMEM);
+                return (-E_RENDEZVOS);
 
         /*calculate the upper 2^n size*/
         alloc_order = calculate_alloc_order(page_number);
@@ -449,15 +449,15 @@ error_t pmm_free(i64 ppn, size_t page_number)
         alloc_order = 0;
         free_one_result = 0;
         zone_number = 0;
-        if (ppn == -ENOMEM)
-                return (-ENOMEM);
+        if (ppn == -E_RENDEZVOS)
+                return (-E_RENDEZVOS);
 
         alloc_order = calculate_alloc_order(page_number);
         for (int page_count = 0; page_count < (1 << alloc_order);
              page_count++) {
                 if (ppn_inrange(ppn + page_count, &zone_number) == false) {
                         pr_error("[ BUDDY ]this ppn is illegal\n");
-                        return (-ENOMEM);
+                        return (-E_RENDEZVOS);
                 }
 
                 /*check whether this page is shared, and if it is shared,just

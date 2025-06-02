@@ -30,7 +30,7 @@ Task_Manager* init_proc()
 error_t add_thread_to_task(Tcb_Base* task, Thread_Base* thread)
 {
         if (!task || !thread)
-                return 0;
+                return -E_IN_PARAM;
         /*first do some checks*/
         if (thread->belong_pid != INVALID_ID) {
                 if (thread->belong_pid == task->pid) {
@@ -39,7 +39,7 @@ error_t add_thread_to_task(Tcb_Base* task, Thread_Base* thread)
                 } else {
                         pr_error(
                                 "[ERROR] try to readd the thread to another task\n");
-                        return -EPERM;
+                        return -E_RENDEZVOS;
                 }
         }
         /*we do not check the linked list */
@@ -51,11 +51,11 @@ error_t add_thread_to_task(Tcb_Base* task, Thread_Base* thread)
 error_t del_thread_from_task(Tcb_Base* task, Thread_Base* thread)
 {
         if (!task || !thread)
-                return 0;
+                return -E_IN_PARAM;
         /*first check whether the thread belongs to the task*/
         if (thread->belong_pid != task->pid) {
                 pr_error("[ERROR] try to delete a thread from another task\n");
-                return -EPERM;
+                return -E_RENDEZVOS;
         }
         list_del_init(&(thread->thread_list_node));
         thread->belong_pid = INVALID_ID;
@@ -64,10 +64,10 @@ error_t del_thread_from_task(Tcb_Base* task, Thread_Base* thread)
 error_t add_task_to_manager(Task_Manager* core_tm, Tcb_Base* task)
 {
         if (!core_tm || !task)
-                return 0;
+                return E_IN_PARAM;
         if (task->tm) {
                 pr_error("[ERROR] this task have has a manager\n");
-                return -EPERM;
+                return -E_RENDEZVOS;
         }
         list_add_tail(&(task->sched_task_list), &(core_tm->sched_task_list));
         return 0;
@@ -78,7 +78,7 @@ error_t add_thread_to_manager(Task_Manager* core_tm, Thread_Base* thread)
                 return 0;
         if (thread->tm) {
                 pr_error("[ERROR] this thread have has a manager\n");
-                return -EPERM;
+                return -E_RENDEZVOS;
         }
         list_add_tail(&(thread->sched_thread_list),
                       &(core_tm->sched_thread_list));

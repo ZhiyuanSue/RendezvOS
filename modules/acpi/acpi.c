@@ -2,6 +2,7 @@
 #include <common/stddef.h>
 #include <common/types.h>
 #include <common/stdbool.h>
+#include <rendezvos/error.h>
 struct acpi_table_sig acpi_table_sigs[ACPI_NR_TABLES] = {
         {ACPI_APIC, ACPI_SIG_APIC}, {ACPI_BERT, ACPI_SIG_BERT},
         {ACPI_BGRT, ACPI_SIG_BGRT}, {ACPI_CCEL, ACPI_SIG_CCEL},
@@ -81,5 +82,5 @@ get_acpi_table_type_from_sig(struct acpi_table_head* acpi_head)
                                          acpi_table_sigs[i].sig_char))
                         return acpi_table_sigs[i].sig_enum;
         }
-        return -1;
+        return -E_RENDEZVOS;
 }

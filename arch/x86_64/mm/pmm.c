@@ -52,7 +52,7 @@ static error_t arch_get_memory_regions(struct setup_info *arch_setup_info)
         }
         return (0);
 arch_init_pmm_error:
-        return (-ENOMEM);
+        return (-E_RENDEZVOS);
 }
 static void arch_map_extra_data_space(paddr kernel_phy_start,
                                       paddr kernel_phy_end,

@@ -53,7 +53,7 @@ error_t enable_PIC_IRQ(int irq_num)
                         _8259A_IMR_SLAVE_, (irq_num - _8259A_SLAVE_IRQ_NUM_));
                 outb(_X86_8259A_SLAVE_1_, _8259A_IMR_SLAVE_);
         } else { /*wrong irq num*/
-                return (-EPERM);
+                return (-E_RENDEZVOS);
         }
         return (0);
 }
@@ -72,7 +72,7 @@ error_t disable_PIC_IRQ(int irq_num)
                                             (irq_num - _8259A_SLAVE_IRQ_NUM_));
                 outb(_X86_8259A_SLAVE_1_, _8259A_IMR_SLAVE_);
         } else { /*wrong irq num*/
-                return (-EPERM);
+                return (-E_RENDEZVOS);
         }
         return (0);
 }
@@ -88,7 +88,7 @@ error_t PIC_EOI(int irq_num)
                                         + _8259A_IRQ_NUM_) { /*slave irq*/
                 outb(_X86_8259A_SLAVE_0_, _8259A_OCW_2_EOI_);
         } else { /*wrong irq num*/
-                return (-EPERM);
+                return (-E_RENDEZVOS);
         }
         return (0);
 }

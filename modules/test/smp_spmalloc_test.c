@@ -60,7 +60,7 @@ static int bin_check(struct bin* b)
         for (int i = 0; i < b->size; i++) {
                 if (((char*)(b->ptr))[i]
                     != (char)((vaddr)(b->ptr) + b->size + i * 2)) {
-                        return -1;
+                        return -E_REND_TEST;
                 }
         }
         return 0;
@@ -95,7 +95,7 @@ int smp_spmalloc_test(void)
         if (!b_array) {
                 pr_error("cannot alloc enough bins %d\n",
                          sizeof(struct bin) * MAX_BIN);
-                return -1;
+                return -E_REND_TEST;
         }
         memset(b_array, 0, sizeof(struct bin) * MAX_BIN);
         spmalloc_print();
@@ -113,7 +113,7 @@ int smp_spmalloc_test(void)
                                 if (res) {
                                         pr_error("check bin fail\n");
                                         spmalloc_print();
-                                        return -1;
+                                        return -E_REND_TEST;
                                 }
                                 malloc->m_free(malloc, victim_b->ptr);
                                 percpu(smp_free_count)++;
@@ -131,7 +131,7 @@ int smp_spmalloc_test(void)
                                 percpu(smp_alloc_count)++;
                                 if (!(victim_b->ptr)) {
                                         pr_error("cannot get a obj\n");
-                                        return -1;
+                                        return -E_REND_TEST;
                                 }
                                 bin_write(victim_b);
                         }
@@ -159,7 +159,7 @@ int smp_spmalloc_test(void)
                 percpu(smp_free_count));
         if (percpu(smp_alloc_count) != percpu(smp_free_count)) {
                 pr_error("alloc and free time unequal\n");
-                return -1;
+                return -E_REND_TEST;
         }
         return 0;
 }

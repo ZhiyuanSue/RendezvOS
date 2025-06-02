@@ -327,7 +327,7 @@ static void* _kernel_get_free_page(int page_num, enum zone_type memory_zone,
                         goto fail_free_nexus_entry;
                 }
         } else {
-                int error_num = -1;
+                int error_num = -E_RENDEZVOS;
                 for (int i = 0, tmp_ppn = ppn; i < page_num;
                      i++, tmp_ppn += 1) {
                         vaddr tmp_free_page_addr =
@@ -344,7 +344,7 @@ static void* _kernel_get_free_page(int page_num, enum zone_type memory_zone,
                                 error_num = i;
                         }
                 }
-                if (error_num != -1) {
+                if (error_num != -E_RENDEZVOS) {
                         /*unmap them all*/
                         for (int i = 0, tmp_ppn = ppn; i <= error_num;
                              i++, tmp_ppn += 1) {
@@ -504,7 +504,7 @@ static error_t _kernel_free_pages(void* p, int page_num,
                         "[ NEXUS ] ERROR: search the free page fail 0x%x 0x%x\n",
                         (vaddr)p,
                         (vaddr)nexus_root);
-                return -EINVAL;
+                return -E_IN_PARAM;
         }
         if (page_num != node->size && page_num != 0) {
                 /*
@@ -516,7 +516,7 @@ static error_t _kernel_free_pages(void* p, int page_num,
                         "[ NEXUS ] ERROR: we cannot free pages has different number 0x%x when you alloc in kernel 0x%x\n",
                         page_num,
                         node->size);
-                return -EINVAL;
+                return -E_IN_PARAM;
         }
         i64 ppn = (i64)(node->ppn);
         vaddr map_addr = node->start_addr;
@@ -527,7 +527,7 @@ static error_t _kernel_free_pages(void* p, int page_num,
                                           &kspace_spin_lock_ptr);
                 if (unmap_res) {
                         pr_error("[ NEXUS ] ERROR: unmap error!\n");
-                        return -ENOMEM;
+                        return -E_RENDEZVOS;
                 }
         } else {
                 for (int i = 0; i < node->size; i++) {
@@ -537,7 +537,7 @@ static error_t _kernel_free_pages(void* p, int page_num,
                                                   &kspace_spin_lock_ptr);
                         if (unmap_res) {
                                 pr_error("[ NEXUS ] ERROR: unmap error!\n");
-                                return -ENOMEM;
+                                return -E_RENDEZVOS;
                         }
                         map_addr += PAGE_SIZE;
                 }
@@ -560,7 +560,7 @@ static error_t _user_free_pages(void* p, int page_num, struct vspace* vs,
                         "[ NEXUS ] ERROR: search the free page fail 0x%x 0x%x\n",
                         (vaddr)p,
                         (vaddr)nexus_root);
-                return -EINVAL;
+                return -E_IN_PARAM;
         }
         while (1) {
                 i64 ppn = (i64)(node->ppn);
@@ -574,7 +574,7 @@ static error_t _user_free_pages(void* p, int page_num, struct vspace* vs,
                               &(percpu(current_vspace)->vspace_lock));
                 if (unmap_res) {
                         pr_error("[ NEXUS ] ERROR: unmap error!\n");
-                        return -ENOMEM;
+                        return -E_RENDEZVOS;
                 }
                 lock_mcs(&nexus_root->handler->pmm->spin_ptr,
                          &percpu(pmm_spin_lock));
@@ -587,7 +587,7 @@ static error_t _user_free_pages(void* p, int page_num, struct vspace* vs,
                 if (page_num < 0) {
                         pr_error(
                                 "[ NEXUS ] ERROR: the size is unequal with the alloc time, this vspace might be wrong\n");
-                        return -EINVAL;
+                        return -E_RENDEZVOS;
                 } else if (page_num == 0) {
                         break;
                 }
@@ -598,7 +598,7 @@ static error_t _user_free_pages(void* p, int page_num, struct vspace* vs,
                 if (node->start_addr != expect_next_addr) {
                         pr_error(
                                 "[ NEXUS ] ERROR: the range is not continuous\n");
-                        return -EINVAL;
+                        return -E_RENDEZVOS;
                 }
         }
         return 0;
@@ -608,7 +608,7 @@ error_t free_pages(void* p, int page_num, struct vspace* vs,
 {
         if (!p || !nexus_root || (((vaddr)p) & 0xfff)) {
                 pr_error("[ ERROR ] ERROR: error input arg\n");
-                return -EINVAL;
+                return -E_IN_PARAM;
         }
         if ((vaddr)p >= KERNEL_VIRT_OFFSET) {
                 return _kernel_free_pages(p, page_num, nexus_root);

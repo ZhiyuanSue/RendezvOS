@@ -21,7 +21,6 @@ int task_test(void)
                 app_end_ptr =
                         (u64 *)((vaddr)(&_num_app) + (i * 2 + 2) * sizeof(u64));
                 u64 app_start = *(app_start_ptr);
-                u64 app_end = *(app_end_ptr);
 
                 Tcb_Base *test_task = new_task();
                 Thread_Base *test_thread = new_thread();

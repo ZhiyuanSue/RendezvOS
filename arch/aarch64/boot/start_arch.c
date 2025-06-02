@@ -80,7 +80,7 @@ error_t prepare_arch(struct setup_info *arch_setup_info)
 
         return (0);
 prepare_arch_error:
-        return (-EPERM);
+        return (-E_RENDEZVOS);
 }
 error_t arch_cpu_info(struct setup_info *arch_setup_info)
 {

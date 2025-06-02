@@ -5,7 +5,7 @@ struct memory_regions m_regions;
 error_t memory_regions_insert(paddr addr, u64 len)
 {
         if (m_regions.region_count >= RENDEZVOS_MAX_MEMORY_REGIONS)
-                return (-ENOMEM);
+                return (-E_IN_PARAM);
         m_regions.memory_regions[m_regions.region_count].addr = addr;
         m_regions.memory_regions[m_regions.region_count].len = len;
         m_regions.region_count++;

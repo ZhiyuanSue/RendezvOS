@@ -33,7 +33,7 @@ error_t chunk_init(struct mem_chunk* chunk, int chunk_order, int allocator_id)
         if (((vaddr)chunk) % PAGE_SIZE != 0 || chunk_order < 0
             || chunk_order >= MAX_GROUP_SLOTS) {
                 pr_info("the chunk init parameter is wrong, please check\n");
-                return -EPERM;
+                return -E_IN_PARAM;
         }
         chunk->magic = CHUNK_MAGIC;
         chunk->chunk_order = chunk_order;
@@ -87,7 +87,7 @@ error_t chunk_free_obj(struct object_header* obj, int allocator_id)
         /*allocator id must exist*/
         if (!obj || allocator_id < 0) {
                 pr_error("[ERROR]illegal chunk free obj parameter\n");
-                return -EPERM;
+                return -E_IN_PARAM;
         }
         /*
         the legal obj must not be 4K aligned, but we do not check here
@@ -107,7 +107,7 @@ error_t chunk_free_obj(struct object_header* obj, int allocator_id)
                 (vaddr)obj, PAGE_SIZE * PAGE_PER_CHUNK);
         if (chunk->magic != CHUNK_MAGIC) {
                 pr_error("[ERROR]illegal chunk magic\n");
-                return -EPERM;
+                return -E_IN_PARAM;
         }
         /*this obj might be allocated by another allocator*/
         if (allocator_id != chunk->allocator_id)
@@ -325,7 +325,7 @@ static error_t _sp_free(struct mem_allocator* sp_allocator_p, void* p)
 {
         if (!sp_allocator_p || !p) {
                 pr_error("[ERROR] sp free with error parameter\n");
-                return -EPERM;
+                return -E_IN_PARAM;
         }
         struct object_header* header =
                 container_of(p, struct object_header, obj);

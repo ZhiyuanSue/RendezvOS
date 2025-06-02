@@ -26,7 +26,7 @@ static inline error_t parser_acpi_tables(enum acpi_table_sig_enum sig_enum,
                 return parser_apic();
                 break;
         default:
-                return -EPERM;
+                return -E_RENDEZVOS;
         }
 }
 error_t acpi_init(vaddr rsdp_addr)
@@ -57,7 +57,7 @@ error_t acpi_init(vaddr rsdp_addr)
                 if (!acpi_table_sig_check(rsdt_table->signature,
                                           ACPI_SIG_RSDT)) {
                         pr_error("invalid signature of rsdt table\n");
-                        return -EPERM;
+                        return -E_RENDEZVOS;
                 }
 
                 int nr_rsdt_entry = (rsdt_table->length - ACPI_HEAD_SIZE)
@@ -84,7 +84,7 @@ error_t acpi_init(vaddr rsdp_addr)
         } else {
                 pr_error("[ ACPI ] unsupported vision: %d\n",
                          rsdp_table->revision);
-                return -EPERM;
+                return -E_RENDEZVOS;
         }
         return 0;
 }

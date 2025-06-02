@@ -2,6 +2,7 @@
 #define _RENDEZVOS_TEST_H_
 
 #include <modules/log/log.h>
+#include <rendezvos/error.h>
 // #define DEBUG
 #ifdef DEBUG
 #define debug pr_debug

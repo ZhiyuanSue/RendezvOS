@@ -207,5 +207,5 @@ int arch_vmm_test(void)
 
         return 0;
 arch_vmm_test_error:
-        return -1;
+        return -E_REND_TEST;
 }

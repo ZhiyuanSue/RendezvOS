@@ -126,7 +126,7 @@ int rb_tree_test(void)
                         debug("====== insert round %d loop %d ======\n", j, i);
                         if (!check(j)) {
                                 pr_error("rb tree test insert error\n");
-                                return -1;
+                                return -E_REND_TEST;
                         }
                         rb_tree_test_insert(&node_list[j], &t_root);
                 }
@@ -135,7 +135,7 @@ int rb_tree_test(void)
                         debug("====== delete round %d loop %d ======\n", j, i);
                         if (!check(j)) {
                                 pr_error("rb tree test remove error\n");
-                                return -1;
+                                return -E_REND_TEST;
                         }
                         rb_tree_test_remove(&node_list[j - 1], &t_root);
                 }

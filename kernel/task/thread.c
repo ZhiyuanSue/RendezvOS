@@ -28,7 +28,7 @@ error_t create_idle_thread(Tcb_Base* root_task)
                 create_thread((void*)idle_thread);
         if (!idle_t) {
                 pr_error("[Error] create idle thread fail\n");
-                return -EPERM;
+                return -E_RENDEZVOS;
         }
         error_t e = thread_join(root_task, idle_t);
         return e;
