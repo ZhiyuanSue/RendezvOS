@@ -29,7 +29,7 @@ struct region {
 
 struct memory_regions {
         // region_count record continuous memory regions number
-        int region_count;
+        u64 region_count;
         // memory_regions record the memory regions
         struct region memory_regions[RENDEZVOS_MAX_MEMORY_REGIONS];
         error_t (*memory_regions_insert)(paddr addr, u64 len);
