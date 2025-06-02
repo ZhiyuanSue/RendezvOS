@@ -11,6 +11,8 @@ SECTIONS{
 	. = ALIGN(4K);
 	.data : {
 		*(.data)
+		. = ALIGN(8);
+		*(.user)
 	}
 	. = ALIGN(4K);
 	.rodata : {

@@ -4,6 +4,7 @@
 #include <rendezvos/error.h>
 #include <rendezvos/mm/map_handler.h>
 #include <rendezvos/mm/vmm.h>
+extern u64 L0_table;
 extern u64 *MAP_L1_table, *MAP_L2_table, *MAP_L3_table;
 spin_lock kspace_spin_lock_ptr = NULL;
 DEFINE_PER_CPU(struct spin_lock_t, vspace_spin_lock);
@@ -63,8 +64,8 @@ static void util_map(paddr p, vaddr v)
                                           | PAGE_ENTRY_WRITE);
         arch_set_L3_entry(p, v, (union L3_entry *)&MAP_L3_table, flags);
 }
-error_t map(struct vspace *vs, u64 ppn, u64 vpn, int level,
-            ENTRY_FLAGS_t eflags, struct map_handler *handler, spin_lock *lock)
+error_t map(VSpace *vs, u64 ppn, u64 vpn, int level, ENTRY_FLAGS_t eflags,
+            struct map_handler *handler, spin_lock *lock)
 {
         ARCH_PFLAGS_t flags = 0;
         ENTRY_FLAGS_t entry_flags = 0;
@@ -92,21 +93,16 @@ error_t map(struct vspace *vs, u64 ppn, u64 vpn, int level,
         }
 
         /*for the buddy can only alloc 2M at most*/
-        /*if no root page, try to allocator one with the pmm allocator*/
         /*
-                actually we should not use two core to init an empty vspace
-                so we have no need to add lock here
-        */
+                        if no root page
+                        the function was tried to allocator new one with the pmm
+           allocator but I change the logic, we directly think it's illegal and
+           it must use new_vs_root function to generate a new one
+                */
         if (!(vs->vspace_root)) {
-                if (handler->handler_ppn[0] <= 0) {
-                        pr_error(
-                                "[ ERROR ] L0 try alloc vspace root ppn fail\n");
-                        res = -E_RENDEZVOS;
-                        goto map_fail;
-                }
-                vs->vspace_root = PADDR(handler->handler_ppn[0]);
-                handler->handler_ppn[0] = -E_RENDEZVOS;
-                new_alloc = true;
+                pr_error("[ ERROR ] No vs root\n");
+                res = -E_RENDEZVOS;
+                goto map_fail;
         } else if (ROUND_DOWN(vs->vspace_root, PAGE_SIZE) != vs->vspace_root) {
                 pr_error(
                         "[ ERROR ] wrong vspace root paddr in mapping, please check\n");
@@ -130,7 +126,18 @@ error_t map(struct vspace *vs, u64 ppn, u64 vpn, int level,
         next_level_paddr = L0_entry_addr(
                 ((union L0_entry *)(handler->map_vaddr[0]))[L0_INDEX(v)]);
         if (!next_level_paddr) {
-                /*no next level page, need alloc one*/
+                /*
+                   no next level page, need alloc one
+                   but this alloc might a bit complex under
+                   kernel ，consider one thing: if the vs1 kernel add a new
+                   entry at level 0 but the vs0 didn't add and now a vs change
+                   happen,the kernel might find it miss something so we just
+                   sync it with the init level 0 table . besides, we need to add
+                   a logic like that: if a pagetable fault happened under kernel
+                   we must check whether that is caused by
+                   sync first and then call the page fault handler provide by
+                   upper kernel module
+                */
                 if (handler->handler_ppn[1] <= 0) {
                         pr_error("[ ERROR ] L1 try alloc ppn fail\n");
                         res = -E_RENDEZVOS;
@@ -147,6 +154,13 @@ error_t map(struct vspace *vs, u64 ppn, u64 vpn, int level,
                                   v,
                                   (union L0_entry *)(handler->map_vaddr[0]),
                                   flags);
+                /*sync with the root vs*/
+                if (vs->vspace_root != KERNEL_VIRT_TO_PHY((vaddr)(&L0_table))) {
+                        arch_set_L0_entry(next_level_paddr,
+                                          v,
+                                          (union L0_entry *)(&L0_table),
+                                          flags);
+                }
         }
         /*=== === === L1 table === === ===*/
         /*map the L1 table to one L3 table entry*/
@@ -388,8 +402,7 @@ map_fail:
         return res;
 }
 
-error_t unmap(struct vspace *vs, u64 vpn, struct map_handler *handler,
-              spin_lock *lock)
+error_t unmap(VSpace *vs, u64 vpn, struct map_handler *handler, spin_lock *lock)
 {
         if (lock)
                 lock_mcs(lock, &percpu(vspace_spin_lock));
@@ -509,7 +522,7 @@ unmap_fail:
         return res;
 }
 // find one vpn have mapped in one vspace or not
-paddr have_mapped(struct vspace *vs, u64 vpn, struct map_handler *handler)
+paddr have_mapped(VSpace *vs, u64 vpn, struct map_handler *handler)
 {
         vaddr v = vpn << 12;
         paddr next_level_paddr = 0;
@@ -583,4 +596,49 @@ have_mapped_l0_fail:
         arch_tlb_invalidate_page(vs->vspace_id, handler->map_vaddr[0]);
 have_mapped_fail:
         return next_level_paddr;
+}
+paddr new_vs_root(paddr old_vs_root_paddr, struct map_handler *handler)
+{
+        /*no need to lock here*/
+        paddr vs_root = 0;
+        if (handler->handler_ppn[0] <= 0) {
+                pr_error("[ ERROR ] L0 try alloc vspace root ppn fail\n");
+                goto new_vs_root_fail;
+        }
+        vs_root = PADDR(handler->handler_ppn[0]);
+        handler->handler_ppn[0] = -E_RENDEZVOS;
+        util_map(vs_root, handler->map_vaddr[0]);
+
+        /*
+                memcpy the kernel part, which copy from the root vs kernel part
+        */
+
+        memcpy((void *)(handler->map_vaddr[0] + PAGE_SIZE / 2),
+               (void *)((vaddr)(&L0_table) + PAGE_SIZE / 2),
+               PAGE_SIZE / 2);
+
+        /*
+                try to memcpy the user part or just clean it
+        */
+        if (old_vs_root_paddr) {
+                util_map(old_vs_root_paddr, handler->map_vaddr[1]);
+                /*TODO:might consider the COW*/
+                memcpy((void *)(handler->map_vaddr[0]),
+                       (void *)(handler->map_vaddr[1]),
+                       PAGE_SIZE / 2);
+                arch_tlb_invalidate_page(0, handler->map_vaddr[1]);
+        } else {
+                memset((void *)(handler->map_vaddr[0]), 0, PAGE_SIZE / 2);
+        }
+
+        arch_tlb_invalidate_page(0, handler->map_vaddr[0]);
+        return vs_root;
+new_vs_root_fail:
+        if (handler->handler_ppn[0] == -E_RENDEZVOS) {
+                lock_mcs(&handler->pmm->spin_ptr, &percpu(pmm_spin_lock));
+                handler->handler_ppn[0] =
+                        handler->pmm->pmm_alloc(1, handler->page_table_zone);
+                unlock_mcs(&handler->pmm->spin_ptr, &percpu(pmm_spin_lock));
+        }
+        return vs_root;
 }

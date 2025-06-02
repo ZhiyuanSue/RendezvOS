@@ -23,10 +23,10 @@ int task_test(void)
                 u64 app_start = *(app_start_ptr);
 
                 Tcb_Base *test_task = new_task();
+
                 Thread_Base *test_thread = new_thread();
-                add_thread_to_task(test_task, test_thread);
                 add_task_to_manager(percpu(core_tm), test_task);
-                add_thread_to_manager(percpu(core_tm), test_thread);
+                thread_join(test_task, test_thread);
 
                 gen_task_from_elf((vaddr)app_start, test_thread);
         }

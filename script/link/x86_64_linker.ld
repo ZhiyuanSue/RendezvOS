@@ -21,6 +21,8 @@ SECTIONS {
 	{
 		*(.boot.map_util)
 		*(.data .data.*)
+		. = ALIGN(8);
+		*(.user)
 	}
 	_edata = .;
 	. = ALIGN(4K);

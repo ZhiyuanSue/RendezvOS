@@ -71,7 +71,7 @@ typedef struct {
         i64 pid;                            \
         Task_Manager* tm;                   \
         struct list_entry thread_head_node; \
-        struct vspace* vs;                  \
+        VSpace* vs;                         \
         TASK_SCHE_COMMON
 /* as the base class of tcb */
 typedef struct {

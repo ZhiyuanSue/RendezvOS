@@ -8,8 +8,8 @@ extern struct buddy buddy_pmm;
 extern int BSP_ID;
 DEFINE_PER_CPU(struct map_handler, Map_Handler);
 DEFINE_PER_CPU(struct nexus_node *, nexus_root);
-DEFINE_PER_CPU(struct vspace *, current_vspace);
-struct vspace root_vspace;
+DEFINE_PER_CPU(VSpace *, current_vspace);
+VSpace root_vspace;
 error_t phy_mm_init(struct setup_info *arch_setup_info)
 {
         // memory part init

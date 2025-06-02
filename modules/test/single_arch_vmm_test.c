@@ -67,7 +67,7 @@ int arch_vmm_test(void)
                 first alloc one page frame, alloc a new 4K virtual region, and
            try map ,expect success
         */
-        struct vspace *vs = percpu(current_vspace);
+        VSpace *vs = percpu(current_vspace);
         /* actually we should lock this pmm_alloc, but it's a test, we think
          * there's no preemt*/
         i64 ppn_1 = buddy_pmm.pmm_alloc(1, ZONE_NORMAL);

@@ -10,7 +10,7 @@
 #include <rendezvos/smp/percpu.h>
 
 extern char _start, _end; /*the kernel end virt addr*/
-extern u64 L0_table, L1_table, L2_table;
+extern u64 L2_table;
 extern struct memory_regions m_regions;
 
 static error_t arch_get_memory_regions(struct setup_info *arch_setup_info)

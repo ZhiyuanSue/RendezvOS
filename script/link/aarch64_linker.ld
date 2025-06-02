@@ -23,6 +23,8 @@ SECTIONS {
 		*(.boot.log)
 		*(.boot.map_util)
 		*(.data .data.*)
+		. = ALIGN(8);
+		*(.user)
 	}
 	
 	_edata = .;

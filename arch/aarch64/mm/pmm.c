@@ -10,7 +10,7 @@
 #include <rendezvos/smp/percpu.h>
 
 extern u64 _start, _end; /*the kernel end virt addr*/
-extern u64 L0_table, L1_table, L2_table;
+extern u64 L2_table;
 extern struct memory_regions m_regions;
 
 extern struct property_type property_types[PROPERTY_TYPE_NUM];

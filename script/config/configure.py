@@ -11,8 +11,8 @@ target_config_arch_list=[
 	'x86_64'
 ]
 target_ignore_file_name = ".gitignore"
-module_ignore_str = "*\n!/Makefile\n!/.gitignore\n"
-module_ignore_env_str = "*.env\n"
+module_ignore_str = "*\n!/.gitignore\n"
+module_ignore_env_str = "*.env\n*.Makefile\n!/Makefile\n"
 usable_module_list={}
 module_features=[]
 kernel_features=[]

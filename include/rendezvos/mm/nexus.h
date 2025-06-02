@@ -33,9 +33,9 @@ struct nexus_node {
 #define NEXUS_PER_PAGE (PAGE_SIZE / (sizeof(struct nexus_node)))
 struct nexus_node* init_nexus(struct map_handler* handler);
 void* get_free_page(int page_num, enum zone_type memory_zone,
-                    vaddr target_vaddr, struct vspace* vs,
+                    vaddr target_vaddr, VSpace* vs,
                     struct nexus_node* nexus_root);
-error_t free_pages(void* p, int page_num, struct vspace* vs,
+error_t free_pages(void* p, int page_num, VSpace* vs,
                    struct nexus_node* nexus_root);
 struct nexus_node* nexus_rb_tree_search(struct rb_root* root, vaddr start_addr,
                                         paddr vspace_root);

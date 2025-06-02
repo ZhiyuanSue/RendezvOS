@@ -121,7 +121,7 @@ static void nexus_init_manage_page(vaddr vpage_addr,
 /*return a nexus root node*/
 struct nexus_node* init_nexus(struct map_handler* handler)
 {
-        struct vspace* vs = current_vspace;
+        VSpace* vs = current_vspace;
         /*get a phy page*/
         i64 nexus_init_page = handler->pmm->pmm_alloc(1, ZONE_NORMAL);
         if (nexus_init_page <= 0) {
@@ -176,7 +176,7 @@ static struct nexus_node* nexus_get_free_entry(struct nexus_node* root_node)
                                              &root_node->_rb_root);
                 } else {
                         /*means no free manage can use, try alloc a new one*/
-                        struct vspace* vs = percpu(current_vspace);
+                        VSpace* vs = percpu(current_vspace);
 
                         lock_mcs(&root_node->handler->pmm->spin_ptr,
                                  &percpu(pmm_spin_lock));
@@ -289,7 +289,7 @@ static void* _kernel_get_free_page(int page_num, enum zone_type memory_zone,
                 pr_error("[ NEXUS ] cannot find a new free nexus entry\n");
                 goto fail;
         }
-        struct vspace* vs = percpu(current_vspace);
+        VSpace* vs = percpu(current_vspace);
         /*get phy pages from pmm*/
         /*in kernel, we promise that we should not try to alloc a space
          * more then 2M*/
@@ -378,7 +378,7 @@ fail:
         return NULL;
 }
 static void* _user_get_free_page(int page_num, enum zone_type memory_zone,
-                                 vaddr target_vaddr, struct vspace* vs,
+                                 vaddr target_vaddr, VSpace* vs,
                                  struct nexus_node* nexus_root)
 {
         vaddr free_page_addr;
@@ -475,7 +475,7 @@ static void* _user_get_free_page(int page_num, enum zone_type memory_zone,
         return (void*)free_page_addr;
 }
 void* get_free_page(int page_num, enum zone_type memory_zone,
-                    vaddr target_vaddr, struct vspace* vs,
+                    vaddr target_vaddr, VSpace* vs,
                     struct nexus_node* nexus_root)
 {
         /*first check the input parameter*/
@@ -494,7 +494,7 @@ void* get_free_page(int page_num, enum zone_type memory_zone,
 static error_t _kernel_free_pages(void* p, int page_num,
                                   struct nexus_node* nexus_root)
 {
-        struct vspace* vs = percpu(current_vspace);
+        VSpace* vs = percpu(current_vspace);
         /*in kernel alloc, only alloced one time but might mapped
          * several times*/
         struct nexus_node* node =
@@ -550,7 +550,7 @@ static error_t _kernel_free_pages(void* p, int page_num,
         nexus_free_entry(node, nexus_root);
         return 0;
 }
-static error_t _user_free_pages(void* p, int page_num, struct vspace* vs,
+static error_t _user_free_pages(void* p, int page_num, VSpace* vs,
                                 struct nexus_node* nexus_root)
 {
         struct nexus_node* node = nexus_rb_tree_search(
@@ -603,7 +603,7 @@ static error_t _user_free_pages(void* p, int page_num, struct vspace* vs,
         }
         return 0;
 }
-error_t free_pages(void* p, int page_num, struct vspace* vs,
+error_t free_pages(void* p, int page_num, VSpace* vs,
                    struct nexus_node* nexus_root)
 {
         if (!p || !nexus_root || (((vaddr)p) & 0xfff)) {
