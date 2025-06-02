@@ -1,10 +1,9 @@
 #include <modules/acpi/acpi.h>
+#include <modules/log/log.h>
 #include <rendezvos/mm/vmm.h>
 #include <rendezvos/mm/map_handler.h>
-#include <rendezvos/percpu.h>
 #include <rendezvos/error.h>
-#include <modules/log/log.h>
-#include <rendezvos/percpu.h>
+#include <rendezvos/smp/percpu.h>
 extern int BSP_ID;
 struct acpi_table_fadt *fadt_table;
 extern struct acpi_table_madt *madt_table;

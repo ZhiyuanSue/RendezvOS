@@ -1,7 +1,7 @@
-#include <rendezvos/task/tcb.h>
-#include <rendezvos/percpu.h>
-#include <modules/log/log.h>
 #include <common/string.h>
+#include <modules/log/log.h>
+#include <rendezvos/task/tcb.h>
+#include <rendezvos/smp/percpu.h>
 #include <rendezvos/error.h>
 
 extern struct nexus_node* nexus_root;

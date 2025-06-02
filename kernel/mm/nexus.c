@@ -1,8 +1,8 @@
-#include <rendezvos/mm/nexus.h>
-#include <rendezvos/mm/vmm.h>
 #include <common/string.h>
 #include <modules/log/log.h>
 #include <rendezvos/error.h>
+#include <rendezvos/mm/nexus.h>
+#include <rendezvos/mm/vmm.h>
 
 spin_lock nexus_spin_lock_ptr;
 DEFINE_PER_CPU(struct spin_lock_t, nexus_spin_lock);

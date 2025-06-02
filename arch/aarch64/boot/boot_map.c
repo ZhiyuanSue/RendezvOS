@@ -1,10 +1,10 @@
-#include <common/types.h>
-#include <common/mm.h>
 #include <arch/aarch64/mm/pmm.h>
 #include <arch/aarch64/mm/vmm.h>
 #include <arch/aarch64/mm/page_table_def.h>
-#include <rendezvos/mm/vmm.h>
+#include <common/types.h>
+#include <common/mm.h>
 #include <modules/dtb/dtb.h>
+#include <rendezvos/mm/vmm.h>
 extern void boot_Error();
 
 extern struct property_type property_types[255];

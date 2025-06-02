@@ -22,7 +22,7 @@
 
 #include <modules/modules.h>
 #ifdef SMP
-#include <rendezvos/smp.h>
+#include <rendezvos/smp/smp.h>
 #endif
 
 void parse_device(uintptr_t addr);

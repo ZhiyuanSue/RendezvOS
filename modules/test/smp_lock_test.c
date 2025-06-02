@@ -1,6 +1,6 @@
 #include <modules/test/test.h>
 #include <rendezvos/sync/spin_lock.h>
-#include <rendezvos/percpu.h>
+#include <rendezvos/smp/percpu.h>
 
 #define TEST_ROUND 100000
 

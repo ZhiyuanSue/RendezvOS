@@ -3,7 +3,7 @@
 #include <rendezvos/mm/map_handler.h>
 #include <rendezvos/mm/nexus.h>
 #include <rendezvos/mm/spmalloc.h>
-#include <rendezvos/percpu.h>
+#include <rendezvos/smp/percpu.h>
 extern struct buddy buddy_pmm;
 extern int BSP_ID;
 DEFINE_PER_CPU(struct map_handler, Map_Handler);

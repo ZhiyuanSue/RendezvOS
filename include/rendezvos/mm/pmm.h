@@ -20,7 +20,7 @@
 #include <common/mm.h>
 #include <rendezvos/limits.h>
 #include <rendezvos/sync/spin_lock.h>
-#include <rendezvos/percpu.h>
+#include <rendezvos/smp/percpu.h>
 
 struct region {
         paddr addr;

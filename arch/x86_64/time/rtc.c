@@ -1,10 +1,10 @@
 /*
     This file is used to read the RTC
 */
-#include <common/bit.h>
 #include <arch/x86_64/io_port.h>
 #include <arch/x86_64/io.h>
 #include <arch/x86_64/time.h>
+#include <common/bit.h>
 #include <modules/log/log.h>
 struct rtc_time get_rtc_time()
 {

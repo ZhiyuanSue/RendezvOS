@@ -1,9 +1,9 @@
+#include <common/string.h>
+#include <modules/log/log.h>
+#include <rendezvos/smp/percpu.h>
+#include <rendezvos/error.h>
 #include <rendezvos/mm/map_handler.h>
 #include <rendezvos/mm/vmm.h>
-#include <common/string.h>
-#include <rendezvos/error.h>
-#include <modules/log/log.h>
-#include <rendezvos/percpu.h>
 extern u64 *MAP_L1_table, *MAP_L2_table, *MAP_L3_table;
 spin_lock kspace_spin_lock_ptr = NULL;
 DEFINE_PER_CPU(struct spin_lock_t, vspace_spin_lock);

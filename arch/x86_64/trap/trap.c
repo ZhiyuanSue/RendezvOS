@@ -2,9 +2,9 @@
 #include <arch/x86_64/sys_ctrl_def.h>
 #include <arch/x86_64/trap/trap.h>
 #include <arch/x86_64/power_ctrl.h>
-#include <modules/log/log.h>
 #include <arch/x86_64/PIC/IRQ.h>
 #include <arch/x86_64/trap/tss.h>
+#include <modules/log/log.h>
 
 extern u64 trap_vec;
 extern enum IRQ_type arch_irq_type;

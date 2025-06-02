@@ -1,5 +1,5 @@
 #include <rendezvos/time.h>
-#include <rendezvos/percpu.h>
+#include <rendezvos/smp/percpu.h>
 volatile i64 jeffies = 0;
 u64 loop_per_jeffies;
 u64 udelay_max_loop;

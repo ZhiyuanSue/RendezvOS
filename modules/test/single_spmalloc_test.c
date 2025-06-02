@@ -1,13 +1,12 @@
 // #define DEBUG
 #include <modules/test/test.h>
-#include <rendezvos/percpu.h>
 #include <rendezvos/mm/nexus.h>
 #include <modules/log/log.h>
 #include <rendezvos/mm/vmm.h>
 #include <rendezvos/mm/spmalloc.h>
 #include <common/rand.h>
 #include <common/string.h>
-#include <rendezvos/percpu.h>
+#include <rendezvos/smp/percpu.h>
 extern struct allocator* kallocator;
 extern int slot_size[MAX_GROUP_SLOTS];
 struct bin {

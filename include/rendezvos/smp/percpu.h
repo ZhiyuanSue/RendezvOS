@@ -1,7 +1,7 @@
 #ifndef _RENDEZVOS_PER_CPU_
 #define _RENDEZVOS_PER_CPU_
 #include <common/types.h>
-#include "limits.h"
+#include <rendezvos/limits.h>
 
 #define PER_CPU_SECTION ".percpu..data"
 

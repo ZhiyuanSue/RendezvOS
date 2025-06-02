@@ -4,7 +4,7 @@
 #include <common/types.h>
 #include <common/dsa/list.h>
 #include <rendezvos/sync/spin_lock.h>
-#include <rendezvos/percpu.h>
+#include <rendezvos/smp/percpu.h>
 #define LOG_BUFFER_SIZE        0x10
 #define LOG_BUFFER_SINGLE_SIZE 0x1000
 enum log_level {

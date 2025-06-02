@@ -1,8 +1,8 @@
 #include <arch/x86_64/PIC/IRQ.h>
 #include <arch/x86_64/time.h>
+#include <common/bit.h>
 #include <modules/log/log.h>
 #include <rendezvos/mm/vmm.h>
-#include <common/bit.h>
 #include <rendezvos/time.h>
 
 extern enum IRQ_type arch_irq_type;

@@ -1,10 +1,10 @@
 #include <arch/aarch64/smp.h>
 #include <arch/aarch64/mm/pmm.h>
 #include <arch/aarch64/cpuinfo.h>
-#include <rendezvos/smp.h>
+#include <rendezvos/smp/smp.h>
 #include <rendezvos/mm/nexus.h>
 #include <rendezvos/mm/vmm.h>
-#include <rendezvos/percpu.h>
+#include <rendezvos/smp/percpu.h>
 extern char ap_entry;
 extern int BSP_ID;
 extern int NR_CPU;

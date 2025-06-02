@@ -1,8 +1,8 @@
+#include <common/stddef.h>
 #include <modules/acpi/acpi.h>
 #include <modules/log/log.h>
-#include <rendezvos/smp.h>
-#include <common/stddef.h>
-#include <rendezvos/percpu.h>
+#include <rendezvos/smp/smp.h>
+#include <rendezvos/smp/percpu.h>
 struct acpi_table_madt *madt_table;
 extern int NR_CPU;
 extern enum cpu_status CPU_STATE;

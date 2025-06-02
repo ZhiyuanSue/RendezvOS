@@ -1,9 +1,9 @@
 #include <arch/aarch64/gic/gic_v2.h>
+#include <arch/aarch64/sync/barrier.h>
+#include <modules/dtb/dtb.h>
 #include <rendezvos/mm/vmm.h>
 #include <rendezvos/mm/map_handler.h>
-#include <modules/dtb/dtb.h>
-#include <rendezvos/percpu.h>
-#include <arch/aarch64/sync/barrier.h>
+#include <rendezvos/smp/percpu.h>
 extern int BSP_ID;
 
 void map_gic_mem(u64 gicd_base_addr, u64 gicd_len, u64 gicc_base_addr,

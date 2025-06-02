@@ -8,10 +8,10 @@
 #include <arch/x86_64/desc.h>
 #include <arch/x86_64/trap/tss.h>
 #include <arch/x86_64/msr.h>
-#include <rendezvos/percpu.h>
 #include <modules/driver/timer/8254.h>
 #include <modules/log/log.h>
 #include <modules/acpi/acpi.h>
+#include <rendezvos/smp/percpu.h>
 #include <rendezvos/error.h>
 #include <rendezvos/mm/vmm.h>
 #include <rendezvos/mm/nexus.h>

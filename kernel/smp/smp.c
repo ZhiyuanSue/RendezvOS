@@ -1,7 +1,7 @@
 #include <modules/log/log.h>
 #include <modules/test/test.h>
-#include <rendezvos/smp.h>
-#include <rendezvos/percpu.h>
+#include <rendezvos/smp/smp.h>
+#include <rendezvos/smp/percpu.h>
 #include <rendezvos/common.h>
 int NR_CPU = 1;
 DEFINE_PER_CPU(enum cpu_status, CPU_STATE);

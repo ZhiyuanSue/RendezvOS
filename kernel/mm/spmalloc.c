@@ -1,9 +1,9 @@
-#include <rendezvos/mm/spmalloc.h>
-#include <modules/log/log.h>
-#include <rendezvos/error.h>
 #include <common/string.h>
+#include <modules/log/log.h>
 #include <rendezvos/limits.h>
-#include <rendezvos/percpu.h>
+#include <rendezvos/smp/percpu.h>
+#include <rendezvos/mm/spmalloc.h>
+#include <rendezvos/error.h>
 DEFINE_PER_CPU(struct allocator*, kallocator);
 struct mem_allocator tmp_sp_alloctor = {
         .init = sp_init,

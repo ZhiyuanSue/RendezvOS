@@ -1,8 +1,8 @@
-#include <rendezvos/trap.h>
-#include <common/stddef.h>
-#include <rendezvos/percpu.h>
-#include <rendezvos/task/tcb.h>
 #include <modules/log/log.h>
+#include <common/stddef.h>
+#include <rendezvos/smp/percpu.h>
+#include <rendezvos/task/tcb.h>
+#include <rendezvos/trap.h>
 // void (*irq_handler[NR_IRQ])(struct trap_frame *tf);
 extern Task_Manager *core_tm;
 DEFINE_PER_CPU(struct irq, irq_vector[NR_IRQ]);

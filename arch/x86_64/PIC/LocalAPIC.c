@@ -1,14 +1,14 @@
 #include <arch/x86_64/PIC/APIC.h>
-#include <rendezvos/mm/map_handler.h>
-#include <rendezvos/percpu.h>
 #include <arch/x86_64/PIC/IRQ.h>
-#include <common/types.h>
 #include <arch/x86_64/cpuinfo.h>
-#include <rendezvos/mm/vmm.h>
-#include <modules/log/log.h>
-#include <common/bit.h>
 #include <arch/x86_64/msr.h>
 #include <arch/x86_64/sys_ctrl.h>
+#include <common/types.h>
+#include <common/bit.h>
+#include <modules/log/log.h>
+#include <rendezvos/mm/map_handler.h>
+#include <rendezvos/mm/vmm.h>
+#include <rendezvos/smp/percpu.h>
 extern struct cpuinfo cpu_info;
 extern u32 timer_irq_num;
 inline bool xAPIC_support(void)

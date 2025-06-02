@@ -1,5 +1,5 @@
 #include <modules/test/test.h>
-#include <rendezvos/percpu.h>
+#include <rendezvos/smp/percpu.h>
 #include <rendezvos/limits.h>
 
 extern int BSP_ID;

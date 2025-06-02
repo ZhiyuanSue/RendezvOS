@@ -7,7 +7,7 @@
 #include <rendezvos/limits.h>
 #include <rendezvos/mm/pmm.h>
 #include <rendezvos/mm/vmm.h>
-#include <rendezvos/percpu.h>
+#include <rendezvos/smp/percpu.h>
 
 extern u64 _start, _end; /*the kernel end virt addr*/
 extern u64 L0_table, L1_table, L2_table;

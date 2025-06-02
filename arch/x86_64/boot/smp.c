@@ -1,7 +1,7 @@
-#include <rendezvos/smp.h>
-#include <rendezvos/time.h>
-#include <modules/log/log.h>
 #include <common/string.h>
+#include <modules/log/log.h>
+#include <rendezvos/smp/smp.h>
+#include <rendezvos/time.h>
 extern char ap_start;
 extern char ap_start_end;
 extern int NR_CPU;

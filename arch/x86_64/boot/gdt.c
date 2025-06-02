@@ -1,5 +1,5 @@
-#include <rendezvos/percpu.h>
 #include <arch/x86_64/desc.h>
+#include <rendezvos/smp/percpu.h>
 
 DEFINE_PER_CPU(union desc, gdt[GDT_SIZE]) = {{.seg_desc = {0}},
                                              {.seg_desc =

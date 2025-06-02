@@ -1,7 +1,7 @@
 #include <arch/x86_64/sys_ctrl.h>
-#include <rendezvos/percpu.h>
-#include <common/mm.h>
+#include <rendezvos/smp/percpu.h>
 #include <arch/x86_64/sys_ctrl_def.h>
+#include <common/mm.h>
 
 DEFINE_PER_CPU(struct TSS, cpu_tss);
 void prepare_per_cpu_tss(struct nexus_node* nexus_root)

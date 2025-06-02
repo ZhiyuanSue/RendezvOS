@@ -1,6 +1,6 @@
-#include <rendezvos/task/tcb.h>
-#include <rendezvos/percpu.h>
 #include <modules/log/log.h>
+#include <rendezvos/task/tcb.h>
+#include <rendezvos/smp/percpu.h>
 #include <rendezvos/error.h>
 
 u64 thread_kstack_page_num = 2;

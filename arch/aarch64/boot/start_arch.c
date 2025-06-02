@@ -11,7 +11,7 @@
 #include <modules/log/log.h>
 #include <modules/psci/psci.h>
 #include <rendezvos/error.h>
-#include <rendezvos/percpu.h>
+#include <rendezvos/smp/percpu.h>
 #include <rendezvos/mm/vmm.h>
 #include <rendezvos/mm/spmalloc.h>
 #include <rendezvos/trap.h>

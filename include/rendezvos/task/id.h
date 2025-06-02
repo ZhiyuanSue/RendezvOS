@@ -3,7 +3,7 @@
 
 #include <common/types.h>
 #include <rendezvos/sync/spin_lock.h>
-#include <rendezvos/percpu.h>
+#include <rendezvos/smp/percpu.h>
 #define INVALID_ID -1
 /*
 as for the tid and pid , which must be global

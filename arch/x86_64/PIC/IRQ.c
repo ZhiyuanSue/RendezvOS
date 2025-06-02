@@ -1,7 +1,7 @@
 #include <arch/x86_64/PIC/IRQ.h>
 #include <arch/x86_64/PIC/LocalAPIC.h>
-#include <modules/log/log.h>
 #include <common/bit.h>
+#include <modules/log/log.h>
 #include <modules/acpi/acpi_madt.h>
 
 enum IRQ_type arch_irq_type = NO_IRQ;

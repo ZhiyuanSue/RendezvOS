@@ -1,8 +1,8 @@
-#include <rendezvos/limits.h>
-#include <rendezvos/percpu.h>
-#include <rendezvos/mm/vmm.h>
-#include <modules/log/log.h>
 #include <common/string.h>
+#include <modules/log/log.h>
+#include <rendezvos/limits.h>
+#include <rendezvos/smp/percpu.h>
+#include <rendezvos/mm/vmm.h>
 
 DEFINE_PER_CPU(int, cpu_number);
 extern char *_per_cpu_end, _per_cpu_start;

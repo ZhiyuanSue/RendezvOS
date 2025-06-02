@@ -1,5 +1,5 @@
 #include <rendezvos/task/tcb.h>
-#include <rendezvos/percpu.h>
+#include <rendezvos/smp/percpu.h>
 #include <rendezvos/sync/spin_lock.h>
 extern struct allocator* kallocator;
 extern Thread_Base* init_thread_ptr;
