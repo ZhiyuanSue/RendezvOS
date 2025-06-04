@@ -33,5 +33,25 @@ void schedule(Task_Manager* tm)
                 return;
         Thread_Base* curr = tm->current_thread;
         tm->current_thread = tm->schedule(tm);
+
+        if ((tm->current_thread->flags) & THREAD_FLAG_USER) {
+                /*
+                if target thread is not a kernel thread,
+                try to change the vspace
+                */
+                Tcb_Base* old = curr->belong_tcb;
+                Tcb_Base* new = tm->current_thread->belong_tcb;
+                if (old != new) {
+                        /*
+                        we think every task have a vspace
+                        but, one more thing,
+                        user thread and kernel thread are different
+                        if the target thread is a kernel thread,
+                        no vspace switch is needed
+                        */
+                        arch_set_current_user_vspace_root(new->vs->vspace_root);
+                }
+        }
+
         context_switch(&(curr->ctx), &(tm->current_thread->ctx));
 }

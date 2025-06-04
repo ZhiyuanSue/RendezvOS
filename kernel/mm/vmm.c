@@ -11,7 +11,7 @@ DEFINE_PER_CPU(struct spin_lock_t, vspace_spin_lock);
 void sys_init_map()
 {
         ARCH_PFLAGS_t flags;
-        paddr vspace_root = get_current_kernel_vspace_root();
+        paddr vspace_root = arch_get_current_kernel_vspace_root();
         flags = arch_decode_flags(0,
                                   PAGE_ENTRY_GLOBAL | PAGE_ENTRY_READ
                                           | PAGE_ENTRY_VALID

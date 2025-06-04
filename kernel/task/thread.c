@@ -34,22 +34,25 @@ error_t create_idle_thread(Tcb_Base* root_task)
         return e;
 }
 /*general thread create function*/
-Thread_Base* create_thread(void* __func)
+Thread_Base* create_thread(void* __func, ...)
 {
         Thread_Base* thread = new_thread();
+        va_list arg_list;
+        va_start(arg_list, __func);
         /*
                 TODO: we alloc a page as idle thread's stack, we must record
                 although idle thread is always exist.
         */
-        void* stack = get_free_page(thread_kstack_page_num,
-                                    ZONE_NORMAL,
-                                    KERNEL_VIRT_OFFSET,
-                                    0,
-                                    percpu(nexus_root));
-        memset(stack, '\0', thread_kstack_page_num * PAGE_SIZE);
+        void* kstack = get_free_page(thread_kstack_page_num,
+                                     ZONE_NORMAL,
+                                     KERNEL_VIRT_OFFSET,
+                                     0,
+                                     percpu(nexus_root));
+        memset(kstack, '\0', thread_kstack_page_num * PAGE_SIZE);
         arch_set_new_thread_ctx(&(thread->ctx),
                                 (void*)(__func),
-                                stack + thread_kstack_page_num * PAGE_SIZE);
+                                kstack + thread_kstack_page_num * PAGE_SIZE);
+        va_end(arg_list);
         return thread;
 }
 error_t thread_join(Tcb_Base* task, Thread_Base* thread)

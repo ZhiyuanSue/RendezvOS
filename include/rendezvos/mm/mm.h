@@ -12,6 +12,8 @@ typedef struct {
 } VSpace;
 extern VSpace* current_vspace; // per cpu pointer
 extern struct spin_lock_t vspace_spin_lock; // per cpu pointer
+
+VSpace* new_vspace();
 void init_vspace(VSpace* vs, paddr vspace_root_addr, uint64_t vspace_id);
 
 #endif

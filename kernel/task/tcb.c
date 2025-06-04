@@ -32,8 +32,8 @@ error_t add_thread_to_task(Tcb_Base* task, Thread_Base* thread)
         if (!task || !thread)
                 return -E_IN_PARAM;
         /*first do some checks*/
-        if (thread->belong_pid != INVALID_ID) {
-                if (thread->belong_pid == task->pid) {
+        if (thread->belong_tcb != NULL) {
+                if (thread->belong_tcb->pid == task->pid) {
                         pr_debug(
                                 "[ERROR] try to readd the thread to same task\n");
                 } else {
@@ -44,7 +44,7 @@ error_t add_thread_to_task(Tcb_Base* task, Thread_Base* thread)
         }
         /*we do not check the linked list */
         list_add_tail(&(thread->thread_list_node), &(task->thread_head_node));
-        thread->belong_pid = task->pid;
+        thread->belong_tcb = task;
 
         return 0;
 }
@@ -53,12 +53,12 @@ error_t del_thread_from_task(Tcb_Base* task, Thread_Base* thread)
         if (!task || !thread)
                 return -E_IN_PARAM;
         /*first check whether the thread belongs to the task*/
-        if (thread->belong_pid != task->pid) {
+        if (thread->belong_tcb != task) {
                 pr_error("[ERROR] try to delete a thread from another task\n");
                 return -E_RENDEZVOS;
         }
         list_del_init(&(thread->thread_list_node));
-        thread->belong_pid = INVALID_ID;
+        thread->belong_tcb = NULL;
         return 0;
 }
 error_t add_task_to_manager(Task_Manager* core_tm, Tcb_Base* task)
@@ -88,6 +88,8 @@ error_t add_thread_to_manager(Task_Manager* core_tm, Thread_Base* thread)
 Tcb_Base* new_task()
 {
         struct allocator* cpu_allocator = percpu(kallocator);
+        if (!cpu_allocator)
+                return NULL;
         Tcb_Base* tcb = (Tcb_Base*)(cpu_allocator->m_alloc(cpu_allocator,
                                                            sizeof(Tcb_Base)));
         if (tcb) {
@@ -102,6 +104,8 @@ Tcb_Base* new_task()
 Thread_Base* new_thread()
 {
         struct allocator* cpu_allocator = percpu(kallocator);
+        if (!cpu_allocator)
+                return NULL;
         Thread_Base* thread = (Thread_Base*)(cpu_allocator->m_alloc(
                 cpu_allocator, sizeof(Thread_Base)));
         if (thread) {
@@ -110,9 +114,18 @@ Thread_Base* new_thread()
                 thread->status = tcb_status_init;
                 INIT_LIST_HEAD(&(thread->sched_thread_list));
                 INIT_LIST_HEAD(&(thread->thread_list_node));
-                thread->belong_pid = INVALID_ID;
+                thread->belong_tcb = NULL;
                 thread->tm = NULL;
                 thread->kstack_bottom = 0;
         }
         return thread;
+}
+VSpace* new_vspace()
+{
+        struct allocator* cpu_allocator = percpu(kallocator);
+        if (!cpu_allocator)
+                return NULL;
+        VSpace* new_vs = (VSpace*)(cpu_allocator->m_alloc(cpu_allocator,
+                                                          sizeof(VSpace)));
+        return new_vs;
 }

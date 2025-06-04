@@ -6,6 +6,7 @@
 extern u64 _num_app;
 void gen_task_from_elf(vaddr elf_start, Thread_Base *test_thread)
 {
+        pr_info("start gen task from elf\n");
         if (!check_elf_header(elf_start)) {
                 pr_error("[ERROR] bad elf file\n");
                 return;
@@ -24,11 +25,20 @@ int task_test(void)
 
                 Tcb_Base *test_task = new_task();
 
-                Thread_Base *test_thread = new_thread();
-                add_task_to_manager(percpu(core_tm), test_task);
-                thread_join(test_task, test_thread);
+                test_task->pid = get_new_pid();
+                test_task->vs = new_vspace();
+                init_vspace(test_task->vs,
+                            new_vs_root(0, &percpu(Map_Handler)),
+                            test_task->pid);
 
-                gen_task_from_elf((vaddr)app_start, test_thread);
+                Thread_Base *test_thread = create_thread(
+                        (void *)gen_task_from_elf, app_start_ptr, app_end_ptr);
+                if (!test_thread) {
+                        pr_error("[Error] create test_thread fail\n");
+                        return -E_REND_TEST;
+                }
+                thread_join(test_task, test_thread);
+                percpu(core_tm)->schedule(percpu(core_tm));
         }
         return 0;
 }

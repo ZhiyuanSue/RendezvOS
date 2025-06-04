@@ -42,26 +42,6 @@ it is a percpu structure and have a percpu schedule algorithm
 typedef struct task_manager Task_Manager;
 extern Task_Manager* core_tm;
 
-/* thread */
-extern u64 thread_kstack_page_num;
-#define THERAD_SCHE_COMMON                           \
-        struct {                                     \
-                struct list_entry sched_thread_list; \
-        };
-#define THREAD_COMMON                                   \
-        i64 tid;                                        \
-        i64 belong_pid;                                 \
-        Task_Manager* tm;                               \
-        u64 status;                                     \
-        struct list_entry thread_list_node;             \
-        u64 kstack_bottom; /*for stack,it's high addr*/ \
-        Arch_Task_Context ctx;                          \
-        THERAD_SCHE_COMMON
-
-typedef struct {
-        THREAD_COMMON
-} Thread_Base;
-
 /* task */
 #define TASK_SCHE_COMMON                           \
         struct {                                   \
@@ -77,6 +57,34 @@ typedef struct {
 typedef struct {
         TCB_COMMON
 } Tcb_Base;
+
+/* thread */
+extern u64 thread_kstack_page_num;
+#define THERAD_SCHE_COMMON                           \
+        struct {                                     \
+                struct list_entry sched_thread_list; \
+        };
+#define THREAD_COMMON                                   \
+        i64 tid;                                        \
+        u64 flags;                                      \
+        Tcb_Base* belong_tcb;                           \
+        Task_Manager* tm;                               \
+        u64 status;                                     \
+        struct list_entry thread_list_node;             \
+        u64 kstack_bottom; /*for stack,it's high addr*/ \
+        Arch_Task_Context ctx;                          \
+        THERAD_SCHE_COMMON
+
+#define THREAD_FLAG_KERNEL_USER_OFFSET (0)
+#define THREAD_FLAG_USER               (0x1ull)
+/*
+        let the default is kernel thread
+        TODO:the elf_loader should set it as a user thread
+*/
+
+typedef struct {
+        THREAD_COMMON
+} Thread_Base;
 
 extern Thread_Base* init_thread_ptr;
 extern Thread_Base* idle_thread_ptr;
@@ -102,6 +110,7 @@ Task_Manager* init_proc();
 Tcb_Base* new_task();
 Task_Manager* new_task_manager();
 Thread_Base* new_thread();
+
 error_t add_thread_to_task(Tcb_Base* task, Thread_Base* thread);
 error_t del_thread_from_task(Tcb_Base* task, Thread_Base* thread);
 error_t add_task_to_manager(Task_Manager* core_tm, Tcb_Base* task);
@@ -110,7 +119,7 @@ error_t add_thread_to_manager(Task_Manager* core_tm, Thread_Base* thread);
 error_t create_init_thread(Tcb_Base* root_task);
 error_t create_idle_thread(Tcb_Base* root_task);
 
-Thread_Base* create_thread(void* __func);
+Thread_Base* create_thread(void* __func, ...);
 error_t thread_join(Tcb_Base* task, Thread_Base* thread);
 
 #endif

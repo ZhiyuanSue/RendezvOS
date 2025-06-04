@@ -20,7 +20,8 @@ error_t virt_mm_init(int cpu_id)
 {
         if (cpu_id == BSP_ID) {
                 sys_init_map();
-                init_vspace(&root_vspace, get_current_kernel_vspace_root(), 0);
+                init_vspace(
+                        &root_vspace, arch_get_current_kernel_vspace_root(), 0);
         }
         per_cpu(current_vspace, cpu_id) = &root_vspace;
         init_map(&per_cpu(Map_Handler, cpu_id),

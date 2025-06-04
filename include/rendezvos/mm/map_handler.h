@@ -50,6 +50,12 @@ paddr have_mapped(VSpace* vs, u64 vpn, struct map_handler* handler);
         so we must add a parameter: old_vs_root_paddr
         if it's 0, it's seems as it try to only copy the kernel part
         if it's not 0, we just copy the kernel and user part
+
+        besides,we have to consider that under the aarch64,
+        we have ttbr0 and ttbr1,
+        so copy kernel part is meaningless here,
+        but we also copy it for compatible,
+
         as for there might have COW(copy on write)
         it's TODO
 */

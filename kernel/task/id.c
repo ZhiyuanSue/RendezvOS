@@ -9,7 +9,7 @@ void init_id_manager(Id_Manager* im)
         im->id = 0;
         im->spin_ptr = NULL;
 }
-i64 get_new_pid()
+i64 get_new_pid() /*we think the vspace id is the same as the pid*/
 {
         lock_mcs(&pid_manager.spin_ptr, &percpu(pid_spin_lock));
         i64 pid = pid_manager.id++;
