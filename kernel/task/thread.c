@@ -5,40 +5,32 @@
 #include <rendezvos/error.h>
 
 extern struct nexus_node* nexus_root;
-DEFINE_PER_CPU(Thread_Base*, init_thread_ptr);
-DEFINE_PER_CPU(Thread_Base*, idle_thread_ptr);
-/* This is the idle thread function*/
-void idle_thread()
+/*
+we first generate a context that after the return will goto thread entry（this
+function) then the stack frame is the only one thread_entry frame then here we
+change the return addr, change the parameter then after this return , we will
+run the target function
+*/
+static void thread_entry()
 {
-        /*TODO:might close the int*/
-        schedule(percpu(core_tm));
-}
-error_t create_init_thread(Tcb_Base* root_task)
-{
-        /*we let the current execution flow as init thread*/
-        Thread_Base* init_ptr = percpu(init_thread_ptr) = new_thread();
-        add_thread_to_task(root_task, init_ptr);
-        add_thread_to_manager(percpu(core_tm), init_ptr);
-
-        return 0;
-}
-error_t create_idle_thread(Tcb_Base* root_task)
-{
-        Thread_Base* idle_t = percpu(idle_thread_ptr) =
-                create_thread((void*)idle_thread);
-        if (!idle_t) {
-                pr_error("[Error] create idle thread fail\n");
-                return -E_RENDEZVOS;
+        pr_info("go into the thread_entry\n");
+        Thread_Base* current_thread = percpu(core_tm)->current_thread;
+        /*get the parameter*/
+        if (!current_thread->init_parameter) {
+                pr_error("[Error] no any target func is set\n");
+                return;
         }
-        error_t e = thread_join(root_task, idle_t);
-        return e;
+        /*run the target thread*/
+        run_thread(current_thread->init_parameter);
+        /*finish run the target thread and prepare the clean*/
+        pr_info("go back to thrad entry and try to clean\n");
 }
 /*general thread create function*/
-Thread_Base* create_thread(void* __func, ...)
+Thread_Base* create_thread(void* __func, int nr_para, ...)
 {
         Thread_Base* thread = new_thread();
         va_list arg_list;
-        va_start(arg_list, __func);
+        va_start(arg_list, nr_para);
         /*
                 TODO: we alloc a page as idle thread's stack, we must record
                 although idle thread is always exist.
@@ -50,8 +42,19 @@ Thread_Base* create_thread(void* __func, ...)
                                      percpu(nexus_root));
         memset(kstack, '\0', thread_kstack_page_num * PAGE_SIZE);
         arch_set_new_thread_ctx(&(thread->ctx),
-                                (void*)(__func),
+                                (void*)(thread_entry),
                                 kstack + thread_kstack_page_num * PAGE_SIZE);
+        /*
+        set the init parameter of the thread
+        the parameter must no more then the NR_ABI_PARAMETER_INT_REG
+        and must all are integer, otherwise more parameters will be ignore
+        */
+        for (int i = 0; i < nr_para && i < NR_ABI_PARAMETER_INT_REG; i++) {
+                /*here we think in rendezvos kernel,we only use the int
+                 * parameters*/
+                thread->init_parameter->int_para[i] = va_arg(arg_list, u64);
+        }
+        thread->init_parameter->thread_func_ptr = __func;
         va_end(arg_list);
         return thread;
 }

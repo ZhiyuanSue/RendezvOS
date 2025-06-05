@@ -44,10 +44,6 @@ void schedule(Task_Manager* tm)
                 if (old != new) {
                         /*
                         we think every task have a vspace
-                        but, one more thing,
-                        user thread and kernel thread are different
-                        if the target thread is a kernel thread,
-                        no vspace switch is needed
                         */
                         arch_set_current_user_vspace_root(new->vs->vspace_root);
                 }

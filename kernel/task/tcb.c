@@ -2,6 +2,7 @@
 #include <rendezvos/task/tcb.h>
 #include <rendezvos/smp/percpu.h>
 #include <rendezvos/error.h>
+#include <common/string.h>
 
 u64 thread_kstack_page_num = 2;
 extern struct allocator* kallocator;
@@ -117,6 +118,7 @@ Thread_Base* new_thread()
                 thread->belong_tcb = NULL;
                 thread->tm = NULL;
                 thread->kstack_bottom = 0;
+                thread->init_parameter = new_init_parameter();
         }
         return thread;
 }
@@ -128,4 +130,26 @@ VSpace* new_vspace()
         VSpace* new_vs = (VSpace*)(cpu_allocator->m_alloc(cpu_allocator,
                                                           sizeof(VSpace)));
         return new_vs;
+}
+Thread_Init_Para* new_init_parameter()
+{
+        struct allocator* cpu_allocator = percpu(kallocator);
+        if (!cpu_allocator)
+                return NULL;
+        Thread_Init_Para* new_pm = (Thread_Init_Para*)(cpu_allocator->m_alloc(
+                cpu_allocator, sizeof(Thread_Init_Para)));
+        if (new_pm) {
+                new_pm->thread_func_ptr = NULL;
+                memset(new_pm->int_para,
+                       '\0',
+                       (NR_ABI_PARAMETER_INT_REG) * sizeof(u64));
+        }
+        return new_pm;
+}
+void del_init_parameter(Thread_Init_Para* pm)
+{
+        struct allocator* cpu_allocator = percpu(kallocator);
+        if (!cpu_allocator)
+                return;
+        cpu_allocator->m_free(cpu_allocator, (void*)pm);
 }
