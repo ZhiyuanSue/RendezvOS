@@ -36,9 +36,7 @@ void elf_read(vaddr elf_start)
 }
 int elf_read_test(void)
 {
-        pr_info("start elf read test\n");
-        pr_info("%x\n", _num_app);
-        pr_info("success read the num app\n");
+        pr_info("%x apps\n", _num_app);
         u64 *app_start_ptr, *app_end_ptr;
         for (int i = 0; i < _num_app; i++) {
                 app_start_ptr =

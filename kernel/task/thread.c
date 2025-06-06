@@ -13,7 +13,7 @@ run the target function
 */
 static void thread_entry()
 {
-        pr_info("go into the thread_entry\n");
+        // pr_info("go into the thread_entry\n");
         Thread_Base* current_thread = percpu(core_tm)->current_thread;
         /*get the parameter*/
         if (!current_thread->init_parameter) {
@@ -23,14 +23,15 @@ static void thread_entry()
         /*run the target thread*/
         run_thread(current_thread->init_parameter);
         /*finish run the target thread and prepare the clean*/
-        pr_info("go back to thrad entry and try to clean\n");
+        pr_info("go back to thread entry and try to clean\n");
+        schedule(percpu(core_tm));
 }
 /*general thread create function*/
-Thread_Base* create_thread(void* __func, int nr_para, ...)
+Thread_Base* create_thread(void* __func, int nr_parameter, ...)
 {
         Thread_Base* thread = new_thread();
         va_list arg_list;
-        va_start(arg_list, nr_para);
+        va_start(arg_list, nr_parameter);
         /*
                 TODO: we alloc a page as idle thread's stack, we must record
                 although idle thread is always exist.
@@ -40,6 +41,7 @@ Thread_Base* create_thread(void* __func, int nr_para, ...)
                                      KERNEL_VIRT_OFFSET,
                                      0,
                                      percpu(nexus_root));
+        thread->kstack_bottom = kstack + thread_kstack_page_num * PAGE_SIZE;
         memset(kstack, '\0', thread_kstack_page_num * PAGE_SIZE);
         arch_set_new_thread_ctx(&(thread->ctx),
                                 (void*)(thread_entry),
@@ -49,7 +51,7 @@ Thread_Base* create_thread(void* __func, int nr_para, ...)
         the parameter must no more then the NR_ABI_PARAMETER_INT_REG
         and must all are integer, otherwise more parameters will be ignore
         */
-        for (int i = 0; i < nr_para && i < NR_ABI_PARAMETER_INT_REG; i++) {
+        for (int i = 0; i < nr_parameter && i < NR_ABI_PARAMETER_INT_REG; i++) {
                 /*here we think in rendezvos kernel,we only use the int
                  * parameters*/
                 thread->init_parameter->int_para[i] = va_arg(arg_list, u64);

@@ -7,8 +7,10 @@ DEFINE_PER_CPU(Thread_Base*, idle_thread_ptr);
 /* This is the idle thread function*/
 void idle_thread()
 {
-        /*TODO:might close the int*/
-        schedule(percpu(core_tm));
+        while (1) {
+                /*TODO:might close the int*/
+                schedule(percpu(core_tm));
+        }
 }
 error_t create_init_thread(Tcb_Base* root_task)
 {

@@ -25,14 +25,14 @@ Task_Manager* new_task_manager()
 }
 void choose_schedule(Task_Manager* tm)
 {
-        tm->schedule = round_robin_schedule;
+        tm->scheduler = round_robin_schedule;
 }
 void schedule(Task_Manager* tm)
 {
         if (!tm)
                 return;
         Thread_Base* curr = tm->current_thread;
-        tm->current_thread = tm->schedule(tm);
+        tm->current_thread = tm->scheduler(tm);
 
         if ((tm->current_thread->flags) & THREAD_FLAG_USER) {
                 /*
@@ -45,6 +45,7 @@ void schedule(Task_Manager* tm)
                         /*
                         we think every task have a vspace
                         */
+                        tm->current_task = new;
                         arch_set_current_user_vspace_root(new->vs->vspace_root);
                 }
         }

@@ -25,8 +25,8 @@ void trap_handler(struct trap_frame *tf)
         }
         if (!arch_int_from_kernel(tf)) {
                 pr_info("user int and schedule\n");
-                if (percpu(core_tm) && percpu(core_tm)->schedule) {
-                        percpu(core_tm)->schedule(percpu(core_tm));
+                if (percpu(core_tm) && percpu(core_tm)->scheduler) {
+                        percpu(core_tm)->scheduler(percpu(core_tm));
                 }
         }
 }

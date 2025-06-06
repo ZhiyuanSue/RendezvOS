@@ -4,9 +4,11 @@
 #include <rendezvos/task/tcb.h>
 
 extern u64 _num_app;
-void gen_task_from_elf(vaddr elf_start, Thread_Base *test_thread)
+void gen_task_from_elf(vaddr elf_start, vaddr elf_end)
 {
-        pr_info("start gen task from elf\n");
+        pr_info("start gen task from elf start %x end %x\n",
+                elf_start,
+                elf_end);
         if (!check_elf_header(elf_start)) {
                 pr_error("[ERROR] bad elf file\n");
                 return;
@@ -14,7 +16,7 @@ void gen_task_from_elf(vaddr elf_start, Thread_Base *test_thread)
 }
 int task_test(void)
 {
-        pr_info("%x\n", _num_app);
+        pr_info("%x apps\n", _num_app);
         u64 *app_start_ptr, *app_end_ptr;
         for (int i = 0; i < _num_app; i++) {
                 app_start_ptr =
@@ -22,6 +24,7 @@ int task_test(void)
                 app_end_ptr =
                         (u64 *)((vaddr)(&_num_app) + (i * 2 + 2) * sizeof(u64));
                 u64 app_start = *(app_start_ptr);
+                u64 app_end = *(app_end_ptr);
 
                 Tcb_Base *test_task = new_task();
 
@@ -32,13 +35,13 @@ int task_test(void)
                             test_task->pid);
 
                 Thread_Base *test_thread = create_thread(
-                        (void *)gen_task_from_elf, app_start_ptr, app_end_ptr);
+                        (void *)gen_task_from_elf, 2, app_start, app_end);
                 if (!test_thread) {
                         pr_error("[Error] create test_thread fail\n");
                         return -E_REND_TEST;
                 }
-                thread_join(test_task, test_thread);
-                percpu(core_tm)->schedule(percpu(core_tm));
+                error_t e = thread_join(test_task, test_thread);
+                schedule(percpu(core_tm));
         }
         return 0;
 }

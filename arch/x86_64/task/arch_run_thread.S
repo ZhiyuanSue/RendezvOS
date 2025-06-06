@@ -12,3 +12,4 @@ run_thread:
 	mov 8(%rdi),	%rdi
 
 	call *%rax
+	ret

@@ -9,3 +9,4 @@ run_thread:
     ldp x0, x1, [x0,#8*1]
 
     blr x9
+    ret
