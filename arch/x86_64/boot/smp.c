@@ -67,7 +67,7 @@ void arch_start_smp(struct setup_info* arch_setup_info)
 
                 for (int i = 0; i < RENDEZVOS_MAX_CPU_NUMBER; i++) {
                         if (per_cpu(CPU_STATE, i) == cpu_disable) {
-                                vaddr stack_top =
+                                vaddr stack_bottom =
                                         (vaddr)get_free_page(2,
                                                              ZONE_NORMAL,
                                                              KERNEL_VIRT_OFFSET,
@@ -75,7 +75,8 @@ void arch_start_smp(struct setup_info* arch_setup_info)
                                                              per_cpu(nexus_root,
                                                                      BSP_ID))
                                         + 2 * PAGE_SIZE;
-                                arch_setup_info->ap_boot_stack_ptr = stack_top;
+                                arch_setup_info->ap_boot_stack_ptr =
+                                        stack_bottom;
                                 arch_setup_info->cpu_id = i;
                                 send_sipi(i, _RENDEZVOS_X86_64_AP_PHY_ADDR_);
                                 for (int j = 0;

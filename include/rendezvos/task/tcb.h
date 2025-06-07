@@ -76,6 +76,7 @@ extern u64 thread_kstack_page_num;
         Thread_Init_Para* init_parameter;               \
         THERAD_SCHE_COMMON
 
+#define THREAD_FLAG_NONE               0
 #define THREAD_FLAG_KERNEL_USER_OFFSET (0)
 #define THREAD_FLAG_USER               (0x1ull)
 /*
@@ -125,6 +126,10 @@ error_t create_init_thread(Tcb_Base* root_task);
 error_t create_idle_thread(Tcb_Base* root_task);
 
 Thread_Base* create_thread(void* __func, int nr_parameter, ...);
+static inline void thread_set_flags(u64 flags, Thread_Base* thread)
+{
+        thread->flags = flags;
+}
 error_t thread_join(Tcb_Base* task, Thread_Base* thread);
 void list_all_threads(Task_Manager* tm);
 

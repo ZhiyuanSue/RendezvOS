@@ -36,6 +36,7 @@ int task_test(void)
 
                 Thread_Base *test_thread = create_thread(
                         (void *)gen_task_from_elf, 2, app_start, app_end);
+                thread_set_flags(THREAD_FLAG_USER, test_thread);
                 if (!test_thread) {
                         pr_error("[Error] create test_thread fail\n");
                         return -E_REND_TEST;

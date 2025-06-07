@@ -25,7 +25,7 @@ SECTIONS{
 	}
 	_bss_end = .;
 	. += 4K*8;
-	_runtime_stack_top = . ;
+	_runtime_stack_bottom = . ;
 	_console_lower = .;
 	. += 4K;
 	_console_upper = .;

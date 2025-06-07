@@ -44,14 +44,15 @@ void arch_start_smp(struct setup_info* arch_setup_info)
                 if (!err) {
                         if (reg_val == BSP_ID)
                                 goto next_cpu_node;
-                        vaddr stack_top = (vaddr)get_free_page(
-                                                  2,
-                                                  ZONE_NORMAL,
-                                                  KERNEL_VIRT_OFFSET,
-                                                  0,
-                                                  per_cpu(nexus_root, BSP_ID))
-                                          + 2 * PAGE_SIZE;
-                        arch_setup_info->ap_boot_stack_ptr = stack_top;
+                        vaddr stack_bottom =
+                                (vaddr)get_free_page(2,
+                                                     ZONE_NORMAL,
+                                                     KERNEL_VIRT_OFFSET,
+                                                     0,
+                                                     per_cpu(nexus_root,
+                                                             BSP_ID))
+                                + 2 * PAGE_SIZE;
+                        arch_setup_info->ap_boot_stack_ptr = stack_bottom;
                         per_cpu(CPU_STATE, NR_CPU) = cpu_disable;
                         i32 res = psci_func.cpu_on(
                                 reg_val,

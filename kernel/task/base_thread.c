@@ -15,10 +15,11 @@ void idle_thread()
 error_t create_init_thread(Tcb_Base* root_task)
 {
         /*we let the current execution flow as init thread*/
-        Thread_Base* init_ptr = percpu(init_thread_ptr) = new_thread();
-        add_thread_to_task(root_task, init_ptr);
-        add_thread_to_manager(percpu(core_tm), init_ptr);
-
+        Thread_Base* init_t = percpu(init_thread_ptr) = new_thread();
+        add_thread_to_task(root_task, init_t);
+        add_thread_to_manager(percpu(core_tm), init_t);
+        /*we have to set the kstack bottom to the percpu stack*/
+        init_t->kstack_bottom = percpu(boot_stack_bottom);
         return 0;
 }
 error_t create_idle_thread(Tcb_Base* root_task)

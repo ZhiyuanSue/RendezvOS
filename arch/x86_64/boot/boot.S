@@ -85,7 +85,7 @@ clear_bss:
 	jmp		clear_bss
 set_sp:
 	/*set sp*/
-	movl 	$(_boot_stack_top - kernel_virt_offset),%esp
+	movl 	$(_boot_stack_bottom - kernel_virt_offset),%esp
 	/*clear the flag register*/
 	pushl	$0
 	popf
@@ -158,7 +158,7 @@ set_segments:
 	movw	%ax,%fs
 	movw	%ax,%gs
 set_new_stack:
-	movabs	$(_boot_stack_top),%rsp
+	movabs	$(_boot_stack_bottom),%rsp
 run_main:
 	movabs	$(setup_info),%rdi
 	call	cmain

@@ -31,7 +31,7 @@ void cmain(struct setup_info *arch_setup_info)
                 pr_error("[ERROR] arch cpu info error\n");
                 return;
         }
-        if (virt_mm_init(BSP_ID)) {
+        if (virt_mm_init(BSP_ID, arch_setup_info)) {
                 pr_error("[ERROR] virt mm init error\n");
                 return;
         }

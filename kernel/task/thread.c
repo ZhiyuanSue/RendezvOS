@@ -41,7 +41,8 @@ Thread_Base* create_thread(void* __func, int nr_parameter, ...)
                                      KERNEL_VIRT_OFFSET,
                                      0,
                                      percpu(nexus_root));
-        thread->kstack_bottom = kstack + thread_kstack_page_num * PAGE_SIZE;
+        thread->kstack_bottom =
+                (vaddr)kstack + thread_kstack_page_num * PAGE_SIZE;
         memset(kstack, '\0', thread_kstack_page_num * PAGE_SIZE);
         arch_set_new_thread_ctx(&(thread->ctx),
                                 (void*)(thread_entry),

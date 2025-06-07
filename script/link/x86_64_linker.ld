@@ -30,7 +30,7 @@ SECTIONS {
 	.bss :
 	{
 		*(.boot_stack)
-		_boot_stack_top = .;
+		_boot_stack_bottom = .;
 		*(.bss .bss.*)
 	}
 	_bss_end = .;

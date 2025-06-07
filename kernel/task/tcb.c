@@ -119,6 +119,7 @@ Thread_Base* new_thread()
                 thread->tm = NULL;
                 thread->kstack_bottom = 0;
                 thread->init_parameter = new_init_parameter();
+                thread->flags = THREAD_FLAG_NONE;
         }
         return thread;
 }
