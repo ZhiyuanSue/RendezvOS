@@ -80,10 +80,7 @@ extern u64 thread_kstack_page_num;
 #define THREAD_FLAG_NONE               0
 #define THREAD_FLAG_KERNEL_USER_OFFSET (0)
 #define THREAD_FLAG_USER               (0x1ull)
-/*
-        let the default is kernel thread
-        TODO:the elf_loader should set it as a user thread
-*/
+/*let the default is kernel thread*/
 
 typedef struct {
         THREAD_COMMON
