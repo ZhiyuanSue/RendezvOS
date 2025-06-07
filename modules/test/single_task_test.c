@@ -42,6 +42,8 @@ int task_test(void)
                         return -E_REND_TEST;
                 }
                 error_t e = thread_join(test_task, test_thread);
+                if (e)
+                        continue;
                 schedule(percpu(core_tm));
         }
         return 0;

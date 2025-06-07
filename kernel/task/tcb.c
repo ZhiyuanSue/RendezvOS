@@ -21,6 +21,11 @@ Task_Manager* init_proc()
         create_idle_thread(root_task);
         if (percpu(init_thread_ptr) && percpu(idle_thread_ptr)) {
                 percpu(core_tm)->current_thread = idle_thread_ptr;
+                /*manually set the status of the thread*/
+                thread_set_status(thread_status_active_ready,
+                                  percpu(init_thread_ptr));
+                thread_set_status(thread_status_running,
+                                  percpu(idle_thread_ptr));
                 context_switch(&(percpu(init_thread_ptr)->ctx),
                                &(percpu(idle_thread_ptr)->ctx));
         } else {
@@ -112,7 +117,7 @@ Thread_Base* new_thread()
         if (thread) {
                 thread->tid = INVALID_ID;
                 arch_task_ctx_init(&(thread->ctx));
-                thread->status = tcb_status_init;
+                thread_set_status(thread_status_init, thread);
                 INIT_LIST_HEAD(&(thread->sched_thread_list));
                 INIT_LIST_HEAD(&(thread->thread_list_node));
                 thread->belong_tcb = NULL;

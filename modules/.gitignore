@@ -13,5 +13,5 @@
 !/elf/
 !/elf/**
 *.env
-*.Makefile
+*/Makefile
 !/Makefile

@@ -8,7 +8,9 @@ DEFINE_PER_CPU(Task_Manager*, core_tm);
 Thread_Base* round_robin_schedule(Task_Manager* tm)
 {
         struct list_entry* next = tm->current_thread->sched_thread_list.next;
-        if (next == &(tm->sched_thread_list)) {
+        while (next == &(tm->sched_thread_list)
+               || container_of(next, Thread_Base, sched_thread_list)->status
+                          != thread_status_active_ready) {
                 next = next->next;
         }
         return container_of(next, Thread_Base, sched_thread_list);
@@ -50,5 +52,13 @@ void schedule(Task_Manager* tm)
                 }
         }
 
+        if (thread_get_status(curr) == thread_status_running) {
+                /*
+                        if before the schedule no status is set
+                        set it to ready
+                */
+                thread_set_status(thread_status_active_ready, curr);
+        }
+        thread_set_status(thread_status_running, tm->current_thread);
         context_switch(&(curr->ctx), &(tm->current_thread->ctx));
 }

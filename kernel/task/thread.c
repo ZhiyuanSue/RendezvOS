@@ -24,6 +24,7 @@ static void thread_entry()
         run_thread(current_thread->init_parameter);
         /*finish run the target thread and prepare the clean*/
         pr_info("go back to thread entry and try to clean\n");
+        thread_set_status(thread_status_zombie, current_thread);
         schedule(percpu(core_tm));
 }
 /*general thread create function*/
@@ -68,5 +69,6 @@ error_t thread_join(Tcb_Base* task, Thread_Base* thread)
         if (res)
                 return res;
         res = add_thread_to_manager(percpu(core_tm), thread);
+        thread_set_status(thread_status_active_ready, thread);
         return res;
 }

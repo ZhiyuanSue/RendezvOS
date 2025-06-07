@@ -20,13 +20,14 @@
 
 #include "id.h"
 
-enum tcb_status_base {
-        tcb_status_init,
-        tcb_status_running,
-        tcb_status_active_ready,
-        tcb_status_suspend_ready,
-        tcb_status_active_blocked,
-        tcb_status_suspend_blocked,
+enum thread_status_base {
+        thread_status_init,
+        thread_status_running,
+        thread_status_active_ready,
+        thread_status_suspend_ready,
+        thread_status_active_blocked,
+        thread_status_suspend_blocked,
+        thread_status_zombie,
 };
 
 /*
@@ -129,6 +130,14 @@ Thread_Base* create_thread(void* __func, int nr_parameter, ...);
 static inline void thread_set_flags(u64 flags, Thread_Base* thread)
 {
         thread->flags = flags;
+}
+static inline u64 thread_get_status(Thread_Base* thread)
+{
+        return thread->status;
+}
+static inline void thread_set_status(u64 status, Thread_Base* thread)
+{
+        thread->status = status;
 }
 error_t thread_join(Tcb_Base* task, Thread_Base* thread);
 void list_all_threads(Task_Manager* tm);

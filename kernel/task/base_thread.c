@@ -1,4 +1,3 @@
-
 #include <rendezvos/task/tcb.h>
 #include <rendezvos/error.h>
 #include <modules/log/log.h>
@@ -20,6 +19,8 @@ error_t create_init_thread(Tcb_Base* root_task)
         add_thread_to_manager(percpu(core_tm), init_t);
         /*we have to set the kstack bottom to the percpu stack*/
         init_t->kstack_bottom = percpu(boot_stack_bottom);
+        thread_set_status(thread_status_running, init_t); /*init thread is the
+                                                             running thread*/
         return 0;
 }
 error_t create_idle_thread(Tcb_Base* root_task)
