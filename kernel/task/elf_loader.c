@@ -4,11 +4,12 @@
 error_t load_elf_Phdr_64(Elf64_Phdr *phdr_ptr)
 {
         /*
-                        TODO: we should add a data structure to record the used
+                TODO: we should add a data structure to record the used
            user space, which will be used for clean. and it might affect the
            nexus
         */
         print_elf_ph64(phdr_ptr);
+
         return 0;
 }
 error_t load_elf_program(vaddr elf_start, vaddr elf_end)

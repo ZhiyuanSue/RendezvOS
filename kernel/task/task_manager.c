@@ -48,7 +48,8 @@ void schedule(Task_Manager* tm)
                         we think every task have a vspace
                         */
                         tm->current_task = new;
-                        arch_set_current_user_vspace_root(new->vs->vspace_root);
+                        arch_set_current_user_vspace_root(
+                                new->vs->vspace_root_addr);
                 }
         }
 

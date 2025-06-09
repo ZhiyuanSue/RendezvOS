@@ -11,15 +11,16 @@ DEFINE_PER_CPU(struct spin_lock_t, vspace_spin_lock);
 void sys_init_map()
 {
         ARCH_PFLAGS_t flags;
-        paddr vspace_root = arch_get_current_kernel_vspace_root();
+        paddr vspace_root_addr = arch_get_current_kernel_vspace_root();
         flags = arch_decode_flags(0,
                                   PAGE_ENTRY_GLOBAL | PAGE_ENTRY_READ
                                           | PAGE_ENTRY_VALID
                                           | PAGE_ENTRY_WRITE);
-        arch_set_L0_entry(KERNEL_VIRT_TO_PHY((vaddr)&MAP_L1_table),
-                          map_pages,
-                          (union L0_entry *)KERNEL_PHY_TO_VIRT(vspace_root),
-                          flags);
+        arch_set_L0_entry(
+                KERNEL_VIRT_TO_PHY((vaddr)&MAP_L1_table),
+                map_pages,
+                (union L0_entry *)KERNEL_PHY_TO_VIRT(vspace_root_addr),
+                flags);
         flags = arch_decode_flags(1,
                                   PAGE_ENTRY_GLOBAL | PAGE_ENTRY_READ
                                           | PAGE_ENTRY_VALID
@@ -99,18 +100,19 @@ error_t map(VSpace *vs, u64 ppn, u64 vpn, int level, ENTRY_FLAGS_t eflags,
            allocator but I change the logic, we directly think it's illegal and
            it must use new_vs_root function to generate a new one
                 */
-        if (!(vs->vspace_root)) {
+        if (!(vs->vspace_root_addr)) {
                 pr_error("[ ERROR ] No vs root\n");
                 res = -E_RENDEZVOS;
                 goto map_fail;
-        } else if (ROUND_DOWN(vs->vspace_root, PAGE_SIZE) != vs->vspace_root) {
+        } else if (ROUND_DOWN(vs->vspace_root_addr, PAGE_SIZE)
+                   != vs->vspace_root_addr) {
                 pr_error(
                         "[ ERROR ] wrong vspace root paddr in mapping, please check\n");
                 res = -E_RENDEZVOS;
                 goto map_fail;
         }
         /*map the L0 table to one L3 table entry*/
-        util_map(vs->vspace_root, handler->map_vaddr[0]);
+        util_map(vs->vspace_root_addr, handler->map_vaddr[0]);
         if (new_alloc) {
                 memset((char *)(handler->map_vaddr[0]), 0, PAGE_SIZE);
                 new_alloc = false;
@@ -155,7 +157,8 @@ error_t map(VSpace *vs, u64 ppn, u64 vpn, int level, ENTRY_FLAGS_t eflags,
                                   (union L0_entry *)(handler->map_vaddr[0]),
                                   flags);
                 /*sync with the root vs*/
-                if (vs->vspace_root != KERNEL_VIRT_TO_PHY((vaddr)(&L0_table))) {
+                if (vs->vspace_root_addr
+                    != KERNEL_VIRT_TO_PHY((vaddr)(&L0_table))) {
                         arch_set_L0_entry(next_level_paddr,
                                           v,
                                           (union L0_entry *)(&L0_table),
@@ -414,19 +417,20 @@ error_t unmap(VSpace *vs, u64 vpn, struct map_handler *handler, spin_lock *lock)
         union L2_entry L2_E;
         union L3_entry L3_E;
         error_t res = 0;
-        if (!vs->vspace_root || !vpn) {
+        if (!vs->vspace_root_addr || !vpn) {
                 pr_error("[ ERROR ] unmap input is not right\n");
                 res = -E_IN_PARAM;
                 goto unmap_fail;
-        } else if (ROUND_DOWN(vs->vspace_root, PAGE_SIZE) != vs->vspace_root) {
+        } else if (ROUND_DOWN(vs->vspace_root_addr, PAGE_SIZE)
+                   != vs->vspace_root_addr) {
                 pr_error(
                         "[ ERROR ] wrong vspace root paddr 0x%x in mapping, please check\n",
-                        vs->vspace_root);
+                        vs->vspace_root_addr);
                 res = -E_IN_PARAM;
                 goto unmap_fail;
         }
         /*=== === === L0 table === === ===*/
-        util_map(vs->vspace_root, handler->map_vaddr[0]);
+        util_map(vs->vspace_root_addr, handler->map_vaddr[0]);
         L0_E = ((union L0_entry *)(handler->map_vaddr[0]))[L0_INDEX(v)];
         entry_flags = arch_encode_flags(0, (ARCH_PFLAGS_t)L0_E.entry);
         next_level_paddr = L0_entry_addr(L0_E);
@@ -531,19 +535,20 @@ paddr have_mapped(VSpace *vs, u64 vpn, struct map_handler *handler)
         union L1_entry L1_E;
         union L2_entry L2_E;
         union L3_entry L3_E;
-        if (!vs || !vs->vspace_root || !vpn) {
+        if (!vs || !vs->vspace_root_addr || !vpn) {
                 pr_error("[ ERROR ] check input is not right\n");
                 next_level_paddr = 0;
                 goto have_mapped_fail;
-        } else if (ROUND_DOWN(vs->vspace_root, PAGE_SIZE) != vs->vspace_root) {
+        } else if (ROUND_DOWN(vs->vspace_root_addr, PAGE_SIZE)
+                   != vs->vspace_root_addr) {
                 pr_error(
                         "[ ERROR ] wrong vspace root paddr 0x%x in mapping, please check\n",
-                        vs->vspace_root);
+                        vs->vspace_root_addr);
                 next_level_paddr = 0;
                 goto have_mapped_fail;
         }
         /*=== === === L0 table === === ===*/
-        util_map(vs->vspace_root, handler->map_vaddr[0]);
+        util_map(vs->vspace_root_addr, handler->map_vaddr[0]);
         L0_E = ((union L0_entry *)(handler->map_vaddr[0]))[L0_INDEX(v)];
         entry_flags = arch_encode_flags(0, (ARCH_PFLAGS_t)L0_E.entry);
         next_level_paddr = L0_entry_addr(L0_E);

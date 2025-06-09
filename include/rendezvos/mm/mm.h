@@ -4,7 +4,7 @@
 #include <rendezvos/sync/spin_lock.h>
 
 typedef struct {
-        paddr vspace_root;
+        paddr vspace_root_addr;
         uint64_t vspace_id;
         spin_lock vspace_lock;
         struct list_entry vspace_node;

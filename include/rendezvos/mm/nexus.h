@@ -11,33 +11,38 @@
 struct nexus_node {
         struct list_entry manage_free_list;
         struct list_entry _free_list;
+        paddr vspace_root_addr;
         union {
                 /* manager node */
                 struct {
                         struct rb_node _rb_node;
                         vaddr start_addr;
                         vaddr ppn;
-                        paddr vspace_root;
                         u64 size;
                         u64 page_left_nexus;
                 };
                 /* root node*/
                 struct {
+                        struct rb_node _vspace_rb_node;
                         struct rb_root _rb_root;
+                        struct rb_root _vspace_rb_root;
                         void* backup_manage_page;
                         struct map_handler* handler;
-                        int nexus_id; /*should alloced by the upper level code*/
+                        i64 nexus_id; /*should alloced by the upper level code*/
                 };
         };
 };
 #define NEXUS_PER_PAGE (PAGE_SIZE / (sizeof(struct nexus_node)))
 struct nexus_node* init_nexus(struct map_handler* handler);
+struct nexus_node* nexus_create_vspace_root_node(struct nexus_node* nexus_root,
+                                                 VSpace* vs);
+void nexus_delete_vspace(struct nexus_node* nexus_root, VSpace* vs);
+
 void* get_free_page(int page_num, enum zone_type memory_zone,
                     vaddr target_vaddr, VSpace* vs,
                     struct nexus_node* nexus_root);
 error_t free_pages(void* p, int page_num, VSpace* vs,
                    struct nexus_node* nexus_root);
-struct nexus_node* nexus_rb_tree_search(struct rb_root* root, vaddr start_addr,
-                                        paddr vspace_root);
+struct nexus_node* nexus_rb_tree_search(struct rb_root* root, vaddr start_addr);
 
 #endif
