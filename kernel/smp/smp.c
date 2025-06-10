@@ -31,8 +31,8 @@ void start_secondary_cpu(struct setup_info *arch_setup_info)
         }
         pr_info("successfully start secondary cpu %d\n", current_cpu_id);
         per_cpu(CPU_STATE, current_cpu_id) = cpu_enable;
-#ifdef TEST
-        multi_cpu_test();
-#endif
+
+        AP_test();
+
         cpu_idle();
 }

@@ -12,6 +12,8 @@
 #define MAX_SINGLE_TEST_CASE 5
 #define MAX_SMP_TEST_CASE    5
 
+void BSP_test();
+void AP_test();
 void single_cpu_test(void);
 void multi_cpu_test(void);
 
