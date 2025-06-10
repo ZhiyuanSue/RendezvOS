@@ -37,7 +37,7 @@ struct nexus_node {
 struct nexus_node* init_nexus(struct map_handler* handler);
 /*vspace*/
 struct nexus_node* nexus_create_vspace_root_node(struct nexus_node* nexus_root,
-                                                 VSpace* vs);
+                                                 paddr vspace_root_addr);
 void nexus_delete_vspace(struct nexus_node* nexus_root, VSpace* vs);
 
 /*page*/

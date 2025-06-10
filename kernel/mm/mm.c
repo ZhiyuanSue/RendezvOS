@@ -22,8 +22,10 @@ error_t virt_mm_init(int cpu_id, struct setup_info *arch_setup_info)
 {
         if (cpu_id == BSP_ID) {
                 sys_init_map();
-                init_vspace(
-                        &root_vspace, arch_get_current_kernel_vspace_root(), 0);
+                init_vspace(&root_vspace,
+                            arch_get_current_kernel_vspace_root(),
+                            0,
+                            per_cpu(nexus_root, BSP_ID));
                 per_cpu(boot_stack_bottom, cpu_id) =
                         (vaddr)(&boot_stack) + boot_stack_size;
         } else {

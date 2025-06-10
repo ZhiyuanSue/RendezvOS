@@ -47,12 +47,15 @@ error_t gen_task_from_elf(vaddr elf_start, vaddr elf_end)
                 e = -E_RENDEZVOS;
                 goto gen_task_from_elf_error;
         }
-        paddr new_root = new_vs_root(0, &percpu(Map_Handler));
-        if (!new_root) {
+        paddr new_vs_paddr = new_vs_root(0, &percpu(Map_Handler));
+        if (!new_vs_paddr) {
                 e = -E_RENDEZVOS;
                 goto gen_task_from_elf_error;
         }
-        init_vspace(elf_task->vs, new_root, elf_task->pid);
+        struct nexus_node *new_vs_nexus_root =
+                nexus_create_vspace_root_node(nexus_root, new_vs_paddr);
+        init_vspace(
+                elf_task->vs, new_vs_paddr, elf_task->pid, new_vs_nexus_root);
         add_task_to_manager(percpu(core_tm), elf_task);
 
         Thread_Base *elf_thread =

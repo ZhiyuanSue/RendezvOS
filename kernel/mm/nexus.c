@@ -298,11 +298,11 @@ static void nexus_free_entry(struct nexus_node* nexus_entry,
         }
 }
 struct nexus_node* nexus_create_vspace_root_node(struct nexus_node* nexus_root,
-                                                 VSpace* vs)
+                                                 paddr vspace_root_addr)
 {
         /*try to find the vs paddr root ,if exist, error*/
         struct nexus_node* vspace_node = nexus_rb_tree_vspace_search(
-                &nexus_root->_vspace_rb_root, vs->vspace_root_addr);
+                &nexus_root->_vspace_rb_root, vspace_root_addr);
         if (vspace_node) {
                 pr_error("[Error] have has such a vspace in nexus\n");
                 goto fail;
@@ -312,7 +312,7 @@ struct nexus_node* nexus_create_vspace_root_node(struct nexus_node* nexus_root,
                 pr_error("[ NEXUS ] cannot find a new free nexus entry\n");
                 goto fail;
         }
-        free_nexus_entry->vspace_root_addr = vs->vspace_root_addr;
+        free_nexus_entry->vspace_root_addr = vspace_root_addr;
         free_nexus_entry->nexus_id = nexus_root->nexus_id;
         INIT_LIST_HEAD(&free_nexus_entry->_vspace_list);
         nexus_rb_tree_vspace_insert(free_nexus_entry,
