@@ -126,6 +126,7 @@ static void nexus_init_manage_page(vaddr vpage_addr,
                 list_add_head(&n_node[i]._free_list, &n_node->_free_list);
         }
         /*insert to rb tree*/
+        list_add_head(&(n_node->_vspace_list), &(nexus_root->_vspace_list));
         nexus_rb_tree_insert(n_node, &nexus_root->_rb_root);
 }
 /*return a nexus root node*/
@@ -161,6 +162,7 @@ struct nexus_node* init_nexus(struct map_handler* handler)
         n_node[1].nexus_id = handler->cpu_id;
         n_node[1].vspace_root_addr = 0;
         INIT_LIST_HEAD(&n_node[1].manage_free_list);
+        INIT_LIST_HEAD(&n_node[1]._vspace_list);
         nexus_rb_tree_vspace_insert(&n_node[1], &n_node[1]._vspace_rb_root);
 
         nexus_init_manage_page(vpage_addr, &n_node[1]);
@@ -184,6 +186,9 @@ static struct nexus_node* nexus_get_free_entry(struct nexus_node* root_node)
                         lp = &((struct nexus_node*)backup_page)
                                       ->manage_free_list;
                         root_node->backup_manage_page = NULL;
+                        list_add_head(&(((struct nexus_node*)backup_page)
+                                                ->_vspace_list),
+                                      &(root_node->_vspace_list));
                         nexus_rb_tree_insert((struct nexus_node*)backup_page,
                                              &root_node->_rb_root);
                 } else {
@@ -264,6 +269,7 @@ static void nexus_free_entry(struct nexus_node* nexus_entry,
                 /*we also need to del it from the list and the rb tree
                  * first*/
                 list_del_init(&page_manage_node->manage_free_list);
+                list_del_init(&page_manage_node->_vspace_list);
                 nexus_rb_tree_remove(page_manage_node, &nexus_root->_rb_root);
                 if (!(nexus_root->backup_manage_page)) {
                         /*if no backup page, just make it as the backup page*/
@@ -308,27 +314,70 @@ struct nexus_node* nexus_create_vspace_root_node(struct nexus_node* nexus_root,
         }
         free_nexus_entry->vspace_root_addr = vs->vspace_root_addr;
         free_nexus_entry->nexus_id = nexus_root->nexus_id;
+        INIT_LIST_HEAD(&free_nexus_entry->_vspace_list);
         nexus_rb_tree_vspace_insert(free_nexus_entry,
                                     &nexus_root->_vspace_rb_root);
         return free_nexus_entry;
-fail_free_nexus_entry:
-        nexus_free_entry(free_nexus_entry, nexus_root);
 fail:
         return NULL;
 }
 
 void nexus_delete_vspace(struct nexus_node* nexus_root, VSpace* vs)
 {
+        if (!vs->vspace_root_addr) {
+                pr_error(
+                        "[Error] we should not delete the kernel nexus vspace\n");
+                goto fail;
+        }
         /*try to find the vs paddr root ,if not, error*/
         struct nexus_node* vspace_node = nexus_rb_tree_vspace_search(
                 &nexus_root->_vspace_rb_root, vs->vspace_root_addr);
-        if (vspace_node) {
-                pr_error("[Error] have has such a vspace in nexus\n");
+        if (!vspace_node) {
+                pr_error("[Error] no such a vspace in nexus\n");
                 goto fail;
         }
-		/*TODO:find a way to delete the vspace nexus nodes*/
+        /*
+                for release the vspace
+                there's no need to use a tree to record one nexus node for
+           release, which might lead to the stack overflow for a recursive
+           algorithm so we must use a list entry to maintain the relationship,
+                and the release the vspace is always using the
+        */
+        struct list_entry* curr = vspace_node->_vspace_list.next;
+        struct list_entry* next;
+        while (curr != &(vspace_node->_vspace_list)) {
+                next = curr->next;
+                struct nexus_node* node =
+                        container_of(curr, struct nexus_node, _vspace_list);
+
+                error_t unmap_res = unmap(vs,
+                                          VPN(node->start_addr),
+                                          nexus_root->handler,
+                                          &(vs->vspace_lock));
+                if (unmap_res) {
+                        pr_error("[ NEXUS ] ERROR: unmap error!\n");
+                        goto fail;
+                }
+
+                lock_mcs(&nexus_root->handler->pmm->spin_ptr,
+                         &percpu(pmm_spin_lock));
+                nexus_root->handler->pmm->pmm_free((i64)(node->ppn),
+                                                   node->size);
+                unlock_mcs(&nexus_root->handler->pmm->spin_ptr,
+                           &percpu(pmm_spin_lock));
+
+                list_del_init(curr);
+                /*no need to maintain the rb tree*/
+                nexus_free_entry(node, nexus_root);
+                curr = next;
+        }
+        /*after we delete the map nodes,we need to delete the vspace node*/
+        nexus_rb_tree_vspace_remove(vspace_node,
+                                    &(nexus_root->_vspace_rb_root));
+        nexus_free_entry(vspace_node, nexus_root);
+        return;
 fail:
-        return NULL;
+        return;
 }
 static void* _kernel_get_free_page(int page_num, enum zone_type memory_zone,
                                    vaddr target_vaddr,
@@ -423,7 +472,9 @@ static void* _kernel_get_free_page(int page_num, enum zone_type memory_zone,
         free_nexus_entry->size = page_num;
         free_nexus_entry->ppn = ppn;
         free_nexus_entry->vspace_root_addr = 0;
-        /*we directly */
+        /*we directly insert this node to the nexus_root as kernel page tree*/
+        list_add_head(&(free_nexus_entry->_vspace_list),
+                      &(nexus_root->_vspace_list));
         nexus_rb_tree_insert(free_nexus_entry, &nexus_root->_rb_root);
         return (void*)free_page_addr;
 fail_free_nexus_entry:
@@ -491,6 +542,8 @@ static void* _user_get_free_page(int page_num, enum zone_type memory_zone,
                 free_nexus_entry->size = MIDDLE_PAGES;
                 free_nexus_entry->ppn = ppn;
                 free_nexus_entry->vspace_root_addr = vs->vspace_root_addr;
+                list_add_head(&(free_nexus_entry->_vspace_list),
+                              &(vspace_node->_vspace_list));
                 nexus_rb_tree_insert(free_nexus_entry, &vspace_node->_rb_root);
                 target_vaddr += MIDDLE_PAGE_SIZE;
         }
@@ -531,6 +584,8 @@ static void* _user_get_free_page(int page_num, enum zone_type memory_zone,
                 free_nexus_entry->size = 1;
                 free_nexus_entry->ppn = ppn;
                 free_nexus_entry->vspace_root_addr = vs->vspace_root_addr;
+                list_add_head(&(free_nexus_entry->_vspace_list),
+                              &(vspace_node->_vspace_list));
                 nexus_rb_tree_insert(free_nexus_entry, &vspace_node->_rb_root);
                 target_vaddr += PAGE_SIZE;
         }
@@ -608,6 +663,8 @@ static error_t _kernel_free_pages(void* p, int page_num,
         lock_mcs(&nexus_root->handler->pmm->spin_ptr, &percpu(pmm_spin_lock));
         nexus_root->handler->pmm->pmm_free(ppn, node->size);
         unlock_mcs(&nexus_root->handler->pmm->spin_ptr, &percpu(pmm_spin_lock));
+        /*del from the vspace*/
+        list_del_init(&(node->_vspace_list));
         /*del from rb tree*/
         nexus_rb_tree_remove(node, &nexus_root->_rb_root);
         nexus_free_entry(node, nexus_root);
@@ -631,12 +688,19 @@ static error_t _user_free_pages(void* p, int page_num, VSpace* vs,
                 i64 ppn = (i64)(node->ppn);
                 vaddr map_addr = node->start_addr;
                 u64 size = node->size;
+                page_num -= size;
+                if (page_num < 0) {
+                        pr_error(
+                                "[ NEXUS ] ERROR: the size is unequal with the alloc time, this vspace might be wrong\n");
+                        return -E_RENDEZVOS;
+                } else if (page_num == 0) {
+                        break;
+                }
                 vaddr expect_next_addr = map_addr + size * PAGE_SIZE;
-                error_t unmap_res =
-                        unmap(vs,
-                              VPN(map_addr),
-                              nexus_root->handler,
-                              &(percpu(current_vspace)->vspace_lock));
+                error_t unmap_res = unmap(vs,
+                                          VPN(map_addr),
+                                          nexus_root->handler,
+                                          &(vs->vspace_lock));
                 if (unmap_res) {
                         pr_error("[ NEXUS ] ERROR: unmap error!\n");
                         return -E_RENDEZVOS;
@@ -646,16 +710,9 @@ static error_t _user_free_pages(void* p, int page_num, VSpace* vs,
                 nexus_root->handler->pmm->pmm_free(ppn, node->size);
                 unlock_mcs(&nexus_root->handler->pmm->spin_ptr,
                            &percpu(pmm_spin_lock));
+                list_del_init(&(node->_vspace_list));
                 nexus_rb_tree_remove(node, &vspace_node->_rb_root);
                 nexus_free_entry(node, nexus_root);
-                page_num -= size;
-                if (page_num < 0) {
-                        pr_error(
-                                "[ NEXUS ] ERROR: the size is unequal with the alloc time, this vspace might be wrong\n");
-                        return -E_RENDEZVOS;
-                } else if (page_num == 0) {
-                        break;
-                }
                 struct rb_node* next_rb = RB_Next(&node->_rb_node);
                 if (!next_rb)
                         break;
