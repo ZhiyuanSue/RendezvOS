@@ -505,6 +505,10 @@ static void* _user_get_free_page(int page_num, enum zone_type memory_zone,
         int alloced_pages;
         for (alloced_pages = 0; alloced_pages + MIDDLE_PAGES <= page_num;
              alloced_pages += MIDDLE_PAGES) {
+                if (ROUND_DOWN(target_vaddr, MIDDLE_PAGE_SIZE)
+                    != target_vaddr) {
+                        return NULL;
+                }
                 struct nexus_node* free_nexus_entry =
                         nexus_get_free_entry(nexus_root);
                 if (!free_nexus_entry) {

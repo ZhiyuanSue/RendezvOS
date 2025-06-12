@@ -2,6 +2,8 @@
 #include <modules/test/test.h>
 #include <rendezvos/mm/nexus.h>
 #include <modules/log/log.h>
+#include <rendezvos/mm/mm.h>
+#include <rendezvos/task/id.h>
 #define NR_MAX_TEST NEXUS_PER_PAGE * 3
 extern struct nexus_node* nexus_root;
 void* test_ptrs[NR_MAX_TEST];
@@ -93,5 +95,54 @@ int nexus_test(void)
                         free_pages(test_ptrs[i], 2, 0, nexus_root);
         }
         nexus_print(nexus_root);
+
+        /*try to add a new vs and then use the new vs test user*/
+        /*add a new vspace*/
+        error_t e = 0;
+        VSpace* vs = new_vspace();
+        if (!vs) {
+                e = -E_REND_TEST;
+                goto nexus_test_fail;
+        }
+        paddr new_vs_paddr = new_vs_root(0, &percpu(Map_Handler));
+        if (!new_vs_paddr) {
+                e = -E_REND_TEST;
+                goto nexus_test_fail;
+        }
+        struct nexus_node* new_vs_nexus_root =
+                nexus_create_vspace_root_node(nexus_root, new_vs_paddr);
+        init_vspace(vs, new_vs_paddr, get_new_pid(), new_vs_nexus_root);
+
+        /*start new vspace nexus test*/
+        vaddr start_test_addr = PAGE_SIZE;
+        for (int i = 0; i < NR_MAX_TEST; i++) {
+                int page_num = 2;
+                if (i % 2) {
+                        page_num = MIDDLE_PAGES;
+                        start_test_addr =
+                                ROUND_UP(start_test_addr, MIDDLE_PAGE_SIZE);
+                }
+                test_ptrs[i] = get_free_page(
+                        page_num, ZONE_NORMAL, start_test_addr, vs, nexus_root);
+
+                start_test_addr += page_num * PAGE_SIZE;
+                if (test_ptrs[i]) {
+                        *((u64*)(test_ptrs[i])) = 0;
+                        *((u64*)(test_ptrs[i] + PAGE_SIZE)) = 0;
+                }
+        }
+        nexus_print(nexus_root);
+        for (int i = 0; i < NR_MAX_TEST; i++) {
+                if (test_ptrs[i] && i % 2)
+                        free_pages(test_ptrs[i], MIDDLE_PAGES, vs, nexus_root);
+        }
+        nexus_print(nexus_root);
+        for (int i = 0; i < NR_MAX_TEST; i++) {
+                if (test_ptrs[i] && !(i % 2))
+                        free_pages(test_ptrs[i], 2, vs, nexus_root);
+        }
+
         return 0;
+nexus_test_fail:
+        return e;
 }

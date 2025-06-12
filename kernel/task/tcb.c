@@ -152,7 +152,7 @@ void del_vspace(VSpace** vs)
         if (!cpu_allocator)
                 return;
         cpu_allocator->m_free(cpu_allocator, (void*)(*vs));
-		*vs = NULL;
+        *vs = NULL;
 }
 Thread_Init_Para* new_init_parameter()
 {

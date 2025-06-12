@@ -42,6 +42,7 @@ error_t gen_task_from_elf(vaddr elf_start, vaddr elf_end)
         }
 
         elf_task->pid = get_new_pid();
+        /*vspace part*/
         elf_task->vs = new_vspace();
         if (!elf_task->vs) {
                 e = -E_RENDEZVOS;
@@ -56,6 +57,7 @@ error_t gen_task_from_elf(vaddr elf_start, vaddr elf_end)
                 nexus_create_vspace_root_node(nexus_root, new_vs_paddr);
         init_vspace(
                 elf_task->vs, new_vs_paddr, elf_task->pid, new_vs_nexus_root);
+        /*--- end vspace part ---*/
         add_task_to_manager(percpu(core_tm), elf_task);
 
         Thread_Base *elf_thread =
