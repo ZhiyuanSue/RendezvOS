@@ -12,7 +12,7 @@ struct nexus_node {
         struct list_entry manage_free_list;
         struct list_entry _free_list;
         struct list_entry _vspace_list;
-        paddr vspace_root_addr;
+        VSpace* vs;
         union {
                 /* manager node */
                 struct {
@@ -37,7 +37,7 @@ struct nexus_node {
 struct nexus_node* init_nexus(struct map_handler* handler);
 /*vspace*/
 struct nexus_node* nexus_create_vspace_root_node(struct nexus_node* nexus_root,
-                                                 paddr vspace_root_addr);
+                                                 VSpace* vs);
 void nexus_delete_vspace(struct nexus_node* nexus_root, VSpace* vs);
 
 /*page*/

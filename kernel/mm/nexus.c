@@ -29,14 +29,14 @@ static void nexus_rb_tree_vspace_insert(struct nexus_node* vspace_node,
                                         struct rb_root* vspace_rb_root)
 {
         struct rb_node** new = &vspace_rb_root->rb_root, *parent = NULL;
-        u64 key = vspace_node->vspace_root_addr;
+        u64 key = vspace_node->vs->vspace_root_addr;
         while (*new) {
                 parent = *new;
                 struct nexus_node* tmp_node = container_of(
                         parent, struct nexus_node, _vspace_rb_node);
-                if (key < (u64)tmp_node->vspace_root_addr)
+                if (key < (u64)tmp_node->vs->vspace_root_addr)
                         new = &parent->left_child;
-                else if (key > (u64)tmp_node->vspace_root_addr)
+                else if (key > (u64)tmp_node->vs->vspace_root_addr)
                         new = &parent->right_child;
                 else {
                         return;
@@ -68,9 +68,9 @@ struct nexus_node* nexus_rb_tree_vspace_search(struct rb_root* root,
         while (node) {
                 struct nexus_node* tmp_node =
                         container_of(node, struct nexus_node, _vspace_rb_node);
-                if (vspace_root_addr < tmp_node->vspace_root_addr)
+                if (vspace_root_addr < tmp_node->vs->vspace_root_addr)
                         node = node->left_child;
-                else if (vspace_root_addr > tmp_node->vspace_root_addr)
+                else if (vspace_root_addr > tmp_node->vs->vspace_root_addr)
                         node = node->right_child;
                 else
                         return tmp_node;
@@ -160,7 +160,7 @@ struct nexus_node* init_nexus(struct map_handler* handler)
         n_node[1].backup_manage_page = NULL;
         n_node[1].handler = handler;
         n_node[1].nexus_id = handler->cpu_id;
-        n_node[1].vspace_root_addr = 0;
+        n_node[1].vs = vs;
         INIT_LIST_HEAD(&n_node[1].manage_free_list);
         INIT_LIST_HEAD(&n_node[1]._vspace_list);
         nexus_rb_tree_vspace_insert(&n_node[1], &n_node[1]._vspace_rb_root);
@@ -298,11 +298,15 @@ static void nexus_free_entry(struct nexus_node* nexus_entry,
         }
 }
 struct nexus_node* nexus_create_vspace_root_node(struct nexus_node* nexus_root,
-                                                 paddr vspace_root_addr)
+                                                 VSpace* vs)
 {
         /*try to find the vs paddr root ,if exist, error*/
+        if (!nexus_root || !vs) {
+                pr_error("[Error] input parameter error\n");
+                goto fail;
+        }
         struct nexus_node* vspace_node = nexus_rb_tree_vspace_search(
-                &nexus_root->_vspace_rb_root, vspace_root_addr);
+                &nexus_root->_vspace_rb_root, vs->vspace_root_addr);
         if (vspace_node) {
                 pr_error("[Error] have has such a vspace in nexus\n");
                 goto fail;
@@ -312,7 +316,7 @@ struct nexus_node* nexus_create_vspace_root_node(struct nexus_node* nexus_root,
                 pr_error("[ NEXUS ] cannot find a new free nexus entry\n");
                 goto fail;
         }
-        free_nexus_entry->vspace_root_addr = vspace_root_addr;
+        free_nexus_entry->vs = vs;
         free_nexus_entry->nexus_id = nexus_root->nexus_id;
         INIT_LIST_HEAD(&free_nexus_entry->_vspace_list);
         nexus_rb_tree_vspace_insert(free_nexus_entry,
@@ -324,6 +328,10 @@ fail:
 
 void nexus_delete_vspace(struct nexus_node* nexus_root, VSpace* vs)
 {
+        if (!nexus_root || !vs) {
+                pr_error("[Error] input parameter error\n");
+                goto fail;
+        }
         if (!vs->vspace_root_addr) {
                 pr_error(
                         "[Error] we should not delete the kernel nexus vspace\n");
@@ -471,7 +479,7 @@ static void* _kernel_get_free_page(int page_num, enum zone_type memory_zone,
         free_nexus_entry->start_addr = free_page_addr;
         free_nexus_entry->size = page_num;
         free_nexus_entry->ppn = ppn;
-        free_nexus_entry->vspace_root_addr = 0;
+        free_nexus_entry->vs = nexus_root->vs;
         /*we directly insert this node to the nexus_root as kernel page tree*/
         list_add_head(&(free_nexus_entry->_vspace_list),
                       &(nexus_root->_vspace_list));
@@ -545,7 +553,7 @@ static void* _user_get_free_page(int page_num, enum zone_type memory_zone,
                 free_nexus_entry->start_addr = target_vaddr;
                 free_nexus_entry->size = MIDDLE_PAGES;
                 free_nexus_entry->ppn = ppn;
-                free_nexus_entry->vspace_root_addr = vs->vspace_root_addr;
+                free_nexus_entry->vs = vs;
                 list_add_head(&(free_nexus_entry->_vspace_list),
                               &(vspace_node->_vspace_list));
                 nexus_rb_tree_insert(free_nexus_entry, &vspace_node->_rb_root);
@@ -587,7 +595,7 @@ static void* _user_get_free_page(int page_num, enum zone_type memory_zone,
                 free_nexus_entry->start_addr = target_vaddr;
                 free_nexus_entry->size = 1;
                 free_nexus_entry->ppn = ppn;
-                free_nexus_entry->vspace_root_addr = vs->vspace_root_addr;
+                free_nexus_entry->vs = vs;
                 list_add_head(&(free_nexus_entry->_vspace_list),
                               &(vspace_node->_vspace_list));
                 nexus_rb_tree_insert(free_nexus_entry, &vspace_node->_rb_root);

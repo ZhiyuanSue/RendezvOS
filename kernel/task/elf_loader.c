@@ -1,7 +1,7 @@
 #include <rendezvos/task/elf_loader.h>
 #include <modules/log/log.h>
 
-error_t load_elf_Phdr_64(Elf64_Phdr *phdr_ptr)
+error_t load_elf_Phdr_64(vaddr elf_start,Elf64_Phdr *phdr_ptr,VSpace* vs)
 {
         /*
                 TODO: we should add a data structure to record the used
@@ -12,7 +12,7 @@ error_t load_elf_Phdr_64(Elf64_Phdr *phdr_ptr)
 
         return 0;
 }
-error_t load_elf_program(vaddr elf_start, vaddr elf_end)
+error_t run_elf_program(vaddr elf_start, vaddr elf_end,VSpace* vs)
 {
         pr_info("start gen task from elf start %x end %x\n",
                 elf_start,
@@ -27,11 +27,12 @@ error_t load_elf_program(vaddr elf_start, vaddr elf_end)
         } else if (get_elf_class(elf_start) == ELFCLASS64) {
                 for_each_program_header_64(elf_start)
                 {
-                        load_elf_Phdr_64(phdr_ptr);
+                        load_elf_Phdr_64(elf_start,phdr_ptr,vs);
                 }
         }
         return 0;
 }
+/*we must load all the elf file into kernel memory before we use this function*/
 error_t gen_task_from_elf(vaddr elf_start, vaddr elf_end)
 {
         error_t e = 0;
@@ -53,15 +54,16 @@ error_t gen_task_from_elf(vaddr elf_start, vaddr elf_end)
                 e = -E_RENDEZVOS;
                 goto gen_task_from_elf_error;
         }
+		set_vspace_root_addr(elf_task->vs,new_vs_paddr);
         struct nexus_node *new_vs_nexus_root =
-                nexus_create_vspace_root_node(nexus_root, new_vs_paddr);
+                nexus_create_vspace_root_node(nexus_root, elf_task->vs);
         init_vspace(
-                elf_task->vs, new_vs_paddr, elf_task->pid, new_vs_nexus_root);
+                elf_task->vs, elf_task->pid, new_vs_nexus_root);
         /*--- end vspace part ---*/
         add_task_to_manager(percpu(core_tm), elf_task);
 
         Thread_Base *elf_thread =
-                create_thread((void *)load_elf_program, 2, elf_start, elf_end);
+                create_thread((void *)run_elf_program, 2, elf_start, elf_end,elf_task->vs);
         thread_set_flags(THREAD_FLAG_USER, elf_thread);
         if (!elf_thread) {
                 pr_error("[Error] create elf_thread fail\n");

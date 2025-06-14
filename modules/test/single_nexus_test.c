@@ -109,9 +109,10 @@ int nexus_test(void)
                 e = -E_REND_TEST;
                 goto nexus_test_fail;
         }
+		set_vspace_root_addr(vs,new_vs_paddr);
         struct nexus_node* new_vs_nexus_root =
-                nexus_create_vspace_root_node(nexus_root, new_vs_paddr);
-        init_vspace(vs, new_vs_paddr, get_new_pid(), new_vs_nexus_root);
+                nexus_create_vspace_root_node(nexus_root, vs);
+        init_vspace(vs, get_new_pid(), new_vs_nexus_root);
 
         /*start new vspace nexus test*/
         vaddr start_test_addr = PAGE_SIZE;

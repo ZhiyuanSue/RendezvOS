@@ -22,8 +22,8 @@ error_t virt_mm_init(int cpu_id, struct setup_info *arch_setup_info)
 {
         if (cpu_id == BSP_ID) {
                 sys_init_map();
+				root_vspace.vspace_root_addr = arch_get_current_kernel_vspace_root();
                 init_vspace(&root_vspace,
-                            arch_get_current_kernel_vspace_root(),
                             0,
                             per_cpu(nexus_root, BSP_ID));
                 per_cpu(boot_stack_bottom, cpu_id) =

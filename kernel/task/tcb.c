@@ -101,6 +101,7 @@ Tcb_Base* new_task()
         Tcb_Base* tcb = (Tcb_Base*)(cpu_allocator->m_alloc(cpu_allocator,
                                                            sizeof(Tcb_Base)));
         if (tcb) {
+                memset((void*)tcb, 0, sizeof(Tcb_Base));
                 tcb->pid = INVALID_ID;
                 INIT_LIST_HEAD(&(tcb->sched_task_list));
                 INIT_LIST_HEAD(&(tcb->thread_head_node));
@@ -116,7 +117,9 @@ Thread_Base* new_thread()
                 return NULL;
         Thread_Base* thread = (Thread_Base*)(cpu_allocator->m_alloc(
                 cpu_allocator, sizeof(Thread_Base)));
+
         if (thread) {
+                memset((void*)thread, 0, sizeof(Thread_Base));
                 thread->tid = INVALID_ID;
                 arch_task_ctx_init(&(thread->ctx));
                 thread_set_status(thread_status_init, thread);
@@ -137,6 +140,8 @@ VSpace* new_vspace()
                 return NULL;
         VSpace* new_vs = (VSpace*)(cpu_allocator->m_alloc(cpu_allocator,
                                                           sizeof(VSpace)));
+        if (new_vs)
+                memset((void*)new_vs, 0, sizeof(VSpace));
         return new_vs;
 }
 void del_vspace(VSpace** vs)
