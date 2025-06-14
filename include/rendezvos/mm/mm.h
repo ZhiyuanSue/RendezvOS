@@ -16,8 +16,9 @@ extern u64 boot_stack_bottom;
 VSpace* new_vspace();
 void init_vspace(VSpace* vs, uint64_t vspace_id, void* vspace_node);
 void del_vspace(VSpace** vs);
-static inline void set_vspace_root_addr(VSpace* vs,paddr root_paddr){
-	vs->vspace_root_addr = root_paddr;
+static inline void set_vspace_root_addr(VSpace* vs, paddr root_paddr)
+{
+        vs->vspace_root_addr = root_paddr;
 }
 
 #endif

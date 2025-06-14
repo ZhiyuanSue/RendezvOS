@@ -4,6 +4,7 @@
 #ifndef _RENDEZVOS_LIMIT_H_
 #define _RENDEZVOS_LIMIT_H_
 #include <common/stddef.h>
+#include <common/types.h>
 #define RENDEZVOS_MAX_MEMORY_REGIONS 128
 
 #ifndef NR_CPUS
@@ -11,4 +12,7 @@
 #else
 #define RENDEZVOS_MAX_CPU_NUMBER MIN(NR_CPUS, 128)
 #endif
+
+extern u64 thread_kstack_page_num;
+extern u64 thread_ustack_page_num;
 #endif

@@ -1,7 +1,8 @@
 #include <rendezvos/task/elf_loader.h>
 #include <modules/log/log.h>
 
-error_t load_elf_Phdr_64(vaddr elf_start,Elf64_Phdr *phdr_ptr,VSpace* vs)
+error_t elf_Phdr_64_load_handle(vaddr elf_start, Elf64_Phdr *phdr_ptr,
+                                VSpace *vs)
 {
         /*
                 TODO: we should add a data structure to record the used
@@ -10,9 +11,45 @@ error_t load_elf_Phdr_64(vaddr elf_start,Elf64_Phdr *phdr_ptr,VSpace* vs)
         */
         print_elf_ph64(phdr_ptr);
 
+        vaddr ph_start = phdr_ptr->p_vaddr;
+        u64 offset = phdr_ptr->p_offset;
+
+        vaddr aligned_start = ROUND_DOWN(ph_start, PAGE_SIZE);
+        u64 aligned_offset = ROUND_DOWN(offset, PAGE_SIZE);
+
+        u64 map_length = ph_start + phdr_ptr->p_memsz - aligned_start;
+        u64 page_num = ROUND_UP(map_length, PAGE_SIZE) / PAGE_SIZE;
+
+        /*page flags*/
+        ENTRY_FLAGS_t page_flags = PAGE_ENTRY_USER | PAGE_ENTRY_VALID;
+        if (phdr_ptr->p_flags & PF_X) {
+                page_flags |= PAGE_ENTRY_EXEC;
+        }
+        if (phdr_ptr->p_flags & PF_W) {
+                page_flags |= PAGE_ENTRY_WRITE;
+        }
+        if (phdr_ptr->p_flags & PF_R) {
+                page_flags |= PAGE_ENTRY_READ;
+        }
+
+		/*using the nexus to map*/
+
+        /*bss*/
+        if (phdr_ptr->p_memsz > phdr_ptr->p_filesz) {
+                /*need to fill in the 0*/
+                vaddr bss_start = ph_start + phdr_ptr->p_filesz;
+                vaddr bss_end = ph_start + phdr_ptr->p_memsz;
+                u64 bss_size = bss_end - bss_start;
+        }
         return 0;
 }
-error_t run_elf_program(vaddr elf_start, vaddr elf_end,VSpace* vs)
+error_t elf_Phdr_64_dynamic_handle(vaddr elf_start, Elf64_Phdr *phdr_ptr,
+                                   VSpace *vs)
+{
+        print_elf_ph64(phdr_ptr);
+        return 0;
+}
+error_t run_elf_program(vaddr elf_start, vaddr elf_end, VSpace *vs)
 {
         pr_info("start gen task from elf start %x end %x\n",
                 elf_start,
@@ -27,7 +64,17 @@ error_t run_elf_program(vaddr elf_start, vaddr elf_end,VSpace* vs)
         } else if (get_elf_class(elf_start) == ELFCLASS64) {
                 for_each_program_header_64(elf_start)
                 {
-                        load_elf_Phdr_64(elf_start,phdr_ptr,vs);
+                        /*handle LOAD*/
+                        if (phdr_ptr->p_type == PT_LOAD)
+                                elf_Phdr_64_load_handle(
+                                        elf_start, phdr_ptr, vs);
+                }
+                for_each_program_header_64(elf_start)
+                {
+                        /*handle DYNAMIC*/
+                        if (phdr_ptr->p_type == PT_DYNAMIC)
+                                elf_Phdr_64_dynamic_handle(
+                                        elf_start, phdr_ptr, vs);
                 }
         }
         return 0;
@@ -54,16 +101,15 @@ error_t gen_task_from_elf(vaddr elf_start, vaddr elf_end)
                 e = -E_RENDEZVOS;
                 goto gen_task_from_elf_error;
         }
-		set_vspace_root_addr(elf_task->vs,new_vs_paddr);
+        set_vspace_root_addr(elf_task->vs, new_vs_paddr);
         struct nexus_node *new_vs_nexus_root =
                 nexus_create_vspace_root_node(nexus_root, elf_task->vs);
-        init_vspace(
-                elf_task->vs, elf_task->pid, new_vs_nexus_root);
+        init_vspace(elf_task->vs, elf_task->pid, new_vs_nexus_root);
         /*--- end vspace part ---*/
         add_task_to_manager(percpu(core_tm), elf_task);
 
-        Thread_Base *elf_thread =
-                create_thread((void *)run_elf_program, 2, elf_start, elf_end,elf_task->vs);
+        Thread_Base *elf_thread = create_thread(
+                (void *)run_elf_program, 2, elf_start, elf_end, elf_task->vs);
         thread_set_flags(THREAD_FLAG_USER, elf_thread);
         if (!elf_thread) {
                 pr_error("[Error] create elf_thread fail\n");

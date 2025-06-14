@@ -6,6 +6,7 @@
 #include <rendezvos/mm/nexus.h>
 
 u64 thread_kstack_page_num = 2;
+u64 thread_ustack_page_num = 8;
 extern struct allocator* kallocator;
 extern struct nexus_node* nexus_root;
 
