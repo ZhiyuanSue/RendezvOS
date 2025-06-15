@@ -148,10 +148,7 @@ error_t map(VSpace *vs, u64 ppn, u64 vpn, int level, ENTRY_FLAGS_t eflags,
                 next_level_paddr = PADDR(handler->handler_ppn[1]);
                 handler->handler_ppn[1] = -E_RENDEZVOS;
                 new_alloc = true;
-                flags = arch_decode_flags(0,
-                                          PAGE_ENTRY_GLOBAL | PAGE_ENTRY_READ
-                                                  | PAGE_ENTRY_VALID
-                                                  | PAGE_ENTRY_WRITE | eflags);
+                flags = arch_decode_flags(0, eflags);
                 arch_set_L0_entry(next_level_paddr,
                                   v,
                                   (union L0_entry *)(handler->map_vaddr[0]),
@@ -185,10 +182,7 @@ error_t map(VSpace *vs, u64 ppn, u64 vpn, int level, ENTRY_FLAGS_t eflags,
                 next_level_paddr = PADDR(handler->handler_ppn[2]);
                 handler->handler_ppn[2] = -E_RENDEZVOS;
                 new_alloc = true;
-                flags = arch_decode_flags(1,
-                                          PAGE_ENTRY_GLOBAL | PAGE_ENTRY_READ
-                                                  | PAGE_ENTRY_VALID
-                                                  | PAGE_ENTRY_WRITE | eflags);
+                flags = arch_decode_flags(1, eflags);
                 arch_set_L1_entry(next_level_paddr,
                                   v,
                                   (union L1_entry *)(handler->map_vaddr[1]),
@@ -211,10 +205,7 @@ error_t map(VSpace *vs, u64 ppn, u64 vpn, int level, ENTRY_FLAGS_t eflags,
                         res = -E_IN_PARAM;
                         goto map_fail;
                 }
-                flags = arch_decode_flags(
-                        2,
-                        PAGE_ENTRY_GLOBAL | PAGE_ENTRY_READ | PAGE_ENTRY_VALID
-                                | PAGE_ENTRY_WRITE | PAGE_ENTRY_HUGE | eflags);
+                flags = arch_decode_flags(2, PAGE_ENTRY_HUGE | eflags);
                 next_level_paddr = L2_entry_addr(((
                         union L2_entry *)(handler->map_vaddr[2]))[L2_INDEX(v)]);
                 if (!next_level_paddr) {
@@ -343,11 +334,7 @@ error_t map(VSpace *vs, u64 ppn, u64 vpn, int level, ENTRY_FLAGS_t eflags,
                         next_level_paddr = PADDR(handler->handler_ppn[3]);
                         handler->handler_ppn[3] = -E_RENDEZVOS;
                         new_alloc = true;
-                        flags = arch_decode_flags(
-                                2,
-                                PAGE_ENTRY_GLOBAL | PAGE_ENTRY_READ
-                                        | PAGE_ENTRY_VALID | PAGE_ENTRY_WRITE
-                                        | eflags);
+                        flags = arch_decode_flags(2, eflags);
                         arch_set_L2_entry(
                                 next_level_paddr,
                                 v,
@@ -367,10 +354,7 @@ error_t map(VSpace *vs, u64 ppn, u64 vpn, int level, ENTRY_FLAGS_t eflags,
                 ((union L3_entry *)(handler->map_vaddr[3]))[L3_INDEX(v)]);
         if (!next_level_paddr) { /*seems more likely*/
                 /*we give the ppn, and no need to alloc another page*/
-                flags = arch_decode_flags(3,
-                                          PAGE_ENTRY_GLOBAL | PAGE_ENTRY_READ
-                                                  | PAGE_ENTRY_VALID
-                                                  | PAGE_ENTRY_WRITE | eflags);
+                flags = arch_decode_flags(3, eflags);
                 arch_set_L3_entry(
                         p, v, (union L3_entry *)(handler->map_vaddr[3]), flags);
                 goto map_succ;

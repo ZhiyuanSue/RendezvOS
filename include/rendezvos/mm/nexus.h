@@ -42,8 +42,8 @@ void nexus_delete_vspace(struct nexus_node* nexus_root, VSpace* vs);
 
 /*page*/
 void* get_free_page(int page_num, enum zone_type memory_zone,
-                    vaddr target_vaddr, VSpace* vs,
-                    struct nexus_node* nexus_root);
+                    vaddr target_vaddr, struct nexus_node* nexus_root,
+                    VSpace* vs, ENTRY_FLAGS_t flags);
 error_t free_pages(void* p, int page_num, VSpace* vs,
                    struct nexus_node* nexus_root);
 

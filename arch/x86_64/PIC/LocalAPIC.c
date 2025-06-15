@@ -102,8 +102,10 @@ bool map_LAPIC(void)
                         PPN(lapic_phy_page),
                         VPN(lapic_virt_page),
                         3,
-                        PAGE_ENTRY_UNCACHED, // the LAPIC should be set as
-                                             // uncached
+                        PAGE_ENTRY_UNCACHED | PAGE_ENTRY_GLOBAL
+                                | PAGE_ENTRY_READ | PAGE_ENTRY_VALID
+                                | PAGE_ENTRY_WRITE, // the LAPIC should be set
+                                                    // as uncached
                         &percpu(Map_Handler),
                         NULL)) {
                         pr_error("[ LAPIC ] ERROR: map error\n");

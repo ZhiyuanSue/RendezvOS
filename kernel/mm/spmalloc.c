@@ -226,8 +226,9 @@ static void* _sp_alloc(struct mem_allocator* sp_allocator_p, size_t Bytes)
                                 get_free_page(PAGE_PER_CHUNK,
                                               ZONE_NORMAL,
                                               KERNEL_VIRT_OFFSET,
+                                              sp_allocator_p->nexus_root,
                                               0,
-                                              sp_allocator_p->nexus_root);
+                                              PAGE_ENTRY_NONE);
                         if (!page_ptr) {
                                 pr_error("[ERROR] get free page fail\n");
                                 return NULL;
@@ -311,8 +312,9 @@ void* sp_alloc(struct allocator* allocator_p, size_t Bytes)
                 void* page_ptr = get_free_page(page_num,
                                                ZONE_NORMAL,
                                                KERNEL_VIRT_OFFSET,
+                                               sp_allocator_p->nexus_root,
                                                0,
-                                               sp_allocator_p->nexus_root);
+                                               PAGE_ENTRY_NONE);
                 if (!page_ptr) {
                         pr_error("[ERROR] get free page fail\n");
                 }

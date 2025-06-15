@@ -80,7 +80,14 @@ int arch_vmm_test(void)
                         "unexpected result have mapped check,here expect unmapped\n");
                 goto arch_vmm_test_error;
         }
-        if (map(vs, ppn_1, VPN(vp_1), 3, PAGE_ENTRY_NONE, &Map_Handler, NULL)) {
+        if (map(vs,
+                ppn_1,
+                VPN(vp_1),
+                3,
+                PAGE_ENTRY_GLOBAL | PAGE_ENTRY_READ | PAGE_ENTRY_VALID
+                        | PAGE_ENTRY_WRITE,
+                &Map_Handler,
+                NULL)) {
                 pr_error("[ TEST ] ERROR:map 4K virtual error!\n");
                 goto arch_vmm_test_error;
         }
@@ -100,7 +107,14 @@ int arch_vmm_test(void)
                 pr_error("[ ERROR ] ERROR:try get a ppn fail\n");
                 goto arch_vmm_test_error;
         }
-        if (!map(vs, ppn_2, VPN(vp_1), 3, PAGE_ENTRY_NONE, &Map_Handler, NULL)) {
+        if (!map(vs,
+                 ppn_2,
+                 VPN(vp_1),
+                 3,
+                 PAGE_ENTRY_GLOBAL | PAGE_ENTRY_READ | PAGE_ENTRY_VALID
+                         | PAGE_ENTRY_WRITE,
+                 &Map_Handler,
+                 NULL)) {
                 pr_error(
                         "[ TEST ] ERROR:try to map to same virtual page but no error return\n");
                 goto arch_vmm_test_error;
@@ -125,7 +139,14 @@ int arch_vmm_test(void)
                         ppn_3);
                 goto arch_vmm_test_error;
         }
-        if (map(vs, ppn_3, VPN(vp_2), 2, PAGE_ENTRY_NONE, &Map_Handler, NULL)) {
+        if (map(vs,
+                ppn_3,
+                VPN(vp_2),
+                2,
+                PAGE_ENTRY_GLOBAL | PAGE_ENTRY_READ | PAGE_ENTRY_VALID
+                        | PAGE_ENTRY_WRITE,
+                &Map_Handler,
+                NULL)) {
                 pr_error("[ TEST ] ERROR:try to map to a 2M page and fail\n");
                 goto arch_vmm_test_error;
         }
@@ -146,7 +167,14 @@ int arch_vmm_test(void)
                         ppn_4);
                 goto arch_vmm_test_error;
         }
-        if (!map(vs, ppn_4, VPN(vp_2), 2, PAGE_ENTRY_NONE, &Map_Handler, NULL)) {
+        if (!map(vs,
+                 ppn_4,
+                 VPN(vp_2),
+                 2,
+                 PAGE_ENTRY_GLOBAL | PAGE_ENTRY_READ | PAGE_ENTRY_VALID
+                         | PAGE_ENTRY_WRITE,
+                 &Map_Handler,
+                 NULL)) {
                 pr_error(
                         "[ TEST ] ERROR:try to map to same virtual page but no error return\n");
                 goto arch_vmm_test_error;
@@ -187,7 +215,8 @@ int arch_vmm_test(void)
                 ppn_1,
                 VPN(vp_1_2M),
                 2,
-                PAGE_ENTRY_NONE,
+                PAGE_ENTRY_GLOBAL | PAGE_ENTRY_READ | PAGE_ENTRY_VALID
+                        | PAGE_ENTRY_WRITE,
                 &Map_Handler,
                 NULL)) {
                 pr_error(

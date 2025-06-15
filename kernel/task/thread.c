@@ -40,8 +40,9 @@ Thread_Base* create_thread(void* __func, int nr_parameter, ...)
         void* kstack = get_free_page(thread_kstack_page_num,
                                      ZONE_NORMAL,
                                      KERNEL_VIRT_OFFSET,
+                                     percpu(nexus_root),
                                      0,
-                                     percpu(nexus_root));
+                                     PAGE_ENTRY_NONE);
         thread->kstack_bottom =
                 (vaddr)kstack + thread_kstack_page_num * PAGE_SIZE;
         memset(kstack, '\0', thread_kstack_page_num * PAGE_SIZE);

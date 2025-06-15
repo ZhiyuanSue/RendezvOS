@@ -71,9 +71,10 @@ void arch_start_smp(struct setup_info* arch_setup_info)
                                         (vaddr)get_free_page(2,
                                                              ZONE_NORMAL,
                                                              KERNEL_VIRT_OFFSET,
-                                                             0,
                                                              per_cpu(nexus_root,
-                                                                     BSP_ID))
+                                                                     BSP_ID),
+                                                             0,
+                                                             PAGE_ENTRY_NONE)
                                         + 2 * PAGE_SIZE;
                                 arch_setup_info->ap_boot_stack_ptr =
                                         stack_bottom;

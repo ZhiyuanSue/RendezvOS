@@ -16,7 +16,8 @@ void map_gic_mem(u64 gicd_base_addr, u64 gicd_len, u64 gicc_base_addr,
                     PPN(base),
                     VPN(KERNEL_PHY_TO_VIRT(base)),
                     3,
-                    PAGE_ENTRY_DEVICE,
+                    PAGE_ENTRY_DEVICE | PAGE_ENTRY_GLOBAL | PAGE_ENTRY_READ
+                            | PAGE_ENTRY_VALID | PAGE_ENTRY_WRITE,
                     &per_cpu(Map_Handler, BSP_ID),
                     NULL);
         }
@@ -26,7 +27,8 @@ void map_gic_mem(u64 gicd_base_addr, u64 gicd_len, u64 gicc_base_addr,
                     PPN(base),
                     VPN(KERNEL_PHY_TO_VIRT(base)),
                     3,
-                    PAGE_ENTRY_DEVICE,
+                    PAGE_ENTRY_DEVICE | PAGE_ENTRY_GLOBAL | PAGE_ENTRY_READ
+                            | PAGE_ENTRY_VALID | PAGE_ENTRY_WRITE,
                     &per_cpu(Map_Handler, BSP_ID),
                     NULL);
         }

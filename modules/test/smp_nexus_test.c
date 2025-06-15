@@ -76,8 +76,9 @@ int smp_nexus_test(void)
                 percpu(smp_test_ptrs)[i] = get_free_page(page_num,
                                                          ZONE_NORMAL,
                                                          KERNEL_VIRT_OFFSET,
+                                                         percpu(nexus_root),
                                                          0,
-                                                         percpu(nexus_root));
+                                                         PAGE_ENTRY_NONE);
                 if (percpu(smp_test_ptrs)[i]) {
                         *((u64*)(percpu(smp_test_ptrs)[i])) = 0;
                         *((u64*)(percpu(smp_test_ptrs)[i] + PAGE_SIZE)) = 0;

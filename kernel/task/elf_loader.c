@@ -32,7 +32,7 @@ error_t elf_Phdr_64_load_handle(vaddr elf_start, Elf64_Phdr *phdr_ptr,
                 page_flags |= PAGE_ENTRY_READ;
         }
 
-		/*using the nexus to map*/
+        /*using the nexus to map*/
 
         /*bss*/
         if (phdr_ptr->p_memsz > phdr_ptr->p_filesz) {

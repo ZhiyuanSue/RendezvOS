@@ -77,8 +77,9 @@ int nexus_test(void)
                 test_ptrs[i] = get_free_page(page_num,
                                              ZONE_NORMAL,
                                              KERNEL_VIRT_OFFSET,
+                                             nexus_root,
                                              0,
-                                             nexus_root);
+                                             PAGE_ENTRY_NONE);
                 if (test_ptrs[i]) {
                         *((u64*)(test_ptrs[i])) = 0;
                         *((u64*)(test_ptrs[i] + PAGE_SIZE)) = 0;
@@ -123,8 +124,12 @@ int nexus_test(void)
                         start_test_addr =
                                 ROUND_UP(start_test_addr, MIDDLE_PAGE_SIZE);
                 }
-                test_ptrs[i] = get_free_page(
-                        page_num, ZONE_NORMAL, start_test_addr, vs, nexus_root);
+                test_ptrs[i] = get_free_page(page_num,
+                                             ZONE_NORMAL,
+                                             start_test_addr,
+                                             nexus_root,
+                                             vs,
+                                             PAGE_ENTRY_NONE);
 
                 start_test_addr += page_num * PAGE_SIZE;
                 if (test_ptrs[i]) {

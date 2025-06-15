@@ -46,7 +46,8 @@ error_t acpi_init(vaddr rsdp_addr)
                             PPN(rsdt_page),
                             VPN(rsdt_map_page),
                             2,
-                            PAGE_ENTRY_NONE,
+                            PAGE_ENTRY_GLOBAL | PAGE_ENTRY_READ
+                                    | PAGE_ENTRY_VALID | PAGE_ENTRY_WRITE,
                             &per_cpu(Map_Handler, BSP_ID),
                             NULL);
                 }

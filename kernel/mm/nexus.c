@@ -1,4 +1,5 @@
 #include <common/string.h>
+#include <common/bit.h>
 #include <modules/log/log.h>
 #include <rendezvos/error.h>
 #include <rendezvos/mm/nexus.h>
@@ -145,7 +146,8 @@ struct nexus_node* init_nexus(struct map_handler* handler)
                 nexus_init_page,
                 VPN(vpage_addr),
                 3,
-                PAGE_ENTRY_NONE,
+                PAGE_ENTRY_GLOBAL | PAGE_ENTRY_READ | PAGE_ENTRY_VALID
+                        | PAGE_ENTRY_WRITE,
                 handler,
                 NULL)) {
                 pr_error("[ NEXUS ] ERROR: init nexus map error\n");
@@ -207,13 +209,15 @@ static struct nexus_node* nexus_get_free_entry(struct nexus_node* root_node)
                         }
                         vaddr vpage_addr =
                                 KERNEL_PHY_TO_VIRT(PADDR(nexus_new_page));
-                        error_t map_res = map(vs,
-                                              nexus_new_page,
-                                              VPN(vpage_addr),
-                                              3,
-                                              PAGE_ENTRY_NONE,
-                                              root_node->handler,
-                                              &kspace_spin_lock_ptr);
+                        error_t map_res = map(
+                                vs,
+                                nexus_new_page,
+                                VPN(vpage_addr),
+                                3,
+                                PAGE_ENTRY_GLOBAL | PAGE_ENTRY_READ
+                                        | PAGE_ENTRY_VALID | PAGE_ENTRY_WRITE,
+                                root_node->handler,
+                                &kspace_spin_lock_ptr);
                         if (map_res) {
                                 pr_error(
                                         "[ NEXUS ] ERROR: get free entry map error\n");
@@ -398,7 +402,7 @@ static void* _kernel_get_free_page(int page_num, enum zone_type memory_zone,
                 pr_error("[ NEXUS ] cannot find a new free nexus entry\n");
                 goto fail;
         }
-        VSpace* vs = percpu(current_vspace);
+        VSpace* vs = nexus_root->vs;
         /*get phy pages from pmm*/
         /*in kernel, we promise that we should not try to alloc a space
          * more then 2M*/
@@ -424,13 +428,15 @@ static void* _kernel_get_free_page(int page_num, enum zone_type memory_zone,
         if (page_num > MIDDLE_PAGES / 2) /*buddy pmm must alloc a 2M
                                             page*/
         {
-                error_t map_res = map(vs,
-                                      ppn,
-                                      VPN(free_page_addr),
-                                      2,
-                                      PAGE_ENTRY_NONE,
-                                      nexus_root->handler,
-                                      &kspace_spin_lock_ptr);
+                error_t map_res =
+                        map(vs,
+                            ppn,
+                            VPN(free_page_addr),
+                            2,
+                            PAGE_ENTRY_GLOBAL | PAGE_ENTRY_READ
+                                    | PAGE_ENTRY_VALID | PAGE_ENTRY_WRITE,
+                            nexus_root->handler,
+                            &kspace_spin_lock_ptr);
                 if (map_res) {
                         pr_error(
                                 "[ NEXUS ] ERROR: kernel get free page map error 2M\n");
@@ -442,13 +448,15 @@ static void* _kernel_get_free_page(int page_num, enum zone_type memory_zone,
                      i++, tmp_ppn += 1) {
                         vaddr tmp_free_page_addr =
                                 KERNEL_PHY_TO_VIRT(PADDR(tmp_ppn));
-                        error_t map_res = map(vs,
-                                              tmp_ppn,
-                                              VPN(tmp_free_page_addr),
-                                              3,
-                                              PAGE_ENTRY_NONE,
-                                              nexus_root->handler,
-                                              &kspace_spin_lock_ptr);
+                        error_t map_res = map(
+                                vs,
+                                tmp_ppn,
+                                VPN(tmp_free_page_addr),
+                                3,
+                                PAGE_ENTRY_GLOBAL | PAGE_ENTRY_READ
+                                        | PAGE_ENTRY_VALID | PAGE_ENTRY_WRITE,
+                                nexus_root->handler,
+                                &kspace_spin_lock_ptr);
                         if (map_res) {
                                 pr_error(
                                         "[ NEXUS ] ERROR: kernel get free page map error\n");
@@ -491,8 +499,9 @@ fail:
         return NULL;
 }
 static void* _user_get_free_page(int page_num, enum zone_type memory_zone,
-                                 vaddr target_vaddr, VSpace* vs,
-                                 struct nexus_node* nexus_root)
+                                 vaddr target_vaddr,
+                                 struct nexus_node* nexus_root, VSpace* vs,
+                                 ENTRY_FLAGS_t flags)
 {
         vaddr free_page_addr;
         /*and obviously, the address 0 should not accessed by any of the
@@ -508,6 +517,9 @@ static void* _user_get_free_page(int page_num, enum zone_type memory_zone,
                 pr_error("[Error] no such a vspace in nexus\n");
                 return NULL;
         }
+
+        /*adjust the flags, the user flags must not include PAGE_ENTRY_GLOBAL*/
+        flags = clear_mask(flags, PAGE_ENTRY_GLOBAL);
 
         /*first try to map 2M pages*/
         int alloced_pages;
@@ -541,7 +553,7 @@ static void* _user_get_free_page(int page_num, enum zone_type memory_zone,
                                       ppn,
                                       VPN(target_vaddr),
                                       2,
-                                      PAGE_ENTRY_USER,
+                                      PAGE_ENTRY_USER | flags,
                                       nexus_root->handler,
                                       &(percpu(current_vspace)->vspace_lock));
                 if (map_res) {
@@ -583,7 +595,7 @@ static void* _user_get_free_page(int page_num, enum zone_type memory_zone,
                                       ppn,
                                       VPN(target_vaddr),
                                       3,
-                                      PAGE_ENTRY_USER,
+                                      PAGE_ENTRY_USER | flags,
                                       nexus_root->handler,
                                       &(percpu(current_vspace)->vspace_lock));
                 if (map_res) {
@@ -604,8 +616,8 @@ static void* _user_get_free_page(int page_num, enum zone_type memory_zone,
         return (void*)free_page_addr;
 }
 void* get_free_page(int page_num, enum zone_type memory_zone,
-                    vaddr target_vaddr, VSpace* vs,
-                    struct nexus_node* nexus_root)
+                    vaddr target_vaddr, struct nexus_node* nexus_root,
+                    VSpace* vs, ENTRY_FLAGS_t flags)
 {
         /*first check the input parameter*/
         if (page_num < 0 || memory_zone < 0 || memory_zone > ZONE_NR_MAX) {
@@ -616,8 +628,12 @@ void* get_free_page(int page_num, enum zone_type memory_zone,
                 return _kernel_get_free_page(
                         page_num, memory_zone, target_vaddr, nexus_root);
         } else {
-                return _user_get_free_page(
-                        page_num, memory_zone, target_vaddr, vs, nexus_root);
+                return _user_get_free_page(page_num,
+                                           memory_zone,
+                                           target_vaddr,
+                                           nexus_root,
+                                           vs,
+                                           flags);
         }
 }
 static error_t _kernel_free_pages(void* p, int page_num,
