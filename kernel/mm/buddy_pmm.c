@@ -1,6 +1,7 @@
 #include <modules/log/log.h>
 #include <rendezvos/error.h>
 #include <rendezvos/mm/buddy_pmm.h>
+#include <common/string.h>
 
 struct buddy buddy_pmm;
 extern struct memory_regions m_regions;
@@ -62,8 +63,7 @@ u64 calculate_pmm_space(void)
 
         return (pages);
 }
-void generate_pmm_data(paddr kernel_phy_start, paddr kernel_phy_end,
-                       paddr buddy_phy_start, paddr buddy_phy_end)
+void generate_pmm_data(paddr buddy_phy_start, paddr buddy_phy_end)
 {
         struct region reg;
         paddr sec_start_addr;
@@ -108,6 +108,12 @@ void generate_pmm_data(paddr kernel_phy_start, paddr kernel_phy_end,
                 }
         }
         return;
+}
+void clean_pmm_region(paddr pmm_data_phy_start, paddr pmm_data_phy_end)
+{
+        memset((void *)pmm_data_phy_start,
+               0,
+               pmm_data_phy_end - pmm_data_phy_start);
 }
 
 static void pmm_init_zones(void)

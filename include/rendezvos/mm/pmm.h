@@ -36,6 +36,7 @@ struct memory_regions {
         void (*memory_regions_delete)(int index);
         bool (*memory_regions_entry_empty)(int index);
         int (*memory_regions_reserve_region)(paddr phy_start, paddr phy_end);
+        void (*memory_regions_init)(struct memory_regions* m_regions);
 };
 
 enum zone_type { ZONE_NORMAL, ZONE_NR_MAX };
@@ -53,7 +54,7 @@ struct pmm {
 
 // get the pages pmm manager need
 u64 calculate_pmm_space(void);
-void generate_pmm_data(paddr kernel_phy_start, paddr kernel_phy_end,
-                       paddr pmm_data_phy_start, paddr pmm_data_phy_end);
+void generate_pmm_data(paddr pmm_data_phy_start, paddr pmm_data_phy_end);
+void clean_pmm_region(paddr pmm_data_phy_start, paddr pmm_data_phy_end);
 
 #endif

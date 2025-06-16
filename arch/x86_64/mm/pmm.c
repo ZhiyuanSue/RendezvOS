@@ -31,7 +31,8 @@ static error_t arch_get_memory_regions(struct setup_info *arch_setup_info)
                 goto arch_init_pmm_error;
         }
         /*generate the memory region info*/
-        m_regions.region_count = 0;
+        m_regions.memory_regions_init(&m_regions);
+
         for (mmap = (struct multiboot_mmap_entry *)add_ptr;
              ((vaddr)mmap) < (add_ptr + length);
              mmap = (struct multiboot_mmap_entry *)((vaddr)mmap + mmap->size
@@ -111,7 +112,7 @@ void reserve_arch_region(struct setup_info *arch_setup_info)
                         KERNEL_PHY_TO_VIRT(acpi_reserve_phy_start),
                         KERNEL_PHY_TO_VIRT(acpi_reserve_phy_end));
                 if (acpi_region == -1) {
-                        pr_info("cannot load kernel\n");
+                        pr_info("cannot load acpi\n");
                         return;
                 }
         } else {
@@ -123,17 +124,17 @@ void arch_init_pmm(struct setup_info *arch_setup_info)
 {
         paddr kernel_phy_start;
         paddr kernel_phy_end;
-        paddr per_cpu_phy_start;
+        paddr per_cpu_phy_start, per_cpu_phy_end;
         paddr pmm_data_phy_start;
         paddr pmm_data_phy_end;
         int kernel_region;
 
         kernel_phy_start = KERNEL_VIRT_TO_PHY((vaddr)(&_start));
         kernel_phy_end = KERNEL_VIRT_TO_PHY((vaddr)(&_end));
-        per_cpu_phy_start = kernel_phy_end;
-        reserve_per_cpu_region(&kernel_phy_end);
-        pmm_data_phy_start = ROUND_UP(kernel_phy_end, PAGE_SIZE);
-        pmm_data_phy_end = 0;
+        per_cpu_phy_start = per_cpu_phy_end = kernel_phy_end;
+        reserve_per_cpu_region(&per_cpu_phy_end);
+        pmm_data_phy_end = pmm_data_phy_start =
+                ROUND_UP(per_cpu_phy_end, PAGE_SIZE);
         if (arch_get_memory_regions(arch_setup_info) < 0)
                 goto arch_init_pmm_error;
         // adjust the memory regions, according to the kernel
@@ -144,8 +145,8 @@ void arch_init_pmm(struct setup_info *arch_setup_info)
                 (vaddr)(&_start),
                 (vaddr)(&_end));
         pr_info("[ PERCPU_REGION\t@\t< 0x%x , 0x%x >]\n",
-                (vaddr)(&_end),
-                KERNEL_PHY_TO_VIRT(per_cpu_phy_start));
+                KERNEL_PHY_TO_VIRT(per_cpu_phy_start),
+                KERNEL_PHY_TO_VIRT(per_cpu_phy_end));
 
         reserve_arch_region(arch_setup_info);
         /*You need to check whether the kernel have been loaded all
@@ -154,8 +155,7 @@ void arch_init_pmm(struct setup_info *arch_setup_info)
                 pr_info("cannot load kernel\n");
                 goto arch_init_pmm_error;
         }
-        pmm_data_phy_end =
-                pmm_data_phy_start + calculate_pmm_space() * PAGE_SIZE;
+        pmm_data_phy_end += calculate_pmm_space() * PAGE_SIZE;
         pr_info("[ PMM_DATA\t@\t< 0x%x , 0x%x >]\n",
                 KERNEL_PHY_TO_VIRT(pmm_data_phy_start),
                 KERNEL_PHY_TO_VIRT(pmm_data_phy_end));
@@ -175,10 +175,8 @@ void arch_init_pmm(struct setup_info *arch_setup_info)
                                   per_cpu_phy_start,
                                   pmm_data_phy_end);
         clean_per_cpu_region(per_cpu_phy_start);
-        generate_pmm_data(kernel_phy_start,
-                          kernel_phy_end,
-                          pmm_data_phy_start,
-                          pmm_data_phy_end);
+        clean_pmm_region(pmm_data_phy_start, pmm_data_phy_end);
+        generate_pmm_data(pmm_data_phy_start, pmm_data_phy_end);
         return;
 arch_init_pmm_error:
         arch_shutdown();

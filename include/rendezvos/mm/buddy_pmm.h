@@ -111,7 +111,6 @@ static inline bool frame_list_only_one(struct page_frame *bucket_head,
 
 // get the pages pmm manager need
 u64 calculate_pmm_space(void);
-void generate_pmm_data(paddr kernel_phy_start, paddr kernel_phy_end,
-                       paddr pmm_data_phy_start, paddr pmm_data_phy_end);
+void generate_pmm_data(paddr pmm_data_phy_start, paddr pmm_data_phy_end);
 
 #endif
