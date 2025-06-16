@@ -507,7 +507,7 @@ static void* _user_get_free_page(int page_num, enum zone_type memory_zone,
         /*and obviously, the address 0 should not accessed by any of the
          * user*/
         free_page_addr = (((u64)target_vaddr) >> 12) << 12;
-        if (free_page_addr != target_vaddr) {
+        if (free_page_addr != target_vaddr || !vs) {
                 return NULL;
         }
         /*find the vspace root nexus node*/
@@ -620,7 +620,8 @@ void* get_free_page(int page_num, enum zone_type memory_zone,
                     VSpace* vs, ENTRY_FLAGS_t flags)
 {
         /*first check the input parameter*/
-        if (page_num < 0 || memory_zone < 0 || memory_zone > ZONE_NR_MAX) {
+        if (page_num < 0 || memory_zone < 0 || memory_zone > ZONE_NR_MAX
+            || !nexus_root) {
                 pr_error("[ NEXUS ] error input parameter\n");
                 return NULL;
         }

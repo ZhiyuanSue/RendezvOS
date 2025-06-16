@@ -1,5 +1,6 @@
 #ifndef _RENDEZVOS_ELF_LOADER_
 #define _RENDEZVOS_ELF_LOADER_
+#include <common/string.h>
 #include <modules/elf/elf.h>
 #include <rendezvos/error.h>
 #include <modules/elf/elf_print.h>

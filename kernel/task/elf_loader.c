@@ -33,7 +33,18 @@ error_t elf_Phdr_64_load_handle(vaddr elf_start, Elf64_Phdr *phdr_ptr,
         }
 
         /*using the nexus to map*/
+        void *page_ptr = get_free_page(page_num,
+                                       ZONE_NORMAL,
+                                       aligned_start,
+                                       percpu(nexus_root),
+                                       vs,
+                                       page_flags);
+        if (!page_ptr)
+                return -E_RENDEZVOS;
 
+        memcpy((void *)(ph_start),
+               (void *)(elf_start + phdr_ptr->p_offset),
+               phdr_ptr->p_filesz);
         /*bss*/
         if (phdr_ptr->p_memsz > phdr_ptr->p_filesz) {
                 /*need to fill in the 0*/
@@ -51,32 +62,34 @@ error_t elf_Phdr_64_dynamic_handle(vaddr elf_start, Elf64_Phdr *phdr_ptr,
 }
 error_t run_elf_program(vaddr elf_start, vaddr elf_end, VSpace *vs)
 {
-        pr_info("start gen task from elf start %x end %x\n",
+        pr_info("start gen task from elf start %x end %x vs %x\n",
                 elf_start,
-                elf_end);
+                elf_end,
+                vs);
         if (!check_elf_header(elf_start)) {
                 pr_error("[ERROR] bad elf file\n");
                 return -E_RENDEZVOS;
         }
-        if (get_elf_class(elf_start) == ELFCLASS32) {
+        if (get_elf_class(elf_start) != ELFCLASS64) {
                 pr_error("[Error] Rendezvos not support elf32 file running\n");
                 return -E_RENDEZVOS;
-        } else if (get_elf_class(elf_start) == ELFCLASS64) {
-                for_each_program_header_64(elf_start)
-                {
-                        /*handle LOAD*/
-                        if (phdr_ptr->p_type == PT_LOAD)
-                                elf_Phdr_64_load_handle(
-                                        elf_start, phdr_ptr, vs);
-                }
-                for_each_program_header_64(elf_start)
-                {
-                        /*handle DYNAMIC*/
-                        if (phdr_ptr->p_type == PT_DYNAMIC)
-                                elf_Phdr_64_dynamic_handle(
-                                        elf_start, phdr_ptr, vs);
-                }
         }
+        Elf64_Ehdr *elf_header = (Elf64_Ehdr *)elf_start;
+        vaddr entry_addr = elf_header->e_entry;
+        for_each_program_header_64(elf_start)
+        {
+                /*handle LOAD*/
+                if (phdr_ptr->p_type == PT_LOAD)
+                        elf_Phdr_64_load_handle(elf_start, phdr_ptr, vs);
+        }
+        for_each_program_header_64(elf_start)
+        {
+                /*handle DYNAMIC*/
+                if (phdr_ptr->p_type == PT_DYNAMIC)
+                        elf_Phdr_64_dynamic_handle(elf_start, phdr_ptr, vs);
+        }
+        /*alloc the user stack for this thread*/
+
         return 0;
 }
 /*we must load all the elf file into kernel memory before we use this function*/
@@ -109,7 +122,7 @@ error_t gen_task_from_elf(vaddr elf_start, vaddr elf_end)
         add_task_to_manager(percpu(core_tm), elf_task);
 
         Thread_Base *elf_thread = create_thread(
-                (void *)run_elf_program, 2, elf_start, elf_end, elf_task->vs);
+                (void *)run_elf_program, 3, elf_start, elf_end, elf_task->vs);
         thread_set_flags(THREAD_FLAG_USER, elf_thread);
         if (!elf_thread) {
                 pr_error("[Error] create elf_thread fail\n");
