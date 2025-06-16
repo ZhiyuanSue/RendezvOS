@@ -5,6 +5,9 @@
 #ifndef KERNEL_VIRT_OFFSET
 #define KERNEL_VIRT_OFFSET 0xffff800000000000
 #endif
+#ifndef USER_SPACE_TOP
+#define USER_SPACE_TOP 0x00007ffffffff000
+#endif
 #define BIOS_MEM_UPPER 0x100000
 
 struct setup_info {

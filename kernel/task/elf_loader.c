@@ -89,7 +89,18 @@ error_t run_elf_program(vaddr elf_start, vaddr elf_end, VSpace *vs)
                         elf_Phdr_64_dynamic_handle(elf_start, phdr_ptr, vs);
         }
         /*alloc the user stack for this thread*/
+        int page_num = thread_ustack_page_num;
+        ENTRY_FLAGS_t page_flags = PAGE_ENTRY_USER | PAGE_ENTRY_VALID
+                                   | PAGE_ENTRY_WRITE | PAGE_ENTRY_READ;
+        vaddr user_sp = get_free_page(page_num,
+                                      ZONE_NORMAL,
+                                      USER_SPACE_TOP - page_num * PAGE_SIZE,
+                                      percpu(nexus_root),
+                                      vs,
+                                      page_flags)
+                        + page_num * PAGE_SIZE;
 
+        arch_drop_to_user(user_sp, entry_addr);
         return 0;
 }
 /*we must load all the elf file into kernel memory before we use this function*/

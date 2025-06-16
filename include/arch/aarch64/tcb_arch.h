@@ -49,4 +49,5 @@ static inline void arch_set_new_thread_ctx(Arch_Task_Context* ctx,
         ctx->regs[aarch64_task_ctx_lr] = (u64)func_ptr;
         /*TODO:should I add spsr el1???*/
 }
+void arch_drop_to_user(vaddr user_sp, vaddr entry);
 #endif

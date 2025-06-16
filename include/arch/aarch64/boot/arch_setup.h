@@ -4,6 +4,9 @@
 #ifndef KERNEL_VIRT_OFFSET
 #define KERNEL_VIRT_OFFSET 0xffff800000000000
 #endif
+#ifndef USER_SPACE_TOP
+#define USER_SPACE_TOP 0x00007ffffffff000
+#endif
 
 struct boot_header {
         u32 code0;

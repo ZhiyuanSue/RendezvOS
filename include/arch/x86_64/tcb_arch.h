@@ -42,4 +42,5 @@ static inline void arch_set_new_thread_ctx(Arch_Task_Context* ctx,
         *((u64*)(stack_bottom - sizeof(u64))) = (vaddr)func_ptr;
         ctx->rsp = (vaddr)stack_bottom - sizeof(u64) * 2;
 }
+void arch_drop_to_user(vaddr user_sp, vaddr entry);
 #endif
