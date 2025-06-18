@@ -95,8 +95,6 @@ struct task_manager {
         Thread_Base* (*scheduler)(Task_Manager* tm);
 };
 void schedule(Task_Manager* tm);
-extern void context_switch(Arch_Task_Context* old_context,
-                           Arch_Task_Context* new_context);
 extern void run_thread(Thread_Init_Para* para);
 
 /* scheduler */

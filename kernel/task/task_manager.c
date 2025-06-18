@@ -61,5 +61,5 @@ void schedule(Task_Manager* tm)
                 thread_set_status(thread_status_active_ready, curr);
         }
         thread_set_status(thread_status_running, tm->current_thread);
-        context_switch(&(curr->ctx), &(tm->current_thread->ctx));
+        switch_to(&(curr->ctx), &(tm->current_thread->ctx));
 }

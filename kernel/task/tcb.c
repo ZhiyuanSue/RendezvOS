@@ -29,7 +29,7 @@ Task_Manager* init_proc()
                                   percpu(init_thread_ptr));
                 thread_set_status(thread_status_running,
                                   percpu(idle_thread_ptr));
-                context_switch(&(percpu(init_thread_ptr)->ctx),
+                switch_to(&(percpu(init_thread_ptr)->ctx),
                                &(percpu(idle_thread_ptr)->ctx));
         } else {
                 pr_error("[Error] init_proc fail\n");

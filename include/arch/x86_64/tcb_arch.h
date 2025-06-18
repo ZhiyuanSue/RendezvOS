@@ -22,6 +22,7 @@ typedef struct {
         u64 r12;
         u64 rbp;
         u64 rbx;
+        u64 stack_bottom;
 } Arch_Task_Context;
 typedef struct {
         void* thread_func_ptr;
@@ -29,7 +30,7 @@ typedef struct {
 } Thread_Init_Para;
 static inline void arch_task_ctx_init(Arch_Task_Context* ctx)
 {
-        ctx->rsp = 0;
+        ctx->rsp = ctx->stack_bottom = 0;
         ctx->rbp = ctx->rbx = 0;
         ctx->r15 = ctx->r14 = 0;
         ctx->r13 = ctx->r12 = 0;
@@ -41,6 +42,10 @@ static inline void arch_set_new_thread_ctx(Arch_Task_Context* ctx,
          * return address*/
         *((u64*)(stack_bottom - sizeof(u64))) = (vaddr)func_ptr;
         ctx->rsp = (vaddr)stack_bottom - sizeof(u64) * 2;
+        ctx->stack_bottom = (vaddr)stack_bottom;
 }
+extern void context_switch(Arch_Task_Context* old_context,
+                           Arch_Task_Context* new_context);
+void switch_to(Arch_Task_Context* old_context, Arch_Task_Context* new_context);
 void arch_drop_to_user(vaddr user_sp, vaddr entry);
 #endif
