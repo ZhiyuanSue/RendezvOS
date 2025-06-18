@@ -100,7 +100,7 @@ error_t run_elf_program(vaddr elf_start, vaddr elf_end, VSpace *vs)
                                       page_flags)
                         + page_num * PAGE_SIZE;
 
-        arch_drop_to_user(user_sp, entry_addr);
+        // arch_drop_to_user(user_sp, entry_addr);
         return 0;
 }
 /*we must load all the elf file into kernel memory before we use this function*/
@@ -114,7 +114,7 @@ error_t gen_task_from_elf(vaddr elf_start, vaddr elf_end)
         }
 
         elf_task->pid = get_new_pid();
-        /*vspace part*/
+        /*--- vspace part ---*/
         elf_task->vs = new_vspace();
         if (!elf_task->vs) {
                 e = -E_RENDEZVOS;

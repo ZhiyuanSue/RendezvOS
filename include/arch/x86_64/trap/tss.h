@@ -48,7 +48,8 @@ struct TSS {
                         (u32)(((u64)ss_ptr) >> 32);                         \
         }
 /*the stack of interrupt*/
-#define IST_INT_NUM 1
+#define RSP0_INT_NUM 0
+#define IST1_INT_NUM 1
 
 void prepare_per_cpu_tss(struct nexus_node* nexus_root);
 void prepare_per_cpu_tss_desc(union desc* desc_lower, union desc* desc_upper,

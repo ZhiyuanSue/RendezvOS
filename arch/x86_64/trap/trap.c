@@ -52,7 +52,7 @@ void arch_init_interrupt(void)
                              sel,
                              KERNEL_PL,
                              IA32E_IDT_GATE_TYPE_INT,
-                             IST_INT_NUM);
+                             RSP0_INT_NUM);
         }
         lidt(&idtr_desc);
 }

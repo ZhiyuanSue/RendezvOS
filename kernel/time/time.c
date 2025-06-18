@@ -16,7 +16,7 @@ __attribute__((optimize("O0"))) u64 loop_delay(volatile u64 loop_cnt)
         }
         return cnt;
 }
-__attribute__((optimize("O0"))) u64 timer_calibration()
+static inline u64 timer_calibration()
 {
         volatile u64 lpj = 0;
         i64 tick_val;
