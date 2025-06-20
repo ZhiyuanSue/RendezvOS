@@ -22,7 +22,13 @@ static void thread_entry()
         }
         /*run the target thread*/
         run_thread(current_thread->init_parameter);
-        /*finish run the target thread and prepare the clean*/
+        /*
+                        finish run the target thread and prepare the clean
+                        But the following code should be unreachable for user
+           thread (but not kernel thread) in run thread func, when it drop to
+           the user address, the sp should set to the kernel stack bottom , so
+           the trace of the thread_entry and run_thread will be cover
+                        */
         pr_info("go back to thread entry and try to clean\n");
         thread_set_status(thread_status_zombie, current_thread);
         schedule(percpu(core_tm));

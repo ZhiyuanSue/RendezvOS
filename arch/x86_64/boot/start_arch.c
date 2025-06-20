@@ -23,6 +23,8 @@ int BSP_ID = 0;
 extern struct nexus_node *nexus_root;
 extern struct pseudo_descriptor gdt_desc;
 extern union desc gdt[GDT_SIZE];
+void prepare_per_cpu_new_gdt(struct pseudo_descriptor *desc, union desc *gdt);
+void perpare_per_cpu_user_gdt(union desc *gdt);
 static void get_cpu_info(void)
 {
         u32 eax;
@@ -47,6 +49,19 @@ static void get_cpu_info(void)
 }
 static void enable_cache(void)
 {
+}
+static void set_gdt(int cpu_id)
+{
+        union desc *per_cpu_gdt = per_cpu(gdt, cpu_id);
+        /*gdt*/
+        prepare_per_cpu_new_gdt(&per_cpu(gdt_desc, cpu_id), per_cpu_gdt);
+        lgdt(&per_cpu(gdt_desc, cpu_id));
+        /*tss*/
+        prepare_per_cpu_tss_desc(&((per_cpu_gdt)[GDT_TSS_LOWER_INDEX]),
+                                 &((per_cpu_gdt)[GDT_TSS_UPPER_INDEX]),
+                                 cpu_id);
+        /*user*/
+        perpare_per_cpu_user_gdt(per_cpu_gdt);
 }
 static void start_fp(void)
 {
@@ -85,19 +100,6 @@ static void start_simd(void)
 start_simd_fail:
         pr_error("start simd fail\n");
 }
-static void prepare_per_cpu_new_gdt(struct pseudo_descriptor *desc,
-                                    union desc *gdt)
-{
-        /*fill in the gdt table*/
-        gdt[1].seg_desc.type = 0xe;
-        gdt[1].seg_desc.p = 1;
-        gdt[1].seg_desc.s = 1;
-        gdt[1].seg_desc.l = 1;
-
-        /*fill in the gdt desc*/
-        desc->base_addr = (u64)gdt;
-        desc->limit = GDT_SIZE * sizeof(union desc) - 1;
-}
 error_t prepare_arch(struct setup_info *arch_setup_info)
 {
         u32 mtb_magic;
@@ -133,14 +135,7 @@ error_t arch_parser_platform(struct setup_info *arch_setup_info)
 }
 error_t start_arch(int cpu_id)
 {
-        union desc *per_cpu_gdt = per_cpu(gdt, cpu_id);
-        /*gdt*/
-        prepare_per_cpu_new_gdt(&per_cpu(gdt_desc, cpu_id), per_cpu_gdt);
-        lgdt(&per_cpu(gdt_desc, cpu_id));
-        /*tss*/
-        prepare_per_cpu_tss_desc(&((per_cpu_gdt)[GDT_TSS_LOWER_INDEX]),
-                                 &((per_cpu_gdt)[GDT_TSS_UPPER_INDEX]),
-                                 cpu_id);
+        set_gdt(cpu_id);
         /*
          gs
          as it's per_cpu base

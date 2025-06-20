@@ -2,10 +2,13 @@
 #define _RENDEZVOS_X86_DESC_H_
 #include <common/types.h>
 
-#define GDT_SIZE            4
+#define GDT_NONE            0 // for gdt,index 0 is unused
 #define GDT_KERNEL_CS_INDEX 1
 #define GDT_TSS_LOWER_INDEX 2
 #define GDT_TSS_UPPER_INDEX 3
+#define GDT_USER_CS_INDEX   4
+#define GDT_USER_DS_INDEX   5
+#define GDT_SIZE            (GDT_USER_DS_INDEX + 1)
 
 struct pseudo_descriptor {
         u16 limit;
@@ -25,6 +28,8 @@ union desc {
         u64 desc_value;
         /* segment descriptors */
         struct {
+                /*limit is not checked for CS/DS/SS/ES segment,but still used in
+                 * FS and GS*/
                 u32 limit_15_0 : 16; // low bits of segment limit
                 u32 base_address_15_0 : 16; // low bits of segment base address
                 u32 base_address_23_16 : 8; // middle bits of segment base

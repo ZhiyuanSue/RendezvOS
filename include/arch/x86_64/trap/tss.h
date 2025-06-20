@@ -41,18 +41,18 @@ struct TSS {
                 (tss_ptr)->ist##ist_n##_upper_32_bits =                        \
                         (u32)(((u64)stack_ptr) >> 32);                         \
         }
-#define get_ist(tss_ptr, ist_n)                         \
-        ((((u64)((tss_ptr)->ist##ist_n##_upper_32_bits)) \
-         << 32) + (tss_ptr)->ist##ist_n##_lower_32_bits)
-#define set_rsp(tss_ptr, rsp_n, stack_ptr)                                  \
-        {                                                                   \
+#define get_ist(tss_ptr, ist_n)                                 \
+        ((((u64)((tss_ptr)->ist##ist_n##_upper_32_bits)) << 32) \
+         + (tss_ptr)->ist##ist_n##_lower_32_bits)
+#define set_rsp(tss_ptr, rsp_n, stack_ptr)                                     \
+        {                                                                      \
                 (tss_ptr)->rsp##rsp_n##_lower_32_bits = (u32)((u64)stack_ptr); \
-                (tss_ptr)->rsp##rsp_n##_upper_32_bits =                     \
+                (tss_ptr)->rsp##rsp_n##_upper_32_bits =                        \
                         (u32)(((u64)stack_ptr) >> 32);                         \
         }
-#define get_rsp(tss_ptr, rsp_n)                         \
-        ((((u64)((tss_ptr)->rsp##rsp_n##_upper_32_bits)) \
-         << 32) + (tss_ptr)->rsp##rsp_n##_lower_32_bits)
+#define get_rsp(tss_ptr, rsp_n)                                 \
+        ((((u64)((tss_ptr)->rsp##rsp_n##_upper_32_bits)) << 32) \
+         + (tss_ptr)->rsp##rsp_n##_lower_32_bits)
 /*the stack of interrupt*/
 #define RSP0_INT_NUM 0
 #define IST1_INT_NUM 1
