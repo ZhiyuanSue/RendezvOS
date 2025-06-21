@@ -1,6 +1,7 @@
 #include <arch/x86_64/PIC/IRQ.h>
 #include <arch/x86_64/boot/arch_setup.h>
 #include <arch/x86_64/boot/multiboot.h>
+#include <arch/x86_64/boot/multiboot2.h>
 #include <arch/x86_64/cpuinfo.h>
 #include <arch/x86_64/sys_ctrl.h>
 #include <arch/x86_64/sys_ctrl_def.h>
@@ -107,7 +108,11 @@ error_t prepare_arch(struct setup_info *arch_setup_info)
 
         mtb_magic = arch_setup_info->multiboot_magic;
         mtb_info = GET_MULTIBOOT_INFO(arch_setup_info);
-        if (mtb_magic != MULTIBOOT_MAGIC) {
+        if (mtb_magic == MULTIBOOT_MAGIC) {
+                pr_info("using multiboot 1\n");
+        } else if (mtb_magic == MULTIBOOT2_MAGIC) {
+                pr_info("using multiboot 2\n");
+        } else {
                 pr_info("not using the multiboot protocol, stop\n");
                 return (-E_RENDEZVOS);
         }

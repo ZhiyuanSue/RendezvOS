@@ -1,8 +1,10 @@
 #define	kernel_virt_offset 0xffff800000000000
 #define	boot_stack_size	0x10000
 #define	multiboot_header_magic	0x1BADB002
+#define multiboot2_header_magic	0xE85250D6
 #define	multiboot_header_flag_addr	0x00000002
 #define	multiboot_header_flag_vbe	0x00010000
+#define multiboot2_arch_i386	0
 #define	align_2m	0x200000
 #define	align_2m_minus_1	0x1fffff
 #define	align_bit32_not_2m_minus_1	0xffe00000
@@ -48,6 +50,7 @@
 .code32
 _start:
 	jmp multiboot_entry
+	/* multiboot 1 header */
 	/* Align 32 bits boundary. */
 	.p2align  2
 multiboot_header:
@@ -65,6 +68,17 @@ multiboot_bss_end_address:
 multiboot_entry_address:
 	.long	multiboot_entry - kernel_virt_offset
 multiboot_header_end:
+	/*multiboot 2 header*/
+	/* Align 64 bits boundary. */
+	.p2align 3
+multiboot2_header:
+	.long	multiboot2_header_magic
+	.long	multiboot2_arch_i386
+	.long	multiboot2_header_end - multiboot2_header
+	.long	-(multiboot2_header_magic + multiboot2_arch_i386 + (multiboot2_header_end - multiboot2_header))	/*checksum*/
+multiboot2_header_end:
+
+	.p2align 3
 multiboot_entry:
 bsp_entry:
 	/*disable interrupt*/
