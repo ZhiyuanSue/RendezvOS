@@ -40,7 +40,7 @@ void perpare_per_cpu_user_gdt(union desc *gdt)
 {
         /*fill in the gdt table*/
         /*user cs*/
-        gdt[GDT_USER_CS_INDEX].seg_desc.type = 0x10;
+        gdt[GDT_USER_CS_INDEX].seg_desc.type = 0xa;
         gdt[GDT_USER_CS_INDEX].seg_desc.l = 1;
         gdt[GDT_USER_CS_INDEX].seg_desc.p = 1;
         gdt[GDT_USER_CS_INDEX].seg_desc.s = 1;

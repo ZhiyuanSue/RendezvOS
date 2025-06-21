@@ -23,6 +23,8 @@ typedef struct {
         u64 rbp;
         u64 rbx;
         u64 stack_bottom;
+        u64 user_gs;
+        u64 user_fs;
 } Arch_Task_Context;
 typedef struct {
         void* thread_func_ptr;
@@ -34,6 +36,7 @@ static inline void arch_task_ctx_init(Arch_Task_Context* ctx)
         ctx->rbp = ctx->rbx = 0;
         ctx->r15 = ctx->r14 = 0;
         ctx->r13 = ctx->r12 = 0;
+        ctx->user_gs = ctx->user_fs = 0;
 }
 static inline void arch_set_new_thread_ctx(Arch_Task_Context* ctx,
                                            void* func_ptr, void* stack_bottom)
