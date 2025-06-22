@@ -122,14 +122,20 @@ error_t prepare_arch(struct setup_info *arch_setup_info)
                 pr_info("using multiboot 2\n");
                 struct multiboot2_info *mtb2_info =
                         GET_MULTIBOOT2_INFO(arch_setup_info);
-                pr_info("multiboot 2 size is 0x%x\n", mtb2_info->total_size);
-                // for_each_tag(mtb2_info)
-                // {
-                //         switch (tag->type) {
-                //                 case MULTIBOOT2_TAG_TYPE_CMDLINE:
-
-                //         }
-                // }
+                bool have_cmd_line = false;
+                for_each_tag(mtb2_info)
+                {
+                        switch (tag->type) {
+                        case MULTIBOOT2_TAG_TYPE_CMDLINE: {
+                                have_cmd_line = true;
+                                pr_info("cmdline:%s\n",
+                                        ((struct multiboot2_tag_string *)tag)
+                                                ->string);
+                        } break;
+                        }
+                }
+                if (!have_cmd_line)
+                        pr_info("no input cmdline\n");
         } else {
                 pr_info("not using the multiboot protocol, stop\n");
                 return (-E_RENDEZVOS);
