@@ -123,6 +123,13 @@ error_t prepare_arch(struct setup_info *arch_setup_info)
                 struct multiboot2_info *mtb2_info =
                         GET_MULTIBOOT2_INFO(arch_setup_info);
                 pr_info("multiboot 2 size is 0x%x\n", mtb2_info->total_size);
+                // for_each_tag(mtb2_info)
+                // {
+                //         switch (tag->type) {
+                //                 case MULTIBOOT2_TAG_TYPE_CMDLINE:
+
+                //         }
+                // }
         } else {
                 pr_info("not using the multiboot protocol, stop\n");
                 return (-E_RENDEZVOS);

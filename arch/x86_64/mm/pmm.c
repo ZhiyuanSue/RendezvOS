@@ -34,15 +34,15 @@ static error_t arch_get_memory_regions(struct setup_info *arch_setup_info)
 
         struct multiboot2_info *mtb2_info;
 
-        vaddr add_ptr;
-        u64 length;
+        vaddr addr_ptr;
+        /*some ptr is phisical, we need to change it to virtual*/
 
         mtb_magic = arch_setup_info->multiboot_magic;
         if (mtb_magic == MULTIBOOT_MAGIC) {
                 /*multiboot 1 memory region detect*/
                 mtb_info = GET_MULTIBOOT_INFO(arch_setup_info);
-                add_ptr = mtb_info->mmap.mmap_addr + KERNEL_VIRT_OFFSET;
-                length = mtb_info->mmap.mmap_length;
+                addr_ptr = mtb_info->mmap.mmap_addr + KERNEL_VIRT_OFFSET;
+                u64 length = mtb_info->mmap.mmap_length;
                 /* check the multiboot header */
                 if (!MULTIBOOT_INFO_FLAG_CHECK(mtb_info->flags,
                                                MULTIBOOT_INFO_FLAG_MEM)
@@ -54,7 +54,7 @@ static error_t arch_get_memory_regions(struct setup_info *arch_setup_info)
                 /*generate the memory region info*/
                 m_regions.memory_regions_init(&m_regions);
 
-                for_each_multiboot_mmap(add_ptr, length)
+                for_each_multiboot_mmap(addr_ptr, length)
                 {
                         multiboot_insert_memory_region(mmap);
                 }
@@ -64,7 +64,11 @@ static error_t arch_get_memory_regions(struct setup_info *arch_setup_info)
                 {
                         switch (tag->type) {
                         case MULTIBOOT2_TAG_TYPE_MMAP: {
-                                for_each_multiboot2_mmap(tag)
+                                addr_ptr = KERNEL_PHY_TO_VIRT(
+                                        (paddr)(((struct multiboot2_tag_mmap *)
+                                                         tag)
+                                                        ->entries));
+                                for_each_multiboot2_mmap(tag, addr_ptr)
                                 {
                                         multiboot_insert_memory_region(mmap);
                                 }

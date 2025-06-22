@@ -89,9 +89,9 @@ struct multiboot2_tag_mmap {
         struct multiboot2_mmap_entry entries[0];
 } __attribute__((packed));
 
-#define for_each_multiboot2_mmap(tag)                                 \
+#define for_each_multiboot2_mmap(tag, addr_ptr)                       \
         for (struct multiboot2_mmap_entry *mmap =                     \
-                     ((struct multiboot2_tag_mmap *)tag)->entries;    \
+                     (struct multiboot2_mmap_entry *)addr_ptr;        \
              (vaddr)mmap < (vaddr)tag + tag->size;                    \
              mmap = (struct multiboot2_mmap_entry                     \
                              *)((vaddr)mmap                           \

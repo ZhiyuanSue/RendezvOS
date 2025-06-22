@@ -5,6 +5,7 @@
 #define	multiboot_header_flag_addr	0x00000002
 #define	multiboot_header_flag_vbe	0x00010000
 #define multiboot2_arch_i386	0
+#define multiboot2_header_tag_end	0
 #define	align_2m	0x200000
 #define	align_2m_minus_1	0x1fffff
 #define	align_bit32_not_2m_minus_1	0xffe00000
@@ -76,6 +77,19 @@ multiboot2_header:
 	.long	multiboot2_arch_i386
 	.long	multiboot2_header_end - multiboot2_header
 	.long	-(multiboot2_header_magic + multiboot2_arch_i386 + (multiboot2_header_end - multiboot2_header))	/*checksum*/
+
+	.p2align 3
+multiboot2_address_tag_start:
+	
+multiboot2_address_tag_end:
+
+	.p2align 3
+multiboot2_end_tag_start:
+	.short	multiboot2_header_tag_end
+	.short	0
+	.long	mulitboot2_end_tag_end-multiboot2_end_tag_start
+mulitboot2_end_tag_end:
+
 multiboot2_header_end:
 
 	.p2align 3
