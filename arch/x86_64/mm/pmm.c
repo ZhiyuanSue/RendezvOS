@@ -13,41 +13,62 @@ extern char _start, _end; /*the kernel end virt addr*/
 extern u64 L2_table;
 extern struct memory_regions m_regions;
 
+#define multiboot_insert_memory_region(mmap)                                      \
+        if (mmap->addr + mmap->len > BIOS_MEM_UPPER                               \
+            && mmap->type == MULTIBOOT_MEMORY_AVAILABLE) {                        \
+                if (m_regions.memory_regions_insert(mmap->addr, mmap->len)) {     \
+                        pr_error(                                                 \
+                                "we cannot manager toooo many memory regions\n"); \
+                        goto arch_init_pmm_error;                                 \
+                } else {                                                          \
+                        pr_info("[ Phy_Mem\t@\t< 0x%x , 0x%x >]\n",               \
+                                mmap->addr,                                       \
+                                mmap->len);                                       \
+                }                                                                 \
+        }
+
 static error_t arch_get_memory_regions(struct setup_info *arch_setup_info)
 {
+        u32 mtb_magic;
         struct multiboot_info *mtb_info;
-        struct multiboot_mmap_entry *mmap;
+
+        struct multiboot2_info *mtb2_info;
+
         vaddr add_ptr;
         u64 length;
 
-        mtb_info = GET_MULTIBOOT_INFO(arch_setup_info);
-        add_ptr = mtb_info->mmap.mmap_addr + KERNEL_VIRT_OFFSET;
-        length = mtb_info->mmap.mmap_length;
-        /* check the multiboot header */
-        if (!MULTIBOOT_INFO_FLAG_CHECK(mtb_info->flags, MULTIBOOT_INFO_FLAG_MEM)
-            || !MULTIBOOT_INFO_FLAG_CHECK(mtb_info->flags,
-                                          MULTIBOOT_INFO_FLAG_MMAP)) {
-                pr_info("no mem info\n");
-                goto arch_init_pmm_error;
-        }
-        /*generate the memory region info*/
-        m_regions.memory_regions_init(&m_regions);
+        mtb_magic = arch_setup_info->multiboot_magic;
+        if (mtb_magic == MULTIBOOT_MAGIC) {
+                /*multiboot 1 memory region detect*/
+                mtb_info = GET_MULTIBOOT_INFO(arch_setup_info);
+                add_ptr = mtb_info->mmap.mmap_addr + KERNEL_VIRT_OFFSET;
+                length = mtb_info->mmap.mmap_length;
+                /* check the multiboot header */
+                if (!MULTIBOOT_INFO_FLAG_CHECK(mtb_info->flags,
+                                               MULTIBOOT_INFO_FLAG_MEM)
+                    || !MULTIBOOT_INFO_FLAG_CHECK(mtb_info->flags,
+                                                  MULTIBOOT_INFO_FLAG_MMAP)) {
+                        pr_info("no mem info\n");
+                        goto arch_init_pmm_error;
+                }
+                /*generate the memory region info*/
+                m_regions.memory_regions_init(&m_regions);
 
-        for (mmap = (struct multiboot_mmap_entry *)add_ptr;
-             ((vaddr)mmap) < (add_ptr + length);
-             mmap = (struct multiboot_mmap_entry *)((vaddr)mmap + mmap->size
-                                                    + sizeof(mmap->size))) {
-                if (mmap->addr + mmap->len > BIOS_MEM_UPPER
-                    && mmap->type == MULTIBOOT_MEMORY_AVAILABLE) {
-                        if (m_regions.memory_regions_insert(mmap->addr,
-                                                            mmap->len)) {
-                                pr_error(
-                                        "we cannot manager toooo many memory regions\n");
-                                goto arch_init_pmm_error;
-                        } else {
-                                pr_info("[ Phy_Mem\t@\t< 0x%x , 0x%x >]\n",
-                                        mmap->addr,
-                                        mmap->len);
+                for_each_multiboot_mmap(add_ptr, length)
+                {
+                        multiboot_insert_memory_region(mmap);
+                }
+        } else if (mtb_magic == MULTIBOOT2_MAGIC) {
+                mtb2_info = GET_MULTIBOOT2_INFO(arch_setup_info);
+                for_each_tag(mtb2_info)
+                {
+                        switch (tag->type) {
+                        case MULTIBOOT2_TAG_TYPE_MMAP: {
+                                for_each_multiboot2_mmap(tag)
+                                {
+                                        multiboot_insert_memory_region(mmap);
+                                }
+                        } break;
                         }
                 }
         }

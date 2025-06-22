@@ -104,26 +104,29 @@ start_simd_fail:
 error_t prepare_arch(struct setup_info *arch_setup_info)
 {
         u32 mtb_magic;
-        struct multiboot_info *mtb_info;
+        max_phy_addr_width = arch_setup_info->phy_addr_width;
 
         mtb_magic = arch_setup_info->multiboot_magic;
-        mtb_info = GET_MULTIBOOT_INFO(arch_setup_info);
         if (mtb_magic == MULTIBOOT_MAGIC) {
                 pr_info("using multiboot 1\n");
+                struct multiboot_info *mtb_info =
+                        GET_MULTIBOOT_INFO(arch_setup_info);
+                if (!(mtb_info->flags & MULTIBOOT_INFO_FLAG_CMD)) {
+                        pr_info("cmdline:%s\n",
+                                (char *)(mtb_info->cmdline
+                                         + KERNEL_VIRT_OFFSET));
+                } else {
+                        pr_info("no input cmdline\n");
+                }
         } else if (mtb_magic == MULTIBOOT2_MAGIC) {
                 pr_info("using multiboot 2\n");
+                struct multiboot2_info *mtb2_info =
+                        GET_MULTIBOOT2_INFO(arch_setup_info);
+                pr_info("multiboot 2 size is 0x%x\n", mtb2_info->total_size);
         } else {
                 pr_info("not using the multiboot protocol, stop\n");
                 return (-E_RENDEZVOS);
         }
-        max_phy_addr_width = arch_setup_info->phy_addr_width;
-        if (!(mtb_info->flags & MULTIBOOT_INFO_FLAG_CMD)) {
-                pr_info("cmdline:%s\n",
-                        (char *)(mtb_info->cmdline + KERNEL_VIRT_OFFSET));
-        } else {
-                pr_info("no input cmdline\n");
-        }
-
         return (0);
 }
 error_t arch_cpu_info(struct setup_info *arch_setup_info)

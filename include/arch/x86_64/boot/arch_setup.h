@@ -1,6 +1,8 @@
 #ifndef _RENDEZVOS_ARCH_SETUP_H_
 #define _RENDEZVOS_ARCH_SETUP_H_
 #include <common/types.h>
+#include "multiboot.h"
+#include "multiboot2.h"
 
 #ifndef KERNEL_VIRT_OFFSET
 #define KERNEL_VIRT_OFFSET 0xffff800000000000
@@ -26,6 +28,12 @@ GET_MULTIBOOT_INFO(struct setup_info *setup_info)
 {
         return ((struct multiboot_info *)(setup_info->multiboot_info_struct_ptr
                                           + KERNEL_VIRT_OFFSET));
+}
+static inline struct multiboot2_info *
+GET_MULTIBOOT2_INFO(struct setup_info *setup_info)
+{
+        return ((struct multiboot2_info *)(setup_info->multiboot_info_struct_ptr
+                                           + KERNEL_VIRT_OFFSET));
 }
 error_t prepare_arch(struct setup_info *arch_setup_info);
 error_t start_arch(int cpu_id);

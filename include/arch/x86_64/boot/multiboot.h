@@ -29,6 +29,12 @@ struct multiboot_mmap {
         u32 mmap_length;
         u32 mmap_addr;
 } __attribute__((packed));
+#define for_each_multiboot_mmap(addr_ptr, length)                            \
+        for (struct multiboot_mmap_entry *mmap =                             \
+                     (struct multiboot_mmap_entry *)addr_ptr;                \
+             ((vaddr)mmap) < (addr_ptr + length);                            \
+             mmap = (struct multiboot_mmap_entry *)((vaddr)mmap + mmap->size \
+                                                    + sizeof(mmap->size)))
 
 struct multiboot_drivers {
         u32 drives_length;
