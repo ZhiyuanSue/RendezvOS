@@ -1,11 +1,14 @@
 #define	kernel_virt_offset 0xffff800000000000
 #define	boot_stack_size	0x10000
 #define	multiboot_header_magic	0x1BADB002
-#define multiboot2_header_magic	0xE85250D6
 #define	multiboot_header_flag_addr	0x00000002
 #define	multiboot_header_flag_vbe	0x00010000
 #define multiboot2_arch_i386	0
+#define multiboot2_header_magic	0xE85250D6
 #define multiboot2_header_tag_end	0
+#define multiboot2_header_tag_option	1
+#define multiboot2_header_tag_address	2
+#define multiboot2_header_tag_entry_address	3
 #define	align_2m	0x200000
 #define	align_2m_minus_1	0x1fffff
 #define	align_bit32_not_2m_minus_1	0xffe00000
@@ -80,8 +83,22 @@ multiboot2_header:
 
 	.p2align 3
 multiboot2_address_tag_start:
-	
+	.short	multiboot2_header_tag_address
+	.short	multiboot2_header_tag_option
+	.long	multiboot2_address_tag_end-multiboot2_address_tag_start
+	.long	multiboot2_header
+	.long	_start
+	.long	_end
+	.long	_end
 multiboot2_address_tag_end:
+
+	.p2align 3
+multiboot2_entry_address_tag_start:
+	.short	multiboot2_header_tag_entry_address
+	.short	multiboot2_header_tag_option
+	.long	multiboot2_entry_address_tag_end-multiboot2_entry_address_tag_start
+	.long	multiboot_entry
+multiboot2_entry_address_tag_end:
 
 	.p2align 3
 multiboot2_end_tag_start:

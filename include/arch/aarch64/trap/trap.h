@@ -33,7 +33,7 @@ struct trap_frame {
 };
 #define AARCH64_ESR_EC_MASK (0xffUL << AARCH64_ESR_EC_SHIFT)
 #define AARCH64_ESR_GET_EC(esr_value) \
-        (((u64)(esr_value)&AARCH64_ESR_EC_MASK) >> AARCH64_ESR_EC_SHIFT)
+        (((u64)(esr_value) & AARCH64_ESR_EC_MASK) >> AARCH64_ESR_EC_SHIFT)
 
 void arch_init_interrupt(void);
 void arch_unknown_trap_handler(struct trap_frame *tf);
