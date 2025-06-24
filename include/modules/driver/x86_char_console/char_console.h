@@ -1,0 +1,31 @@
+#ifndef _X86_CHAR_CONSOLE_
+#define _X86_CHAR_CONSOLE_
+
+#define KERNEL_VIRT_OFFSET    0xffff800000000000
+#define CHAR_CONSOLE_PHY_BASE 0xB800
+
+#include <common/types.h>
+struct x86_char_console {
+        vaddr console_vaddr_base;
+        u64 xpos_size;
+        u64 ypos_size;
+        u64 xpos_curr;
+        u64 ypos_curr;
+        u64 color;
+};
+extern struct x86_char_console X86_CHAR_CONSOLE;
+void set_console(struct x86_char_console* console, u64 xlimit, u64 ylimit,
+                 u64 color);
+void cls(struct x86_char_console* console);
+void char_console_putc(struct x86_char_console* console, char c);
+
+#define X86_CHAR_CONSOLE_FORWORD_NONE   0
+#define X86_CHAR_CONSOLE_FORWORD_BLACK  0
+#define X86_CHAR_CONSOLE_FORWORD_BLUE   1
+#define X86_CHAR_CONSOLE_FORWORD_GREEN  2
+#define X86_CHAR_CONSOLE_FORWORD_RED    4
+#define X86_CHAR_CONSOLE_FORWORD_YELLOW 6
+
+u8 map_color(u64 forward_color, u64 backword_color);
+
+#endif

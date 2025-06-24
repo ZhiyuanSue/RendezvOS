@@ -86,10 +86,10 @@ multiboot2_address_tag_start:
 	.short	multiboot2_header_tag_address
 	.short	multiboot2_header_tag_option
 	.long	multiboot2_address_tag_end-multiboot2_address_tag_start
-	.long	multiboot2_header
-	.long	_start
-	.long	_end
-	.long	_end
+	.long	multiboot2_header - kernel_virt_offset
+	.long	_start - kernel_virt_offset
+	.long	_end - kernel_virt_offset
+	.long	_end - kernel_virt_offset
 multiboot2_address_tag_end:
 
 	.p2align 3
@@ -97,7 +97,7 @@ multiboot2_entry_address_tag_start:
 	.short	multiboot2_header_tag_entry_address
 	.short	multiboot2_header_tag_option
 	.long	multiboot2_entry_address_tag_end-multiboot2_entry_address_tag_start
-	.long	multiboot_entry
+	.long	multiboot_entry - kernel_virt_offset
 multiboot2_entry_address_tag_end:
 
 	.p2align 3
