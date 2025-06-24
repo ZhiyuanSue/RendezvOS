@@ -85,8 +85,10 @@ void log_print(char *buffer, const char *format, va_list arg_list)
         i64 x;
 
         while ((c = *format++) != 0) {
-                if (c != '%')
+                if (c != '%'){
                         uart_putc(c);
+                        char_console_putc(&X86_CHAR_CONSOLE,c);
+                }
                 else {
                         char *p, *p2;
                         pad0 = 0, pad = 0;
@@ -132,10 +134,14 @@ void log_print(char *buffer, const char *format, va_list arg_list)
                         string:
                                 for (p2 = p; *p2; p2++)
                                         ;
-                                for (; p2 < p + pad; p2++)
+                                for (; p2 < p + pad; p2++){
                                         uart_putc(pad0 ? '0' : ' ');
-                                while (*p)
+                                        char_console_putc(&X86_CHAR_CONSOLE,c);
+                                }
+                                while (*p){
                                         uart_putc(*p++);
+                                        char_console_putc(&X86_CHAR_CONSOLE,c);
+                                }
                                 break;
                         default:
                                 break;

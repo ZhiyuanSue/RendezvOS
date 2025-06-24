@@ -19,7 +19,7 @@ void set_console(struct x86_char_console* console, u64 xlimit, u64 ylimit,
                  u64 color)
 {
         console->console_vaddr_base =
-                KERNEL_VIRT_OFFSET + CHAR_CONSOLE_PHY_BASE;
+                
         console->xpos_size = xlimit;
         console->ypos_size = ylimit;
         console->xpos_curr = 0;
@@ -65,3 +65,12 @@ u8 map_color(u64 forword_color, u64 backword_color)
                                             - BACKWORD_COLOR_MATRIX_OFFSET];
         return bg_color << 4 + char_color;
 }
+
+struct x86_char_console X86_CHAR_CONSOLE = {
+        .color=0,
+        .xpos_size=80,
+        .ypos_size=25,
+        .console_vaddr_base = KERNEL_VIRT_OFFSET + CHAR_CONSOLE_PHY_BASE,
+        .xpos_curr =0,
+        .ypos_curr =0,
+};
