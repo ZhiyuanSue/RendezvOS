@@ -18,8 +18,6 @@ u8 backword_color_matrix[10] = {X86_CHAR_CONSOLE_FORWORD_NONE};
 void set_console(struct x86_char_console* console, u64 xlimit, u64 ylimit,
                  u64 color)
 {
-        console->console_vaddr_base =
-                
         console->xpos_size = xlimit;
         console->ypos_size = ylimit;
         console->xpos_curr = 0;
@@ -37,25 +35,29 @@ void cls(struct x86_char_console* console)
 void char_console_putc(struct x86_char_console* console, char c)
 {
         if (c == '\n' || c == '\r') {
-        newline:
-                console->xpos_curr = 0;
-                console->ypos_curr++;
-                if (console->ypos_curr >= console->ypos_size)
-                        console->ypos_curr = 0;
-                return;
+                goto newline;
         }
 
         *((u8*)(console->console_vaddr_base
-                + (console->xpos_curr + console->ypos_curr * console->ypos_size)
+                + (console->xpos_curr + console->ypos_curr * console->xpos_size)
                           * 2)) = c & 0xFF;
         *((u8*)(console->console_vaddr_base
-                + (console->xpos_curr + console->ypos_curr * console->ypos_size)
+                + (console->xpos_curr + console->ypos_curr * console->xpos_size)
                           * 2
                 + 1)) = (u8)(console->color & 0xFF);
 
         console->xpos_curr++;
         if (console->xpos_curr >= console->xpos_size)
                 goto newline;
+        return;
+newline:
+        console->xpos_curr = 0;
+        console->ypos_curr++;
+        if (console->ypos_curr >= console->ypos_size) {
+                cls(console);
+                console->ypos_curr = 0;
+        }
+        return;
 }
 u8 map_color(u64 forword_color, u64 backword_color)
 {
@@ -63,14 +65,14 @@ u8 map_color(u64 forword_color, u64 backword_color)
                                              - FORWORD_COLOR_MATRIX_OFFSET];
         u8 bg_color = backword_color_matrix[backword_color
                                             - BACKWORD_COLOR_MATRIX_OFFSET];
-        return bg_color << 4 + char_color;
+        return (bg_color << 4) + char_color;
 }
 
 struct x86_char_console X86_CHAR_CONSOLE = {
-        .color=0,
-        .xpos_size=80,
-        .ypos_size=25,
+        .color = 0,
+        .xpos_size = 80,
+        .ypos_size = 25,
         .console_vaddr_base = KERNEL_VIRT_OFFSET + CHAR_CONSOLE_PHY_BASE,
-        .xpos_curr =0,
-        .ypos_curr =0,
+        .xpos_curr = 0,
+        .ypos_curr = 0,
 };

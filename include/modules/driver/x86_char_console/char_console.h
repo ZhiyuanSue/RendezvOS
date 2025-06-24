@@ -2,7 +2,7 @@
 #define _X86_CHAR_CONSOLE_
 
 #define KERNEL_VIRT_OFFSET    0xffff800000000000
-#define CHAR_CONSOLE_PHY_BASE 0xB800
+#define CHAR_CONSOLE_PHY_BASE 0xB8000
 
 #include <common/types.h>
 struct x86_char_console {

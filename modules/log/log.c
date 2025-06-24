@@ -1,5 +1,4 @@
 #include <common/types.h>
-#include <modules/driver/driver.h>
 #include <modules/log/log.h>
 
 struct log_buffer LOG_BUFFER;
@@ -30,6 +29,7 @@ int log_level = LOG_OFF;
 void log_init(void *log_buffer_addr, int log_level)
 {
         uart_putc('\n');
+        cls(&X86_CHAR_CONSOLE);
         for (int i = 0; i < LOG_BUFFER_SIZE; ++i) {
                 LOG_BUFFER.LOG_BUF[i].start_addr =
                         log_buffer_addr + i * LOG_BUFFER_SINGLE_SIZE;
@@ -85,11 +85,10 @@ void log_print(char *buffer, const char *format, va_list arg_list)
         i64 x;
 
         while ((c = *format++) != 0) {
-                if (c != '%'){
+                if (c != '%') {
                         uart_putc(c);
-                        char_console_putc(&X86_CHAR_CONSOLE,c);
-                }
-                else {
+                        char_console_putc(&X86_CHAR_CONSOLE, c);
+                } else {
                         char *p, *p2;
                         pad0 = 0, pad = 0;
                         c = *format++;
@@ -134,13 +133,17 @@ void log_print(char *buffer, const char *format, va_list arg_list)
                         string:
                                 for (p2 = p; *p2; p2++)
                                         ;
-                                for (; p2 < p + pad; p2++){
-                                        uart_putc(pad0 ? '0' : ' ');
-                                        char_console_putc(&X86_CHAR_CONSOLE,c);
+                                for (; p2 < p + pad; p2++) {
+                                        char ch = pad0 ? '0' : ' ';
+                                        uart_putc(ch);
+                                        char_console_putc(&X86_CHAR_CONSOLE,
+                                                          pad0 ? '0' : ' ');
                                 }
-                                while (*p){
-                                        uart_putc(*p++);
-                                        char_console_putc(&X86_CHAR_CONSOLE,c);
+                                while (*p) {
+                                        char ch = *p++;
+                                        uart_putc(ch);
+                                        char_console_putc(&X86_CHAR_CONSOLE,
+                                                          ch);
                                 }
                                 break;
                         default:

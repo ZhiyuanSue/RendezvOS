@@ -5,6 +5,7 @@
 #include <common/dsa/list.h>
 #include <rendezvos/sync/spin_lock.h>
 #include <rendezvos/smp/percpu.h>
+#include <modules/driver/driver.h>
 #include <modules/driver/x86_char_console/char_console.h>
 #define LOG_BUFFER_SIZE        0x10
 #define LOG_BUFFER_SINGLE_SIZE 0x1000
@@ -39,20 +40,33 @@ extern struct spin_lock_t *log_spin_lock_ptr;
 #ifdef SMP
 #define COLOR_SET(dis_mod, forward_color, backword_color)     \
         lock_mcs(&log_spin_lock_ptr, &percpu(log_spin_lock)); \
-        printk("\033[%d;%dm", LOG_OFF, dis_mod, forward_color, backword_color); \
-        set_console(&X86_CHAR_CONSOLE,X86_CHAR_CONSOLE.xpos_size,X86_CHAR_CONSOLE.ypos_size,map_color(forward_color,backword_color));
+        uart_set_color(0, forward_color);                     \
+        set_console(&X86_CHAR_CONSOLE,                        \
+                    X86_CHAR_CONSOLE.xpos_size,               \
+                    X86_CHAR_CONSOLE.ypos_size,               \
+                    map_color(forward_color, backword_color));
 
-#define COLOR_CLR()                   \
-        printk("\033[0;0m", LOG_OFF); \
-        unlock_mcs(&log_spin_lock_ptr, &percpu(log_spin_lock)); \
-        set_console(&X86_CHAR_CONSOLE,X86_CHAR_CONSOLE.xpos_size,X86_CHAR_CONSOLE.ypos_size,map_color(30,30));
+#define COLOR_CLR()                             \
+        set_console(&X86_CHAR_CONSOLE,          \
+                    X86_CHAR_CONSOLE.xpos_size, \
+                    X86_CHAR_CONSOLE.ypos_size, \
+                    map_color(30, 30));         \
+        uart_set_color(0, 0);                   \
+        unlock_mcs(&log_spin_lock_ptr, &percpu(log_spin_lock));
 #else
 #define COLOR_SET(dis_mod, forward_color, backword_color) \
-        printk("\033[%d;%dm", LOG_OFF, dis_mod, forward_color, backword_color); \
-        set_console(&X86_CHAR_CONSOLE,X86_CHAR_CONSOLE.xpos_size,X86_CHAR_CONSOLE.ypos_size,map_color(forward_color,backword_color));
+        uart_set_color(0, forward_color);                 \
+        set_console(&X86_CHAR_CONSOLE,                    \
+                    X86_CHAR_CONSOLE.xpos_size,           \
+                    X86_CHAR_CONSOLE.ypos_size,           \
+                    map_color(forward_color, backword_color));
 
-#define COLOR_CLR() printk("\033[0;0m", LOG_OFF); \
-        set_console(&X86_CHAR_CONSOLE,X86_CHAR_CONSOLE.xpos_size,X86_CHAR_CONSOLE.ypos_size,map_color(30,30));
+#define COLOR_CLR()                             \
+        set_console(&X86_CHAR_CONSOLE,          \
+                    X86_CHAR_CONSOLE.xpos_size, \
+                    X86_CHAR_CONSOLE.ypos_size, \
+                    map_color(30, 30));         \
+        uart_set_color(0, 0);
 #endif
 
 #define pr_debug(format, ...)                             \

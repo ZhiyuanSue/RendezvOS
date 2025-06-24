@@ -34,3 +34,68 @@ void uart_close(void)
         uart_pl011_close();
 #endif
 }
+void uart_set_color(u64 forword_color, u64 backword_color)
+{
+        uart_putc('\33');
+        uart_putc('[');
+        switch (forword_color) {
+        case 0:
+                uart_putc('0');
+                break;
+        case 30:
+                uart_putc('3');
+                uart_putc('0');
+                break;
+        case 31:
+                uart_putc('3');
+                uart_putc('1');
+                break;
+        case 32:
+                uart_putc('3');
+                uart_putc('2');
+                break;
+        case 33:
+                uart_putc('3');
+                uart_putc('3');
+                break;
+        case 34:
+                uart_putc('3');
+                uart_putc('4');
+                break;
+        default:
+                break;
+        }
+        uart_putc(';');
+        switch (backword_color) {
+        case 0:
+                uart_putc('0');
+                break;
+        case 30:
+                uart_putc('3');
+                uart_putc('0');
+                break;
+        case 31:
+                uart_putc('3');
+                uart_putc('1');
+                break;
+        case 32:
+                uart_putc('3');
+                uart_putc('2');
+                break;
+        case 33:
+                uart_putc('3');
+                uart_putc('3');
+                break;
+        case 34:
+                uart_putc('3');
+                uart_putc('4');
+                break;
+        case 40:
+                uart_putc('4');
+                uart_putc('0');
+                break;
+        default:
+                break;
+        }
+        uart_putc('m');
+}
