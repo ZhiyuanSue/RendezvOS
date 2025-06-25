@@ -5,6 +5,8 @@
 #define CHAR_CONSOLE_PHY_BASE 0xB8000
 
 #include <common/types.h>
+#include <common/align.h>
+#include <common/string.h>
 struct x86_char_console {
         vaddr console_vaddr_base;
         u64 xpos_size;
@@ -16,7 +18,8 @@ struct x86_char_console {
 extern struct x86_char_console X86_CHAR_CONSOLE;
 void set_console(struct x86_char_console* console, u64 xlimit, u64 ylimit,
                  u64 color);
-void cls(struct x86_char_console* console);
+void clear_screen(struct x86_char_console* console);
+void clear_line(struct x86_char_console* console,  u64 line);
 void char_console_putc(struct x86_char_console* console, char c);
 
 #define X86_CHAR_CONSOLE_FORWORD_NONE   0

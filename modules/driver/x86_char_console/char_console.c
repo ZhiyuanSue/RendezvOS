@@ -1,5 +1,4 @@
 #include <modules/driver/x86_char_console/char_console.h>
-#include <common/string.h>
 
 #define FORWORD_COLOR_MATRIX_OFFSET  30
 #define BACKWORD_COLOR_MATRIX_OFFSET 40
@@ -14,17 +13,16 @@ u8 forword_color_matrix[10] = {X86_CHAR_CONSOLE_FORWORD_BLACK,
                                X86_CHAR_CONSOLE_FORWORD_NONE,
                                X86_CHAR_CONSOLE_FORWORD_NONE};
 u8 backword_color_matrix[10] = {X86_CHAR_CONSOLE_FORWORD_NONE};
+#define TAB_SIZE 4
 
 void set_console(struct x86_char_console* console, u64 xlimit, u64 ylimit,
                  u64 color)
 {
         console->xpos_size = xlimit;
         console->ypos_size = ylimit;
-        console->xpos_curr = 0;
-        console->ypos_curr = 0;
         console->color = color;
 }
-void cls(struct x86_char_console* console)
+void clear_screen(struct x86_char_console* console)
 {
         memset((void*)(console->console_vaddr_base),
                0,
@@ -32,10 +30,27 @@ void cls(struct x86_char_console* console)
         console->xpos_curr = 0;
         console->ypos_curr = 0;
 }
+void clear_line(struct x86_char_console* console, u64 line)
+{
+        if (line >= console->ypos_size)
+                line = line % console->ypos_size;
+        memset((void*)(console->console_vaddr_base
+                       + line * console->xpos_size * 2),
+               0,
+               console->xpos_size * 2);
+}
 void char_console_putc(struct x86_char_console* console, char c)
 {
         if (c == '\n' || c == '\r') {
+                console->xpos_curr = 0;
                 goto newline;
+        }
+        if (c == '\t') {
+                console->xpos_curr =
+                        ROUND_UP(console->xpos_curr + TAB_SIZE - 1, TAB_SIZE);
+                if (console->xpos_curr >= console->xpos_size)
+                        goto newline;
+                return;
         }
 
         *((u8*)(console->console_vaddr_base
@@ -47,15 +62,17 @@ void char_console_putc(struct x86_char_console* console, char c)
                 + 1)) = (u8)(console->color & 0xFF);
 
         console->xpos_curr++;
-        if (console->xpos_curr >= console->xpos_size)
+        if (console->xpos_curr >= console->xpos_size) {
+                console->xpos_curr = 0;
                 goto newline;
+        }
         return;
 newline:
-        console->xpos_curr = 0;
+        console->xpos_curr = console->xpos_curr % console->xpos_size;
         console->ypos_curr++;
         if (console->ypos_curr >= console->ypos_size) {
-                cls(console);
-                console->ypos_curr = 0;
+                console->ypos_curr = console->ypos_curr % console->ypos_size;
+                clear_screen(console);
         }
         return;
 }

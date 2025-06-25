@@ -29,7 +29,7 @@ int log_level = LOG_OFF;
 void log_init(void *log_buffer_addr, int log_level)
 {
         uart_putc('\n');
-        cls(&X86_CHAR_CONSOLE);
+        clear_screen(&X86_CHAR_CONSOLE);
         for (int i = 0; i < LOG_BUFFER_SIZE; ++i) {
                 LOG_BUFFER.LOG_BUF[i].start_addr =
                         log_buffer_addr + i * LOG_BUFFER_SINGLE_SIZE;

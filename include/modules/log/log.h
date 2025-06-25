@@ -40,7 +40,7 @@ extern struct spin_lock_t *log_spin_lock_ptr;
 #ifdef SMP
 #define COLOR_SET(dis_mod, forward_color, backword_color)     \
         lock_mcs(&log_spin_lock_ptr, &percpu(log_spin_lock)); \
-        uart_set_color(0, forward_color);                     \
+        uart_set_color(dis_mod, forward_color);                     \
         set_console(&X86_CHAR_CONSOLE,                        \
                     X86_CHAR_CONSOLE.xpos_size,               \
                     X86_CHAR_CONSOLE.ypos_size,               \
@@ -55,7 +55,7 @@ extern struct spin_lock_t *log_spin_lock_ptr;
         unlock_mcs(&log_spin_lock_ptr, &percpu(log_spin_lock));
 #else
 #define COLOR_SET(dis_mod, forward_color, backword_color) \
-        uart_set_color(0, forward_color);                 \
+        uart_set_color(dis_mod, forward_color);                 \
         set_console(&X86_CHAR_CONSOLE,                    \
                     X86_CHAR_CONSOLE.xpos_size,           \
                     X86_CHAR_CONSOLE.ypos_size,           \
