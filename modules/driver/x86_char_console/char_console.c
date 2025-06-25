@@ -32,8 +32,6 @@ void clear_screen(struct x86_char_console* console)
 }
 void clear_line(struct x86_char_console* console, u64 line)
 {
-        if (line >= console->ypos_size)
-                line = line % console->ypos_size;
         memset((void*)(console->console_vaddr_base
                        + line * console->xpos_size * 2),
                0,
@@ -71,8 +69,14 @@ newline:
         console->xpos_curr = console->xpos_curr % console->xpos_size;
         console->ypos_curr++;
         if (console->ypos_curr >= console->ypos_size) {
-                console->ypos_curr = console->ypos_curr % console->ypos_size;
-                clear_screen(console);
+                // console->ypos_curr = console->ypos_curr % console->ypos_size;
+                // clear_screen(console);
+                console->ypos_curr--;
+                memcpy((void*)(console->console_vaddr_base),
+                       (void*)(console->console_vaddr_base
+                               + console->xpos_size * 2),
+                       console->xpos_size * (console->ypos_size - 1) * 2);
+                clear_line(console, console->ypos_curr);
         }
         return;
 }
