@@ -5,6 +5,7 @@
 #include <arch/x86_64/sys_ctrl.h>
 #include <arch/x86_64/msr.h>
 extern struct TSS cpu_tss;
+DEFINE_PER_CPU(vaddr, user_rsp_scratch);
 void switch_to(Arch_Task_Context* old_context, Arch_Task_Context* new_context)
 {
         /*change the new tss rsp0*/

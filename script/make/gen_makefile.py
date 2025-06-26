@@ -31,7 +31,7 @@ def gen_makefile(target_dir,exclude_dir_list):
             file_name = os.path.basename(path_string)
             if file_name.endswith('.S'):
                 real_file_name = file_name.split('.')[0]
-                append_string = "\n${BUILD}/"+real_file_name+".o: ./"+real_file_name+".S $(modules)\n\t@echo \"CC	${BUILD}/boot.o\"\n\t@$(CC) $(CFLAGS) -o $@ -c $< -MD -MF $*.d -MP"
+                append_string = "\n${BUILD}/"+real_file_name+".o: ./"+real_file_name+".S $(modules)\n\t@echo \"CC	${BUILD}/"+real_file_name+".o\"\n\t@$(CC) $(CFLAGS) -o $@ -c $< -MD -MF $*.d -MP"
                 makefile_file_path = os.path.join(dir_path,"Makefile")
                 makefile_file=open(makefile_file_path,"a")
                 makefile_file.write(append_string)

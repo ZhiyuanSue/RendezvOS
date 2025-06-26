@@ -12,7 +12,7 @@ endif
 
 ifeq ($(ARCH), x86_64)
 	QemuFlags	+= -machine q35
-	# QemuFlags	+= -nographic	#in qemu , don't use this option
+	QemuFlags	+= -nographic	#in qemu , don't use this option
 	# QemuFlags	+= -numa
 else ifeq ($(ARCH), aarch64)
 	QemuFlags	+= -cpu cortex-a72

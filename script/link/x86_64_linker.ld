@@ -39,6 +39,8 @@ SECTIONS {
 	.percpu : 
 	{
 		*(.percpu..data)
+		__tss_offset = cpu_tss - _per_cpu_start;
+		__user_rsp_scratch_offset = user_rsp_scratch - _per_cpu_start;
 	}
 	. = ALIGN(64);
 	_per_cpu_end = .;
