@@ -40,32 +40,22 @@ extern struct spin_lock_t *log_spin_lock_ptr;
 #ifdef SMP
 #define COLOR_SET(dis_mod, forward_color, backword_color)     \
         lock_mcs(&log_spin_lock_ptr, &percpu(log_spin_lock)); \
-        uart_set_color(dis_mod, forward_color);                     \
-        set_console(&X86_CHAR_CONSOLE,                        \
-                    X86_CHAR_CONSOLE.xpos_size,               \
-                    X86_CHAR_CONSOLE.ypos_size,               \
-                    map_color(forward_color, backword_color));
+        uart_set_color(dis_mod, forward_color);               \
+        SET_CONSOLE_COLOR(&X86_CHAR_CONSOLE,                  \
+                          map_color(forward_color, backword_color));
 
-#define COLOR_CLR()                             \
-        set_console(&X86_CHAR_CONSOLE,          \
-                    X86_CHAR_CONSOLE.xpos_size, \
-                    X86_CHAR_CONSOLE.ypos_size, \
-                    map_color(30, 30));         \
-        uart_set_color(0, 0);                   \
+#define COLOR_CLR()                                              \
+        SET_CONSOLE_COLOR(&X86_CHAR_CONSOLE, map_color(30, 30)); \
+        uart_set_color(0, 0);                                    \
         unlock_mcs(&log_spin_lock_ptr, &percpu(log_spin_lock));
 #else
 #define COLOR_SET(dis_mod, forward_color, backword_color) \
-        uart_set_color(dis_mod, forward_color);                 \
-        set_console(&X86_CHAR_CONSOLE,                    \
-                    X86_CHAR_CONSOLE.xpos_size,           \
-                    X86_CHAR_CONSOLE.ypos_size,           \
-                    map_color(forward_color, backword_color));
+        uart_set_color(dis_mod, forward_color);           \
+        SET_CONSOLE_COLOR(&X86_CHAR_CONSOLE,              \
+                          map_color(forward_color, backword_color));
 
-#define COLOR_CLR()                             \
-        set_console(&X86_CHAR_CONSOLE,          \
-                    X86_CHAR_CONSOLE.xpos_size, \
-                    X86_CHAR_CONSOLE.ypos_size, \
-                    map_color(30, 30));         \
+#define COLOR_CLR()                                              \
+        SET_CONSOLE_COLOR(&X86_CHAR_CONSOLE, map_color(30, 30)); \
         uart_set_color(0, 0);
 #endif
 

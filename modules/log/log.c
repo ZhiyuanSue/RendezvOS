@@ -29,7 +29,7 @@ int log_level = LOG_OFF;
 void log_init(void *log_buffer_addr, int log_level)
 {
         uart_putc('\n');
-        clear_screen(&X86_CHAR_CONSOLE);
+        CONSOLE_CLEAN_SCREEN(&X86_CHAR_CONSOLE);
         for (int i = 0; i < LOG_BUFFER_SIZE; ++i) {
                 LOG_BUFFER.LOG_BUF[i].start_addr =
                         log_buffer_addr + i * LOG_BUFFER_SINGLE_SIZE;
@@ -87,7 +87,7 @@ void log_print(char *buffer, const char *format, va_list arg_list)
         while ((c = *format++) != 0) {
                 if (c != '%') {
                         uart_putc(c);
-                        char_console_putc(&X86_CHAR_CONSOLE, c);
+                        CONSOLE_PUTC(&X86_CHAR_CONSOLE, c);
                 } else {
                         char *p, *p2;
                         pad0 = 0, pad = 0;
@@ -136,14 +136,13 @@ void log_print(char *buffer, const char *format, va_list arg_list)
                                 for (; p2 < p + pad; p2++) {
                                         char ch = pad0 ? '0' : ' ';
                                         uart_putc(ch);
-                                        char_console_putc(&X86_CHAR_CONSOLE,
-                                                          pad0 ? '0' : ' ');
+                                        CONSOLE_PUTC(&X86_CHAR_CONSOLE,
+                                                     pad0 ? '0' : ' ');
                                 }
                                 while (*p) {
                                         char ch = *p++;
                                         uart_putc(ch);
-                                        char_console_putc(&X86_CHAR_CONSOLE,
-                                                          ch);
+                                        CONSOLE_PUTC(&X86_CHAR_CONSOLE, ch);
                                 }
                                 break;
                         default:

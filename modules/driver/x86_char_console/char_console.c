@@ -15,12 +15,14 @@ u8 forword_color_matrix[10] = {X86_CHAR_CONSOLE_FORWORD_BLACK,
 u8 backword_color_matrix[10] = {X86_CHAR_CONSOLE_FORWORD_NONE};
 #define TAB_SIZE 4
 
-void set_console(struct x86_char_console* console, u64 xlimit, u64 ylimit,
-                 u64 color)
+void set_console_color(struct x86_char_console* console, u64 color)
+{
+        console->color = color;
+}
+void set_console_size(struct x86_char_console* console, u64 xlimit, u64 ylimit)
 {
         console->xpos_size = xlimit;
         console->ypos_size = ylimit;
-        console->color = color;
 }
 void clear_screen(struct x86_char_console* console)
 {
