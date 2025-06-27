@@ -27,10 +27,15 @@ DEFINE_PER_CPU(struct pseudo_descriptor, gdt_desc) = {
 void prepare_per_cpu_new_gdt(struct pseudo_descriptor *desc, union desc *gdt)
 {
         /*fill in the gdt table*/
-        gdt[GDT_KERNEL_CS_INDEX].seg_desc.type = 0xe;
+        gdt[GDT_KERNEL_CS_INDEX].seg_desc.type = 0xa;
         gdt[GDT_KERNEL_CS_INDEX].seg_desc.p = 1;
         gdt[GDT_KERNEL_CS_INDEX].seg_desc.s = 1;
         gdt[GDT_KERNEL_CS_INDEX].seg_desc.l = 1;
+
+        gdt[GDT_KERNEL_DS_INDEX].seg_desc.type = 0x2;
+        gdt[GDT_KERNEL_DS_INDEX].seg_desc.p = 1;
+        gdt[GDT_KERNEL_DS_INDEX].seg_desc.s = 1;
+        gdt[GDT_KERNEL_DS_INDEX].seg_desc.l = 1;
 
         /*fill in the gdt desc*/
         desc->base_addr = (u64)gdt;

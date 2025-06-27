@@ -26,6 +26,7 @@ extern struct pseudo_descriptor gdt_desc;
 extern union desc gdt[GDT_SIZE];
 void prepare_per_cpu_new_gdt(struct pseudo_descriptor *desc, union desc *gdt);
 void perpare_per_cpu_user_gdt(union desc *gdt);
+extern void arch_set_syscall_entry();
 static void get_cpu_info(void)
 {
         u32 eax;
@@ -50,6 +51,17 @@ static void get_cpu_info(void)
 }
 static void enable_cache(void)
 {
+}
+static void init_syscall(void)
+{
+        /*set the IA32_STAR register*/
+        u64 ia32_star_val = ((GDT_KERNEL_CS_INDEX & 0xFF) << 32)
+                            + ((GDT_TSS_UPPER_INDEX & 0xFF) << 48);
+        wrmsr(MSR_IA32_STAR, ia32_star_val);
+        /*set the MSR_IA32_FMASK register*/
+        wrmsr(MSR_IA32_FMASK, 0x200UL);
+        /*set the MSR_IA32_LSTAR register*/
+        arch_set_syscall_entry();
 }
 static void set_gdt(int cpu_id)
 {
@@ -170,6 +182,7 @@ error_t start_arch(int cpu_id)
 
         init_interrupt();
         init_irq();
+        init_syscall();
         sti();
         rendezvos_time_init();
         enable_cache();

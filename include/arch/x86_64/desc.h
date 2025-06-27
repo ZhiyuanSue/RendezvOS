@@ -3,11 +3,12 @@
 #include <common/types.h>
 
 #define GDT_NONE            0 // for gdt,index 0 is unused
-#define GDT_KERNEL_CS_INDEX 1
-#define GDT_TSS_LOWER_INDEX 2
-#define GDT_TSS_UPPER_INDEX 3
-#define GDT_USER_CS_INDEX   4
-#define GDT_USER_DS_INDEX   5
+#define GDT_KERNEL_CS_INDEX 1ULL
+#define GDT_KERNEL_DS_INDEX 2ULL
+#define GDT_TSS_LOWER_INDEX 3ULL
+#define GDT_TSS_UPPER_INDEX 4ULL
+#define GDT_USER_DS_INDEX   5ULL
+#define GDT_USER_CS_INDEX   6ULL
 #define GDT_SIZE            (GDT_USER_DS_INDEX + 1)
 
 struct pseudo_descriptor {
