@@ -6,6 +6,7 @@
 #include <arch/x86_64/msr.h>
 extern struct TSS cpu_tss;
 DEFINE_PER_CPU(vaddr, user_rsp_scratch);
+DEFINE_PER_CPU(u64, tmp_rax);
 void arch_init_drop_to_user(vaddr user_kstack_bottom, vaddr user_sp,
                             vaddr entry);
 void switch_to(Arch_Task_Context* old_context, Arch_Task_Context* new_context)

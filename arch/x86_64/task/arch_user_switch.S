@@ -42,13 +42,22 @@ arch_enter_kernel:
     swapgs
 
     /*save the user stack to kernel*/
-    mov		%rsp,%gs:__user_rsp_scratch_offset
+    mov		%rsp,	%gs:__user_rsp_scratch_offset
     /*read tss and find the kernel stack*/
-    mov		%gs:__tss_offset,%rsp
+    mov		%gs:__tss_rsp_offset,	%rsp
+	mov		%rax,	%gs:__tmp_rax_offset
+
+	/*change the ds and es segment*/
+	mov		$GDT_KERNEL_DS_INDEX*8,	%rax
+	mov		%rax,	%ds
+	mov		%rax,	%es
 
     /*save user rsp and rcx and c11*/
 	/*this data is saved at the kernel stack_bottom*/
-	sub		$(10*8),%rsp
+	sub		$(16*8),%rsp
+	
+	mov		%gs:__user_rsp_scratch_offset,%rax
+	mov		%rax,	(%rsp)	
 	mov		%rcx,	8(%rsp)
 	mov		%r11,	2*8(%rsp)
 
@@ -59,19 +68,18 @@ arch_enter_kernel:
 	mov		%rbp,	7*8(%rsp)
 	mov		%rbx,	8*8(%rsp)
 	
+	/*get the syscall info*/
+	mov		%gs:__tmp_rax_offset, %rax	
 	mov		%rax,	9*8(%rsp)
-	mov		%gs:__user_rsp_scratch_offset,%rax
-	mov		%rax,	(%rsp)	
-	
-    /*change the ds and es segment*/
-	mov		$GDT_KERNEL_DS_INDEX*8,	%rax
-	mov		%rax,	%ds
-	mov		%rax,	%es
+	mov		%rdi,	10*8(%rsp)
+	mov		%rsi,	11*8(%rsp)
+	mov		%rdx,	12*8(%rsp)
+	mov		%r10,	13*8(%rsp)
+	mov		%r8,	14*8(%rsp)
+	mov		%r9,	15*8(%rsp)
 
-    /*get caller seved registers
-    remember that the rcx is taken place by r10,so we need to mov r10 to rcx*/
-	mov 	%r10,	%rcx
-	mov		9*8(%rsp),	%rax
+    /*give a syscall_context to the syscall handler*/
+	mov		%rsp,	%rdi
 
 	/*open the irq*/
 	sti

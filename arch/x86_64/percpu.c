@@ -3,6 +3,6 @@
 #include <rendezvos/smp/percpu.h>
 vaddr get_per_cpu_base()
 {
-        vaddr addr = rdmsr(MSR_GS_BASE);
+        vaddr addr = rdmsrq(MSR_GS_BASE);
         return addr;
 }

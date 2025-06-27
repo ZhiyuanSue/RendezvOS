@@ -174,7 +174,7 @@ error_t start_arch(int cpu_id)
          as it's per_cpu base
          only after we set the gs base can we use percpu
         */
-        wrmsr(MSR_GS_BASE, __per_cpu_offset[cpu_id]);
+        wrmsrq(MSR_GS_BASE, __per_cpu_offset[cpu_id]);
         wrmsr(MSR_KERNEL_GS_BASE, 0);
         per_cpu(cpu_number, cpu_id) = cpu_id;
         /*table_indicator = 1  will cause #GP*/

@@ -17,7 +17,7 @@ error_t elf_Phdr_64_load_handle(vaddr elf_start, Elf64_Phdr *phdr_ptr,
         u64 offset = phdr_ptr->p_offset;
 
         vaddr aligned_start = ROUND_DOWN(ph_start, PAGE_SIZE);
-        u64 aligned_offset = ROUND_DOWN(offset, PAGE_SIZE);
+        // u64 aligned_offset = ROUND_DOWN(offset, PAGE_SIZE);
 
         u64 map_length = ph_start + phdr_ptr->p_memsz - aligned_start;
         u64 page_num = ROUND_UP(map_length, PAGE_SIZE) / PAGE_SIZE;
@@ -45,7 +45,7 @@ error_t elf_Phdr_64_load_handle(vaddr elf_start, Elf64_Phdr *phdr_ptr,
                 return -E_RENDEZVOS;
 
         memcpy((void *)(ph_start),
-               (void *)(elf_start + phdr_ptr->p_offset),
+               (void *)(elf_start + offset),
                phdr_ptr->p_filesz);
         /*bss*/
         if (phdr_ptr->p_memsz > phdr_ptr->p_filesz) {
@@ -53,6 +53,7 @@ error_t elf_Phdr_64_load_handle(vaddr elf_start, Elf64_Phdr *phdr_ptr,
                 vaddr bss_start = ph_start + phdr_ptr->p_filesz;
                 vaddr bss_end = ph_start + phdr_ptr->p_memsz;
                 u64 bss_size = bss_end - bss_start;
+                memset((void *)bss_start, 0, bss_size);
         }
         return 0;
 }
@@ -94,16 +95,17 @@ error_t run_elf_program(vaddr elf_start, vaddr elf_end, VSpace *vs)
         int page_num = thread_ustack_page_num;
         ENTRY_FLAGS_t page_flags = PAGE_ENTRY_USER | PAGE_ENTRY_VALID
                                    | PAGE_ENTRY_WRITE | PAGE_ENTRY_READ;
-        vaddr user_sp = get_free_page(page_num,
-                                      ZONE_NORMAL,
-                                      USER_SPACE_TOP - page_num * PAGE_SIZE,
-                                      percpu(nexus_root),
-                                      vs,
-                                      page_flags)
-                        + page_num * PAGE_SIZE;
+        vaddr user_sp =
+                (vaddr)get_free_page(page_num,
+                                     ZONE_NORMAL,
+                                     USER_SPACE_TOP - page_num * PAGE_SIZE,
+                                     percpu(nexus_root),
+                                     vs,
+                                     page_flags)
+                + page_num * PAGE_SIZE - 8;
+        /*TODO: the kernel might pass argc and argv to the task*/
 
         Thread_Base *current_thread = percpu(core_tm)->current_thread;
-        pr_info("star is %x\n", rdmsrq(MSR_IA32_STAR));
         arch_drop_to_user(current_thread->kstack_bottom, user_sp, entry_addr);
         return 0;
 }

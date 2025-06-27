@@ -29,6 +29,7 @@ typedef struct {
 
 typedef struct {
         u64 rsp;
+
         u64 rcx;
         u64 r11;
 
@@ -39,7 +40,13 @@ typedef struct {
         u64 rbp;
         u64 rbx;
 
-        u64 tmp_rax;
+        u64 syscall_id;
+        u64 arg1;
+        u64 arg2;
+        u64 arg3;
+        u64 arg4;
+        u64 arg5;
+        u64 arg6;
 } Arch_Syscall_Context;
 
 typedef struct {
