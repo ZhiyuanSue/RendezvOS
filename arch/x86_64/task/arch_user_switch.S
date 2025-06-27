@@ -5,6 +5,35 @@
 #define GDT_KERNEL_DS_INDEX 	2
 #define GDT_USER_DS_INDEX		5
 
+/*first time drop to the user*/
+	.section .text
+	.global arch_init_drop_to_user
+arch_init_drop_to_user:
+	cli
+	mov		%rdi,	%rsp
+	sub		$(10*8),%rsp
+	mov		%rsi,	(%rsp)
+	mov		%rdx,	8(%rsp)
+
+	mov		$0,		%rax
+	mov		%rax,	2*8(%rsp)
+	mov		%rax,	3*8(%rsp)
+	mov		%rax,	4*8(%rsp)
+	mov		%rax,	5*8(%rsp)
+	mov		%rax,	6*8(%rsp)
+	mov		%rax,	7*8(%rsp)
+	mov		%rax,	8*8(%rsp)
+	mov		%rax,	9*8(%rsp)
+
+	/*clean other registers*/
+	mov		%rax,	%r10
+	mov		%rax,	%r9
+	mov		%rax,	%r8
+	mov		%rax,	%rdx
+	mov		%rax,	%rsi
+	mov		%rax,	%rdi
+	jmp arch_exit_kernel
+
 /*enter the kernel*/
     .section .text
     .global arch_enter_kernel
@@ -35,7 +64,7 @@ arch_enter_kernel:
 	mov		%rax,	(%rsp)	
 	
     /*change the ds and es segment*/
-	mov		$GDT_KERNEL_DS_INDEX,	%rax
+	mov		$GDT_KERNEL_DS_INDEX*8,	%rax
 	mov		%rax,	%ds
 	mov		%rax,	%es
 
@@ -70,7 +99,7 @@ arch_exit_kernel:
 	mov		8(%rsp),	%rcx
 	
     /*set the ds and es segment, the cs and ss is set at IA32_STAR_MSR*/
-    mov		$GDT_USER_DS_INDEX,	%rax
+    mov		$GDT_USER_DS_INDEX*8,	%rax
 	mov		%rax,	%ds
 	mov		%rax,	%es
 
@@ -89,7 +118,9 @@ arch_exit_kernel:
 	.section .text
 	.global arch_set_syscall_entry
 arch_set_syscall_entry:
-	movabs $arch_enter_kernel,%rax
-	mov $MSR_IA32_LSTAR,%rcx
+	movabs	$arch_enter_kernel,%rax
+	mov		%rax,%rdx
+	shr		$32,%rdx
+	mov		$MSR_IA32_LSTAR,%rcx
 	wrmsr
 	ret

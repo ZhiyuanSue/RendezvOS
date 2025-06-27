@@ -55,11 +55,11 @@ static void enable_cache(void)
 static void init_syscall(void)
 {
         /*set the IA32_STAR register*/
-        u64 ia32_star_val = ((GDT_KERNEL_CS_INDEX & 0xFF) << 32)
-                            + ((GDT_TSS_UPPER_INDEX & 0xFF) << 48);
-        wrmsr(MSR_IA32_STAR, ia32_star_val);
+        u64 ia32_star_val = (((GDT_KERNEL_CS_INDEX * 8) & 0xFFFF) << 32)
+                            + (((GDT_TSS_UPPER_INDEX * 8) & 0xFFFF) << 48);
+        wrmsrq(MSR_IA32_STAR, ia32_star_val);
         /*set the MSR_IA32_FMASK register*/
-        wrmsr(MSR_IA32_FMASK, 0x200UL);
+        wrmsrq(MSR_IA32_FMASK, 0x200UL);
         /*set the MSR_IA32_LSTAR register*/
         arch_set_syscall_entry();
 }

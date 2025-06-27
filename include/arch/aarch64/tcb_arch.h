@@ -52,5 +52,5 @@ static inline void arch_set_new_thread_ctx(Arch_Task_Context* ctx,
 extern void context_switch(Arch_Task_Context* old_context,
                            Arch_Task_Context* new_context);
 void switch_to(Arch_Task_Context* old_context, Arch_Task_Context* new_context);
-void arch_drop_to_user(vaddr user_sp, vaddr entry);
+void arch_drop_to_user(vaddr user_kstack_bottom, vaddr user_sp, vaddr entry);
 #endif

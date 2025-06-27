@@ -107,12 +107,25 @@ static u64 inline rdmsr(u32 msr_id)
 {
         u64 val;
 
-        __asm__ __volatile__("rdmsr" : "=A"(val) : "c"(msr_id));
+        __asm__ __volatile__("rdmsr" : "=a"(val) : "c"(msr_id));
         return (val);
 }
 static void inline wrmsr(u32 msr_id, u64 val)
 {
-        __asm__ __volatile__("wrmsr" ::"c"(msr_id), "A"(val));
+        __asm__ __volatile__("wrmsr" ::"c"(msr_id), "a"(val));
+}
+static u64 inline rdmsrq(u32 msr_id)
+{
+        u64 low, high;
+
+        __asm__ __volatile__("rdmsr" : "=a"(low), "=d"(high) : "c"(msr_id));
+        return ((high << 32) | low);
+}
+static void inline wrmsrq(u32 msr_id, u64 val)
+{
+        __asm__ __volatile__(
+                "wrmsr" ::"c"(msr_id), "a"((u32)val), "d"((u32)(val >> 32))
+                : "memory");
 }
 static void inline cli(void)
 {

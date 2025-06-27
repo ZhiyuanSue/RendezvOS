@@ -1,5 +1,7 @@
 #include <rendezvos/task/elf_loader.h>
 #include <modules/log/log.h>
+#include <arch/x86_64/sys_ctrl.h>
+#include <arch/x86_64/msr.h>
 
 error_t elf_Phdr_64_load_handle(vaddr elf_start, Elf64_Phdr *phdr_ptr,
                                 VSpace *vs)
@@ -100,7 +102,9 @@ error_t run_elf_program(vaddr elf_start, vaddr elf_end, VSpace *vs)
                                       page_flags)
                         + page_num * PAGE_SIZE;
 
-        // arch_drop_to_user(user_sp, entry_addr);
+        Thread_Base *current_thread = percpu(core_tm)->current_thread;
+        pr_info("star is %x\n", rdmsrq(MSR_IA32_STAR));
+        arch_drop_to_user(current_thread->kstack_bottom, user_sp, entry_addr);
         return 0;
 }
 /*we must load all the elf file into kernel memory before we use this function*/
