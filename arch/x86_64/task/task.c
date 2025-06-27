@@ -6,7 +6,6 @@
 #include <arch/x86_64/msr.h>
 extern struct TSS cpu_tss;
 DEFINE_PER_CPU(vaddr, user_rsp_scratch);
-DEFINE_PER_CPU(u64, tmp_rax);
 void arch_init_drop_to_user(vaddr user_kstack_bottom, vaddr user_sp,
                             vaddr entry);
 void switch_to(Arch_Task_Context* old_context, Arch_Task_Context* new_context)
@@ -20,6 +19,9 @@ void switch_to(Arch_Task_Context* old_context, Arch_Task_Context* new_context)
         /*also save the fs*/
         old_context->user_fs = rdmsr(MSR_FS_BASE);
         wrmsr(MSR_FS_BASE, new_context->user_fs);
+        /*save the user rsp*/
+        old_context->user_rsp = percpu(user_rsp_scratch);
+        percpu(user_rsp_scratch) = new_context->user_rsp;
         context_switch(old_context, new_context);
 }
 void arch_drop_to_user(vaddr user_kstack_bottom, vaddr user_sp, vaddr entry)

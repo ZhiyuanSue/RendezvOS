@@ -11,11 +11,12 @@
 arch_init_drop_to_user:
 	cli
 	mov		%rdi,	%rsp
-	sub		$(10*8),%rsp
-	mov		%rsi,	(%rsp)
-	mov		%rdx,	8(%rsp)
+	sub		$(9*8),%rsp
+	mov		%rsi,	%gs:__user_rsp_scratch_offset
+	mov		%rdx,	(%rsp)
 
 	mov		$0,		%rax
+	mov		%rax,	1*8(%rsp)
 	mov		%rax,	2*8(%rsp)
 	mov		%rax,	3*8(%rsp)
 	mov		%rax,	4*8(%rsp)
@@ -23,7 +24,6 @@ arch_init_drop_to_user:
 	mov		%rax,	6*8(%rsp)
 	mov		%rax,	7*8(%rsp)
 	mov		%rax,	8*8(%rsp)
-	mov		%rax,	9*8(%rsp)
 
 	/*clean other registers*/
 	mov		%rax,	%r10
@@ -43,40 +43,37 @@ arch_enter_kernel:
 
     /*save the user stack to kernel*/
     mov		%rsp,	%gs:__user_rsp_scratch_offset
-    /*read tss and find the kernel stack*/
-    mov		%gs:__tss_rsp_offset,	%rsp
-	mov		%rax,	%gs:__tmp_rax_offset
 
 	/*change the ds and es segment*/
-	mov		$GDT_KERNEL_DS_INDEX*8,	%rax
-	mov		%rax,	%ds
-	mov		%rax,	%es
+	mov		$GDT_KERNEL_DS_INDEX*8,	%rsp
+	mov		%rsp,	%ds
+	mov		%rsp,	%es
+    
+	/*read tss and find the kernel stack*/
+    mov		%gs:__tss_rsp_offset,	%rsp
 
     /*save user rsp and rcx and c11*/
 	/*this data is saved at the kernel stack_bottom*/
-	sub		$(16*8),%rsp
+	sub		$(15*8),%rsp
 	
-	mov		%gs:__user_rsp_scratch_offset,%rax
-	mov		%rax,	(%rsp)	
-	mov		%rcx,	8(%rsp)
-	mov		%r11,	2*8(%rsp)
+	mov		%rcx,	(%rsp)
+	mov		%r11,	1*8(%rsp)
 
-	mov		%r15,	3*8(%rsp)
-	mov		%r14,	4*8(%rsp)
-	mov		%r13,	5*8(%rsp)
-	mov		%r12,	6*8(%rsp)
-	mov		%rbp,	7*8(%rsp)
-	mov		%rbx,	8*8(%rsp)
+	mov		%r15,	2*8(%rsp)
+	mov		%r14,	3*8(%rsp)
+	mov		%r13,	4*8(%rsp)
+	mov		%r12,	5*8(%rsp)
+	mov		%rbp,	6*8(%rsp)
+	mov		%rbx,	7*8(%rsp)
 	
 	/*get the syscall info*/
-	mov		%gs:__tmp_rax_offset, %rax	
-	mov		%rax,	9*8(%rsp)
-	mov		%rdi,	10*8(%rsp)
-	mov		%rsi,	11*8(%rsp)
-	mov		%rdx,	12*8(%rsp)
-	mov		%r10,	13*8(%rsp)
-	mov		%r8,	14*8(%rsp)
-	mov		%r9,	15*8(%rsp)
+	mov		%rax,	8*8(%rsp)
+	mov		%rdi,	9*8(%rsp)
+	mov		%rsi,	10*8(%rsp)
+	mov		%rdx,	11*8(%rsp)
+	mov		%r10,	12*8(%rsp)
+	mov		%r8,	13*8(%rsp)
+	mov		%r9,	14*8(%rsp)
 
     /*give a syscall_context to the syscall handler*/
 	mov		%rsp,	%rdi
@@ -96,29 +93,26 @@ arch_exit_kernel:
     cli
 
     /*restore the callee saved registers*/
-	mov		%rax,	9*8(%rsp)
-	mov		8*8(%rsp),	%rbx
-	mov		7*8(%rsp),	%rbp
-	mov		6*8(%rsp),	%r12
-	mov		5*8(%rsp),	%r13
-	mov		4*8(%rsp),	%r14
-	mov		3*8(%rsp),	%r15
-	mov		2*8(%rsp),	%r11
-	mov		8(%rsp),	%rcx
+	mov		7*8(%rsp),	%rbx
+	mov		6*8(%rsp),	%rbp
+	mov		5*8(%rsp),	%r12
+	mov		4*8(%rsp),	%r13
+	mov		3*8(%rsp),	%r14
+	mov		2*8(%rsp),	%r15
+	mov		1*8(%rsp),	%r11
+	mov		(%rsp),	%rcx
 	
     /*set the ds and es segment, the cs and ss is set at IA32_STAR_MSR*/
-    mov		$GDT_USER_DS_INDEX*8,	%rax
-	mov		%rax,	%ds
-	mov		%rax,	%es
+    mov		$GDT_USER_DS_INDEX*8,	%rsp
+	mov		%rsp,	%ds
+	mov		%rsp,	%es
 
-	/*restore the rax*/
-	mov		9*8(%rsp),	%rax
 	/*
 		we do not add the kernel rsp
 		every time we go into the kernel,
 		we use an empty kernel stack
 	*/
-	mov		(%rsp),		%rsp
+	mov		%gs:__user_rsp_scratch_offset,		%rsp
     /*restore the gs and fs*/
     swapgs
     sysretq

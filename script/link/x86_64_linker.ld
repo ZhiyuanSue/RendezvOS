@@ -41,7 +41,6 @@ SECTIONS {
 		*(.percpu..data)
 		__tss_rsp_offset = cpu_tss + 4 - _per_cpu_start;
 		__user_rsp_scratch_offset = user_rsp_scratch - _per_cpu_start;
-		__tmp_rax_offset = tmp_rax - _per_cpu_start;
 	}
 	. = ALIGN(64);
 	_per_cpu_end = .;

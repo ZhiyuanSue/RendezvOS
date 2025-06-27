@@ -15,6 +15,7 @@ in rendezvos, we do not use xmm regs in kernel,but we list the number
 
 typedef struct {
         u64 rsp;
+        u64 user_rsp;
         /*following is the callee saved regs*/
         u64 r15;
         u64 r14;
@@ -28,8 +29,6 @@ typedef struct {
 } Arch_Task_Context;
 
 typedef struct {
-        u64 rsp;
-
         u64 rcx;
         u64 r11;
 
@@ -55,7 +54,7 @@ typedef struct {
 } Thread_Init_Para;
 static inline void arch_task_ctx_init(Arch_Task_Context* ctx)
 {
-        ctx->rsp = ctx->stack_bottom = 0;
+        ctx->rsp = ctx->stack_bottom = ctx->user_rsp = 0;
         ctx->rbp = ctx->rbx = 0;
         ctx->r15 = ctx->r14 = 0;
         ctx->r13 = ctx->r12 = 0;
