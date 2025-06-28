@@ -2,5 +2,5 @@
 
 void hello_world(void)
 {
-        pr_info("RendezvOS\n");
+        printk("RendezvOS\n", LOG_OFF);
 }

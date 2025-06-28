@@ -2,7 +2,7 @@
 #include <modules/log/log.h>
 #include <rendezvos/common.h>
 #include <rendezvos/task/tcb.h>
-
+#include <arch/aarch64/sys_ctrl.h>
 extern int log_level;
 extern char _bss_start, _bss_end;
 extern char _end;
@@ -20,23 +20,23 @@ void cmain(struct setup_info *arch_setup_info)
         hello_world();
 #endif
         if (prepare_arch(arch_setup_info)) {
-                pr_error("[ERROR] prapare arch\n");
+                printk("[ERROR] prapare arch\n", LOG_OFF);
                 return;
         }
         if (phy_mm_init(arch_setup_info)) {
-                pr_error("[ERROR] phy mm init error\n");
+                printk("[ERROR] phy mm init error\n", LOG_OFF);
                 return;
         }
         if (arch_cpu_info(arch_setup_info)) {
-                pr_error("[ERROR] arch cpu info error\n");
+                printk("[ERROR] arch cpu info error\n", LOG_OFF);
                 return;
         }
         if (virt_mm_init(BSP_ID, arch_setup_info)) {
-                pr_error("[ERROR] virt mm init error\n");
+                printk("[ERROR] virt mm init error\n", LOG_OFF);
                 return;
         }
         if (arch_parser_platform(arch_setup_info)) {
-                pr_error("[ERROR] arch parser platform\n");
+                printk("[ERROR] arch parser platform\n", LOG_OFF);
                 return;
         }
         /*TODO:after we init the pmm module, we can alloc some pages for

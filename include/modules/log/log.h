@@ -114,7 +114,7 @@ extern struct spin_lock_t *log_spin_lock_ptr;
         }
 #define print(format, ...) printk(format, LOG_OFF, ##__VA_ARGS__)
 
-#define rep_print(n, ch, pr)        \
+#define rep_print(n, ch)            \
         for (int i = 0; i < n; i++) \
-        pr("%c", ch)
+        printk("%c", LOG_OFF, ch)
 #endif

@@ -32,9 +32,10 @@ static void get_mem_prop_and_insert_region(struct fdt_property *fdt_prop)
                 u32_4 = SWAP_ENDIANNESS_32(*u32_data);
                 u32_data++;
                 mem_len = (((u64)u32_3) << 32) + u32_4;
-                pr_info("[ Phy_Mem\t@\t< 0x%x , 0x%x >]\n",
-                        addr,
-                        addr + mem_len);
+                printk("[ Phy_Mem\t@\t< 0x%x , 0x%x >]\n",
+                       LOG_OFF,
+                       addr,
+                       addr + mem_len);
                 m_regions.memory_regions_insert(addr, mem_len);
         }
 }
@@ -111,21 +112,24 @@ void arch_init_pmm(struct setup_info *arch_setup_info)
 
         kernel_phy_start = KERNEL_VIRT_TO_PHY((vaddr)(&_start));
         kernel_phy_end = KERNEL_VIRT_TO_PHY((vaddr)(&_end));
-        pr_info("[ KERNEL_REGION\t@\t< 0x%x , 0x%x >]\n",
-                (vaddr)&_start,
-                (vaddr)&_end);
+        printk("[ KERNEL_REGION\t@\t< 0x%x , 0x%x >]\n",
+               LOG_OFF,
+               (vaddr)&_start,
+               (vaddr)&_end);
 
-        pr_info("[ DTB_DATA\t@\t< 0x%x , 0x%x >]\n",
-                ROUND_DOWN((vaddr)dtb_header_ptr, MIDDLE_PAGE_SIZE),
-                ROUND_UP((vaddr)dtb_header_ptr + MIDDLE_PAGE_SIZE * 2,
-                         MIDDLE_PAGE_SIZE));
+        printk("[ DTB_DATA\t@\t< 0x%x , 0x%x >]\n",
+               LOG_OFF,
+               ROUND_DOWN((vaddr)dtb_header_ptr, MIDDLE_PAGE_SIZE),
+               ROUND_UP((vaddr)dtb_header_ptr + MIDDLE_PAGE_SIZE * 2,
+                        MIDDLE_PAGE_SIZE));
 
         per_cpu_phy_start = per_cpu_phy_end =
                 KERNEL_VIRT_TO_PHY(arch_setup_info->map_end_virt_addr);
         reserve_per_cpu_region(&per_cpu_phy_end);
-        pr_info("[ PERCPU_REGION\t@\t< 0x%x , 0x%x >]\n",
-                arch_setup_info->map_end_virt_addr,
-                KERNEL_PHY_TO_VIRT(per_cpu_phy_end));
+        printk("[ PERCPU_REGION\t@\t< 0x%x , 0x%x >]\n",
+               LOG_OFF,
+               arch_setup_info->map_end_virt_addr,
+               KERNEL_PHY_TO_VIRT(per_cpu_phy_end));
 
         pmm_data_phy_start = ROUND_UP(per_cpu_phy_end, PAGE_SIZE);
 
@@ -149,22 +153,23 @@ void arch_init_pmm(struct setup_info *arch_setup_info)
         /*You need to check whether the kernel and dtb have been loaded all
          * successfully*/
         if (kernel_region == -1) {
-                pr_info("cannot load kernel\n");
+                printk("cannot load kernel\n", LOG_OFF);
                 goto arch_init_pmm_error;
         }
         pmm_data_phy_end += calculate_pmm_space() * PAGE_SIZE;
-        pr_info("[ PMM_DATA\t@\t< 0x%x , 0x%x >]\n",
-                KERNEL_PHY_TO_VIRT(pmm_data_phy_start),
-                KERNEL_PHY_TO_VIRT(pmm_data_phy_end));
+        printk("[ PMM_DATA\t@\t< 0x%x , 0x%x >]\n",
+               LOG_OFF,
+               KERNEL_PHY_TO_VIRT(pmm_data_phy_start),
+               KERNEL_PHY_TO_VIRT(pmm_data_phy_end));
         if (ROUND_DOWN(pmm_data_phy_end, HUGE_PAGE_SIZE)
             != ROUND_DOWN(kernel_phy_start, HUGE_PAGE_SIZE)) {
-                pr_error("cannot load the pmm data\n");
+                printk("cannot load the pmm data\n", LOG_OFF);
                 goto arch_init_pmm_error;
         }
         if (m_regions.memory_regions[kernel_region].addr
                     + m_regions.memory_regions[kernel_region].len
             < pmm_data_phy_end) {
-                pr_error("cannot load the pmm_data\n");
+                printk("cannot load the pmm_data\n", LOG_OFF);
                 goto arch_init_pmm_error;
         }
         arch_map_extra_data_space(kernel_phy_start,

@@ -73,7 +73,7 @@ error_t prepare_arch(struct setup_info *arch_setup_info)
                 (struct fdt_header *)(arch_setup_info
                                               ->boot_dtb_header_base_addr);
         if (fdt_check_header(dtb_header_ptr)) {
-                pr_info("check fdt header fail\n");
+                printk("check fdt header fail\n", LOG_OFF);
                 goto prepare_arch_error;
         }
         // parse_print_dtb(dtb_header_ptr, 0, 0);

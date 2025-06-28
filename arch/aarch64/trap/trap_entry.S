@@ -93,14 +93,12 @@
     mov x21,SP
     mrs x22,ESR_EL1
     mrs x23,FAR_EL1
-    mrs x25,TPIDR_EL0
 	mov x0,#(\trap_type)
 
 	str x0,[SP]
     stp x30,x19,[SP,#8*31]
     stp x20,x21,[SP,#8*33]
     stp x22,x23,[SP,#8*35]
-    str x25,[SP,#8*38]
 
     mov x0,SP
     
@@ -108,12 +106,10 @@
 
 .macro el0_trap_exit
 
-    ldr x25,[SP,#8*38]
     ldp x22,x23,[SP,#8*35]
     ldp x20,x21,[SP,#8*33]
     ldp x30,x19,[SP,#8*31]
 
-    msr TPIDR_EL0,x25
     msr FAR_EL1,x23
     msr ESR_EL1,x22
     mov SP,x21

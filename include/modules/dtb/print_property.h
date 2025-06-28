@@ -3,8 +3,6 @@
 #include "property.h"
 #include <modules/log/log.h>
 
-#define print_property pr_info
-
 void print_property_value_empty(enum property_type_enum p_type, void *data,
                                 uint32_t len);
 void print_property_value_u32(enum property_type_enum p_type, void *data,

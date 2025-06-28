@@ -13,23 +13,23 @@ void psci_print_version()
         u32 psci_ver = psci_version();
         u32 psci_major_ver = psci_ver >> 16;
         u32 psci_minor_ver = psci_ver & 0xffff;
-        pr_info("[ PSCI ] version is ");
+        printk("[ PSCI ] version is ", LOG_OFF);
         if (psci_major_ver == 1) {
                 if (psci_minor_ver == 0) {
-                        pr_info("C\n");
+                        printk("C\n", LOG_OFF);
                 } else if (psci_minor_ver == 1) {
-                        pr_info("D\n");
+                        printk("D\n", LOG_OFF);
                 } else if (psci_minor_ver == 2) {
-                        pr_info("E\n");
+                        printk("E\n", LOG_OFF);
                 } else if (psci_minor_ver == 3) {
-                        pr_info("F\n");
+                        printk("F\n", LOG_OFF);
                 } else {
-                        pr_info("error version\n");
+                        printk("error version\n", LOG_OFF);
                 }
         } else if (psci_major_ver == 0 && psci_minor_ver == 2) {
-                pr_info("B\n");
+                printk("B\n", LOG_OFF);
         } else {
-                pr_info("error version\n");
+                printk("error version\n", LOG_OFF);
         }
 }
 void psci_init(void)
@@ -46,31 +46,32 @@ void psci_init(void)
         struct device_node* node =
                 dev_node_find_by_compatible(NULL, compatible);
         if (!node) {
-                pr_error("[ PSCI ] cannot find psci node in dtb\n");
+                printk("[ PSCI ] cannot find psci node in dtb\n", LOG_OFF);
                 psci_func.enable = false;
                 return;
         }
         struct property* prop = dev_node_find_property(node, method, 7);
         if (!prop) {
-                pr_error("[ PSCI ] cannot find method property in this node\n");
+                printk("[ PSCI ] cannot find method property in this node\n",
+                       LOG_OFF);
                 psci_func.enable = false;
                 return;
         }
         if (property_read_string(prop, &method_name)) {
-                pr_error("[ PSCI ] property read string error\n");
+                printk("[ PSCI ] property read string error\n", LOG_OFF);
                 psci_func.enable = false;
                 return;
         }
         if (!strcmp(method_name, method_smc)) {
                 psci_call_type = psci_call_smc;
                 psci_call_func = psci_smc;
-                pr_info("[ PSCI ] use smc call\n");
+                printk("[ PSCI ] use smc call\n", LOG_OFF);
         } else if (!strcmp(method_name, method_hvc)) {
                 psci_call_type = psci_call_hvc;
                 psci_call_func = psci_hvc;
-                pr_info("[ PSCI ] use hvc call\n");
+                printk("[ PSCI ] use hvc call\n", LOG_OFF);
         } else {
-                pr_error("[ PSCI ] unknown psci call method\n");
+                printk("[ PSCI ] unknown psci call method\n", LOG_OFF);
                 psci_func.enable = false;
                 return;
         }
@@ -81,7 +82,8 @@ void psci_init(void)
 
         prop = dev_node_find_property(node, migrate_char, 8);
         if (!prop) {
-                pr_info("[ PSCI ] cannot find migrate property in this node\n");
+                printk("[ PSCI ] cannot find migrate property in this node\n",
+                       LOG_OFF);
                 return;
         } else {
                 psci_func.migrate = psci_migrate_64;
@@ -89,7 +91,8 @@ void psci_init(void)
 
         prop = dev_node_find_property(node, cpu_on_char, 7);
         if (!prop) {
-                pr_info("[ PSCI ] cannot find cpu on property in this node\n");
+                printk("[ PSCI ] cannot find cpu on property in this node\n",
+                       LOG_OFF);
                 return;
         } else {
                 psci_func.cpu_on = psci_cpu_on_64;
@@ -97,7 +100,8 @@ void psci_init(void)
 
         prop = dev_node_find_property(node, cpu_off_char, 8);
         if (!prop) {
-                pr_info("[ PSCI ] cannot find cpu off property in this node\n");
+                printk("[ PSCI ] cannot find cpu off property in this node\n",
+                       LOG_OFF);
                 return;
         } else {
                 psci_func.cpu_off = psci_cpu_off;
@@ -105,7 +109,8 @@ void psci_init(void)
 
         prop = dev_node_find_property(node, cpu_suspend_char, 12);
         if (!prop) {
-                pr_info("[ PSCI ] cannot find cpu suspend property in this node\n");
+                printk("[ PSCI ] cannot find cpu suspend property in this node\n",
+                       LOG_OFF);
                 return;
         } else {
                 psci_func.cpu_suspend_64 = psci_cpu_suspend_64;

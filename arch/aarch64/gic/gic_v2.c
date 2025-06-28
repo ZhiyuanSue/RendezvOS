@@ -12,7 +12,7 @@ void map_gic_mem(u64 gicd_base_addr, u64 gicd_len, u64 gicc_base_addr,
         /*here we set it as device memory to avoid dsb and dmb*/
         for (paddr base = gicd_base_addr; base < gicd_base_addr + gicd_len;
              base += PAGE_SIZE) {
-                map(percpu(current_vspace),
+                map(per_cpu(current_vspace, BSP_ID),
                     PPN(base),
                     VPN(KERNEL_PHY_TO_VIRT(base)),
                     3,
@@ -23,7 +23,7 @@ void map_gic_mem(u64 gicd_base_addr, u64 gicd_len, u64 gicc_base_addr,
         }
         for (paddr base = gicc_base_addr; base < gicc_base_addr + gicc_len;
              base += PAGE_SIZE) {
-                map(percpu(current_vspace),
+                map(per_cpu(current_vspace, BSP_ID),
                     PPN(base),
                     VPN(KERNEL_PHY_TO_VIRT(base)),
                     3,
@@ -39,13 +39,13 @@ void gic_v2_probe()
         struct device_node* gic_node =
                 dev_node_find_by_compatible(NULL, gic.compatible);
         if (!gic_node) {
-                pr_error("[ GIC ] wrong gic node\n");
+                printk("[ GIC ] wrong gic node\n", LOG_OFF);
                 return;
         }
         struct property* reg_prop =
                 dev_node_find_property(gic_node, reg_property, 4);
         if (!reg_prop) {
-                pr_error("[ GIC ] wrong gic node property\n");
+                printk("[ GIC ] wrong gic node property\n", LOG_OFF);
                 return;
         }
         u64 gic_regs[4];
@@ -146,7 +146,7 @@ void gic_v2_init_distributor(void)
                 irq_num = GIC_V2_SPI_END;
         u32 cpu_num = (gicd_typer_value & GIC_V2_GICD_TYPER_CPU_NUM_MASK)
                       >> GIC_V2_GICD_TYPER_CPU_NUM_SHIFT;
-        pr_info("[ GIC ] irq num %d and cpu num %d\n", irq_num, cpu_num);
+        printk("[ GIC ] irq num %d and cpu num %d\n", LOG_OFF, irq_num, cpu_num);
 
         /*set all the irq type , */
         for (u32 irq = GIC_V2_SPI_START; irq < irq_num; irq++) {

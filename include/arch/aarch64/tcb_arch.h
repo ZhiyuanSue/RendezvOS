@@ -32,6 +32,7 @@ typedef struct {
         u64 spsr_el1;
         /*x19-x30*/
         u64 regs[NR_AARCH64_CALLEE_SAVED_REGS];
+        u64 tpidr_el0;
 } Arch_Task_Context;
 typedef struct {
         void* thread_func_ptr;
@@ -39,7 +40,7 @@ typedef struct {
 } Thread_Init_Para;
 static inline void arch_task_ctx_init(Arch_Task_Context* ctx)
 {
-        ctx->sp_el1 = ctx->spsr_el1 = 0;
+        ctx->sp_el1 = ctx->spsr_el1 = ctx->tpidr_el0 = 0;
         memset(&(ctx->regs), 0, sizeof(u64) * NR_AARCH64_CALLEE_SAVED_REGS);
 }
 static inline void arch_set_new_thread_ctx(Arch_Task_Context* ctx,

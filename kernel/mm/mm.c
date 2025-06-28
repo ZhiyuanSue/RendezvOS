@@ -37,7 +37,6 @@ error_t virt_mm_init(int cpu_id, struct setup_info *arch_setup_info)
                  ZONE_NORMAL,
                  (struct pmm *)&buddy_pmm);
         per_cpu(nexus_root, cpu_id) = init_nexus(&per_cpu(Map_Handler, cpu_id));
-        sp_init(per_cpu(nexus_root, cpu_id),
-                per_cpu(Map_Handler, cpu_id).cpu_id);
+        sp_init(per_cpu(nexus_root, cpu_id), cpu_id);
         return 0;
 }

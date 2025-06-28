@@ -29,8 +29,15 @@ struct trap_frame {
         u64 ESR;
         u64 FAR;
         u64 HPFAR;
-        u64 TPIDR_EL0;
 };
+#define ARCH_SYSCALL_ID    REGS[8]
+#define ARCH_SYSCALL_ARG_1 REGS[0]
+#define ARCH_SYSCALL_ARG_2 REGS[1]
+#define ARCH_SYSCALL_ARG_3 REGS[2]
+#define ARCH_SYSCALL_ARG_4 REGS[3]
+#define ARCH_SYSCALL_ARG_5 REGS[4]
+#define ARCH_SYSCALL_ARG_6 REGS[5]
+
 #define AARCH64_ESR_EC_MASK (0xffUL << AARCH64_ESR_EC_SHIFT)
 #define AARCH64_ESR_GET_EC(esr_value) \
         (((u64)(esr_value)&AARCH64_ESR_EC_MASK) >> AARCH64_ESR_EC_SHIFT)

@@ -55,7 +55,7 @@ struct trap_frame {
         u64 rsp;
         u64 ss;
 };
-#define ARCH_SYSCALL_ID	rax
+#define ARCH_SYSCALL_ID    rax
 #define ARCH_SYSCALL_ARG_1 rdi
 #define ARCH_SYSCALL_ARG_2 rsi
 #define ARCH_SYSCALL_ARG_3 rdx
