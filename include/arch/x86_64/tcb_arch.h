@@ -29,26 +29,6 @@ typedef struct {
 } Arch_Task_Context;
 
 typedef struct {
-        u64 rcx;
-        u64 r11;
-
-        u64 r15;
-        u64 r14;
-        u64 r13;
-        u64 r12;
-        u64 rbp;
-        u64 rbx;
-
-        u64 syscall_id;
-        u64 arg1;
-        u64 arg2;
-        u64 arg3;
-        u64 arg4;
-        u64 arg5;
-        u64 arg6;
-} Arch_Syscall_Context;
-
-typedef struct {
         void* thread_func_ptr;
         u64 int_para[NR_ABI_PARAMETER_INT_REG];
 } Thread_Init_Para;

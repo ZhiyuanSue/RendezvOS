@@ -55,6 +55,14 @@ struct trap_frame {
         u64 rsp;
         u64 ss;
 };
+#define ARCH_SYSCALL_ID	rax
+#define ARCH_SYSCALL_ARG_1 rdi
+#define ARCH_SYSCALL_ARG_2 rsi
+#define ARCH_SYSCALL_ARG_3 rdx
+#define ARCH_SYSCALL_ARG_4 r10
+#define ARCH_SYSCALL_ARG_5 r8
+#define ARCH_SYSCALL_ARG_6 r9
+
 void arch_init_interrupt(void);
 void arch_unknown_trap_handler(struct trap_frame *tf);
 static inline bool arch_int_from_kernel(struct trap_frame *tf)
