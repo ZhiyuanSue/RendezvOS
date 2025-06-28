@@ -1,6 +1,6 @@
 #include <common/assemble.h>
 #include <arch/aarch64/trap/trap_def.h>
-#include "./trap_entry.S"
+#include "./kernel_entry.S"
 
 BEGIN_FUNC(trap_vec_table)
 	.p2align 11
@@ -71,6 +71,8 @@ BEGIN_FUNC(low_el_sync)
 	bl 	get_curr_el_trap_info
 	mov x0,SP
 	bl 	trap_handler
+	.global el0_sync_trap_exit
+el0_sync_trap_exit:
 	el0_trap_exit
 END_FUNC(low_el_sync)
 
