@@ -116,5 +116,5 @@ extern struct spin_lock_t *log_spin_lock_ptr;
 
 #define rep_print(n, ch)            \
         for (int i = 0; i < n; i++) \
-        printk("%c", LOG_OFF, ch)
+        print("%c", ch)
 #endif

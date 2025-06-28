@@ -20,23 +20,23 @@ void cmain(struct setup_info *arch_setup_info)
         hello_world();
 #endif
         if (prepare_arch(arch_setup_info)) {
-                printk("[ERROR] prapare arch\n", LOG_OFF);
+                print("[ERROR] prapare arch\n");
                 return;
         }
         if (phy_mm_init(arch_setup_info)) {
-                printk("[ERROR] phy mm init error\n", LOG_OFF);
+                print("[ERROR] phy mm init error\n");
                 return;
         }
         if (arch_cpu_info(arch_setup_info)) {
-                printk("[ERROR] arch cpu info error\n", LOG_OFF);
+                print("[ERROR] arch cpu info error\n");
                 return;
         }
         if (virt_mm_init(BSP_ID, arch_setup_info)) {
-                printk("[ERROR] virt mm init error\n", LOG_OFF);
+                print("[ERROR] virt mm init error\n");
                 return;
         }
         if (arch_parser_platform(arch_setup_info)) {
-                printk("[ERROR] arch parser platform\n", LOG_OFF);
+                print("[ERROR] arch parser platform\n");
                 return;
         }
         /*TODO:after we init the pmm module, we can alloc some pages for

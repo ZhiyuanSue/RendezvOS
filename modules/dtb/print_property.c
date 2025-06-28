@@ -18,13 +18,13 @@ void print_property_value_u32(enum property_type_enum p_type, void *data,
         u32 *u32_data;
 
         u32_data = (u32 *)data;
-        printk("<", LOG_OFF);
+        print("<");
         for (int index = 0; index < len; index += sizeof(u32)) {
-                printk("0x%x", LOG_OFF, SWAP_ENDIANNESS_32(*u32_data));
+                print("0x%x", SWAP_ENDIANNESS_32(*u32_data));
                 if (index + sizeof(u32) >= len) {
-                        printk(">", LOG_OFF);
+                        print(">");
                 } else {
-                        printk(" ", LOG_OFF);
+                        print(" ");
                 }
                 u32_data++;
         }
@@ -35,13 +35,13 @@ void print_property_value_u64(enum property_type_enum p_type, void *data,
         u64 *u64_data;
 
         u64_data = (u64 *)data;
-        printk("<", LOG_OFF);
+        print("<");
         for (int index = 0; index < len; index += sizeof(u64)) {
-                printk("0x%x", LOG_OFF, SWAP_ENDIANNESS_64(*u64_data));
+                print("0x%x", SWAP_ENDIANNESS_64(*u64_data));
                 if (index + sizeof(u64) >= len) {
-                        printk(">", LOG_OFF);
+                        print(">");
                 } else {
-                        printk(" ", LOG_OFF);
+                        print(" ");
                 }
                 u64_data++;
         }
@@ -49,7 +49,7 @@ void print_property_value_u64(enum property_type_enum p_type, void *data,
 void print_property_value_string(enum property_type_enum p_type, void *data,
                                  uint32_t len)
 {
-        printk("%s\n", LOG_OFF, data);
+        print("%s\n", data);
 }
 void print_property_value_prop_encoded_array(enum property_type_enum p_type,
                                              void *data, uint32_t len)
@@ -60,12 +60,12 @@ void print_property_value_prop_encoded_array(enum property_type_enum p_type,
         case PROPERTY_TYPE_REG: {
                 u32_data = (u32 *)data;
                 for (int index = 0; index < len; index += sizeof(u32)) {
-                        printk("<", LOG_OFF);
-                        printk("0x%x", LOG_OFF, SWAP_ENDIANNESS_32(*u32_data));
+                        print("<");
+                        print("0x%x", SWAP_ENDIANNESS_32(*u32_data));
                         u32_data++;
-                        printk(">", LOG_OFF);
+                        print(">");
                         if (index + sizeof(u32) < len)
-                                printk(" ", LOG_OFF);
+                                print(" ");
                 }
                 break;
         }
@@ -86,8 +86,7 @@ void print_property_value_prop_encoded_array(enum property_type_enum p_type,
         case PROPERTY_TYPE_SPECIFIER_MAP_PASS_THRU:
                 break;
         default:
-                printk("Error:something wrong happened in parse this dtb,please check\n",
-                       LOG_OFF);
+                print("Error:something wrong happened in parse this dtb,please check\n");
                 break;
         }
 }
@@ -102,17 +101,17 @@ void print_property_value_stringlist(enum property_type_enum p_type, void *data,
         const char *ch_data_end = ch_data + len;
         char *ch = (char *)ch_data;
 
-        printk("<", LOG_OFF);
+        print("<");
         while (ch < ch_data_end) {
                 if (*ch) {
-                        printk("%c", LOG_OFF, *ch);
+                        print("%c", *ch);
                 } else {
                         if (ch + 1 < ch_data_end)
-                                printk(" | ", LOG_OFF);
+                                print(" | ");
                 }
                 ch++;
         }
-        printk(">", LOG_OFF);
+        print(">");
 }
 
 void (*print_property_value_list[7])(enum property_type_enum p_type, void *data,
@@ -144,7 +143,7 @@ void parse_print_dtb(void *fdt, int offset, int depth)
         int property, node;
         ch = (char *)fdt + fdt_off_dt_struct(fdt) + offset + FDT_TAGSIZE;
         rep_print(depth, '\t');
-        printk("%s{\n", LOG_OFF, ch);
+        print("%s{\n", ch);
         fdt_for_each_property_offset(property, fdt, offset)
         {
                 prop = (struct fdt_property *)fdt_offset_ptr(
@@ -152,16 +151,16 @@ void parse_print_dtb(void *fdt, int offset, int depth)
                 rep_print(depth + 1, '\t');
                 property_name =
                         fdt_string(fdt, SWAP_ENDIANNESS_32(prop->nameoff));
-                printk("%s\t:\t", LOG_OFF, property_name);
+                print("%s\t:\t", property_name);
                 print_property_value(property_name,
                                      prop->data,
                                      SWAP_ENDIANNESS_32(prop->len));
-                printk("\n", LOG_OFF);
+                print("\n");
         }
         fdt_for_each_subnode(node, fdt, offset)
         {
                 parse_print_dtb(fdt, node, depth + 1);
         }
         rep_print(depth, '\t');
-        printk("}\n", LOG_OFF);
+        print("}\n");
 }

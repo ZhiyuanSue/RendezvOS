@@ -68,7 +68,7 @@ void arch_start_smp(struct setup_info* arch_setup_info)
                         per_cpu(cpu_device_node, NR_CPU) = cpu_node;
                         /*then wait for the target cpu set it self enable*/
                         while (per_cpu(CPU_STATE, NR_CPU) == cpu_disable)
-                                printk("", LOG_DEBUG);
+                                print("");
                         NR_CPU++;
                 }
         next_cpu_node:

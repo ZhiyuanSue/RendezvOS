@@ -39,13 +39,13 @@ void gic_v2_probe()
         struct device_node* gic_node =
                 dev_node_find_by_compatible(NULL, gic.compatible);
         if (!gic_node) {
-                printk("[ GIC ] wrong gic node\n", LOG_OFF);
+                print("[ GIC ] wrong gic node\n");
                 return;
         }
         struct property* reg_prop =
                 dev_node_find_property(gic_node, reg_property, 4);
         if (!reg_prop) {
-                printk("[ GIC ] wrong gic node property\n", LOG_OFF);
+                print("[ GIC ] wrong gic node property\n");
                 return;
         }
         u64 gic_regs[4];
@@ -146,7 +146,7 @@ void gic_v2_init_distributor(void)
                 irq_num = GIC_V2_SPI_END;
         u32 cpu_num = (gicd_typer_value & GIC_V2_GICD_TYPER_CPU_NUM_MASK)
                       >> GIC_V2_GICD_TYPER_CPU_NUM_SHIFT;
-        printk("[ GIC ] irq num %d and cpu num %d\n", LOG_OFF, irq_num, cpu_num);
+        print("[ GIC ] irq num %d and cpu num %d\n", irq_num, cpu_num);
 
         /*set all the irq type , */
         for (u32 irq = GIC_V2_SPI_START; irq < irq_num; irq++) {
