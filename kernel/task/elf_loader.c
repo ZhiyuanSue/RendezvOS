@@ -3,6 +3,23 @@
 #include <arch/x86_64/sys_ctrl.h>
 #include <arch/x86_64/msr.h>
 
+vaddr generate_user_stack(VSpace *vs)
+{
+        /*alloc the user stack for this thread*/
+        int page_num = thread_ustack_page_num;
+        ENTRY_FLAGS_t page_flags = PAGE_ENTRY_USER | PAGE_ENTRY_VALID
+                                   | PAGE_ENTRY_WRITE | PAGE_ENTRY_READ;
+        vaddr user_sp =
+                (vaddr)get_free_page(page_num,
+                                     ZONE_NORMAL,
+                                     USER_SPACE_TOP - page_num * PAGE_SIZE,
+                                     percpu(nexus_root),
+                                     vs,
+                                     page_flags)
+                + page_num * PAGE_SIZE - 8;
+        /*TODO: the kernel might pass argc and argv to the task*/
+        return user_sp;
+}
 error_t elf_Phdr_64_load_handle(vaddr elf_start, Elf64_Phdr *phdr_ptr,
                                 VSpace *vs)
 {
@@ -91,22 +108,9 @@ error_t run_elf_program(vaddr elf_start, vaddr elf_end, VSpace *vs)
                 if (phdr_ptr->p_type == PT_DYNAMIC)
                         elf_Phdr_64_dynamic_handle(elf_start, phdr_ptr, vs);
         }
-        /*alloc the user stack for this thread*/
-        int page_num = thread_ustack_page_num;
-        ENTRY_FLAGS_t page_flags = PAGE_ENTRY_USER | PAGE_ENTRY_VALID
-                                   | PAGE_ENTRY_WRITE | PAGE_ENTRY_READ;
-        vaddr user_sp =
-                (vaddr)get_free_page(page_num,
-                                     ZONE_NORMAL,
-                                     USER_SPACE_TOP - page_num * PAGE_SIZE,
-                                     percpu(nexus_root),
-                                     vs,
-                                     page_flags)
-                + page_num * PAGE_SIZE - 8;
-        /*TODO: the kernel might pass argc and argv to the task*/
 
         Thread_Base *current_thread = percpu(core_tm)->current_thread;
-        arch_drop_to_user(current_thread->kstack_bottom, user_sp, entry_addr);
+        arch_drop_to_user(current_thread->kstack_bottom, entry_addr);
         return 0;
 }
 /*we must load all the elf file into kernel memory before we use this function*/
@@ -140,6 +144,9 @@ error_t gen_task_from_elf(vaddr elf_start, vaddr elf_end)
 
         Thread_Base *elf_thread = create_thread(
                 (void *)run_elf_program, 3, elf_start, elf_end, elf_task->vs);
+        vaddr user_sp = generate_user_stack(elf_task->vs);
+        arch_set_thread_user_sp(&elf_thread->ctx, user_sp);
+
         thread_set_flags(THREAD_FLAG_USER, elf_thread);
         if (!elf_thread) {
                 pr_error("[Error] create elf_thread fail\n");

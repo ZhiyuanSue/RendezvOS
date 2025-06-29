@@ -49,8 +49,13 @@ static inline void arch_set_new_thread_ctx(Arch_Task_Context* ctx,
         ctx->rsp = (vaddr)stack_bottom - sizeof(u64) * 2;
         ctx->stack_bottom = (vaddr)stack_bottom;
 }
+static inline void arch_set_thread_user_sp(Arch_Task_Context* ctx,
+                                           vaddr user_sp)
+{
+        ctx->user_rsp = user_sp;
+};
 extern void context_switch(Arch_Task_Context* old_context,
                            Arch_Task_Context* new_context);
 void switch_to(Arch_Task_Context* old_context, Arch_Task_Context* new_context);
-void arch_drop_to_user(vaddr user_kstack_bottom, vaddr user_sp, vaddr entry);
+void arch_drop_to_user(vaddr user_kstack_bottom, vaddr entry);
 #endif

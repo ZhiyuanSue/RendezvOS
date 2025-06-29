@@ -33,6 +33,7 @@ typedef struct {
         /*x19-x30*/
         u64 regs[NR_AARCH64_CALLEE_SAVED_REGS];
         u64 tpidr_el0;
+        u64 sp_el0;
 } Arch_Task_Context;
 typedef struct {
         void* thread_func_ptr;
@@ -40,7 +41,7 @@ typedef struct {
 } Thread_Init_Para;
 static inline void arch_task_ctx_init(Arch_Task_Context* ctx)
 {
-        ctx->sp_el1 = ctx->spsr_el1 = ctx->tpidr_el0 = 0;
+        ctx->sp_el1 = ctx->spsr_el1 = ctx->tpidr_el0 = ctx->sp_el0 = 0;
         memset(&(ctx->regs), 0, sizeof(u64) * NR_AARCH64_CALLEE_SAVED_REGS);
 }
 static inline void arch_set_new_thread_ctx(Arch_Task_Context* ctx,
@@ -50,8 +51,13 @@ static inline void arch_set_new_thread_ctx(Arch_Task_Context* ctx,
         ctx->regs[aarch64_task_ctx_lr] = (u64)func_ptr;
         /*TODO:should I add spsr el1???*/
 }
+static inline void arch_set_thread_user_sp(Arch_Task_Context* ctx,
+                                           vaddr user_sp)
+{
+        ctx->sp_el0 = user_sp;
+};
 extern void context_switch(Arch_Task_Context* old_context,
                            Arch_Task_Context* new_context);
 void switch_to(Arch_Task_Context* old_context, Arch_Task_Context* new_context);
-void arch_drop_to_user(vaddr user_kstack_bottom, vaddr user_sp, vaddr entry);
+void arch_drop_to_user(vaddr user_kstack_bottom, vaddr entry);
 #endif

@@ -5,8 +5,7 @@ arch_init_drop_to_user:
 	cli
 	mov		%rdi,	%rsp
 	sub		$(22*8),%rsp
-	mov		%rsi,	%gs:__user_rsp_scratch_offset
-	mov		%rdx,	12*8(%rsp)
+	mov		%rsi,	12*8(%rsp)
 
 	mov		$0,		%rax
 	mov		%rax,	1*8(%rsp)
