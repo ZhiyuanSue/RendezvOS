@@ -3,8 +3,8 @@
 arch_init_drop_to_user:
 	mov		SP,	X0
 	sub		SP,SP,#(39*8)
-	mov		X2,	SP
-	str		X2,	[SP,#8*34]
+	mov		X0,	SP
+	str		X0,	[SP,#8*34]
 	str		X1,	[SP,#8*33]
 
 	/*clear other registers*/

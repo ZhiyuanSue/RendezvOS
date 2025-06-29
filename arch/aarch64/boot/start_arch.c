@@ -22,6 +22,12 @@ int BSP_ID = 0;
 extern struct allocator *kallocator;
 struct cpuinfo cpu_info = {0};
 
+extern void syscall(struct trap_frame *syscall_ctx);
+static void init_syscall(void)
+{
+        /*TODO:0x15 need defined by macros*/
+        register_irq_handler(0x15, syscall, IRQ_NO_ATTR);
+}
 static void get_cpu_info(void)
 {
         u64 MPIDR_VAL;
@@ -177,5 +183,6 @@ error_t start_arch(int cpu_id)
         init_interrupt();
         gic.init_cpu_interface();
         rendezvos_time_init();
+        init_syscall();
         return (0);
 }

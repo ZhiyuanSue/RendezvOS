@@ -14,6 +14,7 @@
 
 struct irq {
         void (*irq_handler)(struct trap_frame *tf);
+#define IRQ_NO_ATTR  (0)
 #define IRQ_NEED_EOI (1)
         u64 irq_attr;
 };
