@@ -2,6 +2,7 @@
 	sub		$(\error_code_num * 8),	%rsp
 	sub		$(16*8),%rsp
 
+	/*TODO: check the trap from kernel or user, if user, swapgs*/
 	mov		%r15,	8(%rsp)
 	mov		%r14,	16(%rsp)
 	mov		%r13,	24(%rsp)
@@ -19,12 +20,26 @@
 	mov		%rdi,	120(%rsp)
 
 	mov		$(\trap_id),	%rax
+	mov		18*8(%rsp),		%rbx
+	and		$(0x3),		%rbx
+	cmp		$0,		%rbx
+	je		trap_enter_from_kernel\@
+	/*the following is something that trap from user need to do*/
+	swapgs
+trap_enter_from_kernel\@:
 	mov		%rax,	(%rsp)
 	
 	mov		%rsp,%rdi	/*use the rsp as the trap frame pointer*/
 .endm
 
 .macro trap_exit
+	mov		18*8(%rsp),		%rbx
+	and		$(0x3),		%rbx
+	cmp		$0,		%rbx
+	je		trap_exit_from_kernel\@
+	/*the following is something that trap from user need to do*/
+	swapgs
+trap_exit_from_kernel\@:
 	mov		120(%rsp),	%rdi
 	mov		112(%rsp),	%rsi
 	mov		104(%rsp),	%rdx

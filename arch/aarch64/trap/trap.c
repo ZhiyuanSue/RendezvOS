@@ -58,7 +58,6 @@ void arch_unknown_trap_handler(struct trap_frame *tf)
         pr_info("esr\t:\t0x%x\n", tf->ESR);
 
         pr_info("far\t:\t0x%x\n", tf->FAR);
-        arch_shutdown();
 }
 void arch_eoi_irq(u64 trap_info)
 {

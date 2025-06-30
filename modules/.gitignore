@@ -8,8 +8,10 @@
 !/test/**
 !/driver/
 !/driver/**
-!/acpi/
-!/acpi/**
+!/dtb/
+!/dtb/**
+!/psci/
+!/psci/**
 !/elf/
 !/elf/**
 *.env

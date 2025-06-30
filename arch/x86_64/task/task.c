@@ -13,11 +13,11 @@ void switch_to(Arch_Task_Context* old_context, Arch_Task_Context* new_context)
         old_context->stack_bottom = get_rsp(&percpu(cpu_tss), 0);
         set_rsp(&percpu(cpu_tss), 0, new_context->stack_bottom);
         /*save and change the new MSR_KERNEL_GS_BASE*/
-        old_context->user_gs = rdmsr(MSR_KERNEL_GS_BASE);
-        wrmsr(MSR_KERNEL_GS_BASE, new_context->user_gs);
+        old_context->user_gs = rdmsrq(MSR_KERNEL_GS_BASE);
+        wrmsrq(MSR_KERNEL_GS_BASE, new_context->user_gs);
         /*also save the fs*/
-        old_context->user_fs = rdmsr(MSR_FS_BASE);
-        wrmsr(MSR_FS_BASE, new_context->user_fs);
+        old_context->user_fs = rdmsrq(MSR_FS_BASE);
+        wrmsrq(MSR_FS_BASE, new_context->user_fs);
         /*save the user rsp*/
         old_context->user_rsp = percpu(user_rsp_scratch);
         percpu(user_rsp_scratch) = new_context->user_rsp;
