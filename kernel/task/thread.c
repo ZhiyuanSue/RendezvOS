@@ -37,7 +37,8 @@ static void thread_entry()
 Thread_Base* create_thread(void* __func, int nr_parameter, ...)
 {
         Thread_Base* thread = new_thread();
-        va_list arg_list;
+        thread->tid = get_new_tid();
+		va_list arg_list;
         va_start(arg_list, nr_parameter);
         /*
                 TODO: we alloc a page as idle thread's stack, we must record
