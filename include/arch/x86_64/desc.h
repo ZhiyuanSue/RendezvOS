@@ -9,7 +9,7 @@
 #define GDT_TSS_UPPER_INDEX 4ULL
 #define GDT_USER_DS_INDEX   5ULL
 #define GDT_USER_CS_INDEX   6ULL
-#define GDT_SIZE            (GDT_USER_DS_INDEX + 1)
+#define GDT_SIZE            (GDT_USER_CS_INDEX + 1)
 
 struct pseudo_descriptor {
         u16 limit;
