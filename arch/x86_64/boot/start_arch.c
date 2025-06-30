@@ -120,18 +120,17 @@ error_t prepare_arch(struct setup_info *arch_setup_info)
 
         mtb_magic = arch_setup_info->multiboot_magic;
         if (mtb_magic == MULTIBOOT_MAGIC) {
-                pr_info("using multiboot 1\n");
+                print("using multiboot 1\n");
                 struct multiboot_info *mtb_info =
                         GET_MULTIBOOT_INFO(arch_setup_info);
                 if (!(mtb_info->flags & MULTIBOOT_INFO_FLAG_CMD)) {
-                        pr_info("cmdline:%s\n",
-                                (char *)(mtb_info->cmdline
-                                         + KERNEL_VIRT_OFFSET));
+                        print("cmdline:%s\n",
+                              (char *)(mtb_info->cmdline + KERNEL_VIRT_OFFSET));
                 } else {
-                        pr_info("no input cmdline\n");
+                        print("no input cmdline\n");
                 }
         } else if (mtb_magic == MULTIBOOT2_MAGIC) {
-                pr_info("using multiboot 2\n");
+                print("using multiboot 2\n");
                 struct multiboot2_info *mtb2_info =
                         GET_MULTIBOOT2_INFO(arch_setup_info);
                 bool have_cmd_line = false;
@@ -140,16 +139,16 @@ error_t prepare_arch(struct setup_info *arch_setup_info)
                         switch (tag->type) {
                         case MULTIBOOT2_TAG_TYPE_CMDLINE: {
                                 have_cmd_line = true;
-                                pr_info("cmdline:%s\n",
-                                        ((struct multiboot2_tag_string *)tag)
-                                                ->string);
+                                print("cmdline:%s\n",
+                                      ((struct multiboot2_tag_string *)tag)
+                                              ->string);
                         } break;
                         }
                 }
                 if (!have_cmd_line)
-                        pr_info("no input cmdline\n");
+                        print("no input cmdline\n");
         } else {
-                pr_info("not using the multiboot protocol, stop\n");
+                print("not using the multiboot protocol, stop\n");
                 return (-E_RENDEZVOS);
         }
         return (0);

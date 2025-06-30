@@ -43,7 +43,7 @@ void cmain(struct setup_info *arch_setup_info)
          * stack,and no more boot stack：in x86,please use LSS, see
          * manual 6.8.3*/
         if (start_arch(BSP_ID)) {
-                pr_error("[ERROR] start arch\n");
+                print("[ERROR] start arch\n");
                 return;
         }
 

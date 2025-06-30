@@ -17,8 +17,6 @@ void trap_handler(struct trap_frame *tf)
 {
         u64 trap_id = TRAP_ID((tf->trap_info));
         if (percpu(irq_vector[trap_id].irq_handler)) {
-                // if (trap_id != timer_irq_num)
-                //         pr_info("trap id is %d\n", trap_id);
                 percpu(irq_vector[trap_id].irq_handler)(tf);
         } else {
                 arch_unknown_trap_handler(tf);

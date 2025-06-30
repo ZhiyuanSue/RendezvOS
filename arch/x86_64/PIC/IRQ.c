@@ -9,8 +9,7 @@ static inline bool xapic_check_base_addr(void)
 {
         extern struct acpi_table_madt *madt_table;
         if (madt_table->Local_int_ctrl_address != xAPIC_MMIO_BASE) {
-                pr_error(
-                        "[ERROR] using xAPIC but address is not match that in acpi table\n");
+                print("[ERROR] using xAPIC but address is not match that in acpi table\n");
                 return false;
         }
         return true;
@@ -19,7 +18,7 @@ void init_irq(void)
 {
         if (xAPIC_support()) {
                 if (x2APIC_support()) {
-                        pr_info("support and use x2APIC\n");
+                        print("support and use x2APIC\n");
                         arch_irq_type = x2APIC_IRQ;
                         disable_PIC();
                         // TODO: x2APIC
@@ -29,7 +28,7 @@ void init_irq(void)
                         enable_x2APIC();
                         reset_APIC();
                 } else {
-                        pr_info("no x2APIC support and we use the Local xAPIC\n");
+                        print("no x2APIC support and we use the Local xAPIC\n");
                         arch_irq_type = xAPIC_IRQ;
                         disable_PIC();
                         if (!xapic_check_base_addr())
@@ -42,7 +41,7 @@ void init_irq(void)
                         reset_APIC();
                 }
         } else {
-                pr_info("use 8259A\n");
+                print("use 8259A\n");
                 arch_irq_type = PIC_IRQ;
                 init_PIC();
         }

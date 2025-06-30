@@ -13,18 +13,17 @@ extern char _start, _end; /*the kernel end virt addr*/
 extern u64 L2_table;
 extern struct memory_regions m_regions;
 
-#define multiboot_insert_memory_region(mmap)                                      \
-        if (mmap->addr + mmap->len > BIOS_MEM_UPPER                               \
-            && mmap->type == MULTIBOOT_MEMORY_AVAILABLE) {                        \
-                if (m_regions.memory_regions_insert(mmap->addr, mmap->len)) {     \
-                        pr_error(                                                 \
-                                "we cannot manager toooo many memory regions\n"); \
-                        goto arch_init_pmm_error;                                 \
-                } else {                                                          \
-                        print("[ Phy_Mem\t@\t< 0x%x , 0x%x >]\n",                 \
-                              mmap->addr,                                         \
-                              mmap->len);                                         \
-                }                                                                 \
+#define multiboot_insert_memory_region(mmap)                                    \
+        if (mmap->addr + mmap->len > BIOS_MEM_UPPER                             \
+            && mmap->type == MULTIBOOT_MEMORY_AVAILABLE) {                      \
+                if (m_regions.memory_regions_insert(mmap->addr, mmap->len)) {   \
+                        print("we cannot manager toooo many memory regions\n"); \
+                        goto arch_init_pmm_error;                               \
+                } else {                                                        \
+                        print("[ Phy_Mem\t@\t< 0x%x , 0x%x >]\n",               \
+                              mmap->addr,                                       \
+                              mmap->len);                                       \
+                }                                                               \
         }
 
 static error_t arch_get_memory_regions(struct setup_info *arch_setup_info)
@@ -141,8 +140,8 @@ void reserve_arch_region(struct setup_info *arch_setup_info)
                         return;
                 }
         } else {
-                pr_error("[ ACPI ] unsupported vision: %d\n",
-                         rsdp_table->revision);
+                print("[ ACPI ] unsupported vision: %d\n",
+                      rsdp_table->revision);
         }
 }
 void arch_init_pmm(struct setup_info *arch_setup_info)
@@ -186,13 +185,13 @@ void arch_init_pmm(struct setup_info *arch_setup_info)
               KERNEL_PHY_TO_VIRT(pmm_data_phy_end));
         if (ROUND_DOWN(pmm_data_phy_end, HUGE_PAGE_SIZE)
             != ROUND_DOWN(kernel_phy_start, HUGE_PAGE_SIZE)) {
-                pr_error("cannot load the pmm data\n");
+                print("cannot load the pmm data\n");
                 goto arch_init_pmm_error;
         }
         if (m_regions.memory_regions[kernel_region].addr
                     + m_regions.memory_regions[kernel_region].len
             < pmm_data_phy_end) {
-                pr_error("cannot load the pmm data\n");
+                print("cannot load the pmm data\n");
                 goto arch_init_pmm_error;
         }
         arch_map_extra_data_space(kernel_phy_start,

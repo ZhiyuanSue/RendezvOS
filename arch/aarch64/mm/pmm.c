@@ -133,9 +133,9 @@ void arch_init_pmm(struct setup_info *arch_setup_info)
              off += sizeof(struct fdt_reserve_entry)) {
                 entry = (struct fdt_reserve_entry *)((u64)dtb_header_ptr + off);
                 if (entry->size) {
-                        pr_debug("reserve_entry: address 0x%x size: 0x%x\n",
-                                 entry->address,
-                                 entry->size);
+                        print("reserve_entry: address 0x%x size: 0x%x\n",
+                              entry->address,
+                              entry->size);
                 }
         }
 

@@ -14,7 +14,7 @@ static inline error_t parser_facp()
 static inline error_t parser_acpi_tables(enum acpi_table_sig_enum sig_enum,
                                          struct acpi_table_head *table_head)
 {
-        pr_info("acpi table type is %d\n", sig_enum);
+        print("acpi table type is %d\n", sig_enum);
         switch (sig_enum) {
         case ACPI_FACP:
                 fadt_table = (struct acpi_table_fadt *)table_head;
@@ -56,7 +56,7 @@ error_t acpi_init(vaddr rsdp_addr)
                                 rsdp_table->rsdt_address);
                 if (!acpi_table_sig_check(rsdt_table->signature,
                                           ACPI_SIG_RSDT)) {
-                        pr_error("invalid signature of rsdt table\n");
+                        print("invalid signature of rsdt table\n");
                         return -E_RENDEZVOS;
                 }
 
@@ -71,19 +71,19 @@ error_t acpi_init(vaddr rsdp_addr)
                         enum acpi_table_sig_enum sig =
                                 get_acpi_table_type_from_sig(tmp_table_head);
                         if (sig == -1) {
-                                pr_error("undefined acpi table ");
+                                print("undefined acpi table ");
                                 for (int j = 0; j < ACPI_SIG_LENG; j++) {
-                                        pr_error("%c",
-                                                 tmp_table_head->signature[j]);
+                                        print("%c",
+                                              tmp_table_head->signature[j]);
                                 }
-                                pr_error("\n");
+                                print("\n");
                         } else {
                                 parser_acpi_tables(sig, tmp_table_head);
                         }
                 }
         } else {
-                pr_error("[ ACPI ] unsupported vision: %d\n",
-                         rsdp_table->revision);
+                print("[ ACPI ] unsupported vision: %d\n",
+                      rsdp_table->revision);
                 return -E_RENDEZVOS;
         }
         return 0;
