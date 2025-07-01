@@ -1,4 +1,4 @@
-#include <modules/driver/x86_char_console/char_console.h>
+#include <modules/driver/x86_console/char_console.h>
 
 #define FORWORD_COLOR_MATRIX_OFFSET  30
 #define BACKWORD_COLOR_MATRIX_OFFSET 40

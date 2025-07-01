@@ -6,7 +6,8 @@
 #include <rendezvos/sync/spin_lock.h>
 #include <rendezvos/smp/percpu.h>
 #include <modules/driver/driver.h>
-#include <modules/driver/x86_char_console/char_console.h>
+#include <modules/driver/x86_console/char_console.h>
+#include <modules/driver/x86_console/video_console.h>
 #define LOG_BUFFER_SIZE        0x10
 #define LOG_BUFFER_SINGLE_SIZE 0x1000
 enum log_level {

@@ -55,7 +55,8 @@
 		{
 			"use":true ,
 			"features":[
-				"_UART_16550A_"
+				"_UART_16550A_",
+				"_VIDEO_CONSOLE_"
 			],
 			"depend_module":[
 			],

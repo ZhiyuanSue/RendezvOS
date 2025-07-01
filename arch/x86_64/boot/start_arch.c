@@ -10,6 +10,7 @@
 #include <arch/x86_64/trap/tss.h>
 #include <arch/x86_64/msr.h>
 #include <modules/driver/timer/8254.h>
+#include <modules/driver/x86_console/video_console.h>
 #include <modules/log/log.h>
 #include <modules/acpi/acpi.h>
 #include <rendezvos/smp/percpu.h>
@@ -123,12 +124,19 @@ error_t prepare_arch(struct setup_info *arch_setup_info)
                 print("using multiboot 1\n");
                 struct multiboot_info *mtb_info =
                         GET_MULTIBOOT_INFO(arch_setup_info);
-                if (!(mtb_info->flags & MULTIBOOT_INFO_FLAG_CMD)) {
+                if (mtb_info->flags & MULTIBOOT_INFO_FLAG_CMD) {
                         print("cmdline:%s\n",
                               (char *)(mtb_info->cmdline + KERNEL_VIRT_OFFSET));
                 } else {
                         print("no input cmdline\n");
                 }
+				if (mtb_info->flags & MULTIBOOT_INFO_FLAG_FRAMEBUFFER){
+					pr_info("have framebuffer support\n");
+					fb_console_init(&mtb_info->framebuffer);
+				} else if (mtb_info->flags & MULTIBOOT_INFO_FLAG_VBE){
+					pr_info("have vbe support\n");
+				}
+				pr_info("flags %x\n",mtb_info->flags);
         } else if (mtb_magic == MULTIBOOT2_MAGIC) {
                 print("using multiboot 2\n");
                 struct multiboot2_info *mtb2_info =

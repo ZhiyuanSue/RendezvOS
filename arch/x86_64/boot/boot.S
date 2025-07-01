@@ -1,14 +1,18 @@
 #define	kernel_virt_offset 0xffff800000000000
 #define	boot_stack_size	0x10000
+/* multiboot macro */
 #define	multiboot_header_magic	0x1BADB002
 #define	multiboot_header_flag_addr	0x00000002
-#define	multiboot_header_flag_vbe	0x00010000
+#define multiboot_header_flag_video_mode	0x00000004
+#define	multiboot_header_flag_aout_kludge	0x00010000
+/* multiboot2 macro */
 #define multiboot2_arch_i386	0
 #define multiboot2_header_magic	0xE85250D6
 #define multiboot2_header_tag_end	0
 #define multiboot2_header_tag_option	1
 #define multiboot2_header_tag_address	2
 #define multiboot2_header_tag_entry_address	3
+/*some align*/
 #define	align_2m	0x200000
 #define	align_2m_minus_1	0x1fffff
 #define	align_bit32_not_2m_minus_1	0xffe00000
@@ -59,8 +63,8 @@ _start:
 	.p2align  2
 multiboot_header:
 	.long	multiboot_header_magic	/*magic*/
-	.long	multiboot_header_flag_addr | multiboot_header_flag_vbe	/*flags,only memory info and load address infos*/
-	.long	-(multiboot_header_magic + multiboot_header_flag_addr | multiboot_header_flag_vbe )   /*checksum*/
+	.long	multiboot_header_flag_addr | multiboot_header_flag_aout_kludge | multiboot_header_flag_video_mode	/*flags,only memory info and load address infos*/
+	.long	-(multiboot_header_magic + multiboot_header_flag_addr | multiboot_header_flag_aout_kludge | multiboot_header_flag_video_mode )   /*checksum*/
 multiboot_header_address:	/*we use bin file, not elf file,so those are all need*/
 	.long	multiboot_header - kernel_virt_offset
 multiboot_load_address:
