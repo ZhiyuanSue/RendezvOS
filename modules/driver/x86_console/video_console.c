@@ -1,5 +1,9 @@
 #include <modules/driver/x86_console/video_console.h>
+#include <arch/x86_64/mm/pmm.h>
+#include <rendezvos/mm/map_handler.h>
+#include <rendezvos/smp/percpu.h>
 
+extern int BSP_ID;
 void vbe_console_init(struct multiboot_vbe *mtb_vbe)
 {
 }
@@ -7,7 +11,20 @@ void fb_console_init(struct multiboot_framebuffer *mtb_fb)
 {
         u32 color;
         unsigned i;
-        void *fb = (void *)(unsigned long)mtb_fb->framebuffer_addr;
+        void *fb_phy = (void *)(unsigned long)mtb_fb->framebuffer_addr;
+        void *fb = KERNEL_PHY_TO_VIRT(fb_phy);
+        u64 fb_space_page_num = 1024 * 768 * 4 / PAGE_SIZE;
+        for (paddr phy_addr = (paddr)fb_phy, page_num = 0;
+             page_num < fb_space_page_num;
+             phy_addr += PAGE_SIZE, page_num++)
+                map(per_cpu(current_vspace, BSP_ID),
+                    PPN((paddr)(phy_addr)),
+                    VPN(KERNEL_PHY_TO_VIRT((paddr)(phy_addr))),
+                    3,
+                    PAGE_ENTRY_DEVICE | PAGE_ENTRY_GLOBAL | PAGE_ENTRY_READ
+                            | PAGE_ENTRY_VALID | PAGE_ENTRY_WRITE,
+                    &per_cpu(Map_Handler, BSP_ID),
+                    NULL);
 
         switch (mtb_fb->framebuffer_type) {
         case MULTIBOOT_FRAMEBUFFER_TYPE_INDEXED: {

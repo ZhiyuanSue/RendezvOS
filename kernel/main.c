@@ -35,6 +35,14 @@ void cmain(struct setup_info *arch_setup_info)
                 print("[ERROR] virt mm init error\n");
                 return;
         }
+		struct multiboot_info *mtb_info =
+                        GET_MULTIBOOT_INFO(arch_setup_info);
+		if (mtb_info->flags & MULTIBOOT_INFO_FLAG_FRAMEBUFFER) {
+			pr_info("have framebuffer support\n");
+			fb_console_init(&mtb_info->framebuffer);
+	} else if (mtb_info->flags & MULTIBOOT_INFO_FLAG_VBE) {
+			pr_info("have vbe support\n");
+	}
         if (arch_parser_platform(arch_setup_info)) {
                 print("[ERROR] arch parser platform\n");
                 return;
