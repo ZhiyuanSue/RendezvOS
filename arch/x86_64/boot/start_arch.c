@@ -130,13 +130,13 @@ error_t prepare_arch(struct setup_info *arch_setup_info)
                 } else {
                         print("no input cmdline\n");
                 }
-				if (mtb_info->flags & MULTIBOOT_INFO_FLAG_FRAMEBUFFER){
-					pr_info("have framebuffer support\n");
-					fb_console_init(&mtb_info->framebuffer);
-				} else if (mtb_info->flags & MULTIBOOT_INFO_FLAG_VBE){
-					pr_info("have vbe support\n");
-				}
-				pr_info("flags %x\n",mtb_info->flags);
+                if (mtb_info->flags & MULTIBOOT_INFO_FLAG_FRAMEBUFFER) {
+                        pr_info("have framebuffer support\n");
+                        fb_console_init(&mtb_info->framebuffer);
+                } else if (mtb_info->flags & MULTIBOOT_INFO_FLAG_VBE) {
+                        pr_info("have vbe support\n");
+                }
+                pr_info("flags %x\n", mtb_info->flags);
         } else if (mtb_magic == MULTIBOOT2_MAGIC) {
                 print("using multiboot 2\n");
                 struct multiboot2_info *mtb2_info =

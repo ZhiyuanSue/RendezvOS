@@ -75,6 +75,14 @@ multiboot_bss_end_address:
 	.long	_end - kernel_virt_offset
 multiboot_entry_address:
 	.long	multiboot_entry - kernel_virt_offset
+multiboot_video_mode_type:
+	.long	0
+multiboot_video_width:
+	.long	1024
+multiboot_video_height:
+	.long	768
+multiboot_video_depth:
+	.long	32
 multiboot_header_end:
 	/*multiboot 2 header*/
 	/* Align 64 bits boundary. */

@@ -7,9 +7,7 @@ void fb_console_init(struct multiboot_framebuffer* mtb_fb);
 
 #ifdef _X86_64_
 
-
 #else
-
 
 #endif
 
