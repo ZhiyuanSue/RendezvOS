@@ -3,20 +3,20 @@
 #include <common/stdbool.h>
 #include <common/types.h>
 #include <common/align.h>
-#define PAGE_SIZE        0x1000
-#define MIDDLE_PAGE_SIZE 0x200000
-#define MIDDLE_PAGES     0x200
-#define HUGE_PAGE_SIZE   0x40000000
+#define PAGE_SIZE        0x1000ULL
+#define MIDDLE_PAGE_SIZE 0x200000ULL
+#define MIDDLE_PAGES     0x200ULL
+#define HUGE_PAGE_SIZE   0x40000000ULL
 
-#define KiloBytes 0x400
-#define MegaBytes 0x100000
-#define GigaBytes 0x40000000
+#define KiloBytes 0x400ULL
+#define MegaBytes 0x100000ULL
+#define GigaBytes 0x40000000ULL
 
-#define mask_9_bit     0x1ff
-#define L0_INDEX(addr) ((addr >> 39) & mask_9_bit)
-#define L1_INDEX(addr) ((addr >> 30) & mask_9_bit)
-#define L2_INDEX(addr) ((addr >> 21) & mask_9_bit)
-#define L3_INDEX(addr) ((addr >> 12) & mask_9_bit)
+#define mask_9_bit     0x1ffULL
+#define L0_INDEX(addr) (((u64)addr >> 39) & mask_9_bit)
+#define L1_INDEX(addr) (((u64)addr >> 30) & mask_9_bit)
+#define L2_INDEX(addr) (((u64)addr >> 21) & mask_9_bit)
+#define L3_INDEX(addr) (((u64)addr >> 12) & mask_9_bit)
 
 #define L0_entry_addr(entry)      (((u64)(entry.paddr)) << 12)
 #define L1_entry_huge_addr(entry) (((u64)(entry.paddr)) << 30)
@@ -25,10 +25,10 @@
 #define L2_entry_addr(entry)      (((u64)(entry.paddr)) << 12)
 #define L3_entry_addr(entry)      (((u64)(entry.paddr)) << 12)
 
-#define PPN(paddr) (paddr >> 12)
-#define VPN(vaddr) (vaddr >> 12)
-#define PADDR(ppn) ((u64)ppn << 12)
-#define VADDR(vpn) ((u64)vpn << 12)
+#define PPN(p_addr) ((paddr)p_addr >> 12)
+#define VPN(v_addr) ((vaddr)v_addr >> 12)
+#define PADDR(ppn)  ((u64)ppn << 12)
+#define VADDR(vpn)  ((u64)vpn << 12)
 
 enum ENTRY_FLAGS {
         PAGE_ENTRY_NONE = 1 << 0,
