@@ -43,6 +43,7 @@ void cmain(struct setup_info *arch_setup_info)
 	} else if (mtb_info->flags & MULTIBOOT_INFO_FLAG_VBE) {
 			pr_info("have vbe support\n");
 	}
+        fb_map_pages();
         if (arch_parser_platform(arch_setup_info)) {
                 print("[ERROR] arch parser platform\n");
                 return;
