@@ -118,6 +118,9 @@ error_t prepare_arch(struct setup_info *arch_setup_info)
         u32 mtb_magic;
         max_phy_addr_width = arch_setup_info->phy_addr_width;
 
+        /*Remember: we should read the multiboot info before we override them
+        (of courese we can read the memory regions before we set percpu region)
+        */
         mtb_magic = arch_setup_info->multiboot_magic;
         if (mtb_magic == MULTIBOOT_MAGIC) {
                 print("using multiboot 1\n");
