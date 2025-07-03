@@ -43,4 +43,71 @@ static inline bool pci_device_exists(u8 bus, u8 device, u8 func)
         return (vid != 0xFFFF);
 }
 /*MMIO way*/
+
+/*pci header*/
+
+typedef struct {
+    u16 vendor_id;
+    u16 device_id;
+    u16 command;
+    u16 status;
+    u8  revision_id;
+    u8  prog_if;
+    u8  subclass;
+    u8  class_code;
+    u8  cache_line_size;
+    u8  latency_timer;
+    u8  header_type;
+    u8  bist;
+} pci_common_header_t;
+
+// Type 0: 标准设备头部
+typedef struct {
+    pci_common_header_t common;
+    
+    u32 bar[6];
+    u32 cardbus_cis;
+    u16 subsystem_vendor_id;
+    u16 subsystem_id;
+    u32 expansion_rom_addr;
+    u8  capabilities_ptr;
+    u8  reserved[7];
+    u8  interrupt_line;
+    u8  interrupt_pin;
+    u8  min_grant;
+    u8  max_latency;
+} pci_header_type0_t;
+
+// Type 1
+typedef struct {
+    pci_common_header_t common;
+    
+    u32 bar[2];
+    u8  primary_bus;
+    u8  secondary_bus;
+    u8  subordinate_bus;
+    u8  secondary_latency;
+    u16 io_base;
+    u16 io_limit;
+    u16 secondary_status;
+    u16 memory_base;
+    u16 memory_limit;
+    u16 prefetch_memory_base;
+    u16 prefetch_memory_limit;
+    u32 prefetch_base_upper;
+    u32 prefetch_limit_upper;
+    u8  capabilities_ptr;
+    u8  reserved[3];
+    u32 expansion_rom_addr;
+    u8  interrupt_line;
+    u8  interrupt_pin;
+    u16 bridge_control;
+} pci_header_type1_t;
+
+typedef union {
+    pci_common_header_t common;
+    pci_header_type0_t  type0;
+    pci_header_type1_t  type1;
+} pci_header_t;
+
 #endif
