@@ -12,6 +12,8 @@
 !/acpi/**
 !/elf/
 !/elf/**
+!/pci/
+!/pci/**
 *.env
 **/Makefile
 !/Makefile

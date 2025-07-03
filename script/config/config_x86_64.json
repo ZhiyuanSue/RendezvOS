@@ -94,6 +94,18 @@
 			],
 			"path":"modules/elf"
 		},
+		"pci":
+		{
+			"use":true,
+			"features":[
+				"pci"
+			],
+			"depend_module":[
+				"log",
+				"acpi"
+			],
+			"path":"modules/pci"
+		},
 		"RendezvOS_Linux":{
 			"use":true,
 			"features":[

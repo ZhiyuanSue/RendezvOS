@@ -49,4 +49,8 @@
 
 #define _X86_RTC_CMOS_RAM_DATA_ 0x71
 
+/*PCI*/
+#define _X86_PCI_ADDR_REG 0xCF8
+#define _X86_PCI_DATA_REG 0xCFC
+
 #endif
