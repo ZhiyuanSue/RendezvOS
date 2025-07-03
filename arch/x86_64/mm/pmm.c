@@ -63,8 +63,10 @@ static error_t arch_get_memory_regions(struct setup_info *arch_setup_info)
                 {
                         switch (tag->type) {
                         case MULTIBOOT2_TAG_TYPE_MMAP: {
-                                addr_ptr = (((struct multiboot2_tag_mmap *)tag)
-                                                    ->entries);
+                                addr_ptr =
+                                        (vaddr)(((struct multiboot2_tag_mmap *)
+                                                         tag)
+                                                        ->entries);
                                 for_each_multiboot2_mmap(tag, addr_ptr)
                                 {
                                         multiboot_insert_memory_region(mmap);

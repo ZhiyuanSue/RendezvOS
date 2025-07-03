@@ -8,8 +8,8 @@
 /*some bit of cr3*/
 #define CR3_PWT           (1 << 3)
 #define CR3_PCD           (1 << 4)
-#define CR3_ADDR(addr, m) ((((u64)addr >> 12) << 12) & MAXPHYADDR_mask(m))
-#define CR3_PCID(pcid)    (pcid & ((1 << 12) - 1))
+#define CR3_ADDR(addr, m) ((((u64)(addr) >> 12) << 12) & MAXPHYADDR_mask(m))
+#define CR3_PCID(pcid)    ((pcid) & ((1 << 12) - 1))
 
 extern u32 max_phy_addr_width;
 static inline paddr arch_get_current_kernel_vspace_root()

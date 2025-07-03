@@ -2,14 +2,14 @@
 #define _RENDEZVOS_ARCH_PAGE_TABLE_DEF_H_
 
 /*we only use 4K page,and 2M and 1G block*/
-#define PT_DESC_V (1)
+#define PT_DESC_V (1ULL)
 /*descriptor level 0,1,2*/
 #define PT_DESC_BLOCK_OR_TABLE (1ULL << 1)
 /*table*/
-#define PT_DESC_ADDR_MASK (0xfffffffff000)
+#define PT_DESC_ADDR_MASK (0xfffffffff000ULL)
 /*block,no L0 block*/
-#define PT_DESC_L1_BLOCK_ADDR_MASK (0xffffc0000000)
-#define PT_DESC_L2_BLOCK_ADDR_MASK (0xffffffe00000)
+#define PT_DESC_L1_BLOCK_ADDR_MASK (0xffffc0000000ULL)
+#define PT_DESC_L2_BLOCK_ADDR_MASK (0xffffffe00000ULL)
 
 /*descriptor level 3*/
 #define PT_DESC_PAGE (1ULL << 1)
@@ -26,8 +26,8 @@
 /*lower*/
 #define PT_DESC_ATTR_LOWER_NG            (1ULL << 11)
 #define PT_DESC_ATTR_LOWER_AF            (1ULL << 10)
-#define PT_DESC_ATTR_LOWER_SH_MASK       (0x300)
-#define PT_DESC_ATTR_LOWER_AP_MASK       (0xC0)
+#define PT_DESC_ATTR_LOWER_SH_MASK       (0x300ULL)
+#define PT_DESC_ATTR_LOWER_AP_MASK       (0xC0ULL)
 #define PT_DESC_ATTR_LOWER_AP_RO         (1ULL << 7)
 #define PT_DESC_ATTR_LOWER_AP_EL0        (1ULL << 6)
 #define PT_DESC_ATTR_LOWER_NS            (1ULL << 5)
