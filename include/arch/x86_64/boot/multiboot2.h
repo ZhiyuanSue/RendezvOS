@@ -89,6 +89,46 @@ struct multiboot2_tag_mmap {
         struct multiboot2_mmap_entry entries[0];
 } __attribute__((packed));
 
+struct multiboot_tag_framebuffer_common
+{
+  u32 type;
+  u32 size;
+
+  u64 framebuffer_addr;
+  u32 framebuffer_pitch;
+  u32 framebuffer_width;
+  u32 framebuffer_height;
+  u8 framebuffer_bpp;
+#define MULTIBOOT_FRAMEBUFFER_TYPE_INDEXED 0
+#define MULTIBOOT_FRAMEBUFFER_TYPE_RGB     1
+#define MULTIBOOT_FRAMEBUFFER_TYPE_EGA_TEXT     2
+  u8 framebuffer_type;
+  u16 reserved;
+};
+
+struct multiboot_tag_framebuffer
+{
+  struct multiboot_tag_framebuffer_common common;
+
+  union
+  {
+    struct
+    {
+      u16 framebuffer_palette_num_colors;
+      struct multiboot_color framebuffer_palette[0];
+    };
+    struct
+    {
+      u8 framebuffer_red_field_position;
+      u8 framebuffer_red_mask_size;
+      u8 framebuffer_green_field_position;
+      u8 framebuffer_green_mask_size;
+      u8 framebuffer_blue_field_position;
+      u8 framebuffer_blue_mask_size;
+    };
+  };
+};
+
 #define for_each_multiboot2_mmap(tag, addr_ptr)                       \
         for (struct multiboot2_mmap_entry *mmap =                     \
                      (struct multiboot2_mmap_entry *)addr_ptr;        \

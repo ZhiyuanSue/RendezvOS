@@ -12,6 +12,7 @@
 #define multiboot2_header_tag_option	1
 #define multiboot2_header_tag_address	2
 #define multiboot2_header_tag_entry_address	3
+#define multiboot2_header_tag_framebuffer 5
 /*some align*/
 #define	align_2m	0x200000
 #define	align_2m_minus_1	0x1fffff
@@ -111,6 +112,16 @@ multiboot2_entry_address_tag_start:
 	.long	multiboot2_entry_address_tag_end-multiboot2_entry_address_tag_start
 	.long	multiboot_entry - kernel_virt_offset
 multiboot2_entry_address_tag_end:
+
+	.p2align 3
+multiboot2_framebuffer_tag_start:
+	.short	multiboot2_header_tag_framebuffer
+	.short	multiboot2_header_tag_option
+	.long	multiboot2_framebuffer_tag_end-multiboot2_framebuffer_tag_start
+	.long	1920
+	.long	1080
+	.long	32
+multiboot2_framebuffer_tag_end:
 
 	.p2align 3
 multiboot2_end_tag_start:

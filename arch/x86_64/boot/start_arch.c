@@ -133,6 +133,12 @@ error_t prepare_arch(struct setup_info *arch_setup_info)
                 } else {
                         print("no input cmdline\n");
                 }
+                if (mtb_info->flags & MULTIBOOT_INFO_FLAG_FRAMEBUFFER) {
+                        pr_info("have framebuffer support\n");
+                        mtb1_fb_console_init(&mtb_info->framebuffer);
+                } else if (mtb_info->flags & MULTIBOOT_INFO_FLAG_VBE) {
+                        pr_info("have vbe support\n");
+                }
                 pr_info("flags %x\n", mtb_info->flags);
         } else if (mtb_magic == MULTIBOOT2_MAGIC) {
                 print("using multiboot 2\n");
@@ -148,10 +154,16 @@ error_t prepare_arch(struct setup_info *arch_setup_info)
                                       ((struct multiboot2_tag_string *)tag)
                                               ->string);
                         } break;
+                        case MULTIBOOT2_TAG_TYPE_FRAMEBUFFER: {
+                                mtb2_fb_console_init((
+                                        struct multiboot_tag_framebuffer *)tag);
+
+                                break;
                         }
+                        }
+                        if (!have_cmd_line)
+                                print("no input cmdline\n");
                 }
-                if (!have_cmd_line)
-                        print("no input cmdline\n");
         } else {
                 print("not using the multiboot protocol, stop\n");
                 return (-E_RENDEZVOS);
