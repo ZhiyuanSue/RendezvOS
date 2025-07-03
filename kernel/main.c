@@ -35,7 +35,7 @@ void cmain(struct setup_info *arch_setup_info)
                 print("[ERROR] virt mm init error\n");
                 return;
         }
-        fb_map_pages();
+        fb2_map_pages();
         fb2_show();
         if (arch_parser_platform(arch_setup_info)) {
                 print("[ERROR] arch parser platform\n");

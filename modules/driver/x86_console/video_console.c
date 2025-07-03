@@ -23,7 +23,7 @@ void mtb2_fb_console_init(struct multiboot_tag_framebuffer *mtb_fb)
                mtb_fb,
                sizeof(struct multiboot_tag_framebuffer));
 }
-void fb_map_pages()
+void fb1_map_pages()
 {
         void *fb_phy = (void *)(unsigned long)mtb1_fb_value.framebuffer_addr;
         fb = KERNEL_PHY_TO_VIRT(fb_phy);
@@ -41,7 +41,25 @@ void fb_map_pages()
                     &per_cpu(Map_Handler, BSP_ID),
                     NULL);
 }
-void fb_show()
+void fb2_map_pages()
+{
+        void *fb_phy = (void *)(unsigned long)mtb2_fb_value.common.framebuffer_addr;
+        fb = KERNEL_PHY_TO_VIRT(fb_phy);
+        u64 fb_space_page_num = mtb2_fb_value.common.framebuffer_pitch
+                                * mtb2_fb_value.common.framebuffer_height / PAGE_SIZE;
+        for (paddr phy_addr = (paddr)fb_phy, page_num = 0;
+             page_num < fb_space_page_num;
+             phy_addr += PAGE_SIZE, page_num++)
+                map(per_cpu(current_vspace, BSP_ID),
+                    PPN((paddr)(phy_addr)),
+                    VPN(KERNEL_PHY_TO_VIRT((paddr)(phy_addr))),
+                    3,
+                    PAGE_ENTRY_DEVICE | PAGE_ENTRY_GLOBAL | PAGE_ENTRY_READ
+                            | PAGE_ENTRY_VALID | PAGE_ENTRY_WRITE,
+                    &per_cpu(Map_Handler, BSP_ID),
+                    NULL);
+}
+void fb1_show()
 {
         u32 color;
         unsigned i;
