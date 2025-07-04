@@ -12,10 +12,12 @@
 #include <modules/driver/timer/8254.h>
 #include <modules/log/log.h>
 #include <modules/acpi/acpi.h>
+#include <modules/pci/pci.h>
 #include <rendezvos/smp/percpu.h>
 #include <rendezvos/error.h>
 #include <rendezvos/mm/vmm.h>
 #include <rendezvos/mm/nexus.h>
+#include <rendezvos/mm/spmalloc.h>
 #include <rendezvos/trap.h>
 
 extern u32 max_phy_addr_width;
@@ -162,10 +164,26 @@ error_t arch_cpu_info(struct setup_info *arch_setup_info)
         BSP_ID = cpu_info.APICID;
         return 0;
 }
+error_t pci_tree_build_callback(u8 bus, u8 device, u8 func,
+                                const pci_header_t *hdr)
+{
+        pr_info("Found PCI device at %x:%x.%x\n", bus, device, func);
+        pr_info("  Vendor: %x, Device: %x\n",
+                hdr->common.vendor_id,
+                hdr->common.device_id);
+        pr_info("  Class: %x, Subclass: %x, ProgIF: %x\n",
+                hdr->common.class_code,
+                hdr->common.subclass,
+                hdr->common.prog_if);
+        return 0;
+}
 error_t arch_parser_platform(struct setup_info *arch_setup_info)
 {
         error_t e = acpi_init(arch_setup_info->rsdp_addr);
-
+        if (e)
+                goto arch_parser_platform_error;
+        e = pci_scan_all(pci_tree_build_callback);
+arch_parser_platform_error:
         return e;
 }
 error_t start_arch(int cpu_id)

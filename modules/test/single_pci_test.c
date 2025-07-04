@@ -1,7 +1,8 @@
 #include <modules/pci/pci.h>
 #include <modules/test/test.h>
 
-void simple_print_callback(u8 bus, u8 device, u8 func, const pci_header_t* hdr)
+error_t simple_print_callback(u8 bus, u8 device, u8 func,
+                              const pci_header_t* hdr)
 {
         pr_info("Found PCI device at %x:%x.%x\n", bus, device, func);
         pr_info("  Vendor: %x, Device: %x\n",
@@ -60,10 +61,10 @@ void simple_print_callback(u8 bus, u8 device, u8 func, const pci_header_t* hdr)
                         hdr->common.class_code,
                         hdr->common.subclass);
         }
+        return 0;
 }
 
 int test_pci_scan(void)
 {
-        pci_scan_all(simple_print_callback);
-        return 0;
+        return pci_scan_all(simple_print_callback);
 }

@@ -117,8 +117,18 @@ typedef union {
         pci_header_type1_t type1;
 } pci_header_t;
 
-typedef void (*pci_scan_callback)(u8 bus, u8 device, u8 func,
-                                  const pci_header_t* hdr);
-void pci_scan_bus(pci_scan_callback callback, u8 bus);
-void pci_scan_all(pci_scan_callback callback);
+/*for operation system data structure */
+typedef struct pci_dev pci_dev_t;
+
+typedef struct pci_bus pci_bus_t;
+
+struct pci_bus {};
+
+struct pci_dev {};
+
+typedef error_t (*pci_scan_callback)(u8 bus, u8 device, u8 func,
+                                     const pci_header_t* hdr);
+error_t pci_scan_bus(pci_scan_callback callback, u8 bus);
+error_t pci_scan_all(pci_scan_callback callback);
+
 #endif
