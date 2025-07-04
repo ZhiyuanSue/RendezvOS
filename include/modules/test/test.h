@@ -9,8 +9,8 @@
 #else
 #define debug pr_off
 #endif
-#define MAX_SINGLE_TEST_CASE 5
-#define MAX_SMP_TEST_CASE    5
+#define MAX_SINGLE_TEST_CASE 10
+#define MAX_SMP_TEST_CASE    10
 
 void BSP_test();
 void AP_test();
@@ -24,6 +24,7 @@ int nexus_test(void);
 int spmalloc_test(void);
 int elf_read_test(void);
 int task_test(void);
+int test_pci_scan(void);
 
 /*in smp case
 one test function cannot easily be checked
