@@ -1,6 +1,13 @@
 # README
 我试图支持AMD的GPU用于推理和计算，因此，尝试搜集，阅读Linux内核中关于ROCm相关的内容
 
+# 使用虚拟机显卡直通的方式
+相关教程在网上都有，不做赘述，我使用的命令为
+```
+sudo qemu-system-x86_64 -kernel build/kernel.bin  -smp 4 -m 1G -machine q35 -nographic -device vfio-pci,host=03:00.0,multifunction=on -device vfio-pci,host=0000:03:00.1
+```
+需要注意一点，这里必须还有一个音频设备也需要加进去，不然会有问题
+
 # 仓库
 https://github.com/ROCm/ROCK-Kernel-Driver.git
 这下载下来是一个完整的Linux仓库，按照情况，如果要启用AMD的功能，还需要开启AMD相关的内核支持
@@ -53,4 +60,6 @@ amdgpu_device_init
 
 ```
 按照一阶段任务，最重要的是各个ip核的初始化
+
+
 
