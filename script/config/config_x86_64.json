@@ -98,7 +98,7 @@
 		{
 			"use":true,
 			"features":[
-				"pci"
+				"PCI"
 			],
 			"depend_module":[
 				"log",

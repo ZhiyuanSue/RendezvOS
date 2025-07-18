@@ -66,5 +66,9 @@ error_t simple_print_callback(u8 bus, u8 device, u8 func,
 
 int test_pci_scan(void)
 {
+#ifdef PCI
         return pci_scan_all(simple_print_callback);
+#else
+        return 0;
+#endif
 }

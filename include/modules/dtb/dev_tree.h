@@ -11,15 +11,12 @@
 #define _RENDEZVOS_DEV_TREE_H_
 
 #include <common/types.h>
+#include <common/dsa/tree.h>
 struct device_node {
         char* name;
         struct property* property;
-        struct { /*for the tree*/
-                struct device_node* parent;
-                struct device_node* child;
-                struct device_node* sibling;
-        };
-} __attribute__((packed));
+        struct tree_node dev_node;
+};
 extern struct device_node* device_root;
 
 struct property {

@@ -20,11 +20,13 @@ void _print_device_tree(struct device_node* node, int depth)
                 prop = prop->next;
         }
 
-        struct device_node* child = node->child;
+        struct device_node* child = container_of(
+                node->dev_node.child, struct device_node, dev_node);
         while (child) {
                 /*print childs*/
                 _print_device_tree(child, depth + 1);
-                child = child->sibling;
+                child = container_of(
+                        child->dev_node.sibling, struct device_node, dev_node);
         }
         rep_print(depth, '\t');
         pr_info("}\n");
@@ -37,22 +39,11 @@ void print_device_tree(struct device_node* node)
 }
 struct device_node* dev_tree_get_next(struct device_node* node)
 {
+        struct tree_node* next_dev_node = get_next_tree_node(&node->dev_node);
         struct device_node* next = NULL;
-
-        if (node->child) {
-                next = node->child;
-        } else if (node->sibling) {
-                next = node->sibling;
-        } else {
-                next = node;
-                while (next->parent && !next->parent->sibling)
-                        next = next->parent;
-                if (next->parent) {
-                        next = next->parent->sibling;
-                } else { /*this if-else is used for root*/
-                        next = NULL;
-                }
-        }
+        if (next_dev_node)
+                next = container_of(
+                        next_dev_node, struct device_node, dev_node);
         return next;
 }
 /*device node part: search a node*/
@@ -157,13 +148,14 @@ struct device_node* dev_node_get_first_child(struct device_node* node)
 {
         if (!node)
                 return NULL;
-        return node->child;
+        return container_of(node->dev_node.child, struct device_node, dev_node);
 }
 struct device_node* dev_node_get_sibling(struct device_node* node)
 {
         if (!node)
                 return NULL;
-        return node->sibling;
+        return container_of(
+                node->dev_node.sibling, struct device_node, dev_node);
 }
 /*after we find a node, we should read the property*/
 struct property* dev_node_find_property(const struct device_node* node,

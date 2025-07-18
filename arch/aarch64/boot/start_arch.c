@@ -104,8 +104,6 @@ struct device_node *build_device_tree(struct allocator *malloc,
         const char *property_name;
 
         struct device_node *curr_node = NULL;
-        struct device_node *curr_child_node = NULL;
-        struct device_node *head_child_node = NULL;
 
         struct property *curr_property = NULL;
         struct property *head_property = NULL;
@@ -116,9 +114,12 @@ struct device_node *build_device_tree(struct allocator *malloc,
         curr_node = malloc->m_alloc(malloc, sizeof(struct device_node));
         curr_node->name = ch;
         curr_node->property = NULL;
-        curr_node->parent = parent;
-        curr_node->child = NULL;
-        curr_node->sibling = NULL;
+
+        if (parent) {
+                insert_tree_node(&parent->dev_node, &curr_node->dev_node);
+        } else {
+                insert_tree_node(NULL, &curr_node->dev_node);
+        }
 
         fdt_for_each_property_offset(property, fdt, offset)
         {
@@ -148,14 +149,7 @@ struct device_node *build_device_tree(struct allocator *malloc,
 
         fdt_for_each_subnode(node, fdt, offset)
         {
-                curr_child_node = build_device_tree(
-                        malloc, curr_node, fdt, node, depth + 1);
-                if (!curr_node->child) {
-                        curr_node->child = curr_child_node;
-                } else {
-                        head_child_node->sibling = curr_child_node;
-                }
-                head_child_node = curr_child_node;
+                build_device_tree(malloc, curr_node, fdt, node, depth + 1);
         }
         return curr_node;
 }

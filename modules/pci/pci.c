@@ -6,8 +6,10 @@ bool is_pci_bridge(pci_common_header_t *common)
 {
         return common->class_code == 0x06;
 }
-bool pci_bridge_need_scan(pci_common_header_t *common){
-        return common->class_code == 0x06 && (common->subclass == 0x04|| common->subclass == 0x07);
+bool pci_bridge_need_scan(pci_common_header_t *common)
+{
+        return common->class_code == 0x06
+               && (common->subclass == 0x04 || common->subclass == 0x07);
 }
 void configure_pci_bridge_bus(u8 bus, u8 device, u8 func, u8 primary,
                               u8 secondary, u8 subordinate)
@@ -34,10 +36,10 @@ error_t pci_scan_device(pci_scan_callback callback, u8 bus, u8 device, u8 func,
                 u8 new_secondary = next_bus_number++;
                 configure_pci_bridge_bus(
                         bus, device, func, bus, new_secondary, 0xFF);
-                recursion_depth ++;
+                recursion_depth++;
                 u8 bus_before = next_bus_number;
                 e = pci_scan_bus(callback, new_secondary);
-                recursion_depth --;
+                recursion_depth--;
                 u8 new_subordinate = next_bus_number - 1;
 
                 configure_pci_bridge_bus(
