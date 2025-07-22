@@ -4,6 +4,7 @@
 #include <arch/x86_64/io_port.h>
 #include <common/stdbool.h>
 #include <modules/log/log.h>
+#include "pci_tree.h"
 
 /* pci address reg's macros */
 #define PCI_ADDR_REG_ENABLE      (((u32)1) << 31)
@@ -117,18 +118,10 @@ typedef union {
         pci_header_type1_t type1;
 } pci_header_t;
 
-/*for operation system data structure */
-typedef struct pci_dev pci_dev_t;
-
-typedef struct pci_bus pci_bus_t;
-
-struct pci_bus {};
-
-struct pci_dev {};
-
-typedef error_t (*pci_scan_callback)(u8 bus, u8 device, u8 func,
-                                     const pci_header_t* hdr);
-error_t pci_scan_bus(pci_scan_callback callback, u8 bus);
-error_t pci_scan_all(pci_scan_callback callback);
+typedef struct pci_node* (*pci_scan_callback)(u8 bus, u8 device, u8 func,
+                                              const pci_header_t* hdr);
+error_t pci_scan_bus(pci_scan_callback callback, u8 bus,
+                     struct pci_node* parent_pci_tree_node);
+error_t pci_scan_all(pci_scan_callback callback, struct pci_node* pci_root);
 
 #endif

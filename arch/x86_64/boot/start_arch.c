@@ -23,6 +23,7 @@
 extern u32 max_phy_addr_width;
 struct cpuinfo cpu_info = {0};
 int BSP_ID = 0;
+extern struct allocator *kallocator;
 extern struct nexus_node *nexus_root;
 extern struct pseudo_descriptor gdt_desc;
 extern union desc gdt[GDT_SIZE];
@@ -164,25 +165,35 @@ error_t arch_cpu_info(struct setup_info *arch_setup_info)
         BSP_ID = cpu_info.APICID;
         return 0;
 }
-error_t pci_tree_build_callback(u8 bus, u8 device, u8 func,
-                                const pci_header_t *hdr)
+struct pci_node *pci_tree_build_callback(u8 bus, u8 device, u8 func,
+                                         const pci_header_t *hdr)
 {
-        pr_info("Found PCI device at %x:%x.%x\n", bus, device, func);
-        pr_info("  Vendor: %x, Device: %x\n",
-                hdr->common.vendor_id,
-                hdr->common.device_id);
-        pr_info("  Class: %x, Subclass: %x, ProgIF: %x\n",
-                hdr->common.class_code,
-                hdr->common.subclass,
-                hdr->common.prog_if);
-        return 0;
+        struct allocator *malloc = per_cpu(kallocator, BSP_ID);
+        struct pci_node *pci_device_node =
+                malloc->m_alloc(malloc, sizeof(struct pci_node));
+
+        pci_device_node->bus = bus;
+        pci_device_node->device = device;
+        pci_device_node->func = func;
+
+        pci_device_node->vendor_id = hdr->common.vendor_id;
+        pci_device_node->device_id = hdr->common.device_id;
+
+        pci_device_node->class_code = hdr->common.class_code;
+        pci_device_node->subclass = hdr->common.subclass;
+        pci_device_node->prog_if = hdr->common.prog_if;
+
+        return pci_device_node;
 }
 error_t arch_parser_platform(struct setup_info *arch_setup_info)
 {
+        struct allocator *malloc = per_cpu(kallocator, BSP_ID);
         error_t e = acpi_init(arch_setup_info->rsdp_addr);
         if (e)
                 goto arch_parser_platform_error;
-        e = pci_scan_all(pci_tree_build_callback);
+        /*alloc a pci root node without any info*/
+        pci_root = malloc->m_alloc(malloc, sizeof(struct pci_node));
+        e = pci_scan_all(pci_tree_build_callback, pci_root);
 arch_parser_platform_error:
         return e;
 }

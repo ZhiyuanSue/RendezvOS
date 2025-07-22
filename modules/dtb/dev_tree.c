@@ -1,3 +1,4 @@
+#include <modules/dtb/dev_tree.h>
 #include <modules/dtb/dtb.h>
 #include <modules/log/log.h>
 #include <rendezvos/error.h>
@@ -39,7 +40,7 @@ void print_device_tree(struct device_node* node)
 }
 struct device_node* dev_tree_get_next(struct device_node* node)
 {
-        struct tree_node* next_dev_node = get_next_tree_node(&node->dev_node);
+        struct tree_node* next_dev_node = tree_node_get_next(&node->dev_node);
         struct device_node* next = NULL;
         if (next_dev_node)
                 next = container_of(

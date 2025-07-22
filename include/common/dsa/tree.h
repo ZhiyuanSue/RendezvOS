@@ -9,7 +9,11 @@ struct tree_node {
         struct tree_node* last_child;
         struct tree_node* sibling;
 };
-static inline void insert_tree_node(struct tree_node* parent,
+#define for_each_tree_node_child(parent_tree_node_ptr)               \
+        for (struct tree_node* t_node = parent_tree_node_ptr->child; \
+             t_node != NULL;                                         \
+             t_node = t_node->sibling)
+static inline void tree_node_insert(struct tree_node* parent,
                                     struct tree_node* child)
 {
         if (!child) /*no insert node*/
@@ -24,7 +28,7 @@ static inline void insert_tree_node(struct tree_node* parent,
         }
         child->parent = parent;
 }
-static inline struct tree_node* get_next_tree_node(struct tree_node* t_node)
+static inline struct tree_node* tree_node_get_next(struct tree_node* t_node)
 {
         struct tree_node* next = (struct tree_node*)NULL;
 

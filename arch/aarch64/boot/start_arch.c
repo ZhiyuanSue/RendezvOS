@@ -116,9 +116,9 @@ struct device_node *build_device_tree(struct allocator *malloc,
         curr_node->property = NULL;
 
         if (parent) {
-                insert_tree_node(&parent->dev_node, &curr_node->dev_node);
+                tree_node_insert(&parent->dev_node, &curr_node->dev_node);
         } else {
-                insert_tree_node(NULL, &curr_node->dev_node);
+                tree_node_insert(NULL, &curr_node->dev_node);
         }
 
         fdt_for_each_property_offset(property, fdt, offset)

@@ -13,9 +13,9 @@
 #include <common/types.h>
 #include <common/dsa/tree.h>
 struct device_node {
+        struct tree_node dev_node;
         char* name;
         struct property* property;
-        struct tree_node dev_node;
 };
 extern struct device_node* device_root;
 
