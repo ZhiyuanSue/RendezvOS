@@ -2,6 +2,7 @@
 #define _X86_TSS_H_
 #include <common/types.h>
 #include <rendezvos/mm/nexus.h>
+#include <arch/x86_64/desc.h>
 /*
         here we only use ia-32e mode tss
 */

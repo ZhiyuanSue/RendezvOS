@@ -4,10 +4,10 @@
 #include <arch/x86_64/io_port.h>
 #include <common/stdbool.h>
 #include <modules/log/log.h>
-#include "pci_tree.h"
+#include "pci_dev_tree.h"
 
 /* pci address reg's macros */
-#define PCI_ADDR_REG_ENABLE      (((u32)1) << 31)
+#define PCI_ADDR_REG_ENABLE      ((1U) << 31)
 #define PCI_ADDR_REG_BUS_OFF     (16)
 #define PCI_ADDR_REG_BUS_MASK    (0xFF)
 #define PCI_ADDR_REG_DEVICE_OFF  (11)
@@ -118,10 +118,20 @@ typedef union {
         pci_header_type1_t type1;
 } pci_header_t;
 
-typedef struct pci_node* (*pci_scan_callback)(u8 bus, u8 device, u8 func,
-                                              const pci_header_t* hdr);
-error_t pci_scan_bus(pci_scan_callback callback, u8 bus,
-                     struct pci_node* parent_pci_tree_node);
-error_t pci_scan_all(pci_scan_callback callback, struct pci_node* pci_root);
+#define PCI_BASE_ADDRESS_SPACE_MEMORY      0x00
+#define PCI_BASE_ADDRESS_SPACE_IO          0x01
+#define PCI_BASE_ADDRESS_MEM_TYPE_32       0x00
+#define PCI_BASE_ADDRESS_MEM_TYPE_1M       0x02
+#define PCI_BASE_ADDRESS_MEM_TYPE_64       0x04
+#define PCI_BASE_ADDRESS_MEM_TYPE_MASK     0x06
+#define PCI_BASE_ADDRESS_MEM_TYPE_PREFETCH 0x08
+#define PCI_BASE_ADDRESS_MEM_MASK          (~0xfU)
+#define PCI_BASE_ADDRESS_IO_MASK           (~0x3U)
+#define PCI_BASE_ADDRESS_PROBE_MASK        (0xffffffffU)
+/*ROM BAR*/
+#define PCI_ROM_ADDRESS        0x30
+#define PCI_ROM_ADDRESS_ENABLE 0x01
+#define PCI_ROM_ADDRESS_MASK   (~0x7ffU)
+#define PCI_ROM_PROBE_MASK     (0xfffffff0U)
 
 #endif

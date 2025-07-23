@@ -1,4 +1,5 @@
-#include <modules/pci/pci.h>
+#include <modules/pci/pci_ops.h>
+#include <common/string.h>
 int next_bus_number;
 int recursion_depth;
 /*TODO: enable device, alloc irq, configure bar*/
@@ -114,5 +115,95 @@ error_t pci_scan_all(pci_scan_callback callback, struct pci_node *pci_root)
         print("[    PCI start    ]\n");
         print_pci_tree(pci_root, 1);
         print("[    PCI end    ]\n");
+        return 0;
+}
+error_t pci_scan_bar(struct pci_node *pci_dev, const pci_header_t *hdr)
+{
+        u64 bar_offset = 0;
+        u64 last_bar_offset = 0;
+        if (hdr->common.header_type == 0) {
+                bar_offset = (vaddr) & (hdr->type0.bar[0]) - (vaddr)hdr;
+                last_bar_offset = (vaddr) & (hdr->type0.bar[5]) - (vaddr)hdr;
+        } else if (hdr->common.header_type == 1) {
+                bar_offset = (vaddr) & (hdr->type1.bar[0]) - (vaddr)hdr;
+                last_bar_offset = (vaddr) & (hdr->type0.bar[1]) - (vaddr)hdr;
+        }
+        memset(pci_dev->bar,
+               '\0',
+               sizeof(struct pci_resource) * MAX_PCI_BAR_NUMBER);
+        for (u64 offset = bar_offset; offset <= last_bar_offset; offset += 4) {
+                int bar_number = (offset - bar_offset) / 4;
+                u32 origin_val, probe_val;
+                u64 size = 0;
+                origin_val = pci_config_read_IO_dword(
+                        pci_dev->bus, pci_dev->device, pci_dev->func, offset);
+
+                if (!origin_val)
+                        continue;
+                pci_dev->bar[bar_number].flags |= PCI_RESOURCE_EXIST;
+
+                pci_config_write_IO_dword(pci_dev->bus,
+                                          pci_dev->device,
+                                          pci_dev->func,
+                                          offset,
+                                          PCI_BASE_ADDRESS_PROBE_MASK);
+                probe_val = pci_config_read_IO_dword(
+                        pci_dev->bus, pci_dev->device, pci_dev->func, offset);
+                pci_config_write_IO_dword(pci_dev->bus,
+                                          pci_dev->device,
+                                          pci_dev->func,
+                                          offset,
+                                          origin_val);
+
+                if (probe_val & PCI_BASE_ADDRESS_SPACE_IO) {
+                        pci_dev->bar[bar_number].flags |= PCI_RESOURCE_IO;
+                        size = probe_val & PCI_BASE_ADDRESS_IO_MASK;
+                } else {
+                        pci_dev->bar[bar_number].flags |= PCI_RESOURCE_MEM;
+                        if (probe_val & PCI_BASE_ADDRESS_MEM_TYPE_PREFETCH) {
+                                pci_dev->bar[bar_number].flags |=
+                                        PCI_RESOURCE_PREFETCH;
+                        }
+                        if ((probe_val & PCI_BASE_ADDRESS_MEM_TYPE_MASK)
+                            == PCI_BASE_ADDRESS_MEM_TYPE_64) {
+                                pci_dev->bar[bar_number].flags |=
+                                        PCI_RESOURCE_MEM_64;
+                        }
+                        size = probe_val & PCI_BASE_ADDRESS_MEM_MASK;
+                }
+                size = size & (~(size - 1));
+                pci_dev->bar[bar_number].len = size = ~size + 1;
+
+                if (pci_dev->bar[bar_number].flags & PCI_RESOURCE_MEM_64) {
+                        offset += 4;
+                        u32 origin_val_hi, probe_val_hi;
+                        u64 size_hi;
+
+                        origin_val_hi =
+                                pci_config_read_IO_dword(pci_dev->bus,
+                                                         pci_dev->device,
+                                                         pci_dev->func,
+                                                         offset);
+
+                        pci_config_write_IO_dword(pci_dev->bus,
+                                                  pci_dev->device,
+                                                  pci_dev->func,
+                                                  offset,
+                                                  PCI_BASE_ADDRESS_PROBE_MASK);
+                        probe_val_hi = pci_config_read_IO_dword(pci_dev->bus,
+                                                                pci_dev->device,
+                                                                pci_dev->func,
+                                                                offset);
+                        pci_config_write_IO_dword(pci_dev->bus,
+                                                  pci_dev->device,
+                                                  pci_dev->func,
+                                                  offset,
+                                                  origin_val_hi);
+                        size_hi = ((u64)(probe_val_hi) << 32) | size;
+                        size_hi = size_hi & (~(size_hi - 1));
+                        pci_dev->bar[bar_number].len = ~size_hi + 1;
+                }
+                /*TODO:ROM dev*/
+        }
         return 0;
 }

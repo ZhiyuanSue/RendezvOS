@@ -12,7 +12,7 @@
 #include <modules/driver/timer/8254.h>
 #include <modules/log/log.h>
 #include <modules/acpi/acpi.h>
-#include <modules/pci/pci.h>
+#include <modules/pci/pci_ops.h>
 #include <rendezvos/smp/percpu.h>
 #include <rendezvos/error.h>
 #include <rendezvos/mm/vmm.h>
@@ -172,16 +172,21 @@ struct pci_node *pci_tree_build_callback(u8 bus, u8 device, u8 func,
         struct pci_node *pci_device_node =
                 malloc->m_alloc(malloc, sizeof(struct pci_node));
 
+        /*set bus device func info*/
         pci_device_node->bus = bus;
         pci_device_node->device = device;
         pci_device_node->func = func;
 
+        /*set the other info*/
         pci_device_node->vendor_id = hdr->common.vendor_id;
         pci_device_node->device_id = hdr->common.device_id;
 
         pci_device_node->class_code = hdr->common.class_code;
         pci_device_node->subclass = hdr->common.subclass;
         pci_device_node->prog_if = hdr->common.prog_if;
+
+        /*set the BAR resources*/
+        pci_scan_bar(pci_device_node, hdr);
 
         return pci_device_node;
 }

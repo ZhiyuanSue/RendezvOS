@@ -1,4 +1,4 @@
-#include <modules/pci/pci_tree.h>
+#include <modules/pci/pci_dev_tree.h>
 #include <modules/log/log.h>
 
 struct pci_node* pci_root;
@@ -27,6 +27,19 @@ void print_pci_tree(struct pci_node* pci_parent_node, int level)
                       pci_device->class_code,
                       pci_device->subclass,
                       pci_device->prog_if);
+                
+                for (int i = 0; i < MAX_PCI_BAR_NUMBER; i++) {
+                        
+                        if (pci_device->bar[i].flags & PCI_RESOURCE_EXIST) {
+                                for (int j = 0; j < level; j++)
+                                        print("  ");
+                                print("  BAR%d start: 0x%x, len: 0x%x, flags:0x%x\n",
+                                      i,
+                                      pci_device->bar[i].start_addr,
+                                      pci_device->bar[i].len,
+                                      pci_device->bar[i].flags);
+                        }
+                }
                 print_pci_tree(pci_device, level + 1);
         }
 }

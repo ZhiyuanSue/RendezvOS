@@ -3,7 +3,18 @@
 
 #include <common/types.h>
 #include <common/dsa/tree.h>
+#define MAX_PCI_BAR_NUMBER 6
 
+struct pci_resource {
+        u64 start_addr;
+        u64 len;
+#define PCI_RESOURCE_EXIST    0x1
+#define PCI_RESOURCE_IO       0x2
+#define PCI_RESOURCE_MEM      0x4
+#define PCI_RESOURCE_MEM_64   0x8
+#define PCI_RESOURCE_PREFETCH 0x10
+        u64 flags;
+};
 struct pci_node {
         struct tree_node dev_node;
         /*id info*/
@@ -18,6 +29,12 @@ struct pci_node {
         u8 subclass;
         u8 class_code;
         u8 header_type;
+        /*resources*/
+        u32 usable_resource_number;
+        struct pci_resource bar[MAX_PCI_BAR_NUMBER];
+
+        /*device state*/
+        u32 pci_device_flags;
 };
 extern struct pci_node* pci_root;
 
