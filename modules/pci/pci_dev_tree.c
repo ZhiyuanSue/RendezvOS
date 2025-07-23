@@ -10,7 +10,6 @@ void print_pci_tree(struct pci_node* pci_parent_node, int level)
         {
                 struct pci_node* pci_device =
                         container_of(t_node, struct pci_node, dev_node);
-                print("pci device ptr is %x\n", t_node);
                 for (int i = 0; i < level; i++)
                         print("  ");
                 print("Found PCI device at %x:%x.%x\n",

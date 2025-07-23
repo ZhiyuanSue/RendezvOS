@@ -40,7 +40,7 @@ struct pci_node *pci_scan_device(pci_scan_callback callback, u8 bus, u8 device,
                 u8 new_secondary = next_bus_number++;
 
                 /*need to generate some data structure*/
-                pci_device = callback(bus, device, 0, header);
+                pci_device = callback(bus, device, func, header);
 
                 configure_pci_bridge_bus(
                         bus, device, func, bus, new_secondary, 0xFF);
@@ -60,7 +60,7 @@ struct pci_node *pci_scan_device(pci_scan_callback callback, u8 bus, u8 device,
                 // pci_device-> xx = xx;
 
         } else {
-                pci_device = callback(bus, device, 0, header);
+                pci_device = callback(bus, device, func, header);
         }
         return pci_device;
 }
