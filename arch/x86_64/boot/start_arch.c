@@ -171,6 +171,7 @@ struct pci_node *pci_tree_build_callback(u8 bus, u8 device, u8 func,
         struct allocator *malloc = per_cpu(kallocator, BSP_ID);
         struct pci_node *pci_device_node =
                 malloc->m_alloc(malloc, sizeof(struct pci_node));
+        memset(pci_device_node, '\0', sizeof(struct pci_node));
 
         /*set bus device func info*/
         pci_device_node->bus = bus;

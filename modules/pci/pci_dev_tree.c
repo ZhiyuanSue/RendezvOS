@@ -42,3 +42,39 @@ void print_pci_tree(struct pci_node* pci_parent_node, int level)
                 print_pci_tree(pci_device, level + 1);
         }
 }
+struct pci_node* pci_get_device_dfs(u16 vendor_id, u16 device_id,
+                                    struct pci_node* start_node)
+{
+        if (vendor_id == start_node->vendor_id
+            && device_id == start_node->device_id) {
+                return start_node;
+        }
+        struct tree_node* parent_t_node = &start_node->dev_node;
+        for_each_tree_node_child(parent_t_node)
+        {
+                struct pci_node* res = pci_get_device_dfs(
+                        vendor_id,
+                        device_id,
+                        container_of(t_node, struct pci_node, dev_node));
+                if (res)
+                        return res;
+        }
+        return NULL;
+}
+struct pci_node* pci_get_device(u16 vendor_id, u16 device_id,
+                                struct pci_node* start_node)
+{
+        if (!start_node)
+                start_node = pci_root;
+        struct pci_node* res =
+                pci_get_device_dfs(vendor_id, device_id, start_node);
+        if (res)
+                res->ref_count += 1;
+        return res;
+}
+void pci_put_device(struct pci_node* pci_device)
+{
+        pci_device->ref_count -= 1;
+        if (pci_device->ref_count < 0)
+                pci_device->ref_count = 0;
+}

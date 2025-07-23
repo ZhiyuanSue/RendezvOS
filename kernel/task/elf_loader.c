@@ -17,7 +17,9 @@ vaddr generate_user_stack(VSpace *vs)
                                      vs,
                                      page_flags)
                 + page_num * PAGE_SIZE - 8;
-        /*TODO: the kernel might pass argc and argv to the task*/
+        /*TODO: the kernel might pass argc and argv to the task,
+        for some system like linux, it might pass the Auxiliary Vector and other
+        things*/
         return user_sp;
 }
 error_t elf_Phdr_64_load_handle(vaddr elf_start, Elf64_Phdr *phdr_ptr,

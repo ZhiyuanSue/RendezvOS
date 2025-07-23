@@ -1,8 +1,9 @@
 #include <modules/pci/pci_ops.h>
 #include <common/string.h>
+#include <common/bit.h>
 int next_bus_number;
 int recursion_depth;
-/*TODO: enable device, alloc irq, configure bar*/
+/*TODO: enable device, alloc irq*/
 bool is_pci_bridge(pci_common_header_t *common)
 {
         return common->class_code == 0x06;
@@ -41,11 +42,13 @@ struct pci_node *pci_scan_device(pci_scan_callback callback, u8 bus, u8 device,
 
                 /*need to generate some data structure*/
                 pci_device = callback(bus, device, func, header);
+                if (!pci_device)
+                        return pci_device;
 
                 configure_pci_bridge_bus(
                         bus, device, func, bus, new_secondary, 0xFF);
                 recursion_depth++;
-                u8 bus_before = next_bus_number;
+                // u8 bus_before = next_bus_number;
                 e = pci_scan_bus(callback, new_secondary, pci_device);
                 recursion_depth--;
                 u8 new_subordinate = next_bus_number - 1;
@@ -55,9 +58,8 @@ struct pci_node *pci_scan_device(pci_scan_callback callback, u8 bus, u8 device,
                 if (e)
                         return NULL;
 
-                /*TODO:we changed the pci bridge configure info, and we need to
-                 * update it*/
-                // pci_device-> xx = xx;
+                pci_tree_set_pci_bus_info(
+                        pci_device, bus, new_secondary, new_subordinate);
 
         } else {
                 pci_device = callback(bus, device, func, header);
@@ -67,6 +69,10 @@ struct pci_node *pci_scan_device(pci_scan_callback callback, u8 bus, u8 device,
 error_t pci_scan_bus(pci_scan_callback callback, u8 bus,
                      struct pci_node *parent_pci_tree_node)
 {
+        if (recursion_depth > PCI_MAX_RECURSION_DEPTH) {
+                print("[ERROR] PCI recursion depth is tooo deep\n");
+                return -1;
+        }
         struct pci_node *pci_device = NULL;
         for (int device = 0; device < PCI_MAX_DEVICE; device++) {
                 if (!pci_device_exists(bus, device, 0))
@@ -117,6 +123,23 @@ error_t pci_scan_all(pci_scan_callback callback, struct pci_node *pci_root)
         print("[    PCI end    ]\n");
         return 0;
 }
+bool pci_bar_resource_assigned(struct pci_node *pci_dev, int bar_number)
+{
+        /*TODO:we directly reuse the bios assignment,
+        but sometimes we need to assign it by ourself,
+        we need to check the value of origin val*/
+        return true;
+}
+int pci_assign_irq(struct pci_node *pci_dev)
+{
+        return -1;
+}
+u64 pci_assign_bar_resource(struct pci_node *pci_dev, int bar_number)
+{
+        /*TODO:we directly reuse the bios assignment,
+        but sometimes we need to assign it by ourself*/
+        return 0;
+}
 error_t pci_scan_bar(struct pci_node *pci_dev, const pci_header_t *hdr)
 {
         u64 bar_offset = 0;
@@ -128,9 +151,6 @@ error_t pci_scan_bar(struct pci_node *pci_dev, const pci_header_t *hdr)
                 bar_offset = (vaddr) & (hdr->type1.bar[0]) - (vaddr)hdr;
                 last_bar_offset = (vaddr) & (hdr->type0.bar[1]) - (vaddr)hdr;
         }
-        memset(pci_dev->bar,
-               '\0',
-               sizeof(struct pci_resource) * MAX_PCI_BAR_NUMBER);
         for (u64 offset = bar_offset; offset <= last_bar_offset; offset += 4) {
                 int bar_number = (offset - bar_offset) / 4;
                 u32 origin_val, probe_val;
@@ -138,7 +158,7 @@ error_t pci_scan_bar(struct pci_node *pci_dev, const pci_header_t *hdr)
                 origin_val = pci_config_read_IO_dword(
                         pci_dev->bus, pci_dev->device, pci_dev->func, offset);
 
-                if (!origin_val)
+                if (!origin_val || origin_val == 0xffffffff)
                         continue;
                 pci_dev->bar[bar_number].flags |= PCI_RESOURCE_EXIST;
 
@@ -149,6 +169,9 @@ error_t pci_scan_bar(struct pci_node *pci_dev, const pci_header_t *hdr)
                                           PCI_BASE_ADDRESS_PROBE_MASK);
                 probe_val = pci_config_read_IO_dword(
                         pci_dev->bus, pci_dev->device, pci_dev->func, offset);
+                if (!pci_bar_resource_assigned(pci_dev, bar_number))
+                        origin_val =
+                                pci_assign_bar_resource(pci_dev, bar_number);
                 pci_config_write_IO_dword(pci_dev->bus,
                                           pci_dev->device,
                                           pci_dev->func,
@@ -200,6 +223,9 @@ error_t pci_scan_bar(struct pci_node *pci_dev, const pci_header_t *hdr)
                                                                 pci_dev->device,
                                                                 pci_dev->func,
                                                                 offset);
+                        if (!pci_bar_resource_assigned(pci_dev, bar_number))
+                                origin_val_hi = pci_assign_bar_resource(
+                                        pci_dev, bar_number);
                         pci_config_write_IO_dword(pci_dev->bus,
                                                   pci_dev->device,
                                                   pci_dev->func,
@@ -214,4 +240,77 @@ error_t pci_scan_bar(struct pci_node *pci_dev, const pci_header_t *hdr)
                 /*TODO:ROM dev*/
         }
         return 0;
+}
+static error_t pci_enable_command(struct pci_node *pci_device)
+{
+        u8 cmd_offset = offsetof(pci_common_header_t, command);
+        u16 command = (u16)pci_config_read_IO_dword(pci_device->bus,
+                                                    pci_device->device,
+                                                    pci_device->func,
+                                                    cmd_offset);
+        command = set_mask(command, PCI_COMMAND_IO);
+        command = set_mask(command, PCI_COMMAND_MEMORY);
+        command = set_mask(command, PCI_COMMAND_MASTER);
+        pci_config_write_IO_dword(pci_device->bus,
+                                  pci_device->device,
+                                  pci_device->func,
+                                  cmd_offset,
+                                  command);
+        return 0;
+}
+static error_t pci_disable_command(struct pci_node *pci_device)
+{
+        u8 cmd_offset = offsetof(pci_common_header_t, command);
+        u16 command = (u16)pci_config_read_IO_dword(pci_device->bus,
+                                                    pci_device->device,
+                                                    pci_device->func,
+                                                    cmd_offset);
+
+        command = clear_mask(command, PCI_COMMAND_IO);
+        command = clear_mask(command, PCI_COMMAND_MEMORY);
+        command = clear_mask(command, PCI_COMMAND_MASTER);
+        pci_config_write_IO_dword(pci_device->bus,
+                                  pci_device->device,
+                                  pci_device->func,
+                                  cmd_offset,
+                                  command);
+        return 0;
+}
+/*capabilities funcs*/
+
+/*power part*/
+error_t pci_power_up(struct pci_node *pci_device)
+{
+        return 0;
+}
+
+error_t pci_power_down(struct pci_node *pci_device)
+{
+        return 0;
+}
+
+error_t pci_enable_device(struct pci_node *pci_device)
+{
+        error_t e = 0;
+        /*check the ref count*/
+        if (pci_device->ref_count > 1)
+                return -1;
+        /*power up the device*/
+        if ((e = pci_power_up(pci_device)))
+                goto fail_power;
+        /*set the command*/
+        if ((e = pci_enable_command(pci_device)))
+                goto fail_command;
+
+        /*set the irq*/
+        if ((e = pci_assign_irq(pci_device)))
+                goto fail_irq;
+        return 0;
+        /*error handler*/
+fail_irq:
+        pci_disable_command(pci_device);
+fail_command:
+        pci_power_down(pci_device);
+fail_power:
+        return e;
 }

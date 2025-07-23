@@ -16,9 +16,10 @@
 #define PCI_ADDR_REG_FUNC_MASK   (0x7)
 #define PCI_ADDR_REG_OFF_MASK    (0xFC)
 
-#define PCI_MAX_BUS      256
-#define PCI_MAX_DEVICE   32
-#define PCI_MAX_FUNCTION 8
+#define PCI_MAX_BUS             256
+#define PCI_MAX_DEVICE          32
+#define PCI_MAX_FUNCTION        8
+#define PCI_MAX_RECURSION_DEPTH 16
 
 #define SET_PCI_ADDR_REG_VAL(bus, device, func, offset)                     \
         (PCI_ADDR_REG_ENABLE                                                \
@@ -128,10 +129,16 @@ typedef union {
 #define PCI_BASE_ADDRESS_MEM_MASK          (~0xfU)
 #define PCI_BASE_ADDRESS_IO_MASK           (~0x3U)
 #define PCI_BASE_ADDRESS_PROBE_MASK        (0xffffffffU)
+
 /*ROM BAR*/
 #define PCI_ROM_ADDRESS        0x30
 #define PCI_ROM_ADDRESS_ENABLE 0x01
 #define PCI_ROM_ADDRESS_MASK   (~0x7ffU)
 #define PCI_ROM_PROBE_MASK     (0xfffffff0U)
+
+/*PCI COMMAND*/
+#define PCI_COMMAND_IO     0x1
+#define PCI_COMMAND_MEMORY 0x2
+#define PCI_COMMAND_MASTER 0x4
 
 #endif
