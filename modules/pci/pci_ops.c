@@ -134,7 +134,7 @@ error_t pci_scan_bar(struct pci_node *pci_dev, const pci_header_t *hdr)
         for (u64 offset = bar_offset; offset <= last_bar_offset; offset += 4) {
                 int bar_number = (offset - bar_offset) / 4;
                 u32 origin_val, probe_val;
-                u64 size = 0;
+                u32 size = 0;
                 origin_val = pci_config_read_IO_dword(
                         pci_dev->bus, pci_dev->device, pci_dev->func, offset);
 
@@ -171,13 +171,19 @@ error_t pci_scan_bar(struct pci_node *pci_dev, const pci_header_t *hdr)
                         }
                         size = probe_val & PCI_BASE_ADDRESS_MEM_MASK;
                 }
-                size = size & (~(size - 1));
-                pci_dev->bar[bar_number].len = size = ~size + 1;
+                size = ~size + 1;
+                pci_dev->bar[bar_number].len = size;
+                pci_dev->bar[bar_number].start_addr = origin_val;
 
                 if (pci_dev->bar[bar_number].flags & PCI_RESOURCE_MEM_64) {
                         offset += 4;
+                        if (offset > last_bar_offset) {
+                                pr_error(
+                                        "[ERROR] PCI find a 64 BAR but out of range\n");
+                                return -1;
+                        }
                         u32 origin_val_hi, probe_val_hi;
-                        u64 size_hi;
+                        u32 size_hi;
 
                         origin_val_hi =
                                 pci_config_read_IO_dword(pci_dev->bus,
@@ -199,9 +205,11 @@ error_t pci_scan_bar(struct pci_node *pci_dev, const pci_header_t *hdr)
                                                   pci_dev->func,
                                                   offset,
                                                   origin_val_hi);
-                        size_hi = ((u64)(probe_val_hi) << 32) | size;
-                        size_hi = size_hi & (~(size_hi - 1));
-                        pci_dev->bar[bar_number].len = ~size_hi + 1;
+                        size_hi = ~probe_val_hi + 1;
+                        pci_dev->bar[bar_number].len = ((u64)size_hi << 32)
+                                                       | size;
+                        pci_dev->bar[bar_number].start_addr =
+                                (((u64)origin_val_hi) << 32) | origin_val;
                 }
                 /*TODO:ROM dev*/
         }

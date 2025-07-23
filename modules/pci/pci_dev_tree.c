@@ -10,6 +10,7 @@ void print_pci_tree(struct pci_node* pci_parent_node, int level)
         {
                 struct pci_node* pci_device =
                         container_of(t_node, struct pci_node, dev_node);
+                print("pci device ptr is %x\n", t_node);
                 for (int i = 0; i < level; i++)
                         print("  ");
                 print("Found PCI device at %x:%x.%x\n",
@@ -27,9 +28,8 @@ void print_pci_tree(struct pci_node* pci_parent_node, int level)
                       pci_device->class_code,
                       pci_device->subclass,
                       pci_device->prog_if);
-                
+
                 for (int i = 0; i < MAX_PCI_BAR_NUMBER; i++) {
-                        
                         if (pci_device->bar[i].flags & PCI_RESOURCE_EXIST) {
                                 for (int j = 0; j < level; j++)
                                         print("  ");
