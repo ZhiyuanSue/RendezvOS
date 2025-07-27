@@ -6,14 +6,7 @@
 DEFINE_PER_CPU(struct TSS, cpu_tss);
 void prepare_per_cpu_tss(struct nexus_node* nexus_root)
 {
-        vaddr stack_bottom = (vaddr)get_free_page(2,
-                                                  ZONE_NORMAL,
-                                                  KERNEL_VIRT_OFFSET,
-                                                  nexus_root,
-                                                  0,
-                                                  PAGE_ENTRY_NONE)
-                             + 2 * PAGE_SIZE;
-        set_ist(&per_cpu(cpu_tss, nexus_root->nexus_id), 1, stack_bottom);
+        set_rsp(&per_cpu(cpu_tss, nexus_root->nexus_id), 0, boot_stack_bottom);
         union desc_selector tmp_sel = {
                 .rpl = 0,
                 .index = GDT_TSS_LOWER_INDEX,

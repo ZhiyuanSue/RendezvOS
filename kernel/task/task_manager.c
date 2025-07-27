@@ -34,18 +34,28 @@ void print_sche_info(Thread_Base* old, Thread_Base* new)
 {
         if (old->name) {
                 if (new->name) {
-                        pr_info("[SCHE INFO] old %s new %s\n",
+                        pr_info("[CPU %d SCHE INFO] old %s new %s\n",
+                                percpu(cpu_number),
                                 old->name,
                                 new->name);
                 } else {
-                        pr_info("[SCHED INFO] old %s new %x\n", old->name, new);
+                        pr_info("[CPU %d SCHED INFO] old %s new %x\n",
+                                percpu(cpu_number),
+                                old->name,
+                                new);
                 }
 
         } else {
                 if (new->name) {
-                        pr_info("[SCHED INFO] old %x new %s\n", old, new->name);
+                        pr_info("[CPU %d SCHED INFO] old %x new %s\n",
+                                percpu(cpu_number),
+                                old,
+                                new->name);
                 } else {
-                        pr_info("[SCHED INFO] old %x new %x\n", old, new);
+                        pr_info("[CPU %d SCHED INFO] old %x new %x\n",
+                                percpu(cpu_number),
+                                old,
+                                new);
                 }
         }
 }

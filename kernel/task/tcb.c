@@ -23,7 +23,7 @@ Task_Manager* init_proc()
         create_init_thread(root_task);
         create_idle_thread(root_task);
         if (percpu(init_thread_ptr) && percpu(idle_thread_ptr)) {
-                percpu(core_tm)->current_thread = idle_thread_ptr;
+                percpu(core_tm)->current_thread = percpu(idle_thread_ptr);
                 /*manually set the status of the thread*/
                 thread_set_status(thread_status_active_ready,
                                   percpu(init_thread_ptr));

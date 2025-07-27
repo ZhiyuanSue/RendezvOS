@@ -35,7 +35,7 @@ error_t create_idle_thread(Tcb_Base* root_task)
                 pr_error("[Error] create idle thread fail\n");
                 return -E_RENDEZVOS;
         }
-        thread_set_name(init_thread_name, idle_t);
+        thread_set_name(idle_thread_name, idle_t);
         error_t e = thread_join(root_task, idle_t);
         return e;
 }
