@@ -10,6 +10,8 @@
 extern struct nexus_node* nexus_root;
 error_t load_elf_Phdr_64(vaddr elf_start, Elf64_Phdr* phdr_ptr, VSpace* vs);
 error_t run_elf_program(vaddr elf_start, vaddr elf_end, VSpace* vs);
-error_t gen_task_from_elf(vaddr elf_start, vaddr elf_end);
+typedef void* (*elf_task_set_user_stack_func)(void* user_sp_ptr);
+error_t gen_task_from_elf(vaddr elf_start, vaddr elf_end,
+                          elf_task_set_user_stack_func func);
 
 #endif

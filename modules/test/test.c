@@ -5,8 +5,8 @@ char test_thread_name[] = "test_thread";
 void BSP_test()
 {
 #ifdef TEST
-        single_cpu_test();
         multi_cpu_test();
+        single_cpu_test();
 #endif
 }
 void AP_test()

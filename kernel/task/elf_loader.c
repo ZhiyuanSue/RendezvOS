@@ -3,7 +3,7 @@
 #include <arch/x86_64/sys_ctrl.h>
 #include <arch/x86_64/msr.h>
 
-vaddr generate_user_stack(VSpace *vs)
+vaddr generate_user_stack(VSpace *vs, elf_task_set_user_stack_func func)
 {
         /*alloc the user stack for this thread*/
         int page_num = thread_ustack_page_num;
@@ -17,9 +17,19 @@ vaddr generate_user_stack(VSpace *vs)
                                      vs,
                                      page_flags)
                 + page_num * PAGE_SIZE - 8;
-        /*TODO: the kernel might pass argc and argv to the task,
-        for some system like linux, it might pass the Auxiliary Vector and other
-        things*/
+        if (func) {
+                /*the kernel might pass argc and argv to the task,
+                for some system like linux, it might pass the Auxiliary Vector
+                and other things, we use a callback function to deal with it*/
+                func(&user_sp);
+        } else {
+                /*even we put nothing on the stack ,we should put an argc on it
+                 * (typically should be 1, but of course we do not put an argv
+                 * list, so just set 0 as default),otherwise a page fault will
+                 * happen*/
+                user_sp -= 8;
+                *((u64 *)user_sp) = 0;
+        }
         return user_sp;
 }
 error_t elf_Phdr_64_load_handle(vaddr elf_start, Elf64_Phdr *phdr_ptr,
@@ -116,7 +126,8 @@ error_t run_elf_program(vaddr elf_start, vaddr elf_end, VSpace *vs)
         return 0;
 }
 /*we must load all the elf file into kernel memory before we use this function*/
-error_t gen_task_from_elf(vaddr elf_start, vaddr elf_end)
+error_t gen_task_from_elf(vaddr elf_start, vaddr elf_end,
+                          elf_task_set_user_stack_func func)
 {
         error_t e = 0;
         Tcb_Base *elf_task = new_task();
@@ -146,7 +157,7 @@ error_t gen_task_from_elf(vaddr elf_start, vaddr elf_end)
 
         Thread_Base *elf_thread = create_thread(
                 (void *)run_elf_program, 3, elf_start, elf_end, elf_task->vs);
-        vaddr user_sp = generate_user_stack(elf_task->vs);
+        vaddr user_sp = generate_user_stack(elf_task->vs,func);
         arch_set_thread_user_sp(&elf_thread->ctx, user_sp);
 
         thread_set_flags(THREAD_FLAG_USER, elf_thread);

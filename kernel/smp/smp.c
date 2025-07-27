@@ -36,5 +36,6 @@ void start_secondary_cpu(struct setup_info *arch_setup_info)
         create_test_thread(false);
         schedule(percpu(core_tm));
 #endif
+        pr_info("[ CPU%d ] idle\n", current_cpu_id);
         cpu_idle();
 }
