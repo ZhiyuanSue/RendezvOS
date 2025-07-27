@@ -20,7 +20,7 @@ int task_test(void)
                 error_t e = gen_task_from_elf(app_start, app_end, NULL);
                 if (e)
                         continue;
-                schedule(percpu(core_tm));
+                // schedule(percpu(core_tm));
         }
         return 0;
 }
