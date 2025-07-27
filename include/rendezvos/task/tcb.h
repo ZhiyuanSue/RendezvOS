@@ -66,6 +66,7 @@ extern u64 thread_kstack_page_num;
                 struct list_entry sched_thread_list; \
         };
 #define THREAD_COMMON                                   \
+        char* name;                                     \
         i64 tid;                                        \
         u64 flags;                                      \
         Tcb_Base* belong_tcb;                           \
@@ -122,6 +123,9 @@ error_t create_init_thread(Tcb_Base* root_task);
 error_t create_idle_thread(Tcb_Base* root_task);
 
 Thread_Base* create_thread(void* __func, int nr_parameter, ...);
+error_t delete_thread(Thread_Base* thread);
+error_t delete_task(Tcb_Base* tcb);
+
 static inline void thread_set_flags(u64 flags, Thread_Base* thread)
 {
         thread->flags = flags;
@@ -133,6 +137,10 @@ static inline u64 thread_get_status(Thread_Base* thread)
 static inline void thread_set_status(u64 status, Thread_Base* thread)
 {
         thread->status = status;
+}
+static inline void thread_set_name(char* name, Thread_Base* thread)
+{
+        thread->name = name;
 }
 error_t thread_join(Tcb_Base* task, Thread_Base* thread);
 void list_all_threads(Task_Manager* tm);

@@ -4,6 +4,8 @@
 DEFINE_PER_CPU(Thread_Base*, init_thread_ptr);
 DEFINE_PER_CPU(Thread_Base*, idle_thread_ptr);
 /* This is the idle thread function*/
+char init_thread_name[] = "init_thread";
+char idle_thread_name[] = "idle_thread";
 void idle_thread()
 {
         while (1) {
@@ -22,6 +24,7 @@ error_t create_init_thread(Tcb_Base* root_task)
         init_t->kstack_bottom = percpu(boot_stack_bottom);
         thread_set_status(thread_status_running, init_t); /*init thread is the
                                                              running thread*/
+        thread_set_name(init_thread_name, init_t);
         return 0;
 }
 error_t create_idle_thread(Tcb_Base* root_task)
@@ -32,6 +35,7 @@ error_t create_idle_thread(Tcb_Base* root_task)
                 pr_error("[Error] create idle thread fail\n");
                 return -E_RENDEZVOS;
         }
+        thread_set_name(init_thread_name, idle_t);
         error_t e = thread_join(root_task, idle_t);
         return e;
 }

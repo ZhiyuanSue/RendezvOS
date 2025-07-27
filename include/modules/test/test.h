@@ -14,6 +14,8 @@
 
 void BSP_test();
 void AP_test();
+error_t create_test_thread(bool is_bsp_test);
+
 void single_cpu_test(void);
 void multi_cpu_test(void);
 

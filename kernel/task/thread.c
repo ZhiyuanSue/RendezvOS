@@ -70,6 +70,16 @@ Thread_Base* create_thread(void* __func, int nr_parameter, ...)
         va_end(arg_list);
         return thread;
 }
+error_t delete_thread(Thread_Base* thread)
+{
+        /*TODO*/
+        return 0;
+}
+error_t delete_task(Tcb_Base* tcb)
+{
+        /*TODO*/
+        return 0;
+}
 error_t thread_join(Tcb_Base* task, Thread_Base* thread)
 {
         error_t res = 0;

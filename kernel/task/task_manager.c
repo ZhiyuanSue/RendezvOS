@@ -1,6 +1,7 @@
 #include <rendezvos/task/tcb.h>
 #include <rendezvos/smp/percpu.h>
 #include <rendezvos/sync/spin_lock.h>
+#include <modules/log/log.h>
 extern struct allocator* kallocator;
 extern Thread_Base* init_thread_ptr;
 extern Thread_Base* idle_thread_ptr;
@@ -29,12 +30,32 @@ void choose_schedule(Task_Manager* tm)
 {
         tm->scheduler = round_robin_schedule;
 }
+void print_sche_info(Thread_Base* old, Thread_Base* new)
+{
+        if (old->name) {
+                if (new->name) {
+                        pr_info("[SCHE INFO] old %s new %s\n",
+                                old->name,
+                                new->name);
+                } else {
+                        pr_info("[SCHED INFO] old %s new %x\n", old->name, new);
+                }
+
+        } else {
+                if (new->name) {
+                        pr_info("[SCHED INFO] old %x new %s\n", old, new->name);
+                } else {
+                        pr_info("[SCHED INFO] old %x new %x\n", old, new);
+                }
+        }
+}
 void schedule(Task_Manager* tm)
 {
         if (!tm)
                 return;
         Thread_Base* curr = tm->current_thread;
         tm->current_thread = tm->scheduler(tm);
+        print_sche_info(curr, tm->current_thread);
 
         if ((tm->current_thread->flags) & THREAD_FLAG_USER) {
                 /*

@@ -52,7 +52,8 @@ void cmain(struct setup_info *arch_setup_info)
         main_init();
         start_smp(arch_setup_info);
 #ifdef TEST
-        BSP_test();
+        create_test_thread(true);
+        schedule(percpu(core_tm));
 #endif
         arch_shutdown();
 }
