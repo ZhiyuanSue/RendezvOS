@@ -1,22 +1,22 @@
 #include <modules/test/test.h>
 #include <rendezvos/task/tcb.h>
 
-char test_thread_name[] = "test_thread";
 void BSP_test()
 {
-#ifdef TEST
+        #ifdef TEST
         single_cpu_test();
         multi_cpu_test();
-#endif
+        #endif
         schedule(percpu(core_tm));
 }
 void AP_test()
 {
-#ifdef TEST
+        #ifdef TEST
         multi_cpu_test();
-#endif
+        #endif
         schedule(percpu(core_tm));
 }
+char test_thread_name[] = "test_thread";
 error_t create_test_thread(bool is_bsp_test)
 {
         Thread_Base* test_t;
