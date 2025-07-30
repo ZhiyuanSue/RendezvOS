@@ -1,6 +1,5 @@
 #ifndef _RENDEZVOS_BARRIER_H_
 #define _RENDEZVOS_BARRIER_H_
-#define barrier() __asm__ __volatile__("" : : : "memory")
 #ifdef _AARCH64_
 #include <arch/aarch64/sync/barrier.h>
 #elif defined _LOONGARCH_
