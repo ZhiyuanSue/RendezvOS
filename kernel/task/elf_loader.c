@@ -157,7 +157,7 @@ error_t gen_task_from_elf(vaddr elf_start, vaddr elf_end,
 
         Thread_Base *elf_thread = create_thread(
                 (void *)run_elf_program, 3, elf_start, elf_end, elf_task->vs);
-        vaddr user_sp = generate_user_stack(elf_task->vs,func);
+        vaddr user_sp = generate_user_stack(elf_task->vs, func);
         arch_set_thread_user_sp(&elf_thread->ctx, user_sp);
 
         thread_set_flags(THREAD_FLAG_USER, elf_thread);

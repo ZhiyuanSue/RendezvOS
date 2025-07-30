@@ -8,5 +8,4 @@
 
 /*a lock free implement*/
 
-
 #endif

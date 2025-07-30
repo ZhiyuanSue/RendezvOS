@@ -3,17 +3,17 @@
 
 void BSP_test()
 {
-        #ifdef TEST
+#ifdef TEST
         single_cpu_test();
         multi_cpu_test();
-        #endif
+#endif
         schedule(percpu(core_tm));
 }
 void AP_test()
 {
-        #ifdef TEST
+#ifdef TEST
         multi_cpu_test();
-        #endif
+#endif
         schedule(percpu(core_tm));
 }
 char test_thread_name[] = "test_thread";

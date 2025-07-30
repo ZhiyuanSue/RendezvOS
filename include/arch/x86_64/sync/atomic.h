@@ -24,16 +24,16 @@ static inline uint64_t atomic64_exchange(volatile uint64_t *addr,
         return oldval;
 }
 
-static inline u64 atomic64_load(volatile const u64* ptr)
+static inline u64 atomic64_load(volatile const u64 *ptr)
 {
         u64 value = *ptr;
         barrier();
         return value;
 }
 
-static inline void atomic64_store(volatile u64* ptr,u64 value)
+static inline void atomic64_store(volatile u64 *ptr, u64 value)
 {
         barrier();
-        *ptr=value;
+        *ptr = value;
 }
 #endif

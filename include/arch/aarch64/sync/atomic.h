@@ -10,7 +10,7 @@ static inline uint64_t atomic64_cas(volatile uint64_t *addr, uint64_t expected,
 {
         uint64_t oldval;
         uint64_t result;
-        dsb(SY);
+        dmb(ISH);
 
         __asm__ volatile("atomic64_cas: ldxr %0, [%2]\n"
                          "   cmp %0, %3\n"
@@ -21,7 +21,7 @@ static inline uint64_t atomic64_cas(volatile uint64_t *addr, uint64_t expected,
                          : "=&r"(oldval), "=&r"(result)
                          : "r"(addr), "r"(expected), "r"(newval)
                          : "memory", "cc");
-        dsb(SY);
+        dmb(ISH);
         return oldval;
 }
 
@@ -29,18 +29,18 @@ static inline uint64_t atomic64_exchange(volatile uint64_t *addr,
                                          uint64_t newval)
 {
         uint64_t oldval, result;
-        dsb(SY);
+        dmb(ISH);
         __asm__ volatile("atomic64_exchange: ldxr %0, [%2]\n"
                          "   stxr %w1, %3, [%2]\n"
                          "   cbnz %w1, atomic64_exchange\n"
                          : "=&r"(oldval), "=&r"(result)
                          : "r"(addr), "r"(newval)
                          : "memory");
-        dsb(SY);
+        dmb(ISH);
         return oldval;
 }
 
-static inline u64 atomic64_load(volatile const u64* ptr)
+static inline u64 atomic64_load(volatile const u64 *ptr)
 {
         u64 value = *ptr;
         barrier();
@@ -48,10 +48,10 @@ static inline u64 atomic64_load(volatile const u64* ptr)
         return value;
 }
 
-static inline void atomic64_store(volatile u64* ptr,u64 value)
+static inline void atomic64_store(volatile u64 *ptr, u64 value)
 {
         barrier();
         dmb(ISH);
-        *ptr=value;
+        *ptr = value;
 }
 #endif
