@@ -103,7 +103,6 @@ void generate_pmm_data(paddr buddy_phy_start, paddr buddy_phy_end)
                              addr_iter += size_in_this_order) {
                                 index = IDX_FROM_PPN(order, PPN(addr_iter));
                                 pages[index].flags |= PAGE_FRAME_AVALIABLE;
-                                pages[index].index = index;
                                 INIT_LIST_HEAD(&pages[index].page_list);
                         }
                 }
@@ -120,19 +119,17 @@ void clean_pmm_region(paddr pmm_data_phy_start, paddr pmm_data_phy_end)
 static void pmm_init_zones(void)
 {
         struct buddy_zone *zone;
-        u32 index;
-        struct page_frame *page;
 
         /*init the zones,remember there might have more then one zone*/
         for (int mem_zone = 0; mem_zone < ZONE_NR_MAX; ++mem_zone) {
                 zone = &(buddy_pmm.zone[mem_zone]);
                 switch (mem_zone) {
+                        /*TODO:if we need more zones ,we can define zone upper
+                         * and lower addr*/
                 case ZONE_NORMAL:
                         zone->zone_lower_addr = 0;
                         zone->zone_upper_addr =
                                 buddy_pmm.avaliable_phy_addr_end;
-                        // pr_info("avaliable phy addr end 0x%x\n",
-                        //         zone->zone_upper_addr);
                         break;
                 default:
                         break;
@@ -145,48 +142,34 @@ static void pmm_init_zones(void)
                         INIT_LIST_HEAD(&zone->avaliable_frame[order].page_list);
                         zone->zone_total_pages =
                                 zone->zone_total_avaliable_pages = 0;
-                }
 
-                for (paddr addr_iter = 0;
-                     addr_iter < buddy_pmm.avaliable_phy_addr_end;
-                     addr_iter += (PAGE_SIZE << BUDDY_MAXORDER)) {
-                        index = IDX_FROM_PPN(BUDDY_MAXORDER, PPN(addr_iter));
-                        page = &(GET_ORDER_PAGES(BUDDY_MAXORDER)[index]);
-                        if (page->flags & PAGE_FRAME_AVALIABLE) {
-                                if (addr_iter >= buddy_pmm.zone[ZONE_NORMAL]
-                                                         .zone_lower_addr
-                                    && addr_iter < buddy_pmm.zone[ZONE_NORMAL]
-                                                           .zone_upper_addr) {
-                                        buddy_pmm.zone[ZONE_NORMAL]
-                                                .zone_total_avaliable_pages +=
+                        struct page_frame *header =
+                                GET_HEAD_PTR(mem_zone, order);
+                        u64 total_page_frames =
+                                (zone->zone_upper_addr - zone->zone_lower_addr)
+                                / (PAGE_SIZE << order);
+                        for (u64 index = 0; index < total_page_frames;
+                             index++) {
+                                header[index].index = index;
+                                if (order == BUDDY_MAXORDER) {
+                                        if (header[index].flags
+                                            & PAGE_FRAME_AVALIABLE) {
+                                                zone->zone_total_avaliable_pages +=
+                                                        1 << BUDDY_MAXORDER;
+                                                /*link the list*/
+                                                list_add_head(
+                                                        &header[index].page_list,
+                                                        &zone->avaliable_frame
+                                                                 [BUDDY_MAXORDER]
+                                                                         .page_list);
+                                        }
+                                        zone->zone_total_pages +=
                                                 1 << BUDDY_MAXORDER;
                                 }
                         }
-                        buddy_pmm.zone[ZONE_NORMAL].zone_total_pages +=
-                                1 << BUDDY_MAXORDER;
                 }
         }
 
-        /*link the list*/
-        for (paddr addr_iter = 0; addr_iter < buddy_pmm.avaliable_phy_addr_end;
-             addr_iter += (PAGE_SIZE << BUDDY_MAXORDER)) {
-                index = IDX_FROM_PPN(BUDDY_MAXORDER, PPN(addr_iter));
-                page = &(GET_ORDER_PAGES(BUDDY_MAXORDER)[index]);
-                if (page->flags & PAGE_FRAME_AVALIABLE) {
-                        if (addr_iter >= buddy_pmm.zone[ZONE_NORMAL]
-                                                 .zone_lower_addr
-                            && addr_iter
-                                       < buddy_pmm.zone[ZONE_NORMAL]
-                                                 .zone_upper_addr) { /*zone
-                                                                        normal*/
-                                list_add_head(
-                                        &page->page_list,
-                                        &buddy_pmm.zone[ZONE_NORMAL]
-                                                 .avaliable_frame[BUDDY_MAXORDER]
-                                                 .page_list);
-                        }
-                }
-        }
         return;
 }
 
