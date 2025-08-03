@@ -254,10 +254,6 @@ i64 pmm_alloc_zone(int alloc_order, int zone_number)
             cannot run into while so tmp_order-1 >= 0, and it have a child list
         */
         while (tmp_order > alloc_order) {
-                avaliable_header = &zone->avaliable_frame[tmp_order].page_list;
-                if (avaliable_header == avaliable_header->next)
-                        return (-E_RENDEZVOS);
-
                 del_node = container_of(
                         avaliable_header->next, struct page_frame, page_list);
                 child_order_avaliable_header =
@@ -277,10 +273,10 @@ i64 pmm_alloc_zone(int alloc_order, int zone_number)
                               child_order_avaliable_header);
                 list_add_head(&right_child->page_list,
                               child_order_avaliable_header);
+                avaliable_header = child_order_avaliable_header;
                 tmp_order -= 1;
         }
         /*third,try to del the node at the head of the alloc order list*/
-        avaliable_header = &zone->avaliable_frame[tmp_order].page_list;
 
         del_node = container_of(
                 avaliable_header->next, struct page_frame, page_list);
