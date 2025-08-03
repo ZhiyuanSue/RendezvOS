@@ -117,6 +117,32 @@ here we define the per_cpu part plus buddy as extra part
 
 不仅仅如此，我在实践过程中发现，还需要在del head的时候更新链表的头节点指针，以及在add head的时候也需要更新（注意更新头节点指针和做删除以及add的顺序）
 
+
+## 物理内存分配器的改版设计
+在原始的设计中，我尽可能地压缩了需要的内存
+```
+struct page_frame {
+        u64 flags : 2;
+        u64 shared_count : 6;
+        u64 prev : 28;
+        u64 next : 28;
+} __attribute__((packed));
+```
+从节约内存的角度来说，这样确实不错，不过不代表这样是合理的，节约内存的代价是，我需要将prev和next通过一些复杂的地址转换，变为对应的数据结构，而这在代码实现上并不够直观。
+
+所以让我给出新的buddy实现吧
+```
+struct page_frame {
+		u32 index;
+		u32 flags;
+		u64 ref_count;
+		struct page_frame* prev;
+		struct page_frame* next;
+};
+```
+在这么改写之后，我们就能够使用一个struct list_entry去链接整个物理地址空间。
+当然，一口气吃不成一个胖子，从设计上来说，还有更多的设计，比如切分为多个链表等等操作。不过，我们第一步，只需要改写page_frame，并给出新的结构体定义即可，其他的，如根据zone划分为多个链表的工作，可以之后再做。
+
 # 虚拟内存的处理
 最开始我以为需要vma结构体进行管理，并实现了红黑树，但是，后来我意识到，只有在用户使用的空间中，需要进行如此管理，而在内核使用的的空间中，则无需如此。这是个恒等映射即可。
 
