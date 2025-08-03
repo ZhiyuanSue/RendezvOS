@@ -2,6 +2,7 @@
 #include <rendezvos/error.h>
 #include <rendezvos/mm/buddy_pmm.h>
 #include <common/string.h>
+#include <common/limits.h>
 
 struct buddy buddy_pmm;
 extern struct memory_regions m_regions;
@@ -33,6 +34,11 @@ static void calculate_avaliable_phy_addr_end(void)
         }
         buddy_pmm.avaliable_phy_addr_end =
                 ROUND_DOWN(buddy_pmm.avaliable_phy_addr_end, MIDDLE_PAGE_SIZE);
+        if (buddy_pmm.avaliable_phy_addr_end > RENDEZVOS_MAX_MEMORY_SIZE) {
+                print("[ PMM ] Too large phy memory, but Rendezvos only use 0x%x Bytes\n",
+                      RENDEZVOS_MAX_MEMORY_SIZE);
+                buddy_pmm.avaliable_phy_addr_end = RENDEZVOS_MAX_MEMORY_SIZE;
+        }
 }
 u64 calculate_pmm_space(void)
 {

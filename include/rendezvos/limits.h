@@ -6,6 +6,7 @@
 #include <common/stddef.h>
 #include <common/types.h>
 #define RENDEZVOS_MAX_MEMORY_REGIONS 128
+#define RENDEZVOS_MAX_MEMORY_SIZE    0xC00000000
 
 #ifndef NR_CPUS
 #define RENDEZVOS_MAX_CPU_NUMBER 128
