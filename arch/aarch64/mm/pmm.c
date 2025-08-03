@@ -115,7 +115,7 @@ void arch_init_pmm(struct setup_info *arch_setup_info)
 
         print("[ DTB_DATA\t@\t< 0x%x , 0x%x >]\n",
               ROUND_DOWN((vaddr)dtb_header_ptr, MIDDLE_PAGE_SIZE),
-              ROUND_UP((vaddr)dtb_header_ptr + MIDDLE_PAGE_SIZE * 2,
+              ROUND_UP((vaddr)dtb_header_ptr + MIDDLE_PAGE_SIZE,
                        MIDDLE_PAGE_SIZE));
 
         per_cpu_phy_start = per_cpu_phy_end =

@@ -107,4 +107,19 @@ void boot_map_pg_table(u64 kernel_start_addr, u64 kernel_end_addr,
                           L0_table_paddr,
                           PT_DESC_V | PT_DESC_BLOCK_OR_TABLE
                                   | PT_DESC_ATTR_LOWER_AF);
+        /*mov the dtb data behind the end of the kernel*/
+        u8 *dst_dtb_paddr =
+                (u8 *)ROUND_UP(kernel_end_page + uart_len, MIDDLE_PAGE_SIZE);
+        u8 *src_dtb_paddr = (u8 *)setup_info_paddr->dtb_ptr;
+        setup_info_paddr->dtb_ptr = (u64)dst_dtb_paddr;
+        /*we need to consider the order of memcpy*/
+        if (dst_dtb_paddr < src_dtb_paddr) {
+                for (int iter = 0; iter < MIDDLE_PAGE_SIZE; iter++)
+                        *dst_dtb_paddr++ = *src_dtb_paddr++;
+        } else if (dst_dtb_paddr > src_dtb_paddr) {
+                dst_dtb_paddr += MIDDLE_PAGE_SIZE;
+                src_dtb_paddr += MIDDLE_PAGE_SIZE;
+                for (int iter = 0; iter < MIDDLE_PAGE_SIZE; iter++)
+                        *dst_dtb_paddr-- = *src_dtb_paddr--;
+        }
 }

@@ -9,15 +9,15 @@ void _print_device_tree(struct device_node* node, int depth)
         /*print the device tree below node*/
         /*print this node*/
         rep_print(depth, '\t');
-        pr_info("%s{\n", node->name);
-        // pr_info("type:%s\n", node->type);
+        print("%s{\n", node->name);
+        // print("type:%s\n", node->type);
         /*print this node's property*/
         struct property* prop = node->property;
         while (prop) {
                 rep_print(depth + 1, '\t');
-                pr_info("%s\t:\t", prop->name);
+                print("%s\t:\t", prop->name);
                 print_property_value(prop->name, prop->data, prop->len);
-                pr_info("\n");
+                print("\n");
                 prop = prop->next;
         }
 
@@ -30,7 +30,7 @@ void _print_device_tree(struct device_node* node, int depth)
                         child->dev_node.sibling, struct device_node, dev_node);
         }
         rep_print(depth, '\t');
-        pr_info("}\n");
+        print("}\n");
 }
 void print_device_tree(struct device_node* node)
 {

@@ -53,7 +53,11 @@ static void map_dtb(struct setup_info *arch_setup_info)
         /*
             map the dtb, using the linux boot protocol, which define that:
             the dtb must be 8 byte align, and less then 2m
-            as it haven't defined that dtb must 2m align, we must alloc 4m
+            as it haven't defined that dtb must 2m align
+
+            we have memcpy at boot map stage,
+            and we can sure that now the dtb data is 2m align,
+            so we just need to map only one 2m ,not 4m now
         */
         vaddr = ROUND_UP(arch_setup_info->map_end_virt_addr, MIDDLE_PAGE_SIZE);
         paddr = ROUND_DOWN(arch_setup_info->dtb_ptr, MIDDLE_PAGE_SIZE);
@@ -61,15 +65,11 @@ static void map_dtb(struct setup_info *arch_setup_info)
                                   PAGE_ENTRY_GLOBAL | PAGE_ENTRY_HUGE
                                           | PAGE_ENTRY_READ | PAGE_ENTRY_VALID);
         arch_set_L2_entry(paddr, vaddr, (union L2_entry *)&L2_table, flags);
-        vaddr += MIDDLE_PAGE_SIZE;
-        paddr += MIDDLE_PAGE_SIZE;
-        arch_set_L2_entry(paddr, vaddr, (union L2_entry *)&L2_table, flags);
         offset = vaddr - paddr;
         arch_setup_info->boot_dtb_header_base_addr =
                 arch_setup_info->dtb_ptr + offset;
         arch_setup_info->map_end_virt_addr =
-                arch_setup_info->boot_dtb_header_base_addr
-                + MIDDLE_PAGE_SIZE * 2;
+                arch_setup_info->boot_dtb_header_base_addr + MIDDLE_PAGE_SIZE;
 }
 
 error_t prepare_arch(struct setup_info *arch_setup_info)

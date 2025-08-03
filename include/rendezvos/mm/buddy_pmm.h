@@ -8,8 +8,8 @@
 /*for buddy in linux, this number is 10, but I think the page table will map a
  * 2Mb page, which need the order 9*/
 
-#define IDX_FROM_PPN(order, ppn)           ((u64)(ppn) >> (order))
-#define PPN_FROM_IDX(order, idx)           ((idx) << (order))
+#define IDX_FROM_PPN(order, ppn) ((u64)(ppn) >> (order))
+#define PPN_FROM_IDX(order, idx) ((idx) << (order))
 
 struct page_frame {
 #define PAGE_FRAME_ALLOCED   (1 << 0)
