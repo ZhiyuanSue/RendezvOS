@@ -45,10 +45,6 @@ struct buddy {
         struct buddy_zone zone[ZONE_NR_MAX];
         paddr avaliable_phy_addr_end;
 };
-#define GET_AVALI_HEAD_PTR(zone_n, order) \
-        (buddy_pmm.zone[zone_n].avaliable_frame[order])
-#define GET_HEAD_PTR(zone_n, order) \
-        (buddy_pmm.zone[zone_n].zone_head_frame[order])
 #define GET_ORDER_PAGES(order) (buddy_pmm.buckets[order].pages)
 
 // get the pages pmm manager need

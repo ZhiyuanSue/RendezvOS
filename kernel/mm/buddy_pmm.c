@@ -144,7 +144,7 @@ static void pmm_init_zones(void)
                                 zone->zone_total_avaliable_pages = 0;
 
                         struct page_frame *header =
-                                GET_HEAD_PTR(mem_zone, order);
+                                zone->zone_head_frame[order];
                         u64 total_page_frames =
                                 (zone->zone_upper_addr - zone->zone_lower_addr)
                                 / (PAGE_SIZE << order);
@@ -210,7 +210,7 @@ static inline error_t mark_childs(int zone_number, int order, u64 index)
 {
         struct page_frame *del_node;
 
-        del_node = &(GET_HEAD_PTR(zone_number, order)[index]);
+        del_node = &(buddy_pmm.zone[zone_number].zone_head_frame[order])[index];
         if (order < 0)
                 return (0);
 
@@ -231,12 +231,12 @@ i64 pmm_alloc_zone(int alloc_order, int zone_number)
         struct page_frame *child_order_header, *del_node, *left_child,
                 *right_child;
         struct list_entry *avaliable_header, *child_order_avaliable_header;
+        struct buddy_zone *zone = &buddy_pmm.zone[zone_number];
         find_an_order = false;
         tmp_order = alloc_order;
         /*first,try to find an order have at least one node to alloc*/
         for (; tmp_order <= BUDDY_MAXORDER; tmp_order++) {
-                avaliable_header =
-                        &GET_AVALI_HEAD_PTR(zone_number, tmp_order).page_list;
+                avaliable_header = &zone->avaliable_frame[tmp_order].page_list;
                 if (avaliable_header != avaliable_header->next) {
                         find_an_order = true;
                         break;
@@ -254,17 +254,15 @@ i64 pmm_alloc_zone(int alloc_order, int zone_number)
             cannot run into while so tmp_order-1 >= 0, and it have a child list
         */
         while (tmp_order > alloc_order) {
-                avaliable_header =
-                        &GET_AVALI_HEAD_PTR(zone_number, tmp_order).page_list;
+                avaliable_header = &zone->avaliable_frame[tmp_order].page_list;
                 if (avaliable_header == avaliable_header->next)
                         return (-E_RENDEZVOS);
 
                 del_node = container_of(
                         avaliable_header->next, struct page_frame, page_list);
                 child_order_avaliable_header =
-                        &GET_AVALI_HEAD_PTR(zone_number, tmp_order - 1)
-                                 .page_list;
-                child_order_header = GET_HEAD_PTR(zone_number, tmp_order - 1);
+                        &zone->avaliable_frame[tmp_order - 1].page_list;
+                child_order_header = zone->zone_head_frame[tmp_order - 1];
                 left_child = &child_order_header[del_node->index << 1];
                 right_child = &child_order_header[(del_node->index << 1) + 1];
 
@@ -282,8 +280,7 @@ i64 pmm_alloc_zone(int alloc_order, int zone_number)
                 tmp_order -= 1;
         }
         /*third,try to del the node at the head of the alloc order list*/
-        avaliable_header =
-                &GET_AVALI_HEAD_PTR(zone_number, tmp_order).page_list;
+        avaliable_header = &zone->avaliable_frame[tmp_order].page_list;
 
         del_node = container_of(
                 avaliable_header->next, struct page_frame, page_list);
@@ -339,17 +336,16 @@ static bool inline ppn_inrange(u32 ppn, int *zone_number)
 }
 static error_t pmm_free_one(i64 ppn)
 {
-        int tmp_order, zone_number;
+        int tmp_order = 0, zone_number = 0;
         u64 index, buddy_index;
         struct list_entry *avaliable_header;
         struct page_frame *buddy_node, *insert_node, *header;
-        tmp_order = zone_number = 0;
+        struct buddy_zone *zone = &buddy_pmm.zone[zone_number];
         /*try to insert the node and try to merge*/
         while (tmp_order <= BUDDY_MAXORDER) {
                 index = IDX_FROM_PPN(tmp_order, ppn);
-                avaliable_header =
-                        &GET_AVALI_HEAD_PTR(zone_number, tmp_order).page_list;
-                header = GET_HEAD_PTR(zone_number, tmp_order);
+                avaliable_header = &zone->avaliable_frame[tmp_order].page_list;
+                header = zone->zone_head_frame[tmp_order];
                 buddy_index = (index >> 1) << 1;
                 buddy_index = (buddy_index == index) ? (buddy_index + 1) :
                                                        (buddy_index);
@@ -401,7 +397,7 @@ error_t pmm_free(i64 ppn, size_t page_number)
 
                 /*check whether this page is shared, and if it is shared,just
                  * check*/
-                header = GET_HEAD_PTR(zone_number, 0);
+                header = buddy_pmm.zone[zone_number].zone_head_frame[0];
                 insert_node = &(header[ppn + page_count]);
                 if (insert_node->ref_count != 0) {
                         /*TODO*/
