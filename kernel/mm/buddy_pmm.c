@@ -178,21 +178,33 @@ void pmm_init(struct setup_info *arch_setup_info)
         arch_init_pmm(arch_setup_info);
         pmm_init_zones();
 }
-static inline int calculate_alloc_order(size_t page_number)
+static inline u32 log2_of_next_power_of_two(u32 n)
 {
-        int alloc_order;
-        u64 size_in_this_order;
-
-        alloc_order = 0;
-        for (int order = 0; order <= BUDDY_MAXORDER; ++order) {
-                size_in_this_order = (1 << order);
-                if (size_in_this_order >= page_number) {
-                        alloc_order = order;
-                        break;
-                }
+        if (n == 0)
+                return 0;
+        n--;
+        u32 exponent = 0;
+        if (n >> 16) {
+                exponent += 16;
+                n >>= 16;
         }
-
-        return (alloc_order);
+        if (n >> 8) {
+                exponent += 8;
+                n >>= 8;
+        }
+        if (n >> 4) {
+                exponent += 4;
+                n >>= 4;
+        }
+        if (n >> 2) {
+                exponent += 2;
+                n >>= 2;
+        }
+        if (n >> 1) {
+                exponent += 1;
+                n >>= 1;
+        }
+        return exponent + n;
 }
 static inline error_t mark_childs(int zone_number, int order, u64 index)
 {
@@ -214,21 +226,12 @@ static inline error_t mark_childs(int zone_number, int order, u64 index)
 }
 i64 pmm_alloc_zone(int alloc_order, int zone_number)
 {
-        int tmp_order;
         bool find_an_order;
-        // u64 index;
-        struct page_frame *child_order_header;
-        struct list_entry *avaliable_header;
-        struct list_entry *child_order_avaliable_header;
-        struct page_frame *del_node;
-        struct page_frame *left_child, *right_child;
-        child_order_avaliable_header = NULL;
-        avaliable_header = NULL;
-        child_order_header = NULL;
-        left_child = NULL;
+        int tmp_order;
+        struct page_frame *child_order_header, *del_node, *left_child,
+                *right_child;
+        struct list_entry *avaliable_header, *child_order_avaliable_header;
         find_an_order = false;
-        del_node = NULL;
-        right_child = NULL;
         tmp_order = alloc_order;
         /*first,try to find an order have at least one node to alloc*/
         for (; tmp_order <= BUDDY_MAXORDER; tmp_order++) {
@@ -298,9 +301,8 @@ i64 pmm_alloc_zone(int alloc_order, int zone_number)
 }
 i64 pmm_alloc(size_t page_number, enum zone_type zone_number)
 {
-        int alloc_order;
+        u32 alloc_order;
 
-        alloc_order = 0;
         /*have we used too many physical memory*/
         if (page_number < 0)
                 return (0);
@@ -316,7 +318,7 @@ i64 pmm_alloc(size_t page_number, enum zone_type zone_number)
                 return (-E_RENDEZVOS);
 
         /*calculate the upper 2^n size*/
-        alloc_order = calculate_alloc_order(page_number);
+        alloc_order = log2_of_next_power_of_two(page_number);
         return (pmm_alloc_zone(alloc_order, zone_number));
 }
 static bool inline ppn_inrange(u32 ppn, int *zone_number)
@@ -337,19 +339,11 @@ static bool inline ppn_inrange(u32 ppn, int *zone_number)
 }
 static error_t pmm_free_one(i64 ppn)
 {
-        struct page_frame *buddy_node;
-
         int tmp_order, zone_number;
-        struct list_entry *avaliable_header;
-        struct page_frame *insert_node;
-        struct page_frame *header;
-        avaliable_header = NULL;
-        tmp_order = 0;
-        header = NULL;
         u64 index, buddy_index;
-        zone_number = 0;
-        insert_node = NULL;
-        buddy_node = NULL;
+        struct list_entry *avaliable_header;
+        struct page_frame *buddy_node, *insert_node, *header;
+        tmp_order = zone_number = 0;
         /*try to insert the node and try to merge*/
         while (tmp_order <= BUDDY_MAXORDER) {
                 index = IDX_FROM_PPN(tmp_order, ppn);
@@ -388,19 +382,16 @@ static error_t pmm_free_one(i64 ppn)
 }
 error_t pmm_free(i64 ppn, size_t page_number)
 {
-        int alloc_order;
+        u32 alloc_order;
         int free_one_result;
         int zone_number;
         struct page_frame *header;
         struct page_frame *insert_node;
 
-        alloc_order = 0;
-        free_one_result = 0;
-        zone_number = 0;
         if (ppn == -E_RENDEZVOS)
                 return (-E_RENDEZVOS);
 
-        alloc_order = calculate_alloc_order(page_number);
+        alloc_order = log2_of_next_power_of_two(page_number);
         for (int page_count = 0; page_count < (1 << alloc_order);
              page_count++) {
                 if (ppn_inrange(ppn + page_count, &zone_number) == false) {
