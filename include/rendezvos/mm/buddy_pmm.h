@@ -12,7 +12,6 @@
 #define PPN_FROM_IDX(order, idx)           (idx << order)
 #define BUCKET_FRAME_FROM_PPN(bucket, ppn) (bucket.pages[IDX_FROM_PPN(ppn)])
 
-
 struct page_frame {
 #define PAGE_FRAME_ALLOCED   (1 << 0)
 #define PAGE_FRAME_AVALIABLE (1 << 1)
@@ -51,7 +50,6 @@ struct buddy {
 #define GET_HEAD_PTR(zone_n, order) \
         (buddy_pmm.zone[zone_n].zone_head_frame[order])
 #define GET_ORDER_PAGES(order) (buddy_pmm.buckets[order].pages)
-
 
 // get the pages pmm manager need
 u64 calculate_pmm_space(void);

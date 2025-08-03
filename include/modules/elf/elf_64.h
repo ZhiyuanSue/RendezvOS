@@ -61,8 +61,8 @@ typedef struct {
         Elf64_Sxword r_addend; /* Constant part of expression */
 } Elf64_Rela;
 #define ELF64_R_SYM(i)     ((i) >> 32)
-#define ELF64_R_TYPE(i)    ((i) & 0xffffffffL)
-#define ELF64_R_INFO(s, t) (((s) << 32) + ((t) & 0xffffffffL))
+#define ELF64_R_TYPE(i)    ((i)&0xffffffffL)
+#define ELF64_R_INFO(s, t) (((s) << 32) + ((t)&0xffffffffL))
 
 // === === program header table
 typedef struct {
