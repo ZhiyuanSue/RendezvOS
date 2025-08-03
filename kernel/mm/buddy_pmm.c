@@ -290,7 +290,7 @@ i64 pmm_alloc_zone(int alloc_order, int zone_number)
         buddy_pmm.zone[zone_number].zone_total_avaliable_pages -=
                 1 << alloc_order;
 
-        return (i64)(PPN_FROM_IDX(alloc_order, del_node->index));
+        return (i64)(PPN_FROM_IDX(alloc_order, del_node->index) + PPN(zone->zone_lower_addr));
 }
 i64 pmm_alloc(size_t page_number, enum zone_type zone_number)
 {
@@ -330,16 +330,16 @@ static bool inline ppn_inrange(u32 ppn, int *zone_number)
         }
         return (ppn_inrange);
 }
-static error_t pmm_free_one(i64 ppn)
+static error_t pmm_free_one(i64 ppn, enum zone_type zone_number)
 {
-        int tmp_order = 0, zone_number = 0;
+        int tmp_order = 0;
         u64 index, buddy_index;
         struct list_entry *avaliable_header;
         struct page_frame *buddy_node, *insert_node, *header;
         struct buddy_zone *zone = &buddy_pmm.zone[zone_number];
         /*try to insert the node and try to merge*/
         while (tmp_order <= BUDDY_MAXORDER) {
-                index = IDX_FROM_PPN(tmp_order, ppn);
+                index =  IDX_FROM_PPN(tmp_order, ppn - PPN(zone->zone_lower_addr));
                 avaliable_header = &zone->avaliable_frame[tmp_order].page_list;
                 header = zone->zone_head_frame[tmp_order];
                 buddy_index = (index >> 1) << 1;
@@ -400,7 +400,7 @@ error_t pmm_free(i64 ppn, size_t page_number)
                         ;
                 }
 
-                if ((free_one_result = pmm_free_one(ppn + page_count)))
+                if ((free_one_result = pmm_free_one(ppn + page_count, zone_number)))
                         return (free_one_result);
         }
 
