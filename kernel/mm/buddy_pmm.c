@@ -34,11 +34,6 @@ static void calculate_avaliable_phy_addr_end(void)
         }
         buddy_pmm.avaliable_phy_addr_end =
                 ROUND_DOWN(buddy_pmm.avaliable_phy_addr_end, MIDDLE_PAGE_SIZE);
-        // if (buddy_pmm.avaliable_phy_addr_end > RENDEZVOS_MAX_MEMORY_SIZE) {
-        //         print("[ PMM ] Too large phy memory, but Rendezvos only use 0x%x Bytes\n",
-        //               RENDEZVOS_MAX_MEMORY_SIZE);
-        //         buddy_pmm.avaliable_phy_addr_end = RENDEZVOS_MAX_MEMORY_SIZE;
-        // }
 }
 void calculate_pmm_space(u64 *total_pages, u64 *L2_table_pages)
 {

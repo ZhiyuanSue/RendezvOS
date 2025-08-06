@@ -95,11 +95,11 @@ static void arch_map_extra_data_space(paddr kernel_phy_start,
         extra_data_phy_start_round_up_1g_iter =
                 extra_data_phy_start_round_up_1g;
         pmm_l2_start_iter = pmm_l2_start;
-        l1_flags = arch_decode_flags(
-                1,
-                PAGE_ENTRY_GLOBAL | PAGE_ENTRY_HUGE | PAGE_ENTRY_READ
-                        | PAGE_ENTRY_VALID | PAGE_ENTRY_WRITE);
-        for (; pmm_l2_start_iter < pmm_l2_pages * PAGE_SIZE;
+        l1_flags = arch_decode_flags(1,
+                                     PAGE_ENTRY_GLOBAL | PAGE_ENTRY_READ
+                                             | PAGE_ENTRY_VALID
+                                             | PAGE_ENTRY_WRITE);
+        for (; pmm_l2_start_iter < pmm_l2_start + pmm_l2_pages * PAGE_SIZE;
              pmm_l2_start_iter += PAGE_SIZE) {
                 arch_set_L1_entry(
                         pmm_l2_start_iter,
@@ -113,7 +113,7 @@ static void arch_map_extra_data_space(paddr kernel_phy_start,
         extra_data_phy_start_round_up_1g_iter =
                 extra_data_phy_start_round_up_1g;
         pmm_l2_start_iter = pmm_l2_start;
-        for (; pmm_l2_start_iter < pmm_l2_pages * PAGE_SIZE;
+        for (; pmm_l2_start_iter < pmm_l2_start + pmm_l2_pages * PAGE_SIZE;
              pmm_l2_start_iter += PAGE_SIZE) {
                 for (extra_data_phy_start_addr_iter =
                              extra_data_phy_start_round_up_1g_iter;
@@ -204,16 +204,14 @@ void arch_init_pmm(struct setup_info *arch_setup_info)
         u64 pmm_total_pages, L2_table_pages;
         calculate_pmm_space(&pmm_total_pages, &L2_table_pages);
         pmm_data_phy_end += pmm_total_pages * PAGE_SIZE;
-        print("[ PMM_L2_TABLE\t@\t< 0x%x , 0x%x >]\n",KERNEL_PHY_TO_VIRT(pmm_data_phy_start),
-              KERNEL_PHY_TO_VIRT(pmm_data_phy_start+ L2_table_pages * PAGE_SIZE));
+        print("[ PMM_L2_TABLE\t@\t< 0x%x , 0x%x >]\n",
+              KERNEL_PHY_TO_VIRT(pmm_data_phy_start),
+              KERNEL_PHY_TO_VIRT(pmm_data_phy_start
+                                 + L2_table_pages * PAGE_SIZE));
         print("[ PMM_DATA\t@\t< 0x%x , 0x%x >]\n",
-              KERNEL_PHY_TO_VIRT(pmm_data_phy_start+ L2_table_pages * PAGE_SIZE),
+              KERNEL_PHY_TO_VIRT(pmm_data_phy_start
+                                 + L2_table_pages * PAGE_SIZE),
               KERNEL_PHY_TO_VIRT(pmm_data_phy_end));
-        // if (ROUND_DOWN(pmm_data_phy_end, HUGE_PAGE_SIZE)
-        //     != ROUND_DOWN(kernel_phy_start, HUGE_PAGE_SIZE)) {
-        //         print("cannot load the pmm data\n");
-        //         goto arch_init_pmm_error;
-        // }
         if (m_regions.memory_regions[kernel_region].addr
                     + m_regions.memory_regions[kernel_region].len
             < pmm_data_phy_end) {
