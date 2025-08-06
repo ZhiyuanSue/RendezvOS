@@ -129,9 +129,9 @@ error_t prepare_arch(struct setup_info *arch_setup_info)
                 print("using multiboot 1\n");
                 struct multiboot_info *mtb_info =
                         GET_MULTIBOOT_INFO(arch_setup_info);
-                if (!(mtb_info->flags & MULTIBOOT_INFO_FLAG_CMD)) {
+                if ((mtb_info->flags & MULTIBOOT_INFO_FLAG_CMD)) {
                         print("cmdline:%s\n",
-                              (char *)(mtb_info->cmdline + KERNEL_VIRT_OFFSET));
+                              (char *)(KERNEL_PHY_TO_VIRT(mtb_info->cmdline)));
                 } else {
                         print("no input cmdline\n");
                 }

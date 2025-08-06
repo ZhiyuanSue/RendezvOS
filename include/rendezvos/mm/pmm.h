@@ -57,4 +57,9 @@ void calculate_pmm_space(u64* total_pages, u64* L2_table_pages);
 void generate_pmm_data(paddr pmm_data_phy_start, paddr pmm_data_phy_end);
 void clean_pmm_region(paddr pmm_data_phy_start, paddr pmm_data_phy_end);
 
+// map the pmm manage data
+void arch_map_extra_data_space(paddr kernel_phy_start, paddr kernel_phy_end,
+                               paddr extra_data_phy_start,
+                               paddr extra_data_phy_end, paddr pmm_l2_start,
+                               u64 pmm_l2_pages);
 #endif
