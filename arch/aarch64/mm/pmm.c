@@ -10,7 +10,7 @@
 #include <rendezvos/smp/percpu.h>
 
 extern u64 _start, _end; /*the kernel end virt addr*/
-extern u64 L2_table;
+extern u64 L2_table, L1_table;
 extern struct memory_regions m_regions;
 
 extern struct property_type property_types[PROPERTY_TYPE_NUM];
@@ -54,34 +54,84 @@ static void arch_get_memory_regions(void *fdt)
 static void arch_map_extra_data_space(paddr kernel_phy_start,
                                       paddr kernel_phy_end,
                                       paddr extra_data_phy_start,
-                                      paddr extra_data_phy_end)
+                                      paddr extra_data_phy_end,
+                                      paddr pmm_l2_start, u64 pmm_l2_pages)
 {
-        paddr extra_data_phy_start_addr;
+        paddr extra_data_phy_start_addr, extra_data_phy_start_round_up_1g;
+        paddr extra_data_phy_start_addr_iter,
+                extra_data_phy_start_round_up_1g_iter, pmm_l2_start_iter;
         paddr kernel_end_phy_addr_round_up;
-        paddr extra_data_start_round_down_2m;
-        ARCH_PFLAGS_t flags;
+        ARCH_PFLAGS_t l1_flags, l2_flags;
 
         extra_data_phy_start_addr = extra_data_phy_start;
         kernel_end_phy_addr_round_up =
                 ROUND_UP(kernel_phy_end, MIDDLE_PAGE_SIZE);
         if (extra_data_phy_start_addr < kernel_end_phy_addr_round_up)
                 extra_data_phy_start_addr = kernel_end_phy_addr_round_up;
+
+        extra_data_phy_start_round_up_1g =
+                ROUND_UP(extra_data_phy_start_addr, HUGE_PAGE_SIZE);
+
         /*for we have mapped the 2m align space of kernel*/
-        flags = arch_decode_flags(2,
-                                  PAGE_ENTRY_GLOBAL | PAGE_ENTRY_HUGE
-                                          | PAGE_ENTRY_READ | PAGE_ENTRY_VALID
-                                          | PAGE_ENTRY_WRITE);
-        for (; extra_data_phy_start_addr < extra_data_phy_end;
-             extra_data_phy_start_addr += MIDDLE_PAGE_SIZE) {
+        l2_flags = arch_decode_flags(
+                2,
+                PAGE_ENTRY_GLOBAL | PAGE_ENTRY_HUGE | PAGE_ENTRY_READ
+                        | PAGE_ENTRY_VALID | PAGE_ENTRY_WRITE);
+        for (extra_data_phy_start_addr_iter = extra_data_phy_start_addr;
+             extra_data_phy_start_addr_iter < extra_data_phy_end
+             && extra_data_phy_start_addr_iter
+                        < extra_data_phy_start_round_up_1g;
+             extra_data_phy_start_addr_iter += MIDDLE_PAGE_SIZE) {
                 /*As pmm and vmm part is not usable now, we still use boot page
                  * table*/
-                extra_data_start_round_down_2m =
-                        ROUND_DOWN(extra_data_phy_start_addr, MIDDLE_PAGE_SIZE);
                 arch_set_L2_entry(
-                        extra_data_start_round_down_2m,
-                        KERNEL_PHY_TO_VIRT(extra_data_start_round_down_2m),
+                        extra_data_phy_start_addr_iter,
+                        KERNEL_PHY_TO_VIRT(extra_data_phy_start_addr_iter),
                         (union L2_entry *)&L2_table,
-                        flags);
+                        l2_flags);
+        }
+
+        /*try to map the L1 table*/
+        extra_data_phy_start_round_up_1g_iter =
+                extra_data_phy_start_round_up_1g;
+        pmm_l2_start_iter = pmm_l2_start;
+        l1_flags = arch_decode_flags(
+                1,
+                PAGE_ENTRY_GLOBAL | PAGE_ENTRY_HUGE | PAGE_ENTRY_READ
+                        | PAGE_ENTRY_VALID | PAGE_ENTRY_WRITE);
+        for (; pmm_l2_start_iter < pmm_l2_pages * PAGE_SIZE;
+             pmm_l2_start_iter += PAGE_SIZE) {
+                arch_set_L1_entry(
+                        pmm_l2_start_iter,
+                        KERNEL_PHY_TO_VIRT(
+                                extra_data_phy_start_round_up_1g_iter),
+                        (union L1_entry *)&L1_table,
+                        l1_flags);
+                extra_data_phy_start_round_up_1g_iter += HUGE_PAGE_SIZE;
+        }
+        /*try to map the L2 tables under L1 table*/
+        extra_data_phy_start_round_up_1g_iter =
+                extra_data_phy_start_round_up_1g;
+        pmm_l2_start_iter = pmm_l2_start;
+        for (; pmm_l2_start_iter < pmm_l2_pages * PAGE_SIZE;
+             pmm_l2_start_iter += PAGE_SIZE) {
+                for (extra_data_phy_start_addr_iter =
+                             extra_data_phy_start_round_up_1g_iter;
+                     extra_data_phy_start_addr_iter < extra_data_phy_end
+                     && extra_data_phy_start_addr_iter
+                                < extra_data_phy_start_round_up_1g_iter
+                                          + HUGE_PAGE_SIZE;
+                     extra_data_phy_start_addr_iter += MIDDLE_PAGE_SIZE) {
+                        /*As pmm and vmm part is not usable now, we still use
+                         * boot page table*/
+                        arch_set_L2_entry(
+                                extra_data_phy_start_addr_iter,
+                                KERNEL_PHY_TO_VIRT(
+                                        extra_data_phy_start_addr_iter),
+                                (union L2_entry *)pmm_l2_start_iter,
+                                l2_flags);
+                }
+                extra_data_phy_start_round_up_1g_iter += HUGE_PAGE_SIZE;
         }
 }
 
@@ -150,15 +200,20 @@ void arch_init_pmm(struct setup_info *arch_setup_info)
                 print("cannot load kernel\n");
                 goto arch_init_pmm_error;
         }
-        pmm_data_phy_end += calculate_pmm_space() * PAGE_SIZE;
+
+        u64 pmm_total_pages, L2_table_pages;
+        calculate_pmm_space(&pmm_total_pages, &L2_table_pages);
+        pmm_data_phy_end += pmm_total_pages * PAGE_SIZE;
+        print("[ PMM_L2_TABLE\t@\t< 0x%x , 0x%x >]\n",KERNEL_PHY_TO_VIRT(pmm_data_phy_start),
+              KERNEL_PHY_TO_VIRT(pmm_data_phy_start+ L2_table_pages * PAGE_SIZE));
         print("[ PMM_DATA\t@\t< 0x%x , 0x%x >]\n",
-              KERNEL_PHY_TO_VIRT(pmm_data_phy_start),
+              KERNEL_PHY_TO_VIRT(pmm_data_phy_start+ L2_table_pages * PAGE_SIZE),
               KERNEL_PHY_TO_VIRT(pmm_data_phy_end));
-        if (ROUND_DOWN(pmm_data_phy_end, HUGE_PAGE_SIZE)
-            != ROUND_DOWN(kernel_phy_start, HUGE_PAGE_SIZE)) {
-                print("cannot load the pmm data\n");
-                goto arch_init_pmm_error;
-        }
+        // if (ROUND_DOWN(pmm_data_phy_end, HUGE_PAGE_SIZE)
+        //     != ROUND_DOWN(kernel_phy_start, HUGE_PAGE_SIZE)) {
+        //         print("cannot load the pmm data\n");
+        //         goto arch_init_pmm_error;
+        // }
         if (m_regions.memory_regions[kernel_region].addr
                     + m_regions.memory_regions[kernel_region].len
             < pmm_data_phy_end) {
@@ -168,10 +223,14 @@ void arch_init_pmm(struct setup_info *arch_setup_info)
         arch_map_extra_data_space(kernel_phy_start,
                                   kernel_phy_end,
                                   per_cpu_phy_start,
-                                  pmm_data_phy_end);
+                                  pmm_data_phy_end,
+                                  pmm_data_phy_start,
+                                  L2_table_pages);
         clean_per_cpu_region(per_cpu_phy_start);
-        clean_pmm_region(pmm_data_phy_start, pmm_data_phy_end);
-        generate_pmm_data(pmm_data_phy_start, pmm_data_phy_end);
+        clean_pmm_region(pmm_data_phy_start + L2_table_pages * PAGE_SIZE,
+                         pmm_data_phy_end);
+        generate_pmm_data(pmm_data_phy_start + L2_table_pages * PAGE_SIZE,
+                          pmm_data_phy_end);
         return;
 arch_init_pmm_error:
         arch_shutdown();

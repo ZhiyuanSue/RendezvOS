@@ -47,7 +47,7 @@ struct buddy {
 #define GET_ORDER_PAGES(order) (buddy_pmm.buckets[order].pages)
 
 // get the pages pmm manager need
-u64 calculate_pmm_space(void);
+void calculate_pmm_space(u64 *total_pages, u64 *L2_table_pages);
 void generate_pmm_data(paddr pmm_data_phy_start, paddr pmm_data_phy_end);
 
 #endif

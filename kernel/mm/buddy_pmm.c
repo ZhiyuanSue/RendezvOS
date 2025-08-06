@@ -34,15 +34,15 @@ static void calculate_avaliable_phy_addr_end(void)
         }
         buddy_pmm.avaliable_phy_addr_end =
                 ROUND_DOWN(buddy_pmm.avaliable_phy_addr_end, MIDDLE_PAGE_SIZE);
-        if (buddy_pmm.avaliable_phy_addr_end > RENDEZVOS_MAX_MEMORY_SIZE) {
-                print("[ PMM ] Too large phy memory, but Rendezvos only use 0x%x Bytes\n",
-                      RENDEZVOS_MAX_MEMORY_SIZE);
-                buddy_pmm.avaliable_phy_addr_end = RENDEZVOS_MAX_MEMORY_SIZE;
-        }
+        // if (buddy_pmm.avaliable_phy_addr_end > RENDEZVOS_MAX_MEMORY_SIZE) {
+        //         print("[ PMM ] Too large phy memory, but Rendezvos only use 0x%x Bytes\n",
+        //               RENDEZVOS_MAX_MEMORY_SIZE);
+        //         buddy_pmm.avaliable_phy_addr_end = RENDEZVOS_MAX_MEMORY_SIZE;
+        // }
 }
-u64 calculate_pmm_space(void)
+void calculate_pmm_space(u64 *total_pages, u64 *L2_table_pages)
 {
-        u64 pages;
+        u64 pages, l2_pages;
         paddr adjusted_phy_mem_end;
         u64 size_in_this_order;
 
@@ -67,7 +67,15 @@ u64 calculate_pmm_space(void)
         for (int order = 0; order <= BUDDY_MAXORDER; ++order)
                 pages += pages_per_bucket[order];
 
-        return (pages);
+        /*
+                if the page frames need more than 1G space, we alloc more L2
+           tables but a problem exist, the pmm start have a offset , and we are
+           not sure of the offset, so it's hard to decide the real 1G spaces we
+           need, we just add one page
+        */
+        l2_pages = pages / (HUGE_PAGE_SIZE / PAGE_SIZE) + 1;
+        *L2_table_pages = l2_pages;
+        *total_pages = pages + l2_pages;
 }
 void generate_pmm_data(paddr buddy_phy_start, paddr buddy_phy_end)
 {

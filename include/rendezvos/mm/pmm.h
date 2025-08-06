@@ -53,7 +53,7 @@ struct pmm {
 };
 
 // get the pages pmm manager need
-u64 calculate_pmm_space(void);
+void calculate_pmm_space(u64* total_pages, u64* L2_table_pages);
 void generate_pmm_data(paddr pmm_data_phy_start, paddr pmm_data_phy_end);
 void clean_pmm_region(paddr pmm_data_phy_start, paddr pmm_data_phy_end);
 
