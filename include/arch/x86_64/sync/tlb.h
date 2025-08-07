@@ -16,7 +16,7 @@ static inline void arch_tlb_invalidate_all()
                              : "a");
 }
 
-static inline void arch_tlb_invalidate_page(uint64_t vspace_id, vaddr addr)
+static inline void arch_tlb_invalidate_page(u64 vspace_id, vaddr addr)
 {
         invlpg(addr);
 }
@@ -24,13 +24,13 @@ static inline void arch_tlb_invalidate_kernel_page(vaddr addr)
 {
         invlpg(addr);
 }
-static inline void arch_tlb_invalidate_vspace_page(uint64_t vspace_id,
+static inline void arch_tlb_invalidate_vspace_page(u64 vspace_id,
                                                    vaddr addr)
 {
         // TODO:unimplemented in x86_64
 }
 
-static inline void arch_tlb_invalidate_range(uint64_t vspace_id, vaddr start,
+static inline void arch_tlb_invalidate_range(u64 vspace_id, vaddr start,
                                              vaddr end)
 {
         for (vaddr addr = start; addr < end; addr += PAGE_SIZE) {

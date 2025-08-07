@@ -5,7 +5,7 @@
 
 typedef struct {
         paddr vspace_root_addr;
-        uint64_t vspace_id;
+        u64 vspace_id;
         spin_lock vspace_lock;
         void* _vspace_node;
 } VSpace;
@@ -14,7 +14,7 @@ extern struct spin_lock_t vspace_spin_lock; // per cpu pointer
 extern u64 boot_stack_bottom;
 
 VSpace* new_vspace();
-void init_vspace(VSpace* vs, uint64_t vspace_id, void* vspace_node);
+void init_vspace(VSpace* vs, u64 vspace_id, void* vspace_node);
 void del_vspace(VSpace** vs);
 static inline void set_vspace_root_addr(VSpace* vs, paddr root_paddr)
 {

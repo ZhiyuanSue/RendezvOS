@@ -3,40 +3,40 @@
 #include <common/types.h>
 
 typedef struct uart_PL011_regs {
-        volatile uint32_t DR;
+        volatile u32 DR;
         union {
-                volatile uint32_t RSR;
-                volatile uint32_t ECR;
+                volatile u32 RSR;
+                volatile u32 ECR;
         };
-        uint32_t RES0[4];
-        volatile uint32_t FR;
-        uint32_t RES1;
-        volatile uint32_t ILPR;
-        volatile uint32_t IBRD;
-        volatile uint32_t FBRD;
-        volatile uint32_t LCR_H;
-        volatile uint32_t CR;
-        volatile uint32_t IFLS;
-        volatile uint32_t IMSC;
-        volatile uint32_t RIS;
-        volatile uint32_t MIS;
-        volatile uint32_t ICR;
-        volatile uint32_t DMACR;
+        u32 RES0[4];
+        volatile u32 FR;
+        u32 RES1;
+        volatile u32 ILPR;
+        volatile u32 IBRD;
+        volatile u32 FBRD;
+        volatile u32 LCR_H;
+        volatile u32 CR;
+        volatile u32 IFLS;
+        volatile u32 IMSC;
+        volatile u32 RIS;
+        volatile u32 MIS;
+        volatile u32 ICR;
+        volatile u32 DMACR;
 } UART_PL011;
 #define PERIPH_OFFSET 0xFE0
 typedef struct uart_pl011_periph {
-        volatile uint32_t ID0;
-        volatile uint32_t ID1;
-        volatile uint32_t ID2;
-        volatile uint32_t ID3;
+        volatile u32 ID0;
+        volatile u32 ID1;
+        volatile u32 ID2;
+        volatile u32 ID3;
 } UART_PL011_PERIPH;
 
 #define PCELL_OFFSET 0xFF0
 typedef struct uart_pl011_pcell {
-        volatile uint32_t ID0;
-        volatile uint32_t ID1;
-        volatile uint32_t ID2;
-        volatile uint32_t ID3;
+        volatile u32 ID0;
+        volatile u32 ID1;
+        volatile u32 ID2;
+        volatile u32 ID3;
 } UART_PL011_PCELL;
 
 void uart_pl011_open(void *base_addr);

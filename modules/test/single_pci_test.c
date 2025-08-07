@@ -13,7 +13,7 @@ error_t simple_print_callback(u8 bus, u8 device, u8 func,
                 hdr->common.subclass,
                 hdr->common.prog_if);
         if (hdr->common.vendor_id == 0x1022) { // AMD Vendor ID
-                uint16_t device_id = hdr->common.device_id;
+                u16 device_id = hdr->common.device_id;
 
                 pr_info("\nAMD Device at %x:%x.%x\n", bus, device, func);
 
@@ -36,7 +36,7 @@ error_t simple_print_callback(u8 bus, u8 device, u8 func,
                         hdr->common.subclass);
         }
         if (hdr->common.vendor_id == 0x1002) { // AMD Vendor ID
-                uint16_t device_id = hdr->common.device_id;
+                u16 device_id = hdr->common.device_id;
 
                 pr_info("\nAMD Device at %x:%x.%x\n", bus, device, func);
                 const char* type = "Unknown";

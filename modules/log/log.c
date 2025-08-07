@@ -120,7 +120,7 @@ void log_print(char *buffer, const char *format, va_list arg_list)
                                 goto string;
                         }
                         case 'c': {
-                                uint8_t tmp_c = (uint8_t)va_arg(arg_list, int);
+                                u8 tmp_c = (u8)va_arg(arg_list, int);
                                 *buf = tmp_c;
                                 *(buf + 1) = '\0';
                                 p = buf;

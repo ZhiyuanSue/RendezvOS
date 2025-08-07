@@ -13,7 +13,7 @@ void uart_pl011_putc(u_int8_t ch)
 {
         while ((pl011->FR) & (1 << 5))
                 ;
-        pl011->DR = (uint32_t)ch;
+        pl011->DR = (u32)ch;
 }
 u_int8_t uart_pl011_getc(void)
 {

@@ -12,21 +12,21 @@
 */
 struct fdt_header {
 #define FDT_MAGIC 0xd00dfeed
-        uint32_t magic;
-        uint32_t totalsize;
-        uint32_t off_dt_struct;
-        uint32_t off_dt_strings;
-        uint32_t off_mem_rsvmap;
-        uint32_t version;
-        uint32_t last_comp_version;
-        uint32_t boot_cpuid_phys;
-        uint32_t size_dt_strings;
-        uint32_t size_dt_struct;
+        u32 magic;
+        u32 totalsize;
+        u32 off_dt_struct;
+        u32 off_dt_strings;
+        u32 off_mem_rsvmap;
+        u32 version;
+        u32 last_comp_version;
+        u32 boot_cpuid_phys;
+        u32 size_dt_strings;
+        u32 size_dt_struct;
 };
 
 struct fdt_reserve_entry {
-        uint64_t address;
-        uint64_t size;
+        u64 address;
+        u64 size;
 };
 #define FDT_BEGIN_NODE 0x00000001
 #define FDT_END_NODE   0x00000002
@@ -34,13 +34,13 @@ struct fdt_reserve_entry {
 #define FDT_NOP        0x00000004
 #define FDT_END        0x00000009
 struct fdt_node_header {
-        uint32_t tag;
+        u32 tag;
         char name[0];
 };
 struct fdt_property {
-        uint32_t tag;
-        uint32_t len;
-        uint32_t nameoff;
+        u32 tag;
+        u32 len;
+        u32 nameoff;
         char data[0];
 };
 #define FDT_TAGSIZE  sizeof(u_int32_t)

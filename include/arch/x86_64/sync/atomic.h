@@ -3,20 +3,20 @@
 #include <common/types.h>
 #include <common/stdbool.h>
 #include "barrier.h"
-static inline uint64_t atomic64_cas(volatile uint64_t *addr, uint64_t expected,
-                                    uint64_t desired)
+static inline u64 atomic64_cas(volatile u64 *addr, u64 expected,
+                                    u64 desired)
 {
-        uint64_t result;
+        u64 result;
         __asm__ __volatile__("lock; cmpxchgq %2, %1\n"
                              : "=a"(result), "+m"(*addr)
                              : "r"(desired), "0"(expected)
                              : "memory", "cc");
         return result;
 }
-static inline uint64_t atomic64_exchange(volatile uint64_t *addr,
-                                         uint64_t newval)
+static inline u64 atomic64_exchange(volatile u64 *addr,
+                                         u64 newval)
 {
-        uint64_t oldval;
+        u64 oldval;
         __asm__ __volatile__("lock xchgq %1, %0"
                              : "=r"(oldval), "+m"(*addr)
                              : "0"(newval)

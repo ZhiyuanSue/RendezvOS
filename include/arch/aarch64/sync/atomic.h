@@ -5,11 +5,11 @@
 #include "barrier.h"
 #include <modules/log/log.h>
 
-static inline uint64_t atomic64_cas(volatile uint64_t *addr, uint64_t expected,
-                                    uint64_t newval)
+static inline u64 atomic64_cas(volatile u64 *addr, u64 expected,
+                                    u64 newval)
 {
-        uint64_t oldval;
-        uint64_t result;
+        u64 oldval;
+        u64 result;
         dmb(ISH);
 
         __asm__ volatile("atomic64_cas: ldxr %0, [%2]\n"
@@ -25,10 +25,10 @@ static inline uint64_t atomic64_cas(volatile uint64_t *addr, uint64_t expected,
         return oldval;
 }
 
-static inline uint64_t atomic64_exchange(volatile uint64_t *addr,
-                                         uint64_t newval)
+static inline u64 atomic64_exchange(volatile u64 *addr,
+                                         u64 newval)
 {
-        uint64_t oldval, result;
+        u64 oldval, result;
         dmb(ISH);
         __asm__ volatile("atomic64_exchange: ldxr %0, [%2]\n"
                          "   stxr %w1, %3, [%2]\n"
