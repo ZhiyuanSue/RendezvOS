@@ -90,6 +90,7 @@ static inline void msq_enqueue(ms_queue_t* q, ms_queue_node_t* new_node)
 static inline tagged_ptr_t msq_dequeue(ms_queue_t* q)
 {
         tagged_ptr_t head, tail, next, tmp;
+        tagged_ptr_t res = tagged_ptr_none();
         while (1) {
                 head = q->head;
                 tail = q->tail;
@@ -109,6 +110,7 @@ static inline tagged_ptr_t msq_dequeue(ms_queue_t* q)
                                              *(u64*)&tail,
                                              *(u64*)&tmp);
                         } else {
+                                res = next;
                                 tmp = tagged_ptr_pack(
                                         tagged_ptr_unpack_ptr(next),
                                         tagged_ptr_unpack_tag(head) + 1);
@@ -121,6 +123,6 @@ static inline tagged_ptr_t msq_dequeue(ms_queue_t* q)
                         }
                 }
         }
-        return head;
+        return res;
 }
 #endif

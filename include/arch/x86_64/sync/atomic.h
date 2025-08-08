@@ -3,8 +3,7 @@
 #include <common/types.h>
 #include <common/stdbool.h>
 #include "barrier.h"
-static inline u64 atomic64_cas(volatile u64 *addr, u64 expected,
-                                    u64 desired)
+static inline u64 atomic64_cas(volatile u64 *addr, u64 expected, u64 desired)
 {
         u64 result;
         __asm__ __volatile__("lock; cmpxchgq %2, %1\n"
@@ -13,8 +12,7 @@ static inline u64 atomic64_cas(volatile u64 *addr, u64 expected,
                              : "memory", "cc");
         return result;
 }
-static inline u64 atomic64_exchange(volatile u64 *addr,
-                                         u64 newval)
+static inline u64 atomic64_exchange(volatile u64 *addr, u64 newval)
 {
         u64 oldval;
         __asm__ __volatile__("lock xchgq %1, %0"

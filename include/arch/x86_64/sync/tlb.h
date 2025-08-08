@@ -24,8 +24,7 @@ static inline void arch_tlb_invalidate_kernel_page(vaddr addr)
 {
         invlpg(addr);
 }
-static inline void arch_tlb_invalidate_vspace_page(u64 vspace_id,
-                                                   vaddr addr)
+static inline void arch_tlb_invalidate_vspace_page(u64 vspace_id, vaddr addr)
 {
         // TODO:unimplemented in x86_64
 }

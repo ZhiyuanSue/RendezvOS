@@ -40,6 +40,7 @@ int smp_lock_check(void);
 int smp_nexus_test(void);
 int smp_spmalloc_test(void);
 int smp_ms_queue_test(void);
+int smp_ms_queue_check(void);
 int smp_log_test(void);
 int smp_log_check(void);
 

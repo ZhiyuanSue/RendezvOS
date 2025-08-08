@@ -27,8 +27,7 @@ static inline void arch_tlb_invalidate_kernel_page(vaddr addr)
         dsb(SY);
         isb();
 }
-static inline void arch_tlb_invalidate_vspace_page(u64 vspace_id,
-                                                   vaddr addr)
+static inline void arch_tlb_invalidate_vspace_page(u64 vspace_id, vaddr addr)
 {
         if (vspace_id >= (1 << 16))
                 return;

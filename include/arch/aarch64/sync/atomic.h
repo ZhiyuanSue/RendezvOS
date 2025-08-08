@@ -5,8 +5,7 @@
 #include "barrier.h"
 #include <modules/log/log.h>
 
-static inline u64 atomic64_cas(volatile u64 *addr, u64 expected,
-                                    u64 newval)
+static inline u64 atomic64_cas(volatile u64 *addr, u64 expected, u64 newval)
 {
         u64 oldval;
         u64 result;
@@ -25,8 +24,7 @@ static inline u64 atomic64_cas(volatile u64 *addr, u64 expected,
         return oldval;
 }
 
-static inline u64 atomic64_exchange(volatile u64 *addr,
-                                         u64 newval)
+static inline u64 atomic64_exchange(volatile u64 *addr, u64 newval)
 {
         u64 oldval, result;
         dmb(ISH);
