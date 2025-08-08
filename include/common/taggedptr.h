@@ -10,7 +10,9 @@
 #define ADDR_SIGN_MASK (1ULL << (ADDR_BITS - 1))
 
 typedef u64 tagged_ptr_t;
-
+static inline tagged_ptr_t tagged_ptr_none(){
+	return 0;
+}
 static inline tagged_ptr_t tagged_ptr_pack(void* ptr, u16 tag)
 {
         u64 tagged_ptr_value = 0;
@@ -31,14 +33,12 @@ static inline u16 tagged_ptr_unpack_tag(tagged_ptr_t tp)
 {
         return (u16)(tp >> TAG_SHIFT);
 }
-static inline tagged_ptr_t tagged_ptr_update_ptr(tagged_ptr_t tp, void* new_ptr)
+static inline void tagged_ptr_update_ptr(tagged_ptr_t* tp, void* new_ptr)
 {
-        tp |= (((u64)new_ptr) & ADDR_MASK);
-        return tp;
+        *tp |= (((u64)new_ptr) & ADDR_MASK);
 }
-static inline tagged_ptr_t tagged_ptr_update_tag(tagged_ptr_t tp, u16 tag)
+static inline void tagged_ptr_update_tag(tagged_ptr_t* tp, u16 tag)
 {
-        tp |= (((u64)tag) << TAG_SHIFT);
-        return tp;
+        *tp |= (((u64)tag) << TAG_SHIFT);
 }
 #endif
