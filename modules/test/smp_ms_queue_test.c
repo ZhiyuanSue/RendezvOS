@@ -69,11 +69,13 @@ int smp_ms_queue_test(void)
 }
 bool smp_ms_queue_check(void)
 {
-        // for (int i = 0; i < ms_data_len; i++) {
-        //         if (i % 10 == 0 && i)
-        //                 pr_info("\n");
-        //         pr_info("%d\t", ms_data_test_seq[i]);
+        // if (percpu(cpu_number) == BSP_ID) {
+        //         for (int i = 0; i < ms_data_len; i++) {
+        //                 if (i % 10 == 0 && i)
+        //                         pr_info("\n");
+        //                 pr_info("%d\t", ms_data_test_seq[i]);
+        //         }
+        //         pr_info("\n");
         // }
-        // pr_info("\n");
         return true;
 }

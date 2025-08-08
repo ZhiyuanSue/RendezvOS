@@ -11,11 +11,11 @@ static inline u64 atomic64_cas(volatile u64 *addr, u64 expected, u64 newval)
         u64 result;
         dmb(ISH);
 
-        __asm__ volatile("atomic64_cas: ldxr %0, [%2]\n"
+        __asm__ volatile("atomic64_cas_start: ldxr %0, [%2]\n"
                          "   cmp %0, %3\n"
                          "   b.ne atomic64_cas_end\n"
                          "   stxr %w1, %4, [%2]\n"
-                         "   cbnz %w1, atomic64_cas\n"
+                         "   cbnz %w1, atomic64_cas_start\n"
                          "atomic64_cas_end:"
                          : "=&r"(oldval), "=&r"(result)
                          : "r"(addr), "r"(expected), "r"(newval)
