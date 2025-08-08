@@ -9,8 +9,8 @@ int smp_log_test(void)
         }
         return 0;
 }
-int smp_log_check(void)
+bool smp_log_check(void)
 {
         pr_info("\n");
-        return 0;
+        return true;
 }

@@ -36,13 +36,13 @@ else if the smp test case check function can work,
 we use that check the result at cpu 0
 */
 int smp_lock_test(void);
-int smp_lock_check(void);
+bool smp_lock_check(void);
 int smp_nexus_test(void);
 int smp_spmalloc_test(void);
 int smp_ms_queue_test(void);
-int smp_ms_queue_check(void);
+bool smp_ms_queue_check(void);
 int smp_log_test(void);
-int smp_log_check(void);
+bool smp_log_check(void);
 
 struct single_test_case {
         int (*test)(void);
@@ -52,7 +52,7 @@ struct single_test_case {
 struct smp_test_case {
         int (*test)(void);
         char name[32];
-        int (*check_result)(void);
+        bool (*check_result)(void);
 };
 
 #endif

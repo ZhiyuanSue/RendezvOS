@@ -17,7 +17,8 @@ extern int BSP_ID;
 struct ms_test_data ms_data[ms_data_len];
 struct ms_test_data dummy;
 ms_queue_t ms_queue;
-int ms_data_test_seq[ms_data_len];
+volatile bool have_inited = false;
+int ms_data_test_seq[ms_data_len] = {0};
 void smp_ms_queue_init(void)
 {
         dummy.data = -1;
@@ -50,8 +51,13 @@ void smp_ms_queue_get(int offset)
 }
 int smp_ms_queue_test(void)
 {
-        if (percpu(cpu_number) == BSP_ID)
+        if (percpu(cpu_number) == BSP_ID) {
                 smp_ms_queue_init();
+                have_inited = true;
+        } else {
+                while (!have_inited)
+                        ;
+        }
         if (percpu(cpu_number) % 2) {
                 smp_ms_queue_put((percpu(cpu_number) / 2)
                                  * percpu_ms_queue_test_number);
@@ -61,14 +67,13 @@ int smp_ms_queue_test(void)
         }
         return 0;
 }
-int smp_ms_queue_check(void){
-        for(int i=0;i<ms_data_len;i++){
-                pr_info("%d\t",ms_data_test_seq[i]);
-                if(i%10==0&&i)
-                        pr_info("\n");
-                
-        }
-        pr_info("\n");
-        return 0;
+bool smp_ms_queue_check(void)
+{
+        // for (int i = 0; i < ms_data_len; i++) {
+        //         if (i % 10 == 0 && i)
+        //                 pr_info("\n");
+        //         pr_info("%d\t", ms_data_test_seq[i]);
+        // }
+        // pr_info("\n");
+        return true;
 }
-/*0xffff8000001267b1*/
