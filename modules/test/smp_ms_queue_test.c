@@ -24,7 +24,7 @@ void smp_ms_queue_init(void)
         dummy.data = -1;
         msq_init(&ms_queue, &dummy.ms_node);
         for (int i = 0; i < ms_data_len; i++) {
-                ms_data[i].ms_node.next = tagged_ptr_none();
+                ms_data[i].ms_node.next = tp_new_none();
                 ms_data[i].data = i;
         }
 }
@@ -38,13 +38,11 @@ void smp_ms_queue_get(int offset)
 {
         int i = 0;
         while (i < percpu_ms_queue_test_number) {
-                tagged_ptr_t dequeue_ptr = tagged_ptr_none();
+                tagged_ptr_t dequeue_ptr = tp_new_none();
                 while ((dequeue_ptr = msq_dequeue(&ms_queue)) == 0)
                         ;
-                struct ms_test_data *get_ptr =
-                        container_of(tagged_ptr_unpack_ptr(dequeue_ptr),
-                                     struct ms_test_data,
-                                     ms_node);
+                struct ms_test_data *get_ptr = container_of(
+                        tp_get_ptr(dequeue_ptr), struct ms_test_data, ms_node);
                 ms_data_test_seq[offset + i] = get_ptr->data;
                 i++;
         }

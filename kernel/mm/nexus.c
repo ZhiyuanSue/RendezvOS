@@ -657,6 +657,11 @@ static error_t _kernel_free_pages(void* p, int page_num,
         struct nexus_node* node =
                 nexus_rb_tree_search(&nexus_root->_rb_root, (vaddr)p);
         if (!node) {
+                /*
+                        TODO: if cannot find the nexus node
+                        which might caused by this page is under another core's
+                   nexus
+                */
                 pr_error(
                         "[ NEXUS ] ERROR: search the free page fail 0x%x 0x%x\n",
                         (vaddr)p,

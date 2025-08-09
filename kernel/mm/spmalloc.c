@@ -377,6 +377,7 @@ static error_t _sp_free(struct mem_allocator* sp_allocator_p, void* p)
                 }
                 return 0;
         } else {
+                /*TODO: consider the free lock and unlock*/
                 return _sp_free((struct mem_allocator*)per_cpu(
                                         kallocator, free_allocator_id),
                                 p);

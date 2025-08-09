@@ -41,30 +41,27 @@ typedef struct {
 
 static inline void msq_init(ms_queue_t* q, ms_queue_node_t* new_node)
 {
-        q->head = q->tail = tagged_ptr_pack((void*)new_node, 0);
+        q->head = q->tail = tp_new((void*)new_node, 0);
 }
 
 static inline void msq_enqueue(ms_queue_t* q, ms_queue_node_t* new_node)
 {
         tagged_ptr_t tail, next, tmp;
 
-        tagged_ptr_update_ptr(&new_node->next, NULL);
+        tp_set_ptr(&new_node->next, NULL);
         while (1) {
                 tail = q->tail;
-                next = ((ms_queue_node_t*)tagged_ptr_unpack_ptr(tail))->next;
+                next = ((ms_queue_node_t*)tp_get_ptr(tail))->next;
 
                 if (atomic64_cas(
                             (volatile u64*)&q->tail, *(u64*)&tail, *(u64*)&tail)
                     == *(u64*)&tail) {
-                        if (tagged_ptr_unpack_ptr(next) == NULL) {
-                                tmp = tagged_ptr_pack(
-                                        new_node,
-                                        tagged_ptr_unpack_tag(next) + 1);
+                        if (tp_get_ptr(next) == NULL) {
+                                tmp = tp_new(new_node, tp_get_tag(next) + 1);
                                 if (atomic64_cas(
                                             (volatile u64*)&(
                                                     (ms_queue_node_t*)
-                                                            tagged_ptr_unpack_ptr(
-                                                                    tail))
+                                                            tp_get_ptr(tail))
                                                     ->next,
                                             *(u64*)&next,
                                             *(u64*)&tmp)
@@ -72,16 +69,15 @@ static inline void msq_enqueue(ms_queue_t* q, ms_queue_node_t* new_node)
                                         break;
                                 }
                         } else {
-                                tmp = tagged_ptr_pack(
-                                        tagged_ptr_unpack_ptr(next),
-                                        tagged_ptr_unpack_tag(tail) + 1);
+                                tmp = tp_new(tp_get_ptr(next),
+                                             tp_get_tag(tail) + 1);
                                 atomic64_cas((volatile u64*)&q->tail,
                                              *(u64*)&tail,
                                              *(u64*)&tmp);
                         }
                 }
         }
-        tmp = tagged_ptr_pack(new_node, tagged_ptr_unpack_tag(tail) + 1);
+        tmp = tp_new(new_node, tp_get_tag(tail) + 1);
         atomic64_cas((volatile u64*)&q->tail, *(u64*)&tail, *(u64*)&tmp);
 }
 /*we also just unlink the node,
@@ -90,30 +86,27 @@ static inline void msq_enqueue(ms_queue_t* q, ms_queue_node_t* new_node)
 static inline tagged_ptr_t msq_dequeue(ms_queue_t* q)
 {
         tagged_ptr_t head, tail, next, tmp;
-        tagged_ptr_t res = tagged_ptr_none();
+        tagged_ptr_t res = tp_new_none();
         while (1) {
                 head = q->head;
                 tail = q->tail;
-                next = ((ms_queue_node_t*)tagged_ptr_unpack_ptr(head))->next;
+                next = ((ms_queue_node_t*)tp_get_ptr(head))->next;
                 if (atomic64_cas((volatile u64*)&q->head,
                                  *(u64*)&head,
                                  *(u64*)&head)) {
-                        if (tagged_ptr_unpack_ptr(head)
-                            == tagged_ptr_unpack_ptr(tail)) {
-                                if (tagged_ptr_unpack_ptr(next) == NULL) {
-                                        return tagged_ptr_none();
+                        if (tp_get_ptr(head) == tp_get_ptr(tail)) {
+                                if (tp_get_ptr(next) == NULL) {
+                                        return tp_new_none();
                                 }
-                                tmp = tagged_ptr_pack(
-                                        tagged_ptr_unpack_ptr(next),
-                                        tagged_ptr_unpack_tag(tail) + 1);
+                                tmp = tp_new(tp_get_ptr(next),
+                                             tp_get_tag(tail) + 1);
                                 atomic64_cas((volatile u64*)&q->tail,
                                              *(u64*)&tail,
                                              *(u64*)&tmp);
                         } else {
                                 res = next;
-                                tmp = tagged_ptr_pack(
-                                        tagged_ptr_unpack_ptr(next),
-                                        tagged_ptr_unpack_tag(head) + 1);
+                                tmp = tp_new(tp_get_ptr(next),
+                                             tp_get_tag(head) + 1);
                                 if (atomic64_cas((volatile u64*)&q->head,
                                                  *(u64*)&head,
                                                  *(u64*)&tmp)
