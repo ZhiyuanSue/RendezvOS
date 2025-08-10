@@ -17,7 +17,7 @@ extern int BSP_ID;
 struct ms_test_data ms_data[ms_data_len];
 struct ms_test_data dummy;
 ms_queue_t ms_queue;
-volatile bool have_inited = false;
+static volatile bool have_inited = false;
 int ms_data_test_seq[ms_data_len] = {0};
 void smp_ms_queue_init(void)
 {

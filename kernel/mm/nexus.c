@@ -334,6 +334,34 @@ fail:
         return NULL;
 }
 
+void nexus_migrate_vspace(struct nexus_node* src_nexus_root,
+                          struct nexus_node* dst_nexus_root, VSpace* vs)
+{
+        if (!src_nexus_root || !dst_nexus_root || !vs) {
+                pr_error("[Error] input parameter error\n");
+                goto fail;
+        }
+        if (!vs->vspace_root_addr) {
+                pr_error(
+                        "[Error] we should not delete the kernel nexus vspace\n");
+                goto fail;
+        }
+        /*try to find the vs paddr root ,if not, error*/
+        struct nexus_node* vspace_node = nexus_rb_tree_vspace_search(
+                &src_nexus_root->_vspace_rb_root, vs->vspace_root_addr);
+        if (!vspace_node) {
+                pr_error("[Error] no such a vspace in nexus\n");
+                goto fail;
+        }
+        vspace_node->nexus_id = dst_nexus_root->nexus_id;
+        nexus_rb_tree_vspace_remove(vspace_node,
+                                    &(src_nexus_root->_vspace_rb_root));
+        nexus_rb_tree_vspace_insert(vspace_node,
+                                    &dst_nexus_root->_vspace_rb_root);
+fail:
+        return;
+}
+
 void nexus_delete_vspace(struct nexus_node* nexus_root, VSpace* vs)
 {
         if (!nexus_root || !vs) {
