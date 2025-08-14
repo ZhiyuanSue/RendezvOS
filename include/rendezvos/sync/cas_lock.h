@@ -7,25 +7,24 @@
 
 typedef u64 cas_lock_t;
 
-static inline void lock_init_cas(cas_lock_t *cas_lock){
-    *cas_lock = 0;
-    barrier();
+static inline void lock_init_cas(cas_lock_t* cas_lock)
+{
+        *cas_lock = 0;
+        barrier();
 }
-static inline void lock_cas(cas_lock_t *cas_lock){
-    u64 expected = 0;
-    u64 desired = 1;
-    while( atomic64_cas((volatile u64*)cas_lock,*(u64*)&expected,desired)==0){
-        expected = 0;
-        arch_cpu_relax();
-    }
+static inline void lock_cas(cas_lock_t* cas_lock)
+{
+        while (atomic64_exchange((volatile u64*)cas_lock, 1) == 1) {
+                arch_cpu_relax();
+        }
 }
-static inline void unlock_cas(cas_lock_t* cas_lock){
-    atomic64_store(cas_lock,0);
+static inline void unlock_cas(cas_lock_t* cas_lock)
+{
+        atomic64_store(cas_lock, 0);
 }
-static inline u64 trylock_cas(cas_lock_t* cas_lock){
-    u64 expected = 0;
-    u64 desired = 1;
-    return atomic64_cas((volatile u64*)cas_lock,*(u64*)&expected,desired);
+static inline u64 trylock_cas(cas_lock_t* cas_lock)
+{
+        return atomic64_exchange((volatile u64*)cas_lock, 1);
 }
 
 #endif
