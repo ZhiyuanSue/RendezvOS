@@ -24,6 +24,7 @@ int ms_data_test_seq[ms_data_len] = {0};
 void smp_ms_queue_init(void)
 {
         dummy.data = -1;
+		pr_info("ms data test seq is %x\n",ms_data_test_seq);
         msq_init(&ms_queue, &dummy.ms_node);
         for (int i = 0; i < ms_data_len; i++) {
                 ms_data[i].ms_node.next = tp_new_none();
@@ -84,6 +85,7 @@ void smp_ms_queue_dyn_alloc_init(void)
 {
         dummy.data = -1;
         msq_init(&ms_queue, &dummy.ms_node);
+		memset(ms_data_test_seq,0,ms_data_len*sizeof(int));
 }
 void smp_ms_queue_dyn_alloc_put(int offset)
 {
@@ -91,6 +93,7 @@ void smp_ms_queue_dyn_alloc_put(int offset)
         for (int i = offset; i < offset+percpu_ms_queue_test_number; i++) {
 				struct ms_test_data* tmp_ms_data = malloc->m_alloc(malloc,sizeof(struct ms_test_data));
 				tmp_ms_data->data = i;
+				tmp_ms_data->ms_node.next = tp_new_none();
                 msq_enqueue(&ms_queue, &tmp_ms_data->ms_node);
         }
 }
@@ -104,8 +107,8 @@ void smp_ms_queue_dyn_alloc_get(int offset)
                         ;
                 struct ms_test_data *get_ptr = container_of(
                         tp_get_ptr(dequeue_ptr), struct ms_test_data, ms_node);
-                ms_data_test_seq[offset + i] = get_ptr->data;
-				malloc->m_free(malloc,get_ptr);
+                ms_data_test_seq[i] = get_ptr->data;
+				// malloc->m_free(malloc,get_ptr);
                 i++;
         }
 }
@@ -129,5 +132,13 @@ int smp_ms_queue_dyn_alloc_test(void)
 }
 bool smp_ms_queue_dyn_alloc_check(void)
 {
+		// if (percpu(cpu_number) == BSP_ID) {
+        //         for (int i = 0; i < ms_data_len; i++) {
+        //                 if (i % 10 == 0 && i)
+        //                         pr_info("\n");
+        //                 pr_info("%d\t", ms_data_test_seq[i]);
+        //         }
+        //         pr_info("\n");
+        // }
         return true;
 }
