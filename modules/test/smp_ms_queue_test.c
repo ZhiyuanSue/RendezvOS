@@ -5,13 +5,14 @@
 #include <rendezvos/mm/spmalloc.h>
 extern struct allocator* kallocator;
 struct ms_test_data {
+        i64 allocator_id;
         ms_queue_node_t ms_node;
         int data;
 };
 extern int BSP_ID;
 #define percpu_ms_queue_test_number 10000
 #ifdef NR_CPUS
-#define ms_data_len percpu_ms_queue_test_number *NR_CPUS / 2
+#define ms_data_len percpu_ms_queue_test_number* NR_CPUS / 2
 #else
 #define ms_data_len \
         percpu_ms_queue_test_number * 4 / 2 /*the default of NR_CPU is 4*/
@@ -20,11 +21,11 @@ struct ms_test_data ms_data[ms_data_len];
 struct ms_test_data dummy;
 ms_queue_t ms_queue;
 static volatile bool have_inited = false;
+static volatile bool dyn_have_inited = false;
 int ms_data_test_seq[ms_data_len] = {0};
 void smp_ms_queue_init(void)
 {
         dummy.data = -1;
-		pr_info("ms data test seq is %x\n",ms_data_test_seq);
         msq_init(&ms_queue, &dummy.ms_node);
         for (int i = 0; i < ms_data_len; i++) {
                 ms_data[i].ms_node.next = tp_new_none();
@@ -44,7 +45,7 @@ void smp_ms_queue_get(int offset)
                 tagged_ptr_t dequeue_ptr = tp_new_none();
                 while ((dequeue_ptr = msq_dequeue(&ms_queue)) == 0)
                         ;
-                struct ms_test_data *get_ptr = container_of(
+                struct ms_test_data* get_ptr = container_of(
                         tp_get_ptr(dequeue_ptr), struct ms_test_data, ms_node);
                 ms_data_test_seq[offset + i] = get_ptr->data;
                 i++;
@@ -83,62 +84,70 @@ bool smp_ms_queue_check(void)
 
 void smp_ms_queue_dyn_alloc_init(void)
 {
-        dummy.data = -1;
-        msq_init(&ms_queue, &dummy.ms_node);
-		memset(ms_data_test_seq,0,ms_data_len*sizeof(int));
+		struct allocator* malloc = percpu(kallocator);
+		struct ms_test_data* tmp = malloc->m_alloc(malloc, sizeof(struct ms_test_data));
+        tmp->data = -1;
+        tmp->ms_node.next = tp_new_none();
+		tmp->allocator_id = percpu(cpu_number);
+        msq_init(&ms_queue, &tmp->ms_node);
+        memset(ms_data_test_seq, 0, ms_data_len * sizeof(int));
 }
 void smp_ms_queue_dyn_alloc_put(int offset)
 {
-		struct allocator* malloc = percpu(kallocator);
-        for (int i = offset; i < offset+percpu_ms_queue_test_number; i++) {
-				struct ms_test_data* tmp_ms_data = malloc->m_alloc(malloc,sizeof(struct ms_test_data));
-				tmp_ms_data->data = i;
-				tmp_ms_data->ms_node.next = tp_new_none();
+        struct allocator* malloc = percpu(kallocator);
+        int allocator_id = malloc->allocator_id;
+        for (int i = offset; i < offset + percpu_ms_queue_test_number; i++) {
+                struct ms_test_data* tmp_ms_data =
+                        malloc->m_alloc(malloc, sizeof(struct ms_test_data));
+                tmp_ms_data->data = i;
+                tmp_ms_data->allocator_id = allocator_id;
+                tmp_ms_data->ms_node.next = tp_new_none();
                 msq_enqueue(&ms_queue, &tmp_ms_data->ms_node);
         }
 }
 void smp_ms_queue_dyn_alloc_get(int offset)
 {
-		struct allocator* malloc = percpu(kallocator);
+        struct allocator* malloc;
         int i = offset;
-        while (i < offset+percpu_ms_queue_test_number) {
+        while (i < offset + percpu_ms_queue_test_number) {
                 tagged_ptr_t dequeue_ptr = tp_new_none();
                 while ((dequeue_ptr = msq_dequeue(&ms_queue)) == 0)
                         ;
-                struct ms_test_data *get_ptr = container_of(
+                struct ms_test_data* get_ptr = container_of(
                         tp_get_ptr(dequeue_ptr), struct ms_test_data, ms_node);
                 ms_data_test_seq[i] = get_ptr->data;
-				// malloc->m_free(malloc,get_ptr);
+                malloc = per_cpu(kallocator, get_ptr->allocator_id);
+                // malloc->m_free(malloc, get_ptr);
                 i++;
         }
 }
 int smp_ms_queue_dyn_alloc_test(void)
 {
         if (percpu(cpu_number) == BSP_ID) {
-				smp_ms_queue_dyn_alloc_init();
-                have_inited = true;
+                smp_ms_queue_dyn_alloc_init();
+                dyn_have_inited = true;
         } else {
-                while (!have_inited)
+                while (!dyn_have_inited)
                         ;
         }
         if (percpu(cpu_number) % 2) {
                 smp_ms_queue_dyn_alloc_put((percpu(cpu_number) / 2)
-                                 * percpu_ms_queue_test_number);
+                                           * percpu_ms_queue_test_number);
         } else {
                 smp_ms_queue_dyn_alloc_get((percpu(cpu_number) / 2)
-                                 * percpu_ms_queue_test_number);
+                                           * percpu_ms_queue_test_number);
         }
         return 0;
 }
 bool smp_ms_queue_dyn_alloc_check(void)
 {
-		// if (percpu(cpu_number) == BSP_ID) {
-        //         for (int i = 0; i < ms_data_len; i++) {
-        //                 if (i % 10 == 0 && i)
-        //                         pr_info("\n");
-        //                 pr_info("%d\t", ms_data_test_seq[i]);
-        //         }
-        //         pr_info("\n");
-        // }
+        if (percpu(cpu_number) == BSP_ID) {
+                for (int i = 0; i < ms_data_len; i++) {
+                        if (i % 10 == 0 && i)
+                                pr_info("\n");
+                        pr_info("%d\t", ms_data_test_seq[i]);
+                }
+                pr_info("\n");
+        }
         return true;
 }

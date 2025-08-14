@@ -8,7 +8,7 @@
                                   int allocator_id);                    \
         void* (*m_alloc)(struct allocator * allocator_p, size_t Bytes); \
         void (*m_free)(struct allocator * allocator_p, void* p);        \
-        int allocator_id
+        i64 allocator_id
 
 struct allocator {
         MM_COMMON;
