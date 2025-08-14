@@ -2,6 +2,8 @@
 #include <modules/log/log.h>
 #include <common/dsa/ms_queue.h>
 #include <rendezvos/smp/percpu.h>
+#include <rendezvos/mm/spmalloc.h>
+extern struct allocator* kallocator;
 struct ms_test_data {
         ms_queue_node_t ms_node;
         int data;
@@ -75,5 +77,57 @@ bool smp_ms_queue_check(void)
         //         }
         //         pr_info("\n");
         // }
+        return true;
+}
+
+void smp_ms_queue_dyn_alloc_init(void)
+{
+        dummy.data = -1;
+        msq_init(&ms_queue, &dummy.ms_node);
+}
+void smp_ms_queue_dyn_alloc_put(int offset)
+{
+		struct allocator* malloc = percpu(kallocator);
+        for (int i = offset; i < offset+percpu_ms_queue_test_number; i++) {
+				struct ms_test_data* tmp_ms_data = malloc->m_alloc(malloc,sizeof(struct ms_test_data));
+				tmp_ms_data->data = i;
+                msq_enqueue(&ms_queue, &tmp_ms_data->ms_node);
+        }
+}
+void smp_ms_queue_dyn_alloc_get(int offset)
+{
+		struct allocator* malloc = percpu(kallocator);
+        int i = offset;
+        while (i < offset+percpu_ms_queue_test_number) {
+                tagged_ptr_t dequeue_ptr = tp_new_none();
+                while ((dequeue_ptr = msq_dequeue(&ms_queue)) == 0)
+                        ;
+                struct ms_test_data *get_ptr = container_of(
+                        tp_get_ptr(dequeue_ptr), struct ms_test_data, ms_node);
+                ms_data_test_seq[offset + i] = get_ptr->data;
+				malloc->m_free(malloc,get_ptr);
+                i++;
+        }
+}
+int smp_ms_queue_dyn_alloc_test(void)
+{
+        if (percpu(cpu_number) == BSP_ID) {
+				smp_ms_queue_dyn_alloc_init();
+                have_inited = true;
+        } else {
+                while (!have_inited)
+                        ;
+        }
+        if (percpu(cpu_number) % 2) {
+                smp_ms_queue_dyn_alloc_put((percpu(cpu_number) / 2)
+                                 * percpu_ms_queue_test_number);
+        } else {
+                smp_ms_queue_dyn_alloc_get((percpu(cpu_number) / 2)
+                                 * percpu_ms_queue_test_number);
+        }
+        return 0;
+}
+bool smp_ms_queue_dyn_alloc_check(void)
+{
         return true;
 }

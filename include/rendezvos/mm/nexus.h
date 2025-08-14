@@ -8,6 +8,7 @@
 #include <common/dsa/rb_tree.h>
 #include <rendezvos/mm/pmm.h>
 #include <rendezvos/mm/map_handler.h>
+#include <rendezvos/sync/cas_lock.h>
 struct nexus_node {
         struct list_entry manage_free_list;
         struct list_entry _free_list;
@@ -30,6 +31,7 @@ struct nexus_node {
                         void* backup_manage_page;
                         struct map_handler* handler;
                         i64 nexus_id; /*should alloced by the upper level code*/
+						cas_lock_t lock;
                 };
         };
 };

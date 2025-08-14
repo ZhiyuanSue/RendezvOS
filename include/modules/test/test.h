@@ -41,6 +41,8 @@ int smp_nexus_test(void);
 int smp_spmalloc_test(void);
 int smp_ms_queue_test(void);
 bool smp_ms_queue_check(void);
+int smp_ms_queue_dyn_alloc_test(void);
+bool smp_ms_queue_dyn_alloc_check(void);
 int smp_log_test(void);
 bool smp_log_check(void);
 

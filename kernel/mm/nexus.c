@@ -165,6 +165,7 @@ struct nexus_node* init_nexus(struct map_handler* handler)
         n_node[1].vs = vs;
         INIT_LIST_HEAD(&n_node[1].manage_free_list);
         INIT_LIST_HEAD(&n_node[1]._vspace_list);
+        lock_init_cas(&n_node[1].lock);
         nexus_rb_tree_vspace_insert(&n_node[1], &n_node[1]._vspace_rb_root);
 
         nexus_init_manage_page(vpage_addr, &n_node[1]);
@@ -326,6 +327,8 @@ struct nexus_node* nexus_create_vspace_root_node(struct nexus_node* nexus_root,
         }
         free_nexus_entry->vs = vs;
         free_nexus_entry->nexus_id = nexus_root->nexus_id;
+        free_nexus_entry->handler = nexus_root->handler;
+        lock_init_cas(&free_nexus_entry->lock); // every vs should have a lock
         INIT_LIST_HEAD(&free_nexus_entry->_vspace_list);
         nexus_rb_tree_vspace_insert(free_nexus_entry,
                                     &nexus_root->_vspace_rb_root);
@@ -653,28 +656,6 @@ static void* _user_get_free_page(int page_num, enum zone_type memory_zone,
         }
         return (void*)free_page_addr;
 }
-void* get_free_page(int page_num, enum zone_type memory_zone,
-                    vaddr target_vaddr, struct nexus_node* nexus_root,
-                    VSpace* vs, ENTRY_FLAGS_t flags)
-{
-        /*first check the input parameter*/
-        if (page_num < 0 || memory_zone < 0 || memory_zone > ZONE_NR_MAX
-            || !nexus_root) {
-                pr_error("[ NEXUS ] error input parameter\n");
-                return NULL;
-        }
-        if (target_vaddr >= KERNEL_VIRT_OFFSET) {
-                return _kernel_get_free_page(
-                        page_num, memory_zone, target_vaddr, nexus_root);
-        } else {
-                return _user_get_free_page(page_num,
-                                           memory_zone,
-                                           target_vaddr,
-                                           nexus_root,
-                                           vs,
-                                           flags);
-        }
-}
 static error_t _kernel_free_pages(void* p, int page_num,
                                   struct nexus_node* nexus_root)
 {
@@ -799,6 +780,32 @@ static error_t _user_free_pages(void* p, int page_num, VSpace* vs,
         }
         return 0;
 }
+void* get_free_page(int page_num, enum zone_type memory_zone,
+                    vaddr target_vaddr, struct nexus_node* nexus_root,
+                    VSpace* vs, ENTRY_FLAGS_t flags)
+{
+        /*first check the input parameter*/
+        if (page_num < 0 || memory_zone < 0 || memory_zone > ZONE_NR_MAX
+            || !nexus_root) {
+                pr_error("[ NEXUS ] error input parameter\n");
+                return NULL;
+        }
+		void* res =NULL;
+		lock_cas(&nexus_root->lock);
+        if (target_vaddr >= KERNEL_VIRT_OFFSET) {
+                res = _kernel_get_free_page(
+                        page_num, memory_zone, target_vaddr, nexus_root);
+        } else {
+                res =  _user_get_free_page(page_num,
+                                           memory_zone,
+                                           target_vaddr,
+                                           nexus_root,
+                                           vs,
+                                           flags);
+        }
+		unlock_cas(&nexus_root->lock);
+		return res;
+}
 error_t free_pages(void* p, int page_num, VSpace* vs,
                    struct nexus_node* nexus_root)
 {
@@ -806,10 +813,13 @@ error_t free_pages(void* p, int page_num, VSpace* vs,
                 pr_error("[ ERROR ] ERROR: error input arg\n");
                 return -E_IN_PARAM;
         }
+		error_t res = 0;
+		lock_cas(&nexus_root->lock);
         if ((vaddr)p >= KERNEL_VIRT_OFFSET) {
-                return _kernel_free_pages(p, page_num, nexus_root);
-                ;
+                res =  _kernel_free_pages(p, page_num, nexus_root);
         } else {
-                return _user_free_pages(p, page_num, vs, nexus_root);
+                res =  _user_free_pages(p, page_num, vs, nexus_root);
         }
+		unlock_cas(&nexus_root->lock);
+		return res;
 }

@@ -37,9 +37,5 @@ int smp_lock_test(void)
 }
 bool smp_lock_check(void)
 {
-        if(percpu(cpu_number)==BSP_ID)
-        {
-                pr_info("mcs value: %d\ncas value: %d\n",mcs_add_value,cas_add_value);
-        }
         return NR_CPU * TEST_ROUND == mcs_add_value && NR_CPU * TEST_ROUND == cas_add_value;
 }

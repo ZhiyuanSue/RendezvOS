@@ -7,6 +7,7 @@
 #include <common/types.h>
 #include <common/dsa/list.h>
 #include <rendezvos/mm/allocator.h>
+#include <rendezvos/sync/cas_lock.h>
 #define MAX_GROUP_SLOTS 12
 #define PAGE_PER_CHUNK  2
 #define CHUNK_MAGIC     0xa11ca11ca11ca11c
@@ -100,6 +101,7 @@ struct mem_allocator {
         MM_COMMON;
         struct nexus_node* nexus_root;
         struct mem_group groups[MAX_GROUP_SLOTS];
+		cas_lock_t lock;
 } __attribute__((aligned(sizeof(u64))));
 /*chunk*/
 error_t chunk_init(struct mem_chunk* chunk, int chunk_order, int allocator_id);
