@@ -31,7 +31,7 @@ struct nexus_node {
                         void* backup_manage_page;
                         struct map_handler* handler;
                         i64 nexus_id; /*should alloced by the upper level code*/
-						cas_lock_t lock;
+                        cas_lock_t lock;
                 };
         };
 };
@@ -41,7 +41,8 @@ struct nexus_node* init_nexus(struct map_handler* handler);
 struct nexus_node* nexus_create_vspace_root_node(struct nexus_node* nexus_root,
                                                  VSpace* vs);
 void nexus_delete_vspace(struct nexus_node* nexus_root, VSpace* vs);
-void nexus_migrate_vspace(struct nexus_node* src_nexus_root,struct nexus_node* dst_nexus_root,VSpace* vs);
+void nexus_migrate_vspace(struct nexus_node* src_nexus_root,
+                          struct nexus_node* dst_nexus_root, VSpace* vs);
 
 /*page*/
 void* get_free_page(int page_num, enum zone_type memory_zone,

@@ -104,7 +104,7 @@ static inline tagged_ptr_t msq_dequeue(ms_queue_t* q)
                                              *(u64*)&tail,
                                              *(u64*)&tmp);
                         } else {
-                                res = next;
+                                res = head;
                                 tmp = tp_new(tp_get_ptr(next),
                                              tp_get_tag(head) + 1);
                                 if (atomic64_cas((volatile u64*)&q->head,

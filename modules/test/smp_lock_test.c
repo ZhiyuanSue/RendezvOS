@@ -7,11 +7,11 @@
 
 extern int BSP_ID;
 extern int NR_CPU;
-spin_lock spin_ptr = NULL;
+static spin_lock spin_ptr = NULL;
 DEFINE_PER_CPU(struct spin_lock_t, test_spin_lock);
-cas_lock_t cas_lock;
-volatile int mcs_add_value = 0;
-volatile int cas_add_value = 0;
+static cas_lock_t cas_lock;
+static volatile int mcs_add_value = 0;
+static volatile int cas_add_value = 0;
 static volatile bool have_inited = false;
 int smp_lock_test(void)
 {
@@ -37,5 +37,6 @@ int smp_lock_test(void)
 }
 bool smp_lock_check(void)
 {
-        return NR_CPU * TEST_ROUND == mcs_add_value && NR_CPU * TEST_ROUND == cas_add_value;
+        return NR_CPU * TEST_ROUND == mcs_add_value
+               && NR_CPU * TEST_ROUND == cas_add_value;
 }

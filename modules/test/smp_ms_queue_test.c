@@ -7,7 +7,7 @@ extern struct allocator* kallocator;
 struct ms_test_data {
         i64 allocator_id;
         ms_queue_node_t ms_node;
-        int data;
+        u64 data;
 };
 extern int BSP_ID;
 #define percpu_ms_queue_test_number 10000
@@ -22,6 +22,8 @@ struct ms_test_data dummy;
 ms_queue_t ms_queue;
 static volatile bool have_inited = false;
 static volatile bool dyn_have_inited = false;
+static cas_lock_t cas_lock;
+static volatile int cas_add_value = 0;
 int ms_data_test_seq[ms_data_len] = {0};
 void smp_ms_queue_init(void)
 {
@@ -84,11 +86,12 @@ bool smp_ms_queue_check(void)
 
 void smp_ms_queue_dyn_alloc_init(void)
 {
-		struct allocator* malloc = percpu(kallocator);
-		struct ms_test_data* tmp = malloc->m_alloc(malloc, sizeof(struct ms_test_data));
+        struct allocator* malloc = percpu(kallocator);
+        struct ms_test_data* tmp =
+                malloc->m_alloc(malloc, sizeof(struct ms_test_data));
         tmp->data = -1;
         tmp->ms_node.next = tp_new_none();
-		tmp->allocator_id = percpu(cpu_number);
+        tmp->allocator_id = percpu(cpu_number);
         msq_init(&ms_queue, &tmp->ms_node);
         memset(ms_data_test_seq, 0, ms_data_len * sizeof(int));
 }
@@ -115,9 +118,18 @@ void smp_ms_queue_dyn_alloc_get(int offset)
                         ;
                 struct ms_test_data* get_ptr = container_of(
                         tp_get_ptr(dequeue_ptr), struct ms_test_data, ms_node);
-                ms_data_test_seq[i] = get_ptr->data;
+                // the current is dequeue node
+                // but the data is one the next node
+                struct ms_test_data* next_ptr =
+                        container_of(tp_get_ptr(get_ptr->ms_node.next),
+                                     struct ms_test_data,
+                                     ms_node);
+                ms_data_test_seq[i] = next_ptr->data;
                 malloc = per_cpu(kallocator, get_ptr->allocator_id);
-                // malloc->m_free(malloc, get_ptr);
+                malloc->m_free(malloc, get_ptr);
+                lock_cas(&cas_lock);
+                cas_add_value++;
+                unlock_cas(&cas_lock);
                 i++;
         }
 }
@@ -141,13 +153,14 @@ int smp_ms_queue_dyn_alloc_test(void)
 }
 bool smp_ms_queue_dyn_alloc_check(void)
 {
-        if (percpu(cpu_number) == BSP_ID) {
-                for (int i = 0; i < ms_data_len; i++) {
-                        if (i % 10 == 0 && i)
-                                pr_info("\n");
-                        pr_info("%d\t", ms_data_test_seq[i]);
-                }
-                pr_info("\n");
-        }
-        return true;
+        // if (percpu(cpu_number) == BSP_ID) {
+        //         for (int i = 0; i < ms_data_len; i++) {
+        //                 if (i % 10 == 0 && i)
+        //                         pr_info("\n");
+        //                 pr_info("%d\t", ms_data_test_seq[i]);
+        //         }
+        //         pr_info("\n");
+        // }
+        // pr_info("dyn get time %d\n",cas_add_value);
+        return cas_add_value == ms_data_len;
 }

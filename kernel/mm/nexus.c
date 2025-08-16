@@ -790,21 +790,21 @@ void* get_free_page(int page_num, enum zone_type memory_zone,
                 pr_error("[ NEXUS ] error input parameter\n");
                 return NULL;
         }
-		void* res =NULL;
-		lock_cas(&nexus_root->lock);
+        void* res = NULL;
+        lock_cas(&nexus_root->lock);
         if (target_vaddr >= KERNEL_VIRT_OFFSET) {
                 res = _kernel_get_free_page(
                         page_num, memory_zone, target_vaddr, nexus_root);
         } else {
-                res =  _user_get_free_page(page_num,
-                                           memory_zone,
-                                           target_vaddr,
-                                           nexus_root,
-                                           vs,
-                                           flags);
+                res = _user_get_free_page(page_num,
+                                          memory_zone,
+                                          target_vaddr,
+                                          nexus_root,
+                                          vs,
+                                          flags);
         }
-		unlock_cas(&nexus_root->lock);
-		return res;
+        unlock_cas(&nexus_root->lock);
+        return res;
 }
 error_t free_pages(void* p, int page_num, VSpace* vs,
                    struct nexus_node* nexus_root)
@@ -813,13 +813,13 @@ error_t free_pages(void* p, int page_num, VSpace* vs,
                 pr_error("[ ERROR ] ERROR: error input arg\n");
                 return -E_IN_PARAM;
         }
-		error_t res = 0;
-		lock_cas(&nexus_root->lock);
+        error_t res = 0;
+        lock_cas(&nexus_root->lock);
         if ((vaddr)p >= KERNEL_VIRT_OFFSET) {
-                res =  _kernel_free_pages(p, page_num, nexus_root);
+                res = _kernel_free_pages(p, page_num, nexus_root);
         } else {
-                res =  _user_free_pages(p, page_num, vs, nexus_root);
+                res = _user_free_pages(p, page_num, vs, nexus_root);
         }
-		unlock_cas(&nexus_root->lock);
-		return res;
+        unlock_cas(&nexus_root->lock);
+        return res;
 }

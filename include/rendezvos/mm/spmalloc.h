@@ -101,7 +101,7 @@ struct mem_allocator {
         MM_COMMON;
         struct nexus_node* nexus_root;
         struct mem_group groups[MAX_GROUP_SLOTS];
-		cas_lock_t lock;
+        cas_lock_t lock;
 } __attribute__((aligned(sizeof(u64))));
 /*chunk*/
 error_t chunk_init(struct mem_chunk* chunk, int chunk_order, int allocator_id);
