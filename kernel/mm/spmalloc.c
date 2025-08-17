@@ -306,7 +306,6 @@ void* sp_alloc(struct allocator* allocator_p, size_t Bytes)
         struct mem_allocator* sp_allocator_p =
                 (struct mem_allocator*)allocator_p;
         void* res_ptr = NULL;
-        lock_cas(&sp_allocator_p->lock);
         if (Bytes > slot_size[MAX_GROUP_SLOTS - 1]) {
                 /*here we allocate from the page allocator*/
                 int page_num = bytes_to_pages(Bytes);
@@ -321,9 +320,10 @@ void* sp_alloc(struct allocator* allocator_p, size_t Bytes)
                         pr_error("[ERROR] get free page fail\n");
                 }
         } else {
+                lock_cas(&sp_allocator_p->lock);
                 res_ptr = _sp_alloc(sp_allocator_p, Bytes);
+                unlock_cas(&sp_allocator_p->lock);
         }
-        unlock_cas(&sp_allocator_p->lock);
         return res_ptr;
 }
 static error_t _sp_free(struct mem_allocator* sp_allocator_p, void* p)
@@ -393,15 +393,15 @@ void sp_free(struct allocator* allocator_p, void* p)
         struct mem_allocator* sp_allocator_p =
                 (struct mem_allocator*)allocator_p;
         error_t e = 0;
-        lock_cas(&sp_allocator_p->lock);
         if (((vaddr)p) & (PAGE_SIZE - 1)) {
+                lock_cas(&sp_allocator_p->lock);
                 /*free from the chunks*/
                 e = _sp_free(sp_allocator_p, p);
+                unlock_cas(&sp_allocator_p->lock);
         } else {
                 /*free pages*/
                 e = free_pages(p, 0, 0, sp_allocator_p->nexus_root);
         }
-        unlock_cas(&sp_allocator_p->lock);
         if (e) {
                 pr_error(
                         "[ERROR]sp free have generated an error but no error handle\n");
