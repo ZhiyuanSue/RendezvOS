@@ -44,7 +44,8 @@ int arch_vmm_test(void)
         /*=== === === ===*/
 
         /*TEST:memset the map l3 table to 0*/
-        i64 ppn = buddy_pmm.pmm_alloc(1, ZONE_NORMAL);
+        size_t alloced_page_number;
+        i64 ppn = buddy_pmm.pmm_alloc(1, ZONE_NORMAL, &alloced_page_number);
         paddr page_paddr = PADDR(ppn);
         vaddr page_vaddr = map_pages;
         ENTRY_FLAGS_t flags = arch_decode_flags(
@@ -70,7 +71,7 @@ int arch_vmm_test(void)
         VSpace *vs = percpu(current_vspace);
         /* actually we should lock this pmm_alloc, but it's a test, we think
          * there's no preemt*/
-        i64 ppn_1 = buddy_pmm.pmm_alloc(1, ZONE_NORMAL);
+        i64 ppn_1 = buddy_pmm.pmm_alloc(1, ZONE_NORMAL, &alloced_page_number);
         if (ppn_1 <= 0) {
                 pr_error("[ ERROR ] ERROR:try get a ppn fail\n");
                 goto arch_vmm_test_error;
@@ -102,7 +103,7 @@ int arch_vmm_test(void)
                 then we alloc another page frame and try to map to same virtual
            region ,expect fail
         */
-        i64 ppn_2 = buddy_pmm.pmm_alloc(1, ZONE_NORMAL);
+        i64 ppn_2 = buddy_pmm.pmm_alloc(1, ZONE_NORMAL, &alloced_page_number);
         if (ppn_2 <= 0) {
                 pr_error("[ ERROR ] ERROR:try get a ppn fail\n");
                 goto arch_vmm_test_error;
@@ -129,7 +130,8 @@ int arch_vmm_test(void)
         /*
                 this time alloc a new 2M virtual region
         */
-        i64 ppn_3 = buddy_pmm.pmm_alloc(MIDDLE_PAGES, ZONE_NORMAL);
+        i64 ppn_3 = buddy_pmm.pmm_alloc(
+                MIDDLE_PAGES, ZONE_NORMAL, &alloced_page_number);
         if (ppn_3 <= 0) { /*we expect the ppn aligned*/
                 pr_error("[ ERROR ] ERROR:try get a ppn fail\n");
                 goto arch_vmm_test_error;
@@ -157,7 +159,8 @@ int arch_vmm_test(void)
                 another 2M page map to same virtual region
                                 except same fail as 4K remap
         */
-        i64 ppn_4 = buddy_pmm.pmm_alloc(MIDDLE_PAGES, ZONE_NORMAL);
+        i64 ppn_4 = buddy_pmm.pmm_alloc(
+                MIDDLE_PAGES, ZONE_NORMAL, &alloced_page_number);
         if (ppn_4 <= 0) { /*we expect the ppn aligned*/
                 pr_error("[ ERROR ] ERROR:try get a ppn fail\n");
                 goto arch_vmm_test_error;
@@ -206,7 +209,8 @@ int arch_vmm_test(void)
         }
 
         /* try to map a 2M page to the same vp of ppn_1 mapped*/
-        ppn_1 = buddy_pmm.pmm_alloc(MIDDLE_PAGES, ZONE_NORMAL);
+        ppn_1 = buddy_pmm.pmm_alloc(
+                MIDDLE_PAGES, ZONE_NORMAL, &alloced_page_number);
         if (ppn_1 <= 0) {
                 pr_error("[ ERROR ] ERROR:try get a ppn fail\n");
                 goto arch_vmm_test_error;

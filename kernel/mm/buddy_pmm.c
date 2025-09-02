@@ -233,7 +233,8 @@ static inline error_t mark_childs(int zone_number, int order, u64 index)
 
         return (0);
 }
-i64 pmm_alloc_zone(int alloc_order, int zone_number)
+i64 pmm_alloc_zone(int alloc_order, int zone_number,
+                   size_t *alloced_page_number)
 {
         bool find_an_order;
         int tmp_order;
@@ -254,6 +255,7 @@ i64 pmm_alloc_zone(int alloc_order, int zone_number)
 
         if (!find_an_order) {
                 pr_info("not find an order\n");
+                alloced_page_number = 0;
                 return (-E_RENDEZVOS);
         }
 
@@ -272,8 +274,10 @@ i64 pmm_alloc_zone(int alloc_order, int zone_number)
                 right_child = &child_order_header[(del_node->index << 1) + 1];
 
                 if ((left_child->flags & PAGE_FRAME_ALLOCED)
-                    || (right_child->flags & PAGE_FRAME_ALLOCED))
+                    || (right_child->flags & PAGE_FRAME_ALLOCED)) {
+                        alloced_page_number = 0;
                         return (-E_RENDEZVOS);
+                }
 
                 list_del_init(&del_node->page_list);
 
@@ -293,36 +297,45 @@ i64 pmm_alloc_zone(int alloc_order, int zone_number)
         list_del_init(&del_node->page_list);
 
         /*Forth,mark all the child node alloced*/
-        if (mark_childs(zone_number, tmp_order, del_node->index))
+        if (mark_childs(zone_number, tmp_order, del_node->index)) {
+                alloced_page_number = 0;
                 return (-E_RENDEZVOS);
+        }
 
         buddy_pmm.zone[zone_number].zone_total_avaliable_pages -=
-                1 << alloc_order;
+                1ULL << ((u64)alloc_order);
 
+        *alloced_page_number = 1ULL << ((u64)alloc_order);
         return (i64)(PPN_FROM_IDX(alloc_order, del_node->index)
                      + PPN(zone->zone_lower_addr));
 }
-i64 pmm_alloc(size_t page_number, enum zone_type zone_number)
+i64 pmm_alloc(size_t page_number, enum zone_type zone_number,
+              size_t *alloced_page_number)
 {
         u32 alloc_order;
 
         /*have we used too many physical memory*/
-        if (page_number < 0)
+        if (page_number < 0) {
+                alloced_page_number = 0;
                 return (0);
+        }
 
         if (buddy_pmm.zone[zone_number].zone_total_avaliable_pages
             < page_number) {
                 pr_error("[ BUDDY ]this zone have no memory to alloc\n");
                 /*TODO:if so ,we need to swap the memory*/
+                alloced_page_number = 0;
                 return (-E_RENDEZVOS);
         }
 
-        if (page_number > (1 << BUDDY_MAXORDER))
+        if (page_number > (1 << BUDDY_MAXORDER)) {
+                alloced_page_number = 0;
                 return (-E_RENDEZVOS);
+        }
 
         /*calculate the upper 2^n size*/
         alloc_order = log2_of_next_power_of_two(page_number);
-        return (pmm_alloc_zone(alloc_order, zone_number));
+        return (pmm_alloc_zone(alloc_order, zone_number, alloced_page_number));
 }
 static bool inline ppn_inrange(u32 ppn, int *zone_number)
 {

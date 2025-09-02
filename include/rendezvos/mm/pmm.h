@@ -41,10 +41,12 @@ struct memory_regions {
 
 enum zone_type { ZONE_NORMAL, ZONE_NR_MAX };
 
-#define PMM_COMMON                                                        \
-        void (*pmm_init)(struct setup_info * arch_setup_info);            \
-        i64 (*pmm_alloc)(size_t page_number, enum zone_type zone_number); \
-        error_t (*pmm_free)(i64 ppn, size_t page_number);                 \
+#define PMM_COMMON                                             \
+        void (*pmm_init)(struct setup_info * arch_setup_info); \
+        i64 (*pmm_alloc)(size_t page_number,                   \
+                         enum zone_type zone_number,           \
+                         size_t * alloced_page_number);        \
+        error_t (*pmm_free)(i64 ppn, size_t page_number);      \
         spin_lock spin_ptr
 
 extern struct spin_lock_t pmm_spin_lock;

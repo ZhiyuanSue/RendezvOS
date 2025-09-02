@@ -172,8 +172,10 @@ struct nexus_node* init_nexus(struct map_handler* handler)
 {
         VSpace* vs = current_vspace;
         /*get a phy page*/
-        i64 nexus_init_page = handler->pmm->pmm_alloc(1, ZONE_NORMAL);
-        if (nexus_init_page <= 0) {
+        size_t alloced_page_number;
+        i64 nexus_init_page =
+                handler->pmm->pmm_alloc(1, ZONE_NORMAL, &alloced_page_number);
+        if (nexus_init_page <= 0 || alloced_page_number != 1) {
                 pr_error("[ NEXUS ] ERROR: init error\n");
                 return NULL;
         }
@@ -194,6 +196,7 @@ struct nexus_node* init_nexus(struct map_handler* handler)
 }
 static struct nexus_node* nexus_get_free_entry(struct nexus_node* root_node)
 {
+        size_t alloced_page_number;
         /*from manage_free_list find one manage page that have free node*/
         struct list_entry* manage_free_list_node = &root_node->manage_free_list;
         struct list_entry* lp = manage_free_list_node->next;
@@ -216,11 +219,11 @@ static struct nexus_node* nexus_get_free_entry(struct nexus_node* root_node)
                         lock_mcs(&root_node->handler->pmm->spin_ptr,
                                  &per_cpu(pmm_spin_lock, root_node->nexus_id));
                         i64 nexus_new_page = root_node->handler->pmm->pmm_alloc(
-                                1, ZONE_NORMAL);
+                                1, ZONE_NORMAL, &alloced_page_number);
                         unlock_mcs(&root_node->handler->pmm->spin_ptr,
                                    &per_cpu(pmm_spin_lock,
                                             root_node->nexus_id));
-                        if (nexus_new_page <= 0) {
+                        if (nexus_new_page <= 0 || alloced_page_number != 1) {
                                 pr_error("[ NEXUS ] ERROR: init error\n");
                                 return NULL;
                         }
@@ -339,9 +342,10 @@ struct nexus_node* nexus_create_vspace_root_node(struct nexus_node* nexus_root,
         }
 
         /*get a phy page*/
-        i64 nexus_init_page =
-                nexus_root->handler->pmm->pmm_alloc(1, ZONE_NORMAL);
-        if (nexus_init_page <= 0) {
+        size_t alloced_page_number;
+        i64 nexus_init_page = nexus_root->handler->pmm->pmm_alloc(
+                1, ZONE_NORMAL, &alloced_page_number);
+        if (nexus_init_page <= 0 || alloced_page_number != 1) {
                 pr_error("[ NEXUS ] ERROR: init error\n");
                 return NULL;
         }
@@ -464,6 +468,7 @@ static void* _kernel_get_free_page(int page_num, enum zone_type memory_zone,
                                    struct nexus_node* nexus_root)
 {
         vaddr free_page_addr;
+        size_t alloced_page_number;
         /*try get a free entry*/
         struct nexus_node* free_nexus_entry = nexus_get_free_entry(nexus_root);
         if (!free_nexus_entry) {
@@ -483,14 +488,15 @@ static void* _kernel_get_free_page(int page_num, enum zone_type memory_zone,
         }
         lock_mcs(&nexus_root->handler->pmm->spin_ptr,
                  &per_cpu(pmm_spin_lock, nexus_root->nexus_id));
-        i64 ppn = nexus_root->handler->pmm->pmm_alloc(page_num, memory_zone);
+        i64 ppn = nexus_root->handler->pmm->pmm_alloc(
+                page_num, memory_zone, &alloced_page_number);
         unlock_mcs(&nexus_root->handler->pmm->spin_ptr,
                    &per_cpu(pmm_spin_lock, nexus_root->nexus_id));
         if (ppn <= 0) {
                 pr_error("[ NEXUS ] ERROR: init error\n");
                 /*we have alloc a new usable entry ,we need to return
                  * back*/
-                goto fail_free_nexus_entry;
+                goto fail;
         }
         free_page_addr = KERNEL_PHY_TO_VIRT(PADDR(ppn));
         /*map, here remember, if alloc a 2M huge page, just map a level
@@ -574,6 +580,7 @@ static void* _user_get_free_page(int page_num, enum zone_type memory_zone,
                                  ENTRY_FLAGS_t flags)
 {
         vaddr free_page_addr;
+        size_t alloced_page_number;
         /*and obviously, the address 0 should not accessed by any of the
          * user*/
         free_page_addr = (((u64)target_vaddr) >> 12) << 12;
@@ -608,11 +615,11 @@ static void* _user_get_free_page(int page_num, enum zone_type memory_zone,
                 }
                 lock_mcs(&vspace_node->handler->pmm->spin_ptr,
                          &per_cpu(pmm_spin_lock, vspace_node->nexus_id));
-                i64 ppn = vspace_node->handler->pmm->pmm_alloc(MIDDLE_PAGES,
-                                                               memory_zone);
+                i64 ppn = vspace_node->handler->pmm->pmm_alloc(
+                        MIDDLE_PAGES, memory_zone, &alloced_page_number);
                 unlock_mcs(&vspace_node->handler->pmm->spin_ptr,
                            &per_cpu(pmm_spin_lock, vspace_node->nexus_id));
-                if (ppn <= 0) {
+                if (ppn <= 0 || alloced_page_number != MIDDLE_PAGES) {
                         pr_error("[ NEXUS ] ERROR: init error\n");
                         /*we have alloc a new usable entry ,we need to
                          * return back*/
@@ -651,10 +658,11 @@ static void* _user_get_free_page(int page_num, enum zone_type memory_zone,
                 }
                 lock_mcs(&vspace_node->handler->pmm->spin_ptr,
                          &per_cpu(pmm_spin_lock, vspace_node->nexus_id));
-                i64 ppn = vspace_node->handler->pmm->pmm_alloc(1, memory_zone);
+                i64 ppn = vspace_node->handler->pmm->pmm_alloc(
+                        1, memory_zone, &alloced_page_number);
                 unlock_mcs(&vspace_node->handler->pmm->spin_ptr,
                            &per_cpu(pmm_spin_lock, vspace_node->nexus_id));
-                if (ppn <= 0) {
+                if (ppn <= 0 || alloced_page_number != 1) {
                         pr_error("[ NEXUS ] ERROR: init error\n");
                         /*we have alloc a new usable entry ,we need to
                          * return back*/
