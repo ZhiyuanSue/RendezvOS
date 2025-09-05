@@ -22,11 +22,6 @@
 #include <rendezvos/sync/spin_lock.h>
 #include <rendezvos/smp/percpu.h>
 
-struct region {
-        paddr addr;
-        u64 len;
-};
-
 struct memory_regions {
         // region_count record continuous memory regions number
         u64 region_count;

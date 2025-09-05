@@ -45,6 +45,10 @@ enum ENTRY_FLAGS {
 };
 typedef u64 ENTRY_FLAGS_t;
 typedef u64 ARCH_PFLAGS_t;
+struct region {
+        u64 addr;
+        u64 len;
+};
 /*
     here we call the common flags entry flags
     and the flags in arch as page flags(pflags)

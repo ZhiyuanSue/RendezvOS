@@ -14,9 +14,10 @@
 struct page_frame {
 #define PAGE_FRAME_ALLOCED   (1 << 0)
 #define PAGE_FRAME_AVALIABLE (1 << 1)
-        u32 flags;
+        u32 flags : 4;
+        u32 index : 28;
         u32 ref_count;
-        u64 index;
+        void *mapping;
         struct list_entry page_list;
 };
 

@@ -18,10 +18,11 @@ struct nexus_node {
                 /* manager node */
                 struct {
                         struct rb_node _rb_node;
-                        vaddr start_addr;
-                        vaddr ppn;
-                        u64 size;
+                        struct region v_region;
                         u64 page_left_nexus;
+                        u64 ppn;
+                        struct list_entry rmap_list;
+                        ENTRY_FLAGS_t region_flags;
                 };
                 /* root node*/
                 struct {
