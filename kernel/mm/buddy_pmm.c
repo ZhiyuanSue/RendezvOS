@@ -227,6 +227,9 @@ static inline error_t mark_childs(int zone_number, int order, u64 index)
                 return (-E_RENDEZVOS);
 
         del_node->flags |= PAGE_FRAME_ALLOCED;
+        if (order == 0) {
+                del_node->ref_count++;
+        }
         if (mark_childs(zone_number, order - 1, index << 1)
             || mark_childs(zone_number, order - 1, (index << 1) + 1))
                 return (-E_RENDEZVOS);
@@ -255,7 +258,7 @@ i64 pmm_alloc_zone(int alloc_order, int zone_number,
 
         if (!find_an_order) {
                 pr_info("not find an order\n");
-                alloced_page_number = 0;
+                *alloced_page_number = 0;
                 return (-E_RENDEZVOS);
         }
 
@@ -275,7 +278,7 @@ i64 pmm_alloc_zone(int alloc_order, int zone_number,
 
                 if ((left_child->flags & PAGE_FRAME_ALLOCED)
                     || (right_child->flags & PAGE_FRAME_ALLOCED)) {
-                        alloced_page_number = 0;
+                        *alloced_page_number = 0;
                         return (-E_RENDEZVOS);
                 }
 
@@ -298,7 +301,7 @@ i64 pmm_alloc_zone(int alloc_order, int zone_number,
 
         /*Forth,mark all the child node alloced*/
         if (mark_childs(zone_number, tmp_order, del_node->index)) {
-                alloced_page_number = 0;
+                *alloced_page_number = 0;
                 return (-E_RENDEZVOS);
         }
 
@@ -316,7 +319,7 @@ i64 pmm_alloc(size_t page_number, enum zone_type zone_number,
 
         /*have we used too many physical memory*/
         if (page_number < 0) {
-                alloced_page_number = 0;
+                *alloced_page_number = 0;
                 return (0);
         }
 
@@ -324,12 +327,12 @@ i64 pmm_alloc(size_t page_number, enum zone_type zone_number,
             < page_number) {
                 pr_error("[ BUDDY ]this zone have no memory to alloc\n");
                 /*TODO:if so ,we need to swap the memory*/
-                alloced_page_number = 0;
+                *alloced_page_number = 0;
                 return (-E_RENDEZVOS);
         }
 
         if (page_number > (1 << BUDDY_MAXORDER)) {
-                alloced_page_number = 0;
+                *alloced_page_number = 0;
                 return (-E_RENDEZVOS);
         }
 
@@ -419,9 +422,9 @@ error_t pmm_free(i64 ppn, size_t page_number)
                  * check*/
                 header = buddy_pmm.zone[zone_number].zone_head_frame[0];
                 insert_node = &(header[ppn + page_count]);
+                insert_node->ref_count--;
                 if (insert_node->ref_count != 0) {
-                        /*TODO*/
-                        ;
+                        continue;
                 }
 
                 if ((free_one_result =

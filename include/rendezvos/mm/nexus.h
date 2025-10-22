@@ -33,7 +33,7 @@ struct nexus_node {
                         struct map_handler* handler;
                         i64 nexus_id; /*should alloced by the upper level code*/
                         cas_lock_t nexus_lock;
-                        cas_lock_t vspace_lock;
+                        cas_lock_t nexus_vspace_lock;
                 };
         };
 };

@@ -48,14 +48,14 @@ struct multiboot2_tag {
 
 struct multiboot2_tag_string {
         MULTIBOOT2_TAG_COMMON;
-        char string[0];
+        char string[];
 } __attribute__((packed));
 
 struct multiboot2_tag_module {
         MULTIBOOT2_TAG_COMMON;
         u32 mod_start;
         u32 mod_end;
-        char cmdline[0];
+        char cmdline[];
 } __attribute__((packed));
 
 struct multiboot2_tag_basic_meminfo {
@@ -86,7 +86,7 @@ struct multiboot2_tag_mmap {
         MULTIBOOT2_TAG_COMMON;
         u32 entry_size;
         u32 entry_version;
-        struct multiboot2_mmap_entry entries[0];
+        struct multiboot2_mmap_entry entries[];
 } __attribute__((packed));
 
 #define for_each_multiboot2_mmap(tag, addr_ptr)                       \

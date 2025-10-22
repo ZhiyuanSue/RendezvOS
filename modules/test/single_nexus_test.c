@@ -59,8 +59,8 @@ void nexus_print(struct nexus_node* nexus_root)
                         container_of(tmp_rb, struct nexus_node, _rb_node);
                 if (tmp_node)
                         debug("\t[ NEXUS ] Used page: start vaddr 0x%x, size 0x%x\n",
-                              tmp_node->start_addr,
-                              tmp_node->size);
+                              tmp_node->v_region.addr,
+                              tmp_node->v_region.len);
                 tmp_rb = RB_Next(tmp_rb);
         }
         debug("=== [ END ] ===\n")
@@ -129,8 +129,8 @@ int nexus_test(void)
                                              start_test_addr,
                                              nexus_root,
                                              vs,
-                                             PAGE_ENTRY_NONE);
-
+                                             PAGE_ENTRY_READ | PAGE_ENTRY_VALID
+                                                     | PAGE_ENTRY_WRITE);
                 start_test_addr += page_num * PAGE_SIZE;
                 if (test_ptrs[i]) {
                         *((u64*)(test_ptrs[i])) = 0;
