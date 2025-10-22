@@ -442,13 +442,19 @@ nexus也不应该试图释放另一个nexus中的内容。除非将整个用户�
 另一个需要改写的地方是，检查pte的有效性，并不是仅仅看是否为0，因为，还有可能无效，但是有些地方可能需要为0，需要仔细斟酌。
 
 ## 先说那个区间映射的事情
-没必要维护上面的映射关系，但是需要像Linux一样维护范围。
 
 先考虑一个事情，范围维护还在后面，就是nexus entry分配的事情。目前每次开一个新的vspace并没有新建一个对应的nexus page，而是还是依然从当前整个vspace树上的nexus进行entry的分配，这在多个vspace的时候分配entry会相互影响。这不合适。所以先改造成为，每开一个vspace，新整一个开始的page。这虽然会增大内存的使用，但是会减少vspace之间的冲突。同时在用户态的page的管理上，就必须从vspace的根节点里面去分配而不再是从kernel的那个nexus root开始分配。
 
 当然，这也需要记得释放整个vspace对应的nexus entry那些对应的页面。（这部分应该没有什么share之类的，所以就按照独占释放就行了。）
 
 然后来看现有整个映射的逻辑，整个get free page和free page的逻辑其实也是分为用户态和内核态两种，所以按照kernel和user两个分类来说，还是有一定差别的。
+
+不再尝试像Linux一样维护范围，而是维护单独的每个页面（2M或者4K一个页面一个）
+理由如下：虽然使用范围的数据结构数量会比每个单独弄更少，而且内存占用也更少，这毫无疑问，但是，这会带来过于复杂的区间合并拆分等操作。
+
+当然，由于page fault的存在，维护区间仍然是有意义的。尽管这是由一大堆2M和4Kpage 拼合起来的。
+
+对于kernel来说，这是获得或者释放虚拟页面物理页面这两者一定是一致的，因此无需区分。但是对于user来说，get free pages应当是只塞入这一堆区间。而需要增加一个映射相应区间的函数 user map phy range pages，作为懒分配的后续补充。对于user的free pages这个也是没有问题的，不过必须包含两个函数，一个只释放了映射的页面但是仍然保留所有的nexus entry，即 user free phy range pages，当然为了接口的统一性，我们还是会提供内核部分的free phy range pages，结果就是同时释放掉物理和虚拟的页面。而另一个则既释放物理页面也释放这一堆区间，即user free pages。
 
 kernel：
 
@@ -527,3 +533,13 @@ nexus需要为此提供额外的接口，而不能让底下的pmm去处理refcou
 另外，这也影响上面的get free page和free page的实现。如果get free page，需要查看对应的mapping信息。如果没有，则需要设置该信息为链接的情况，如果有，则需要加入链表。
 
 最后，需要额外考虑非buddy的物理内存分配器情况下的实现，因为这里只有buddy的数据记录了mapping的情况。通常来说，我们只允许kernel中使用其他的物理内存分配器中的内容（比如dma等区域）。而在用户态的这些内容，才会当成一个一个4K page去做并允许shared。（总之这里需要一些谨慎的处理）而且这个mapping这里，涉及到pmm和nexus两层，需要谨慎对待。
+
+## 修改nexus的字段
+目前，尽管使用了一些压缩的方法，但是仍然面临使用字段过多的问题，可以考虑压缩
+ - 删掉backup manage page(done，删掉好像还更快了点)
+ - nexus_id和map handler的id其实应该是一样的
+ - 相应的lock理论上也能塞到对应的map handler里面去。
+ -v region的len其实没必要，因为现在只剩下2M和4K的page范围了。可以在flags里面知道。
+ - ppn也没必要，因为确实可以从vaddr用map hander查找页表来得到。虽然这里面没有直接记录map handler，但是一般函数接口，都会给对应的nexus root
+ - 重新分类，现在包括四类节点，per cpu的根，vspace的根，每个管理页面的头，普通节点，四类。
+ - map handler也可以在vs中找到。

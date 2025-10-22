@@ -16,12 +16,6 @@ void nexus_print(struct nexus_node* nexus_root)
         }
         debug("=== [ NEXUS ] ===\n");
         debug("[ MANAGE PAGES ]\n");
-        if (nexus_root->backup_manage_page) {
-                debug("Backup Page: Yes 0x%x\n",
-                      (vaddr)nexus_root->backup_manage_page);
-        } else {
-                debug("Backup Page: No \n");
-        }
         struct list_entry* manage_page_list_entry =
                 &nexus_root->manage_free_list;
         struct list_entry* tmp_mp = manage_page_list_entry->next;

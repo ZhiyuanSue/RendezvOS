@@ -29,7 +29,6 @@ struct nexus_node {
                         struct rb_node _vspace_rb_node;
                         struct rb_root _rb_root;
                         struct rb_root _vspace_rb_root;
-                        void* backup_manage_page;
                         struct map_handler* handler;
                         i64 nexus_id; /*should alloced by the upper level code*/
                         cas_lock_t nexus_lock;
