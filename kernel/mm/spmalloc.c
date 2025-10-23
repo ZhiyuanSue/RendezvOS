@@ -28,6 +28,50 @@ static int bytes_to_pages(size_t Bytes)
         /*for 2048 - 2M, alloc pages ,checked by upper logical*/
         return ROUND_UP(Bytes, PAGE_SIZE) / PAGE_SIZE;
 }
+
+static void page_chunk_rb_tree_insert(struct page_chunk_node* node,
+                                      struct rb_root* page_chunk_root)
+{
+        struct rb_node** new = &page_chunk_root->rb_root, *parent = NULL;
+        u64 key = node->page_addr;
+        while (*new) {
+                parent = *new;
+                struct page_chunk_node* tmp_node =
+                        container_of(parent, struct page_chunk_node, _rb_node);
+                if (key < (u64)(tmp_node->page_addr))
+                        new = &parent->left_child;
+                else if (key > (u64)(tmp_node->page_addr))
+                        new = &parent->right_child;
+                else
+                        return;
+        }
+        RB_Link_Node(&node->_rb_node, parent, new);
+        RB_SolveDoubleRed(&node->_rb_node, page_chunk_root);
+}
+static void page_chunk_rb_tree_remove(struct page_chunk_node* node,
+                                      struct rb_root* page_chunk_root)
+{
+        RB_Remove(&node->_rb_node, page_chunk_root);
+        node->_rb_node.black_height = node->_rb_node.rb_parent_color = 0;
+        node->_rb_node.left_child = node->_rb_node.right_child = NULL;
+}
+struct page_chunk_node*
+page_chunk_rb_tree_search(struct rb_root* page_chunk_root, vaddr page_addr)
+{
+        struct rb_node* node = page_chunk_root->rb_root;
+        struct page_chunk_node* tmp_node = NULL;
+        while (node) {
+                tmp_node = container_of(node, struct page_chunk_node, _rb_node);
+                if (page_addr < tmp_node->page_addr)
+                        node = node->left_child;
+                else if (page_addr > (u64)(tmp_node->page_addr))
+                        node = node->right_child;
+                else
+                        return tmp_node;
+        }
+        return tmp_node;
+}
+
 error_t chunk_init(struct mem_chunk* chunk, int chunk_order, int allocator_id)
 {
         if (((vaddr)chunk) % PAGE_SIZE != 0 || chunk_order < 0
@@ -162,6 +206,7 @@ struct allocator* sp_init(struct nexus_node* nexus_root, int allocator_id)
         }
         tmp_sp_alloctor.allocator_id = allocator_id;
         tmp_sp_alloctor.nexus_root = nexus_root;
+        tmp_sp_alloctor.page_chunk_root.rb_root = NULL;
         for (int i = 0; i < MAX_GROUP_SLOTS; i++) {
                 tmp_sp_alloctor.groups[i].allocator_id = allocator_id;
                 tmp_sp_alloctor.groups[i].chunk_order = i;
@@ -316,6 +361,16 @@ void* sp_alloc(struct allocator* allocator_p, size_t Bytes)
                                         sp_allocator_p->nexus_root,
                                         0,
                                         PAGE_ENTRY_NONE);
+                lock_cas(&sp_allocator_p->lock);
+                struct page_chunk_node* pcn =
+                        (struct page_chunk_node*)_sp_alloc(
+                                sp_allocator_p, sizeof(struct page_chunk_node));
+                memset(pcn, 0, sizeof(struct page_chunk_node));
+                pcn->page_addr = (vaddr)res_ptr;
+                pcn->page_num = page_num;
+                page_chunk_rb_tree_insert(pcn,
+                                          &sp_allocator_p->page_chunk_root);
+                unlock_cas(&sp_allocator_p->lock);
                 if (!res_ptr) {
                         pr_error("[ERROR] get free page fail\n");
                 }
@@ -400,10 +455,23 @@ void sp_free(struct allocator* allocator_p, void* p)
                 unlock_cas(&sp_allocator_p->lock);
         } else {
                 /*free pages*/
-                e = free_pages(p, 0, 0, sp_allocator_p->nexus_root);
+                struct page_chunk_node* pcn = page_chunk_rb_tree_search(
+                        &sp_allocator_p->page_chunk_root, (vaddr)p);
+                if (!pcn) {
+                        /*another sp allocator alloced it*/
+                        pr_error(
+                                "cannot find the page chunk, might alloced by another sp allocator\n");
+                        return;
+                }
+                e = free_pages(p, pcn->page_num, 0, sp_allocator_p->nexus_root);
+                lock_cas(&sp_allocator_p->lock);
+                page_chunk_rb_tree_remove(pcn,
+                                          &sp_allocator_p->page_chunk_root);
+                e = _sp_free(sp_allocator_p, (void*)pcn);
+                unlock_cas(&sp_allocator_p->lock);
         }
         if (e) {
                 pr_error(
-                        "[ERROR]sp free have generated an error but no error handle\n");
+                        "[ ERROR ]sp free have generated an error but no error handle\n");
         }
 }
