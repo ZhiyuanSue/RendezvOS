@@ -767,13 +767,6 @@ static error_t _kernel_free_pages(void* p, int page_num,
                                 "[ NEXUS ] ERROR: split 2M page and we truncate it");
                         break;
                 }
-                lock_mcs(&nexus_root->handler->pmm->spin_ptr,
-                         &per_cpu(pmm_spin_lock, nexus_root->nexus_id));
-                nexus_root->handler->pmm->pmm_free(
-                        PPN(KERNEL_VIRT_TO_PHY(tmp_node->v_region.addr)),
-                        tmp_node->v_region.len / PAGE_SIZE);
-                unlock_mcs(&nexus_root->handler->pmm->spin_ptr,
-                           &per_cpu(pmm_spin_lock, nexus_root->nexus_id));
                 error_t unmap_res = unmap(vs,
                                           VPN(tmp_node->v_region.addr),
                                           0,
@@ -784,6 +777,14 @@ static error_t _kernel_free_pages(void* p, int page_num,
                         unlock_cas(&nexus_root->nexus_vspace_lock);
                         return -E_RENDEZVOS;
                 }
+                lock_mcs(&nexus_root->handler->pmm->spin_ptr,
+                         &per_cpu(pmm_spin_lock, nexus_root->nexus_id));
+                nexus_root->handler->pmm->pmm_free(
+                        PPN(KERNEL_VIRT_TO_PHY(tmp_node->v_region.addr)),
+                        tmp_node->v_region.len / PAGE_SIZE);
+                unlock_mcs(&nexus_root->handler->pmm->spin_ptr,
+                           &per_cpu(pmm_spin_lock, nexus_root->nexus_id));
+                
                 tmp_node = nexus_rb_tree_next(tmp_node);
                 if (tmp_node->manage_free_list.next
                     && tmp_node->manage_free_list.prev) {
