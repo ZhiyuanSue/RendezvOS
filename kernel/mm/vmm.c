@@ -374,7 +374,7 @@ error_t map(VSpace *vs, u64 ppn, u64 vpn, int level, ENTRY_FLAGS_t eflags,
                 goto map_l3_fail;
         }
         pr_error(
-                "[ MAP ] remap same physical pages to a same virtual 4K page\n");
+                "[ MAP ] %d remap same physical pages ppn %x to a same virtual 4K page vpn %x\n",handler->cpu_id,ppn,vpn);
         res = -E_RENDEZVOS;
 map_succ:
         arch_tlb_invalidate_page(vs->vspace_id, v);

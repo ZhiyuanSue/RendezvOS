@@ -455,8 +455,10 @@ void sp_free(struct allocator* allocator_p, void* p)
                 unlock_cas(&sp_allocator_p->lock);
         } else {
                 /*free pages*/
+                lock_cas(&sp_allocator_p->lock);
                 struct page_chunk_node* pcn = page_chunk_rb_tree_search(
                         &sp_allocator_p->page_chunk_root, (vaddr)p);
+                unlock_cas(&sp_allocator_p->lock);
                 if (!pcn) {
                         /*another sp allocator alloced it*/
                         pr_error(
