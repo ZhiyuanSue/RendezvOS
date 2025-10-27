@@ -187,34 +187,6 @@ void pmm_init(struct setup_info *arch_setup_info)
         arch_init_pmm(arch_setup_info);
         pmm_init_zones();
 }
-static inline u32 log2_of_next_power_of_two(u32 n)
-{
-        if (n == 0)
-                return 0;
-        n--;
-        u32 exponent = 0;
-        if (n >> 16) {
-                exponent += 16;
-                n >>= 16;
-        }
-        if (n >> 8) {
-                exponent += 8;
-                n >>= 8;
-        }
-        if (n >> 4) {
-                exponent += 4;
-                n >>= 4;
-        }
-        if (n >> 2) {
-                exponent += 2;
-                n >>= 2;
-        }
-        if (n >> 1) {
-                exponent += 1;
-                n >>= 1;
-        }
-        return exponent + n;
-}
 static inline error_t mark_childs(int zone_number, int order, u64 index)
 {
         struct page_frame *del_node;

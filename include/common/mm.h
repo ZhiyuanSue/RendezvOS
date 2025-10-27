@@ -59,4 +59,32 @@ static inline bool is_final_level_pt(int entry_level, ENTRY_FLAGS_t ENTRY_FLAGS)
                 && (entry_level == 1 || entry_level == 2))
                || (entry_level == 3);
 }
+static inline u32 log2_of_next_power_of_two(u32 n)
+{
+        if (n == 0)
+                return 0;
+        n--;
+        u32 exponent = 0;
+        if (n >> 16) {
+                exponent += 16;
+                n >>= 16;
+        }
+        if (n >> 8) {
+                exponent += 8;
+                n >>= 8;
+        }
+        if (n >> 4) {
+                exponent += 4;
+                n >>= 4;
+        }
+        if (n >> 2) {
+                exponent += 2;
+                n >>= 2;
+        }
+        if (n >> 1) {
+                exponent += 1;
+                n >>= 1;
+        }
+        return exponent + n;
+}
 #endif

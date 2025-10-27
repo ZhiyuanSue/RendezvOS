@@ -501,6 +501,16 @@ static void* _kernel_get_free_page(int page_num, enum zone_type memory_zone,
                 pr_error("[ NEXUS ] ERROR: init error allocated %x\n",
                          alloced_page_number);
                 goto fail;
+        } else if (alloced_page_number > page_num){
+                /*
+                        if allocated page number is unequal to the page number
+                        then the upper level cannot get the allocated page number info
+                        and it will not try to free the last pages
+                        then those pages will not usable forever
+                */
+                pr_error("[ NEXUS ] ERROR: allocated pages is larger then needed pages\n");
+                pr_error("[ NEXUS ] HINT: try to alloc %d pages, allocated %d pages\n",page_num,alloced_page_number);
+                goto fail;
         }
         free_page_addr = tmp_free_page_addr = KERNEL_PHY_TO_VIRT(PADDR(ppn));
         page_addr_end = free_page_addr + page_num * PAGE_SIZE;
