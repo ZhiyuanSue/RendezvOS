@@ -374,7 +374,10 @@ error_t map(VSpace *vs, u64 ppn, u64 vpn, int level, ENTRY_FLAGS_t eflags,
                 goto map_l3_fail;
         }
         pr_error(
-                "[ MAP ] remap same physical pages to a same virtual 4K page\n");
+                "[ MAP ] %d remap same physical pages ppn %x to a same virtual 4K page vpn %x\n",
+                handler->cpu_id,
+                ppn,
+                vpn);
         res = -E_RENDEZVOS;
 map_succ:
         arch_tlb_invalidate_page(vs->vspace_id, v);
@@ -404,7 +407,8 @@ map_fail:
         return res;
 }
 
-error_t unmap(VSpace *vs, u64 vpn, struct map_handler *handler, spin_lock *lock)
+error_t unmap(VSpace *vs, u64 vpn, u64 new_entry_addr,
+              struct map_handler *handler, spin_lock *lock)
 {
         if (lock)
                 lock_mcs(lock, &per_cpu(vspace_spin_lock, handler->cpu_id));
@@ -491,6 +495,8 @@ error_t unmap(VSpace *vs, u64 vpn, struct map_handler *handler, spin_lock *lock)
                 }
                 ((union L2_entry *)(handler->map_vaddr[2]))[L2_INDEX(v)].entry =
                         0;
+                ((union L2_entry *)(handler->map_vaddr[2]))[L2_INDEX(v)].paddr =
+                        new_entry_addr;
                 goto unmap_succ;
         }
 
@@ -499,19 +505,26 @@ error_t unmap(VSpace *vs, u64 vpn, struct map_handler *handler, spin_lock *lock)
         L3_E = ((union L3_entry *)(handler->map_vaddr[3]))[L3_INDEX(v)];
         entry_flags = arch_encode_flags(3, (ARCH_PFLAGS_t)L3_E.entry);
         next_level_paddr = L3_entry_addr(L3_E);
-        if (!next_level_paddr || !(entry_flags & PAGE_ENTRY_VALID)) /*we will
-                                                                       not swap
-                                                                       out the
-                                                                       l3 page*/
-        {
-                pr_error("[ ERROR ] L3 entry not mapped, unmap error\n");
-                res = -E_RENDEZVOS;
-                goto unmap_l3_fail;
+        // if (!next_level_paddr || !(entry_flags & PAGE_ENTRY_VALID)) /*we will
+        //                                                                not
+        //                                                                swap
+        //                                                                out
+        //                                                                the l3
+        //                                                                page*/
+        // {
+        //         pr_error("[ ERROR ] L3 entry not mapped, unmap error\n");
+        //         res = -E_RENDEZVOS;
+        //         goto unmap_l3_fail;
+        // }
+        if (next_level_paddr && (entry_flags & PAGE_ENTRY_VALID)) {
+                res = L3_entry_addr(L3_E);
         }
         ((union L3_entry *)(handler->map_vaddr[3]))[L3_INDEX(v)].entry = 0;
+        ((union L3_entry *)(handler->map_vaddr[3]))[L3_INDEX(v)].paddr =
+                new_entry_addr;
 unmap_succ:
         arch_tlb_invalidate_page(vs->vspace_id, v);
-unmap_l3_fail:
+        // unmap_l3_fail:
         arch_tlb_invalidate_page(vs->vspace_id, handler->map_vaddr[3]);
 unmap_l2_fail:
         arch_tlb_invalidate_page(vs->vspace_id, handler->map_vaddr[2]);

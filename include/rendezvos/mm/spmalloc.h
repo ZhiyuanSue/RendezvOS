@@ -6,6 +6,7 @@
 #include "nexus.h"
 #include <common/types.h>
 #include <common/dsa/list.h>
+#include <common/dsa/rb_tree.h>
 #include <rendezvos/mm/allocator.h>
 #include <rendezvos/sync/cas_lock.h>
 #define MAX_GROUP_SLOTS 12
@@ -70,6 +71,11 @@
    in another allocator we have to use lock to realize it
 */
 
+struct page_chunk_node {
+        struct rb_node _rb_node;
+        vaddr page_addr;
+        i64 page_num;
+} __attribute__((aligned(sizeof(u64))));
 struct object_header {
         struct list_entry obj_list;
         char obj[];
@@ -101,6 +107,7 @@ struct mem_allocator {
         MM_COMMON;
         struct nexus_node* nexus_root;
         struct mem_group groups[MAX_GROUP_SLOTS];
+        struct rb_root page_chunk_root;
         cas_lock_t lock;
 } __attribute__((aligned(sizeof(u64))));
 /*chunk*/

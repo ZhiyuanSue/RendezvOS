@@ -29,11 +29,10 @@ struct nexus_node {
                         struct rb_node _vspace_rb_node;
                         struct rb_root _rb_root;
                         struct rb_root _vspace_rb_root;
-                        void* backup_manage_page;
                         struct map_handler* handler;
                         i64 nexus_id; /*should alloced by the upper level code*/
                         cas_lock_t nexus_lock;
-                        cas_lock_t vspace_lock;
+                        cas_lock_t nexus_vspace_lock;
                 };
         };
 };
@@ -53,4 +52,11 @@ void* get_free_page(int page_num, enum zone_type memory_zone,
 error_t free_pages(void* p, int page_num, VSpace* vs,
                    struct nexus_node* nexus_root);
 
+error_t user_get_and_map_phy_range_pages(struct nexus_node* first_entry,
+                                         int page_num,
+                                         enum zone_type memory_zone,
+                                         struct nexus_node* vspace_node,
+                                         VSpace* vs);
+error_t user_unmap_and_free_phy_range_pages(void* p, int page_num, VSpace* vs,
+                                            struct nexus_node* vspace_node);
 #endif
