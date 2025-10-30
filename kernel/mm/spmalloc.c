@@ -26,7 +26,8 @@ static int bytes_to_slot(size_t Bytes)
 static int bytes_to_pages(size_t Bytes)
 {
         /*for 2048 - 2M, alloc pages ,checked by upper logical*/
-        return 1<<log2_of_next_power_of_two(ROUND_UP(Bytes, PAGE_SIZE) / PAGE_SIZE);
+        return 1 << log2_of_next_power_of_two(ROUND_UP(Bytes, PAGE_SIZE)
+                                              / PAGE_SIZE);
 }
 
 static void page_chunk_rb_tree_insert(struct page_chunk_node* node,

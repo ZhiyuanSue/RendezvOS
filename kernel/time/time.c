@@ -11,7 +11,8 @@ DEFINE_PER_CPU(i64, tick_cnt);
 __attribute__((optimize("O0"))) u64 loop_delay(volatile u64 loop_cnt)
 {
         u64 cnt = loop_cnt;
-        while (loop_cnt--) ;
+        while (loop_cnt--)
+                ;
         return cnt;
 }
 static inline u64 timer_calibration()

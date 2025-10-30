@@ -10,7 +10,7 @@ DEFINE_PER_CPU(struct spin_lock_t, nexus_spin_lock);
 static void nexus_rb_tree_insert(struct nexus_node* node,
                                  struct rb_root* vspace_root)
 {
-        struct rb_node **new = &vspace_root->rb_root, *parent = NULL;
+        struct rb_node** new = &vspace_root->rb_root, *parent = NULL;
         u64 key = node->v_region.addr;
         while (*new) {
                 parent = *new;
@@ -30,7 +30,7 @@ static void nexus_rb_tree_insert(struct nexus_node* node,
 static void nexus_rb_tree_vspace_insert(struct nexus_node* vspace_node,
                                         struct rb_root* vspace_rb_root)
 {
-        struct rb_node **new = &vspace_rb_root->rb_root, *parent = NULL;
+        struct rb_node** new = &vspace_rb_root->rb_root, *parent = NULL;
         u64 key = vspace_node->vs->vspace_root_addr;
         while (*new) {
                 parent = *new;
@@ -501,25 +501,29 @@ static void* _kernel_get_free_page(int page_num, enum zone_type memory_zone,
                 pr_error("[ NEXUS ] ERROR: init error allocated %x\n",
                          alloced_page_number);
                 goto fail;
-        } else if (alloced_page_number > page_num){
+        } else if (alloced_page_number > page_num) {
                 /*
                         if allocated page number is unequal to the page number
-                        then the upper level cannot get the allocated page number info
-                        and it will not try to free the last pages
-                        then those pages will not usable forever
+                        then the upper level cannot get the allocated page
+                   number info and it will not try to free the last pages then
+                   those pages will not usable forever
                 */
-                pr_error("[ NEXUS ] ERROR: allocated pages is larger then needed pages\n");
-                pr_error("[ NEXUS ] HINT: try to alloc %d pages, allocated %d pages\n",page_num,alloced_page_number);
+                pr_error(
+                        "[ NEXUS ] ERROR: allocated pages is larger then needed pages\n");
+                pr_error(
+                        "[ NEXUS ] HINT: try to alloc %d pages, allocated %d pages\n",
+                        page_num,
+                        alloced_page_number);
                 goto fail;
         }
         free_page_addr = tmp_free_page_addr = KERNEL_PHY_TO_VIRT(PADDR(ppn));
         page_addr_end = free_page_addr + page_num * PAGE_SIZE;
 
-        /*TODO:改成向上取整，向下取整之后多了个2Mpage*/
-        if (ALIGNED(free_page_addr, MIDDLE_PAGE_SIZE)) {
-                for (; tmp_free_page_addr + MIDDLE_PAGE_SIZE <= page_addr_end;
-                     tmp_free_page_addr += MIDDLE_PAGE_SIZE) {
-                        /*try get a free entry*/
+        for (; tmp_free_page_addr + PAGE_SIZE <= page_addr_end;
+             tmp_free_page_addr += PAGE_SIZE) {
+                while (ALIGNED(tmp_free_page_addr, MIDDLE_PAGE_SIZE)
+                       && tmp_free_page_addr + MIDDLE_PAGE_SIZE
+                                  <= page_addr_end) {
                         struct nexus_node* free_nexus_entry =
                                 nexus_get_free_entry(nexus_root);
                         if (!free_nexus_entry) {
@@ -538,11 +542,9 @@ static void* _kernel_get_free_page(int page_num, enum zone_type memory_zone,
                         if (!first_entry) {
                                 first_entry = free_nexus_entry;
                         }
+                        tmp_free_page_addr += MIDDLE_PAGE_SIZE;
                 }
-        }
-        for (; tmp_free_page_addr + PAGE_SIZE <= page_addr_end;
-             tmp_free_page_addr += PAGE_SIZE) {
-                /*try get a free entry*/
+
                 struct nexus_node* free_nexus_entry =
                         nexus_get_free_entry(nexus_root);
                 if (!free_nexus_entry) {
@@ -794,7 +796,7 @@ static error_t _kernel_free_pages(void* p, int page_num,
                         tmp_node->v_region.len / PAGE_SIZE);
                 unlock_mcs(&nexus_root->handler->pmm->spin_ptr,
                            &per_cpu(pmm_spin_lock, nexus_root->nexus_id));
-                
+
                 tmp_node = nexus_rb_tree_next(tmp_node);
                 if (tmp_node->manage_free_list.next
                     && tmp_node->manage_free_list.prev) {
