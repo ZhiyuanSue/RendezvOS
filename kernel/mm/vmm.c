@@ -408,8 +408,8 @@ map_fail:
         return res;
 }
 
-error_t unmap(VSpace *vs, u64 vpn, u64 new_entry_addr,
-              struct map_handler *handler, spin_lock *lock)
+i64 unmap(VSpace *vs, u64 vpn, u64 new_entry_addr, struct map_handler *handler,
+          spin_lock *lock)
 {
         if (lock)
                 lock_mcs(lock, &per_cpu(vspace_spin_lock, handler->cpu_id));
@@ -420,17 +420,17 @@ error_t unmap(VSpace *vs, u64 vpn, u64 new_entry_addr,
         union L1_entry L1_E;
         union L2_entry L2_E;
         union L3_entry L3_E;
-        error_t res = 0;
+        i64 ppn = 0;
         if (!vs->vspace_root_addr || !vpn) {
                 pr_error("[ ERROR ] unmap input is not right\n");
-                res = -E_IN_PARAM;
+                ppn = -E_IN_PARAM;
                 goto unmap_fail;
         } else if (ROUND_DOWN(vs->vspace_root_addr, PAGE_SIZE)
                    != vs->vspace_root_addr) {
                 pr_error(
                         "[ ERROR ] wrong vspace root paddr 0x%x in mapping, please check\n",
                         vs->vspace_root_addr);
-                res = -E_IN_PARAM;
+                ppn = -E_IN_PARAM;
                 goto unmap_fail;
         }
         /*=== === === L0 table === === ===*/
@@ -446,7 +446,7 @@ error_t unmap(VSpace *vs, u64 vpn, u64 new_entry_addr,
                 pr_error(
                         "[ ERROR ] L0 entry not mapped, entry is 0x%x, unmap error\n",
                         L0_E);
-                res = -E_RENDEZVOS;
+                ppn = -E_RENDEZVOS;
                 goto unmap_l0_fail;
         }
 
@@ -461,11 +461,11 @@ error_t unmap(VSpace *vs, u64 vpn, u64 new_entry_addr,
                                                                        l1 page*/
         {
                 pr_error("[ ERROR ] L1 entry not mapped, unmap error\n");
-                res = -E_RENDEZVOS;
+                ppn = -E_RENDEZVOS;
                 goto unmap_l1_fail;
         } else if (is_final_level_pt(1, entry_flags)) {
                 pr_error("[ ERROR ] we do not use 1G huge page, unmap error\n");
-                res = -E_RENDEZVOS;
+                ppn = -E_RENDEZVOS;
                 goto unmap_l1_fail;
         }
 
@@ -480,7 +480,7 @@ error_t unmap(VSpace *vs, u64 vpn, u64 new_entry_addr,
                                                                        l2 page*/
         {
                 pr_error("[ ERROR ] L2 entry not mapped, unmap error\n");
-                res = -E_RENDEZVOS;
+                ppn = -E_RENDEZVOS;
                 goto unmap_l2_fail;
         } else if (is_final_level_pt(1, entry_flags)) {
                 /*check the vpn 2M aligned*/
@@ -491,9 +491,10 @@ error_t unmap(VSpace *vs, u64 vpn, u64 new_entry_addr,
                                 entry_flags,
                                 v,
                                 per_cpu(cpu_number, handler->cpu_id));
-                        res = -E_RENDEZVOS;
+                        ppn = -E_RENDEZVOS;
                         goto unmap_l2_fail;
                 }
+                ppn = PPN(next_level_paddr);
                 ((union L2_entry *)(handler->map_vaddr[2]))[L2_INDEX(v)].entry =
                         0;
                 ((union L2_entry *)(handler->map_vaddr[2]))[L2_INDEX(v)].paddr =
@@ -518,7 +519,7 @@ error_t unmap(VSpace *vs, u64 vpn, u64 new_entry_addr,
         //         goto unmap_l3_fail;
         // }
         if (next_level_paddr && (entry_flags & PAGE_ENTRY_VALID)) {
-                res = L3_entry_addr(L3_E);
+                ppn = PPN(next_level_paddr);
         }
         ((union L3_entry *)(handler->map_vaddr[3]))[L3_INDEX(v)].entry = 0;
         ((union L3_entry *)(handler->map_vaddr[3]))[L3_INDEX(v)].paddr =
@@ -536,7 +537,7 @@ unmap_l0_fail:
 unmap_fail:
         if (lock)
                 unlock_mcs(lock, &per_cpu(vspace_spin_lock, handler->cpu_id));
-        return res;
+        return ppn;
 }
 i64 have_mapped(VSpace *vs, u64 vpn, struct map_handler *handler)
 {

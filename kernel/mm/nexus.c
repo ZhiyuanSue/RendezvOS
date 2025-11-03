@@ -278,13 +278,12 @@ static void free_manage_node_with_page(struct nexus_node* page_manage_node,
                                        struct nexus_node* vspace_root)
 {
         /*free this manage page*/
-        i64 ppn = (i64)PPN(KERNEL_VIRT_TO_PHY((vaddr)page_manage_node));
-        error_t unmap_res = unmap(vspace_root->vs,
-                                  VPN((vaddr)page_manage_node),
-                                  0,
-                                  vspace_root->handler,
-                                  &vspace_root->vs->vspace_lock);
-        if (unmap_res < 0) {
+        i64 ppn = unmap(vspace_root->vs,
+                        VPN((vaddr)page_manage_node),
+                        0,
+                        vspace_root->handler,
+                        &vspace_root->vs->vspace_lock);
+        if (ppn < 0) {
                 pr_error("[ NEXUS ] ERROR: unmap error!\n");
                 return;
         }
@@ -441,21 +440,20 @@ void nexus_delete_vspace(struct nexus_node* nexus_root, VSpace* vs)
                 struct nexus_node* node =
                         container_of(curr, struct nexus_node, _vspace_list);
 
-                error_t unmap_res = unmap(vs,
-                                          VPN(node->addr),
-                                          0,
-                                          vspace_node->handler,
-                                          &(vs->vspace_lock));
-                if (unmap_res < 0) {
+                i64 ppn = unmap(vs,
+                                VPN(node->addr),
+                                0,
+                                vspace_node->handler,
+                                &(vs->vspace_lock));
+                if (ppn < 0) {
                         pr_error("[ NEXUS ] ERROR: unmap error!\n");
                         goto fail;
                 }
 
                 lock_mcs(&vspace_node->handler->pmm->spin_ptr,
                          &per_cpu(pmm_spin_lock, vspace_node->handler->cpu_id));
-                vspace_node->handler->pmm->pmm_free(
-                        have_mapped(vs, VPN(node->addr), vspace_node->handler),
-                        nexus_node_get_pages(node));
+                vspace_node->handler->pmm->pmm_free(ppn,
+                                                    nexus_node_get_pages(node));
                 unlock_mcs(&vspace_node->handler->pmm->spin_ptr,
                            &per_cpu(pmm_spin_lock,
                                     vspace_node->handler->cpu_id));
@@ -759,14 +757,12 @@ static error_t _release_range(void* p, int page_num, VSpace* vs,
                                 "[ NEXUS ] ERROR: split 2M page and we truncate it");
                         break;
                 }
-                i64 ppn =
-                        have_mapped(vs, VPN(node->addr), vspace_node->handler);
-                error_t unmap_res = unmap(vs,
-                                          VPN(node->addr),
-                                          0,
-                                          vspace_node->handler,
-                                          &vspace_node->vs->vspace_lock);
-                if (unmap_res < 0) {
+                i64 ppn = unmap(vs,
+                                VPN(node->addr),
+                                0,
+                                vspace_node->handler,
+                                &vspace_node->vs->vspace_lock);
+                if (ppn < 0) {
                         pr_error("[ NEXUS ] ERROR: unmap error!\n");
                         unlock_cas(&vspace_node->vs->nexus_vspace_lock);
                         return -E_RENDEZVOS;
