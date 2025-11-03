@@ -539,11 +539,10 @@ unmap_fail:
                 unlock_mcs(lock, &per_cpu(vspace_spin_lock, handler->cpu_id));
         return res;
 }
-// find one vpn have mapped in one vspace or not
-paddr have_mapped(VSpace *vs, u64 vpn, struct map_handler *handler)
+i64 have_mapped(VSpace *vs, u64 vpn, struct map_handler *handler)
 {
         vaddr v = vpn << 12;
-        paddr next_level_paddr = 0;
+        i64 ppn = 0;
         ENTRY_FLAGS_t entry_flags = 0;
         union L0_entry L0_E;
         union L1_entry L1_E;
@@ -551,59 +550,60 @@ paddr have_mapped(VSpace *vs, u64 vpn, struct map_handler *handler)
         union L3_entry L3_E;
         if (!vs || !vs->vspace_root_addr || !vpn) {
                 pr_error("[ ERROR ] check input is not right\n");
-                next_level_paddr = 0;
+                ppn = -E_IN_PARAM;
                 goto have_mapped_fail;
         } else if (ROUND_DOWN(vs->vspace_root_addr, PAGE_SIZE)
                    != vs->vspace_root_addr) {
                 pr_error(
                         "[ ERROR ] wrong vspace root paddr 0x%x in mapping, please check\n",
                         vs->vspace_root_addr);
-                next_level_paddr = 0;
+                ppn = -E_RENDEZVOS;
                 goto have_mapped_fail;
         }
         /*=== === === L0 table === === ===*/
         util_map(vs->vspace_root_addr, handler->map_vaddr[0]);
         L0_E = ((union L0_entry *)(handler->map_vaddr[0]))[L0_INDEX(v)];
         entry_flags = arch_encode_flags(0, (ARCH_PFLAGS_t)L0_E.entry);
-        next_level_paddr = L0_entry_addr(L0_E);
-        if (!next_level_paddr || !(entry_flags & PAGE_ENTRY_VALID)) {
-                next_level_paddr = 0;
+        ppn = L0_E.paddr;
+        if (!ppn || !(entry_flags & PAGE_ENTRY_VALID)) {
+                ppn = 0;
                 goto have_mapped_l0_fail;
         }
 
         /*=== === === L1 table === === ===*/
-        util_map(next_level_paddr, handler->map_vaddr[1]);
+        util_map(PADDR(ppn), handler->map_vaddr[1]);
         L1_E = ((union L1_entry *)(handler->map_vaddr[1]))[L1_INDEX(v)];
         entry_flags = arch_encode_flags(1, (ARCH_PFLAGS_t)L1_E.entry);
-        next_level_paddr = L1_entry_addr(L1_E);
-        if (!next_level_paddr || !(entry_flags & PAGE_ENTRY_VALID)) {
-                next_level_paddr = 0;
+        ppn = L1_E.paddr;
+        if (!ppn || !(entry_flags & PAGE_ENTRY_VALID)) {
+                ppn = 0;
                 goto have_mapped_l1_fail;
         } else if (is_final_level_pt(1, entry_flags)) {
                 pr_error("[ ERROR ] we do not use 1G huge page, check error\n");
-                next_level_paddr = 0;
+                ppn = 0;
                 goto have_mapped_l1_fail;
         }
 
         /*=== === === L2 table === === ===*/
-        util_map(next_level_paddr, handler->map_vaddr[2]);
+        util_map(PADDR(ppn), handler->map_vaddr[2]);
         L2_E = ((union L2_entry *)(handler->map_vaddr[2]))[L2_INDEX(v)];
         entry_flags = arch_encode_flags(2, (ARCH_PFLAGS_t)L2_E.entry);
-        next_level_paddr = L2_entry_addr(L2_E);
-        if (!next_level_paddr || !(entry_flags & PAGE_ENTRY_VALID)) {
-                next_level_paddr = 0;
+        ppn = L2_E.paddr;
+        if (!ppn || !(entry_flags & PAGE_ENTRY_VALID)) {
+                ppn = 0;
                 goto have_mapped_l2_fail;
         } else if (is_final_level_pt(1, entry_flags)) {
                 goto have_mapped_succ;
         }
 
         /*=== === === L3 table === === ===*/
-        util_map(next_level_paddr, handler->map_vaddr[3]);
+        util_map(PADDR(ppn), handler->map_vaddr[3]);
         L3_E = ((union L3_entry *)(handler->map_vaddr[3]))[L3_INDEX(v)];
         entry_flags = arch_encode_flags(3, (ARCH_PFLAGS_t)L3_E.entry);
-        next_level_paddr = L3_entry_addr(L3_E);
-        if (!next_level_paddr || !(entry_flags & PAGE_ENTRY_VALID))
-                next_level_paddr = 0;
+        ppn = L3_E.paddr;
+        if (!ppn || !(entry_flags & PAGE_ENTRY_VALID)) {
+                ppn = 0;
+        }
 have_mapped_succ:
         arch_tlb_invalidate_page(vs->vspace_id, v);
         arch_tlb_invalidate_page(vs->vspace_id, handler->map_vaddr[3]);
@@ -614,7 +614,7 @@ have_mapped_l1_fail:
 have_mapped_l0_fail:
         arch_tlb_invalidate_page(vs->vspace_id, handler->map_vaddr[0]);
 have_mapped_fail:
-        return next_level_paddr;
+        return ppn;
 }
 paddr new_vs_root(paddr old_vs_root_paddr, struct map_handler *handler)
 {

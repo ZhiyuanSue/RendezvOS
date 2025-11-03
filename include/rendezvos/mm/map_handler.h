@@ -42,9 +42,16 @@ error_t unmap(VSpace* vs, u64 vpn, u64 new_entry_addr,
               struct map_handler* handler, spin_lock* lock);
 
 /*
-        check whether the vpn have mapped in this vspace
-*/
-paddr have_mapped(VSpace* vs, u64 vpn, struct map_handler* handler);
+ * @brief judge one vpn have mapped in one vspace or not
+ *
+ * @param vs : The address space need to find
+ * @param vpn : the vpn need to query
+ * @param handler : the map handler that used
+ *
+ * @return i64 : >0, the ppn that vpn mapped, ==0, not mapped, maybe the value
+ * is 0 or present flag is cleared,<0,error,remember that its' ppn
+ */
+i64 have_mapped(VSpace* vs, u64 vpn, struct map_handler* handler);
 
 /*
         in order to generate a new vspace

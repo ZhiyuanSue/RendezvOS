@@ -20,7 +20,6 @@ struct nexus_node {
                         struct rb_node _rb_node;
                         vaddr addr;
                         u64 page_left_nexus;
-                        u64 ppn;
                         struct list_entry rmap_list;
                         ENTRY_FLAGS_t region_flags;
                 };

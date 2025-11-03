@@ -61,7 +61,7 @@ void nexus_print(struct nexus_node* nexus_root)
 }
 int nexus_test(void)
 {
-        debug("sizeof struct nexus_node is 0x%x\n", sizeof(struct nexus_node));
+        print("sizeof struct nexus_node is 0x%x\n", sizeof(struct nexus_node));
         /*after the nexus init, we try to print it first*/
         nexus_print(nexus_root);
         for (int i = 0; i < NR_MAX_TEST; i++) {
