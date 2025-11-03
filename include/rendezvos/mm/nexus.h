@@ -15,23 +15,26 @@ struct nexus_node {
         struct list_entry _vspace_list;
         VSpace* vs;
         union {
-                /* manager node */
                 struct {
                         struct rb_node _rb_node;
-                        vaddr addr;
-                        u64 page_left_nexus;
-                        struct list_entry rmap_list;
                         ENTRY_FLAGS_t region_flags;
+                        vaddr addr;
+                        union {
+                                /* manager node */
+                                u64 page_left_nexus;
+                                /* normal node */
+                                struct list_entry rmap_list;
+                        };
                 };
-                /* root node*/
+                /*the vspace root and all nexus root node*/
                 struct {
+                        /*common*/
                         struct rb_node _vspace_rb_node;
                         struct rb_root _rb_root;
-                        struct rb_root _vspace_rb_root;
                         struct map_handler* handler;
-                        i64 nexus_id; /*should alloced by the upper level code*/
+                        /* root node*/
+                        struct rb_root _vspace_rb_root;
                         cas_lock_t nexus_lock;
-                        cas_lock_t nexus_vspace_lock;
                 };
         };
 };

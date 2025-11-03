@@ -6,7 +6,9 @@
 DEFINE_PER_CPU(struct TSS, cpu_tss);
 void prepare_per_cpu_tss(struct nexus_node* nexus_root)
 {
-        set_rsp(&per_cpu(cpu_tss, nexus_root->nexus_id), 0, boot_stack_bottom);
+        set_rsp(&per_cpu(cpu_tss, nexus_root->handler->cpu_id),
+                0,
+                boot_stack_bottom);
         union desc_selector tmp_sel = {
                 .rpl = 0,
                 .index = GDT_TSS_LOWER_INDEX,

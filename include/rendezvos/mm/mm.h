@@ -2,11 +2,13 @@
 #define _RENDEZVOS_MM_H_
 #include <common/dsa/list.h>
 #include <rendezvos/sync/spin_lock.h>
+#include <rendezvos/sync/cas_lock.h>
 
 typedef struct {
         paddr vspace_root_addr;
         u64 vspace_id;
         spin_lock vspace_lock;
+        cas_lock_t nexus_vspace_lock;
         void* _vspace_node;
 } VSpace;
 extern VSpace* current_vspace; // per cpu pointer

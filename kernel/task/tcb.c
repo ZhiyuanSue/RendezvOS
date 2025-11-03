@@ -150,10 +150,10 @@ void del_vspace(VSpace** vs)
 {
         if (!(*vs))
                 return;
-        nexus_delete_vspace(
-                per_cpu(nexus_root,
-                        ((struct nexus_node*)((*vs)->_vspace_node))->nexus_id),
-                (*vs)->_vspace_node);
+        nexus_delete_vspace(per_cpu(nexus_root,
+                                    ((struct nexus_node*)((*vs)->_vspace_node))
+                                            ->handler->cpu_id),
+                            (*vs)->_vspace_node);
 
         struct allocator* cpu_allocator = percpu(kallocator);
         if (!cpu_allocator)

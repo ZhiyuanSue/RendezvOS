@@ -26,7 +26,6 @@ void init_map(struct map_handler* handler, int cpu_id, int pt_zone,
         kernel might try to mapping one page to a different vspace
         and if the vspace is not exist, it should try to alloc a new one
 */
-extern spin_lock kspace_spin_lock_ptr;
 
 error_t map(VSpace* vs, u64 ppn, u64 vpn, int level, ENTRY_FLAGS_t eflags,
             struct map_handler* handler, spin_lock* lock);
