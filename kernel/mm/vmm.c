@@ -204,7 +204,9 @@ error_t map(VSpace *vs, u64 ppn, u64 vpn, int level, ENTRY_FLAGS_t eflags,
                 if (ROUND_DOWN(v, MIDDLE_PAGE_SIZE) != v
                     || ROUND_DOWN(p, MIDDLE_PAGE_SIZE) != p) {
                         pr_error(
-                                "[ ERROR ] the ppn and vpn must be 2M aligned\n");
+                                "[ ERROR ] the ppn and vpn must be 2M aligned p %x v%x\n",
+                                p,
+                                v);
                         res = -E_IN_PARAM;
                         goto map_fail;
                 }

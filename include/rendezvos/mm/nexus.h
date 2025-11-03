@@ -18,7 +18,7 @@ struct nexus_node {
                 /* manager node */
                 struct {
                         struct rb_node _rb_node;
-                        struct region v_region;
+                        vaddr addr;
                         u64 page_left_nexus;
                         u64 ppn;
                         struct list_entry rmap_list;
@@ -52,11 +52,9 @@ void* get_free_page(int page_num, enum zone_type memory_zone,
 error_t free_pages(void* p, int page_num, VSpace* vs,
                    struct nexus_node* nexus_root);
 
-error_t user_get_and_map_phy_range_pages(struct nexus_node* first_entry,
-                                         int page_num,
-                                         enum zone_type memory_zone,
-                                         struct nexus_node* vspace_node,
-                                         VSpace* vs);
-error_t user_unmap_and_free_phy_range_pages(void* p, int page_num, VSpace* vs,
-                                            struct nexus_node* vspace_node);
+error_t user_fill_range(struct nexus_node* first_entry, int page_num,
+                        enum zone_type memory_zone,
+                        struct nexus_node* vspace_node, VSpace* vs);
+error_t user_unfill_range(void* p, int page_num, VSpace* vs,
+                          struct nexus_node* vspace_node);
 #endif

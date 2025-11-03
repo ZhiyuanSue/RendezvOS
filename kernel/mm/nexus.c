@@ -7,19 +7,35 @@
 
 spin_lock nexus_spin_lock_ptr;
 DEFINE_PER_CPU(struct spin_lock_t, nexus_spin_lock);
+static inline u64 nexus_node_get_len(struct nexus_node* nexus_entry)
+{
+        return (nexus_entry->region_flags & PAGE_ENTRY_HUGE) ?
+                       MIDDLE_PAGE_SIZE :
+                       PAGE_SIZE;
+}
+static inline u64 nexus_node_get_pages(struct nexus_node* nexus_entry)
+{
+        return (nexus_entry->region_flags & PAGE_ENTRY_HUGE) ? MIDDLE_PAGES : 1;
+}
+static inline void nexus_node_set_len(struct nexus_node* nexus_entry,
+                                      bool is_2M)
+{
+        if (is_2M)
+                nexus_entry->region_flags |= PAGE_ENTRY_HUGE;
+}
 static void nexus_rb_tree_insert(struct nexus_node* node,
                                  struct rb_root* vspace_root)
 {
         struct rb_node** new = &vspace_root->rb_root, *parent = NULL;
-        u64 key = node->v_region.addr;
+        u64 key = node->addr;
         while (*new) {
                 parent = *new;
                 struct nexus_node* tmp_node =
                         container_of(parent, struct nexus_node, _rb_node);
-                if (key < (u64)tmp_node->v_region.addr)
+                if (key < (u64)tmp_node->addr)
                         new = &parent->left_child;
-                else if (key >= (u64)(tmp_node->v_region.addr
-                                      + tmp_node->v_region.len))
+                else if (key >= (u64)(tmp_node->addr
+                                      + nexus_node_get_len(tmp_node)))
                         new = &parent->right_child;
                 else
                         return;
@@ -86,10 +102,10 @@ struct nexus_node* nexus_rb_tree_search(struct rb_root* vspace_root,
         struct nexus_node* tmp_node = NULL;
         while (node) {
                 tmp_node = container_of(node, struct nexus_node, _rb_node);
-                if (start_addr < tmp_node->v_region.addr)
+                if (start_addr < tmp_node->addr)
                         node = node->left_child;
-                else if (start_addr >= (u64)(tmp_node->v_region.addr
-                                             + tmp_node->v_region.len))
+                else if (start_addr >= (u64)(tmp_node->addr
+                                             + nexus_node_get_len(tmp_node)))
                         node = node->right_child;
                 else
                         return tmp_node;
@@ -112,16 +128,20 @@ struct nexus_node* nexus_rb_tree_next(struct nexus_node* node)
                 return NULL;
         return container_of(next_rb, struct nexus_node, _rb_node);
 }
+static inline bool is_page_manage_node(struct nexus_node* node)
+{
+        return node->manage_free_list.next && node->manage_free_list.prev;
+}
 static void nexus_init_manage_page(vaddr vpage_addr,
                                    struct nexus_node* nexus_root)
 {
         struct nexus_node* n_node = (struct nexus_node*)vpage_addr;
         /*init the node 0 point to this page*/
-        n_node->v_region.addr = vpage_addr;
+        n_node->addr = vpage_addr;
         /*the manage page is promised in kernel space, and use a identity
          * mapping*/
         n_node->ppn = KERNEL_VIRT_TO_PHY(vpage_addr);
-        n_node->v_region.len = PAGE_SIZE;
+        nexus_node_set_len(n_node, false);
         n_node->page_left_nexus = NEXUS_PER_PAGE - 1;
         /*init the list*/
         INIT_LIST_HEAD(&n_node->_free_list);
@@ -426,7 +446,7 @@ void nexus_delete_vspace(struct nexus_node* nexus_root, VSpace* vs)
                         container_of(curr, struct nexus_node, _vspace_list);
 
                 error_t unmap_res = unmap(vs,
-                                          VPN(node->v_region.addr),
+                                          VPN(node->addr),
                                           0,
                                           vspace_node->handler,
                                           &(vs->vspace_lock));
@@ -437,8 +457,8 @@ void nexus_delete_vspace(struct nexus_node* nexus_root, VSpace* vs)
 
                 lock_mcs(&vspace_node->handler->pmm->spin_ptr,
                          &per_cpu(pmm_spin_lock, vspace_node->nexus_id));
-                vspace_node->handler->pmm->pmm_free(
-                        (i64)(node->ppn), node->v_region.len / PAGE_SIZE);
+                vspace_node->handler->pmm->pmm_free((i64)(node->ppn),
+                                                    nexus_node_get_pages(node));
                 unlock_mcs(&vspace_node->handler->pmm->spin_ptr,
                            &per_cpu(pmm_spin_lock, vspace_node->nexus_id));
 
@@ -457,16 +477,14 @@ fail:
         return;
 }
 static inline void insert_nexus_entry(struct nexus_node* free_nexus_entry,
-                                      vaddr addr, u64 len, i64 ppn,
+                                      vaddr addr, bool is_2M, i64 ppn,
                                       ENTRY_FLAGS_t flags, VSpace* vs,
                                       struct nexus_node* vspace_root)
 {
-        free_nexus_entry->v_region.addr = addr;
-        free_nexus_entry->v_region.len = len;
+        free_nexus_entry->addr = addr;
         free_nexus_entry->ppn = ppn;
-        if (len == MIDDLE_PAGE_SIZE)
-                flags |= PAGE_ENTRY_HUGE;
         free_nexus_entry->region_flags = flags;
+        nexus_node_set_len(free_nexus_entry, is_2M);
         free_nexus_entry->vs = vs;
         list_add_head(&(free_nexus_entry->_vspace_list),
                       &(vspace_root->_vspace_list));
@@ -481,10 +499,10 @@ static inline void delete_nexus_entry(struct nexus_node* nexus_entry,
         nexus_rb_tree_remove(nexus_entry, &vspace_root->_rb_root);
         nexus_free_entry(nexus_entry, vspace_root);
 }
-static struct nexus_node*
-_get_free_page_range(bool allow_2M, bool direct_map_ppn, ENTRY_FLAGS_t eflags,
-                     struct nexus_node* vspace_node, vaddr free_page_addr,
-                     vaddr page_addr_end)
+static struct nexus_node* _take_range(bool allow_2M, bool direct_map_ppn,
+                                      ENTRY_FLAGS_t eflags,
+                                      struct nexus_node* vspace_node,
+                                      vaddr free_page_addr, vaddr page_addr_end)
 {
         struct nexus_node* first_entry = NULL;
         i64 ppn = 0;
@@ -504,7 +522,7 @@ _get_free_page_range(bool allow_2M, bool direct_map_ppn, ENTRY_FLAGS_t eflags,
 
                         insert_nexus_entry(free_nexus_entry,
                                            free_page_addr,
-                                           MIDDLE_PAGE_SIZE,
+                                           true,
                                            ppn,
                                            eflags,
                                            vspace_node->vs,
@@ -526,7 +544,7 @@ _get_free_page_range(bool allow_2M, bool direct_map_ppn, ENTRY_FLAGS_t eflags,
                         ppn = PPN(KERNEL_VIRT_TO_PHY(free_page_addr));
                 insert_nexus_entry(free_nexus_entry,
                                    free_page_addr,
-                                   PAGE_SIZE,
+                                   false,
                                    ppn,
                                    eflags,
                                    vspace_node->vs,
@@ -580,20 +598,20 @@ static void* _kernel_get_free_page(int page_num, enum zone_type memory_zone,
         free_page_addr = KERNEL_PHY_TO_VIRT(PADDR(ppn));
         page_addr_end = free_page_addr + page_num * PAGE_SIZE;
 
-        first_entry = _get_free_page_range(true,
-                                           true,
-                                           kernel_eflags,
-                                           nexus_root,
-                                           free_page_addr,
-                                           page_addr_end);
+        first_entry = _take_range(true,
+                                  true,
+                                  kernel_eflags,
+                                  nexus_root,
+                                  free_page_addr,
+                                  page_addr_end);
 
         while (first_entry) {
                 if (first_entry->region_flags & PAGE_ENTRY_HUGE) {
                         error_t map_res =
                                 map(vs,
                                     PPN(KERNEL_VIRT_TO_PHY(
-                                            first_entry->v_region.addr)),
-                                    VPN(first_entry->v_region.addr),
+                                            first_entry->addr)),
+                                    VPN(first_entry->addr),
                                     2,
                                     kernel_eflags,
                                     nexus_root->handler,
@@ -609,8 +627,8 @@ static void* _kernel_get_free_page(int page_num, enum zone_type memory_zone,
                         error_t map_res =
                                 map(vs,
                                     PPN(KERNEL_VIRT_TO_PHY(
-                                            first_entry->v_region.addr)),
-                                    VPN(first_entry->v_region.addr),
+                                            first_entry->addr)),
+                                    VPN(first_entry->addr),
                                     3,
                                     kernel_eflags,
                                     nexus_root->handler,
@@ -639,11 +657,9 @@ fail:
         we try to get the user physical pages and map the physical pages to the
    virtual pages which only based on the 4K pages in user space
 */
-error_t user_get_and_map_phy_range_pages(struct nexus_node* first_entry,
-                                         int page_num,
-                                         enum zone_type memory_zone,
-                                         struct nexus_node* vspace_node,
-                                         VSpace* vs)
+error_t user_fill_range(struct nexus_node* first_entry, int page_num,
+                        enum zone_type memory_zone,
+                        struct nexus_node* vspace_node, VSpace* vs)
 {
         size_t alloced_page_number;
         if (!vspace_node)
@@ -681,7 +697,7 @@ error_t user_get_and_map_phy_range_pages(struct nexus_node* first_entry,
                 }
                 error_t map_res = map(vs,
                                       ppn,
-                                      VPN(first_entry->v_region.addr),
+                                      VPN(first_entry->addr),
                                       3,
                                       first_entry->region_flags,
                                       vspace_node->handler,
@@ -707,10 +723,10 @@ error_t user_get_and_map_phy_range_pages(struct nexus_node* first_entry,
 fail:
         return -E_RENDEZVOS;
 }
-static struct nexus_node*
-_user_get_free_page_range(int page_num, vaddr target_vaddr,
-                          struct nexus_node* vspace_node, VSpace* vs,
-                          ENTRY_FLAGS_t user_eflags)
+static struct nexus_node* _user_take_range(int page_num, vaddr target_vaddr,
+                                           struct nexus_node* vspace_node,
+                                           VSpace* vs,
+                                           ENTRY_FLAGS_t user_eflags)
 {
         vaddr free_page_addr, page_addr_end;
         struct nexus_node* first_entry = NULL;
@@ -727,36 +743,37 @@ _user_get_free_page_range(int page_num, vaddr target_vaddr,
 
         page_addr_end = free_page_addr + page_num * PAGE_SIZE;
 
-        first_entry = _get_free_page_range(false,
-                                           false,
-                                           user_eflags,
-                                           vspace_node,
-                                           free_page_addr,
-                                           page_addr_end);
+        first_entry = _take_range(false,
+                                  false,
+                                  user_eflags,
+                                  vspace_node,
+                                  free_page_addr,
+                                  page_addr_end);
 
         unlock_cas(&vspace_node->nexus_vspace_lock);
         return first_entry;
 }
-static error_t _unmap_and_free_phy_range_pages(void* p, int page_num,
-                                               VSpace* vs,
-                                               struct nexus_node* vspace_node,
-                                               struct nexus_node* node)
+static error_t _release_range(void* p, int page_num, VSpace* vs,
+                              struct nexus_node* vspace_node,
+                              struct nexus_node* node)
 {
         vaddr free_end = (vaddr)p + page_num * PAGE_SIZE;
         while (node) {
                 bool need_break = false;
-                if (node->v_region.addr + node->v_region.len >= free_end) {
+                if (node->addr + nexus_node_get_len(node)
+                    >= free_end) {
                         need_break = true;
                 }
-                if (node->v_region.len == MIDDLE_PAGE_SIZE
-                    && node->v_region.addr < free_end
-                    && node->v_region.addr + node->v_region.len > free_end) {
+                if (nexus_node_get_len(node) == MIDDLE_PAGE_SIZE
+                    && node->addr < free_end
+                    && node->addr + nexus_node_get_len(node)
+                               > free_end) {
                         pr_error(
                                 "[ NEXUS ] ERROR: split 2M page and we truncate it");
                         break;
                 }
                 error_t unmap_res = unmap(vs,
-                                          VPN(node->v_region.addr),
+                                          VPN(node->addr),
                                           0,
                                           vspace_node->handler,
                                           &kspace_spin_lock_ptr);
@@ -768,8 +785,8 @@ static error_t _unmap_and_free_phy_range_pages(void* p, int page_num,
                 lock_mcs(&vspace_node->handler->pmm->spin_ptr,
                          &per_cpu(pmm_spin_lock, vspace_node->nexus_id));
                 vspace_node->handler->pmm->pmm_free(
-                        PPN(KERNEL_VIRT_TO_PHY(node->v_region.addr)),
-                        node->v_region.len / PAGE_SIZE);
+                        PPN(KERNEL_VIRT_TO_PHY(node->addr)),
+                        nexus_node_get_pages(node));
                 unlock_mcs(&vspace_node->handler->pmm->spin_ptr,
                            &per_cpu(pmm_spin_lock, vspace_node->nexus_id));
 
@@ -807,8 +824,7 @@ static error_t _kernel_free_pages(void* p, int page_num,
                 return -E_IN_PARAM;
         }
 
-        error_t res = _unmap_and_free_phy_range_pages(
-                p, page_num, vs, nexus_root, node);
+        error_t res = _release_range(p, page_num, vs, nexus_root, node);
         if (res) {
                 unlock_cas(&nexus_root->nexus_vspace_lock);
                 return -E_RENDEZVOS;
@@ -816,20 +832,21 @@ static error_t _kernel_free_pages(void* p, int page_num,
         /*then delete the nexus_entry*/
         while (node) {
                 bool need_break = false;
-                if (node->v_region.addr + node->v_region.len >= free_end) {
+                if (node->addr + nexus_node_get_len(node)
+                    >= free_end) {
                         need_break = true;
                 }
-                if (node->v_region.len == MIDDLE_PAGE_SIZE
-                    && node->v_region.addr < free_end
-                    && node->v_region.addr + node->v_region.len > free_end) {
+                if (nexus_node_get_len(node) == MIDDLE_PAGE_SIZE
+                    && node->addr < free_end
+                    && node->addr + nexus_node_get_len(node)
+                               > free_end) {
                         pr_error(
                                 "[ NEXUS ] ERROR: split 2M page and we truncate it");
                         break;
                 }
                 struct nexus_node* old_node = node;
                 node = nexus_rb_tree_next(node);
-                if (node->manage_free_list.next
-                    && node->manage_free_list.prev) {
+                if (is_page_manage_node(node)) {
                         need_break = true;
                 }
                 delete_nexus_entry(old_node, nexus_root);
@@ -851,8 +868,8 @@ static error_t _kernel_free_pages(void* p, int page_num,
    ranges which only based on the 4K pages in user space remember that it must
    unmap first and then free it
 */
-error_t user_unmap_and_free_phy_range_pages(void* p, int page_num, VSpace* vs,
-                                            struct nexus_node* vspace_node)
+error_t user_unfill_range(void* p, int page_num, VSpace* vs,
+                          struct nexus_node* vspace_node)
 {
         lock_cas(&vspace_node->nexus_vspace_lock);
         struct nexus_node* node =
@@ -865,14 +882,13 @@ error_t user_unmap_and_free_phy_range_pages(void* p, int page_num, VSpace* vs,
                 unlock_cas(&vspace_node->nexus_vspace_lock);
                 return -E_IN_PARAM;
         }
-        error_t res = _unmap_and_free_phy_range_pages(
-                p, page_num, vs, vspace_node, node);
+        error_t res = _release_range(p, page_num, vs, vspace_node, node);
         unlock_cas(&vspace_node->nexus_vspace_lock);
         return res;
 }
 
-static error_t _user_free_pages_range(void* p, int page_num, VSpace* vs,
-                                      struct nexus_node* vspace_node)
+static error_t _user_release_range(void* p, int page_num, VSpace* vs,
+                                   struct nexus_node* vspace_node)
 {
         vaddr free_end = (vaddr)p + page_num * PAGE_SIZE;
 
@@ -889,20 +905,21 @@ static error_t _user_free_pages_range(void* p, int page_num, VSpace* vs,
         }
         while (node) {
                 bool need_break = false;
-                if (node->v_region.addr + node->v_region.len >= free_end) {
+                if (node->addr + nexus_node_get_len(node)
+                    >= free_end) {
                         need_break = true;
                 }
-                if (node->v_region.len == MIDDLE_PAGE_SIZE
-                    && node->v_region.addr < free_end
-                    && node->v_region.addr + node->v_region.len > free_end) {
+                if (nexus_node_get_len(node) == MIDDLE_PAGE_SIZE
+                    && node->addr < free_end
+                    && node->addr + nexus_node_get_len(node)
+                               > free_end) {
                         pr_error(
                                 "[ NEXUS ] ERROR: split 2M page and we truncate it");
                         break;
                 }
                 struct nexus_node* old_node = node;
                 node = nexus_rb_tree_next(node);
-                if (node->manage_free_list.next
-                    && node->manage_free_list.prev) {
+                if (is_page_manage_node(node)) {
                         need_break = true;
                 }
                 delete_nexus_entry(old_node, vspace_node);
@@ -943,15 +960,15 @@ void* get_free_page(int page_num, enum zone_type memory_zone,
                         return NULL;
                 }
                 unlock_cas(&nexus_root->nexus_lock);
-                struct nexus_node* first_entry = _user_get_free_page_range(
+                struct nexus_node* first_entry = _user_take_range(
                         page_num, target_vaddr, vspace_node, vs, flags);
                 if (first_entry
-                    && !user_get_and_map_phy_range_pages(first_entry,
-                                                         page_num,
-                                                         memory_zone,
-                                                         vspace_node,
-                                                         vs)) {
-                        res = (void*)(first_entry->v_region.addr);
+                    && !user_fill_range(first_entry,
+                                        page_num,
+                                        memory_zone,
+                                        vspace_node,
+                                        vs)) {
+                        res = (void*)(first_entry->addr);
                 }
         }
         return res;
@@ -982,11 +999,9 @@ error_t free_pages(void* p, int page_num, VSpace* vs,
                 struct nexus_node* vspace_node = nexus_rb_tree_vspace_search(
                         &nexus_root->_vspace_rb_root, vs->vspace_root_addr);
                 unlock_cas(&nexus_root->nexus_lock);
-                res = user_unmap_and_free_phy_range_pages(
-                        p, page_num, vs, vspace_node);
+                res = user_unfill_range(p, page_num, vs, vspace_node);
                 if (!res)
-                        res = _user_free_pages_range(
-                                p, page_num, vs, vspace_node);
+                        res = _user_release_range(p, page_num, vs, vspace_node);
         }
         return res;
 }

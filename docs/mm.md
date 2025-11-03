@@ -539,7 +539,7 @@ nexus需要为此提供额外的接口，而不能让底下的pmm去处理refcou
  - 删掉backup manage page(done，删掉好像还更快了点)
  - nexus_id和map handler的id其实应该是一样的
  - 相应的lock理论上也能塞到对应的map handler里面去。
- -v region的len其实没必要，因为现在只剩下2M和4K的page范围了。可以在flags里面知道。
+ -v region的len其实没必要，因为现在只剩下2M和4K的page范围了。可以在flags里面知道。(done)
  - ppn也没必要，因为确实可以从vaddr用map hander查找页表来得到。虽然这里面没有直接记录map handler，但是一般函数接口，都会给对应的nexus root
  - 重新分类，现在包括四类节点，per cpu的根，vspace的根，每个管理页面的头，普通节点，四类。
  - map handler也可以在vs中找到。
