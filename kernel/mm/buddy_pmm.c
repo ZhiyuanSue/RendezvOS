@@ -8,50 +8,19 @@ struct buddy buddy_pmm;
 extern struct memory_regions m_regions;
 u64 entry_per_bucket[BUDDY_MAXORDER + 1], pages_per_bucket[BUDDY_MAXORDER + 1];
 DEFINE_PER_CPU(struct spin_lock_t, pmm_spin_lock);
-/*some public functions in arch init, you can see some example in arch pmm*/
-static void calculate_avaliable_phy_addr_end(void)
+size_t calculate_manage_space(size_t zone_page_number)
 {
-        struct region reg;
-        paddr sec_start_addr;
-        paddr sec_end_addr;
-
-        buddy_pmm.avaliable_phy_addr_end = 0;
-        for (int i = 0; i < buddy_pmm.m_regions->region_count; i++) {
-                if (buddy_pmm.m_regions->memory_regions_entry_empty(i))
-                        continue;
-
-                reg = buddy_pmm.m_regions->memory_regions[i];
-                // pr_debug("Aviable Mem:base_phy_addr is 0x%x, length = "
-                //         "0x%x\n",
-                //         reg.addr,
-                //         reg.len);
-                /* end is not reachable,[ sec_end_addr , sec_end_addr ) */
-                sec_start_addr = reg.addr;
-                sec_end_addr = sec_start_addr + reg.len;
-
-                if (sec_end_addr > buddy_pmm.avaliable_phy_addr_end)
-                        buddy_pmm.avaliable_phy_addr_end = sec_end_addr;
-        }
-        buddy_pmm.avaliable_phy_addr_end =
-                ROUND_DOWN(buddy_pmm.avaliable_phy_addr_end, MIDDLE_PAGE_SIZE);
-}
-void calculate_pmm_space(u64 *total_pages, u64 *L2_table_pages)
-{
-        u64 pages, l2_pages;
-        paddr adjusted_phy_mem_end;
+        u64 pages;
         u64 size_in_this_order;
 
         pages = 0;
-        calculate_avaliable_phy_addr_end();
         for (int order = 0; order <= BUDDY_MAXORDER; ++order)
                 entry_per_bucket[order] = pages_per_bucket[order] = 0;
 
-        adjusted_phy_mem_end = buddy_pmm.avaliable_phy_addr_end;
         /*we promised that this phy mem end is 2m aligned*/
         for (int order = 0; order <= BUDDY_MAXORDER; ++order) {
                 size_in_this_order = (PAGE_SIZE << order);
-                entry_per_bucket[order] =
-                        adjusted_phy_mem_end / size_in_this_order;
+                entry_per_bucket[order] = zone_page_number / size_in_this_order;
                 pages_per_bucket[order] =
                         ROUND_UP(entry_per_bucket[order]
                                          * sizeof(struct page_frame),
@@ -61,16 +30,7 @@ void calculate_pmm_space(u64 *total_pages, u64 *L2_table_pages)
 
         for (int order = 0; order <= BUDDY_MAXORDER; ++order)
                 pages += pages_per_bucket[order];
-
-        /*
-                if the page frames need more than 1G space, we alloc more L2
-           tables but a problem exist, the pmm start have a offset , and we are
-           not sure of the offset, so it's hard to decide the real 1G spaces we
-           need, we just add one page
-        */
-        l2_pages = pages / (HUGE_PAGE_SIZE / PAGE_SIZE) + 1;
-        *L2_table_pages = l2_pages;
-        *total_pages = pages + l2_pages;
+        return pages;
 }
 void generate_pmm_data(paddr buddy_phy_start, paddr buddy_phy_end)
 {
@@ -409,4 +369,5 @@ struct buddy buddy_pmm = {.m_regions = &m_regions,
                           .pmm_init = pmm_init,
                           .pmm_alloc = pmm_alloc,
                           .pmm_free = pmm_free,
-                          .spin_ptr = NULL};
+                          .spin_ptr = NULL,
+                          .pmm_calculate_manage_space = calculate_manage_space};

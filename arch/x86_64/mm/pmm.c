@@ -120,7 +120,7 @@ void arch_init_pmm(struct setup_info *arch_setup_info)
         paddr per_cpu_phy_start, per_cpu_phy_end;
         paddr pmm_data_phy_start;
         paddr pmm_data_phy_end;
-        int kernel_region;
+        int kernel_region, pmm_region;
 
         kernel_phy_start = KERNEL_VIRT_TO_PHY((vaddr)(&_start));
         kernel_phy_end = KERNEL_VIRT_TO_PHY((vaddr)(&_end));
@@ -166,18 +166,51 @@ void arch_init_pmm(struct setup_info *arch_setup_info)
                 print("cannot load kernel\n");
                 goto arch_init_pmm_error;
         }
+        /*we hope the percpu and kernel are all in the same 1G,check it*/
+        if (ROUND_DOWN(kernel_phy_start, HUGE_PAGE_SIZE)
+            != ROUND_DOWN(per_cpu_phy_end, HUGE_PAGE_SIZE)) {
+                print("cannot put percpu data and kernel data in the same 1G space\n");
+                goto arch_init_pmm_error;
+        }
+        arch_map_percpu_data_space(
+                kernel_phy_end, per_cpu_phy_start, per_cpu_phy_end);
 
+        clean_per_cpu_region(per_cpu_phy_start);
         /*
          * ===
          * reserve pmm manage region
          * ===
          */
-        pmm_data_phy_end = pmm_data_phy_start =
-                ROUND_UP(per_cpu_phy_end, PAGE_SIZE);
+        /*calculate the section and the page frame need space*/
+        paddr avaliable_phy_start, avaliable_phy_end;
+        size_t total_phy_page_frame_number, total_section_number;
+        calculate_avaliable_phy_addr_region(&avaliable_phy_start,
+                                            &avaliable_phy_end,
+                                            &total_phy_page_frame_number);
+        split_pmm_zones(
+                avaliable_phy_start, avaliable_phy_end, &total_section_number);
 
+        /*calculate the total section and phy page frame need pages */
         u64 pmm_total_pages, L2_table_pages;
+        pmm_total_pages = calculate_sec_and_page_frame_pages(
+                total_phy_page_frame_number, total_section_number);
+        for (int mem_zone = 0; mem_zone < ZONE_NR_MAX; ++mem_zone) {
+                MemZone *zone = &(mem_zones[mem_zone]);
+                if (zone->pmm && zone->pmm->pmm_calculate_manage_space) {
+                        zone->zone_pmm_manage_pages =
+                                zone->pmm->pmm_calculate_manage_space(
+                                        zone->zone_total_avaliable_pages);
+                        pmm_total_pages += zone->zone_pmm_manage_pages;
+                }
+        }
         calculate_pmm_space(&pmm_total_pages, &L2_table_pages);
-        pmm_data_phy_end += pmm_total_pages * PAGE_SIZE;
+
+        /*generate pmm position*/
+        pmm_region = m_regions.memory_regions_reserve_region_with_length(
+                pmm_total_pages * PAGE_SIZE,
+                PAGE_SIZE,
+                &pmm_data_phy_start,
+                &pmm_data_phy_end);
 
         print("[ PMM_L2_TABLE\t@\t< 0x%x , 0x%x >]\n",
               KERNEL_PHY_TO_VIRT(pmm_data_phy_start),
@@ -187,19 +220,15 @@ void arch_init_pmm(struct setup_info *arch_setup_info)
               KERNEL_PHY_TO_VIRT(pmm_data_phy_start
                                  + L2_table_pages * PAGE_SIZE),
               KERNEL_PHY_TO_VIRT(pmm_data_phy_end));
-        if (m_regions.memory_regions[kernel_region].addr
-                    + m_regions.memory_regions[kernel_region].len
-            < pmm_data_phy_end) {
+        if (pmm_region == -1) {
                 print("cannot load the pmm data\n");
                 goto arch_init_pmm_error;
         }
-        arch_map_extra_data_space(kernel_phy_start,
-                                  kernel_phy_end,
-                                  per_cpu_phy_start,
-                                  pmm_data_phy_end,
-                                  pmm_data_phy_start,
-                                  L2_table_pages);
-        clean_per_cpu_region(per_cpu_phy_start);
+        arch_map_pmm_data_space(per_cpu_phy_end,
+                                pmm_data_phy_start,
+                                pmm_data_phy_end,
+                                pmm_data_phy_start,
+                                L2_table_pages);
         /*we should also do not clean the pmm l2 table region*/
         clean_pmm_region(pmm_data_phy_start + L2_table_pages * PAGE_SIZE,
                          pmm_data_phy_end);
