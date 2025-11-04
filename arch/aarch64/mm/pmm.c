@@ -42,6 +42,8 @@ static void arch_get_memory_regions(void *fdt)
 
         const char *device_type_str =
                 property_types[PROPERTY_TYPE_DEVICE_TYPE].property_string;
+
+        m_regions.memory_regions_init(&m_regions);
         raw_get_prop_from_dtb(fdt,
                               0,
                               property_types,
@@ -60,13 +62,16 @@ void arch_init_pmm(struct setup_info *arch_setup_info)
         paddr pmm_data_phy_end;
         int kernel_region;
         struct fdt_reserve_entry *entry;
-        paddr map_end_phy_addr;
 
+        /*
+         * ===
+         * get physical memory regions from platform description
+         * ===
+         */
         dtb_header_ptr =
                 (struct fdt_header *)(arch_setup_info
                                               ->boot_dtb_header_base_addr);
 
-        m_regions.memory_regions_init(&m_regions);
         arch_get_memory_regions(dtb_header_ptr);
 
         if (!m_regions.region_count)
@@ -82,17 +87,6 @@ void arch_init_pmm(struct setup_info *arch_setup_info)
               ROUND_DOWN((vaddr)dtb_header_ptr, MIDDLE_PAGE_SIZE),
               ROUND_UP((vaddr)dtb_header_ptr + MIDDLE_PAGE_SIZE,
                        MIDDLE_PAGE_SIZE));
-
-        per_cpu_phy_start = per_cpu_phy_end =
-                KERNEL_VIRT_TO_PHY(arch_setup_info->map_end_virt_addr);
-        reserve_per_cpu_region(&per_cpu_phy_end);
-        print("[ PERCPU_REGION\t@\t< 0x%x , 0x%x >]\n",
-              arch_setup_info->map_end_virt_addr,
-              KERNEL_PHY_TO_VIRT(per_cpu_phy_end));
-
-        pmm_data_phy_start = ROUND_UP(per_cpu_phy_end, PAGE_SIZE);
-
-        pmm_data_phy_end = pmm_data_phy_start;
         for (u64 off = SWAP_ENDIANNESS_32(dtb_header_ptr->off_mem_rsvmap);
              off < SWAP_ENDIANNESS_32(dtb_header_ptr->off_dt_struct);
              off += sizeof(struct fdt_reserve_entry)) {
@@ -103,18 +97,35 @@ void arch_init_pmm(struct setup_info *arch_setup_info)
                               entry->size);
                 }
         }
+        /*
+         * ===
+         * reserve per cpu region after the kernel
+         * ===
+         */
+        per_cpu_phy_start = per_cpu_phy_end =
+                KERNEL_VIRT_TO_PHY(arch_setup_info->map_end_virt_addr);
+        reserve_per_cpu_region(&per_cpu_phy_end);
+        print("[ PERCPU_REGION\t@\t< 0x%x , 0x%x >]\n",
+              arch_setup_info->map_end_virt_addr,
+              KERNEL_PHY_TO_VIRT(per_cpu_phy_end));
 
         // adjust the memory regions, according to the kernel
-        map_end_phy_addr =
-                KERNEL_VIRT_TO_PHY(arch_setup_info->map_end_virt_addr);
         kernel_region = m_regions.memory_regions_reserve_region(
-                kernel_phy_start, map_end_phy_addr);
-        /*You need to check whether the kernel and dtb have been loaded all
-         * successfully*/
+                kernel_phy_start, per_cpu_phy_end);
+        /*You need to check whether the kernel and dtb and percpu part have been
+         * reserved all successfully*/
         if (kernel_region == -1) {
                 print("cannot load kernel\n");
                 goto arch_init_pmm_error;
         }
+
+        /*
+         * ===
+         * reserve pmm manage region
+         * ===
+         */
+        pmm_data_phy_end = pmm_data_phy_start =
+                ROUND_UP(per_cpu_phy_end, PAGE_SIZE);
 
         u64 pmm_total_pages, L2_table_pages;
         calculate_pmm_space(&pmm_total_pages, &L2_table_pages);

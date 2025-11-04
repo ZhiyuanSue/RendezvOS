@@ -79,14 +79,14 @@ static error_t arch_get_memory_regions(struct setup_info *arch_setup_info)
 arch_init_pmm_error:
         return (-E_RENDEZVOS);
 }
-void reserve_arch_region(struct setup_info *arch_setup_info)
+error_t reserve_arch_region(struct setup_info *arch_setup_info)
 {
         // reserve acpi region
         struct acpi_table_rsdp *rsdp_table =
                 acpi_probe_rsdp(KERNEL_VIRT_OFFSET);
         if (!rsdp_table) {
                 print("not find any rsdp\n");
-                return;
+                return 0;
         }
         // print("====== rsdp @[0x%x]] ======\n", rsdp_table);
         arch_setup_info->rsdp_addr = (vaddr)rsdp_table;
@@ -104,12 +104,14 @@ void reserve_arch_region(struct setup_info *arch_setup_info)
                       KERNEL_PHY_TO_VIRT(acpi_reserve_phy_end));
                 if (acpi_region == -1) {
                         print("cannot load acpi\n");
-                        return;
+                        return -E_RENDEZVOS;
                 }
         } else {
                 print("[ ACPI ] unsupported vision: %d\n",
                       rsdp_table->revision);
+                return -E_RENDEZVOS;
         }
+        return 0;
 }
 void arch_init_pmm(struct setup_info *arch_setup_info)
 {
@@ -122,15 +124,28 @@ void arch_init_pmm(struct setup_info *arch_setup_info)
 
         kernel_phy_start = KERNEL_VIRT_TO_PHY((vaddr)(&_start));
         kernel_phy_end = KERNEL_VIRT_TO_PHY((vaddr)(&_end));
-        per_cpu_phy_start = per_cpu_phy_end = kernel_phy_end;
-        reserve_per_cpu_region(&per_cpu_phy_end);
-        pmm_data_phy_end = pmm_data_phy_start =
-                ROUND_UP(per_cpu_phy_end, PAGE_SIZE);
+        /*
+         * ===
+         * get physical memory regions from platform description
+         * ===
+         */
         if (arch_get_memory_regions(arch_setup_info) < 0)
                 goto arch_init_pmm_error;
+
+        if (!m_regions.region_count)
+                goto arch_init_pmm_error;
+
+        /*
+         * ===
+         * reserve per cpu region after the kernel
+         * ===
+         */
+        per_cpu_phy_start = per_cpu_phy_end = kernel_phy_end;
+        reserve_per_cpu_region(&per_cpu_phy_end);
+
         // adjust the memory regions, according to the kernel
         kernel_region = m_regions.memory_regions_reserve_region(
-                kernel_phy_start, kernel_phy_end);
+                kernel_phy_start, per_cpu_phy_end);
 
         print("[ KERNEL_REGION\t@\t< 0x%x , 0x%x >]\n",
               (vaddr)(&_start),
@@ -139,13 +154,27 @@ void arch_init_pmm(struct setup_info *arch_setup_info)
               KERNEL_PHY_TO_VIRT(per_cpu_phy_start),
               KERNEL_PHY_TO_VIRT(per_cpu_phy_end));
 
-        reserve_arch_region(arch_setup_info);
-        /*You need to check whether the kernel have been loaded all
-         * successfully*/
+        /*You need to check whether the arch reserve regions have been loaded
+         * all successfully*/
+        if (reserve_arch_region(arch_setup_info) < 0) {
+                print("cannot reserve arch region\n");
+                goto arch_init_pmm_error;
+        }
+        /*You need to check whether the kernel and percpu part have been
+         * reserved all successfully*/
         if (kernel_region == -1) {
                 print("cannot load kernel\n");
                 goto arch_init_pmm_error;
         }
+
+        /*
+         * ===
+         * reserve pmm manage region
+         * ===
+         */
+        pmm_data_phy_end = pmm_data_phy_start =
+                ROUND_UP(per_cpu_phy_end, PAGE_SIZE);
+
         u64 pmm_total_pages, L2_table_pages;
         calculate_pmm_space(&pmm_total_pages, &L2_table_pages);
         pmm_data_phy_end += pmm_total_pages * PAGE_SIZE;

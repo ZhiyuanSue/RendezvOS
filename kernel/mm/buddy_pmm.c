@@ -182,9 +182,8 @@ static void pmm_init_zones(void)
         return;
 }
 
-void pmm_init(struct setup_info *arch_setup_info)
+void pmm_init()
 {
-        arch_init_pmm(arch_setup_info);
         pmm_init_zones();
 }
 static inline error_t mark_childs(int zone_number, int order, u64 index)

@@ -14,8 +14,8 @@ DEFINE_PER_CPU(VSpace *, current_vspace);
 VSpace root_vspace;
 error_t phy_mm_init(struct setup_info *arch_setup_info)
 {
-        // memory part init
-        buddy_pmm.pmm_init(arch_setup_info);
+        arch_init_pmm(arch_setup_info);
+        buddy_pmm.pmm_init();
         return 0;
 }
 error_t virt_mm_init(int cpu_id, struct setup_info *arch_setup_info)
