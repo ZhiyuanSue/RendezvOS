@@ -1,4 +1,3 @@
-#include <rendezvos/error.h>
 #include <rendezvos/mm/pmm.h>
 #include <rendezvos/mm/vmm.h>
 #include <common/string.h>
@@ -266,15 +265,15 @@ void split_pmm_zones(paddr lower, paddr upper, size_t *total_section_number)
         *total_section_number = 0;
         for (int mem_zone = 0; mem_zone < ZONE_NR_MAX; ++mem_zone) {
                 zone = &(mem_zones[mem_zone]);
-                zone->zone_lower_addr = 0;
-                zone->zone_upper_addr = 0;
+                zone->lower_addr = 0;
+                zone->upper_addr = 0;
                 zone->zone_total_sections = 0;
                 switch (mem_zone) {
                         /*TODO:if we need more zones ,we can define zone upper
                          * and lower addr*/
                 case ZONE_NORMAL:
-                        zone->zone_lower_addr = lower;
-                        zone->zone_upper_addr = upper;
+                        zone->lower_addr = lower;
+                        zone->upper_addr = upper;
                         zone->zone_total_pages = 0;
                         zone->pmm = (struct pmm *)&buddy_pmm;
                         break;
@@ -288,37 +287,31 @@ void split_pmm_zones(paddr lower, paddr upper, size_t *total_section_number)
                         reg = m_regions.memory_regions[i];
                         sec_start_addr = reg.addr;
                         sec_end_addr = sec_start_addr + reg.len;
-                        if (sec_end_addr < zone->zone_upper_addr
-                            || sec_start_addr > zone->zone_lower_addr)
+                        size_t sec_size = 0;
+                        if (sec_end_addr < zone->upper_addr
+                            || sec_start_addr > zone->lower_addr)
                                 continue;
-                        if (sec_start_addr <= zone->zone_lower_addr
-                            && sec_end_addr <= zone->zone_upper_addr) {
-                                zone->zone_total_pages +=
-                                        (ROUND_DOWN(sec_end_addr, PAGE_SIZE)
-                                         - ROUND_UP(zone->zone_lower_addr,
-                                                    PAGE_SIZE))
-                                        / PAGE_SIZE;
-                        } else if (sec_start_addr <= zone->zone_lower_addr
-                                   && sec_end_addr > zone->zone_upper_addr) {
-                                zone->zone_total_pages +=
-                                        (ROUND_DOWN(zone->zone_upper_addr,
-                                                    PAGE_SIZE)
-                                         - ROUND_UP(zone->zone_lower_addr,
-                                                    PAGE_SIZE))
-                                        / PAGE_SIZE;
-                        } else if (sec_start_addr >= zone->zone_lower_addr
-                                   && sec_end_addr <= zone->zone_upper_addr) {
-                                zone->zone_total_pages +=
-                                        (ROUND_DOWN(sec_end_addr, PAGE_SIZE)
-                                         - ROUND_UP(sec_start_addr, PAGE_SIZE))
-                                        / PAGE_SIZE;
+                        if (sec_start_addr <= zone->lower_addr
+                            && sec_end_addr <= zone->upper_addr) {
+                                sec_size =
+                                        ROUND_DOWN(sec_end_addr, PAGE_SIZE)
+                                        - ROUND_UP(zone->lower_addr, PAGE_SIZE);
+                        } else if (sec_start_addr <= zone->lower_addr
+                                   && sec_end_addr > zone->upper_addr) {
+                                sec_size =
+                                        ROUND_DOWN(zone->upper_addr, PAGE_SIZE)
+                                        - ROUND_UP(zone->lower_addr, PAGE_SIZE);
+                        } else if (sec_start_addr >= zone->lower_addr
+                                   && sec_end_addr <= zone->upper_addr) {
+                                sec_size =
+                                        ROUND_DOWN(sec_end_addr, PAGE_SIZE)
+                                        - ROUND_UP(sec_start_addr, PAGE_SIZE);
                         } else {
-                                zone->zone_total_pages +=
-                                        (ROUND_DOWN(zone->zone_upper_addr,
-                                                    PAGE_SIZE)
-                                         - ROUND_UP(sec_start_addr, PAGE_SIZE))
-                                        / PAGE_SIZE;
+                                sec_size =
+                                        ROUND_DOWN(zone->upper_addr, PAGE_SIZE)
+                                        - ROUND_UP(sec_start_addr, PAGE_SIZE);
                         }
+                        zone->zone_total_pages += sec_size / PAGE_SIZE;
                         zone->zone_total_sections++;
                 }
                 zone->zone_total_avaliable_pages = zone->zone_total_pages;
@@ -345,4 +338,64 @@ void calculate_pmm_space(u64 *total_pages, u64 *L2_table_pages)
         size_t l2_pages = (*total_pages) / (HUGE_PAGE_SIZE / PAGE_SIZE) + 1;
         *L2_table_pages = l2_pages;
         *total_pages = *total_pages + l2_pages;
+}
+error_t generate_zone_data(paddr zone_data_phy_start, paddr zone_data_phy_end)
+{
+        MemZone *zone;
+        struct region reg;
+        paddr sec_start_addr;
+        paddr sec_end_addr;
+        MemSection *sec;
+        for (int mem_zone = 0; mem_zone < ZONE_NR_MAX; ++mem_zone) {
+                zone = &(mem_zones[mem_zone]);
+                for (int i = 0; i < m_regions.region_count; i++) {
+                        if (m_regions.memory_regions_entry_empty(i))
+                                continue;
+                        /*total 6 cases*/
+                        reg = m_regions.memory_regions[i];
+                        sec_start_addr = reg.addr;
+                        sec_end_addr = sec_start_addr + reg.len;
+
+                        if (sec_end_addr < zone->upper_addr
+                            || sec_start_addr > zone->lower_addr)
+                                continue;
+                        sec = (MemSection *)(KERNEL_PHY_TO_VIRT(
+                                zone_data_phy_start));
+                        if (sec_start_addr <= zone->lower_addr
+                            && sec_end_addr <= zone->upper_addr) {
+                                sec->upper_addr =
+                                        ROUND_DOWN(sec_end_addr, PAGE_SIZE);
+                                sec->lower_addr =
+                                        ROUND_UP(zone->lower_addr, PAGE_SIZE);
+                        } else if (sec_start_addr <= zone->lower_addr
+                                   && sec_end_addr > zone->upper_addr) {
+                                sec->upper_addr =
+                                        ROUND_DOWN(zone->upper_addr, PAGE_SIZE);
+                                sec->lower_addr =
+                                        ROUND_UP(zone->lower_addr, PAGE_SIZE);
+                        } else if (sec_start_addr >= zone->lower_addr
+                                   && sec_end_addr <= zone->upper_addr) {
+                                sec->upper_addr =
+                                        ROUND_DOWN(sec_end_addr, PAGE_SIZE);
+                                sec->lower_addr =
+                                        ROUND_UP(sec_start_addr, PAGE_SIZE);
+                        } else {
+                                sec->upper_addr =
+                                        ROUND_DOWN(zone->upper_addr, PAGE_SIZE);
+                                sec->lower_addr =
+                                        ROUND_UP(sec_start_addr, PAGE_SIZE);
+                        }
+                        sec->page_count = (sec->upper_addr-sec->lower_addr) / PAGE_SIZE;
+                        list_add_tail(&sec->section_list, &zone->section_list);
+                        for(int i = 0;i<sec->page_count;i++){
+                                get_Section_Page_from_index(sec,i)->sec=sec;
+                        }
+                        zone_data_phy_start += sizeof(MemSection)
+                                               + sec->page_count * sizeof(Page);
+                }
+        }
+        if (zone_data_phy_start > zone_data_phy_end) {
+                return -E_RENDEZVOS;
+        }
+        return 0;
 }

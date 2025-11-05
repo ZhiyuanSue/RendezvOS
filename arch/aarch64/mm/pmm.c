@@ -143,8 +143,8 @@ void arch_init_pmm(struct setup_info *arch_setup_info)
                 avaliable_phy_start, avaliable_phy_end, &total_section_number);
 
         /*calculate the total section and phy page frame need pages */
-        u64 pmm_total_pages, L2_table_pages;
-        pmm_total_pages = calculate_sec_and_page_frame_pages(
+        u64 zone_total_pages, pmm_total_pages, L2_table_pages;
+        zone_total_pages = pmm_total_pages = calculate_sec_and_page_frame_pages(
                 total_phy_page_frame_number, total_section_number);
         for (int mem_zone = 0; mem_zone < ZONE_NR_MAX; ++mem_zone) {
                 MemZone *zone = &(mem_zones[mem_zone]);
@@ -181,9 +181,17 @@ void arch_init_pmm(struct setup_info *arch_setup_info)
                                 pmm_data_phy_end,
                                 pmm_data_phy_start,
                                 L2_table_pages);
-        clean_pmm_region(pmm_data_phy_start + L2_table_pages * PAGE_SIZE,
-                         pmm_data_phy_end);
-        generate_pmm_data(pmm_data_phy_start + L2_table_pages * PAGE_SIZE,
+        /*we should also do not clean the pmm l2 table region*/
+        paddr pmm_data_phy_start_offset =
+                pmm_data_phy_start + L2_table_pages * PAGE_SIZE;
+        clean_pmm_region(pmm_data_phy_start_offset, pmm_data_phy_end);
+
+        /* === fill in the data === */
+        if (generate_zone_data(pmm_data_phy_start_offset,
+                               pmm_data_phy_start_offset + zone_total_pages)) {
+                goto arch_init_pmm_error;
+        }
+        generate_pmm_data(pmm_data_phy_start_offset + zone_total_pages,
                           pmm_data_phy_end);
         return;
 arch_init_pmm_error:
