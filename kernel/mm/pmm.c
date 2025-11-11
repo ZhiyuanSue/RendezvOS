@@ -276,6 +276,7 @@ void split_pmm_zones(paddr lower, paddr upper, size_t *total_section_number)
                         zone->upper_addr = upper;
                         zone->zone_total_pages = 0;
                         zone->pmm = (struct pmm *)&buddy_pmm;
+                        buddy_pmm.zone = zone;
                         break;
                 default:
                         break;
@@ -385,10 +386,11 @@ error_t generate_zone_data(paddr zone_data_phy_start, paddr zone_data_phy_end)
                                 sec->lower_addr =
                                         ROUND_UP(sec_start_addr, PAGE_SIZE);
                         }
-                        sec->page_count = (sec->upper_addr-sec->lower_addr) / PAGE_SIZE;
+                        sec->page_count =
+                                (sec->upper_addr - sec->lower_addr) / PAGE_SIZE;
                         list_add_tail(&sec->section_list, &zone->section_list);
-                        for(int i = 0;i<sec->page_count;i++){
-                                get_Section_Page_from_index(sec,i)->sec=sec;
+                        for (int i = 0; i < sec->page_count; i++) {
+                                get_Section_Page_from_index(sec, i)->sec = sec;
                         }
                         zone_data_phy_start += sizeof(MemSection)
                                                + sec->page_count * sizeof(Page);
@@ -398,4 +400,31 @@ error_t generate_zone_data(paddr zone_data_phy_start, paddr zone_data_phy_end)
                 return -E_RENDEZVOS;
         }
         return 0;
+}
+void mark_pmm_data_as_used(paddr pmm_data_phy_start, paddr pmm_data_phy_end)
+{
+        MemZone *zone;
+        pmm_data_phy_start = ROUND_DOWN(pmm_data_phy_start, PAGE_SIZE);
+        pmm_data_phy_end = ROUND_UP(pmm_data_phy_end, PAGE_SIZE);
+        for (int mem_zone = 0; mem_zone < ZONE_NR_MAX; ++mem_zone) {
+                zone = &(mem_zones[mem_zone]);
+                for_each_sec_of_zone(zone)
+                {
+                        if (sec->upper_addr <= pmm_data_phy_start
+                            || sec->lower_addr >= pmm_data_phy_end)
+                                continue;
+                        paddr mark_phy_start =
+                                MAX(pmm_data_phy_start, sec->lower_addr);
+                        paddr mark_phy_end =
+                                MIN(pmm_data_phy_end, sec->upper_addr);
+                        for (paddr mark_addr = mark_phy_start;
+                             mark_addr < mark_phy_end;
+                             mark_addr += PAGE_SIZE) {
+                                size_t index = (mark_addr - sec->lower_addr)
+                                               / PAGE_SIZE;
+                                get_Section_Page_from_index(sec, index)->flags |=
+                                        PAGE_FRAME_USED;
+                        }
+                }
+        }
 }

@@ -50,7 +50,11 @@ enum zone_type { ZONE_NORMAL, ZONE_NR_MAX };
                          size_t* alloced_page_number);                 \
         error_t (*pmm_free)(i64 ppn, size_t page_number);              \
         size_t (*pmm_calculate_manage_space)(size_t zone_page_number); \
-        spin_lock spin_ptr
+        void (*pmm_generate_data)(struct pmm * pmm,                    \
+                                  paddr pmm_phy_start_addr,            \
+                                  paddr pmm_phy_end_addr);             \
+        spin_lock spin_ptr;                                            \
+        MemZone* zone;
 
 extern struct spin_lock_t pmm_spin_lock;
 struct pmm {
@@ -60,6 +64,7 @@ typedef struct mem_section MemSection;
 typedef struct {
 #define PAGE_FRAME_ALLOCED   (1 << 0)
 #define PAGE_FRAME_AVALIABLE (1 << 1)
+#define PAGE_FRAME_USED      (1 << 2)
         u32 flags : 4;
         u32 ref_count;
         void* rmap_list;
@@ -112,10 +117,17 @@ static inline Page* get_Zone_Page_from_index(MemZone* zone, size_t index)
                         } else {
                                 index -= sec->page_count;
                         }
+                        list_node = list_node->next;
                 }
         }
         return NULL;
 }
+#define for_each_sec_of_zone(zone_ptr)                                       \
+        for (MemSection* sec = container_of(                                 \
+                     zone_ptr->section_list.next, MemSection, section_list); \
+             sec != (MemSection*)zone_ptr;                                   \
+             sec = container_of(                                             \
+                     sec->section_list.next, MemSection, section_list))
 
 extern MemZone mem_zones[ZONE_NR_MAX];
 // get the pages pmm manager need
@@ -137,4 +149,7 @@ void arch_map_percpu_data_space(paddr prev_region_phy_end,
 void arch_map_pmm_data_space(paddr kernel_phy_end, paddr extra_data_phy_start,
                              paddr extra_data_phy_end, paddr pmm_l2_start,
                              u64 pmm_l2_pages);
+
+// mark the pmm data pages as used
+void mark_pmm_data_as_used(paddr pmm_data_phy_start, paddr pmm_data_phy_end);
 #endif
