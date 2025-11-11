@@ -46,6 +46,12 @@ But, if it's necessery, you should not using the incbin way, and then you need t
 
 
 # Start(with the test Linux compatible repo)
+## build env
+If you need the env, just run
+```
+./build_env.sh
+```
+the script will automatically install all what you need, some software might need the password of the computer.
 ## run
 First you need to config it,choose an arch, e.g. 
 ```
