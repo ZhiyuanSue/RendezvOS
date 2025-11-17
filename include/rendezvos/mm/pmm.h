@@ -43,23 +43,6 @@ extern struct memory_regions m_regions;
 
 enum zone_type { ZONE_NORMAL, ZONE_NR_MAX };
 
-#define PMM_COMMON                                                     \
-        void (*pmm_init)();                                            \
-        i64 (*pmm_alloc)(size_t page_number,                           \
-                         enum zone_type zone_number,                   \
-                         size_t* alloced_page_number);                 \
-        error_t (*pmm_free)(i64 ppn, size_t page_number);              \
-        size_t (*pmm_calculate_manage_space)(size_t zone_page_number); \
-        void (*pmm_generate_data)(struct pmm * pmm,                    \
-                                  paddr pmm_phy_start_addr,            \
-                                  paddr pmm_phy_end_addr);             \
-        spin_lock spin_ptr;                                            \
-        MemZone* zone;
-
-extern struct spin_lock_t pmm_spin_lock;
-struct pmm {
-        PMM_COMMON;
-};
 typedef struct mem_section MemSection;
 typedef struct {
 #define PAGE_FRAME_ALLOCED   (1 << 0)
@@ -77,8 +60,12 @@ struct mem_section {
         paddr lower_addr;
         Page pages[];
 };
+#define for_each_page_of_sec(sec_ptr)                     \
+        for (Page* page = &sec_ptr->pages[0];             \
+             page < &sec_ptr->pages[sec_ptr->page_count]; \
+             page++)
 
-static inline i64 get_Page_ppn(Page* page)
+static inline i64 phy_Page_ppn(Page* page)
 {
         if (page && page->sec) {
                 return page->sec->lower_addr
@@ -86,7 +73,13 @@ static inline i64 get_Page_ppn(Page* page)
         }
         return -E_RENDEZVOS;
 }
-static inline Page* get_Section_Page_from_index(MemSection* sec, size_t index)
+static inline bool ppn_in_Sec(MemSection* sec, i64 ppn)
+{
+        if (ppn <= 0)
+                return false;
+        return PADDR(ppn) > sec->lower_addr && PADDR(ppn) < sec->upper_addr;
+}
+static inline Page* Sec_phy_Page(MemSection* sec, size_t index)
 {
         if (sec && index < sec->page_count) {
                 return &(sec->pages[index]);
@@ -101,11 +94,23 @@ typedef struct {
         paddr lower_addr;
         size_t zone_total_pages;
         size_t zone_total_sections;
-        size_t zone_total_avaliable_pages;
         size_t zone_pmm_manage_pages;
 } MemZone;
 
-static inline Page* get_Zone_Page_from_index(MemZone* zone, size_t index)
+#define for_each_sec_of_zone(zone_ptr)                                       \
+        for (MemSection* sec = container_of(                                 \
+                     zone_ptr->section_list.next, MemSection, section_list); \
+             sec != (MemSection*)zone_ptr;                                   \
+             sec = container_of(                                             \
+                     sec->section_list.next, MemSection, section_list))
+
+static inline bool ppn_in_Zone(MemZone* zone, i64 ppn)
+{
+        if (ppn <= 0)
+                return false;
+        return PADDR(ppn) > zone->lower_addr && PADDR(ppn) < zone->upper_addr;
+}
+static inline Page* Zone_phy_Page(MemZone* zone, size_t index)
 {
         if (zone && index < zone->zone_total_pages) {
                 struct list_entry* list_node = zone->section_list.next;
@@ -113,7 +118,7 @@ static inline Page* get_Zone_Page_from_index(MemZone* zone, size_t index)
                         MemSection* sec = container_of(
                                 list_node, MemSection, section_list);
                         if (index < sec->page_count) {
-                                return get_Section_Page_from_index(sec, index);
+                                return Sec_phy_Page(sec, index);
                         } else {
                                 index -= sec->page_count;
                         }
@@ -122,12 +127,57 @@ static inline Page* get_Zone_Page_from_index(MemZone* zone, size_t index)
         }
         return NULL;
 }
-#define for_each_sec_of_zone(zone_ptr)                                       \
-        for (MemSection* sec = container_of(                                 \
-                     zone_ptr->section_list.next, MemSection, section_list); \
-             sec != (MemSection*)zone_ptr;                                   \
-             sec = container_of(                                             \
-                     sec->section_list.next, MemSection, section_list))
+static inline Page* ppn_Zone_phy_Page(MemZone* zone, i64 ppn)
+{
+        if (ppn <= 0) { /*invalid ppn value*/
+                return NULL;
+        }
+        if (!ppn_in_Zone(zone, ppn))
+                return NULL;
+        for_each_sec_of_zone(zone)
+        {
+                if (ppn_in_Sec(sec, ppn)) {
+                        return &(sec->pages[ppn - PPN(sec->lower_addr)]);
+                }
+        }
+        return NULL;
+}
+static inline i64 ppn_Zone_index(MemZone* zone, i64 ppn)
+{
+        if (ppn <= 0) { /*invalid ppn value*/
+                return -1;
+        }
+        if (!ppn_in_Zone(zone, ppn))
+                return -1;
+        i64 index = 0;
+        for_each_sec_of_zone(zone)
+        {
+                if (ppn_in_Sec(sec, ppn)) {
+                        return index + ppn - PPN(sec->lower_addr);
+                } else {
+                        index += PPN(sec->upper_addr - sec->lower_addr
+                                     - PAGE_SIZE);
+                }
+        }
+        return (-1);
+}
+
+#define PMM_COMMON                                                          \
+        void (*pmm_init)(struct pmm * pmm,                                  \
+                         paddr pmm_phy_start_addr,                          \
+                         paddr pmm_phy_end_addr);                           \
+        i64 (*pmm_alloc)(struct pmm * pmm,                                  \
+                         size_t page_number,                                \
+                         size_t* alloced_page_number);                      \
+        error_t (*pmm_free)(struct pmm * pmm, i64 ppn, size_t page_number); \
+        size_t (*pmm_calculate_manage_space)(size_t zone_page_number);      \
+        spin_lock spin_ptr;                                                 \
+        MemZone* zone;
+
+extern struct spin_lock_t pmm_spin_lock;
+struct pmm {
+        PMM_COMMON;
+};
 
 extern MemZone mem_zones[ZONE_NR_MAX];
 // get the pages pmm manager need

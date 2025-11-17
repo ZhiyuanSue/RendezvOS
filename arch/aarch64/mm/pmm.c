@@ -151,7 +151,7 @@ void arch_init_pmm(struct setup_info *arch_setup_info)
                 if (zone->pmm && zone->pmm->pmm_calculate_manage_space) {
                         zone->zone_pmm_manage_pages =
                                 zone->pmm->pmm_calculate_manage_space(
-                                        zone->zone_total_avaliable_pages);
+                                        zone->zone_total_pages);
                         pmm_total_pages += zone->zone_pmm_manage_pages;
                 }
         }

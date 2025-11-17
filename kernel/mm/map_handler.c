@@ -42,13 +42,12 @@ void init_map(struct map_handler *handler, int cpu_id, int pt_zone,
 {
         handler->cpu_id = cpu_id;
         handler->pmm = pmm;
-        handler->page_table_zone = pt_zone;
         vaddr map_vaddr = map_pages + cpu_id * PAGE_SIZE * 4;
         size_t alloced_page_number;
         for (int i = 0; i < 4; i++) {
                 handler->map_vaddr[i] = map_vaddr;
                 handler->handler_ppn[i] =
-                        pmm->pmm_alloc(1, pt_zone, &alloced_page_number);
+                        pmm->pmm_alloc(pmm, 1, &alloced_page_number);
                 if (handler->handler_ppn[i] <= 0 || alloced_page_number != 1) {
                         pr_error("[ERROR] init map no ppn can alloc\n");
                 }
@@ -294,7 +293,9 @@ error_t map(VSpace *vs, u64 ppn, u64 vpn, int level, ENTRY_FLAGS_t eflags,
                                          &per_cpu(pmm_spin_lock,
                                                   handler->cpu_id));
                                 pmm_res = handler->pmm->pmm_free(
-                                        (i64)PPN(next_level_paddr), 1);
+                                        handler->pmm,
+                                        (i64)PPN(next_level_paddr),
+                                        1);
                                 unlock_mcs(&handler->pmm->spin_ptr,
                                            &per_cpu(pmm_spin_lock,
                                                     handler->cpu_id));
@@ -398,9 +399,7 @@ map_fail:
                         lock_mcs(&handler->pmm->spin_ptr,
                                  &per_cpu(pmm_spin_lock, handler->cpu_id));
                         handler->handler_ppn[i] = handler->pmm->pmm_alloc(
-                                1,
-                                handler->page_table_zone,
-                                &alloced_page_number);
+                                handler->pmm, 1, &alloced_page_number);
                         unlock_mcs(&handler->pmm->spin_ptr,
                                    &per_cpu(pmm_spin_lock, handler->cpu_id));
                 }
@@ -658,7 +657,7 @@ new_vs_root_fail:
                 lock_mcs(&handler->pmm->spin_ptr,
                          &per_cpu(pmm_spin_lock, handler->cpu_id));
                 handler->handler_ppn[0] = handler->pmm->pmm_alloc(
-                        1, handler->page_table_zone, &alloced_page_number);
+                        handler->pmm, 1, &alloced_page_number);
                 unlock_mcs(&handler->pmm->spin_ptr,
                            &per_cpu(pmm_spin_lock, handler->cpu_id));
         }

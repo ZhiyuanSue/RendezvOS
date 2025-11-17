@@ -10,8 +10,9 @@ int pmm_test(void)
         size_t alloced_page_number;
 
         for (int i = 0, pg_size = 1; i < PPN_TEST_CASE_NUM; ++i, pg_size *= 2) {
-                alloc_ppn[i] = buddy_pmm.pmm_alloc(
-                        pg_size, ZONE_NORMAL, &alloced_page_number);
+                alloc_ppn[i] = buddy_pmm.pmm_alloc((struct pmm *)&buddy_pmm,
+                                                   pg_size,
+                                                   &alloced_page_number);
                 if (alloc_ppn[i] == -E_RENDEZVOS) {
                         pr_error("alloc error\n");
                         goto pmm_test_error;
@@ -21,15 +22,17 @@ int pmm_test(void)
                               alloc_ppn[i]);
         }
         for (int i = 0, pg_size = 1; i < PPN_TEST_CASE_NUM; ++i, pg_size *= 2) {
-                if (buddy_pmm.pmm_free(alloc_ppn[i], pg_size)) {
+                if (buddy_pmm.pmm_free(
+                            (struct pmm *)&buddy_pmm, alloc_ppn[i], pg_size)) {
                         pr_error("free error\n");
                         goto pmm_test_error;
                 } else
                         debug("free ppn 0x%x success\n", alloc_ppn[i]);
         }
         for (int i = 0; i < PPN_TEST_CASE_NUM; ++i) {
-                alloc_ppn[i] = buddy_pmm.pmm_alloc(
-                        i * 2 + 3, ZONE_NORMAL, &alloced_page_number);
+                alloc_ppn[i] = buddy_pmm.pmm_alloc((struct pmm *)&buddy_pmm,
+                                                   i * 2 + 3,
+                                                   &alloced_page_number);
                 if (alloc_ppn[i] == -E_RENDEZVOS) {
                         pr_error("alloc error\n");
                         goto pmm_test_error;
@@ -39,15 +42,18 @@ int pmm_test(void)
                               alloc_ppn[i]);
         }
         for (int i = 0; i < PPN_TEST_CASE_NUM; ++i) {
-                if (buddy_pmm.pmm_free(alloc_ppn[i], i * 2 + 3)) {
+                if (buddy_pmm.pmm_free((struct pmm *)&buddy_pmm,
+                                       alloc_ppn[i],
+                                       i * 2 + 3)) {
                         pr_error("free error\n");
                         goto pmm_test_error;
                 } else
                         debug("free ppn 0x%x success\n", alloc_ppn[i]);
         }
         for (int i = 0; i < PPN_TEST_CASE_NUM; ++i) {
-                alloc_ppn[i] = buddy_pmm.pmm_alloc(
-                        i * 2 + 3, ZONE_NORMAL, &alloced_page_number);
+                alloc_ppn[i] = buddy_pmm.pmm_alloc((struct pmm *)&buddy_pmm,
+                                                   i * 2 + 3,
+                                                   &alloced_page_number);
                 if (alloc_ppn[i] == -E_RENDEZVOS) {
                         pr_error("alloc error\n");
                         goto pmm_test_error;
@@ -55,7 +61,9 @@ int pmm_test(void)
                         debug("try to get %x pages ,and alloc ppn 0x%x\n",
                               i * 2 + 3,
                               alloc_ppn[i]);
-                if (buddy_pmm.pmm_free(alloc_ppn[i], i * 2 + 3)) {
+                if (buddy_pmm.pmm_free((struct pmm *)&buddy_pmm,
+                                       alloc_ppn[i],
+                                       i * 2 + 3)) {
                         pr_error("free error\n");
                         goto pmm_test_error;
                 } else
@@ -63,18 +71,19 @@ int pmm_test(void)
         }
         // try to alloc all the memory,then try to alloc will lead to an error
         // if no such an error, the boundary conditions is error
-        while (buddy_pmm.zone->zone_total_avaliable_pages) {
+        while (buddy_pmm.total_avaliable_pages) {
                 i64 tmp = buddy_pmm.pmm_alloc(
-                        1, ZONE_NORMAL, &alloced_page_number);
-                alloc_ppn[buddy_pmm.zone->zone_total_avaliable_pages
-                          % PPN_TEST_CASE_NUM] = tmp;
+                        (struct pmm *)&buddy_pmm, 1, &alloced_page_number);
+                alloc_ppn[buddy_pmm.total_avaliable_pages % PPN_TEST_CASE_NUM] =
+                        tmp;
 
                 if (tmp <= 0) {
                         pr_error("[ ERROR ] pmm alloc error %d\n",
                                  tmp) goto pmm_test_error;
                 }
         }
-        if (buddy_pmm.pmm_alloc(1, ZONE_NORMAL, &alloced_page_number)
+        if (buddy_pmm.pmm_alloc(
+                    (struct pmm *)&buddy_pmm, 1, &alloced_page_number)
             != -E_RENDEZVOS) {
                 pr_error("alloc boundary error\n");
                 goto pmm_test_error;
@@ -82,7 +91,8 @@ int pmm_test(void)
         // then we free some of the pages
         // and try to alloc again
         for (int i = 0; i < PPN_TEST_CASE_NUM; ++i) {
-                if (buddy_pmm.pmm_free(alloc_ppn[i], 1)) {
+                if (buddy_pmm.pmm_free(
+                            (struct pmm *)&buddy_pmm, alloc_ppn[i], 1)) {
                         pr_error("free error\n");
                         goto pmm_test_error;
                 } else
@@ -90,7 +100,7 @@ int pmm_test(void)
         }
         for (int i = 0; i < PPN_TEST_CASE_NUM; ++i) {
                 alloc_ppn[i] = buddy_pmm.pmm_alloc(
-                        1, ZONE_NORMAL, &alloced_page_number);
+                        (struct pmm *)&buddy_pmm, 1, &alloced_page_number);
                 if (alloc_ppn[i] == -E_RENDEZVOS) {
                         pr_error("alloc error\n");
                         goto pmm_test_error;
@@ -99,7 +109,8 @@ int pmm_test(void)
                               1,
                               alloc_ppn[i]);
         }
-        if (buddy_pmm.pmm_alloc(1, ZONE_NORMAL, &alloced_page_number)
+        if (buddy_pmm.pmm_alloc(
+                    (struct pmm *)&buddy_pmm, 1, &alloced_page_number)
             != -E_RENDEZVOS) {
                 pr_error("alloc boundary error\n");
                 goto pmm_test_error;

@@ -315,7 +315,6 @@ void split_pmm_zones(paddr lower, paddr upper, size_t *total_section_number)
                         zone->zone_total_pages += sec_size / PAGE_SIZE;
                         zone->zone_total_sections++;
                 }
-                zone->zone_total_avaliable_pages = zone->zone_total_pages;
                 (*total_section_number) += zone->zone_total_sections;
         }
 }
@@ -390,7 +389,7 @@ error_t generate_zone_data(paddr zone_data_phy_start, paddr zone_data_phy_end)
                                 (sec->upper_addr - sec->lower_addr) / PAGE_SIZE;
                         list_add_tail(&sec->section_list, &zone->section_list);
                         for (int i = 0; i < sec->page_count; i++) {
-                                get_Section_Page_from_index(sec, i)->sec = sec;
+                                Sec_phy_Page(sec, i)->sec = sec;
                         }
                         zone_data_phy_start += sizeof(MemSection)
                                                + sec->page_count * sizeof(Page);
@@ -422,7 +421,7 @@ void mark_pmm_data_as_used(paddr pmm_data_phy_start, paddr pmm_data_phy_end)
                              mark_addr += PAGE_SIZE) {
                                 size_t index = (mark_addr - sec->lower_addr)
                                                / PAGE_SIZE;
-                                get_Section_Page_from_index(sec, index)->flags |=
+                                Sec_phy_Page(sec, index)->flags |=
                                         PAGE_FRAME_USED;
                         }
                 }

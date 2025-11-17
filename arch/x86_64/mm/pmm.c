@@ -199,7 +199,7 @@ void arch_init_pmm(struct setup_info *arch_setup_info)
                 if (zone->pmm && zone->pmm->pmm_calculate_manage_space) {
                         zone->zone_pmm_manage_pages =
                                 zone->pmm->pmm_calculate_manage_space(
-                                        zone->zone_total_avaliable_pages);
+                                        zone->zone_total_pages);
                         pmm_total_pages += zone->zone_pmm_manage_pages;
                 }
         }
@@ -239,13 +239,14 @@ void arch_init_pmm(struct setup_info *arch_setup_info)
                                pmm_data_phy_start_offset + zone_total_pages)) {
                 goto arch_init_pmm_error;
         }
-        /*before we generate the pmm data per zone, we must mark pmm data pages as used*/
+        /*before we generate the pmm data per zone, we must mark pmm data pages
+         * as used*/
         mark_pmm_data_as_used(pmm_data_phy_start, pmm_data_phy_end);
         /*generate the pmm data per zone*/
         for (int mem_zone = 0; mem_zone < ZONE_NR_MAX; ++mem_zone) {
                 MemZone *zone = &(mem_zones[mem_zone]);
-                if (zone->pmm && zone->pmm->pmm_generate_data) {
-                        zone->pmm->pmm_generate_data(
+                if (zone->pmm && zone->pmm->pmm_init) {
+                        zone->pmm->pmm_init(
                                 zone->pmm,
                                 pmm_data_phy_start_offset + zone_total_pages,
                                 pmm_data_phy_start_offset + zone_total_pages
