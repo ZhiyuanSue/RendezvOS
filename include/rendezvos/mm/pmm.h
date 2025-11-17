@@ -152,6 +152,8 @@ static inline i64 ppn_Zone_index(MemZone* zone, i64 ppn)
         i64 index = 0;
         for_each_sec_of_zone(zone)
         {
+                if (sec->upper_addr == sec->lower_addr)
+                        continue;
                 if (ppn_in_Sec(sec, ppn)) {
                         return index + ppn - PPN(sec->lower_addr);
                 } else {

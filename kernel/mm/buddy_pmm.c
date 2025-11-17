@@ -265,10 +265,12 @@ error_t pmm_free(struct pmm *pmm, i64 ppn, size_t page_number)
 
                 /*check whether this page is shared, and if it is shared,just
                  * check*/
-
-                ppn_Zone_phy_Page(pmm->zone, ppn + page_count)->ref_count--;
-                if (ppn_Zone_phy_Page(pmm->zone, ppn + page_count)->ref_count
-                    > 0) {
+                Page *free_phy_page =
+                        ppn_Zone_phy_Page(pmm->zone, ppn + page_count);
+                if (!free_phy_page)
+                        continue;
+                free_phy_page->ref_count--;
+                if (free_phy_page->ref_count > 0) {
                         continue;
                 }
 
