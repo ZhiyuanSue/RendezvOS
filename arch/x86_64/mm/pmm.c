@@ -224,6 +224,14 @@ void arch_init_pmm(struct setup_info *arch_setup_info)
                 print("cannot load the pmm data\n");
                 goto arch_init_pmm_error;
         }
+        /*
+                we have to reserve the following region ,
+                let pmm not using this range.
+                otherwise the pmm will try to map a level3 page
+                into the pmm data map space (which using level 2 pages)
+        */
+        m_regions.memory_regions_reserve_region(
+                pmm_data_phy_end, ROUND_UP(pmm_data_phy_end, MIDDLE_PAGE_SIZE));
         arch_map_pmm_data_space(per_cpu_phy_end,
                                 pmm_data_phy_start,
                                 pmm_data_phy_end,

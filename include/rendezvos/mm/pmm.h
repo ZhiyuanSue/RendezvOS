@@ -196,7 +196,8 @@ void clean_pmm_region(paddr pmm_data_phy_start, paddr pmm_data_phy_end);
 void arch_map_percpu_data_space(paddr prev_region_phy_end,
                                 paddr percpu_phy_start, paddr percpu_phy_end);
 // map the pmm manage data
-void arch_map_pmm_data_space(paddr kernel_phy_end, paddr extra_data_phy_start,
+void arch_map_pmm_data_space(paddr prev_region_phy_end,
+                             paddr extra_data_phy_start,
                              paddr extra_data_phy_end, paddr pmm_l2_start,
                              u64 pmm_l2_pages);
 

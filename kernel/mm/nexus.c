@@ -694,7 +694,7 @@ error_t user_fill_range(struct nexus_node* first_entry, int page_num,
                                       &vspace_node->vs->vspace_lock);
                 if (map_res) {
                         pr_error(
-                                "[ NEXUS ] ERROR: kernel get free page map error\n");
+                                "[ NEXUS ] ERROR: user get free page map error\n");
                         delete_nexus_entry(first_entry, vspace_node);
                         unlock_cas(&vspace_node->vs->nexus_vspace_lock);
                         goto fail;

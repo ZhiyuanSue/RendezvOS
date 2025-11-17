@@ -351,6 +351,15 @@ error_t map(VSpace *vs, u64 ppn, u64 vpn, int level, ENTRY_FLAGS_t eflags,
         }
         /*=== === === L3 table === === ===*/
         /*map the L1 table to one L3 table entry*/
+        pt_entry =
+                ((union L2_entry *)(handler->map_vaddr[2]))[L2_INDEX(v)].entry;
+        entry_flags = arch_encode_flags(1, pt_entry);
+        if (entry_flags & PAGE_ENTRY_HUGE) {
+                pr_error(
+                        "[ MAP ] try to map a level 3 page but a level 2 page have mapped here\n");
+                res = -E_RENDEZVOS;
+                goto map_l2_fail;
+        }
         util_map(next_level_paddr, handler->map_vaddr[3]);
         if (new_alloc) {
                 memset((char *)(handler->map_vaddr[3]), 0, PAGE_SIZE);
@@ -369,9 +378,10 @@ error_t map(VSpace *vs, u64 ppn, u64 vpn, int level, ENTRY_FLAGS_t eflags,
         if (next_level_paddr != p) {
                 pr_error(
                         "[ MAP ] mapping two different physical pages to a same virtual 4K page\n");
-                pr_error("[ MAP ] arguments: old 0x%x new 0x%x\n",
+                pr_error("[ MAP ] arguments: old 0x%x new 0x%x to 0x%x\n",
                          next_level_paddr,
-                         p);
+                         p,
+                         v);
                 res = -E_RENDEZVOS;
                 goto map_l3_fail;
         }
