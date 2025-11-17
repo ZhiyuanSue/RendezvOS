@@ -233,24 +233,24 @@ void arch_init_pmm(struct setup_info *arch_setup_info)
         paddr pmm_data_phy_start_offset =
                 pmm_data_phy_start + L2_table_pages * PAGE_SIZE;
         clean_pmm_region(pmm_data_phy_start_offset, pmm_data_phy_end);
-
         /* === fill in the data === */
         if (generate_zone_data(pmm_data_phy_start_offset,
-                               pmm_data_phy_start_offset + zone_total_pages)) {
+                               pmm_data_phy_start_offset
+                                       + zone_total_pages * PAGE_SIZE)) {
                 goto arch_init_pmm_error;
         }
-        /*before we generate the pmm data per zone, we must mark pmm data pages
-         * as used*/
-        mark_pmm_data_as_used(pmm_data_phy_start, pmm_data_phy_end);
         /*generate the pmm data per zone*/
         for (int mem_zone = 0; mem_zone < ZONE_NR_MAX; ++mem_zone) {
                 MemZone *zone = &(mem_zones[mem_zone]);
                 if (zone->pmm && zone->pmm->pmm_init) {
                         zone->pmm->pmm_init(
                                 zone->pmm,
-                                pmm_data_phy_start_offset + zone_total_pages,
-                                pmm_data_phy_start_offset + zone_total_pages
-                                        + zone->zone_pmm_manage_pages);
+                                pmm_data_phy_start_offset
+                                        + zone_total_pages * PAGE_SIZE,
+                                pmm_data_phy_start_offset
+                                        + zone_total_pages * PAGE_SIZE
+                                        + zone->zone_pmm_manage_pages
+                                                  * PAGE_SIZE);
                 }
         }
         return;

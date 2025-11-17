@@ -11,34 +11,15 @@ extern struct memory_regions m_regions;
 DEFINE_PER_CPU(struct spin_lock_t, pmm_spin_lock);
 size_t calculate_manage_space(size_t zone_page_number)
 {
-        // u64 pages;
-        // u64 size_in_this_order;
-
-        // pages = 0;
-        // for (int order = 0; order <= BUDDY_MAXORDER; ++order)
-        //         entry_per_bucket[order] = pages_per_bucket[order] = 0;
-
-        /*we promised that this phy mem end is 2m aligned*/
-        // for (int order = 0; order <= BUDDY_MAXORDER; ++order) {
-        //         size_in_this_order = (PAGE_SIZE << order);
-        //         entry_per_bucket[order] = zone_page_number /
-        //         size_in_this_order; pages_per_bucket[order] =
-        //                 ROUND_UP(entry_per_bucket[order]
-        //                                  * sizeof(struct buddy_page),
-        //                          PAGE_SIZE)
-        //                 / PAGE_SIZE;
-        // }
-
-        // for (int order = 0; order <= BUDDY_MAXORDER; ++order)
-        //         pages += pages_per_bucket[order];
-        return zone_page_number * sizeof(struct buddy_page);
+        return ROUND_UP(zone_page_number * sizeof(struct buddy_page), PAGE_SIZE)
+               / PAGE_SIZE;
 }
 void pmm_init(struct pmm *pmm, paddr pmm_phy_start_addr, paddr pmm_phy_end_addr)
 {
         MemZone *zone = pmm->zone;
         struct buddy *bp = (struct buddy *)pmm;
 
-        u64 order_page_size, child_order_page_size;
+        // u64 order_page_size, child_order_page_size;
         size_t index = 0;
 
         /*generate the buddy bucket*/
@@ -63,8 +44,8 @@ void pmm_init(struct pmm *pmm, paddr pmm_phy_start_addr, paddr pmm_phy_end_addr)
                 for_each_page_of_sec(sec)
                 {
                         bp->pages[index].ppn =
-                                sec->lower_addr
-                                + (page - &sec->pages[0]) * PAGE_SIZE;
+                                PPN(sec->lower_addr
+                                    + (page - &sec->pages[0]) * PAGE_SIZE);
                         INIT_LIST_HEAD(&bp->pages[index].page_list);
                         index++;
                 }
@@ -81,28 +62,22 @@ void pmm_init(struct pmm *pmm, paddr pmm_phy_start_addr, paddr pmm_phy_end_addr)
                 if (order == 0) {
                         for (index = 0; index < bp->buddy_page_number;
                              index++) {
-                                if (!(Zone_phy_Page(zone, index)->flags
-                                      & PAGE_FRAME_USED)) {
-                                        list_add_tail(
-                                                &bp->pages[index].page_list,
-                                                &bp->buckets[order]
-                                                         .avaliable_frame_list);
-                                        bp->pages[index].order = 0;
-                                        bp->total_avaliable_pages++;
-                                }
+                                list_add_tail(&bp->pages[index].page_list,
+                                              &bp->buckets[order]
+                                                       .avaliable_frame_list);
+                                bp->pages[index].order = 0;
+                                bp->total_avaliable_pages++;
                         }
                 } else {
-                        order_page_size = (PAGE_SIZE << order);
-                        child_order_page_size = (PAGE_SIZE << (order - 1));
                         for (index = 0; index < bp->buddy_page_number;
                              index++) {
-                                if (ALIGNED(bp->pages[index].ppn,
-                                            order_page_size)
+                                if (ALIGNED(bp->pages[index].ppn, (1 << order))
                                     && index + (1 << (order - 1))
                                                < bp->buddy_page_number
                                     && bp->pages[index + (1 << (order - 1))].ppn
                                                == bp->pages[index].ppn
-                                                          + child_order_page_size) {
+                                                          + (1
+                                                             << (order - 1))) {
                                         list_del_init(
                                                 &bp->pages[index].page_list);
                                         list_del_init(
@@ -173,6 +148,7 @@ i64 pmm_alloc_zone(struct buddy *bp, int alloc_order,
         bp->total_avaliable_pages -= 1ULL << ((u64)alloc_order);
         *alloced_page_number = 1ULL << ((u64)alloc_order);
 
+        // print("alloc ppn %x\n",del_node->ppn);
         return del_node->ppn;
 }
 i64 pmm_alloc(struct pmm *pmm, size_t page_number, size_t *alloced_page_number)
@@ -274,6 +250,7 @@ error_t pmm_free(struct pmm *pmm, i64 ppn, size_t page_number)
 {
         u32 alloc_order;
         int free_one_result;
+        // print("free ppn %x\n",ppn);
 
         if (ppn == -E_RENDEZVOS)
                 return (-E_RENDEZVOS);

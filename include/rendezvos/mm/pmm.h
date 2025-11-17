@@ -200,6 +200,4 @@ void arch_map_pmm_data_space(paddr kernel_phy_end, paddr extra_data_phy_start,
                              paddr extra_data_phy_end, paddr pmm_l2_start,
                              u64 pmm_l2_pages);
 
-// mark the pmm data pages as used
-void mark_pmm_data_as_used(paddr pmm_data_phy_start, paddr pmm_data_phy_end);
 #endif
