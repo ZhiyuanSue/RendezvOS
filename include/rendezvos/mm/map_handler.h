@@ -2,7 +2,7 @@
 #define _RENDEZVOS_MAP_HANDLER_
 #include <common/types.h>
 #include <common/mm.h>
-#include <rendezvos/mm/mm.h>
+#include <rendezvos/mm/vmm.h>
 
 #define map_pages 0xFFFFFFFFFFE00000
 /*

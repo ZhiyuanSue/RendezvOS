@@ -4,7 +4,7 @@
 #include <common/types.h>
 #include <common/dsa/list.h>
 #include <common/dsa/rb_tree.h>
-#include <rendezvos/mm/mm.h>
+#include <rendezvos/mm/vmm.h>
 #include <rendezvos/mm/spmalloc.h>
 #ifdef _AARCH64_
 #include <arch/aarch64/tcb_arch.h>

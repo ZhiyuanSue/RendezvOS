@@ -2,7 +2,7 @@
 #include <modules/test/test.h>
 #include <rendezvos/mm/nexus.h>
 #include <modules/log/log.h>
-#include <rendezvos/mm/mm.h>
+#include <rendezvos/mm/vmm.h>
 #include <rendezvos/task/id.h>
 #define NR_MAX_TEST NEXUS_PER_PAGE * 3
 extern struct nexus_node* nexus_root;

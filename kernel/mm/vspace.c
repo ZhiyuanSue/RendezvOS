@@ -1,4 +1,4 @@
-#include <rendezvos/mm/mm.h>
+#include <rendezvos/mm/vmm.h>
 
 void init_vspace(VSpace* vs, u64 vspace_id, void* vspace_node)
 {

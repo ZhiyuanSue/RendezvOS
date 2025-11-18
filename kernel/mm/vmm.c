@@ -1,10 +1,9 @@
-#include <rendezvos/common.h>
-#include <rendezvos/mm/buddy_pmm.h>
+#include <rendezvos/mm/vmm.h>
+#include <rendezvos/mm/pmm.h>
 #include <rendezvos/mm/map_handler.h>
 #include <rendezvos/mm/nexus.h>
 #include <rendezvos/mm/spmalloc.h>
 #include <rendezvos/smp/percpu.h>
-extern struct buddy buddy_pmm;
 extern int BSP_ID;
 extern u64 boot_stack;
 DEFINE_PER_CPU(u64, boot_stack_bottom);
@@ -28,7 +27,7 @@ error_t virt_mm_init(int cpu_id, struct setup_info *arch_setup_info)
         per_cpu(current_vspace, cpu_id) = &root_vspace;
         init_map(&per_cpu(Map_Handler, cpu_id),
                  cpu_id,
-                 (struct pmm *)&buddy_pmm);
+                 mem_zones[ZONE_NORMAL].pmm);
         per_cpu(nexus_root, cpu_id) = init_nexus(&per_cpu(Map_Handler, cpu_id));
         sp_init(per_cpu(nexus_root, cpu_id), cpu_id);
         return 0;

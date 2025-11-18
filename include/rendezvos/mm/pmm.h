@@ -21,6 +21,7 @@
 #include <common/dsa/list.h>
 #include <rendezvos/limits.h>
 #include <rendezvos/sync/spin_lock.h>
+#include <rendezvos/sync/cas_lock.h>
 #include <rendezvos/smp/percpu.h>
 #include <rendezvos/error.h>
 
@@ -45,11 +46,7 @@ enum zone_type { ZONE_NORMAL, ZONE_NR_MAX };
 
 typedef struct mem_section MemSection;
 typedef struct {
-#define PAGE_FRAME_ALLOCED   (1 << 0)
-#define PAGE_FRAME_AVALIABLE (1 << 1)
-#define PAGE_FRAME_USED      (1 << 2)
-        u32 flags : 4;
-        u32 ref_count;
+        u64 ref_count;
         void* rmap_list;
         MemSection* sec;
 } Page;

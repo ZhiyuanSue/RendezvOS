@@ -24,10 +24,8 @@
 #ifdef SMP
 #include <rendezvos/smp/smp.h>
 #endif
-#define boot_stack_size 0x10000
 
 void interrupt_init(void);
-error_t virt_mm_init(int cpu_id, struct setup_info *arch_setup_info);
 /*
         the main_init is used for the outer kernel module init,
         remember that the rendezvos is a kernel that only include some necessery

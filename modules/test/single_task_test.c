@@ -1,6 +1,6 @@
 #include <modules/test/test.h>
 #include <modules/elf/elf.h>
-#include <rendezvos/mm/mm.h>
+#include <rendezvos/mm/vmm.h>
 #include <rendezvos/task/tcb.h>
 #include <rendezvos/task/elf_loader.h>
 
