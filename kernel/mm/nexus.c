@@ -778,8 +778,7 @@ static error_t _release_range(void* p, int page_num, VSpace* vs,
                                     vspace_node->handler->cpu_id));
 
                 node = nexus_rb_tree_next(node);
-                if (node->manage_free_list.next
-                    && node->manage_free_list.prev) {
+                if (!node ||is_page_manage_node(node)) {
                         need_break = true;
                 }
                 if (need_break)
@@ -831,7 +830,7 @@ static error_t _kernel_free_pages(void* p, int page_num,
                 }
                 struct nexus_node* old_node = node;
                 node = nexus_rb_tree_next(node);
-                if (is_page_manage_node(node)) {
+                if (!node || is_page_manage_node(node)) {
                         need_break = true;
                 }
                 delete_nexus_entry(old_node, nexus_root);
@@ -902,7 +901,7 @@ static error_t _user_release_range(void* p, int page_num, VSpace* vs,
                 }
                 struct nexus_node* old_node = node;
                 node = nexus_rb_tree_next(node);
-                if (is_page_manage_node(node)) {
+                if (!node || is_page_manage_node(node)) {
                         need_break = true;
                 }
                 delete_nexus_entry(old_node, vspace_node);
