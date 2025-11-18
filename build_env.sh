@@ -147,7 +147,17 @@ with_tuna_mirror install -y \
     build-essential \
     cmake \
     tar \
-    xz-utils
+    xz-utils \
+    gcc-aarch64-linux-gnu \
+    gcc-riscv64-linux-gnu \
+    gcc-x86-64-linux-gnu \
+    binutils-aarch64-linux-gnu \
+    binutils-riscv64-linux-gnu \
+    binutils-x86-64-linux-gnu \
+    libc6-dev-arm64-cross \
+    libc6-dev-riscv64-cross \
+    cloc \
+    clang-format
 
 install_qemu_dependencies
 
