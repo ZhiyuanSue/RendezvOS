@@ -27,7 +27,6 @@
 #define boot_stack_size 0x10000
 
 void interrupt_init(void);
-error_t phy_mm_init(struct setup_info *arch_setup_info);
 error_t virt_mm_init(int cpu_id, struct setup_info *arch_setup_info);
 /*
         the main_init is used for the outer kernel module init,

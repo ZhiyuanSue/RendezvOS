@@ -37,8 +37,7 @@ void sys_init_map()
                           (union L2_entry *)&MAP_L2_table,
                           flags);
 }
-void init_map(struct map_handler *handler, int cpu_id, int pt_zone,
-              struct pmm *pmm)
+void init_map(struct map_handler *handler, int cpu_id, struct pmm *pmm)
 {
         handler->cpu_id = cpu_id;
         handler->pmm = pmm;

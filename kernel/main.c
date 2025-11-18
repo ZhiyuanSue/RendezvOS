@@ -1,6 +1,7 @@
 #include <modules/driver/uart/uart_16550A.h>
 #include <modules/log/log.h>
 #include <rendezvos/common.h>
+#include <rendezvos/mm/pmm.h>
 #include <rendezvos/task/tcb.h>
 #include <arch/aarch64/sys_ctrl.h>
 extern int log_level;

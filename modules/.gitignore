@@ -8,12 +8,12 @@
 !/test/**
 !/driver/
 !/driver/**
-!/acpi/
-!/acpi/**
+!/dtb/
+!/dtb/**
+!/psci/
+!/psci/**
 !/elf/
 !/elf/**
-!/pci/
-!/pci/**
 *.env
 **/Makefile
 !/Makefile

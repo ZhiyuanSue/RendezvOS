@@ -24,7 +24,7 @@ static inline void nexus_node_set_len(struct nexus_node* nexus_entry,
 static void nexus_rb_tree_insert(struct nexus_node* node,
                                  struct rb_root* vspace_root)
 {
-        struct rb_node **new = &vspace_root->rb_root, *parent = NULL;
+        struct rb_node** new = &vspace_root->rb_root, *parent = NULL;
         u64 key = node->addr;
         while (*new) {
                 parent = *new;
@@ -44,7 +44,7 @@ static void nexus_rb_tree_insert(struct nexus_node* node,
 static void nexus_rb_tree_vspace_insert(struct nexus_node* vspace_node,
                                         struct rb_root* vspace_rb_root)
 {
-        struct rb_node **new = &vspace_rb_root->rb_root, *parent = NULL;
+        struct rb_node** new = &vspace_rb_root->rb_root, *parent = NULL;
         u64 key = vspace_node->vs->vspace_root_addr;
         while (*new) {
                 parent = *new;

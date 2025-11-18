@@ -99,13 +99,6 @@ void pmm_init(struct pmm *pmm, paddr pmm_phy_start_addr, paddr pmm_phy_end_addr)
         }
         return;
 }
-void clean_pmm_region(paddr pmm_data_phy_start, paddr pmm_data_phy_end)
-{
-        memset((void *)pmm_data_phy_start,
-               0,
-               pmm_data_phy_end - pmm_data_phy_start);
-}
-
 i64 pmm_alloc_zone(struct buddy *bp, int alloc_order,
                    size_t *alloced_page_number)
 {

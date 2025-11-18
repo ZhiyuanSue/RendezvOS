@@ -11,5 +11,6 @@
 #error "A KERNEL_VIRT_OFFSET micro must be defined"
 #endif
 
-void arch_init_pmm(struct setup_info *arch_setup_info);
+void arch_init_pmm(struct setup_info *arch_setup_info,
+                   vaddr *next_region_phy_start);
 #endif

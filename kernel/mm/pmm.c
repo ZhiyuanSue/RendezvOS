@@ -2,11 +2,13 @@
 #include <rendezvos/mm/vmm.h>
 #include <common/string.h>
 #include <rendezvos/mm/buddy_pmm.h>
+#include <modules/log/log.h>
 
 struct memory_regions m_regions;
 MemZone mem_zones[ZONE_NR_MAX];
 extern u64 L2_table, L1_table;
 extern struct buddy buddy_pmm;
+extern u64 _start, _end; /*the kernel end virt addr*/
 
 error_t memory_regions_insert(paddr addr, u64 len)
 {
@@ -115,8 +117,9 @@ struct memory_regions m_regions = {
                 memory_regions_reserve_region_with_length,
         .memory_regions_init = memory_regions_init,
 };
-void arch_map_percpu_data_space(paddr prev_region_phy_end,
-                                paddr percpu_phy_start, paddr percpu_phy_end)
+static inline void arch_map_percpu_data_space(paddr prev_region_phy_end,
+                                              paddr percpu_phy_start,
+                                              paddr percpu_phy_end)
 {
         paddr percpu_phy_start_addr;
         paddr percpu_phy_start_addr_iter;
@@ -144,9 +147,10 @@ void arch_map_percpu_data_space(paddr prev_region_phy_end,
         }
 }
 
-void arch_map_pmm_data_space(paddr prev_region_phy_end, paddr pmm_phy_start,
-                             paddr pmm_phy_end, paddr pmm_l2_start,
-                             u64 pmm_l2_pages)
+static inline void arch_map_pmm_data_space(paddr prev_region_phy_end,
+                                           paddr pmm_phy_start,
+                                           paddr pmm_phy_end,
+                                           paddr pmm_l2_start, u64 pmm_l2_pages)
 {
         paddr pmm_phy_start_addr, pmm_phy_start_round_up_1g;
         paddr pmm_phy_start_addr_iter, pmm_phy_start_round_up_1g_iter,
@@ -217,9 +221,10 @@ void arch_map_pmm_data_space(paddr prev_region_phy_end, paddr pmm_phy_start,
                 pmm_phy_start_round_up_1g_iter += HUGE_PAGE_SIZE;
         }
 }
-void calculate_avaliable_phy_addr_region(paddr *avaliable_phy_addr_start,
-                                         paddr *avaliable_phy_addr_end,
-                                         size_t *total_phy_page_frame_number)
+static inline void
+calculate_avaliable_phy_addr_region(paddr *avaliable_phy_addr_start,
+                                    paddr *avaliable_phy_addr_end,
+                                    size_t *total_phy_page_frame_number)
 {
         struct region reg;
         paddr sec_start_addr;
@@ -256,7 +261,8 @@ void calculate_avaliable_phy_addr_region(paddr *avaliable_phy_addr_start,
         *avaliable_phy_addr_end =
                 ROUND_DOWN((*avaliable_phy_addr_end), PAGE_SIZE);
 }
-void split_pmm_zones(paddr lower, paddr upper, size_t *total_section_number)
+static inline void split_pmm_zones(paddr lower, paddr upper,
+                                   size_t *total_section_number)
 {
         MemZone *zone;
         struct region reg;
@@ -304,15 +310,16 @@ void split_pmm_zones(paddr lower, paddr upper, size_t *total_section_number)
         }
 }
 
-size_t calculate_sec_and_page_frame_pages(size_t total_phy_page_frame_number,
-                                          size_t total_section_number)
+static inline size_t
+calculate_sec_and_page_frame_pages(size_t total_phy_page_frame_number,
+                                   size_t total_section_number)
 {
         return ROUND_UP((total_phy_page_frame_number * sizeof(Page)
                          + total_section_number * sizeof(MemSection)),
                         PAGE_SIZE)
                / PAGE_SIZE;
 }
-void calculate_pmm_space(u64 *total_pages, u64 *L2_table_pages)
+static inline void calculate_pmm_space(u64 *total_pages, u64 *L2_table_pages)
 {
         /*
            if the page frames need more than 1G space, we alloc more L2
@@ -324,7 +331,8 @@ void calculate_pmm_space(u64 *total_pages, u64 *L2_table_pages)
         *L2_table_pages = l2_pages;
         *total_pages = *total_pages + l2_pages;
 }
-error_t generate_zone_data(paddr zone_data_phy_start, paddr zone_data_phy_end)
+static inline error_t generate_zone_data(paddr zone_data_phy_start,
+                                         paddr zone_data_phy_end)
 {
         MemZone *zone;
         struct region reg;
@@ -356,7 +364,11 @@ error_t generate_zone_data(paddr zone_data_phy_start, paddr zone_data_phy_end)
                         sec->page_count =
                                 (sec->upper_addr - sec->lower_addr) / PAGE_SIZE;
                         zone->zone_total_pages += sec->page_count;
-                        list_add_head(&sec->section_list, &zone->section_list);
+                        /*if the section have zero page, don't link to let
+                         * search faster*/
+                        if (sec->page_count)
+                                list_add_head(&sec->section_list,
+                                              &zone->section_list);
                         for (int i = 0; i < sec->page_count; i++) {
                                 Sec_phy_Page(sec, i)->sec = sec;
                         }
@@ -368,4 +380,144 @@ error_t generate_zone_data(paddr zone_data_phy_start, paddr zone_data_phy_end)
                 return -E_RENDEZVOS;
         }
         return 0;
+}
+void clean_pmm_region(paddr pmm_data_phy_start, paddr pmm_data_phy_end)
+{
+        memset((void *)pmm_data_phy_start,
+               0,
+               pmm_data_phy_end - pmm_data_phy_start);
+}
+error_t phy_mm_init(struct setup_info *arch_setup_info)
+{
+        paddr kernel_phy_start;
+        paddr kernel_phy_end;
+        paddr per_cpu_phy_start, per_cpu_phy_end;
+        paddr pmm_data_phy_start;
+        paddr pmm_data_phy_end;
+        int kernel_region, pmm_region;
+        arch_init_pmm(arch_setup_info, &per_cpu_phy_start);
+        kernel_phy_start = KERNEL_VIRT_TO_PHY((vaddr)(&_start));
+        kernel_phy_end = KERNEL_VIRT_TO_PHY((vaddr)(&_end));
+        print("[ KERNEL_REGION\t@\t< 0x%x , 0x%x >]\n",
+              (vaddr)(&_start),
+              (vaddr)(&_end));
+        /*
+         * ===
+         * reserve per cpu region after the kernel
+         * ===
+         */
+        per_cpu_phy_end = per_cpu_phy_start;
+        reserve_per_cpu_region(&per_cpu_phy_end);
+        print("[ PERCPU_REGION\t@\t< 0x%x , 0x%x >]\n",
+              KERNEL_PHY_TO_VIRT(per_cpu_phy_start),
+              KERNEL_PHY_TO_VIRT(per_cpu_phy_end));
+
+        // adjust the memory regions, according to the kernel
+        kernel_region = m_regions.memory_regions_reserve_region(
+                kernel_phy_start, per_cpu_phy_end);
+
+        /*You need to check whether the kernel and percpu part have been
+         * reserved all successfully*/
+        if (kernel_region == -1) {
+                print("cannot load kernel\n");
+                goto init_pmm_error;
+        }
+        /*we hope the percpu and kernel are all in the same 1G,check it*/
+        if (ROUND_DOWN(kernel_phy_start, HUGE_PAGE_SIZE)
+            != ROUND_DOWN(per_cpu_phy_end, HUGE_PAGE_SIZE)) {
+                print("cannot put percpu data and kernel data in the same 1G space\n");
+                goto init_pmm_error;
+        }
+        arch_map_percpu_data_space(
+                kernel_phy_end, per_cpu_phy_start, per_cpu_phy_end);
+
+        clean_per_cpu_region(per_cpu_phy_start);
+        /*
+         * ===
+         * reserve pmm manage region
+         * ===
+         */
+        /*calculate the section and the page frame need space*/
+        paddr avaliable_phy_start, avaliable_phy_end;
+        size_t total_phy_page_frame_number, total_section_number;
+        calculate_avaliable_phy_addr_region(&avaliable_phy_start,
+                                            &avaliable_phy_end,
+                                            &total_phy_page_frame_number);
+        split_pmm_zones(
+                avaliable_phy_start, avaliable_phy_end, &total_section_number);
+
+        /*calculate the total section and phy page frame need pages */
+        u64 zone_total_pages, pmm_total_pages, L2_table_pages;
+        zone_total_pages = pmm_total_pages = calculate_sec_and_page_frame_pages(
+                total_phy_page_frame_number, total_section_number);
+        for (int mem_zone = 0; mem_zone < ZONE_NR_MAX; ++mem_zone) {
+                MemZone *zone = &(mem_zones[mem_zone]);
+                if (zone->pmm && zone->pmm->pmm_calculate_manage_space) {
+                        zone->zone_pmm_manage_pages =
+                                zone->pmm->pmm_calculate_manage_space(
+                                        zone->zone_total_pages);
+                        pmm_total_pages += zone->zone_pmm_manage_pages;
+                }
+        }
+        calculate_pmm_space(&pmm_total_pages, &L2_table_pages);
+
+        /*generate pmm position*/
+        pmm_region = m_regions.memory_regions_reserve_region_with_length(
+                pmm_total_pages * PAGE_SIZE,
+                PAGE_SIZE,
+                &pmm_data_phy_start,
+                &pmm_data_phy_end);
+
+        print("[ PMM_L2_TABLE\t@\t< 0x%x , 0x%x >]\n",
+              KERNEL_PHY_TO_VIRT(pmm_data_phy_start),
+              KERNEL_PHY_TO_VIRT(pmm_data_phy_start
+                                 + L2_table_pages * PAGE_SIZE));
+        print("[ PMM_DATA\t@\t< 0x%x , 0x%x >]\n",
+              KERNEL_PHY_TO_VIRT(pmm_data_phy_start
+                                 + L2_table_pages * PAGE_SIZE),
+              KERNEL_PHY_TO_VIRT(pmm_data_phy_end));
+        if (pmm_region == -1) {
+                print("cannot load the pmm data\n");
+                goto init_pmm_error;
+        }
+        /*
+                we have to reserve the following region ,
+                let pmm not using this range.
+                otherwise the pmm will try to map a level3 page
+                into the pmm data map space (which using level 2 pages)
+        */
+        m_regions.memory_regions_reserve_region(
+                pmm_data_phy_end, ROUND_UP(pmm_data_phy_end, MIDDLE_PAGE_SIZE));
+        arch_map_pmm_data_space(per_cpu_phy_end,
+                                pmm_data_phy_start,
+                                pmm_data_phy_end,
+                                pmm_data_phy_start,
+                                L2_table_pages);
+        /*we should also do not clean the pmm l2 table region*/
+        paddr pmm_data_phy_start_offset =
+                pmm_data_phy_start + L2_table_pages * PAGE_SIZE;
+        clean_pmm_region(pmm_data_phy_start_offset, pmm_data_phy_end);
+        /* === fill in the data === */
+        if (generate_zone_data(pmm_data_phy_start_offset,
+                               pmm_data_phy_start_offset
+                                       + zone_total_pages * PAGE_SIZE)) {
+                goto init_pmm_error;
+        }
+        /*generate the pmm data per zone*/
+        for (int mem_zone = 0; mem_zone < ZONE_NR_MAX; ++mem_zone) {
+                MemZone *zone = &(mem_zones[mem_zone]);
+                if (zone->pmm && zone->pmm->pmm_init) {
+                        zone->pmm->pmm_init(
+                                zone->pmm,
+                                pmm_data_phy_start_offset
+                                        + zone_total_pages * PAGE_SIZE,
+                                pmm_data_phy_start_offset
+                                        + zone_total_pages * PAGE_SIZE
+                                        + zone->zone_pmm_manage_pages
+                                                  * PAGE_SIZE);
+                }
+        }
+        return 0;
+init_pmm_error:
+        return (-E_RENDEZVOS);
 }

@@ -152,8 +152,6 @@ static inline i64 ppn_Zone_index(MemZone* zone, i64 ppn)
         i64 index = 0;
         for_each_sec_of_zone(zone)
         {
-                if (sec->upper_addr == sec->lower_addr)
-                        continue;
                 if (ppn_in_Sec(sec, ppn)) {
                         return index + ppn - PPN(sec->lower_addr);
                 } else {
@@ -183,25 +181,7 @@ struct pmm {
 };
 
 extern MemZone mem_zones[ZONE_NR_MAX];
-// get the pages pmm manager need
-void calculate_avaliable_phy_addr_region(paddr* avaliable_phy_addr_start,
-                                         paddr* avaliable_phy_addr_end,
-                                         size_t* total_phy_page_frame_number);
-void split_pmm_zones(paddr lower, paddr upper, size_t* total_section_number);
-size_t calculate_sec_and_page_frame_pages(size_t total_phy_page_frame_number,
-                                          size_t total_section_number);
-void calculate_pmm_space(u64* total_pages, u64* L2_table_pages);
-error_t generate_zone_data(paddr zone_data_phy_start, paddr zone_data_phy_end);
-void generate_pmm_data(paddr pmm_data_phy_start, paddr pmm_data_phy_end);
-void clean_pmm_region(paddr pmm_data_phy_start, paddr pmm_data_phy_end);
 
-// map the percpu data
-void arch_map_percpu_data_space(paddr prev_region_phy_end,
-                                paddr percpu_phy_start, paddr percpu_phy_end);
-// map the pmm manage data
-void arch_map_pmm_data_space(paddr prev_region_phy_end,
-                             paddr extra_data_phy_start,
-                             paddr extra_data_phy_end, paddr pmm_l2_start,
-                             u64 pmm_l2_pages);
+error_t phy_mm_init(struct setup_info* arch_setup_info);
 
 #endif
