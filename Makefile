@@ -112,7 +112,7 @@ config: mrproper
 		then echo "$(GREEN_CHAR)Config Success$(END_CHAR)";  \
 	else $(MAKE) mrproper;  \
 	fi
-config_show:
+show_config:
 	@echo "arch\t=\t"$(ARCH)
 	@echo "kernel_version\t=\t"$(KERNELVERSION)
 	@echo "config_file\t=\t"$(CONFIG_FILE)

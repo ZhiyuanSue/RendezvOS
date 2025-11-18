@@ -8,47 +8,28 @@
 /*for buddy in linux, this number is 10, but I think the page table will map a
  * 2Mb page, which need the order 9*/
 
-#define IDX_FROM_PPN(order, ppn) ((u64)(ppn) >> (order))
-#define PPN_FROM_IDX(order, idx) ((idx) << (order))
-
-struct page_frame {
-#define PAGE_FRAME_ALLOCED   (1 << 0)
-#define PAGE_FRAME_AVALIABLE (1 << 1)
-        u32 flags : 4;
-        u32 index : 28;
-        u32 ref_count;
-        void *mapping;
+struct buddy_page {
         struct list_entry page_list;
+        i64 ppn;
+        /*
+        use order to indicate how much page is allocable,
+        -1 means this page is allocated
+        */
+        i64 order;
 };
 
 struct buddy_bucket {
         u64 order;
-        struct page_frame *pages;
-};
-
-struct buddy_zone {
-        paddr zone_upper_addr;
-        paddr zone_lower_addr;
-        int zone_total_pages;
-        int zone_total_avaliable_pages;
-        struct page_frame avaliable_frame[BUDDY_MAXORDER + 1];
-        struct page_frame *zone_head_frame[BUDDY_MAXORDER + 1];
+        struct list_entry avaliable_frame_list;
 };
 
 struct buddy {
         PMM_COMMON;
-        struct memory_regions *m_regions;
 
-        // buckets record the number of the buckets
+        u64 buddy_page_number;
+        u64 total_avaliable_pages;
+        struct buddy_page *pages;
         struct buddy_bucket buckets[BUDDY_MAXORDER + 1];
-        // zone record the number of the zone
-        struct buddy_zone zone[ZONE_NR_MAX];
-        paddr avaliable_phy_addr_end;
 };
-#define GET_ORDER_PAGES(order) (buddy_pmm.buckets[order].pages)
-
-// get the pages pmm manager need
-void calculate_pmm_space(u64 *total_pages, u64 *L2_table_pages);
-void generate_pmm_data(paddr pmm_data_phy_start, paddr pmm_data_phy_end);
 
 #endif
