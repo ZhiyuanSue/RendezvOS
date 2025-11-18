@@ -20,6 +20,7 @@ struct buddy_page {
 
 struct buddy_bucket {
         u64 order;
+        u64 aval_pages;
         struct list_entry avaliable_frame_list;
 };
 

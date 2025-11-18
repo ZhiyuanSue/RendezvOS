@@ -22,6 +22,7 @@ void pmm_init(struct pmm *pmm, paddr pmm_phy_start_addr, paddr pmm_phy_end_addr)
         /*generate the buddy bucket*/
         for (int order = 0; order <= BUDDY_MAXORDER; ++order) {
                 bp->buckets[order].order = order;
+                bp->buckets[order].aval_pages = 0;
                 INIT_LIST_HEAD(&bp->buckets[order].avaliable_frame_list);
         }
 
@@ -63,6 +64,7 @@ void pmm_init(struct pmm *pmm, paddr pmm_phy_start_addr, paddr pmm_phy_end_addr)
                                               &bp->buckets[order]
                                                        .avaliable_frame_list);
                                 bp->pages[index].order = 0;
+                                bp->buckets[order].aval_pages++;
                                 bp->total_avaliable_pages++;
                         }
                 } else {
@@ -84,10 +86,13 @@ void pmm_init(struct pmm *pmm, paddr pmm_phy_start_addr, paddr pmm_phy_end_addr)
                                                            + (1 << (order - 1))]
                                                          .page_list);
                                         bp->pages[index].order++;
+                                        bp->buckets[order - 1].aval_pages -= 2;
+
                                         list_add_tail(
                                                 &bp->pages[index].page_list,
                                                 &bp->buckets[order]
                                                          .avaliable_frame_list);
+                                        bp->buckets[order].aval_pages++;
                                 }
                         }
                 }
@@ -122,6 +127,8 @@ i64 pmm_alloc_zone(struct buddy *bp, int alloc_order,
         if (!find_an_order) {
                 pr_info("not find an order, avaliable is %d\n",
                         bp->total_avaliable_pages);
+                if (bp->pmm_show_info)
+                        bp->pmm_show_info((struct pmm *)bp);
                 *alloced_page_number = 0;
                 return (-E_RENDEZVOS);
         }
@@ -134,11 +141,12 @@ i64 pmm_alloc_zone(struct buddy *bp, int alloc_order,
                 return (-E_RENDEZVOS);
         }
         while (tmp_order > alloc_order) {
-                tmp_order--;
                 left_child = del_node;
-                right_child = del_node + (1 << tmp_order);
-                left_child->order = right_child->order = tmp_order;
-
+                right_child = del_node + (1 << (tmp_order - 1));
+                left_child->order = right_child->order = tmp_order - 1;
+                bp->buckets[tmp_order].aval_pages--;
+                tmp_order--;
+                bp->buckets[tmp_order].aval_pages += 2;
                 list_del(&del_node->page_list);
 
                 list_add_head(&left_child->page_list,
@@ -148,6 +156,7 @@ i64 pmm_alloc_zone(struct buddy *bp, int alloc_order,
         }
         del_node->order = -1;
         list_del(&del_node->page_list);
+        bp->buckets[tmp_order].aval_pages--;
         Zone_phy_Page(bp->zone, del_node - &bp->pages[0])->ref_count++;
 
         bp->total_avaliable_pages -= 1ULL << ((u64)alloc_order);
@@ -231,6 +240,7 @@ static error_t pmm_free_one(struct pmm *pmm, i64 ppn)
                 /*merge*/
                 list_del(&insert_node->page_list);
                 list_del(&buddy_node->page_list);
+                bp->buckets[tmp_order].aval_pages--;
 
                 /*next level*/
                 insert_node = &bp->pages[MIN(index, buddy_index)];
@@ -239,6 +249,7 @@ static error_t pmm_free_one(struct pmm *pmm, i64 ppn)
         }
 free_one:
         insert_node->order = tmp_order;
+        bp->buckets[tmp_order].aval_pages++;
         list_add_head(&insert_node->page_list,
                       &bp->buckets[tmp_order].avaliable_frame_list);
 
@@ -280,8 +291,24 @@ error_t pmm_free(struct pmm *pmm, i64 ppn, size_t page_number)
 
         return (0);
 }
+void pmm_show_info(struct pmm *pmm)
+{
+        struct buddy *bp = (struct buddy *)pmm;
+        pr_info("%d %d %d %d %d %d %d %d %d %d\n",
+                bp->buckets[0].aval_pages,
+                bp->buckets[1].aval_pages,
+                bp->buckets[2].aval_pages,
+                bp->buckets[3].aval_pages,
+                bp->buckets[4].aval_pages,
+                bp->buckets[5].aval_pages,
+                bp->buckets[6].aval_pages,
+                bp->buckets[7].aval_pages,
+                bp->buckets[8].aval_pages,
+                bp->buckets[9].aval_pages);
+}
 struct buddy buddy_pmm = {.pmm_init = pmm_init,
                           .pmm_alloc = pmm_alloc,
                           .pmm_free = pmm_free,
                           .pmm_calculate_manage_space = calculate_manage_space,
+                          .pmm_show_info = pmm_show_info,
                           .spin_ptr = NULL};

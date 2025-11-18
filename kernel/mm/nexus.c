@@ -108,7 +108,7 @@ struct nexus_node* nexus_rb_tree_search(struct rb_root* vspace_root,
                 else
                         return tmp_node;
         }
-        return tmp_node;
+        return NULL;
 }
 struct nexus_node* nexus_rb_tree_prev(struct nexus_node* node)
 {

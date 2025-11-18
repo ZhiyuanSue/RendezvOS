@@ -173,6 +173,7 @@ static inline i64 ppn_Zone_index(MemZone* zone, i64 ppn)
                          size_t* alloced_page_number);                      \
         error_t (*pmm_free)(struct pmm * pmm, i64 ppn, size_t page_number); \
         size_t (*pmm_calculate_manage_space)(size_t zone_page_number);      \
+        void (*pmm_show_info)(struct pmm * pmm);                            \
         spin_lock spin_ptr;                                                 \
         MemZone* zone;
 
