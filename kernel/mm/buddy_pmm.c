@@ -77,6 +77,8 @@ void pmm_init(struct pmm *pmm, paddr pmm_phy_start_addr, paddr pmm_phy_end_addr)
                                                              << (order - 1))) {
                                         list_del_init(
                                                 &bp->pages[index].page_list);
+                                        bp->pages[index + (1 << (order - 1))]
+                                                .order = -1;
                                         list_del_init(
                                                 &bp->pages[index
                                                            + (1 << (order - 1))]
@@ -104,7 +106,7 @@ i64 pmm_alloc_zone(struct buddy *bp, int alloc_order,
 {
         bool find_an_order;
         int tmp_order;
-        struct buddy_page *del_node, *left_child, *right_child=NULL;
+        struct buddy_page *del_node, *left_child, *right_child = NULL;
         struct list_entry *avaliable_header;
         find_an_order = false;
         tmp_order = alloc_order;
@@ -118,35 +120,40 @@ i64 pmm_alloc_zone(struct buddy *bp, int alloc_order,
         }
 
         if (!find_an_order) {
-                pr_info("not find an order\n");
+                pr_info("not find an order, avaliable is %d\n",
+                        bp->total_avaliable_pages);
                 *alloced_page_number = 0;
                 return (-E_RENDEZVOS);
         }
 
         del_node = container_of(
                 avaliable_header->next, struct buddy_page, page_list);
-        while (del_node->order > alloc_order) {
+        if (del_node->order < 0) {
+                pr_error("[ BUDDY ]try to alloc an allocated page ppn %x\n",
+                         del_node->ppn);
+                return (-E_RENDEZVOS);
+        }
+        while (tmp_order > alloc_order) {
+                tmp_order--;
                 left_child = del_node;
-                right_child = del_node + (1 << (del_node->order - 1));
+                right_child = del_node + (1 << tmp_order);
+                left_child->order = right_child->order = tmp_order;
 
                 list_del(&del_node->page_list);
-                del_node->order--;
-                right_child->order = del_node->order;
 
-                list_add_head(
-                        &left_child->page_list,
-                        &bp->buckets[del_node->order].avaliable_frame_list);
-                list_add_head(
-                        &right_child->page_list,
-                        &bp->buckets[del_node->order].avaliable_frame_list);
+                list_add_head(&left_child->page_list,
+                              &bp->buckets[tmp_order].avaliable_frame_list);
+                list_add_head(&right_child->page_list,
+                              &bp->buckets[tmp_order].avaliable_frame_list);
         }
+        del_node->order = -1;
         list_del(&del_node->page_list);
         Zone_phy_Page(bp->zone, del_node - &bp->pages[0])->ref_count++;
 
         bp->total_avaliable_pages -= 1ULL << ((u64)alloc_order);
         *alloced_page_number = 1ULL << ((u64)alloc_order);
 
-        // print("alloc ppn %x\n",del_node->ppn);
+        // print("alloc ppn %x\n", del_node->ppn);
         return del_node->ppn;
 }
 i64 pmm_alloc(struct pmm *pmm, size_t page_number, size_t *alloced_page_number)
@@ -187,8 +194,10 @@ static error_t pmm_free_one(struct pmm *pmm, i64 ppn)
         if (index < 0)
                 return (-E_RENDEZVOS);
         insert_node = &bp->pages[index];
-        if (!insert_node)
+        if (!insert_node || insert_node->order >= 0) {
+                pr_error("[ BUDDY ] find the insert node error! %x\n", ppn);
                 return (-E_RENDEZVOS);
+        }
         /*try to insert the node and try to merge*/
         while (tmp_order <= BUDDY_MAXORDER) {
                 if (tmp_order == BUDDY_MAXORDER) {
@@ -214,14 +223,12 @@ static error_t pmm_free_one(struct pmm *pmm, i64 ppn)
                         goto free_one;
                 }
 
-                /*the buddy is still alloced*/
-                if (buddy_node->page_list.next == buddy_node->page_list.prev) {
+                /*the buddy is still alloced or the buddy is not all usable*/
+                if (buddy_node->order != tmp_order) {
                         goto free_one;
                 }
 
                 /*merge*/
-                insert_node->order = tmp_order;
-                buddy_node->order = tmp_order;
                 list_del(&insert_node->page_list);
                 list_del(&buddy_node->page_list);
 
@@ -234,6 +241,8 @@ free_one:
         insert_node->order = tmp_order;
         list_add_head(&insert_node->page_list,
                       &bp->buckets[tmp_order].avaliable_frame_list);
+
+        bp->total_avaliable_pages++;
 
         return (0);
 }

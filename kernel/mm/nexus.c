@@ -778,7 +778,7 @@ static error_t _release_range(void* p, int page_num, VSpace* vs,
                                     vspace_node->handler->cpu_id));
 
                 node = nexus_rb_tree_next(node);
-                if (!node ||is_page_manage_node(node)) {
+                if (!node || is_page_manage_node(node)) {
                         need_break = true;
                 }
                 if (need_break)
