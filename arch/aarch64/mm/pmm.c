@@ -176,6 +176,14 @@ void arch_init_pmm(struct setup_info *arch_setup_info)
                 print("cannot load the pmm data\n");
                 goto arch_init_pmm_error;
         }
+        /*
+                we have to reserve the following region ,
+                let pmm not using this range.
+                otherwise the pmm will try to map a level3 page
+                into the pmm data map space (which using level 2 pages)
+        */
+        m_regions.memory_regions_reserve_region(
+                pmm_data_phy_end, ROUND_UP(pmm_data_phy_end, MIDDLE_PAGE_SIZE));
         arch_map_pmm_data_space(per_cpu_phy_end,
                                 pmm_data_phy_start,
                                 pmm_data_phy_end,
@@ -185,14 +193,26 @@ void arch_init_pmm(struct setup_info *arch_setup_info)
         paddr pmm_data_phy_start_offset =
                 pmm_data_phy_start + L2_table_pages * PAGE_SIZE;
         clean_pmm_region(pmm_data_phy_start_offset, pmm_data_phy_end);
-
         /* === fill in the data === */
         if (generate_zone_data(pmm_data_phy_start_offset,
-                               pmm_data_phy_start_offset + zone_total_pages)) {
+                               pmm_data_phy_start_offset
+                                       + zone_total_pages * PAGE_SIZE)) {
                 goto arch_init_pmm_error;
         }
-        generate_pmm_data(pmm_data_phy_start_offset + zone_total_pages,
-                          pmm_data_phy_end);
+        /*generate the pmm data per zone*/
+        for (int mem_zone = 0; mem_zone < ZONE_NR_MAX; ++mem_zone) {
+                MemZone *zone = &(mem_zones[mem_zone]);
+                if (zone->pmm && zone->pmm->pmm_init) {
+                        zone->pmm->pmm_init(
+                                zone->pmm,
+                                pmm_data_phy_start_offset
+                                        + zone_total_pages * PAGE_SIZE,
+                                pmm_data_phy_start_offset
+                                        + zone_total_pages * PAGE_SIZE
+                                        + zone->zone_pmm_manage_pages
+                                                  * PAGE_SIZE);
+                }
+        }
         return;
 arch_init_pmm_error:
         arch_shutdown();
