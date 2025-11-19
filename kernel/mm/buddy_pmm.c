@@ -150,7 +150,13 @@ i64 pmm_alloc_zone(struct buddy *bp, int alloc_order,
         del_node->order = -1;
         list_del(&del_node->page_list);
         bp->buckets[tmp_order].aval_pages--;
-        Zone_phy_Page(bp->zone, del_node - &bp->pages[0])->ref_count++;
+        /*
+         we don't check it too much for we trust this page must can find,
+         otherwise the error must exist at the init part
+        */
+        Page *p_ptr = Zone_phy_Page(bp->zone, del_node - &bp->pages[0]);
+        if (p_ptr)
+                p_ptr->ref_count++;
 
         bp->total_avaliable_pages -= 1ULL << ((u64)alloc_order);
         *alloced_page_number = 1ULL << ((u64)alloc_order);

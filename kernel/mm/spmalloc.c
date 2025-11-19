@@ -70,7 +70,7 @@ page_chunk_rb_tree_search(struct rb_root* page_chunk_root, vaddr page_addr)
                 else
                         return tmp_node;
         }
-        return tmp_node;
+        return NULL;
 }
 
 error_t chunk_init(struct mem_chunk* chunk, int chunk_order, int allocator_id)
@@ -355,26 +355,35 @@ void* sp_alloc(struct allocator* allocator_p, size_t Bytes)
         if (Bytes > slot_size[MAX_GROUP_SLOTS - 1]) {
                 /*here we allocate from the page allocator*/
                 int page_num = bytes_to_pages(Bytes);
-                /*TODO:is here need the lock of this sp allocator???*/
+
+                lock_cas(&sp_allocator_p->lock);
+                /*
+                 we must try to allocate the page chunk node first,
+                 then try to alloc the page
+                */
+                struct page_chunk_node* pcn =
+                        (struct page_chunk_node*)_sp_alloc(
+                                sp_allocator_p, sizeof(struct page_chunk_node));
+                if (!pcn) {
+                        pr_error("[ERROR]cannot allocate a page chunk node\n");
+                        return res_ptr;
+                }
+                memset(pcn, 0, sizeof(struct page_chunk_node));
                 res_ptr = get_free_page(page_num,
                                         ZONE_NORMAL,
                                         KERNEL_VIRT_OFFSET,
                                         sp_allocator_p->nexus_root,
                                         0,
                                         PAGE_ENTRY_NONE);
-                lock_cas(&sp_allocator_p->lock);
-                struct page_chunk_node* pcn =
-                        (struct page_chunk_node*)_sp_alloc(
-                                sp_allocator_p, sizeof(struct page_chunk_node));
-                memset(pcn, 0, sizeof(struct page_chunk_node));
+                if (!res_ptr) {
+                        pr_error("[ERROR] get free page fail\n");
+                        return res_ptr;
+                }
                 pcn->page_addr = (vaddr)res_ptr;
                 pcn->page_num = page_num;
                 page_chunk_rb_tree_insert(pcn,
                                           &sp_allocator_p->page_chunk_root);
                 unlock_cas(&sp_allocator_p->lock);
-                if (!res_ptr) {
-                        pr_error("[ERROR] get free page fail\n");
-                }
         } else {
                 lock_cas(&sp_allocator_p->lock);
                 res_ptr = _sp_alloc(sp_allocator_p, Bytes);

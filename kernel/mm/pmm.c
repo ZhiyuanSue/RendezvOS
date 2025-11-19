@@ -370,7 +370,9 @@ static inline error_t generate_zone_data(paddr zone_data_phy_start,
                                 list_add_head(&sec->section_list,
                                               &zone->section_list);
                         for (int i = 0; i < sec->page_count; i++) {
-                                Sec_phy_Page(sec, i)->sec = sec;
+                                Page *p_ptr = Sec_phy_Page(sec, i);
+                                if (p_ptr)
+                                        p_ptr->sec = sec;
                         }
                         zone_data_phy_start += sizeof(MemSection)
                                                + sec->page_count * sizeof(Page);
