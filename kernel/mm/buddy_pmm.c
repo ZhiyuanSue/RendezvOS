@@ -102,22 +102,23 @@ void pmm_init(struct pmm *pmm, paddr pmm_phy_start_addr, paddr pmm_phy_end_addr)
 i64 pmm_alloc_zone(struct buddy *bp, int alloc_order,
                    size_t *alloced_page_number)
 {
-        bool find_an_order;
         int tmp_order;
-        struct buddy_page *del_node, *left_child, *right_child = NULL;
+        struct buddy_page *del_node = NULL;
+        struct buddy_page *left_child, *right_child;
         struct list_entry *avaliable_header;
-        find_an_order = false;
         tmp_order = alloc_order;
 
         for (; tmp_order <= BUDDY_MAXORDER; tmp_order++) {
                 avaliable_header = &bp->buckets[tmp_order].avaliable_frame_list;
                 if (avaliable_header != avaliable_header->next) {
-                        find_an_order = true;
+                        del_node = container_of(avaliable_header->next,
+                                                struct buddy_page,
+                                                page_list);
                         break;
                 }
         }
 
-        if (!find_an_order) {
+        if (!del_node) {
                 pr_info("not find an order, avaliable is %d\n",
                         bp->total_avaliable_pages);
                 if (bp->pmm_show_info)
@@ -126,8 +127,6 @@ i64 pmm_alloc_zone(struct buddy *bp, int alloc_order,
                 return (-E_RENDEZVOS);
         }
 
-        del_node = container_of(
-                avaliable_header->next, struct buddy_page, page_list);
         if (del_node->order < 0) {
                 pr_error("[ BUDDY ]try to alloc an allocated page ppn %x\n",
                          del_node->ppn);
@@ -147,7 +146,9 @@ i64 pmm_alloc_zone(struct buddy *bp, int alloc_order,
                 list_add_head(&right_child->page_list,
                               &bp->buckets[tmp_order].avaliable_frame_list);
         }
-        del_node->order = -1;
+        for (int i = 0; i < (1ULL << ((u64)alloc_order)); i++) {
+                (del_node + i)->order = -1;
+        }
         list_del(&del_node->page_list);
         bp->buckets[tmp_order].aval_pages--;
         /*
@@ -155,13 +156,18 @@ i64 pmm_alloc_zone(struct buddy *bp, int alloc_order,
          otherwise the error must exist at the init part
         */
         Page *p_ptr = Zone_phy_Page(bp->zone, del_node - &bp->pages[0]);
-        if (p_ptr)
-                p_ptr->ref_count++;
+        if (p_ptr) {
+                for (int i = 0; i < (1ULL << ((u64)alloc_order)); i++)
+                        (p_ptr + i)->ref_count++;
+        }
 
         bp->total_avaliable_pages -= 1ULL << ((u64)alloc_order);
         *alloced_page_number = 1ULL << ((u64)alloc_order);
 
-        // print("alloc ppn %x\n", del_node->ppn);
+        // print("alloc ppn %x with number %x\n",
+        //       del_node->ppn,
+        //       *alloced_page_number);
+
         return del_node->ppn;
 }
 i64 pmm_alloc(struct pmm *pmm, size_t page_number, size_t *alloced_page_number)
@@ -197,13 +203,16 @@ static error_t pmm_free_one(struct pmm *pmm, i64 ppn)
         int tmp_order = 0;
         i64 index, buddy_index;
         struct buddy_page *buddy_node, *insert_node;
-        MemZone *zone = bp->zone;
-        index = ppn_Zone_index(zone, ppn);
+        index = ppn_Zone_index(bp->zone, ppn);
         if (index < 0)
                 return (-E_RENDEZVOS);
         insert_node = &bp->pages[index];
         if (!insert_node || insert_node->order >= 0) {
-                pr_error("[ BUDDY ] find the insert node error! %x\n", ppn);
+                pr_error(
+                        "[ BUDDY ] insert node error! ppn %x node %x order %x\n",
+                        ppn,
+                        insert_node,
+                        insert_node->order);
                 return (-E_RENDEZVOS);
         }
         /*try to insert the node and try to merge*/
@@ -280,9 +289,8 @@ error_t pmm_free(struct pmm *pmm, i64 ppn, size_t page_number)
                 if (!free_phy_page)
                         continue;
                 free_phy_page->ref_count--;
-                if (free_phy_page->ref_count > 0) {
+                if (free_phy_page->ref_count > 0)
                         continue;
-                }
 
                 if ((free_one_result = pmm_free_one(pmm, ppn + page_count)))
                         return (free_one_result);
