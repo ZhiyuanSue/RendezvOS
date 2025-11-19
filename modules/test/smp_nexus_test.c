@@ -74,7 +74,6 @@ int smp_nexus_test(void)
         for (int i = 0; i < NR_MAX_TEST; i++) {
                 int page_num = 2;
                 percpu(smp_test_ptrs)[i] = get_free_page(page_num,
-                                                         ZONE_NORMAL,
                                                          KERNEL_VIRT_OFFSET,
                                                          percpu(nexus_root),
                                                          0,

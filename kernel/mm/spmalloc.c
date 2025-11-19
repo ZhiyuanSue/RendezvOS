@@ -270,7 +270,6 @@ static void* _sp_alloc(struct mem_allocator* sp_allocator_p, size_t Bytes)
                          * also need to think the lock*/
                         void* page_ptr =
                                 get_free_page(PAGE_PER_CHUNK,
-                                              ZONE_NORMAL,
                                               KERNEL_VIRT_OFFSET,
                                               sp_allocator_p->nexus_root,
                                               0,
@@ -370,7 +369,6 @@ void* sp_alloc(struct allocator* allocator_p, size_t Bytes)
                 }
                 memset(pcn, 0, sizeof(struct page_chunk_node));
                 res_ptr = get_free_page(page_num,
-                                        ZONE_NORMAL,
                                         KERNEL_VIRT_OFFSET,
                                         sp_allocator_p->nexus_root,
                                         0,

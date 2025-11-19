@@ -46,7 +46,6 @@ void arch_start_smp(struct setup_info* arch_setup_info)
                                 goto next_cpu_node;
                         vaddr stack_bottom =
                                 (vaddr)get_free_page(2,
-                                                     ZONE_NORMAL,
                                                      KERNEL_VIRT_OFFSET,
                                                      per_cpu(nexus_root,
                                                              BSP_ID),

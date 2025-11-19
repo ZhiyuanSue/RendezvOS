@@ -69,7 +69,6 @@ void arch_start_smp(struct setup_info* arch_setup_info)
                         if (per_cpu(CPU_STATE, i) == cpu_disable) {
                                 vaddr stack_bottom =
                                         (vaddr)get_free_page(2,
-                                                             ZONE_NORMAL,
                                                              KERNEL_VIRT_OFFSET,
                                                              per_cpu(nexus_root,
                                                                      BSP_ID),

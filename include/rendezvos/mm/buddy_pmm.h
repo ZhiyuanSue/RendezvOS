@@ -28,7 +28,6 @@ struct buddy {
         PMM_COMMON;
 
         u64 buddy_page_number;
-        u64 total_avaliable_pages;
         struct buddy_page *pages;
         struct buddy_bucket buckets[BUDDY_MAXORDER + 1];
 };

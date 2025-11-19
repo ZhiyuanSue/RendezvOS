@@ -11,7 +11,6 @@ vaddr generate_user_stack(VSpace *vs, elf_task_set_user_stack_func func)
                                    | PAGE_ENTRY_WRITE | PAGE_ENTRY_READ;
         vaddr user_sp =
                 (vaddr)get_free_page(page_num,
-                                     ZONE_NORMAL,
                                      USER_SPACE_TOP - page_num * PAGE_SIZE,
                                      percpu(nexus_root),
                                      vs,
@@ -64,12 +63,8 @@ error_t elf_Phdr_64_load_handle(vaddr elf_start, Elf64_Phdr *phdr_ptr,
         }
 
         /*using the nexus to map*/
-        void *page_ptr = get_free_page(page_num,
-                                       ZONE_NORMAL,
-                                       aligned_start,
-                                       percpu(nexus_root),
-                                       vs,
-                                       page_flags);
+        void *page_ptr = get_free_page(
+                page_num, aligned_start, percpu(nexus_root), vs, page_flags);
         if (!page_ptr)
                 return -E_RENDEZVOS;
 

@@ -48,14 +48,13 @@ void nexus_migrate_vspace(struct nexus_node* src_nexus_root,
                           struct nexus_node* dst_nexus_root, VSpace* vs);
 
 /*page*/
-void* get_free_page(int page_num, enum zone_type memory_zone,
-                    vaddr target_vaddr, struct nexus_node* nexus_root,
-                    VSpace* vs, ENTRY_FLAGS_t flags);
+void* get_free_page(int page_num, vaddr target_vaddr,
+                    struct nexus_node* nexus_root, VSpace* vs,
+                    ENTRY_FLAGS_t flags);
 error_t free_pages(void* p, int page_num, VSpace* vs,
                    struct nexus_node* nexus_root);
 
 error_t user_fill_range(struct nexus_node* first_entry, int page_num,
-                        enum zone_type memory_zone,
                         struct nexus_node* vspace_node, VSpace* vs);
 error_t user_unfill_range(void* p, int page_num, VSpace* vs,
                           struct nexus_node* vspace_node);

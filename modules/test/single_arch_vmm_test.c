@@ -1,5 +1,4 @@
 #include <modules/test/test.h>
-#include <rendezvos/mm/buddy_pmm.h>
 #include <rendezvos/mm/map_handler.h>
 
 #ifdef _AARCH64_
@@ -30,7 +29,6 @@ union L2_entry_huge l2_h;
 union L2_entry l2;
 union L3_entry l3;
 extern char MAP_L3_table;
-extern struct buddy buddy_pmm;
 
 int arch_vmm_test(void)
 {
@@ -45,8 +43,8 @@ int arch_vmm_test(void)
 
         /*TEST:memset the map l3 table to 0*/
         size_t alloced_page_number;
-        i64 ppn = buddy_pmm.pmm_alloc(
-                (struct pmm *)&buddy_pmm, 1, &alloced_page_number);
+        i64 ppn = mem_zones[ZONE_NORMAL].pmm->pmm_alloc(
+                mem_zones[ZONE_NORMAL].pmm, 1, &alloced_page_number);
         paddr page_paddr = PADDR(ppn);
         vaddr page_vaddr = map_pages;
         ENTRY_FLAGS_t flags = arch_decode_flags(
@@ -61,7 +59,8 @@ int arch_vmm_test(void)
         memset((char *)page_vaddr, 0, PAGE_SIZE);
         if (*((u64 *)page_vaddr))
                 pr_error("[ TEST ] error memset in during init map test\n");
-        buddy_pmm.pmm_free((struct pmm *)&buddy_pmm, ppn, 1);
+        mem_zones[ZONE_NORMAL].pmm->pmm_free(
+                mem_zones[ZONE_NORMAL].pmm, ppn, 1);
         arch_tlb_invalidate_page(0, page_vaddr);
         pr_info("[ TEST ] PASS: vmm:init map system ok!\n");
         /*=== === === ===*/
@@ -72,8 +71,8 @@ int arch_vmm_test(void)
         VSpace *vs = percpu(current_vspace);
         /* actually we should lock this pmm_alloc, but it's a test, we think
          * there's no preemt*/
-        i64 ppn_1 = buddy_pmm.pmm_alloc(
-                (struct pmm *)&buddy_pmm, 1, &alloced_page_number);
+        i64 ppn_1 = mem_zones[ZONE_NORMAL].pmm->pmm_alloc(
+                mem_zones[ZONE_NORMAL].pmm, 1, &alloced_page_number);
         if (ppn_1 <= 0) {
                 pr_error("[ ERROR ] ERROR:try get a ppn fail\n");
                 goto arch_vmm_test_error;
@@ -105,8 +104,8 @@ int arch_vmm_test(void)
                 then we alloc another page frame and try to map to same virtual
            region ,expect fail
         */
-        i64 ppn_2 = buddy_pmm.pmm_alloc(
-                (struct pmm *)&buddy_pmm, 1, &alloced_page_number);
+        i64 ppn_2 = mem_zones[ZONE_NORMAL].pmm->pmm_alloc(
+                mem_zones[ZONE_NORMAL].pmm, 1, &alloced_page_number);
         if (ppn_2 <= 0) {
                 pr_error("[ ERROR ] ERROR:try get a ppn fail\n");
                 goto arch_vmm_test_error;
@@ -125,7 +124,8 @@ int arch_vmm_test(void)
         }
 
         /*free the second page frame to buddy and do not unmap*/
-        if (buddy_pmm.pmm_free((struct pmm *)&buddy_pmm, ppn_2, 1)) {
+        if (mem_zones[ZONE_NORMAL].pmm->pmm_free(
+                    mem_zones[ZONE_NORMAL].pmm, ppn_2, 1)) {
                 pr_error("[ TEST ] ERROR:try to free a physical page fail\n");
                 goto arch_vmm_test_error;
         }
@@ -133,8 +133,8 @@ int arch_vmm_test(void)
         /*
                 this time alloc a new 2M virtual region
         */
-        i64 ppn_3 = buddy_pmm.pmm_alloc(
-                (struct pmm *)&buddy_pmm, MIDDLE_PAGES, &alloced_page_number);
+        i64 ppn_3 = mem_zones[ZONE_NORMAL].pmm->pmm_alloc(
+                mem_zones[ZONE_NORMAL].pmm, MIDDLE_PAGES, &alloced_page_number);
         if (ppn_3 <= 0) { /*we expect the ppn aligned*/
                 pr_error("[ ERROR ] ERROR:try get a ppn fail\n");
                 goto arch_vmm_test_error;
@@ -162,8 +162,8 @@ int arch_vmm_test(void)
                 another 2M page map to same virtual region
                                 except same fail as 4K remap
         */
-        i64 ppn_4 = buddy_pmm.pmm_alloc(
-                (struct pmm *)&buddy_pmm, MIDDLE_PAGES, &alloced_page_number);
+        i64 ppn_4 = mem_zones[ZONE_NORMAL].pmm->pmm_alloc(
+                mem_zones[ZONE_NORMAL].pmm, MIDDLE_PAGES, &alloced_page_number);
         if (ppn_4 <= 0) { /*we expect the ppn aligned*/
                 pr_error("[ ERROR ] ERROR:try get a ppn fail\n");
                 goto arch_vmm_test_error;
@@ -187,7 +187,8 @@ int arch_vmm_test(void)
         }
 
         /*free them and unmap*/
-        if (buddy_pmm.pmm_free((struct pmm *)&buddy_pmm, ppn_4, 1)) {
+        if (mem_zones[ZONE_NORMAL].pmm->pmm_free(
+                    mem_zones[ZONE_NORMAL].pmm, ppn_4, 1)) {
                 pr_error("[ TEST ] ERROR:try to free a physical page fail\n");
                 goto arch_vmm_test_error;
         }
@@ -195,7 +196,8 @@ int arch_vmm_test(void)
                 pr_error("[ TEST ] ERROR: try to unmap a 2M page fail\n");
                 goto arch_vmm_test_error;
         }
-        if (buddy_pmm.pmm_free((struct pmm *)&buddy_pmm, ppn_3, 1)) {
+        if (mem_zones[ZONE_NORMAL].pmm->pmm_free(
+                    mem_zones[ZONE_NORMAL].pmm, ppn_3, 1)) {
                 pr_error("[ TEST ] ERROR:try to free a physical page fail\n");
                 goto arch_vmm_test_error;
         }
@@ -206,14 +208,15 @@ int arch_vmm_test(void)
                 pr_error("[ TEST ] ERROR: try to unmap a 4K page fail\n");
                 goto arch_vmm_test_error;
         }
-        if (buddy_pmm.pmm_free((struct pmm *)&buddy_pmm, ppn_1, 1)) {
+        if (mem_zones[ZONE_NORMAL].pmm->pmm_free(
+                    mem_zones[ZONE_NORMAL].pmm, ppn_1, 1)) {
                 pr_error("[ TEST ] ERROR:try to free a physical page fail\n");
                 goto arch_vmm_test_error;
         }
 
         /* try to map a 2M page to the same vp of ppn_1 mapped*/
-        ppn_1 = buddy_pmm.pmm_alloc(
-                (struct pmm *)&buddy_pmm, MIDDLE_PAGES, &alloced_page_number);
+        ppn_1 = mem_zones[ZONE_NORMAL].pmm->pmm_alloc(
+                mem_zones[ZONE_NORMAL].pmm, MIDDLE_PAGES, &alloced_page_number);
         if (ppn_1 <= 0) {
                 pr_error("[ ERROR ] ERROR:try get a ppn fail\n");
                 goto arch_vmm_test_error;
@@ -235,7 +238,8 @@ int arch_vmm_test(void)
                 pr_error("[ TEST ] ERROR: try to unmap a 4K page fail\n");
                 goto arch_vmm_test_error;
         }
-        if (buddy_pmm.pmm_free((struct pmm *)&buddy_pmm, ppn_1, 1)) {
+        if (mem_zones[ZONE_NORMAL].pmm->pmm_free(
+                    mem_zones[ZONE_NORMAL].pmm, ppn_1, 1)) {
                 pr_error("[ TEST ] ERROR:try to free a physical page fail\n");
                 goto arch_vmm_test_error;
         }

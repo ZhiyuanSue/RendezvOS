@@ -45,7 +45,6 @@ Thread_Base* create_thread(void* __func, int nr_parameter, ...)
                 although idle thread is always exist.
         */
         void* kstack = get_free_page(thread_kstack_page_num,
-                                     ZONE_NORMAL,
                                      KERNEL_VIRT_OFFSET,
                                      percpu(nexus_root),
                                      0,

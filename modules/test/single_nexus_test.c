@@ -69,7 +69,6 @@ int nexus_test(void)
                 if (i % 2)
                         page_num = MIDDLE_PAGES;
                 test_ptrs[i] = get_free_page(page_num,
-                                             ZONE_NORMAL,
                                              KERNEL_VIRT_OFFSET,
                                              nexus_root,
                                              0,
@@ -119,7 +118,6 @@ int nexus_test(void)
                                 ROUND_UP(start_test_addr, MIDDLE_PAGE_SIZE);
                 }
                 test_ptrs[i] = get_free_page(page_num,
-                                             ZONE_NORMAL,
                                              start_test_addr,
                                              nexus_root,
                                              vs,

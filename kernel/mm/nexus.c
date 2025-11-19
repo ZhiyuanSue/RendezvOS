@@ -549,8 +549,7 @@ static struct nexus_node* _take_range(bool allow_2M, bool direct_map_ppn,
 fail:
         return NULL;
 }
-static void* _kernel_get_free_page(int page_num, enum zone_type memory_zone,
-                                   ENTRY_FLAGS_t flags,
+static void* _kernel_get_free_page(int page_num, ENTRY_FLAGS_t flags,
                                    struct nexus_node* nexus_root)
 {
         vaddr free_page_addr, page_addr_end;
@@ -648,7 +647,6 @@ fail:
    virtual pages which only based on the 4K pages in user space
 */
 error_t user_fill_range(struct nexus_node* first_entry, int page_num,
-                        enum zone_type memory_zone,
                         struct nexus_node* vspace_node, VSpace* vs)
 {
         size_t alloced_page_number;
@@ -918,20 +916,18 @@ static error_t _user_release_range(void* p, int page_num, VSpace* vs,
         unlock_cas(&vspace_node->vs->nexus_vspace_lock);
         return 0;
 }
-void* get_free_page(int page_num, enum zone_type memory_zone,
-                    vaddr target_vaddr, struct nexus_node* nexus_root,
-                    VSpace* vs, ENTRY_FLAGS_t flags)
+void* get_free_page(int page_num, vaddr target_vaddr,
+                    struct nexus_node* nexus_root, VSpace* vs,
+                    ENTRY_FLAGS_t flags)
 {
         /*first check the input parameter*/
-        if (page_num < 0 || memory_zone < 0 || memory_zone > ZONE_NR_MAX
-            || !nexus_root) {
+        if (page_num < 0 || !nexus_root) {
                 pr_error("[ NEXUS ] error input parameter\n");
                 return NULL;
         }
         void* res = NULL;
         if (target_vaddr >= KERNEL_VIRT_OFFSET) {
-                res = _kernel_get_free_page(
-                        page_num, memory_zone, flags, nexus_root);
+                res = _kernel_get_free_page(page_num, flags, nexus_root);
         } else {
                 /*find the vspace root nexus node*/
                 lock_cas(&nexus_root->nexus_lock);
@@ -946,11 +942,8 @@ void* get_free_page(int page_num, enum zone_type memory_zone,
                 struct nexus_node* first_entry = _user_take_range(
                         page_num, target_vaddr, vspace_node, vs, flags);
                 if (first_entry
-                    && !user_fill_range(first_entry,
-                                        page_num,
-                                        memory_zone,
-                                        vspace_node,
-                                        vs)) {
+                    && !user_fill_range(
+                            first_entry, page_num, vspace_node, vs)) {
                         res = (void*)(first_entry->addr);
                 }
         }
