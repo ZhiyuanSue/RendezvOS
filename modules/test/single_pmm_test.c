@@ -5,7 +5,7 @@
 
 int pmm_test(void)
 {
-        i64 alloc_ppn[PPN_TEST_CASE_NUM];
+        ppn_t alloc_ppn[PPN_TEST_CASE_NUM];
         size_t alloced_page_number;
 
         for (int i = 0, pg_size = 1; i < PPN_TEST_CASE_NUM; ++i, pg_size *= 2) {
@@ -76,12 +76,12 @@ int pmm_test(void)
         // try to alloc all the memory,then try to alloc will lead to an error
         // if no such an error, the boundary conditions is error
         while (mem_zones[ZONE_NORMAL].pmm->total_avaliable_pages) {
-                i64 tmp = mem_zones[ZONE_NORMAL].pmm->pmm_alloc(
+                ppn_t tmp = mem_zones[ZONE_NORMAL].pmm->pmm_alloc(
                         mem_zones[ZONE_NORMAL].pmm, 1, &alloced_page_number);
                 alloc_ppn[mem_zones[ZONE_NORMAL].pmm->total_avaliable_pages
                           % PPN_TEST_CASE_NUM] = tmp;
 
-                if (tmp <= 0) {
+                if (invalid_ppn(tmp)) {
                         pr_error("[ ERROR ] pmm alloc error %d\n",
                                  tmp) goto pmm_test_error;
                 }

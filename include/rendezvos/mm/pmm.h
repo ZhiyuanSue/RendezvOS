@@ -72,9 +72,9 @@ static inline i64 phy_Page_ppn(Page* page)
         }
         return -E_RENDEZVOS;
 }
-static inline bool ppn_in_Sec(MemSection* sec, i64 ppn)
+static inline bool ppn_in_Sec(MemSection* sec, ppn_t ppn)
 {
-        if (ppn <= 0)
+        if (invalid_ppn(ppn))
                 return false;
         return PADDR(ppn) > sec->lower_addr && PADDR(ppn) < sec->upper_addr;
 }
@@ -104,9 +104,9 @@ typedef struct {
              sec = container_of(                                             \
                      sec->section_list.next, MemSection, section_list))
 
-static inline bool ppn_in_Zone(MemZone* zone, i64 ppn)
+static inline bool ppn_in_Zone(MemZone* zone, ppn_t ppn)
 {
-        if (ppn <= 0)
+        if (invalid_ppn(ppn))
                 return false;
         return PADDR(ppn) > zone->lower_addr && PADDR(ppn) < zone->upper_addr;
 }
@@ -127,9 +127,9 @@ static inline Page* Zone_phy_Page(MemZone* zone, size_t index)
         }
         return NULL;
 }
-static inline Page* ppn_Zone_phy_Page(MemZone* zone, i64 ppn)
+static inline Page* ppn_Zone_phy_Page(MemZone* zone, ppn_t ppn)
 {
-        if (ppn <= 0) { /*invalid ppn value*/
+        if (invalid_ppn(ppn)) { /*invalid ppn value*/
                 return NULL;
         }
         if (!ppn_in_Zone(zone, ppn))
@@ -142,9 +142,9 @@ static inline Page* ppn_Zone_phy_Page(MemZone* zone, i64 ppn)
         }
         return NULL;
 }
-static inline i64 ppn_Zone_index(MemZone* zone, i64 ppn)
+static inline i64 ppn_Zone_index(MemZone* zone, ppn_t ppn)
 {
-        if (ppn <= 0) { /*invalid ppn value*/
+        if (invalid_ppn(ppn)) { /*invalid ppn value*/
                 return -1;
         }
         if (!ppn_in_Zone(zone, ppn))
@@ -161,18 +161,18 @@ static inline i64 ppn_Zone_index(MemZone* zone, i64 ppn)
         return (-1);
 }
 
-#define PMM_COMMON                                                          \
-        void (*pmm_init)(struct pmm * pmm,                                  \
-                         paddr pmm_phy_start_addr,                          \
-                         paddr pmm_phy_end_addr);                           \
-        i64 (*pmm_alloc)(struct pmm * pmm,                                  \
-                         size_t page_number,                                \
-                         size_t* alloced_page_number);                      \
-        error_t (*pmm_free)(struct pmm * pmm, i64 ppn, size_t page_number); \
-        size_t (*pmm_calculate_manage_space)(size_t zone_page_number);      \
-        void (*pmm_show_info)(struct pmm * pmm);                            \
-        spin_lock spin_ptr;                                                 \
-        MemZone* zone;                                                      \
+#define PMM_COMMON                                                            \
+        void (*pmm_init)(struct pmm * pmm,                                    \
+                         paddr pmm_phy_start_addr,                            \
+                         paddr pmm_phy_end_addr);                             \
+        i64 (*pmm_alloc)(struct pmm * pmm,                                    \
+                         size_t page_number,                                  \
+                         size_t* alloced_page_number);                        \
+        error_t (*pmm_free)(struct pmm * pmm, ppn_t ppn, size_t page_number); \
+        size_t (*pmm_calculate_manage_space)(size_t zone_page_number);        \
+        void (*pmm_show_info)(struct pmm * pmm);                              \
+        spin_lock spin_ptr;                                                   \
+        MemZone* zone;                                                        \
         u64 total_avaliable_pages;
 
 struct pmm {

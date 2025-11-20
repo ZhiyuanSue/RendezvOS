@@ -47,7 +47,8 @@ void init_map(struct map_handler *handler, int cpu_id, struct pmm *pmm)
                 handler->map_vaddr[i] = map_vaddr;
                 handler->handler_ppn[i] =
                         pmm->pmm_alloc(pmm, 1, &alloced_page_number);
-                if (handler->handler_ppn[i] <= 0 || alloced_page_number != 1) {
+                if (invalid_ppn(handler->handler_ppn[i])
+                    || alloced_page_number != 1) {
                         pr_error("[ERROR] init map no ppn can alloc\n");
                 }
                 map_vaddr += PAGE_SIZE;
@@ -64,13 +65,13 @@ static void util_map(paddr p, vaddr v)
                                           | PAGE_ENTRY_WRITE);
         arch_set_L3_entry(p, v, (union L3_entry *)&MAP_L3_table, flags);
 }
-error_t map(VSpace *vs, u64 ppn, u64 vpn, int level, ENTRY_FLAGS_t eflags,
+error_t map(VSpace *vs, ppn_t ppn, vpn_t vpn, int level, ENTRY_FLAGS_t eflags,
             struct map_handler *handler, spin_lock *lock)
 {
         ARCH_PFLAGS_t flags = 0;
         ENTRY_FLAGS_t entry_flags = 0;
-        paddr p = ppn << 12;
-        vaddr v = vpn << 12;
+        paddr p = PADDR(ppn);
+        vaddr v = VADDR(vpn);
         u64 pt_entry = 0;
         paddr next_level_paddr = 0;
         i64 pmm_res = 0;
@@ -87,7 +88,7 @@ error_t map(VSpace *vs, u64 ppn, u64 vpn, int level, ENTRY_FLAGS_t eflags,
                 res = -E_IN_PARAM;
                 goto map_fail;
         }
-        if (!ppn | !vpn | !handler) {
+        if (invalid_ppn(ppn) || !vpn || !handler) {
                 pr_error("[ ERROR ] input arguments error\n");
                 res = -E_IN_PARAM;
                 goto map_fail;
@@ -140,7 +141,7 @@ error_t map(VSpace *vs, u64 ppn, u64 vpn, int level, ENTRY_FLAGS_t eflags,
                    sync first and then call the page fault handler provide by
                    upper kernel module
                 */
-                if (handler->handler_ppn[1] <= 0) {
+                if (invalid_ppn(handler->handler_ppn[1])) {
                         pr_error("[ ERROR ] L1 try alloc ppn fail\n");
                         res = -E_RENDEZVOS;
                         goto map_l0_fail;
@@ -174,7 +175,7 @@ error_t map(VSpace *vs, u64 ppn, u64 vpn, int level, ENTRY_FLAGS_t eflags,
                 ((union L1_entry *)(handler->map_vaddr[1]))[L1_INDEX(v)]);
         if (!next_level_paddr) {
                 /*no next level page, need alloc one*/
-                if (handler->handler_ppn[2] <= 0) {
+                if (invalid_ppn(handler->handler_ppn[2])) {
                         pr_error("[ ERROR ] L2 try alloc ppn fail\n");
                         res = -E_RENDEZVOS;
                         goto map_l1_fail;
@@ -333,7 +334,7 @@ error_t map(VSpace *vs, u64 ppn, u64 vpn, int level, ENTRY_FLAGS_t eflags,
                         union L2_entry *)(handler->map_vaddr[2]))[L2_INDEX(v)]);
                 if (!next_level_paddr) {
                         /*no next level page, need alloc one*/
-                        if (handler->handler_ppn[3] <= 0) {
+                        if (invalid_ppn(handler->handler_ppn[3])) {
                                 pr_error("[ ERROR ] L3 try alloc ppn fail\n");
                                 res = -E_RENDEZVOS;
                                 goto map_l2_fail;
@@ -421,19 +422,19 @@ map_fail:
         return res;
 }
 
-i64 unmap(VSpace *vs, u64 vpn, u64 new_entry_addr, struct map_handler *handler,
-          spin_lock *lock)
+ppn_t unmap(VSpace *vs, vpn_t vpn, u64 new_entry_addr,
+            struct map_handler *handler, spin_lock *lock)
 {
         if (lock)
                 lock_mcs(lock, &per_cpu(handler_spin_lock, handler->cpu_id));
-        vaddr v = vpn << 12;
+        vaddr v = VADDR(vpn);
         paddr next_level_paddr = 0;
         ENTRY_FLAGS_t entry_flags = 0;
         union L0_entry L0_E;
         union L1_entry L1_E;
         union L2_entry L2_E;
         union L3_entry L3_E;
-        i64 ppn = 0;
+        ppn_t ppn = 0;
         if (!vs->vspace_root_addr || !vpn) {
                 pr_error("[ ERROR ] unmap input is not right\n");
                 ppn = -E_IN_PARAM;
@@ -552,10 +553,10 @@ unmap_fail:
                 unlock_mcs(lock, &per_cpu(handler_spin_lock, handler->cpu_id));
         return ppn;
 }
-i64 have_mapped(VSpace *vs, u64 vpn, struct map_handler *handler)
+ppn_t have_mapped(VSpace *vs, vpn_t vpn, struct map_handler *handler)
 {
-        vaddr v = vpn << 12;
-        i64 ppn = 0;
+        vaddr v = VADDR(vpn);
+        ppn_t ppn = 0;
         ENTRY_FLAGS_t entry_flags = 0;
         union L0_entry L0_E;
         union L1_entry L1_E;
@@ -634,7 +635,7 @@ paddr new_vs_root(paddr old_vs_root_paddr, struct map_handler *handler)
         /*no need to lock here*/
         paddr vs_root = 0;
         size_t alloced_page_number;
-        if (handler->handler_ppn[0] <= 0) {
+        if (invalid_ppn(handler->handler_ppn[0])) {
                 pr_error("[ ERROR ] L0 try alloc vspace root ppn fail\n");
                 goto new_vs_root_fail;
         }

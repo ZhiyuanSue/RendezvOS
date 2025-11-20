@@ -25,10 +25,13 @@
 #define L2_entry_addr(entry)      (((u64)(entry.paddr)) << 12)
 #define L3_entry_addr(entry)      (((u64)(entry.paddr)) << 12)
 
+typedef i64 ppn_t;
+#define invalid_ppn(ppn) (ppn <= 0)
+typedef u64 vpn_t;
 #define PPN(p_addr) ((paddr)(p_addr) >> 12)
 #define VPN(v_addr) ((vaddr)(v_addr) >> 12)
-#define PADDR(ppn)  ((u64)(ppn) << 12)
-#define VADDR(vpn)  ((u64)(vpn) << 12)
+#define PADDR(ppn)  ((ppn_t)(ppn) << 12)
+#define VADDR(vpn)  ((vpn_t)(vpn) << 12)
 
 enum ENTRY_FLAGS {
         PAGE_ENTRY_NONE = 1 << 0,

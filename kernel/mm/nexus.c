@@ -191,9 +191,9 @@ struct nexus_node* init_nexus(struct map_handler* handler)
         VSpace* vs = current_vspace;
         /*get a phy page*/
         size_t alloced_page_number;
-        i64 nexus_init_page =
+        ppn_t nexus_init_page =
                 handler->pmm->pmm_alloc(handler->pmm, 1, &alloced_page_number);
-        if (nexus_init_page <= 0 || alloced_page_number != 1) {
+        if (invalid_ppn(nexus_init_page) || alloced_page_number != 1) {
                 pr_error("[ NEXUS ] ERROR: init error\n");
                 return NULL;
         }
@@ -226,12 +226,12 @@ static struct nexus_node* nexus_get_free_entry(struct nexus_node* root_node)
                 lock_mcs(&pmm_ptr->spin_ptr,
                          &per_cpu(pmm_spin_lock[pmm_ptr->zone->zone_id],
                                   root_node->handler->cpu_id));
-                i64 nexus_new_page =
+                ppn_t nexus_new_page =
                         pmm_ptr->pmm_alloc(pmm_ptr, 1, &alloced_page_number);
                 unlock_mcs(&pmm_ptr->spin_ptr,
                            &per_cpu(pmm_spin_lock[pmm_ptr->zone->zone_id],
                                     root_node->handler->cpu_id));
-                if (nexus_new_page <= 0 || alloced_page_number != 1) {
+                if (invalid_ppn(nexus_new_page) || alloced_page_number != 1) {
                         pr_error("[ NEXUS ] ERROR: init error\n");
                         return NULL;
                 }
@@ -281,11 +281,11 @@ static void free_manage_node_with_page(struct nexus_node* page_manage_node,
                                        struct nexus_node* vspace_root)
 {
         /*free this manage page*/
-        i64 ppn = unmap(vspace_root->vs,
-                        VPN((vaddr)page_manage_node),
-                        0,
-                        vspace_root->handler,
-                        &vspace_root->vs->vspace_lock);
+        ppn_t ppn = unmap(vspace_root->vs,
+                          VPN((vaddr)page_manage_node),
+                          0,
+                          vspace_root->handler,
+                          &vspace_root->vs->vspace_lock);
         if (ppn < 0) {
                 pr_error("[ NEXUS ] ERROR: unmap error!\n");
                 return;
@@ -344,9 +344,9 @@ struct nexus_node* nexus_create_vspace_root_node(struct nexus_node* nexus_root,
 
         /*get a phy page*/
         size_t alloced_page_number;
-        i64 nexus_init_page = nexus_root->handler->pmm->pmm_alloc(
+        ppn_t nexus_init_page = nexus_root->handler->pmm->pmm_alloc(
                 nexus_root->handler->pmm, 1, &alloced_page_number);
-        if (nexus_init_page <= 0 || alloced_page_number != 1) {
+        if (invalid_ppn(nexus_init_page) || alloced_page_number != 1) {
                 pr_error("[ NEXUS ] ERROR: init error\n");
                 goto fail;
         }
@@ -446,11 +446,11 @@ void nexus_delete_vspace(struct nexus_node* nexus_root, VSpace* vs)
                 struct nexus_node* node =
                         container_of(curr, struct nexus_node, _vspace_list);
 
-                i64 ppn = unmap(vs,
-                                VPN(node->addr),
-                                0,
-                                vspace_node->handler,
-                                &(vs->vspace_lock));
+                ppn_t ppn = unmap(vs,
+                                  VPN(node->addr),
+                                  0,
+                                  vspace_node->handler,
+                                  &(vs->vspace_lock));
                 if (ppn < 0) {
                         pr_error("[ NEXUS ] ERROR: unmap error!\n");
                         goto fail;
@@ -571,11 +571,11 @@ static void* _kernel_get_free_page(int page_num, ENTRY_FLAGS_t flags,
         lock_mcs(&pmm_ptr->spin_ptr,
                  &per_cpu(pmm_spin_lock[pmm_ptr->zone->zone_id],
                           nexus_root->handler->cpu_id));
-        i64 ppn = pmm_ptr->pmm_alloc(pmm_ptr, page_num, &alloced_page_number);
+        ppn_t ppn = pmm_ptr->pmm_alloc(pmm_ptr, page_num, &alloced_page_number);
         unlock_mcs(&pmm_ptr->spin_ptr,
                    &per_cpu(pmm_spin_lock[pmm_ptr->zone->zone_id],
                             nexus_root->handler->cpu_id));
-        if (ppn <= 0 || alloced_page_number < page_num) {
+        if (invalid_ppn(ppn) || alloced_page_number < page_num) {
                 pr_error("[ NEXUS ] ERROR: init error allocated %x\n",
                          alloced_page_number);
                 goto fail;
@@ -667,11 +667,12 @@ error_t user_fill_range(struct nexus_node* first_entry, int page_num,
                 lock_mcs(&pmm_ptr->spin_ptr,
                          &per_cpu(pmm_spin_lock[pmm_ptr->zone->zone_id],
                                   vspace_node->handler->cpu_id));
-                i64 ppn = pmm_ptr->pmm_alloc(pmm_ptr, 1, &alloced_page_number);
+                ppn_t ppn =
+                        pmm_ptr->pmm_alloc(pmm_ptr, 1, &alloced_page_number);
                 unlock_mcs(&pmm_ptr->spin_ptr,
                            &per_cpu(pmm_spin_lock[pmm_ptr->zone->zone_id],
                                     vspace_node->handler->cpu_id));
-                if (ppn <= 0 || alloced_page_number != 1) {
+                if (invalid_ppn(ppn) || alloced_page_number != 1) {
                         pr_error("[ NEXUS ] ERROR: init error allocated %x\n",
                                  alloced_page_number);
                         unlock_cas(&vspace_node->vs->nexus_vspace_lock);
@@ -766,11 +767,11 @@ static error_t _release_range(void* p, int page_num, VSpace* vs,
                                 "[ NEXUS ] ERROR: split 2M page and we truncate it");
                         break;
                 }
-                i64 ppn = unmap(vs,
-                                VPN(node->addr),
-                                0,
-                                vspace_node->handler,
-                                &vspace_node->vs->vspace_lock);
+                ppn_t ppn = unmap(vs,
+                                  VPN(node->addr),
+                                  0,
+                                  vspace_node->handler,
+                                  &vspace_node->vs->vspace_lock);
                 if (ppn < 0) {
                         pr_error("[ NEXUS ] ERROR: unmap error!\n");
                         unlock_cas(&vspace_node->vs->nexus_vspace_lock);

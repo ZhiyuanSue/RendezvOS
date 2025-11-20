@@ -363,6 +363,7 @@ void* sp_alloc(struct allocator* allocator_p, size_t Bytes)
                 struct page_chunk_node* pcn =
                         (struct page_chunk_node*)_sp_alloc(
                                 sp_allocator_p, sizeof(struct page_chunk_node));
+                unlock_cas(&sp_allocator_p->lock);
                 if (!pcn) {
                         pr_error("[ERROR]cannot allocate a page chunk node\n");
                         return res_ptr;
@@ -379,6 +380,7 @@ void* sp_alloc(struct allocator* allocator_p, size_t Bytes)
                 }
                 pcn->page_addr = (vaddr)res_ptr;
                 pcn->page_num = page_num;
+                lock_cas(&sp_allocator_p->lock);
                 page_chunk_rb_tree_insert(pcn,
                                           &sp_allocator_p->page_chunk_root);
                 unlock_cas(&sp_allocator_p->lock);

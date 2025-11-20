@@ -14,7 +14,7 @@
 struct map_handler {
         u64 cpu_id;
         vaddr map_vaddr[4];
-        i64 handler_ppn[4];
+        ppn_t handler_ppn[4];
         struct pmm* pmm;
 } __attribute__((packed));
 extern struct map_handler Map_Handler;
@@ -25,7 +25,7 @@ void init_map(struct map_handler* handler, int cpu_id, struct pmm* pmm);
         and if the vspace is not exist, it should try to alloc a new one
 */
 
-error_t map(VSpace* vs, u64 ppn, u64 vpn, int level, ENTRY_FLAGS_t eflags,
+error_t map(VSpace* vs, ppn_t ppn, vpn_t vpn, int level, ENTRY_FLAGS_t eflags,
             struct map_handler* handler, spin_lock* lock);
 /*
  * @brief : unmap the vpn with that it mapped ppn
@@ -39,8 +39,8 @@ error_t map(VSpace* vs, u64 ppn, u64 vpn, int level, ENTRY_FLAGS_t eflags,
  * @return i64 : if success, return the ppn(>0) it have mapped, if fail return a
  * <0 error value
  */
-i64 unmap(VSpace* vs, u64 vpn, u64 new_entry_addr, struct map_handler* handler,
-          spin_lock* lock);
+ppn_t unmap(VSpace* vs, vpn_t vpn, u64 new_entry_addr,
+            struct map_handler* handler, spin_lock* lock);
 
 /*
  * @brief judge one vpn have mapped in one vspace or not
@@ -52,7 +52,7 @@ i64 unmap(VSpace* vs, u64 vpn, u64 new_entry_addr, struct map_handler* handler,
  * @return i64 : >0, the ppn that vpn mapped, ==0, not mapped, maybe the value
  * is 0 or present flag is cleared,<0,error,remember that its' ppn
  */
-i64 have_mapped(VSpace* vs, u64 vpn, struct map_handler* handler);
+ppn_t have_mapped(VSpace* vs, vpn_t vpn, struct map_handler* handler);
 
 /*
         in order to generate a new vspace

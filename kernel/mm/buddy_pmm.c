@@ -196,7 +196,7 @@ i64 pmm_alloc(struct pmm *pmm, size_t page_number, size_t *alloced_page_number)
         alloc_order = log2_of_next_power_of_two(page_number);
         return (pmm_alloc_zone(bp, alloc_order, alloced_page_number));
 }
-static error_t pmm_free_one(struct pmm *pmm, i64 ppn)
+static error_t pmm_free_one(struct pmm *pmm, ppn_t ppn)
 {
         struct buddy *bp = (struct buddy *)pmm;
         int tmp_order = 0;
@@ -264,7 +264,7 @@ free_one:
 
         return (0);
 }
-error_t pmm_free(struct pmm *pmm, i64 ppn, size_t page_number)
+error_t pmm_free(struct pmm *pmm, ppn_t ppn, size_t page_number)
 {
         u32 alloc_order;
         int free_one_result;

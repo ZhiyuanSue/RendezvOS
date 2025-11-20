@@ -10,7 +10,7 @@
 
 struct buddy_page {
         struct list_entry page_list;
-        i64 ppn;
+        ppn_t ppn;
         /*
         use order to indicate how much page is allocable,
         -1 means this page is allocated
