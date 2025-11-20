@@ -6,7 +6,7 @@
 #include <rendezvos/mm/vmm.h>
 extern u64 L0_table;
 extern u64 *MAP_L1_table, *MAP_L2_table, *MAP_L3_table;
-DEFINE_PER_CPU(struct spin_lock_t, vspace_spin_lock);
+DEFINE_PER_CPU(struct spin_lock_t, handler_spin_lock);
 void sys_init_map()
 {
         ARCH_PFLAGS_t flags;
@@ -119,7 +119,7 @@ error_t map(VSpace *vs, u64 ppn, u64 vpn, int level, ENTRY_FLAGS_t eflags,
         }
         /*use map util table to change the L0 table*/
         if (lock)
-                lock_mcs(lock, &per_cpu(vspace_spin_lock, handler->cpu_id));
+                lock_mcs(lock, &per_cpu(handler_spin_lock, handler->cpu_id));
         /*
                 Do not try to add a small lock between l2 and l3 table
                 for it might memset to clean it
@@ -288,16 +288,17 @@ error_t map(VSpace *vs, u64 ppn, u64 vpn, int level, ENTRY_FLAGS_t eflags,
                                                         PAGE_SIZE));
                                         goto map_l2_fail;
                                 }
-                                lock_mcs(&handler->pmm->spin_ptr,
-                                         &per_cpu(pmm_spin_lock,
+                                struct pmm *pmm_ptr = handler->pmm;
+                                MemZone *zone = pmm_ptr->zone;
+                                lock_mcs(&pmm_ptr->spin_ptr,
+                                         &per_cpu(pmm_spin_lock[zone->zone_id],
                                                   handler->cpu_id));
-                                pmm_res = handler->pmm->pmm_free(
-                                        handler->pmm,
-                                        (i64)PPN(next_level_paddr),
-                                        1);
-                                unlock_mcs(&handler->pmm->spin_ptr,
-                                           &per_cpu(pmm_spin_lock,
-                                                    handler->cpu_id));
+                                pmm_res = pmm_ptr->pmm_free(
+                                        pmm_ptr, (i64)PPN(next_level_paddr), 1);
+                                unlock_mcs(
+                                        &pmm_ptr->spin_ptr,
+                                        &per_cpu(pmm_spin_lock[zone->zone_id],
+                                                 handler->cpu_id));
                                 if (pmm_res) {
                                         pr_error(
                                                 "[ MAP ] pmm free error with a ppn 0x%x\n",
@@ -401,16 +402,20 @@ map_l1_fail:
 map_l0_fail:
         arch_tlb_invalidate_page(vs->vspace_id, handler->map_vaddr[0]);
         if (lock)
-                unlock_mcs(lock, &per_cpu(vspace_spin_lock, handler->cpu_id));
+                unlock_mcs(lock, &per_cpu(handler_spin_lock, handler->cpu_id));
 map_fail:
+        struct pmm *pmm_ptr = handler->pmm;
+        MemZone *zone = pmm_ptr->zone;
         for (int i = 0; i < 4; i++) {
                 if (handler->handler_ppn[i] == -E_RENDEZVOS) {
-                        lock_mcs(&handler->pmm->spin_ptr,
-                                 &per_cpu(pmm_spin_lock, handler->cpu_id));
-                        handler->handler_ppn[i] = handler->pmm->pmm_alloc(
-                                handler->pmm, 1, &alloced_page_number);
-                        unlock_mcs(&handler->pmm->spin_ptr,
-                                   &per_cpu(pmm_spin_lock, handler->cpu_id));
+                        lock_mcs(&pmm_ptr->spin_ptr,
+                                 &per_cpu(pmm_spin_lock[zone->zone_id],
+                                          handler->cpu_id));
+                        handler->handler_ppn[i] = pmm_ptr->pmm_alloc(
+                                pmm_ptr, 1, &alloced_page_number);
+                        unlock_mcs(&pmm_ptr->spin_ptr,
+                                   &per_cpu(pmm_spin_lock[zone->zone_id],
+                                            handler->cpu_id));
                 }
         }
         return res;
@@ -420,7 +425,7 @@ i64 unmap(VSpace *vs, u64 vpn, u64 new_entry_addr, struct map_handler *handler,
           spin_lock *lock)
 {
         if (lock)
-                lock_mcs(lock, &per_cpu(vspace_spin_lock, handler->cpu_id));
+                lock_mcs(lock, &per_cpu(handler_spin_lock, handler->cpu_id));
         vaddr v = vpn << 12;
         paddr next_level_paddr = 0;
         ENTRY_FLAGS_t entry_flags = 0;
@@ -544,7 +549,7 @@ unmap_l0_fail:
         arch_tlb_invalidate_page(vs->vspace_id, handler->map_vaddr[0]);
 unmap_fail:
         if (lock)
-                unlock_mcs(lock, &per_cpu(vspace_spin_lock, handler->cpu_id));
+                unlock_mcs(lock, &per_cpu(handler_spin_lock, handler->cpu_id));
         return ppn;
 }
 i64 have_mapped(VSpace *vs, u64 vpn, struct map_handler *handler)
@@ -663,12 +668,16 @@ paddr new_vs_root(paddr old_vs_root_paddr, struct map_handler *handler)
         return vs_root;
 new_vs_root_fail:
         if (handler->handler_ppn[0] == -E_RENDEZVOS) {
-                lock_mcs(&handler->pmm->spin_ptr,
-                         &per_cpu(pmm_spin_lock, handler->cpu_id));
-                handler->handler_ppn[0] = handler->pmm->pmm_alloc(
-                        handler->pmm, 1, &alloced_page_number);
-                unlock_mcs(&handler->pmm->spin_ptr,
-                           &per_cpu(pmm_spin_lock, handler->cpu_id));
+                struct pmm *pmm_ptr = handler->pmm;
+                MemZone *zone = pmm_ptr->zone;
+                lock_mcs(&pmm_ptr->spin_ptr,
+                         &per_cpu(pmm_spin_lock[zone->zone_id],
+                                  handler->cpu_id));
+                handler->handler_ppn[0] =
+                        pmm_ptr->pmm_alloc(pmm_ptr, 1, &alloced_page_number);
+                unlock_mcs(&pmm_ptr->spin_ptr,
+                           &per_cpu(pmm_spin_lock[zone->zone_id],
+                                    handler->cpu_id));
         }
         return vs_root;
 }

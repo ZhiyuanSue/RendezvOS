@@ -222,12 +222,15 @@ static struct nexus_node* nexus_get_free_entry(struct nexus_node* root_node)
                 /*means no free manage can use, try alloc a new one*/
                 VSpace* vs = root_node->vs;
 
-                lock_mcs(&root_node->handler->pmm->spin_ptr,
-                         &per_cpu(pmm_spin_lock, root_node->handler->cpu_id));
-                i64 nexus_new_page = root_node->handler->pmm->pmm_alloc(
-                        root_node->handler->pmm, 1, &alloced_page_number);
-                unlock_mcs(&root_node->handler->pmm->spin_ptr,
-                           &per_cpu(pmm_spin_lock, root_node->handler->cpu_id));
+                struct pmm* pmm_ptr = root_node->handler->pmm;
+                lock_mcs(&pmm_ptr->spin_ptr,
+                         &per_cpu(pmm_spin_lock[pmm_ptr->zone->zone_id],
+                                  root_node->handler->cpu_id));
+                i64 nexus_new_page =
+                        pmm_ptr->pmm_alloc(pmm_ptr, 1, &alloced_page_number);
+                unlock_mcs(&pmm_ptr->spin_ptr,
+                           &per_cpu(pmm_spin_lock[pmm_ptr->zone->zone_id],
+                                    root_node->handler->cpu_id));
                 if (nexus_new_page <= 0 || alloced_page_number != 1) {
                         pr_error("[ NEXUS ] ERROR: init error\n");
                         return NULL;
@@ -287,11 +290,14 @@ static void free_manage_node_with_page(struct nexus_node* page_manage_node,
                 pr_error("[ NEXUS ] ERROR: unmap error!\n");
                 return;
         }
-        lock_mcs(&vspace_root->handler->pmm->spin_ptr,
-                 &per_cpu(pmm_spin_lock, vspace_root->handler->cpu_id));
-        vspace_root->handler->pmm->pmm_free(vspace_root->handler->pmm, ppn, 1);
-        unlock_mcs(&vspace_root->handler->pmm->spin_ptr,
-                   &per_cpu(pmm_spin_lock, vspace_root->handler->cpu_id));
+        struct pmm* pmm_ptr = vspace_root->handler->pmm;
+        lock_mcs(&pmm_ptr->spin_ptr,
+                 &per_cpu(pmm_spin_lock[pmm_ptr->zone->zone_id],
+                          vspace_root->handler->cpu_id));
+        pmm_ptr->pmm_free(pmm_ptr, ppn, 1);
+        unlock_mcs(&pmm_ptr->spin_ptr,
+                   &per_cpu(pmm_spin_lock[pmm_ptr->zone->zone_id],
+                            vspace_root->handler->cpu_id));
 }
 static void nexus_free_entry(struct nexus_node* nexus_entry,
                              struct nexus_node* nexus_root)
@@ -450,13 +456,13 @@ void nexus_delete_vspace(struct nexus_node* nexus_root, VSpace* vs)
                         goto fail;
                 }
 
-                lock_mcs(&vspace_node->handler->pmm->spin_ptr,
-                         &per_cpu(pmm_spin_lock, vspace_node->handler->cpu_id));
-                vspace_node->handler->pmm->pmm_free(vspace_node->handler->pmm,
-                                                    ppn,
-                                                    nexus_node_get_pages(node));
-                unlock_mcs(&vspace_node->handler->pmm->spin_ptr,
-                           &per_cpu(pmm_spin_lock,
+                struct pmm* pmm_ptr = vspace_node->handler->pmm;
+                lock_mcs(&pmm_ptr->spin_ptr,
+                         &per_cpu(pmm_spin_lock[pmm_ptr->zone->zone_id],
+                                  vspace_node->handler->cpu_id));
+                pmm_ptr->pmm_free(pmm_ptr, ppn, nexus_node_get_pages(node));
+                unlock_mcs(&pmm_ptr->spin_ptr,
+                           &per_cpu(pmm_spin_lock[pmm_ptr->zone->zone_id],
                                     vspace_node->handler->cpu_id));
 
                 list_del_init(curr);
@@ -561,12 +567,14 @@ static void* _kernel_get_free_page(int page_num, ENTRY_FLAGS_t flags,
                                       | PAGE_ENTRY_VALID | PAGE_ENTRY_WRITE;
 
         /*get phy pages from pmm*/
-        lock_mcs(&nexus_root->handler->pmm->spin_ptr,
-                 &per_cpu(pmm_spin_lock, nexus_root->handler->cpu_id));
-        i64 ppn = nexus_root->handler->pmm->pmm_alloc(
-                nexus_root->handler->pmm, page_num, &alloced_page_number);
-        unlock_mcs(&nexus_root->handler->pmm->spin_ptr,
-                   &per_cpu(pmm_spin_lock, nexus_root->handler->cpu_id));
+        struct pmm* pmm_ptr = nexus_root->handler->pmm;
+        lock_mcs(&pmm_ptr->spin_ptr,
+                 &per_cpu(pmm_spin_lock[pmm_ptr->zone->zone_id],
+                          nexus_root->handler->cpu_id));
+        i64 ppn = pmm_ptr->pmm_alloc(pmm_ptr, page_num, &alloced_page_number);
+        unlock_mcs(&pmm_ptr->spin_ptr,
+                   &per_cpu(pmm_spin_lock[pmm_ptr->zone->zone_id],
+                            nexus_root->handler->cpu_id));
         if (ppn <= 0 || alloced_page_number < page_num) {
                 pr_error("[ NEXUS ] ERROR: init error allocated %x\n",
                          alloced_page_number);
@@ -655,12 +663,13 @@ error_t user_fill_range(struct nexus_node* first_entry, int page_num,
 
         lock_cas(&vspace_node->vs->nexus_vspace_lock);
         while (first_entry) {
-                lock_mcs(&vspace_node->handler->pmm->spin_ptr,
-                         &per_cpu(pmm_spin_lock, vspace_node->handler->cpu_id));
-                i64 ppn = vspace_node->handler->pmm->pmm_alloc(
-                        vspace_node->handler->pmm, 1, &alloced_page_number);
-                unlock_mcs(&vspace_node->handler->pmm->spin_ptr,
-                           &per_cpu(pmm_spin_lock,
+                struct pmm* pmm_ptr = vspace_node->handler->pmm;
+                lock_mcs(&pmm_ptr->spin_ptr,
+                         &per_cpu(pmm_spin_lock[pmm_ptr->zone->zone_id],
+                                  vspace_node->handler->cpu_id));
+                i64 ppn = pmm_ptr->pmm_alloc(pmm_ptr, 1, &alloced_page_number);
+                unlock_mcs(&pmm_ptr->spin_ptr,
+                           &per_cpu(pmm_spin_lock[pmm_ptr->zone->zone_id],
                                     vspace_node->handler->cpu_id));
                 if (ppn <= 0 || alloced_page_number != 1) {
                         pr_error("[ NEXUS ] ERROR: init error allocated %x\n",
@@ -767,13 +776,13 @@ static error_t _release_range(void* p, int page_num, VSpace* vs,
                         unlock_cas(&vspace_node->vs->nexus_vspace_lock);
                         return -E_RENDEZVOS;
                 }
-                lock_mcs(&vspace_node->handler->pmm->spin_ptr,
-                         &per_cpu(pmm_spin_lock, vspace_node->handler->cpu_id));
-                vspace_node->handler->pmm->pmm_free(vspace_node->handler->pmm,
-                                                    ppn,
-                                                    nexus_node_get_pages(node));
-                unlock_mcs(&vspace_node->handler->pmm->spin_ptr,
-                           &per_cpu(pmm_spin_lock,
+                struct pmm* pmm_ptr = vspace_node->handler->pmm;
+                lock_mcs(&pmm_ptr->spin_ptr,
+                         &per_cpu(pmm_spin_lock[pmm_ptr->zone->zone_id],
+                                  vspace_node->handler->cpu_id));
+                pmm_ptr->pmm_free(pmm_ptr, ppn, nexus_node_get_pages(node));
+                unlock_mcs(&pmm_ptr->spin_ptr,
+                           &per_cpu(pmm_spin_lock[pmm_ptr->zone->zone_id],
                                     vspace_node->handler->cpu_id));
 
                 node = nexus_rb_tree_next(node);

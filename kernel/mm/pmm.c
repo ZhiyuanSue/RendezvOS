@@ -6,6 +6,7 @@
 
 struct memory_regions m_regions;
 MemZone mem_zones[ZONE_NR_MAX];
+DEFINE_PER_CPU(struct spin_lock_t, pmm_spin_lock[ZONE_NR_MAX]);
 extern u64 L2_table, L1_table;
 extern struct buddy buddy_pmm;
 extern u64 _start, _end; /*the kernel end virt addr*/
@@ -274,6 +275,7 @@ static inline void split_pmm_zones(paddr lower, paddr upper,
                 zone->lower_addr = 0;
                 zone->upper_addr = 0;
                 zone->zone_total_sections = 0;
+                zone->zone_id = mem_zone;
                 INIT_LIST_HEAD(&zone->section_list);
                 switch (mem_zone) {
                         /*TODO:if we need more zones ,we can define zone upper
@@ -342,6 +344,7 @@ static inline error_t generate_zone_data(paddr zone_data_phy_start,
         for (int mem_zone = 0; mem_zone < ZONE_NR_MAX; ++mem_zone) {
                 zone = &(mem_zones[mem_zone]);
                 zone->zone_total_pages = 0;
+                u64 sec_id_count = 0;
                 for (int i = 0; i < m_regions.region_count; i++) {
                         if (m_regions.memory_regions_entry_empty(i))
                                 continue;
@@ -366,9 +369,12 @@ static inline error_t generate_zone_data(paddr zone_data_phy_start,
                         zone->zone_total_pages += sec->page_count;
                         /*if the section have zero page, don't link to let
                          * search faster*/
-                        if (sec->page_count)
+                        if (sec->page_count) {
+                                sec->sec_id = sec_id_count;
+                                sec_id_count++;
                                 list_add_head(&sec->section_list,
                                               &zone->section_list);
+                        }
                         for (int i = 0; i < sec->page_count; i++) {
                                 Page *p_ptr = Sec_phy_Page(sec, i);
                                 if (p_ptr)

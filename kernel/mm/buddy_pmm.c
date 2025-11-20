@@ -6,7 +6,6 @@
 
 struct buddy buddy_pmm;
 extern struct memory_regions m_regions;
-DEFINE_PER_CPU(struct spin_lock_t, pmm_spin_lock);
 size_t calculate_manage_space(size_t zone_page_number)
 {
         return ROUND_UP(zone_page_number * sizeof(struct buddy_page), PAGE_SIZE)

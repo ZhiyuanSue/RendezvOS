@@ -52,6 +52,7 @@ typedef struct {
 } Page;
 struct mem_section {
         struct list_entry section_list;
+        u64 sec_id;
         size_t page_count;
         paddr upper_addr;
         paddr lower_addr;
@@ -86,6 +87,7 @@ static inline Page* Sec_phy_Page(MemSection* sec, size_t index)
 
 typedef struct {
         struct list_entry section_list;
+        u64 zone_id;
         struct pmm* pmm;
         paddr upper_addr;
         paddr lower_addr;
@@ -173,12 +175,12 @@ static inline i64 ppn_Zone_index(MemZone* zone, i64 ppn)
         MemZone* zone;                                                      \
         u64 total_avaliable_pages;
 
-extern struct spin_lock_t pmm_spin_lock;
 struct pmm {
         PMM_COMMON;
 };
 
 extern MemZone mem_zones[ZONE_NR_MAX];
+extern struct spin_lock_t pmm_spin_lock[ZONE_NR_MAX];
 
 error_t phy_mm_init(struct setup_info* arch_setup_info);
 
