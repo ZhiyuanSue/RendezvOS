@@ -28,7 +28,12 @@ extern struct spin_lock_t handler_spin_lock; // per cpu pointer
 extern u64 boot_stack_bottom;
 
 VSpace* new_vspace();
-void init_vspace(VSpace* vs, u64 vspace_id, void* vspace_node);
+static inline void init_vspace(VSpace* vs, u64 vspace_id, void* vspace_node)
+{
+        vs->vspace_lock = NULL;
+        vs->vspace_id = vspace_id;
+        vs->_vspace_node = vspace_node;
+}
 void del_vspace(VSpace** vs);
 static inline void set_vspace_root_addr(VSpace* vs, paddr root_paddr)
 {

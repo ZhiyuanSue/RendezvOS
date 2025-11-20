@@ -6,12 +6,13 @@
 #include <rendezvos/smp/percpu.h>
 extern int BSP_ID;
 extern u64 boot_stack;
+extern struct allocator* kallocator;
 DEFINE_PER_CPU(u64, boot_stack_bottom);
 DEFINE_PER_CPU(struct map_handler, Map_Handler);
-DEFINE_PER_CPU(struct nexus_node *, nexus_root);
-DEFINE_PER_CPU(VSpace *, current_vspace);
+DEFINE_PER_CPU(struct nexus_node*, nexus_root);
+DEFINE_PER_CPU(VSpace*, current_vspace);
 VSpace root_vspace;
-error_t virt_mm_init(int cpu_id, struct setup_info *arch_setup_info)
+error_t virt_mm_init(int cpu_id, struct setup_info* arch_setup_info)
 {
         if (cpu_id == BSP_ID) {
                 sys_init_map();
@@ -31,4 +32,31 @@ error_t virt_mm_init(int cpu_id, struct setup_info *arch_setup_info)
         per_cpu(nexus_root, cpu_id) = init_nexus(&per_cpu(Map_Handler, cpu_id));
         sp_init(per_cpu(nexus_root, cpu_id), cpu_id);
         return 0;
+}
+
+VSpace* new_vspace()
+{
+        struct allocator* cpu_allocator = percpu(kallocator);
+        if (!cpu_allocator)
+                return NULL;
+        VSpace* new_vs = (VSpace*)(cpu_allocator->m_alloc(cpu_allocator,
+                                                          sizeof(VSpace)));
+        if (new_vs)
+                memset((void*)new_vs, 0, sizeof(VSpace));
+        return new_vs;
+}
+void del_vspace(VSpace** vs)
+{
+        if (!(*vs))
+                return;
+        nexus_delete_vspace(per_cpu(nexus_root,
+                                    ((struct nexus_node*)((*vs)->_vspace_node))
+                                            ->handler->cpu_id),
+                            (*vs)->_vspace_node);
+
+        struct allocator* cpu_allocator = percpu(kallocator);
+        if (!cpu_allocator)
+                return;
+        cpu_allocator->m_free(cpu_allocator, (void*)(*vs));
+        *vs = NULL;
 }

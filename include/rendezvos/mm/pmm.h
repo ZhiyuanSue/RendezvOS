@@ -154,8 +154,7 @@ static inline i64 ppn_Zone_index(MemZone* zone, i64 ppn)
                 if (ppn_in_Sec(sec, ppn)) {
                         return index + ppn - PPN(sec->lower_addr);
                 } else {
-                        index += PPN(sec->upper_addr - sec->lower_addr
-                                     - PAGE_SIZE);
+                        index += PPN(sec->page_count - PAGE_SIZE);
                 }
         }
         return (-1);

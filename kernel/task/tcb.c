@@ -135,32 +135,6 @@ Thread_Base* new_thread()
         }
         return thread;
 }
-VSpace* new_vspace()
-{
-        struct allocator* cpu_allocator = percpu(kallocator);
-        if (!cpu_allocator)
-                return NULL;
-        VSpace* new_vs = (VSpace*)(cpu_allocator->m_alloc(cpu_allocator,
-                                                          sizeof(VSpace)));
-        if (new_vs)
-                memset((void*)new_vs, 0, sizeof(VSpace));
-        return new_vs;
-}
-void del_vspace(VSpace** vs)
-{
-        if (!(*vs))
-                return;
-        nexus_delete_vspace(per_cpu(nexus_root,
-                                    ((struct nexus_node*)((*vs)->_vspace_node))
-                                            ->handler->cpu_id),
-                            (*vs)->_vspace_node);
-
-        struct allocator* cpu_allocator = percpu(kallocator);
-        if (!cpu_allocator)
-                return;
-        cpu_allocator->m_free(cpu_allocator, (void*)(*vs));
-        *vs = NULL;
-}
 Thread_Init_Para* new_init_parameter()
 {
         struct allocator* cpu_allocator = percpu(kallocator);
