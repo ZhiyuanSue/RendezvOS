@@ -19,6 +19,7 @@
 
 #include <common/mm.h>
 #include <common/dsa/list.h>
+#include <common/string.h>
 #include <rendezvos/limits.h>
 #include <rendezvos/sync/spin_lock.h>
 #include <rendezvos/sync/cas_lock.h>
