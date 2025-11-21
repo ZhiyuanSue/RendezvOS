@@ -52,7 +52,7 @@ void del_vspace(VSpace** vs)
         nexus_delete_vspace(per_cpu(nexus_root,
                                     ((struct nexus_node*)((*vs)->_vspace_node))
                                             ->handler->cpu_id),
-                            (*vs)->_vspace_node);
+                            *vs);
 
         struct allocator* cpu_allocator = percpu(kallocator);
         if (!cpu_allocator)

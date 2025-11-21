@@ -371,6 +371,7 @@ static inline error_t generate_zone_data(paddr zone_data_phy_start,
                          * search faster*/
                         if (sec->page_count) {
                                 sec->sec_id = sec_id_count;
+                                sec->zone = zone;
                                 sec_id_count++;
                                 list_add_head(&sec->section_list,
                                               &zone->section_list);

@@ -5,6 +5,42 @@
 #include <rendezvos/mm/nexus.h>
 #include <rendezvos/mm/vmm.h>
 
+static inline void link_rmap_list(MemZone* zone, ppn_t ppn,
+                                  struct nexus_node* node)
+{
+        Page* p_ptr = ppn_Zone_phy_Page(zone, ppn);
+        /*
+                because nexus might have 2M and 4K range, here we must check,
+                actually, which should not be alloced successfully before,
+                but we still need to check here.
+                if rmap_list have no nexus node linked, just link,
+                otherwise we need to check, is the ppn 2M aligned? if not, just
+           link, if so, check the head nexus 2M or not?
+        */
+        if (!ALIGNED(ppn, MIDDLE_PAGES)) {
+                list_add_head(&node->rmap_list, &p_ptr->rmap_list);
+        } else {
+                struct list_entry* list_node = p_ptr->rmap_list.next;
+                if (list_node == &p_ptr->rmap_list) {
+                        list_add_head(&node->rmap_list, &p_ptr->rmap_list);
+                } else {
+                        struct nexus_node* header_node = container_of(
+                                list_node, struct nexus_node, rmap_list);
+                        if ((header_node->region_flags & PAGE_ENTRY_HUGE)
+                            == (node->region_flags & PAGE_ENTRY_HUGE)) {
+                                list_add_head(&node->rmap_list,
+                                              &p_ptr->rmap_list);
+                        } else {
+                                pr_error(
+                                        "[ NEXUS ] try to map a 2M and a 4K page on a 2M aligned phy page\n");
+                        }
+                }
+        }
+}
+static inline void unlink_rmap_list(struct nexus_node* node)
+{
+        list_del_init(&node->rmap_list);
+}
 static inline u64 nexus_node_get_len(struct nexus_node* nexus_entry)
 {
         return (nexus_entry->region_flags & PAGE_ENTRY_HUGE) ?
@@ -165,6 +201,7 @@ static struct nexus_node* init_vspace_nexus(vaddr nexus_page_addr, VSpace* vs,
         struct nexus_node* root_node = &n_node[1];
         n_node[1].handler = handler;
         n_node[1].vs = vs;
+        vs->_vspace_node = (void*)&n_node[1];
         INIT_LIST_HEAD(&n_node[1].manage_free_list);
         INIT_LIST_HEAD(&n_node[1]._vspace_list);
         lock_init_cas(&n_node[1].nexus_lock);
@@ -641,8 +678,7 @@ static void* _kernel_get_free_page(int page_num, ENTRY_FLAGS_t flags,
                         }
                         page_num--;
                 }
-                Page* p_ptr = ppn_Zone_phy_Page(pmm_ptr->zone, ppn);
-                list_add_head(&first_entry->rmap_list, &p_ptr->rmap_list);
+                link_rmap_list(pmm_ptr->zone, ppn, first_entry);
                 if (page_num <= 0) {
                         break;
                 }
@@ -704,8 +740,7 @@ error_t user_fill_range(struct nexus_node* first_entry, int page_num,
                         unlock_cas(&vspace_node->vs->nexus_vspace_lock);
                         goto fail;
                 }
-                Page* p_ptr = ppn_Zone_phy_Page(pmm_ptr->zone, ppn);
-                list_add_head(&first_entry->rmap_list, &p_ptr->rmap_list);
+                link_rmap_list(pmm_ptr->zone, ppn, first_entry);
                 page_num--;
                 if (page_num <= 0) {
                         break;
@@ -748,9 +783,9 @@ static struct nexus_node* _user_take_range(int page_num, vaddr target_vaddr,
         unlock_cas(&vspace_node->vs->nexus_vspace_lock);
         return first_entry;
 }
-static error_t _release_range(void* p, int page_num, VSpace* vs,
-                              struct nexus_node* vspace_node,
-                              struct nexus_node* node)
+static error_t _unfill_range(void* p, int page_num, VSpace* vs,
+                             struct nexus_node* vspace_node,
+                             struct nexus_node* node)
 {
         vaddr free_end = (vaddr)p + page_num * PAGE_SIZE;
         while (node) {
@@ -783,7 +818,7 @@ static error_t _release_range(void* p, int page_num, VSpace* vs,
                 unlock_mcs(&pmm_ptr->spin_ptr,
                            &per_cpu(pmm_spin_lock[pmm_ptr->zone->zone_id],
                                     vspace_node->handler->cpu_id));
-                list_del_init(&node->rmap_list);
+                unlink_rmap_list(node);
                 node = nexus_rb_tree_next(node);
                 if (!node || is_page_manage_node(node)) {
                         need_break = true;
@@ -817,7 +852,7 @@ static error_t _kernel_free_pages(void* p, int page_num,
                 return -E_IN_PARAM;
         }
 
-        error_t res = _release_range(p, page_num, vs, nexus_root, node);
+        error_t res = _unfill_range(p, page_num, vs, nexus_root, node);
         if (res) {
                 unlock_cas(&nexus_root->vs->nexus_vspace_lock);
                 return -E_RENDEZVOS;
@@ -873,7 +908,7 @@ error_t user_unfill_range(void* p, int page_num, VSpace* vs,
                 unlock_cas(&vspace_node->vs->nexus_vspace_lock);
                 return -E_IN_PARAM;
         }
-        error_t res = _release_range(p, page_num, vs, vspace_node, node);
+        error_t res = _unfill_range(p, page_num, vs, vspace_node, node);
         unlock_cas(&vspace_node->vs->nexus_vspace_lock);
         return res;
 }
@@ -988,4 +1023,44 @@ error_t free_pages(void* p, int page_num, VSpace* vs,
                         res = _user_release_range(p, page_num, vs, vspace_node);
         }
         return res;
+}
+error_t unfill_phy_page(MemZone* zone, ppn_t ppn, u64 new_entry_addr)
+{
+        Page* p_ptr = ppn_Zone_phy_Page(zone, ppn);
+        if (!p_ptr) {
+                pr_error("[ NEXUS ] cannot find phy page with ppn %x\n", ppn);
+                return -E_RENDEZVOS;
+        }
+        struct list_entry* list = p_ptr->rmap_list.next;
+        while (list != &p_ptr->rmap_list) {
+                /*
+                        here we need to consider the lock.
+                */
+                struct nexus_node* node =
+                        container_of(list, struct nexus_node, rmap_list);
+                VSpace* vs = node->vs;
+                struct nexus_node* vspace_node = (struct nexus_node*)(vs->_vspace_node);
+                lock_cas(&node->vs->nexus_vspace_lock);
+                ppn_t unmap_ppn = unmap(vs,
+                                        VPN(node->addr),
+                                        new_entry_addr,
+                                        vspace_node->handler,
+                                        &vspace_node->vs->vspace_lock);
+                if (ppn != unmap_ppn) {
+                        pr_error(
+                                "[ NEXUS ] try to unmap shared page but return ppn is not equal\n");
+                        return -E_RENDEZVOS;
+                }
+                unlock_cas(&node->vs->nexus_vspace_lock);
+                list = list->next;
+        }
+        /*we only need to free once but need to change the ref count to 1*/
+        p_ptr->ref_count = 1;
+        struct pmm* pmm_ptr = p_ptr->sec->zone->pmm;
+        lock_mcs(&pmm_ptr->spin_ptr,
+                 &percpu(pmm_spin_lock[pmm_ptr->zone->zone_id]));
+        pmm_ptr->pmm_free(pmm_ptr, ppn, 1);
+        unlock_mcs(&pmm_ptr->spin_ptr,
+                   &percpu(pmm_spin_lock[pmm_ptr->zone->zone_id]));
+        return 0;
 }

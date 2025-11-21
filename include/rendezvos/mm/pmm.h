@@ -47,6 +47,16 @@ enum zone_type { ZONE_NORMAL, ZONE_NR_MAX };
 
 typedef struct mem_section MemSection;
 typedef struct {
+        struct list_entry section_list;
+        u64 zone_id;
+        struct pmm* pmm;
+        paddr upper_addr;
+        paddr lower_addr;
+        size_t zone_total_pages;
+        size_t zone_total_sections;
+        size_t zone_pmm_manage_pages;
+} MemZone;
+typedef struct {
         i64 ref_count;
         MemSection* sec;
         struct list_entry rmap_list;
@@ -54,6 +64,7 @@ typedef struct {
 struct mem_section {
         struct list_entry section_list;
         u64 sec_id;
+        MemZone* zone;
         size_t page_count;
         paddr upper_addr;
         paddr lower_addr;
@@ -85,17 +96,6 @@ static inline Page* Sec_phy_Page(MemSection* sec, size_t index)
         }
         return NULL;
 }
-
-typedef struct {
-        struct list_entry section_list;
-        u64 zone_id;
-        struct pmm* pmm;
-        paddr upper_addr;
-        paddr lower_addr;
-        size_t zone_total_pages;
-        size_t zone_total_sections;
-        size_t zone_pmm_manage_pages;
-} MemZone;
 
 #define for_each_sec_of_zone(zone_ptr)                                       \
         for (MemSection* sec = container_of(                                 \

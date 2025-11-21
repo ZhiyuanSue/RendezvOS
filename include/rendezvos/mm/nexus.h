@@ -58,4 +58,5 @@ error_t user_fill_range(struct nexus_node* first_entry, int page_num,
                         struct nexus_node* vspace_node, VSpace* vs);
 error_t user_unfill_range(void* p, int page_num, VSpace* vs,
                           struct nexus_node* vspace_node);
+error_t unfill_phy_page(MemZone* zone, ppn_t ppn, u64 new_entry_addr);
 #endif
