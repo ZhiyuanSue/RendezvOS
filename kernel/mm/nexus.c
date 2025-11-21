@@ -131,7 +131,7 @@ static inline bool is_page_manage_node(struct nexus_node* node)
         return node->manage_free_list.next && node->manage_free_list.prev;
 }
 static void nexus_init_manage_page(vaddr vpage_addr,
-                                   struct nexus_node* nexus_root)
+                                   struct nexus_node* vspace_root)
 {
         struct nexus_node* n_node = (struct nexus_node*)vpage_addr;
         /*init the node 0 point to this page*/
@@ -146,8 +146,8 @@ static void nexus_init_manage_page(vaddr vpage_addr,
                 list_add_head(&n_node[i]._free_list, &n_node->_free_list);
         }
         /*insert to rb tree*/
-        list_add_head(&(n_node->_vspace_list), &(nexus_root->_vspace_list));
-        nexus_rb_tree_insert(n_node, &nexus_root->_rb_root);
+        list_add_head(&(n_node->_vspace_list), &(vspace_root->_vspace_list));
+        nexus_rb_tree_insert(n_node, &vspace_root->_rb_root);
 }
 static struct nexus_node* init_vspace_nexus(vaddr nexus_page_addr, VSpace* vs,
                                             struct map_handler* handler,
@@ -212,25 +212,27 @@ struct nexus_node* init_nexus(struct map_handler* handler)
         }
         return init_vspace_nexus(vpage_addr, vs, handler, NULL);
 }
-static struct nexus_node* nexus_get_free_entry(struct nexus_node* root_node)
+static struct nexus_node*
+nexus_get_free_entry(struct nexus_node* vspace_root_node)
 {
         size_t alloced_page_number;
         /*from manage_free_list find one manage page that have free node*/
-        struct list_entry* manage_free_list_node = &root_node->manage_free_list;
+        struct list_entry* manage_free_list_node =
+                &vspace_root_node->manage_free_list;
         struct list_entry* lp = manage_free_list_node->next;
         if (lp == manage_free_list_node) {
                 /*means no free manage can use, try alloc a new one*/
-                VSpace* vs = root_node->vs;
+                VSpace* vs = vspace_root_node->vs;
 
-                struct pmm* pmm_ptr = root_node->handler->pmm;
+                struct pmm* pmm_ptr = vspace_root_node->handler->pmm;
                 lock_mcs(&pmm_ptr->spin_ptr,
                          &per_cpu(pmm_spin_lock[pmm_ptr->zone->zone_id],
-                                  root_node->handler->cpu_id));
+                                  vspace_root_node->handler->cpu_id));
                 ppn_t nexus_new_page =
                         pmm_ptr->pmm_alloc(pmm_ptr, 1, &alloced_page_number);
                 unlock_mcs(&pmm_ptr->spin_ptr,
                            &per_cpu(pmm_spin_lock[pmm_ptr->zone->zone_id],
-                                    root_node->handler->cpu_id));
+                                    vspace_root_node->handler->cpu_id));
                 if (invalid_ppn(nexus_new_page) || alloced_page_number != 1) {
                         pr_error("[ NEXUS ] ERROR: init error\n");
                         return NULL;
@@ -243,17 +245,17 @@ static struct nexus_node* nexus_get_free_entry(struct nexus_node* root_node)
                             3,
                             PAGE_ENTRY_GLOBAL | PAGE_ENTRY_READ
                                     | PAGE_ENTRY_VALID | PAGE_ENTRY_WRITE,
-                            root_node->handler,
-                            &root_node->vs->vspace_lock);
+                            vspace_root_node->handler,
+                            &vspace_root_node->vs->vspace_lock);
                 if (map_res) {
                         pr_error("[ NEXUS ] ERROR: get free entry map error\n");
                         return NULL;
                 }
                 memset((void*)vpage_addr, '\0', PAGE_SIZE);
-                nexus_init_manage_page(vpage_addr, root_node);
+                nexus_init_manage_page(vpage_addr, vspace_root_node);
                 lp = &((struct nexus_node*)vpage_addr)->manage_free_list;
                 /*insert the lp to the manage page list*/
-                list_add_head(lp, &root_node->manage_free_list);
+                list_add_head(lp, &vspace_root_node->manage_free_list);
         }
         if (!lp || lp == manage_free_list_node) {
                 pr_error("[ ERROR ]find an free manage page fail\n");
@@ -344,8 +346,9 @@ struct nexus_node* nexus_create_vspace_root_node(struct nexus_node* nexus_root,
 
         /*get a phy page*/
         size_t alloced_page_number;
-        ppn_t nexus_init_page = nexus_root->handler->pmm->pmm_alloc(
-                nexus_root->handler->pmm, 1, &alloced_page_number);
+        struct pmm* pmm_ptr = nexus_root->handler->pmm;
+        ppn_t nexus_init_page =
+                pmm_ptr->pmm_alloc(pmm_ptr, 1, &alloced_page_number);
         if (invalid_ppn(nexus_init_page) || alloced_page_number != 1) {
                 pr_error("[ NEXUS ] ERROR: init error\n");
                 goto fail;
@@ -638,6 +641,8 @@ static void* _kernel_get_free_page(int page_num, ENTRY_FLAGS_t flags,
                         }
                         page_num--;
                 }
+                Page* p_ptr = ppn_Zone_phy_Page(pmm_ptr->zone, ppn);
+                list_add_head(&first_entry->rmap_list, &p_ptr->rmap_list);
                 if (page_num <= 0) {
                         break;
                 }
@@ -673,11 +678,6 @@ error_t user_fill_range(struct nexus_node* first_entry, int page_num,
                            &per_cpu(pmm_spin_lock[pmm_ptr->zone->zone_id],
                                     vspace_node->handler->cpu_id));
                 if (invalid_ppn(ppn) || alloced_page_number != 1) {
-                        pr_error("[ NEXUS ] ERROR: init error allocated %x\n",
-                                 alloced_page_number);
-                        unlock_cas(&vspace_node->vs->nexus_vspace_lock);
-                        goto fail;
-                } else if (alloced_page_number > 1) {
                         /*
                                 if allocated page number is unequal to
                            the page number then the upper level cannot
@@ -685,12 +685,8 @@ error_t user_fill_range(struct nexus_node* first_entry, int page_num,
                            will not try to free the last pages then
                            those pages will not usable forever
                         */
-                        pr_error(
-                                "[ NEXUS ] ERROR: allocated pages is larger then needed pages\n");
-                        pr_error(
-                                "[ NEXUS ] HINT: try to alloc %d pages, allocated %d pages\n",
-                                1,
-                                alloced_page_number);
+                        pr_error("[ NEXUS ] ERROR: init error allocated %x\n",
+                                 alloced_page_number);
                         unlock_cas(&vspace_node->vs->nexus_vspace_lock);
                         goto fail;
                 }
@@ -708,6 +704,8 @@ error_t user_fill_range(struct nexus_node* first_entry, int page_num,
                         unlock_cas(&vspace_node->vs->nexus_vspace_lock);
                         goto fail;
                 }
+                Page* p_ptr = ppn_Zone_phy_Page(pmm_ptr->zone, ppn);
+                list_add_head(&first_entry->rmap_list, &p_ptr->rmap_list);
                 page_num--;
                 if (page_num <= 0) {
                         break;
@@ -785,7 +783,7 @@ static error_t _release_range(void* p, int page_num, VSpace* vs,
                 unlock_mcs(&pmm_ptr->spin_ptr,
                            &per_cpu(pmm_spin_lock[pmm_ptr->zone->zone_id],
                                     vspace_node->handler->cpu_id));
-
+                list_del_init(&node->rmap_list);
                 node = nexus_rb_tree_next(node);
                 if (!node || is_page_manage_node(node)) {
                         need_break = true;

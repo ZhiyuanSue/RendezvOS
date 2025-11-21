@@ -48,8 +48,8 @@ enum zone_type { ZONE_NORMAL, ZONE_NR_MAX };
 typedef struct mem_section MemSection;
 typedef struct {
         i64 ref_count;
-        void* rmap_list;
         MemSection* sec;
+        struct list_entry rmap_list;
 } Page;
 struct mem_section {
         struct list_entry section_list;
