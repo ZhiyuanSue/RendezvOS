@@ -2,7 +2,7 @@
 #include <rendezvos/smp/percpu.h>
 #include <rendezvos/limits.h>
 
-extern int BSP_ID;
+extern u32 BSP_ID;
 extern int NR_CPU;
 extern volatile i64 jeffies;
 static struct smp_test_case smp_test[MAX_SMP_TEST_CASE] = {
@@ -25,11 +25,11 @@ volatile enum multi_cpu_test_state test_state[RENDEZVOS_MAX_CPU_NUMBER];
 volatile u64 curr_test = 0;
 void multi_cpu_test(void)
 {
-        int cpu_id = percpu(cpu_number);
+        u32 cpu_id = percpu(cpu_number);
         bool test_pass = true;
         if (cpu_id == BSP_ID)
                 pr_notice("====== [ KERNEL MULTI CPU TEST ] ======\n");
-        for (int i = 0; i < MAX_SMP_TEST_CASE; i++) {
+        for (u64 i = 0; i < MAX_SMP_TEST_CASE; i++) {
                 if (!(u64)(smp_test[i].test))
                         break;
                 if (cpu_id == BSP_ID)

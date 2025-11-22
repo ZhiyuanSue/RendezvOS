@@ -10,18 +10,25 @@ static inline void basic_memset(char *str, u8 c, size_t count)
         case 0:
                 do {
                         *str++ = c;
+                        /* fall through */
                 case 7:
                         *str++ = c;
+                        /* fall through */
                 case 6:
                         *str++ = c;
+                        /* fall through */
                 case 5:
                         *str++ = c;
+                        /* fall through */
                 case 4:
                         *str++ = c;
+                        /* fall through */
                 case 3:
                         *str++ = c;
+                        /* fall through */
                 case 2:
                         *str++ = c;
+                        /* fall through */
                 case 1:
                         *str++ = c;
                 } while (--n > 0);
@@ -40,18 +47,25 @@ static inline void basic_memcpy(char *str1, const char *str2, size_t count)
         case 0:
                 do {
                         *str1++ = *str2++;
+                        /* fall through */
                 case 7:
                         *str1++ = *str2++;
+                        /* fall through */
                 case 6:
                         *str1++ = *str2++;
+                        /* fall through */
                 case 5:
                         *str1++ = *str2++;
+                        /* fall through */
                 case 4:
                         *str1++ = *str2++;
+                        /* fall through */
                 case 3:
                         *str1++ = *str2++;
+                        /* fall through */
                 case 2:
                         *str1++ = *str2++;
+                        /* fall through */
                 case 1:
                         *str1++ = *str2++;
                 } while (--n > 0);

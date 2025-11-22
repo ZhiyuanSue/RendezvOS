@@ -4,7 +4,7 @@
 #include <rendezvos/mm/map_handler.h>
 #include <rendezvos/error.h>
 #include <rendezvos/smp/percpu.h>
-extern int BSP_ID;
+extern u32 BSP_ID;
 struct acpi_table_fadt *fadt_table;
 extern struct acpi_table_madt *madt_table;
 static inline error_t parser_facp()
@@ -68,8 +68,7 @@ error_t acpi_init(vaddr rsdp_addr)
                                 KERNEL_PHY_TO_VIRT((u64)entry_paddr);
                         struct acpi_table_head *tmp_table_head =
                                 (struct acpi_table_head *)entry_vaddr;
-                        enum acpi_table_sig_enum sig =
-                                get_acpi_table_type_from_sig(tmp_table_head);
+                        int sig = get_acpi_table_type_from_sig(tmp_table_head);
                         if (sig == -1) {
                                 print("undefined acpi table ");
                                 for (int j = 0; j < ACPI_SIG_LENG; j++) {

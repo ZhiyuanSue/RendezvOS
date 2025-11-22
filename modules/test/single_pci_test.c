@@ -43,16 +43,22 @@ error_t simple_print_callback(u8 bus, u8 device, u8 func,
                 switch (device_id) {
                 case 0x73A1:
                         type = "Radeon RX 7900 XTX";
+                        break;
                 case 0x73BF:
                         type = "Radeon RX 7900 XT";
+                        break;
                 case 0x1631:
                         type = "Radeon RX 6700 XT";
+                        break;
                 case 0x67DF:
                         type = "Radeon RX 470/480";
+                        break;
                 case 0x15D8:
                         type = "EPYC Integrated Graphics";
+                        break;
                 case 0x1480:
                         type = "Ryzen Integrated Graphics (Zen 3)";
+                        break;
                 default:
                         type = "AMD Graphics Card";
                 }

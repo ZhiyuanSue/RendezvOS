@@ -10,7 +10,7 @@
 #define mrs(sys_reg, value) \
         __asm__ __volatile__("mrs %0, " sys_reg "\n" : "=r"(value) : :)
 
-static void inline set_vbar_el1(vaddr trap_vec)
+static inline void set_vbar_el1(vaddr trap_vec)
 {
         msr("VBAR_EL1", trap_vec);
 }

@@ -26,7 +26,7 @@ int log_level = LOG_DEBUG;
 int log_level = LOG_OFF;
 #endif
 
-void log_init(void *log_buffer_addr, int log_level)
+void log_init(void *log_buffer_addr, u64 log_level)
 {
         uart_putc('\n');
         CONSOLE_CLEAN_SCREEN(&X86_CHAR_CONSOLE);
@@ -76,6 +76,7 @@ void itoa(char *buf, int base, i64 d)
 
 void log_print(char *buffer, const char *format, va_list arg_list)
 {
+        (void)buffer;
         u_int8_t c;
         char buf[20];
         int pad0;
@@ -152,7 +153,7 @@ void log_print(char *buffer, const char *format, va_list arg_list)
         }
 }
 
-void printk(const char *format, int log_level, ...)
+void printk(const char *format, u64 log_level, ...)
 {
         va_list arg_list;
 

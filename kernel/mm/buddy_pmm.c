@@ -145,7 +145,7 @@ i64 pmm_alloc_zone(struct buddy *bp, int alloc_order,
                 list_add_head(&right_child->page_list,
                               &bp->buckets[tmp_order].avaliable_frame_list);
         }
-        for (int i = 0; i < (1ULL << ((u64)alloc_order)); i++) {
+        for (u64 i = 0; i < (1ULL << ((u64)alloc_order)); i++) {
                 (del_node + i)->order = -1;
         }
         list_del(&del_node->page_list);
@@ -156,7 +156,7 @@ i64 pmm_alloc_zone(struct buddy *bp, int alloc_order,
         */
         Page *p_ptr = Zone_phy_Page(bp->zone, del_node - &bp->pages[0]);
         if (p_ptr) {
-                for (int i = 0; i < (1ULL << ((u64)alloc_order)); i++)
+                for (u64 i = 0; i < (1ULL << ((u64)alloc_order)); i++)
                         (p_ptr + i)->ref_count++;
         }
 
@@ -174,8 +174,7 @@ i64 pmm_alloc(struct pmm *pmm, size_t page_number, size_t *alloced_page_number)
         u32 alloc_order;
         struct buddy *bp = (struct buddy *)pmm;
 
-        /*have we used too many physical memory*/
-        if (page_number < 0) {
+        if (page_number == 0) {
                 *alloced_page_number = 0;
                 return (0);
         }
@@ -226,7 +225,8 @@ static error_t pmm_free_one(struct pmm *pmm, ppn_t ppn)
                         buddy_index = index + (1 << tmp_order);
                 }
                 /*the buddy is out of range, means no buddy*/
-                if (buddy_index < 0 || buddy_index > bp->buddy_page_number) {
+                if (buddy_index < 0
+                    || buddy_index > (i64)(bp->buddy_page_number)) {
                         goto free_one;
                 }
                 /*find a page in another section*/

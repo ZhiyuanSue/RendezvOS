@@ -31,8 +31,8 @@ struct log_buffer {
         struct log_buffer_desc LOG_BUF[LOG_BUFFER_SIZE];
 };
 
-void log_init(void *log_buffer_addr, int log_level);
-void printk(const char *format, int log_level, ...);
+void log_init(void *log_buffer_addr, u64 log_level);
+void printk(const char *format, u64 log_level, ...);
 
 extern struct spin_lock_t log_spin_lock;
 extern struct spin_lock_t *log_spin_lock_ptr;

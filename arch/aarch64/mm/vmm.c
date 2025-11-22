@@ -7,22 +7,22 @@
 #include <common/stdbool.h>
 #include <rendezvos/mm/vmm.h>
 
-void inline arch_set_L0_entry(paddr p, vaddr v, union L0_entry *pt_addr,
+inline void arch_set_L0_entry(paddr p, vaddr v, union L0_entry *pt_addr,
                               ARCH_PFLAGS_t flags)
 {
         pt_addr[L0_INDEX(v)].entry = (p & PT_DESC_ADDR_MASK) | flags;
 }
-void inline arch_set_L1_entry(paddr p, vaddr v, union L1_entry *pt_addr,
+inline void arch_set_L1_entry(paddr p, vaddr v, union L1_entry *pt_addr,
                               ARCH_PFLAGS_t flags)
 {
         pt_addr[L1_INDEX(v)].entry = (p & PT_DESC_ADDR_MASK) | flags;
 }
-void inline arch_set_L2_entry(paddr p, vaddr v, union L2_entry *pt_addr,
+inline void arch_set_L2_entry(paddr p, vaddr v, union L2_entry *pt_addr,
                               ARCH_PFLAGS_t flags)
 {
         pt_addr[L2_INDEX(v)].entry = (p & PT_DESC_ADDR_MASK) | flags;
 }
-void inline arch_set_L3_entry(paddr p, vaddr v, union L3_entry *pt_addr,
+inline void arch_set_L3_entry(paddr p, vaddr v, union L3_entry *pt_addr,
                               ARCH_PFLAGS_t flags)
 {
         pt_addr[L3_INDEX(v)].entry = (p & PT_DESC_ADDR_MASK) | flags;

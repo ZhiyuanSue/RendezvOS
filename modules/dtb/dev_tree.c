@@ -196,7 +196,7 @@ error_t property_read_u16_arr(const struct property* prop, u16* arr, int n)
 {
         if (!prop || !arr || !n)
                 return -E_IN_PARAM;
-        if ((n * sizeof(u16)) > prop->len)
+        if ((n * sizeof(u16)) > (size_t)(prop->len))
                 n = prop->len / sizeof(u16);
         u16* src_ptr = prop->data;
         for (int i = 0; i < n; i++) {
@@ -208,7 +208,7 @@ error_t property_read_u32_arr(const struct property* prop, u32* arr, int n)
 {
         if (!prop || !arr || !n)
                 return -E_IN_PARAM;
-        if ((n * sizeof(u32)) > prop->len)
+        if ((n * sizeof(u32)) > (size_t)(prop->len))
                 n = prop->len / sizeof(u32);
         u32* src_ptr = prop->data;
         for (int i = 0; i < n; i++) {
@@ -220,7 +220,7 @@ error_t property_read_u64_arr(const struct property* prop, u64* arr, int n)
 {
         if (!prop || !arr || !n)
                 return -E_IN_PARAM;
-        if ((n * sizeof(u64)) > prop->len)
+        if ((n * sizeof(u64)) > (size_t)(prop->len))
                 n = prop->len / sizeof(u64);
         u64* src_ptr = prop->data;
         for (int i = 0; i < n; i++) {

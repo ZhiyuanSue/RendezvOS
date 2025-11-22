@@ -44,6 +44,7 @@ void rendezvos_time_init()
 }
 void rendezvos_do_time_irq(struct trap_frame *tf)
 {
+        (void)tf;
         percpu(tick_cnt)++;
         /*TODO: maybe need add the lock*/
         if (time_after(percpu(tick_cnt), jeffies)) {

@@ -22,6 +22,7 @@ DEFINE_PER_CPU(u64, smp_free_count);
 DEFINE_PER_CPU(u64, smp_next);
 static void sp_chunk_print(struct mem_chunk* tmp_chunk)
 {
+        (void)tmp_chunk;
         debug("\t\t| chunk 0x%x obj total %d used %d\n",
               (vaddr)tmp_chunk,
               tmp_chunk->nr_max_objs,
@@ -57,7 +58,7 @@ static void spmalloc_print(void)
 }
 static int bin_check(struct bin* b)
 {
-        for (int i = 0; i < b->size; i++) {
+        for (size_t i = 0; i < b->size; i++) {
                 if (((char*)(b->ptr))[i]
                     != (char)((vaddr)(b->ptr) + b->size + i * 2)) {
                         return -E_REND_TEST;
@@ -67,7 +68,7 @@ static int bin_check(struct bin* b)
 }
 static void bin_write(struct bin* b)
 {
-        for (int i = 0; i < b->size; i++) {
+        for (size_t i = 0; i < b->size; i++) {
                 ((char*)(b->ptr))[i] =
                         (char)((vaddr)(b->ptr) + b->size + i * 2);
         }

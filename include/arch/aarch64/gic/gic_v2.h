@@ -17,7 +17,7 @@ https://developer.aliyun.com/article/1532907
 
 static inline bool gic_v2_is_sgi(u32 irq_num)
 {
-        return (irq_num >= GIC_V2_SGI_START && irq_num <= GIC_V2_SGI_END);
+        return irq_num <= GIC_V2_SGI_END;
 }
 static inline bool gic_v2_is_ppi(u32 irq_num)
 {

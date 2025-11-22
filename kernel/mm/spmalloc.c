@@ -10,7 +10,7 @@ struct mem_allocator tmp_sp_alloctor = {
         .m_alloc = sp_alloc,
         .m_free = sp_free,
 };
-int slot_size[MAX_GROUP_SLOTS] =
+size_t slot_size[MAX_GROUP_SLOTS] =
         {8, 16, 24, 32, 48, 64, 96, 128, 256, 512, 1024, 2048};
 static int bytes_to_slot(size_t Bytes)
 {
@@ -86,7 +86,7 @@ error_t chunk_init(struct mem_chunk* chunk, int chunk_order, int allocator_id)
         INIT_LIST_HEAD(&chunk->chunk_list);
         INIT_LIST_HEAD(&chunk->full_obj_list);
         INIT_LIST_HEAD(&chunk->empty_obj_list);
-        int obj_size = sizeof(struct object_header) + slot_size[chunk_order];
+        size_t obj_size = sizeof(struct object_header) + slot_size[chunk_order];
         chunk->nr_used_objs = 0;
         int obj_num = (PAGE_SIZE * PAGE_PER_CHUNK - sizeof(struct mem_chunk))
                       / obj_size;

@@ -9,7 +9,7 @@ struct ms_test_data {
         ms_queue_node_t ms_node;
         u64 data;
 };
-extern int BSP_ID;
+extern u32 BSP_ID;
 #define percpu_ms_queue_test_number 10000
 #ifdef NR_CPUS
 #define ms_data_len percpu_ms_queue_test_number* NR_CPUS / 2

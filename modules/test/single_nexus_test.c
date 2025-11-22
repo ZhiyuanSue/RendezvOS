@@ -30,7 +30,7 @@ void nexus_print(struct nexus_node* nexus_root)
                       manage_page->page_left_nexus);
                 struct list_entry* free_entry = &manage_page->_free_list;
                 struct list_entry* tmp_fe = free_entry->next;
-                int free_entry_num = 0;
+                u64 free_entry_num = 0;
                 while (tmp_fe != free_entry) {
                         free_entry_num++;
                         tmp_fe = tmp_fe->next;
@@ -64,7 +64,7 @@ int nexus_test(void)
         debug("sizeof struct nexus_node is 0x%x\n", sizeof(struct nexus_node));
         /*after the nexus init, we try to print it first*/
         nexus_print(nexus_root);
-        for (int i = 0; i < NR_MAX_TEST; i++) {
+        for (u64 i = 0; i < NR_MAX_TEST; i++) {
                 int page_num = 2;
                 if (i % 2)
                         page_num = MIDDLE_PAGES;
@@ -79,12 +79,12 @@ int nexus_test(void)
                 }
         }
         nexus_print(nexus_root);
-        for (int i = 0; i < NR_MAX_TEST; i++) {
+        for (u64 i = 0; i < NR_MAX_TEST; i++) {
                 if (test_ptrs[i] && i % 2)
                         free_pages(test_ptrs[i], MIDDLE_PAGES, 0, nexus_root);
         }
         nexus_print(nexus_root);
-        for (int i = 0; i < NR_MAX_TEST; i++) {
+        for (u64 i = 0; i < NR_MAX_TEST; i++) {
                 if (test_ptrs[i] && !(i % 2))
                         free_pages(test_ptrs[i], 2, 0, nexus_root);
         }
@@ -110,7 +110,7 @@ int nexus_test(void)
 
         /*start new vspace nexus test*/
         vaddr start_test_addr = PAGE_SIZE;
-        for (int i = 0; i < NR_MAX_TEST; i++) {
+        for (u64 i = 0; i < NR_MAX_TEST; i++) {
                 int page_num = 2;
                 if (i % 2) {
                         page_num = MIDDLE_PAGES;
@@ -130,12 +130,12 @@ int nexus_test(void)
                 }
         }
         nexus_print(nexus_root);
-        for (int i = 0; i < NR_MAX_TEST; i++) {
+        for (u64 i = 0; i < NR_MAX_TEST; i++) {
                 if (test_ptrs[i] && i % 2)
                         free_pages(test_ptrs[i], MIDDLE_PAGES, vs, nexus_root);
         }
         nexus_print(nexus_root);
-        for (int i = 0; i < NR_MAX_TEST; i++) {
+        for (u64 i = 0; i < NR_MAX_TEST; i++) {
                 if (test_ptrs[i] && !(i % 2))
                         free_pages(test_ptrs[i], 2, vs, nexus_root);
         }

@@ -2,6 +2,7 @@
 
 void uart_open(void *base_addr)
 {
+        (void)base_addr;
 #ifdef _UART_16550A_
         uart_16550A_open();
 #elif defined _UART_PL011_

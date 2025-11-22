@@ -35,7 +35,7 @@ static void boot_get_uart_info(struct setup_info *setup_info_paddr,
         u_int32_t len = SWAP_ENDIANNESS_32(uart_prop_ptr->len);
 
         u32 *u32_data = (u32 *)data;
-        for (int index = 0; index < len; index += sizeof(u32) * 4) {
+        for (u_int32_t index = 0; index < len; index += sizeof(u32) * 4) {
                 u32 u32_1, u32_2, u32_3, u32_4;
                 u32_1 = SWAP_ENDIANNESS_32(*u32_data);
                 u32_data++;
@@ -114,12 +114,12 @@ void boot_map_pg_table(u64 kernel_start_addr, u64 kernel_end_addr,
         setup_info_paddr->dtb_ptr = (u64)dst_dtb_paddr;
         /*we need to consider the order of memcpy*/
         if (dst_dtb_paddr < src_dtb_paddr) {
-                for (int iter = 0; iter < MIDDLE_PAGE_SIZE; iter++)
+                for (u64 iter = 0; iter < MIDDLE_PAGE_SIZE; iter++)
                         *dst_dtb_paddr++ = *src_dtb_paddr++;
         } else if (dst_dtb_paddr > src_dtb_paddr) {
                 dst_dtb_paddr += MIDDLE_PAGE_SIZE;
                 src_dtb_paddr += MIDDLE_PAGE_SIZE;
-                for (int iter = 0; iter < MIDDLE_PAGE_SIZE; iter++)
+                for (u64 iter = 0; iter < MIDDLE_PAGE_SIZE; iter++)
                         *dst_dtb_paddr-- = *src_dtb_paddr--;
         }
 }

@@ -10,16 +10,20 @@ extern struct property_type property_types[255];
 void print_property_value_empty(enum property_type_enum p_type, void *data,
                                 uint32_t len)
 {
+        (void)p_type;
+        (void)data;
+        (void)len;
         return;
 }
 void print_property_value_u32(enum property_type_enum p_type, void *data,
                               uint32_t len)
 {
+        (void)p_type;
         u32 *u32_data;
 
         u32_data = (u32 *)data;
         print("<");
-        for (int index = 0; index < len; index += sizeof(u32)) {
+        for (u_int32_t index = 0; index < len; index += sizeof(u32)) {
                 print("0x%x", SWAP_ENDIANNESS_32(*u32_data));
                 if (index + sizeof(u32) >= len) {
                         print(">");
@@ -32,11 +36,12 @@ void print_property_value_u32(enum property_type_enum p_type, void *data,
 void print_property_value_u64(enum property_type_enum p_type, void *data,
                               uint32_t len)
 {
+        (void)p_type;
         u64 *u64_data;
 
         u64_data = (u64 *)data;
         print("<");
-        for (int index = 0; index < len; index += sizeof(u64)) {
+        for (u_int32_t index = 0; index < len; index += sizeof(u64)) {
                 print("0x%x", SWAP_ENDIANNESS_64(*u64_data));
                 if (index + sizeof(u64) >= len) {
                         print(">");
@@ -49,6 +54,8 @@ void print_property_value_u64(enum property_type_enum p_type, void *data,
 void print_property_value_string(enum property_type_enum p_type, void *data,
                                  uint32_t len)
 {
+        (void)p_type;
+        (void)len;
         print("%s\n", data);
 }
 void print_property_value_prop_encoded_array(enum property_type_enum p_type,
@@ -59,7 +66,7 @@ void print_property_value_prop_encoded_array(enum property_type_enum p_type,
         switch (p_type) {
         case PROPERTY_TYPE_REG: {
                 u32_data = (u32 *)data;
-                for (int index = 0; index < len; index += sizeof(u32)) {
+                for (u_int32_t index = 0; index < len; index += sizeof(u32)) {
                         print("<");
                         print("0x%x", SWAP_ENDIANNESS_32(*u32_data));
                         u32_data++;
@@ -93,10 +100,14 @@ void print_property_value_prop_encoded_array(enum property_type_enum p_type,
 void print_property_value_phandle(enum property_type_enum p_type, void *data,
                                   uint32_t len)
 {
+        (void)p_type;
+        (void)data;
+        (void)len;
 }
 void print_property_value_stringlist(enum property_type_enum p_type, void *data,
                                      uint32_t len)
 {
+        (void)p_type;
         const char *ch_data = (const char *)data;
         const char *ch_data_end = ch_data + len;
         char *ch = (char *)ch_data;

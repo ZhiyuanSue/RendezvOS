@@ -84,6 +84,8 @@ error_t elf_Phdr_64_load_handle(vaddr elf_start, Elf64_Phdr *phdr_ptr,
 error_t elf_Phdr_64_dynamic_handle(vaddr elf_start, Elf64_Phdr *phdr_ptr,
                                    VSpace *vs)
 {
+        (void)elf_start;
+        (void)vs;
         print_elf_ph64(phdr_ptr);
         return 0;
 }

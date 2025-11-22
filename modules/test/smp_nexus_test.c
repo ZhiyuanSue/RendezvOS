@@ -71,7 +71,7 @@ int smp_nexus_test(void)
         // }
 
         /*after the nexus init, we try to print it first*/
-        for (int i = 0; i < NR_MAX_TEST; i++) {
+        for (u64 i = 0; i < NR_MAX_TEST; i++) {
                 int page_num = 2;
                 percpu(smp_test_ptrs)[i] = get_free_page(page_num,
                                                          KERNEL_VIRT_OFFSET,
@@ -96,7 +96,7 @@ int smp_nexus_test(void)
         //                 pr_error("smp rb check fail\n");
         //         }
         // }
-        for (int i = 0; i < NR_MAX_TEST; i++) {
+        for (u64 i = 0; i < NR_MAX_TEST; i++) {
                 if (percpu(smp_test_ptrs)[i])
                         free_pages(percpu(smp_test_ptrs)[i],
                                    2,

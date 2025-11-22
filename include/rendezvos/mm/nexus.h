@@ -48,7 +48,7 @@ void nexus_migrate_vspace(struct nexus_node* src_nexus_root,
                           struct nexus_node* dst_nexus_root, VSpace* vs);
 
 /*page*/
-void* get_free_page(int page_num, vaddr target_vaddr,
+void* get_free_page(size_t page_num, vaddr target_vaddr,
                     struct nexus_node* nexus_root, VSpace* vs,
                     ENTRY_FLAGS_t flags);
 error_t free_pages(void* p, int page_num, VSpace* vs,

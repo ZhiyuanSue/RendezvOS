@@ -41,7 +41,7 @@ struct pci_node {
         u8 padding;
         /*device state*/
         u32 pci_device_flags;
-        u32 ref_count;
+        i32 ref_count;
 };
 extern struct pci_node* pci_root;
 

@@ -6,7 +6,7 @@
 #include <rendezvos/mm/vmm.h>
 #include <rendezvos/smp/percpu.h>
 extern char ap_entry;
-extern int BSP_ID;
+extern u32 BSP_ID;
 extern int NR_CPU;
 extern enum cpu_status CPU_STATE;
 extern struct cpuinfo cpu_info;

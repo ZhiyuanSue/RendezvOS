@@ -18,7 +18,7 @@ static void get_mem_prop_and_insert_region(struct fdt_property *fdt_prop)
         const char *data = (const char *)(fdt_prop->data);
         u_int32_t len = SWAP_ENDIANNESS_32(fdt_prop->len);
         u32 *u32_data = (u32 *)data;
-        for (int index = 0; index < len; index += sizeof(u32) * 4) {
+        for (u_int32_t index = 0; index < len; index += sizeof(u32) * 4) {
                 u32 u32_1, u32_2, u32_3, u32_4;
                 u64 addr, mem_len;
                 u32_1 = SWAP_ENDIANNESS_32(*u32_data);

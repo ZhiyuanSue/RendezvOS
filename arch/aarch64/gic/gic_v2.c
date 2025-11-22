@@ -4,7 +4,7 @@
 #include <rendezvos/mm/vmm.h>
 #include <rendezvos/mm/map_handler.h>
 #include <rendezvos/smp/percpu.h>
-extern int BSP_ID;
+extern u32 BSP_ID;
 
 void map_gic_mem(u64 gicd_base_addr, u64 gicd_len, u64 gicc_base_addr,
                  u64 gicc_len)

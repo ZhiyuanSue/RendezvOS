@@ -5,7 +5,7 @@
 extern char ap_start;
 extern char ap_start_end;
 extern int NR_CPU;
-extern int BSP_ID;
+extern u32 BSP_ID;
 extern enum cpu_status CPU_STATE;
 extern struct nexus_node* nexus_root;
 extern void clean_tmp_page_table();

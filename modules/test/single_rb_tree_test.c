@@ -70,7 +70,7 @@ bool check(int nr_nodes)
         }
         return true;
 }
-struct t_node* test_search(struct rb_root* root, int key)
+struct t_node* test_search(struct rb_root* root, u32 key)
 {
         struct rb_node* node = root->rb_root;
         while (node) {

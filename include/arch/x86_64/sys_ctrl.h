@@ -22,7 +22,7 @@
 // "a"(cpuid_op)); return (tmp_result);
 // }
 
-static void inline set_cr0_bit(u64 cr0_bit)
+inline static void set_cr0_bit(u64 cr0_bit)
 {
         u64 cr0_tmp;
 
@@ -33,7 +33,7 @@ static void inline set_cr0_bit(u64 cr0_bit)
                              : "r"(cr0_bit));
 }
 
-static void inline set_cr3_bit(u64 cr3_bit)
+inline static void set_cr3_bit(u64 cr3_bit)
 {
         u64 cr3_tmp;
 
@@ -44,7 +44,7 @@ static void inline set_cr3_bit(u64 cr3_bit)
                              : "r"(cr3_bit));
 }
 
-static void inline set_cr4_bit(u64 cr4_bit)
+inline static void set_cr4_bit(u64 cr4_bit)
 {
         u64 cr4_tmp;
 
@@ -55,7 +55,7 @@ static void inline set_cr4_bit(u64 cr4_bit)
                              : "r"(cr4_bit));
 }
 
-static void inline set_xcr(u32 xcr_number, u64 xcr_value)
+inline static void set_xcr(u32 xcr_number, u64 xcr_value)
 {
         u32 xcr_low;
         u32 xcr_high;
@@ -66,7 +66,7 @@ static void inline set_xcr(u32 xcr_number, u64 xcr_value)
                              :
                              : "a"(xcr_low), "c"(xcr_number), "d"(xcr_high));
 }
-static u64 inline get_xcr(u32 xcr_number)
+inline static u64 get_xcr(u32 xcr_number)
 {
         u64 xcr_value;
         u32 xcr_high;
@@ -79,59 +79,59 @@ static u64 inline get_xcr(u32 xcr_number)
         return (xcr_value);
 }
 
-static void inline set_mxcsr(u32 mxcsr_value) /*not bits*/
+inline static void set_mxcsr(u32 mxcsr_value) /*not bits*/
 {
         __asm__ __volatile__("ldmxcsr	%0" : : "m"(mxcsr_value));
 }
-static u32 inline get_mxcsr()
+inline static u32 get_mxcsr()
 {
         u32 mxcsr_tmp;
 
         __asm__ __volatile__("stmxcsr	%0" : "=m"(mxcsr_tmp));
         return (mxcsr_tmp);
 }
-static void inline lgdt(struct pseudo_descriptor *desc)
+inline static void lgdt(struct pseudo_descriptor *desc)
 {
         __asm__ __volatile__("lgdt      (%0)" : : "r"(desc) : "memory");
 }
-static void inline lidt(struct pseudo_descriptor *desc)
+inline static void lidt(struct pseudo_descriptor *desc)
 {
         __asm__ __volatile__("lidt	(%0)" : : "r"(desc) : "memory");
 }
-static void inline ltr(union desc_selector *selector)
+inline static void ltr(union desc_selector *selector)
 {
         __asm__ __volatile__("ltr       %0" : : "r"(*selector) : "memory");
 }
 
-static u64 inline rdmsr(u32 msr_id)
+inline static u64 rdmsr(u32 msr_id)
 {
         u64 val;
 
         __asm__ __volatile__("rdmsr" : "=a"(val) : "c"(msr_id));
         return (val);
 }
-static void inline wrmsr(u32 msr_id, u64 val)
+inline static void wrmsr(u32 msr_id, u64 val)
 {
         __asm__ __volatile__("wrmsr" ::"c"(msr_id), "a"(val));
 }
-static u64 inline rdmsrq(u32 msr_id)
+inline static u64 rdmsrq(u32 msr_id)
 {
         u64 low, high;
 
         __asm__ __volatile__("rdmsr" : "=a"(low), "=d"(high) : "c"(msr_id));
         return ((high << 32) | low);
 }
-static void inline wrmsrq(u32 msr_id, u64 val)
+inline static void wrmsrq(u32 msr_id, u64 val)
 {
         __asm__ __volatile__(
                 "wrmsr" ::"c"(msr_id), "a"((u32)val), "d"((u32)(val >> 32))
                 : "memory");
 }
-static void inline cli(void)
+inline static void cli(void)
 {
         __asm__ __volatile__("cli");
 }
-static void inline sti(void)
+inline static void sti(void)
 {
         __asm__ __volatile__("sti");
 }

@@ -52,5 +52,5 @@ void arch_set_L3_entry(paddr p, vaddr v, union L3_entry* pt_addr,
 ARCH_PFLAGS_t arch_decode_flags(int entry_level, ENTRY_FLAGS_t ENTRY_FLAGS);
 ENTRY_FLAGS_t arch_encode_flags(int entry_level, ARCH_PFLAGS_t ARCH_PFLAGS);
 
-error_t virt_mm_init(int cpu_id, struct setup_info* arch_setup_info);
+error_t virt_mm_init(u32 cpu_id, struct setup_info* arch_setup_info);
 #endif

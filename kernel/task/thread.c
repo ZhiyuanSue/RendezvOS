@@ -72,11 +72,13 @@ Thread_Base* create_thread(void* __func, int nr_parameter, ...)
 error_t delete_thread(Thread_Base* thread)
 {
         /*TODO*/
+        (void)thread;
         return 0;
 }
 error_t delete_task(Tcb_Base* tcb)
 {
         /*TODO*/
+        (void)tcb;
         return 0;
 }
 error_t thread_join(Tcb_Base* task, Thread_Base* thread)

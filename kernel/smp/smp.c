@@ -16,7 +16,7 @@ void start_smp(struct setup_info *arch_setup_info)
 
 void start_secondary_cpu(struct setup_info *arch_setup_info)
 {
-        int current_cpu_id = arch_setup_info->cpu_id;
+        u32 current_cpu_id = arch_setup_info->cpu_id;
 #ifdef HELLO
         print("[ CPU%d ]", current_cpu_id);
         hello_world();

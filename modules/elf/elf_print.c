@@ -227,9 +227,11 @@ void print_elf_ph64(Elf64_Phdr* phdr)
 }
 void print_elf_sh32(Elf32_Shdr* shdr)
 {
+        (void)shdr;
         debug("shdr addr 0x%x\n", shdr);
 }
 void print_elf_sh64(Elf64_Shdr* shdr)
 {
+        (void)shdr;
         debug("shdr addr 0x%x\n", shdr);
 }

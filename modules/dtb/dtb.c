@@ -260,7 +260,7 @@ const char *fdt_get_string(const void *fdt, int stroffset, int *lenp)
 {
         const char *s;
 
-        if (stroffset > fdt_size_dt_strings(fdt))
+        if (stroffset > (int)fdt_size_dt_strings(fdt))
                 return (NULL);
         s = (const char *)fdt + fdt_off_dt_strings(fdt) + stroffset;
         if (lenp)

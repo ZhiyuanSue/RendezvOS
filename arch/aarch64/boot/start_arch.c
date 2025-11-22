@@ -18,7 +18,7 @@
 #include <rendezvos/time.h>
 
 extern u64 L2_table;
-int BSP_ID = 0;
+u32 BSP_ID = 0;
 extern struct allocator *kallocator;
 struct cpuinfo cpu_info = {0};
 
@@ -91,6 +91,7 @@ prepare_arch_error:
 error_t arch_cpu_info(struct setup_info *arch_setup_info)
 {
         /*read MPIDR to get the cpu affinity*/
+        (void)arch_setup_info;
         get_cpu_info();
         BSP_ID = 0;
         return 0;

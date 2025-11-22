@@ -34,7 +34,7 @@ bool memory_regions_entry_empty(int index)
 int memory_regions_reserve_region(paddr phy_start, paddr phy_end)
 {
         int used_region = -1;
-        for (int i = 0; i < m_regions.region_count; i++) {
+        for (u64 i = 0; i < m_regions.region_count; i++) {
                 if (m_regions.memory_regions_entry_empty(i))
                         continue;
                 struct region *reg = &m_regions.memory_regions[i];
@@ -79,7 +79,7 @@ int memory_regions_reserve_region_with_length(size_t length,
                                               paddr *phy_start, paddr *phy_end)
 {
         int used_region = -1;
-        for (int i = 0; i < m_regions.region_count; i++) {
+        for (u64 i = 0; i < m_regions.region_count; i++) {
                 if (m_regions.memory_regions_entry_empty(i))
                         continue;
                 struct region *reg = &m_regions.memory_regions[i];
@@ -239,7 +239,7 @@ calculate_avaliable_phy_addr_region(paddr *avaliable_phy_addr_start,
 
         *avaliable_phy_addr_end = 0;
         *total_phy_page_frame_number = 0;
-        for (int i = 0; i < m_regions.region_count; i++) {
+        for (u64 i = 0; i < m_regions.region_count; i++) {
                 if (m_regions.memory_regions_entry_empty(i))
                         continue;
 
@@ -290,7 +290,7 @@ static inline void split_pmm_zones(paddr lower, paddr upper,
                 default:
                         break;
                 }
-                for (int i = 0; i < m_regions.region_count; i++) {
+                for (u64 i = 0; i < m_regions.region_count; i++) {
                         if (m_regions.memory_regions_entry_empty(i))
                                 continue;
                         /*total 6 cases*/
@@ -345,7 +345,7 @@ static inline error_t generate_zone_data(paddr zone_data_phy_start,
                 zone = &(mem_zones[mem_zone]);
                 zone->zone_total_pages = 0;
                 u64 sec_id_count = 0;
-                for (int i = 0; i < m_regions.region_count; i++) {
+                for (u64 i = 0; i < m_regions.region_count; i++) {
                         if (m_regions.memory_regions_entry_empty(i))
                                 continue;
                         /*total 6 cases*/
@@ -376,7 +376,7 @@ static inline error_t generate_zone_data(paddr zone_data_phy_start,
                                 list_add_head(&sec->section_list,
                                               &zone->section_list);
                         }
-                        for (int i = 0; i < sec->page_count; i++) {
+                        for (size_t i = 0; i < sec->page_count; i++) {
                                 Page *p_ptr = Sec_phy_Page(sec, i);
                                 if (p_ptr) {
                                         INIT_LIST_HEAD(&p_ptr->rmap_list);

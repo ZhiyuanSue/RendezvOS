@@ -4,7 +4,7 @@
 #include <rendezvos/mm/nexus.h>
 #include <rendezvos/mm/spmalloc.h>
 #include <rendezvos/smp/percpu.h>
-extern int BSP_ID;
+extern u32 BSP_ID;
 extern u64 boot_stack;
 extern struct allocator* kallocator;
 DEFINE_PER_CPU(u64, boot_stack_bottom);
@@ -12,7 +12,7 @@ DEFINE_PER_CPU(struct map_handler, Map_Handler);
 DEFINE_PER_CPU(struct nexus_node*, nexus_root);
 DEFINE_PER_CPU(VSpace*, current_vspace);
 VSpace root_vspace;
-error_t virt_mm_init(int cpu_id, struct setup_info* arch_setup_info)
+error_t virt_mm_init(u32 cpu_id, struct setup_info* arch_setup_info)
 {
         if (cpu_id == BSP_ID) {
                 sys_init_map();

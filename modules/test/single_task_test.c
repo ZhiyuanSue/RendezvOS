@@ -9,7 +9,7 @@ int task_test(void)
 {
         pr_info("%x apps\n", _num_app);
         u64 *app_start_ptr, *app_end_ptr;
-        for (int i = 0; i < _num_app; i++) {
+        for (u64 i = 0; i < _num_app; i++) {
                 app_start_ptr =
                         (u64 *)((vaddr)(&_num_app) + (i * 2 + 1) * sizeof(u64));
                 app_end_ptr =

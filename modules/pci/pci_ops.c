@@ -28,6 +28,7 @@ struct pci_node *pci_scan_device(pci_scan_callback callback, u8 bus, u8 device,
                                  pci_common_header_t *common,
                                  struct pci_node *parent_pci_tree_node)
 {
+        (void)parent_pci_tree_node;
         u32 *ptr = (u32 *)common;
         struct pci_node *pci_device = NULL;
         error_t e = 0;
@@ -128,16 +129,21 @@ bool pci_bar_resource_assigned(struct pci_node *pci_dev, int bar_number)
         /*TODO:we directly reuse the bios assignment,
         but sometimes we need to assign it by ourself,
         we need to check the value of origin val*/
+        (void)pci_dev;
+        (void)bar_number;
         return true;
 }
 int pci_assign_irq(struct pci_node *pci_dev)
 {
+        (void)pci_dev;
         return -1;
 }
 u64 pci_assign_bar_resource(struct pci_node *pci_dev, int bar_number)
 {
         /*TODO:we directly reuse the bios assignment,
         but sometimes we need to assign it by ourself*/
+        (void)pci_dev;
+        (void)bar_number;
         return 0;
 }
 error_t pci_scan_bar(struct pci_node *pci_dev, const pci_header_t *hdr)
@@ -281,11 +287,13 @@ static error_t pci_disable_command(struct pci_node *pci_device)
 /*power part*/
 error_t pci_power_up(struct pci_node *pci_device)
 {
+        (void)pci_device;
         return 0;
 }
 
 error_t pci_power_down(struct pci_node *pci_device)
 {
+        (void)pci_device;
         return 0;
 }
 

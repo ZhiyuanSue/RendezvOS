@@ -7,7 +7,7 @@
 extern int log_level;
 extern char _bss_start, _bss_end;
 extern char _end;
-extern int BSP_ID;
+extern u32 BSP_ID;
 
 void cmain(struct setup_info *arch_setup_info)
 {

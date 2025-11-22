@@ -10,7 +10,7 @@
 
 extern char _per_cpu_end, _per_cpu_start;
 extern u64 __per_cpu_offset[RENDEZVOS_MAX_CPU_NUMBER];
-extern int cpu_number;
+extern u32 cpu_number;
 #define per_cpu_offset(x) (__per_cpu_offset[x])
 
 #define per_cpu(var, cpu)                                              \
