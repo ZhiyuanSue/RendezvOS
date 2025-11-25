@@ -6,7 +6,7 @@
 #include <arch/x86_64/time.h>
 #include <common/bit.h>
 #include <modules/log/log.h>
-struct rtc_time get_rtc_time()
+struct rtc_time get_rtc_time(void)
 {
         struct rtc_time res;
         u8 rtc_data;

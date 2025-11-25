@@ -35,7 +35,7 @@ struct setup_info {
 };
 
 error_t prepare_arch(struct setup_info *arch_setup_info);
-error_t start_arch(int cpu_id);
+error_t arch_start_core(int cpu_id);
 error_t arch_cpu_info(struct setup_info *arch_setup_info);
-error_t arch_parser_platform(struct setup_info *arch_setup_info);
+error_t arch_start_platform(struct setup_info *arch_setup_info);
 #endif

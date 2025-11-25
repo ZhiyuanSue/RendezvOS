@@ -25,7 +25,7 @@ void start_secondary_cpu(struct setup_info *arch_setup_info)
                 print("[ERROR] virt mm init error\n");
                 return;
         }
-        if (start_arch(current_cpu_id)) {
+        if (arch_start_core(current_cpu_id)) {
                 print("[ERROR] start cpu arch fail\n");
                 return;
         }

@@ -4,7 +4,7 @@
 #include <common/types.h>
 #include <common/mm.h>
 #include "barrier.h"
-static inline void arch_tlb_invalidate_all()
+static inline void arch_tlb_invalidate_all(void)
 {
         dsb(SY);
         __asm__ __volatile__("tlbi alle1;");

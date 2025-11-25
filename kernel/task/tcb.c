@@ -10,7 +10,7 @@ u64 thread_ustack_page_num = 8;
 extern struct allocator* kallocator;
 extern struct nexus_node* nexus_root;
 
-Task_Manager* init_proc()
+Task_Manager* init_proc(void)
 {
         percpu(core_tm) = new_task_manager();
         /*create the root task and init it*/
@@ -94,7 +94,7 @@ error_t add_thread_to_manager(Task_Manager* core_tm, Thread_Base* thread)
         return 0;
 }
 
-Tcb_Base* new_task()
+Tcb_Base* new_task(void)
 {
         struct allocator* cpu_allocator = percpu(kallocator);
         if (!cpu_allocator)
@@ -111,7 +111,7 @@ Tcb_Base* new_task()
         }
         return tcb;
 }
-Thread_Base* new_thread()
+Thread_Base* new_thread(void)
 {
         struct allocator* cpu_allocator = percpu(kallocator);
         if (!cpu_allocator)
@@ -135,7 +135,7 @@ Thread_Base* new_thread()
         }
         return thread;
 }
-Thread_Init_Para* new_init_parameter()
+Thread_Init_Para* new_init_parameter(void)
 {
         struct allocator* cpu_allocator = percpu(kallocator);
         if (!cpu_allocator)

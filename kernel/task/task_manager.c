@@ -16,7 +16,7 @@ Thread_Base* round_robin_schedule(Task_Manager* tm)
         }
         return container_of(next, Thread_Base, sched_thread_list);
 }
-Task_Manager* new_task_manager()
+Task_Manager* new_task_manager(void)
 {
         struct allocator* cpu_allocator = percpu(kallocator);
         Task_Manager* tm = (Task_Manager*)(cpu_allocator->m_alloc(

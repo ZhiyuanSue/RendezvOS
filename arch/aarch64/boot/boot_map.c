@@ -9,6 +9,16 @@ extern void boot_Error();
 
 extern struct property_type property_types[255];
 const char *uart_compatible = "arm,pl011\0";
+/*
+ * @brief before the virtual address space start,
+ parser the dtb, which info is in setup_info_paddr,
+ and get the uart start and len
+ *
+ * @param setup_info_paddr the setup info structure, including the dtb
+ * @param uart_phy_addr the ptr that upper level function get the uart physical
+ address
+ * @uart_len the ptr that the upper level function get the uart len
+ */
 static void boot_get_uart_info(struct setup_info *setup_info_paddr,
                                u64 *uart_phy_addr, u64 *uart_len)
 {
@@ -49,7 +59,18 @@ static void boot_get_uart_info(struct setup_info *setup_info_paddr,
                 *uart_len = (((u64)u32_3) << 32) + u32_4;
         }
 }
-/*take care of the vaddr and paddr ,here most are paddr*/
+/*
+ * @brief in AArch64 boot, we need to build the page table before begin the vm
+ *
+ * @param kernel_start_addr the kernel start virtual addr decide by the linker script 
+ * @param kernel_end_addr the kernel end virtual addr decide by the linker script
+ * @param L0_table_paddr the level0 page table paddr
+ * @param L1_table_paddr the level1 page table paddr
+ * @param L2_table_paddr the level2 page table paddr
+ * @param L3_table_paddr the level3 page table paddr
+ * @param setup_info_paddr the setup info structure paddr
+ * @note take care of the vaddr and paddr ,here most are paddr, we using the 4 level page system
+ */
 void boot_map_pg_table(u64 kernel_start_addr, u64 kernel_end_addr,
                        union L0_entry *L0_table_paddr,
                        union L1_entry *L1_table_paddr,

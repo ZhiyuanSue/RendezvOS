@@ -8,8 +8,8 @@ extern int NR_CPU;
 extern u32 BSP_ID;
 extern enum cpu_status CPU_STATE;
 extern struct nexus_node* nexus_root;
-extern void clean_tmp_page_table();
-static void copy_ap_start_code()
+extern void clean_tmp_page_table(void);
+static void copy_ap_start_code(void)
 {
         char* dest_ap_start_ptr =
                 (char*)KERNEL_PHY_TO_VIRT(_RENDEZVOS_X86_64_AP_PHY_ADDR_);
@@ -18,7 +18,7 @@ static void copy_ap_start_code()
                src_ap_start_ptr,
                (vaddr)&ap_start_end - (vaddr)&ap_start);
 }
-static void clean_ap_start_code()
+static void clean_ap_start_code(void)
 {
         /*clean the ap start code for avoid atteck*/
         char* dest_ap_start_ptr =

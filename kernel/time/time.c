@@ -15,7 +15,7 @@ __attribute__((optimize("O0"))) u64 loop_delay(volatile u64 loop_cnt)
                 ;
         return cnt;
 }
-static inline u64 timer_calibration()
+static inline u64 timer_calibration(void)
 {
         volatile u64 lpj = 0;
         i64 tick_val;
@@ -32,7 +32,7 @@ static inline u64 timer_calibration()
         }
         return lpj / 25;
 }
-void rendezvos_time_init()
+void rendezvos_time_init(void)
 {
         percpu(tick_cnt) = jeffies;
         register_irq_handler(

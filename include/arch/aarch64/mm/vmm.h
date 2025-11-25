@@ -4,13 +4,13 @@
 #include <arch/aarch64/sync/tlb.h>
 #include <arch/aarch64/sys_ctrl.h>
 
-static inline paddr arch_get_current_kernel_vspace_root()
+static inline paddr arch_get_current_kernel_vspace_root(void)
 {
         u64 ttbr1_tmp;
         mrs("TTBR1_EL1", ttbr1_tmp);
         return ttbr1_tmp;
 }
-static inline paddr arch_get_current_user_vspace_root()
+static inline paddr arch_get_current_user_vspace_root(void)
 {
         u64 ttbr0_tmp;
         mrs("TTBR0_EL1", ttbr0_tmp);

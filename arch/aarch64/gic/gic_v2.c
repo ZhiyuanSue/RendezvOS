@@ -5,7 +5,15 @@
 #include <rendezvos/mm/map_handler.h>
 #include <rendezvos/smp/percpu.h>
 extern u32 BSP_ID;
-
+/*
+ * @brief map the arm gic v2 register to a virtual address
+ *
+ * @param gicd_base_addr using the base addr and length to indicate the range of gic distributor
+ * @param gicd_len gicd length
+ * @gicc_base_addr using the base addr and length to indicate the range of the gic controlor
+ * @gicc_len gicc length
+ * @note using PAGE_ENTRY_DEVICE to indicate that it's a device memory
+ */
 void map_gic_mem(u64 gicd_base_addr, u64 gicd_len, u64 gicc_base_addr,
                  u64 gicc_len)
 {
@@ -33,7 +41,7 @@ void map_gic_mem(u64 gicd_base_addr, u64 gicd_len, u64 gicc_base_addr,
                     NULL);
         }
 }
-void gic_v2_probe()
+void gic_v2_probe(void)
 {
         char* reg_property = "reg";
         struct device_node* gic_node =
@@ -122,7 +130,7 @@ void gicc_v2_eoi(union irq_source source)
         gic.gicc->GICC_EOIR = source.irq_source_value;
         isb();
 }
-union irq_source gicc_v2_read_irq()
+union irq_source gicc_v2_read_irq(void)
 {
         /*read the GICC_IAR reg*/
         u32 gicc_iar_value = gic.gicc->GICC_IAR;

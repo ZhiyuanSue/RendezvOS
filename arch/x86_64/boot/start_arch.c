@@ -192,19 +192,32 @@ struct pci_node *pci_tree_build_callback(u8 bus, u8 device, u8 func,
 
         return pci_device_node;
 }
-error_t arch_parser_platform(struct setup_info *arch_setup_info)
+/*
+ * @brief this function is after the vmm start, so we can use kallocator now,
+ in this function, we need to handle all of the platform part, e.g. aarch64 dtb
+ part, and the gic part
+ * @param arch_setup_info the setup info structure, which include the dtb
+ physical address
+ */
+error_t arch_start_platform(struct setup_info *arch_setup_info)
 {
         struct allocator *malloc = per_cpu(kallocator, BSP_ID);
         error_t e = acpi_init(arch_setup_info->rsdp_addr);
         if (e)
-                goto arch_parser_platform_error;
+                goto arch_start_platform_error;
         /*alloc a pci root node without any info*/
         pci_root = malloc->m_alloc(malloc, sizeof(struct pci_node));
         e = pci_scan_all(pci_tree_build_callback, pci_root);
-arch_parser_platform_error:
+arch_start_platform_error:
         return e;
 }
-error_t start_arch(int cpu_id)
+/*
+ * @brief the arch_start_core function is used for each core start,
+ * arch_start_platform only start once, but the arch_start_cpu start for each
+ * core
+ * @param cpu_id point out which cpu core we try to start
+ */
+error_t arch_start_core(int cpu_id)
 {
         set_gdt(cpu_id);
         /*

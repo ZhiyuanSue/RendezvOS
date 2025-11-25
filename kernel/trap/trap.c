@@ -33,7 +33,7 @@ void trap_handler(struct trap_frame *tf)
                 }
         }
 }
-void init_interrupt()
+void init_interrupt(void)
 {
         for (int i = 0; i < NR_IRQ; i++) {
                 percpu(irq_vector[i].irq_handler) = NULL;

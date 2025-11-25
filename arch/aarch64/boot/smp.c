@@ -12,6 +12,11 @@ extern enum cpu_status CPU_STATE;
 extern struct cpuinfo cpu_info;
 extern struct nexus_node* nexus_root;
 DEFINE_PER_CPU(struct device_node*, cpu_device_node);
+/*
+ * @brief start smp cores, we get the smp info from dtb tree, and reuse the arch
+ * setup info structure, then using psci start other cores one by one
+ * @param arch_setup_info the aarch64 setup info, which is vaddr pointer
+ */
 void arch_start_smp(struct setup_info* arch_setup_info)
 {
         NR_CPU = 1;

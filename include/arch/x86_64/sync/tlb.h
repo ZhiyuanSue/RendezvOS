@@ -7,13 +7,14 @@ static inline void invlpg(vaddr addr)
         __asm__ __volatile__("invlpg (%0)" ::"r"(addr) : "memory");
 }
 
-static inline void arch_tlb_invalidate_all()
+static inline void arch_tlb_invalidate_all(void)
 {
-        __asm__ __volatile__("mov %eax,%cr3;"
-                             "mov %cr3,%eax;"
+        u64 cr3_val;
+        __asm__ __volatile__("mov %%cr3, %0\n\t"
+                             "mov %0, %%cr3"
+                             : "=r"(cr3_val)
                              :
-                             :
-                             : "a");
+                             : "memory");
 }
 
 static inline void arch_tlb_invalidate_page(u64 vspace_id, vaddr addr)

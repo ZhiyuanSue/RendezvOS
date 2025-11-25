@@ -11,7 +11,7 @@ function) then the stack frame is the only one thread_entry frame then here we
 change the return addr, change the parameter then after this return , we will
 run the target function
 */
-static void thread_entry()
+static void thread_entry(void)
 {
         // pr_info("go into the thread_entry\n");
         Thread_Base* current_thread = percpu(core_tm)->current_thread;

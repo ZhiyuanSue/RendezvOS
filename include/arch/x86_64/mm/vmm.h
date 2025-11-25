@@ -12,14 +12,14 @@
 #define CR3_PCID(pcid)    ((pcid) & ((1 << 12) - 1))
 
 extern u32 max_phy_addr_width;
-static inline paddr arch_get_current_kernel_vspace_root()
+static inline paddr arch_get_current_kernel_vspace_root(void)
 {
         /* read the cr3*/
         paddr cr3_tmp;
         __asm__ __volatile__("movq %%cr3,%0;" : "=&r"(cr3_tmp) :);
         return CR3_ADDR(cr3_tmp, max_phy_addr_width);
 }
-static inline paddr arch_get_current_user_vspace_root()
+static inline paddr arch_get_current_user_vspace_root(void)
 {
         paddr cr3_tmp;
         __asm__ __volatile__("movq %%cr3,%0;" : "=&r"(cr3_tmp) :);

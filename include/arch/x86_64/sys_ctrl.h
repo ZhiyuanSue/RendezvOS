@@ -83,7 +83,7 @@ inline static void set_mxcsr(u32 mxcsr_value) /*not bits*/
 {
         __asm__ __volatile__("ldmxcsr	%0" : : "m"(mxcsr_value));
 }
-inline static u32 get_mxcsr()
+inline static u32 get_mxcsr(void)
 {
         u32 mxcsr_tmp;
 

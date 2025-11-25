@@ -7,7 +7,7 @@
 extern u64 L0_table;
 extern u64 *MAP_L1_table, *MAP_L2_table, *MAP_L3_table;
 DEFINE_PER_CPU(struct spin_lock_t, handler_spin_lock);
-void sys_init_map()
+void sys_init_map(void)
 {
         ARCH_PFLAGS_t flags;
         paddr vspace_root_addr = arch_get_current_kernel_vspace_root();

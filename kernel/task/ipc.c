@@ -11,7 +11,7 @@ void ipc_server_thread(void)
                 schedule(percpu(core_tm));
         }
 }
-error_t create_ipc_server_thread()
+error_t create_ipc_server_thread(void)
 {
         Thread_Base* ipc_server_t;
         ipc_server_t = create_thread((void*)ipc_server_thread, 0);

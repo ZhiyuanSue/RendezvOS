@@ -16,7 +16,7 @@ i64 get_new_pid() /*we think the vspace id is the same as the pid*/
         unlock_mcs(&pid_manager.spin_ptr, &percpu(pid_spin_lock));
         return pid;
 }
-i64 get_new_tid()
+i64 get_new_tid(void)
 {
         lock_mcs(&tid_manager.spin_ptr, &percpu(tid_spin_lock));
         i64 tid = tid_manager.id++;

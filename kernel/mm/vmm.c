@@ -34,7 +34,7 @@ error_t virt_mm_init(u32 cpu_id, struct setup_info* arch_setup_info)
         return 0;
 }
 
-VSpace* new_vspace()
+VSpace* new_vspace(void)
 {
         struct allocator* cpu_allocator = percpu(kallocator);
         if (!cpu_allocator)

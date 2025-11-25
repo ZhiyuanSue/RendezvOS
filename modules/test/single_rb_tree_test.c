@@ -106,7 +106,7 @@ void rb_tree_test_remove(struct t_node* node, struct rb_root* root)
 {
         RB_Remove(&node->rb, root);
 }
-void rb_tree_test_init()
+void rb_tree_test_init(void)
 {
         for (int i = 0; i < max_node_num; i++) {
                 next = rand64(next);

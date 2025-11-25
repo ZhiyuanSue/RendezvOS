@@ -36,14 +36,14 @@ void cmain(struct setup_info *arch_setup_info)
                 print("[ERROR] virt mm init error\n");
                 return;
         }
-        if (arch_parser_platform(arch_setup_info)) {
+        if (arch_start_platform(arch_setup_info)) {
                 print("[ERROR] arch parser platform\n");
                 return;
         }
         /*TODO:after we init the pmm module, we can alloc some pages for
          * stack,and no more boot stack：in x86,please use LSS, see
          * manual 6.8.3*/
-        if (start_arch(BSP_ID)) {
+        if (arch_start_core(BSP_ID)) {
                 print("[ERROR] start arch\n");
                 return;
         }

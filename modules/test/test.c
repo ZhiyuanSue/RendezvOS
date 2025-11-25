@@ -1,7 +1,7 @@
 #include <modules/test/test.h>
 #include <rendezvos/task/tcb.h>
 
-void BSP_test()
+void BSP_test(void)
 {
 #ifdef TEST
         single_cpu_test();
@@ -9,7 +9,7 @@ void BSP_test()
 #endif
         schedule(percpu(core_tm));
 }
-void AP_test()
+void AP_test(void)
 {
 #ifdef TEST
         multi_cpu_test();

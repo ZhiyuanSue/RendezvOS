@@ -27,7 +27,7 @@ inline void arch_set_L3_entry(paddr p, vaddr v, union L3_entry *pt_addr,
 {
         pt_addr[L3_INDEX(v)].entry = (p & PT_DESC_ADDR_MASK) | flags;
 }
-void mair_init()
+void mair_init(void)
 {
         /*we use the mair register to indicate the memory attr,so we need init
          * it*/

@@ -23,7 +23,7 @@ void reserve_per_cpu_region(paddr *phy_kernel_end)
         *phy_kernel_end += (RENDEZVOS_MAX_CPU_NUMBER - 1) * per_cpu_size;
         calculate_per_cpu_offset();
 }
-void calculate_per_cpu_offset()
+void calculate_per_cpu_offset(void)
 {
         u64 per_cpu_size = (u64)&_per_cpu_end - (u64)&_per_cpu_start;
         for (int i = 2; i < RENDEZVOS_MAX_CPU_NUMBER; i++) {

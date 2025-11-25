@@ -6,7 +6,7 @@
 struct acpi_table_madt *madt_table;
 extern int NR_CPU;
 extern enum cpu_status CPU_STATE;
-error_t parser_apic()
+error_t parser_apic(void)
 {
         NR_CPU = 0;
         for (int i = 0; i < RENDEZVOS_MAX_CPU_NUMBER; i++) {

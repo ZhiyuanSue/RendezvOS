@@ -10,7 +10,7 @@
 #define ADDR_SIGN_MASK (1ULL << (ADDR_BITS - 1))
 
 typedef u64 tagged_ptr_t;
-static inline tagged_ptr_t tp_new_none()
+static inline tagged_ptr_t tp_new_none(void)
 {
         return 0;
 }

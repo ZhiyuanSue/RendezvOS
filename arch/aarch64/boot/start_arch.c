@@ -23,11 +23,19 @@ extern struct allocator *kallocator;
 struct cpuinfo cpu_info = {0};
 
 extern void syscall(struct trap_frame *syscall_ctx);
+/*
+ * @brief the init_syscall function is register the syscall function as the 0x15
+ irq under the AArch64 architecture, this irq means syscall
+ */
 static void init_syscall(void)
 {
         /*TODO:0x15 need defined by macros*/
         register_irq_handler(0x15, syscall, IRQ_NO_ATTR);
 }
+/*
+ * @brief get_cpu_info read some cpu register and read the cpu infomation to the
+ * structure cpu_info
+ */
 static void get_cpu_info(void)
 {
         u64 MPIDR_VAL;
@@ -43,6 +51,11 @@ static void get_cpu_info(void)
                 cpu_info.MP = true;
         }
 }
+/*
+ * @brief mapping the aarch64 dtb
+ * @param arch_setup_info the setup info structure, which include the dtb
+ * physical address
+ */
 static void map_dtb(struct setup_info *arch_setup_info)
 {
         vaddr vaddr;
@@ -51,13 +64,13 @@ static void map_dtb(struct setup_info *arch_setup_info)
         ARCH_PFLAGS_t flags;
 
         /*
-            map the dtb, using the linux boot protocol, which define that:
-            the dtb must be 8 byte align, and less then 2m
-            as it haven't defined that dtb must 2m align
+         * map the dtb, using the linux boot protocol, which define that:
+         * the dtb must be 8 byte align, and less then 2m
+         * as it haven't defined that dtb must 2m align
 
-            we have memcpy at boot map stage,
-            and we can sure that now the dtb data is 2m align,
-            so we just need to map only one 2m ,not 4m now
+         * we have memcpy at boot map stage,
+         * and we can sure that now the dtb data is 2m align,
+         * so we just need to map only one 2m ,not 4m now
         */
         vaddr = ROUND_UP(arch_setup_info->map_end_virt_addr, MIDDLE_PAGE_SIZE);
         paddr = ROUND_DOWN(arch_setup_info->dtb_ptr, MIDDLE_PAGE_SIZE);
@@ -71,7 +84,11 @@ static void map_dtb(struct setup_info *arch_setup_info)
         arch_setup_info->map_end_virt_addr =
                 arch_setup_info->boot_dtb_header_base_addr + MIDDLE_PAGE_SIZE;
 }
-
+/*
+ * @brief here just map and check the dtb
+ * @param arch_setup_info the setup info structure, which include the dtb
+ * physical address
+ */
 error_t prepare_arch(struct setup_info *arch_setup_info)
 {
         map_dtb(arch_setup_info);
@@ -88,6 +105,11 @@ error_t prepare_arch(struct setup_info *arch_setup_info)
 prepare_arch_error:
         return (-E_RENDEZVOS);
 }
+/*
+ * @brief use get_cpu_info to get cpu infomation and set current cpu as bsp
+ * @param arch_setup_info the setup info structure, which include the dtb
+ * physical address
+ */
 error_t arch_cpu_info(struct setup_info *arch_setup_info)
 {
         /*read MPIDR to get the cpu affinity*/
@@ -96,6 +118,14 @@ error_t arch_cpu_info(struct setup_info *arch_setup_info)
         BSP_ID = 0;
         return 0;
 }
+/*
+ * @brief recursively build the device tree structure from dtb file
+ * @param malloc the allocator of each device node space
+ * @param parent the parent node, used for tree build
+ * @param fdt the dtb ptr
+ * @param offset the offset from dtb
+ * @param depth the tree node depth
+ */
 struct device_node *build_device_tree(struct allocator *malloc,
                                       struct device_node *parent, void *fdt,
                                       int offset, int depth)
@@ -154,8 +184,14 @@ struct device_node *build_device_tree(struct allocator *malloc,
         }
         return curr_node;
 }
-
-error_t arch_parser_platform(struct setup_info *arch_setup_info)
+/*
+ * @brief this function is after the vmm start, so we can use kallocator now,
+ in this function, we need to handle all of the platform part, e.g. aarch64 dtb
+ part, and the gic part
+ * @param arch_setup_info the setup info structure, which include the dtb
+ physical address
+ */
+error_t arch_start_platform(struct setup_info *arch_setup_info)
 {
         struct allocator *malloc = per_cpu(kallocator, BSP_ID);
         struct fdt_header *dtb_header_ptr =
@@ -169,7 +205,13 @@ error_t arch_parser_platform(struct setup_info *arch_setup_info)
         gic.init_distributor();
         return 0;
 }
-error_t start_arch(int cpu_id)
+/*
+ * @brief the arch_start_core function is used for each core start,
+ * arch_start_platform only start once, but the arch_start_cpu start for each
+ * core
+ * @param cpu_id point out which cpu core we try to start
+ */
+error_t arch_start_core(int cpu_id)
 {
         /*write in the cpuid*/
         msr("TPIDR_EL1", __per_cpu_offset[cpu_id]);

@@ -6,21 +6,21 @@
 // TODO:fix this include problem in vscode
 u32 timer_irq_num = AARCH64_IRQ_TO_TRAP_ID(30);
 u64 time_irq_cycle;
-tick_t get_phy_cnt()
+tick_t get_phy_cnt(void)
 {
         tick_t cntpct_el0_val;
         isb();
         mrs("CNTPCT_EL0", cntpct_el0_val);
         return cntpct_el0_val;
 }
-tick_t get_virt_cnt()
+tick_t get_virt_cnt(void)
 {
         tick_t cntvct_el0_val;
         isb();
         mrs("CNTVCT_EL0", cntvct_el0_val);
         return cntvct_el0_val;
 }
-tick_t get_cval()
+tick_t get_cval(void)
 {
         tick_t cntv_cval;
         isb();

@@ -6,7 +6,7 @@ DEFINE_PER_CPU(Thread_Base*, idle_thread_ptr);
 /* This is the idle thread function*/
 char init_thread_name[] = "init_thread";
 char idle_thread_name[] = "idle_thread";
-void idle_thread()
+void idle_thread(void)
 {
         while (1) {
                 /*TODO:might close the int*/

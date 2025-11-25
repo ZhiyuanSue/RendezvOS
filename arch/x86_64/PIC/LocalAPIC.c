@@ -118,7 +118,7 @@ bool map_LAPIC(void)
 static tick_t apic_hz_per_second;
 // Here we use PIT to calibration
 // if possible, use HPET instead
-tick_t APIC_timer_calibration()
+tick_t APIC_timer_calibration(void)
 {
 #define APIC_CALIBRATE_MS   25
 #define APIC_CALIBRATE_TIME 10
@@ -151,7 +151,7 @@ tick_t APIC_timer_calibration()
         apic_hz_per_second = total_hz_cnt;
         return total_hz_cnt;
 }
-void APIC_timer_reset()
+void APIC_timer_reset(void)
 {
         u32 init_cnt = (apic_hz_per_second / INT_PER_SECOND) >> 4;
         u32 lvt_timer_val = 0;
@@ -162,11 +162,11 @@ void APIC_timer_reset()
         APIC_WR_REG(DCR, KERNEL_VIRT_OFFSET, APIC_DCR_DIV_16);
         APIC_WR_REG(LVT_TIME, KERNEL_VIRT_OFFSET, lvt_timer_val);
 }
-inline tick_t APIC_GET_HZ()
+inline tick_t APIC_GET_HZ(void)
 {
         return apic_hz_per_second;
 }
-inline tick_t APIC_GET_CUR_TIME()
+inline tick_t APIC_GET_CUR_TIME(void)
 {
         return APIC_RD_REG(CURR_CNT, KERNEL_VIRT_OFFSET);
 }
@@ -328,7 +328,7 @@ void lapci_clear_vec(int bit, enum lapic_vec_type t)
                 }
         }
 }
-void APIC_EOI()
+void APIC_EOI(void)
 {
         APIC_WR_REG(EOI, KERNEL_VIRT_OFFSET, 0);
 }
