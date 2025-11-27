@@ -76,8 +76,8 @@ void schedule(Task_Manager* tm)
                 Tcb_Base* new = tm->current_thread->belong_tcb;
                 if (old != new) {
                         /*
-                        we think every task have a vspace
-                        */
+                         * we think every task have a vspace
+                         */
                         tm->current_task = new;
                         arch_set_current_user_vspace_root(
                                 new->vs->vspace_root_addr);
@@ -86,9 +86,9 @@ void schedule(Task_Manager* tm)
 
         if (thread_get_status(curr) == thread_status_running) {
                 /*
-                        if before the schedule no status is set
-                        set it to ready
-                */
+                 * if before the schedule no status is set
+                 * set it to ready
+                 */
                 thread_set_status(thread_status_active_ready, curr);
         }
         thread_set_status(thread_status_running, tm->current_thread);

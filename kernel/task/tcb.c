@@ -53,6 +53,7 @@ error_t add_thread_to_task(Tcb_Base* task, Thread_Base* thread)
         }
         /*we do not check the linked list */
         list_add_tail(&(thread->thread_list_node), &(task->thread_head_node));
+        task->thread_number++;
         thread->belong_tcb = task;
 
         return 0;
@@ -67,6 +68,7 @@ error_t del_thread_from_task(Tcb_Base* task, Thread_Base* thread)
                 return -E_RENDEZVOS;
         }
         list_del_init(&(thread->thread_list_node));
+        thread->belong_tcb->thread_number--;
         thread->belong_tcb = NULL;
         return 0;
 }
@@ -81,6 +83,17 @@ error_t add_task_to_manager(Task_Manager* core_tm, Tcb_Base* task)
         list_add_tail(&(task->sched_task_list), &(core_tm->sched_task_list));
         return 0;
 }
+error_t del_task_from_manager(Tcb_Base* task)
+{
+        if (!task)
+                return E_IN_PARAM;
+        if (!task->tm) {
+                pr_error("[ERROR] this task not belong to any manager\n");
+                return -E_RENDEZVOS;
+        }
+        list_del_init(&task->sched_task_list);
+        return 0;
+}
 error_t add_thread_to_manager(Task_Manager* core_tm, Thread_Base* thread)
 {
         if (!core_tm || !thread)
@@ -91,6 +104,17 @@ error_t add_thread_to_manager(Task_Manager* core_tm, Thread_Base* thread)
         }
         list_add_tail(&(thread->sched_thread_list),
                       &(core_tm->sched_thread_list));
+        return 0;
+}
+error_t del_thread_from_manager(Thread_Base* thread)
+{
+        if (!thread)
+                return E_IN_PARAM;
+        if (!thread->tm) {
+                pr_error("[ERROR] this task not belong to any manager\n");
+                return -E_RENDEZVOS;
+        }
+        list_del_init(&thread->sched_thread_list);
         return 0;
 }
 
@@ -105,55 +129,26 @@ Tcb_Base* new_task(void)
                 memset((void*)tcb, 0, sizeof(Tcb_Base));
                 tcb->pid = INVALID_ID;
                 INIT_LIST_HEAD(&(tcb->sched_task_list));
+                tcb->thread_number = 0;
                 INIT_LIST_HEAD(&(tcb->thread_head_node));
                 tcb->vs = NULL;
                 tcb->tm = NULL;
         }
         return tcb;
 }
-Thread_Base* new_thread(void)
+void delete_task(Tcb_Base* tcb)
 {
-        struct allocator* cpu_allocator = percpu(kallocator);
-        if (!cpu_allocator)
-                return NULL;
-        Thread_Base* thread = (Thread_Base*)(cpu_allocator->m_alloc(
-                cpu_allocator, sizeof(Thread_Base)));
+        if (!tcb)
+                return;
+        if (tcb->thread_number)
+                return;
 
-        if (thread) {
-                memset((void*)thread, 0, sizeof(Thread_Base));
-                thread->tid = INVALID_ID;
-                arch_task_ctx_init(&(thread->ctx));
-                thread_set_status(thread_status_init, thread);
-                INIT_LIST_HEAD(&(thread->sched_thread_list));
-                INIT_LIST_HEAD(&(thread->thread_list_node));
-                thread->belong_tcb = NULL;
-                thread->tm = NULL;
-                thread->kstack_bottom = 0;
-                thread->name = NULL;
-                thread->init_parameter = new_init_parameter();
-                thread->flags = THREAD_FLAG_NONE;
-        }
-        return thread;
-}
-Thread_Init_Para* new_init_parameter(void)
-{
-        struct allocator* cpu_allocator = percpu(kallocator);
-        if (!cpu_allocator)
-                return NULL;
-        Thread_Init_Para* new_pm = (Thread_Init_Para*)(cpu_allocator->m_alloc(
-                cpu_allocator, sizeof(Thread_Init_Para)));
-        if (new_pm) {
-                new_pm->thread_func_ptr = NULL;
-                memset(new_pm->int_para,
-                       '\0',
-                       (NR_ABI_PARAMETER_INT_REG) * sizeof(u64));
-        }
-        return new_pm;
-}
-void del_init_parameter(Thread_Init_Para* pm)
-{
+        del_vspace(&tcb->vs);
+        del_task_from_manager(tcb);
+
         struct allocator* cpu_allocator = percpu(kallocator);
         if (!cpu_allocator)
                 return;
-        cpu_allocator->m_free(cpu_allocator, (void*)pm);
+        cpu_allocator->m_free(cpu_allocator,tcb);
+        return;
 }

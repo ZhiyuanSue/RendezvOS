@@ -51,6 +51,7 @@ extern Task_Manager* core_tm;
 #define TCB_COMMON                          \
         i64 pid;                            \
         Task_Manager* tm;                   \
+        i64 thread_number; \
         struct list_entry thread_head_node; \
         VSpace* vs;                         \
         TASK_SCHE_COMMON
@@ -74,6 +75,7 @@ extern u64 thread_kstack_page_num;
         u64 status;                                     \
         struct list_entry thread_list_node;             \
         u64 kstack_bottom; /*for stack,it's high addr*/ \
+        u64 kstack_num;                                 \
         Arch_Task_Context ctx;                          \
         Thread_Init_Para* init_parameter;               \
         THERAD_SCHE_COMMON
@@ -109,22 +111,25 @@ Task_Manager* init_proc();
 /* general task and thread new function */
 Tcb_Base* new_task();
 Task_Manager* new_task_manager();
-Thread_Base* new_thread();
+void del_thread_structure(Thread_Base* thread);
+Thread_Base* new_thread_structure();
 
-Thread_Init_Para* new_init_parameter();
-void del_init_parameter(Thread_Init_Para* pm);
+Thread_Init_Para* new_init_parameter_structure();
+void del_init_parameter_structure(Thread_Init_Para* pm);
 
 error_t add_thread_to_task(Tcb_Base* task, Thread_Base* thread);
 error_t del_thread_from_task(Tcb_Base* task, Thread_Base* thread);
 error_t add_task_to_manager(Task_Manager* core_tm, Tcb_Base* task);
+error_t del_task_from_manager(Tcb_Base* task);
 error_t add_thread_to_manager(Task_Manager* core_tm, Thread_Base* thread);
+error_t del_thread_from_manager(Thread_Base* thread);
 
 error_t create_init_thread(Tcb_Base* root_task);
 error_t create_idle_thread(Tcb_Base* root_task);
 
 Thread_Base* create_thread(void* __func, int nr_parameter, ...);
-error_t delete_thread(Thread_Base* thread);
-error_t delete_task(Tcb_Base* tcb);
+void delete_thread(Thread_Base* thread);
+void delete_task(Tcb_Base* tcb);
 
 static inline void thread_set_flags(u64 flags, Thread_Base* thread)
 {

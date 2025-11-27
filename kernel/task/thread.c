@@ -4,6 +4,7 @@
 #include <rendezvos/smp/percpu.h>
 #include <rendezvos/error.h>
 
+extern struct allocator* kallocator;
 extern struct nexus_node* nexus_root;
 /*
 we first generate a context that after the return will goto thread entry（this
@@ -36,7 +37,7 @@ static void thread_entry(void)
 /*general thread create function*/
 Thread_Base* create_thread(void* __func, int nr_parameter, ...)
 {
-        Thread_Base* thread = new_thread();
+        Thread_Base* thread = new_thread_structure();
         thread->tid = get_new_tid();
         va_list arg_list;
         va_start(arg_list, nr_parameter);
@@ -69,17 +70,27 @@ Thread_Base* create_thread(void* __func, int nr_parameter, ...)
         va_end(arg_list);
         return thread;
 }
-error_t delete_thread(Thread_Base* thread)
+void delete_thread(Thread_Base* thread)
 {
-        /*TODO*/
-        (void)thread;
-        return 0;
-}
-error_t delete_task(Tcb_Base* tcb)
-{
-        /*TODO*/
-        (void)tcb;
-        return 0;
+        if (!thread)
+                return;
+        if (thread->kstack_bottom) {
+                /*
+                 * at some time,
+                 * if you using the new_thread_structure and try to use
+                 * delete_thread, the kstack bottom is 0,but not an error
+                 */
+                void* thread_stack_start = (void*)thread->kstack_bottom
+                                           - thread->kstack_num * PAGE_SIZE;
+                free_pages(thread_stack_start,
+                           thread->kstack_num,
+                           thread->belong_tcb->vs,
+                           percpu(nexus_root));
+        }
+        del_thread_from_task(thread->belong_tcb,thread);
+        del_thread_from_manager(thread);
+        del_thread_structure(thread);
+        return;
 }
 error_t thread_join(Tcb_Base* task, Thread_Base* thread)
 {
@@ -90,4 +101,60 @@ error_t thread_join(Tcb_Base* task, Thread_Base* thread)
         res = add_thread_to_manager(percpu(core_tm), thread);
         thread_set_status(thread_status_active_ready, thread);
         return res;
+}
+Thread_Base* new_thread_structure(void)
+{
+        struct allocator* cpu_allocator = percpu(kallocator);
+        if (!cpu_allocator)
+                return NULL;
+        Thread_Base* thread = (Thread_Base*)(cpu_allocator->m_alloc(
+                cpu_allocator, sizeof(Thread_Base)));
+
+        if (thread) {
+                memset((void*)thread, 0, sizeof(Thread_Base));
+                thread->tid = INVALID_ID;
+                arch_task_ctx_init(&(thread->ctx));
+                thread_set_status(thread_status_init, thread);
+                INIT_LIST_HEAD(&(thread->sched_thread_list));
+                INIT_LIST_HEAD(&(thread->thread_list_node));
+                thread->belong_tcb = NULL;
+                thread->tm = NULL;
+                thread->kstack_bottom = 0;
+                thread->kstack_num = thread_kstack_page_num;
+                thread->name = NULL;
+                thread->init_parameter = new_init_parameter_structure();
+                thread->flags = THREAD_FLAG_NONE;
+        }
+        return thread;
+}
+void del_thread_structure(Thread_Base* thread)
+{
+        struct allocator* cpu_allocator = percpu(kallocator);
+        if (!thread || !cpu_allocator)
+                return;
+        /*first free the init parameter*/
+        del_init_parameter_structure(thread->init_parameter);
+        cpu_allocator->m_free(cpu_allocator, thread);
+}
+Thread_Init_Para* new_init_parameter_structure(void)
+{
+        struct allocator* cpu_allocator = percpu(kallocator);
+        if (!cpu_allocator)
+                return NULL;
+        Thread_Init_Para* new_pm = (Thread_Init_Para*)(cpu_allocator->m_alloc(
+                cpu_allocator, sizeof(Thread_Init_Para)));
+        if (new_pm) {
+                new_pm->thread_func_ptr = NULL;
+                memset(new_pm->int_para,
+                       '\0',
+                       (NR_ABI_PARAMETER_INT_REG) * sizeof(u64));
+        }
+        return new_pm;
+}
+void del_init_parameter_structure(Thread_Init_Para* pm)
+{
+        struct allocator* cpu_allocator = percpu(kallocator);
+        if (!pm || !cpu_allocator)
+                return;
+        cpu_allocator->m_free(cpu_allocator, (void*)pm);
 }
