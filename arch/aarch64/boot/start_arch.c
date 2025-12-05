@@ -13,13 +13,12 @@
 #include <rendezvos/error.h>
 #include <rendezvos/smp/percpu.h>
 #include <rendezvos/mm/vmm.h>
-#include <rendezvos/mm/spmalloc.h>
+#include <rendezvos/mm/allocator.h>
 #include <rendezvos/trap.h>
 #include <rendezvos/time.h>
 
 extern u64 L2_table;
 u32 BSP_ID = 0;
-extern struct allocator *kallocator;
 struct cpuinfo cpu_info = {0};
 
 extern void syscall(struct trap_frame *syscall_ctx);

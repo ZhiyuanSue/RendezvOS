@@ -5,7 +5,6 @@
 #include <rendezvos/mm/vmm.h>
 #include <rendezvos/task/id.h>
 #define NR_MAX_TEST NEXUS_PER_PAGE * 3
-extern struct nexus_node* nexus_root;
 void* test_ptrs[NR_MAX_TEST];
 void nexus_print(struct nexus_node* nexus_root)
 {

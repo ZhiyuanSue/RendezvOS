@@ -16,15 +16,12 @@
 #include <rendezvos/smp/percpu.h>
 #include <rendezvos/error.h>
 #include <rendezvos/mm/vmm.h>
-#include <rendezvos/mm/nexus.h>
-#include <rendezvos/mm/spmalloc.h>
+#include <rendezvos/mm/allocator.h>
 #include <rendezvos/trap.h>
 
 extern u32 max_phy_addr_width;
 struct cpuinfo cpu_info = {0};
 u32 BSP_ID = 0;
-extern struct allocator *kallocator;
-extern struct nexus_node *nexus_root;
 extern struct pseudo_descriptor gdt_desc;
 extern union desc gdt[GDT_SIZE];
 void prepare_per_cpu_new_gdt(struct pseudo_descriptor *desc, union desc *gdt);

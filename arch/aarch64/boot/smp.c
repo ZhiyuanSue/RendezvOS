@@ -10,7 +10,6 @@ extern u32 BSP_ID;
 extern int NR_CPU;
 extern enum cpu_status CPU_STATE;
 extern struct cpuinfo cpu_info;
-extern struct nexus_node* nexus_root;
 DEFINE_PER_CPU(struct device_node*, cpu_device_node);
 /*
  * @brief start smp cores, we get the smp info from dtb tree, and reuse the arch

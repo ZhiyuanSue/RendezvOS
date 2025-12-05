@@ -157,7 +157,7 @@ i64 pmm_alloc_zone(struct buddy *bp, int alloc_order,
         Page *p_ptr = Zone_phy_Page(bp->zone, del_node - &bp->pages[0]);
         if (p_ptr) {
                 for (u64 i = 0; i < (1ULL << ((u64)alloc_order)); i++)
-                        (p_ptr + i)->ref_count++;
+                        phy_Page_ref_plus(p_ptr + i);
         }
 
         bp->total_avaliable_pages -= 1ULL << ((u64)alloc_order);
@@ -287,8 +287,8 @@ error_t pmm_free(struct pmm *pmm, ppn_t ppn, size_t page_number)
                         ppn_Zone_phy_Page(pmm->zone, ppn + page_count);
                 if (!free_phy_page)
                         continue;
-                free_phy_page->ref_count--;
-                if (free_phy_page->ref_count > 0)
+                phy_Page_ref_minus(free_phy_page);
+                if (phy_Page_refed(free_phy_page))
                         continue;
 
                 if ((free_one_result = pmm_free_one(pmm, ppn + page_count)))
@@ -300,7 +300,7 @@ error_t pmm_free(struct pmm *pmm, ppn_t ppn, size_t page_number)
 void pmm_show_info(struct pmm *pmm)
 {
         struct buddy *bp = (struct buddy *)pmm;
-        pr_info("%d %d %d %d %d %d %d %d %d %d\n",
+        pr_info("[ Buckets pages ] %d %d %d %d %d %d %d %d %d %d\n",
                 bp->buckets[0].aval_pages,
                 bp->buckets[1].aval_pages,
                 bp->buckets[2].aval_pages,

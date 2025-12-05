@@ -2,7 +2,7 @@
 #include <rendezvos/smp/percpu.h>
 #include <rendezvos/sync/spin_lock.h>
 #include <modules/log/log.h>
-extern struct allocator* kallocator;
+#include <rendezvos/mm/allocator.h>
 extern Thread_Base* init_thread_ptr;
 extern Thread_Base* idle_thread_ptr;
 DEFINE_PER_CPU(Task_Manager*, core_tm);

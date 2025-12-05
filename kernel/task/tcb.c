@@ -3,12 +3,10 @@
 #include <rendezvos/smp/percpu.h>
 #include <rendezvos/error.h>
 #include <common/string.h>
-#include <rendezvos/mm/nexus.h>
+#include <rendezvos/mm/allocator.h>
 
 u64 thread_kstack_page_num = 2;
 u64 thread_ustack_page_num = 8;
-extern struct allocator* kallocator;
-extern struct nexus_node* nexus_root;
 
 Task_Manager* init_proc(void)
 {
@@ -149,6 +147,6 @@ void delete_task(Tcb_Base* tcb)
         struct allocator* cpu_allocator = percpu(kallocator);
         if (!cpu_allocator)
                 return;
-        cpu_allocator->m_free(cpu_allocator,tcb);
+        cpu_allocator->m_free(cpu_allocator, tcb);
         return;
 }

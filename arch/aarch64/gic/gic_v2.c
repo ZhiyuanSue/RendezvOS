@@ -8,9 +8,11 @@ extern u32 BSP_ID;
 /*
  * @brief map the arm gic v2 register to a virtual address
  *
- * @param gicd_base_addr using the base addr and length to indicate the range of gic distributor
+ * @param gicd_base_addr using the base addr and length to indicate the range of
+ * gic distributor
  * @param gicd_len gicd length
- * @gicc_base_addr using the base addr and length to indicate the range of the gic controlor
+ * @gicc_base_addr using the base addr and length to indicate the range of the
+ * gic controlor
  * @gicc_len gicc length
  * @note using PAGE_ENTRY_DEVICE to indicate that it's a device memory
  */

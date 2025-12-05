@@ -38,12 +38,21 @@ typedef struct {
         tagged_ptr_t head;
         tagged_ptr_t tail;
 } ms_queue_t;
-
+/*
+ * @brief init the msq
+ * @param q the queue structure
+ * @param new_node use an empty node as the head, this must be allocated by the
+ * caller function
+ */
 static inline void msq_init(ms_queue_t* q, ms_queue_node_t* new_node)
 {
         q->head = q->tail = tp_new((void*)new_node, 0);
 }
-
+/*
+ * @brief enqueue a new_node into the queue
+ * @param q the queue structure
+ * @param the new_node, which should be allocated by the caller function
+ */
 static inline void msq_enqueue(ms_queue_t* q, ms_queue_node_t* new_node)
 {
         tagged_ptr_t tail, next, tmp;
@@ -80,9 +89,14 @@ static inline void msq_enqueue(ms_queue_t* q, ms_queue_node_t* new_node)
         tmp = tp_new(new_node, tp_get_tag(tail) + 1);
         atomic64_cas((volatile u64*)&q->tail, *(u64*)&tail, *(u64*)&tmp);
 }
-/*we also just unlink the node,
-        but don't free the node,
-        which should be done by the upper level code*/
+/* @brief dequeue a node and return the ptr
+ * @param q, the ms queue
+ * @note we also just unlink the node,
+ * but don't free the node,
+ * which should be done by the upper level code
+ * beside, the data node must be the return ptr->next,
+ * see test function smp_ms_queue_dyn_alloc_get
+ */
 static inline tagged_ptr_t msq_dequeue(ms_queue_t* q)
 {
         tagged_ptr_t head, tail, next, tmp;

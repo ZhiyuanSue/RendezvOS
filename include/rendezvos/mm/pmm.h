@@ -61,6 +61,18 @@ typedef struct {
         MemSection* sec;
         struct list_entry rmap_list;
 } Page;
+static inline void phy_Page_ref_plus(Page* page)
+{
+        page->ref_count++;
+}
+static inline void phy_Page_ref_minus(Page* page)
+{
+        page->ref_count--;
+}
+static inline bool phy_Page_refed(Page* page)
+{
+        return page->ref_count > 0;
+}
 struct mem_section {
         struct list_entry section_list;
         u64 sec_id;

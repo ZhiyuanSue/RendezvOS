@@ -2,6 +2,7 @@
 #define _RENDEZVOS_ALLOCATOR_H_
 #include <common/types.h>
 #include <common/stddef.h>
+#include <rendezvos/mm/nexus.h>
 
 #define MM_COMMON                                                       \
         struct allocator* (*init)(struct nexus_node * page_allocator,   \
@@ -13,5 +14,6 @@
 struct allocator {
         MM_COMMON;
 };
+extern struct allocator* kallocator;
 
 #endif

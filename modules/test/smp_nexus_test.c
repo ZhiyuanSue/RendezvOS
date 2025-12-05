@@ -5,7 +5,6 @@
 #include <modules/log/log.h>
 #include <rendezvos/smp/percpu.h>
 #define NR_MAX_TEST NEXUS_PER_PAGE * 80
-extern struct nexus_node* nexus_root;
 DEFINE_PER_CPU(void*, smp_test_ptrs[NR_MAX_TEST]);
 bool smp_check_rb(struct rb_node* node, int* height, int* count, int level)
 {

@@ -3,9 +3,7 @@
 #include <rendezvos/task/tcb.h>
 #include <rendezvos/smp/percpu.h>
 #include <rendezvos/error.h>
-
-extern struct allocator* kallocator;
-extern struct nexus_node* nexus_root;
+#include <rendezvos/mm/allocator.h>
 /*
 we first generate a context that after the return will goto thread entry（this
 function) then the stack frame is the only one thread_entry frame then here we
@@ -87,7 +85,7 @@ void delete_thread(Thread_Base* thread)
                            thread->belong_tcb->vs,
                            percpu(nexus_root));
         }
-        del_thread_from_task(thread->belong_tcb,thread);
+        del_thread_from_task(thread->belong_tcb, thread);
         del_thread_from_manager(thread);
         del_thread_structure(thread);
         return;

@@ -51,7 +51,7 @@ extern Task_Manager* core_tm;
 #define TCB_COMMON                          \
         i64 pid;                            \
         Task_Manager* tm;                   \
-        i64 thread_number; \
+        i64 thread_number;                  \
         struct list_entry thread_head_node; \
         VSpace* vs;                         \
         TASK_SCHE_COMMON

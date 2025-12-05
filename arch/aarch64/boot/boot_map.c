@@ -62,14 +62,17 @@ static void boot_get_uart_info(struct setup_info *setup_info_paddr,
 /*
  * @brief in AArch64 boot, we need to build the page table before begin the vm
  *
- * @param kernel_start_addr the kernel start virtual addr decide by the linker script 
- * @param kernel_end_addr the kernel end virtual addr decide by the linker script
+ * @param kernel_start_addr the kernel start virtual addr decide by the linker
+ * script
+ * @param kernel_end_addr the kernel end virtual addr decide by the linker
+ * script
  * @param L0_table_paddr the level0 page table paddr
  * @param L1_table_paddr the level1 page table paddr
  * @param L2_table_paddr the level2 page table paddr
  * @param L3_table_paddr the level3 page table paddr
  * @param setup_info_paddr the setup info structure paddr
- * @note take care of the vaddr and paddr ,here most are paddr, we using the 4 level page system
+ * @note take care of the vaddr and paddr ,here most are paddr, we using the 4
+ * level page system
  */
 void boot_map_pg_table(u64 kernel_start_addr, u64 kernel_end_addr,
                        union L0_entry *L0_table_paddr,

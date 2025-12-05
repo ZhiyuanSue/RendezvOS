@@ -38,6 +38,7 @@ struct nexus_node {
                 };
         };
 };
+extern struct nexus_node* nexus_root;
 #define NEXUS_PER_PAGE (PAGE_SIZE / (sizeof(struct nexus_node)))
 struct nexus_node* init_nexus(struct map_handler* handler);
 /*vspace*/

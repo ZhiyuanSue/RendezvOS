@@ -2,12 +2,12 @@
 #include <modules/log/log.h>
 #include <rendezvos/smp/smp.h>
 #include <rendezvos/time.h>
+#include <rendezvos/mm/nexus.h>
 extern char ap_start;
 extern char ap_start_end;
 extern int NR_CPU;
 extern u32 BSP_ID;
 extern enum cpu_status CPU_STATE;
-extern struct nexus_node* nexus_root;
 extern void clean_tmp_page_table(void);
 static void copy_ap_start_code(void)
 {

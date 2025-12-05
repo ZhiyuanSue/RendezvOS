@@ -1,6 +1,5 @@
 // #define DEBUG
 #include <modules/test/test.h>
-#include <rendezvos/mm/nexus.h>
 #include <modules/log/log.h>
 #include <rendezvos/mm/vmm.h>
 #include <rendezvos/mm/spmalloc.h>
