@@ -97,7 +97,7 @@ error_t thread_join(Tcb_Base* task, Thread_Base* thread)
         if (res)
                 return res;
         res = add_thread_to_manager(percpu(core_tm), thread);
-        thread_set_status(thread_status_active_ready, thread);
+        thread_set_status(thread_status_ready, thread);
         return res;
 }
 Thread_Base* new_thread_structure(void)

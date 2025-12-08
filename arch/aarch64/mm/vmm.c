@@ -52,6 +52,11 @@ void mair_init(void)
 ARCH_PFLAGS_t arch_decode_flags(int entry_level, ENTRY_FLAGS_t ENTRY_FLAGS)
 {
         ARCH_PFLAGS_t ARCH_PFLAGS = 0;
+        static ENTRY_FLAGS_t arch_entry_flags_no_huge_bit[4] = {
+                PT_DESC_BLOCK_OR_TABLE,
+                PT_DESC_BLOCK_OR_TABLE,
+                PT_DESC_BLOCK_OR_TABLE,
+                PT_DESC_PAGE};
         if (is_final_level_pt(entry_level, ENTRY_FLAGS)) {
                 ARCH_PFLAGS = set_mask(ARCH_PFLAGS, PT_DESC_ATTR_LOWER_AF);
                 if (ENTRY_FLAGS & PAGE_ENTRY_USER) {
@@ -91,25 +96,8 @@ ARCH_PFLAGS_t arch_decode_flags(int entry_level, ENTRY_FLAGS_t ENTRY_FLAGS)
                 ARCH_PFLAGS = set_mask(ARCH_PFLAGS, MEM_ATTR_NORMAL);
         }
         if (!(ENTRY_FLAGS & PAGE_ENTRY_HUGE)) {
-                switch (entry_level) {
-                case 0:
-                        ARCH_PFLAGS =
-                                set_mask(ARCH_PFLAGS, PT_DESC_BLOCK_OR_TABLE);
-                        break;
-                case 1:
-                        ARCH_PFLAGS =
-                                set_mask(ARCH_PFLAGS, PT_DESC_BLOCK_OR_TABLE);
-                        break;
-                case 2:
-                        ARCH_PFLAGS =
-                                set_mask(ARCH_PFLAGS, PT_DESC_BLOCK_OR_TABLE);
-                        break;
-                case 3:
-                        ARCH_PFLAGS = set_mask(ARCH_PFLAGS, PT_DESC_PAGE);
-                        break;
-                default:
-                        break;
-                }
+                ARCH_PFLAGS = set_mask(
+                        ARCH_PFLAGS, arch_entry_flags_no_huge_bit[entry_level]);
         }
         if (!(ENTRY_FLAGS & PAGE_ENTRY_GLOBAL)) {
                 if (is_final_level_pt(entry_level, ENTRY_FLAGS))

@@ -7,6 +7,7 @@
         i64 allocator_id;    \
         u64 append_info_len; \
         ms_queue_node_t ms_node
+
 typedef struct Msg Message_t;
 struct Msg {
         MESSAGE_COMMON;
@@ -19,3 +20,10 @@ typedef struct Msg_Port Message_Port_t;
 struct Msg_Port {
         ms_queue_t ms_queue;
 };
+
+struct Msg_Port* create_message_port();
+void send_msg(Message_Port_t* port, Message_t* message);
+void send_msg_async(Message_Port_t* port, Message_t* message);
+void send_msg_async_broadcast(Message_Port_t* port, Message_t* message);
+Message_t* recv_msg(Message_Port_t* port);
+Message_t* recv_msg_await(Message_Port_t* port);

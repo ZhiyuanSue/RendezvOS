@@ -28,114 +28,50 @@ inline void arch_set_L3_entry(paddr p, vaddr v, union L3_entry *pt_addr,
 ARCH_PFLAGS_t arch_decode_flags(int entry_level, ENTRY_FLAGS_t ENTRY_FLAGS)
 {
         ENTRY_FLAGS_t ARCH_PFLAGS = 0;
+        static ENTRY_FLAGS_t arch_entry_flags_valid_bit[4] = {
+                PML4E_P, PDPTE_P, PDE_P, PTE_P};
+        static ENTRY_FLAGS_t arch_entry_flags_write_bit[4] = {
+                PML4E_RW, PDPTE_RW, PDE_RW, PTE_RW};
+        static ENTRY_FLAGS_t arch_entry_flags_no_exec_bit[4] = {
+                PML4E_XD, PDPTE_XD, PDE_XD, PTE_XD};
+        static ENTRY_FLAGS_t arch_entry_flags_user_bit[4] = {
+                PML4E_US, PDPTE_US, PDE_US, PTE_US};
+        static ENTRY_FLAGS_t arch_entry_flags_uncache_device_bit[4] = {
+                PML4E_PCD | PML4E_PWT,
+                PDPTE_PCD | PDPTE_PWT,
+                PDE_PCD | PDE_PWT,
+                PTE_PCD | PTE_PWT};
+        static ENTRY_FLAGS_t arch_entry_flags_huge_bit[4] = {
+                0, PDPTE_PS, PDE_PS, 0};
+        if (entry_level < 0 || entry_level > 3)
+                return 0;
         if (ENTRY_FLAGS & PAGE_ENTRY_VALID) {
-                switch (entry_level) {
-                case 0:
-                        ARCH_PFLAGS = set_mask(ARCH_PFLAGS, PML4E_P);
-                        break;
-                case 1:
-                        ARCH_PFLAGS = set_mask(ARCH_PFLAGS, PDPTE_P);
-                        break;
-                case 2:
-                        ARCH_PFLAGS = set_mask(ARCH_PFLAGS, PDE_P);
-                        break;
-                case 3:
-                        ARCH_PFLAGS = set_mask(ARCH_PFLAGS, PTE_P);
-                        break;
-                default:
-                        break;
-                }
+                ARCH_PFLAGS = set_mask(ARCH_PFLAGS,
+                                       arch_entry_flags_valid_bit[entry_level]);
         }
         if (ENTRY_FLAGS & PAGE_ENTRY_WRITE) {
-                switch (entry_level) {
-                case 0:
-                        ARCH_PFLAGS = set_mask(ARCH_PFLAGS, PML4E_RW);
-                        break;
-                case 1:
-                        ARCH_PFLAGS = set_mask(ARCH_PFLAGS, PDPTE_RW);
-                        break;
-                case 2:
-                        ARCH_PFLAGS = set_mask(ARCH_PFLAGS, PDE_RW);
-                        break;
-                case 3:
-                        ARCH_PFLAGS = set_mask(ARCH_PFLAGS, PTE_RW);
-                        break;
-                default:
-                        break;
-                }
+                ARCH_PFLAGS = set_mask(ARCH_PFLAGS,
+                                       arch_entry_flags_write_bit[entry_level]);
         }
         if (!(ENTRY_FLAGS & PAGE_ENTRY_EXEC)) {
                 /*this must ensure that the IA32_EFER.NXE==1, we enabled at boot
                  * stage*/
-                switch (entry_level) {
-                case 0:
-                        ARCH_PFLAGS = set_mask(ARCH_PFLAGS, PML4E_XD);
-                        break;
-                case 1:
-                        ARCH_PFLAGS = set_mask(ARCH_PFLAGS, PDPTE_XD);
-                        break;
-                case 2:
-                        ARCH_PFLAGS = set_mask(ARCH_PFLAGS, PDE_XD);
-                        break;
-                case 3:
-                        ARCH_PFLAGS = set_mask(ARCH_PFLAGS, PTE_XD);
-                        break;
-                default:
-                        break;
-                }
+                ARCH_PFLAGS = set_mask(
+                        ARCH_PFLAGS, arch_entry_flags_no_exec_bit[entry_level]);
         }
         if (ENTRY_FLAGS & PAGE_ENTRY_USER) {
-                switch (entry_level) {
-                case 0:
-                        ARCH_PFLAGS = set_mask(ARCH_PFLAGS, PML4E_US);
-                        break;
-                case 1:
-                        ARCH_PFLAGS = set_mask(ARCH_PFLAGS, PDPTE_US);
-                        break;
-                case 2:
-                        ARCH_PFLAGS = set_mask(ARCH_PFLAGS, PDE_US);
-                        break;
-                case 3:
-                        ARCH_PFLAGS = set_mask(ARCH_PFLAGS, PTE_US);
-                        break;
-                default:
-                        break;
-                }
+                ARCH_PFLAGS = set_mask(ARCH_PFLAGS,
+                                       arch_entry_flags_user_bit[entry_level]);
         }
         if (ENTRY_FLAGS & PAGE_ENTRY_UNCACHED
             || ENTRY_FLAGS & PAGE_ENTRY_DEVICE) {
-                switch (entry_level) {
-                case 0:
-                        ARCH_PFLAGS =
-                                set_mask(ARCH_PFLAGS, PML4E_PCD | PML4E_PWT);
-                        break;
-                case 1:
-                        ARCH_PFLAGS =
-                                set_mask(ARCH_PFLAGS, PDPTE_PCD | PDPTE_PWT);
-                        break;
-                case 2:
-                        ARCH_PFLAGS =
-                                set_mask(ARCH_PFLAGS, PDE_PCD | PDPTE_PWT);
-                        break;
-                case 3:
-                        ARCH_PFLAGS =
-                                set_mask(ARCH_PFLAGS, PTE_PCD | PDPTE_PWT);
-                        break;
-                default:
-                        break;
-                }
+                ARCH_PFLAGS = set_mask(
+                        ARCH_PFLAGS,
+                        arch_entry_flags_uncache_device_bit[entry_level]);
         }
         if (ENTRY_FLAGS & PAGE_ENTRY_HUGE) {
-                switch (entry_level) {
-                case 1:
-                        ARCH_PFLAGS = set_mask(ARCH_PFLAGS, PDPTE_PS);
-                        break;
-                case 2:
-                        ARCH_PFLAGS = set_mask(ARCH_PFLAGS, PDE_PS);
-                        break;
-                default:
-                        break;
-                }
+                ARCH_PFLAGS = set_mask(ARCH_PFLAGS,
+                                       arch_entry_flags_huge_bit[entry_level]);
         }
         if (ENTRY_FLAGS & PAGE_ENTRY_GLOBAL) {
                 switch (entry_level) {

@@ -3,7 +3,6 @@
 #include <common/types.h>
 #include <common/stdbool.h>
 #include "barrier.h"
-#include <modules/log/log.h>
 
 static inline u64 atomic64_cas(volatile u64 *addr, u64 expected, u64 newval)
 {

@@ -11,7 +11,7 @@ Thread_Base* round_robin_schedule(Task_Manager* tm)
         struct list_entry* next = tm->current_thread->sched_thread_list.next;
         while (next == &(tm->sched_thread_list)
                || container_of(next, Thread_Base, sched_thread_list)->status
-                          != thread_status_active_ready) {
+                          != thread_status_ready) {
                 next = next->next;
         }
         return container_of(next, Thread_Base, sched_thread_list);
@@ -65,6 +65,8 @@ void schedule(Task_Manager* tm)
                 return;
         Thread_Base* curr = tm->current_thread;
         tm->current_thread = tm->scheduler(tm);
+        if(curr == tm->current_thread)  /*still running current thread*/
+                return;
         print_sche_info(curr, tm->current_thread);
 
         if ((tm->current_thread->flags) & THREAD_FLAG_USER) {
@@ -89,7 +91,7 @@ void schedule(Task_Manager* tm)
                  * if before the schedule no status is set
                  * set it to ready
                  */
-                thread_set_status(thread_status_active_ready, curr);
+                thread_set_status(thread_status_ready, curr);
         }
         thread_set_status(thread_status_running, tm->current_thread);
         switch_to(&(curr->ctx), &(tm->current_thread->ctx));

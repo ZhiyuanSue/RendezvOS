@@ -351,10 +351,10 @@ error_t map(VSpace *vs, ppn_t ppn, vpn_t vpn, int level, ENTRY_FLAGS_t eflags,
                 }
         }
         /*=== === === L3 table === === ===*/
-        /*map the L1 table to one L3 table entry*/
+        /*map the L2 table to one L3 table entry*/
         pt_entry =
                 ((union L2_entry *)(handler->map_vaddr[2]))[L2_INDEX(v)].entry;
-        entry_flags = arch_encode_flags(1, pt_entry);
+        entry_flags = arch_encode_flags(2, pt_entry);
         if (entry_flags & PAGE_ENTRY_HUGE) {
                 pr_error(
                         "[ MAP ] try to map a level 3 page but a level 2 page have mapped here\n");

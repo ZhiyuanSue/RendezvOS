@@ -23,11 +23,12 @@
 enum thread_status_base {
         thread_status_init,
         thread_status_running,
-        thread_status_active_ready,
-        thread_status_suspend_ready,
-        thread_status_active_blocked,
-        thread_status_suspend_blocked,
+        thread_status_ready,
         thread_status_zombie,
+        thread_status_block_on_send,
+        thread_status_block_on_receive,
+        thread_status_suspend,
+        thread_status_exit,
 };
 
 /*
