@@ -104,7 +104,6 @@ void smp_ms_queue_dyn_alloc_put(int offset)
                         malloc->m_alloc(malloc, sizeof(struct ms_test_data));
                 tmp_ms_data->data = i;
                 tmp_ms_data->allocator_id = allocator_id;
-                tmp_ms_data->ms_node.next = tp_new_none();
                 msq_enqueue(&ms_queue, &tmp_ms_data->ms_node);
         }
 }

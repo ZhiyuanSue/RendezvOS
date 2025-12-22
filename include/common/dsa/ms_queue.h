@@ -57,7 +57,7 @@ static inline void msq_enqueue(ms_queue_t* q, ms_queue_node_t* new_node)
 {
         tagged_ptr_t tail, next, tmp;
 
-        tp_set_ptr(&new_node->next, NULL);
+        new_node->next = 0;
         while (1) {
                 tail = q->tail;
                 next = ((ms_queue_node_t*)tp_get_ptr(tail))->next;
