@@ -366,7 +366,6 @@ void* sp_alloc(struct allocator* allocator_p, size_t Bytes)
                 /*here we allocate from the page allocator*/
                 int page_num = bytes_to_pages(Bytes);
 
-                lock_cas(&sp_allocator_p->lock);
                 /*
                  we must try to allocate the page chunk node first,
                  then try to alloc the page
@@ -374,7 +373,6 @@ void* sp_alloc(struct allocator* allocator_p, size_t Bytes)
                 struct page_chunk_node* pcn =
                         (struct page_chunk_node*)_sp_alloc(
                                 sp_allocator_p, sizeof(struct page_chunk_node));
-                unlock_cas(&sp_allocator_p->lock);
                 if (!pcn) {
                         pr_error("[ERROR]cannot allocate a page chunk node\n");
                         return res_ptr;
@@ -396,9 +394,7 @@ void* sp_alloc(struct allocator* allocator_p, size_t Bytes)
                                           &sp_allocator_p->page_chunk_root);
                 unlock_cas(&sp_allocator_p->lock);
         } else {
-                lock_cas(&sp_allocator_p->lock);
                 res_ptr = _sp_alloc(sp_allocator_p, Bytes);
-                unlock_cas(&sp_allocator_p->lock);
         }
         return res_ptr;
 }
@@ -482,10 +478,8 @@ void sp_free(struct allocator* allocator_p, void* p)
                 (struct mem_allocator*)allocator_p;
         error_t e = 0;
         if (((vaddr)p) & (PAGE_SIZE - 1)) {
-                lock_cas(&sp_allocator_p->lock);
                 /*free from the chunks*/
                 e = _sp_free(p);
-                unlock_cas(&sp_allocator_p->lock);
         } else {
                 /*free pages*/
                 lock_cas(&sp_allocator_p->lock);
@@ -502,8 +496,8 @@ void sp_free(struct allocator* allocator_p, void* p)
                 lock_cas(&sp_allocator_p->lock);
                 page_chunk_rb_tree_remove(pcn,
                                           &sp_allocator_p->page_chunk_root);
-                e = _sp_free((void*)pcn);
                 unlock_cas(&sp_allocator_p->lock);
+                e = _sp_free((void*)pcn);
         }
         if (e) {
                 pr_error(
