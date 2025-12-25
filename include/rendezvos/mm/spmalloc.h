@@ -7,6 +7,7 @@
 #include <common/types.h>
 #include <common/dsa/list.h>
 #include <common/dsa/rb_tree.h>
+#include <common/dsa/ms_queue.h>
 #include <rendezvos/mm/allocator.h>
 #include <rendezvos/sync/cas_lock.h>
 #define MAX_GROUP_SLOTS 12
@@ -69,6 +70,8 @@ struct page_chunk_node {
 } __attribute__((aligned(sizeof(u64))));
 struct object_header {
         struct list_entry obj_list;
+        i64 allocator_id;
+        ms_queue_node_t msq_node;
         char obj[];
 } __attribute__((aligned(sizeof(u64))));
 struct mem_chunk {
@@ -99,6 +102,7 @@ struct mem_allocator {
         struct nexus_node* nexus_root;
         struct mem_group groups[MAX_GROUP_SLOTS];
         struct rb_root page_chunk_root;
+        ms_queue_t buffer_msq;
         cas_lock_t lock;
 } __attribute__((aligned(sizeof(u64))));
 /*chunk*/

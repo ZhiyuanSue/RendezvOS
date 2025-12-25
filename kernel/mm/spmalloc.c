@@ -33,7 +33,7 @@ static int bytes_to_pages(size_t Bytes)
 static void page_chunk_rb_tree_insert(struct page_chunk_node* node,
                                       struct rb_root* page_chunk_root)
 {
-        struct rb_node** new = &page_chunk_root->rb_root, *parent = NULL;
+        struct rb_node **new = &page_chunk_root->rb_root, *parent = NULL;
         u64 key = node->page_addr;
         while (*new) {
                 parent = *new;
@@ -91,11 +91,18 @@ error_t chunk_init(struct mem_chunk* chunk, int chunk_order, int allocator_id)
         int obj_num = (PAGE_SIZE * PAGE_PER_CHUNK - sizeof(struct mem_chunk))
                       / obj_size;
         chunk->nr_max_objs = obj_num;
-        int padding_start = PAGE_SIZE * PAGE_PER_CHUNK - obj_num * obj_size;
+        int padding_start = sizeof(struct mem_chunk);
         for (int i = 0; i < obj_num; i++) {
-                struct list_entry* obj_ptr =
-                        (struct list_entry*)((vaddr)chunk + padding_start);
-                list_add_head(obj_ptr, &chunk->empty_obj_list);
+                /* add the following check to test whether the obj start is 4k
+                 * aligned*/
+                // if((padding_start+sizeof(struct object_header))%4096==0){
+                //         pr_error("error padding order
+                //         %d\n",chunk->chunk_order);
+                // }
+                struct object_header* obj_ptr =
+                        (struct object_header*)((vaddr)chunk + padding_start);
+                list_add_head(&obj_ptr->obj_list, &chunk->empty_obj_list);
+                obj_ptr->allocator_id = allocator_id;
                 padding_start += slot_size[chunk->chunk_order]
                                  + sizeof(struct object_header);
         }
@@ -155,13 +162,13 @@ error_t chunk_free_obj(struct object_header* obj, int allocator_id)
                 return -E_IN_PARAM;
         }
         /*this obj might be allocated by another allocator*/
-        if (allocator_id != chunk->allocator_id)
-                return chunk->allocator_id;
+        if (allocator_id != obj->allocator_id)
+                return obj->allocator_id;
         list_del(&obj->obj_list);
         list_add_head(&obj->obj_list, &chunk->empty_obj_list);
         /*we do not clean it*/
         chunk->nr_used_objs--;
-        return chunk->allocator_id;
+        return obj->allocator_id;
 }
 static void*
 collect_chunk_from_other_group(struct mem_allocator* sp_allocator_p,
@@ -245,6 +252,10 @@ struct allocator* sp_init(struct nexus_node* nexus_root, int allocator_id)
                 }
                 per_cpu(kallocator, allocator_id) =
                         (struct allocator*)sp_allocator;
+                ms_queue_node_t* buffer_idle_node =
+                        sp_alloc((struct allocator*)&tmp_sp_alloctor,
+                                 sizeof(ms_queue_node_t));
+                msq_init(&sp_allocator->buffer_msq, buffer_idle_node);
                 return (struct allocator*)sp_allocator;
         } else {
                 pr_error(
@@ -391,8 +402,16 @@ void* sp_alloc(struct allocator* allocator_p, size_t Bytes)
         }
         return res_ptr;
 }
-static error_t _sp_free(struct mem_allocator* sp_allocator_p, void* p)
+static error_t _sp_free(void* p)
 {
+        struct mem_allocator* sp_allocator_p =
+                (struct mem_allocator*)percpu(kallocator);
+        /* 
+          even the p is invalid ,
+          we still need to free the free requests on buffer list
+        */
+
+        /*the free requests should be fifo, so we free p at last*/
         if (!sp_allocator_p || !p) {
                 pr_error("[ERROR] sp free with error parameter\n");
                 return -E_IN_PARAM;
@@ -443,11 +462,15 @@ static error_t _sp_free(struct mem_allocator* sp_allocator_p, void* p)
                         if (&free_chunk->chunk_list == &group->empty_list)
                                 break;
                 }
-                return 0;
         } else {
-                /*the upper level code should handle this error*/
-                return free_allocator_id;
+                /*put the free object to the target allocator lockfree buffer
+                 * list*/
+                msq_enqueue(&((struct mem_allocator*)per_cpu(kallocator,
+                                                             free_allocator_id))
+                                     ->buffer_msq,
+                            &header->msq_node);
         }
+        return 0;
 }
 void sp_free(struct allocator* allocator_p, void* p)
 {
@@ -461,7 +484,7 @@ void sp_free(struct allocator* allocator_p, void* p)
         if (((vaddr)p) & (PAGE_SIZE - 1)) {
                 lock_cas(&sp_allocator_p->lock);
                 /*free from the chunks*/
-                e = _sp_free(sp_allocator_p, p);
+                e = _sp_free(p);
                 unlock_cas(&sp_allocator_p->lock);
         } else {
                 /*free pages*/
@@ -479,7 +502,7 @@ void sp_free(struct allocator* allocator_p, void* p)
                 lock_cas(&sp_allocator_p->lock);
                 page_chunk_rb_tree_remove(pcn,
                                           &sp_allocator_p->page_chunk_root);
-                e = _sp_free(sp_allocator_p, (void*)pcn);
+                e = _sp_free((void*)pcn);
                 unlock_cas(&sp_allocator_p->lock);
         }
         if (e) {
