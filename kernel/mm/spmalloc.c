@@ -33,7 +33,7 @@ static int bytes_to_pages(size_t Bytes)
 static void page_chunk_rb_tree_insert(struct page_chunk_node* node,
                                       struct rb_root* page_chunk_root)
 {
-        struct rb_node** new = &page_chunk_root->rb_root, *parent = NULL;
+        struct rb_node **new = &page_chunk_root->rb_root, *parent = NULL;
         u64 key = node->page_addr;
         while (*new) {
                 parent = *new;
@@ -436,17 +436,14 @@ static void clean_buffer_msq()
 {
         struct mem_allocator* sp_allocator_p =
                 (struct mem_allocator*)percpu(kallocator);
-        tagged_ptr_t dequeue_ptr = tp_new_none();
-        while ((dequeue_ptr = msq_dequeue(&sp_allocator_p->buffer_msq)) != 0) {
-                ms_queue_node_t* ms_node =
-                        (ms_queue_node_t*)tp_get_ptr(dequeue_ptr);
-                struct object_header* header =
-                        container_of(tp_get_ptr(ms_node->next),
-                                     struct object_header,
-                                     msq_node);
+        tagged_ptr_t dequeue_tagged_ptr;
+        while ((dequeue_tagged_ptr =
+                        msq_dequeue(&sp_allocator_p->buffer_msq))) {
+                void* dequeue_ptr = tp_get_ptr(dequeue_tagged_ptr);
+                struct object_header* header = container_of(
+                        dequeue_ptr, struct object_header, msq_node);
                 struct mem_chunk* chunk = (struct mem_chunk*)ROUND_DOWN(
-                        ((vaddr)tp_get_ptr(dequeue_ptr)),
-                        PAGE_SIZE * PAGE_PER_CHUNK);
+                        ((vaddr)dequeue_ptr), PAGE_SIZE * PAGE_PER_CHUNK);
                 int order = chunk->chunk_order;
                 struct mem_group* group = &sp_allocator_p->groups[order];
                 group_free_obj(header, chunk, group);
