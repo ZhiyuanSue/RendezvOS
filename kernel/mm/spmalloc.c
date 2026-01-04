@@ -250,10 +250,12 @@ struct allocator* sp_init(struct nexus_node* nexus_root, int allocator_id)
                 }
                 per_cpu(kallocator, allocator_id) =
                         (struct allocator*)sp_allocator;
-                ms_queue_node_t* buffer_idle_node =
+                void* buffer_idle_node =
                         sp_alloc((struct allocator*)&tmp_sp_alloctor,
-                                 sizeof(ms_queue_node_t));
-                msq_init(&sp_allocator->buffer_msq, buffer_idle_node);
+                                 slot_size[0]);
+                struct object_header* idle_obj_ptr = container_of(buffer_idle_node,struct object_header,obj);
+                msq_init(&sp_allocator->buffer_msq, &idle_obj_ptr->msq_node);
+                idle_obj_ptr->allocator_id = allocator_id;
                 return (struct allocator*)sp_allocator;
         } else {
                 pr_error(
@@ -416,41 +418,35 @@ static error_t _sp_free(void* p)
         }
         return 0;
 }
-static void clean_buffer_msq(struct mem_allocator* sp_allocator_p)
+static void clean_buffer_msq()
 {
-        if (!sp_allocator_p)
-                return;
+        struct mem_allocator* sp_allocator_p =  (struct mem_allocator*)percpu(kallocator);
         tagged_ptr_t dequeue_ptr = tp_new_none();
         while ((dequeue_ptr = msq_dequeue(&sp_allocator_p->buffer_msq)) != 0) {
-                // ms_queue_node_t* ms_node =
-                //         (ms_queue_node_t*)tp_get_ptr(dequeue_ptr);
-                // struct object_header* header_ptr =
-                //         container_of(tp_get_ptr(ms_node->next),
-                //                      struct object_header,
-                //                      msq_node);
+                ms_queue_node_t* ms_node =
+                        (ms_queue_node_t*)tp_get_ptr(dequeue_ptr);
+                struct object_header* header_ptr =
+                        container_of(tp_get_ptr(ms_node->next),
+                                     struct object_header,
+                                     msq_node);
                 struct mem_chunk* chunk = (struct mem_chunk*)ROUND_DOWN(
-                        ((vaddr)dequeue_ptr), PAGE_SIZE * PAGE_PER_CHUNK);
-                if(have_mapped(sp_allocator_p->nexus_root->vs,(vaddr)chunk,sp_allocator_p->nexus_root->handler)==0){
-                        pr_error("the vpn is not mapped\n");
-                }
-                // bool full = (chunk->nr_max_objs == chunk->nr_used_objs);
-                chunk_free_obj(container_of(tp_get_ptr(dequeue_ptr),
-                                            struct object_header,
-                                            msq_node),
+                        ((vaddr)tp_get_ptr(dequeue_ptr)), PAGE_SIZE * PAGE_PER_CHUNK);
+                bool full = (chunk->nr_max_objs == chunk->nr_used_objs);
+                chunk_free_obj(header_ptr,
                                chunk);
-                // int order = chunk->chunk_order;
-                // struct mem_group* group = &sp_allocator_p->groups[order];
-                // if (full) {
-                //         list_del(&chunk->chunk_list);
-                //         list_add_tail(&chunk->chunk_list, &group->empty_list);
-                //         group->empty_chunk_num++;
-                //         group->full_chunk_num--;
-                // } else if (chunk->nr_used_objs == 0) {
-                //         group->free_chunk_num++;
-                //         group->empty_chunk_num--;
-                //         list_del(&chunk->chunk_list);
-                //         list_add_head(&chunk->chunk_list, &group->empty_list);
-                // }
+                int order = chunk->chunk_order;
+                struct mem_group* group = &sp_allocator_p->groups[order];
+                if (full) {
+                        list_del(&chunk->chunk_list);
+                        list_add_tail(&chunk->chunk_list, &group->empty_list);
+                        group->empty_chunk_num++;
+                        group->full_chunk_num--;
+                } else if (chunk->nr_used_objs == 0) {
+                        group->free_chunk_num++;
+                        group->empty_chunk_num--;
+                        list_del(&chunk->chunk_list);
+                        list_add_head(&chunk->chunk_list, &group->empty_list);
+                }
         }
 }
 void* sp_alloc(struct allocator* allocator_p, size_t Bytes)
@@ -512,7 +508,7 @@ void sp_free(struct allocator* allocator_p, void* p)
                 (struct mem_allocator*)allocator_p;
         error_t e = 0;
         if (((vaddr)p) & (PAGE_SIZE - 1)) {
-                clean_buffer_msq(sp_allocator_p);
+                clean_buffer_msq();
                 /*free from the chunks*/
                 e = _sp_free(p);
         } else {
