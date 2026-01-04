@@ -65,7 +65,7 @@ void schedule(Task_Manager* tm)
                 return;
         Thread_Base* curr = tm->current_thread;
         tm->current_thread = tm->scheduler(tm);
-        if(curr == tm->current_thread)  /*still running current thread*/
+        if (curr == tm->current_thread) /*still running current thread*/
                 return;
         print_sche_info(curr, tm->current_thread);
 

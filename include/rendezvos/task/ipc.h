@@ -24,7 +24,8 @@ struct Msg_Port {
 };
 
 struct Msg_Port* create_message_port();
-struct Msg* create_message(i64 msg_type,u64 append_info_len, char* append_info);
+struct Msg* create_message(i64 msg_type, u64 append_info_len,
+                           char* append_info);
 void send_msg(Message_Port_t* port, Message_t* message);
 void send_msg_async(Message_Port_t* port, Message_t* message);
 void send_msg_async_broadcast(Message_Port_t* port, Message_t* message);

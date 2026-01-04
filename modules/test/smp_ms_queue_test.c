@@ -5,7 +5,6 @@
 #include <rendezvos/mm/spmalloc.h>
 extern struct allocator* kallocator;
 struct ms_test_data {
-        i64 allocator_id;
         ms_queue_node_t ms_node;
         u64 data;
 };
@@ -91,20 +90,21 @@ void smp_ms_queue_dyn_alloc_init(void)
                 malloc->m_alloc(malloc, sizeof(struct ms_test_data));
         tmp->data = -1;
         tmp->ms_node.next = tp_new_none();
-        tmp->allocator_id = percpu(cpu_number);
         msq_init(&ms_queue, &tmp->ms_node);
         memset(ms_data_test_seq, 0, ms_data_len * sizeof(int));
 }
 void smp_ms_queue_dyn_alloc_put(int offset)
 {
         struct allocator* malloc = percpu(kallocator);
-        int allocator_id = malloc->allocator_id;
         for (int i = offset; i < offset + percpu_ms_queue_test_number; i++) {
                 struct ms_test_data* tmp_ms_data =
                         malloc->m_alloc(malloc, sizeof(struct ms_test_data));
-                tmp_ms_data->data = i;
-                tmp_ms_data->allocator_id = allocator_id;
-                msq_enqueue(&ms_queue, &tmp_ms_data->ms_node);
+                if (tmp_ms_data) {
+                        tmp_ms_data->data = i;
+                        msq_enqueue(&ms_queue, &tmp_ms_data->ms_node);
+                } else {
+                        pr_error("malloc fail\n");
+                }
         }
 }
 void smp_ms_queue_dyn_alloc_get(int offset)
@@ -124,7 +124,7 @@ void smp_ms_queue_dyn_alloc_get(int offset)
                                      struct ms_test_data,
                                      ms_node);
                 ms_data_test_seq[i] = next_ptr->data;
-                malloc = per_cpu(kallocator, get_ptr->allocator_id);
+                malloc = percpu(kallocator);
                 malloc->m_free(malloc, get_ptr);
                 lock_cas(&cas_lock);
                 cas_add_value++;
