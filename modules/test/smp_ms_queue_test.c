@@ -2,7 +2,7 @@
 #include <modules/log/log.h>
 #include <common/dsa/ms_queue.h>
 #include <rendezvos/smp/percpu.h>
-#include <rendezvos/mm/spmalloc.h>
+#include <rendezvos/mm/kmalloc.h>
 extern struct allocator* kallocator;
 struct ms_test_data {
         ms_queue_node_t ms_node;

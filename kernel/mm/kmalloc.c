@@ -2,13 +2,13 @@
 #include <modules/log/log.h>
 #include <rendezvos/limits.h>
 #include <rendezvos/smp/percpu.h>
-#include <rendezvos/mm/spmalloc.h>
+#include <rendezvos/mm/kmalloc.h>
 #include <rendezvos/error.h>
 DEFINE_PER_CPU(struct allocator*, kallocator);
-struct mem_allocator tmp_sp_alloctor = {
-        .init = sp_init,
-        .m_alloc = sp_alloc,
-        .m_free = sp_free,
+struct mem_allocator tmp_k_alloctor = {
+        .init = kinit,
+        .m_alloc = kalloc,
+        .m_free = kfree,
 };
 size_t slot_size[MAX_GROUP_SLOTS] =
         {8, 16, 24, 32, 48, 64, 96, 128, 256, 512, 1024, 2048};
@@ -33,7 +33,7 @@ static int bytes_to_pages(size_t Bytes)
 static void page_chunk_rb_tree_insert(struct page_chunk_node* node,
                                       struct rb_root* page_chunk_root)
 {
-        struct rb_node **new = &page_chunk_root->rb_root, *parent = NULL;
+        struct rb_node** new = &page_chunk_root->rb_root, *parent = NULL;
         u64 key = node->page_addr;
         while (*new) {
                 parent = *new;
@@ -159,7 +159,7 @@ error_t chunk_free_obj(struct object_header* obj, struct mem_chunk* chunk)
         so we have to let every entry record 4K or 2M.
         and here we must need the page_num to decide how much to return
 
-        let's remember one thing: spmalloc is only used for kernel!!!!!!
+        let's remember one thing: kmalloc is only used for kernel!!!!!!
         */
         if (chunk->magic != CHUNK_MAGIC) {
                 pr_error("[ERROR]illegal chunk magic\n");
@@ -191,9 +191,8 @@ error_t group_free_obj(struct object_header* header, struct mem_chunk* chunk,
         }
         return res;
 }
-static void*
-collect_chunk_from_other_group(struct mem_allocator* sp_allocator_p,
-                               int slot_index)
+static void* collect_chunk_from_other_group(struct mem_allocator* k_allocator_p,
+                                            int slot_index)
 {
         struct mem_chunk* alloc_chunk = NULL;
         /*
@@ -203,11 +202,11 @@ collect_chunk_from_other_group(struct mem_allocator* sp_allocator_p,
         for (int group_id = 0; group_id < MAX_GROUP_SLOTS; group_id++) {
                 /*skip current group*/
                 if (group_id != slot_index
-                    && sp_allocator_p->groups[group_id].free_chunk_num) {
+                    && k_allocator_p->groups[group_id].free_chunk_num) {
                         struct list_entry* tmp_list_entry =
-                                sp_allocator_p->groups[group_id].empty_list.next;
+                                k_allocator_p->groups[group_id].empty_list.next;
                         while (tmp_list_entry
-                               != &sp_allocator_p->groups[group_id].empty_list) {
+                               != &k_allocator_p->groups[group_id].empty_list) {
                                 struct mem_chunk* tmp_chunk =
                                         container_of(tmp_list_entry,
                                                      struct mem_chunk,
@@ -215,7 +214,7 @@ collect_chunk_from_other_group(struct mem_allocator* sp_allocator_p,
                                 if (tmp_chunk->nr_used_objs == 0) {
                                         alloc_chunk = tmp_chunk;
                                         list_del(&tmp_chunk->chunk_list);
-                                        sp_allocator_p->groups[group_id]
+                                        k_allocator_p->groups[group_id]
                                                 .free_chunk_num--;
                                         break;
                                 }
@@ -227,42 +226,42 @@ collect_chunk_from_other_group(struct mem_allocator* sp_allocator_p,
         }
         return alloc_chunk;
 }
-struct allocator* sp_init(struct nexus_node* nexus_root, int allocator_id)
+struct allocator* kinit(struct nexus_node* nexus_root, int allocator_id)
 {
         if (!nexus_root || allocator_id < 0) {
                 pr_error("[ERROR]illegal sp init parameter\n");
                 return NULL;
         }
-        tmp_sp_alloctor.allocator_id = allocator_id;
-        tmp_sp_alloctor.nexus_root = nexus_root;
-        tmp_sp_alloctor.page_chunk_root.rb_root = NULL;
+        tmp_k_alloctor.allocator_id = allocator_id;
+        tmp_k_alloctor.nexus_root = nexus_root;
+        tmp_k_alloctor.page_chunk_root.rb_root = NULL;
         for (int i = 0; i < MAX_GROUP_SLOTS; i++) {
-                tmp_sp_alloctor.groups[i].allocator_id = allocator_id;
-                tmp_sp_alloctor.groups[i].chunk_order = i;
-                tmp_sp_alloctor.groups[i].full_chunk_num = 0;
-                tmp_sp_alloctor.groups[i].empty_chunk_num = 0;
-                tmp_sp_alloctor.groups[i].free_chunk_num = 0;
-                INIT_LIST_HEAD(&tmp_sp_alloctor.groups[i].empty_list);
-                INIT_LIST_HEAD(&tmp_sp_alloctor.groups[i].full_list);
+                tmp_k_alloctor.groups[i].allocator_id = allocator_id;
+                tmp_k_alloctor.groups[i].chunk_order = i;
+                tmp_k_alloctor.groups[i].full_chunk_num = 0;
+                tmp_k_alloctor.groups[i].empty_chunk_num = 0;
+                tmp_k_alloctor.groups[i].free_chunk_num = 0;
+                INIT_LIST_HEAD(&tmp_k_alloctor.groups[i].empty_list);
+                INIT_LIST_HEAD(&tmp_k_alloctor.groups[i].full_list);
         }
         /*bootstrap*/
-        struct mem_allocator* sp_allocator =
-                sp_alloc((struct allocator*)&tmp_sp_alloctor,
-                         sizeof(struct mem_allocator));
-        if (sp_allocator) {
-                memcpy(sp_allocator,
-                       &tmp_sp_alloctor,
+        struct mem_allocator* k_allocator =
+                kalloc((struct allocator*)&tmp_k_alloctor,
+                       sizeof(struct mem_allocator));
+        if (k_allocator) {
+                memcpy(k_allocator,
+                       &tmp_k_alloctor,
                        sizeof(struct mem_allocator));
                 for (int i = 0; i < MAX_GROUP_SLOTS; i++) {
-                        if (!list_empty(&sp_allocator->groups[i].empty_list)) {
+                        if (!list_empty(&k_allocator->groups[i].empty_list)) {
                                 list_replace(
-                                        &tmp_sp_alloctor.groups[i].empty_list,
-                                        &sp_allocator->groups[i].empty_list);
+                                        &tmp_k_alloctor.groups[i].empty_list,
+                                        &k_allocator->groups[i].empty_list);
                         } else {
                                 INIT_LIST_HEAD(
-                                        &sp_allocator->groups[i].empty_list);
+                                        &k_allocator->groups[i].empty_list);
                                 INIT_LIST_HEAD(
-                                        &sp_allocator->groups[i].full_list);
+                                        &k_allocator->groups[i].full_list);
                         }
                 }
                 if (per_cpu(kallocator, allocator_id)) {
@@ -272,28 +271,27 @@ struct allocator* sp_init(struct nexus_node* nexus_root, int allocator_id)
                         return NULL;
                 }
                 per_cpu(kallocator, allocator_id) =
-                        (struct allocator*)sp_allocator;
-                void* buffer_idle_node = sp_alloc(
-                        (struct allocator*)&tmp_sp_alloctor, slot_size[0]);
+                        (struct allocator*)k_allocator;
+                void* buffer_idle_node = kalloc(
+                        (struct allocator*)&tmp_k_alloctor, slot_size[0]);
                 struct object_header* idle_obj_ptr = container_of(
                         buffer_idle_node, struct object_header, obj);
-                msq_init(&sp_allocator->buffer_msq, &idle_obj_ptr->msq_node);
+                msq_init(&k_allocator->buffer_msq, &idle_obj_ptr->msq_node);
                 idle_obj_ptr->allocator_id = allocator_id;
-                return (struct allocator*)sp_allocator;
+                return (struct allocator*)k_allocator;
         } else {
-                pr_error(
-                        "[ERROR]sp alloc cannot get a space of mem allocator\n");
+                pr_error("[ERROR]kalloc cannot get a space of mem allocator\n");
                 return NULL;
         }
 }
-static void* _sp_alloc(struct mem_allocator* sp_allocator_p, size_t Bytes)
+static void* _k_alloc(struct mem_allocator* k_allocator_p, size_t Bytes)
 {
-        /*we allocate from the sp malloc*/
+        /*we allocate from the  kmalloc*/
         int slot_index = bytes_to_slot(Bytes);
-        struct mem_group* group = &sp_allocator_p->groups[slot_index];
+        struct mem_group* group = &k_allocator_p->groups[slot_index];
         struct mem_chunk* alloc_chunk = NULL;
         if (!group->empty_chunk_num && !group->free_chunk_num) {
-                alloc_chunk = collect_chunk_from_other_group(sp_allocator_p,
+                alloc_chunk = collect_chunk_from_other_group(k_allocator_p,
                                                              slot_index);
                 if (!alloc_chunk) {
                         /*
@@ -305,7 +303,7 @@ static void* _sp_alloc(struct mem_allocator* sp_allocator_p, size_t Bytes)
                         void* page_ptr =
                                 get_free_page(PAGE_PER_CHUNK,
                                               KERNEL_VIRT_OFFSET,
-                                              sp_allocator_p->nexus_root,
+                                              k_allocator_p->nexus_root,
                                               0,
                                               PAGE_ENTRY_NONE);
                         if (!page_ptr) {
@@ -321,7 +319,7 @@ static void* _sp_alloc(struct mem_allocator* sp_allocator_p, size_t Bytes)
                                 free_pages(page_ptr,
                                            PAGE_PER_CHUNK,
                                            0,
-                                           sp_allocator_p->nexus_root);
+                                           k_allocator_p->nexus_root);
                                 pr_error(
                                         "[ERROR]unknown reason lead to the chunk init fail\n");
                                 return NULL;
@@ -343,13 +341,13 @@ static void* _sp_alloc(struct mem_allocator* sp_allocator_p, size_t Bytes)
                                 return NULL;
                         }
                         list_add_head(
-                                &sp_allocator_p->groups[slot_index].empty_list,
+                                &k_allocator_p->groups[slot_index].empty_list,
                                 &alloc_chunk->chunk_list);
                         group->empty_chunk_num++;
                 }
         } else {
                 alloc_chunk = container_of(
-                        sp_allocator_p->groups[slot_index].empty_list.next,
+                        k_allocator_p->groups[slot_index].empty_list.next,
                         struct mem_chunk,
                         chunk_list);
                 if (alloc_chunk->nr_used_objs == 0) {
@@ -372,10 +370,10 @@ static void* _sp_alloc(struct mem_allocator* sp_allocator_p, size_t Bytes)
         }
         return obj_ptr->obj;
 }
-static error_t _sp_free(void* p)
+static error_t _k_free(void* p)
 {
         error_t res = 0;
-        struct mem_allocator* sp_allocator_p =
+        struct mem_allocator* k_allocator_p =
                 (struct mem_allocator*)percpu(kallocator);
         /*
           even the p is invalid ,
@@ -383,17 +381,17 @@ static error_t _sp_free(void* p)
         */
 
         /*the free requests should be fifo, so we free p at last*/
-        if (!sp_allocator_p || !p) {
-                pr_error("[ERROR] sp free with error parameter\n");
+        if (!k_allocator_p || !p) {
+                pr_error("[ERROR]  kfree with error parameter\n");
                 return -E_IN_PARAM;
         }
         struct object_header* header =
                 container_of(p, struct object_header, obj);
         struct mem_chunk* chunk = (struct mem_chunk*)ROUND_DOWN(
                 ((vaddr)p), PAGE_SIZE * PAGE_PER_CHUNK);
-        if (header->allocator_id == sp_allocator_p->allocator_id) {
+        if (header->allocator_id == k_allocator_p->allocator_id) {
                 int order = chunk->chunk_order;
-                struct mem_group* group = &sp_allocator_p->groups[order];
+                struct mem_group* group = &k_allocator_p->groups[order];
                 if ((res = group_free_obj(header, chunk, group)) < 0)
                         return res;
 
@@ -416,7 +414,7 @@ static error_t _sp_free(void* p)
                                 free_pages(free_chunk,
                                            PAGE_PER_CHUNK,
                                            0,
-                                           sp_allocator_p->nexus_root);
+                                           k_allocator_p->nexus_root);
                         }
                         free_chunk = next_free_chunk;
                         if (&free_chunk->chunk_list == &group->empty_list)
@@ -434,22 +432,21 @@ static error_t _sp_free(void* p)
 }
 static void clean_buffer_msq()
 {
-        struct mem_allocator* sp_allocator_p =
+        struct mem_allocator* k_allocator_p =
                 (struct mem_allocator*)percpu(kallocator);
         tagged_ptr_t dequeue_tagged_ptr;
-        while ((dequeue_tagged_ptr =
-                        msq_dequeue(&sp_allocator_p->buffer_msq))) {
+        while ((dequeue_tagged_ptr = msq_dequeue(&k_allocator_p->buffer_msq))) {
                 void* dequeue_ptr = tp_get_ptr(dequeue_tagged_ptr);
                 struct object_header* header = container_of(
                         dequeue_ptr, struct object_header, msq_node);
                 struct mem_chunk* chunk = (struct mem_chunk*)ROUND_DOWN(
                         ((vaddr)dequeue_ptr), PAGE_SIZE * PAGE_PER_CHUNK);
                 int order = chunk->chunk_order;
-                struct mem_group* group = &sp_allocator_p->groups[order];
+                struct mem_group* group = &k_allocator_p->groups[order];
                 group_free_obj(header, chunk, group);
         }
 }
-void* sp_alloc(struct allocator* allocator_p, size_t Bytes)
+void* kalloc(struct allocator* allocator_p, size_t Bytes)
 {
         if (!allocator_p) {
                 pr_error("[ERROR]invalid allocator_p parameter\n");
@@ -459,7 +456,7 @@ void* sp_alloc(struct allocator* allocator_p, size_t Bytes)
                 pr_error("[ERROR]want to alloc bytes <= 0 or larger then 2M\n");
                 return NULL;
         }
-        struct mem_allocator* sp_allocator_p =
+        struct mem_allocator* k_allocator_p =
                 (struct mem_allocator*)allocator_p;
         void* res_ptr = NULL;
         if (Bytes > slot_size[MAX_GROUP_SLOTS - 1]) {
@@ -470,9 +467,8 @@ void* sp_alloc(struct allocator* allocator_p, size_t Bytes)
                  we must try to allocate the page chunk node first,
                  then try to alloc the page
                 */
-                struct page_chunk_node* pcn =
-                        (struct page_chunk_node*)_sp_alloc(
-                                sp_allocator_p, sizeof(struct page_chunk_node));
+                struct page_chunk_node* pcn = (struct page_chunk_node*)_k_alloc(
+                        k_allocator_p, sizeof(struct page_chunk_node));
                 if (!pcn) {
                         pr_error("[ERROR]cannot allocate a page chunk node\n");
                         return res_ptr;
@@ -480,7 +476,7 @@ void* sp_alloc(struct allocator* allocator_p, size_t Bytes)
                 memset(pcn, 0, sizeof(struct page_chunk_node));
                 res_ptr = get_free_page(page_num,
                                         KERNEL_VIRT_OFFSET,
-                                        sp_allocator_p->nexus_root,
+                                        k_allocator_p->nexus_root,
                                         0,
                                         PAGE_ENTRY_NONE);
                 if (!res_ptr) {
@@ -489,46 +485,44 @@ void* sp_alloc(struct allocator* allocator_p, size_t Bytes)
                 }
                 pcn->page_addr = (vaddr)res_ptr;
                 pcn->page_num = page_num;
-                lock_cas(&sp_allocator_p->lock);
-                page_chunk_rb_tree_insert(pcn,
-                                          &sp_allocator_p->page_chunk_root);
-                unlock_cas(&sp_allocator_p->lock);
+                lock_cas(&k_allocator_p->lock);
+                page_chunk_rb_tree_insert(pcn, &k_allocator_p->page_chunk_root);
+                unlock_cas(&k_allocator_p->lock);
         } else {
-                res_ptr = _sp_alloc(sp_allocator_p, Bytes);
+                res_ptr = _k_alloc(k_allocator_p, Bytes);
         }
         return res_ptr;
 }
-void sp_free(struct allocator* allocator_p, void* p)
+void kfree(struct allocator* allocator_p, void* p)
 {
         if (!allocator_p || !p) {
-                pr_error("[ERROR] sp free error parameter\n");
+                pr_error("[ERROR] kfree error parameter\n");
                 return;
         }
-        struct mem_allocator* sp_allocator_p =
+        struct mem_allocator* k_allocator_p =
                 (struct mem_allocator*)allocator_p;
         error_t e = 0;
         if (((vaddr)p) & (PAGE_SIZE - 1)) {
                 clean_buffer_msq();
                 /*free from the chunks*/
-                e = _sp_free(p);
+                e = _k_free(p);
         } else {
                 /*free pages*/
-                lock_cas(&sp_allocator_p->lock);
+                lock_cas(&k_allocator_p->lock);
                 struct page_chunk_node* pcn = page_chunk_rb_tree_search(
-                        &sp_allocator_p->page_chunk_root, (vaddr)p);
-                unlock_cas(&sp_allocator_p->lock);
+                        &k_allocator_p->page_chunk_root, (vaddr)p);
+                unlock_cas(&k_allocator_p->lock);
                 if (!pcn) {
                         /*another sp allocator alloced it*/
                         pr_error(
                                 "cannot find the page chunk, might alloced by another sp allocator\n");
                         return;
                 }
-                e = free_pages(p, pcn->page_num, 0, sp_allocator_p->nexus_root);
-                lock_cas(&sp_allocator_p->lock);
-                page_chunk_rb_tree_remove(pcn,
-                                          &sp_allocator_p->page_chunk_root);
-                unlock_cas(&sp_allocator_p->lock);
-                e = _sp_free((void*)pcn);
+                e = free_pages(p, pcn->page_num, 0, k_allocator_p->nexus_root);
+                lock_cas(&k_allocator_p->lock);
+                page_chunk_rb_tree_remove(pcn, &k_allocator_p->page_chunk_root);
+                unlock_cas(&k_allocator_p->lock);
+                e = _k_free((void*)pcn);
         }
         if (e) {
                 pr_error(

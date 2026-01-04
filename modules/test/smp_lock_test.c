@@ -22,18 +22,12 @@ int smp_lock_test(void)
                 while (!have_inited)
                         ;
         }
-        if (percpu(cpu_number) == BSP_ID)
-                pr_info("start mcs lock test\n");
         struct spin_lock_t *my_spin_lock = &percpu(test_spin_lock);
         for (int i = 0; i < TEST_ROUND; i++) {
                 /*mcs spin lock*/
                 lock_mcs(&spin_ptr, my_spin_lock);
                 mcs_add_value++;
                 unlock_mcs(&spin_ptr, my_spin_lock);
-        }
-        if (percpu(cpu_number) == BSP_ID)
-                pr_info("start cas lock test\n");
-        for (int i = 0; i < TEST_ROUND; i++) {
                 /*cas spin lock*/
                 lock_cas(&cas_lock);
                 cas_add_value++;

@@ -5,8 +5,8 @@ static struct single_test_case single_test[MAX_SINGLE_TEST_CASE] = {
         {rb_tree_test, "rb_tree\0"},
         {arch_vmm_test, "arch_vmm\0"},
         // {nexus_test, "nexus\0"},
-        /* if spmalloc is ok ,then nexus must be ok*/
-        {spmalloc_test, "spmalloc\0"},
+        /* if kmalloc is ok ,then nexus must be ok*/
+        {kmalloc_test, "kmalloc\0"},
         /*the pmm test will use almost all of the memory frame, so it must put
          * at the end*/
         // {pmm_test, "pmm\0"},

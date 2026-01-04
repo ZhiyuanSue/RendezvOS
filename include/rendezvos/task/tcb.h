@@ -5,7 +5,7 @@
 #include <common/dsa/list.h>
 #include <common/dsa/rb_tree.h>
 #include <rendezvos/mm/vmm.h>
-#include <rendezvos/mm/spmalloc.h>
+#include <rendezvos/mm/kmalloc.h>
 #ifdef _AARCH64_
 #include <arch/aarch64/tcb_arch.h>
 #elif defined _LOONGARCH_

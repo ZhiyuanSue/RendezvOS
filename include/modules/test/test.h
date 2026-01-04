@@ -23,7 +23,7 @@ int pmm_test(void);
 int arch_vmm_test(void);
 int rb_tree_test(void);
 int nexus_test(void);
-int spmalloc_test(void);
+int kmalloc_test(void);
 int elf_read_test(void);
 int task_test(void);
 int test_pci_scan(void);
@@ -38,7 +38,7 @@ we use that check the result at cpu 0
 int smp_lock_test(void);
 bool smp_lock_check(void);
 int smp_nexus_test(void);
-int smp_spmalloc_test(void);
+int smp_kmalloc_test(void);
 int smp_ms_queue_test(void);
 bool smp_ms_queue_check(void);
 int smp_ms_queue_dyn_alloc_test(void);
