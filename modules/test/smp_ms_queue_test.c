@@ -102,9 +102,14 @@ void smp_ms_queue_dyn_alloc_put(int offset)
         for (int i = offset; i < offset + percpu_ms_queue_test_number; i++) {
                 struct ms_test_data* tmp_ms_data =
                         malloc->m_alloc(malloc, sizeof(struct ms_test_data));
-                tmp_ms_data->data = i;
-                tmp_ms_data->allocator_id = allocator_id;
-                msq_enqueue(&ms_queue, &tmp_ms_data->ms_node);
+                if(tmp_ms_data){
+                        tmp_ms_data->data = i;
+                        tmp_ms_data->allocator_id = allocator_id;
+                        msq_enqueue(&ms_queue, &tmp_ms_data->ms_node);
+                }else{
+                        pr_error("malloc fail\n");
+                }
+                
         }
 }
 void smp_ms_queue_dyn_alloc_get(int offset)
