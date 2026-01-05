@@ -9,7 +9,6 @@ struct Msg_Port* create_message_port()
                 kallocator->m_alloc(kallocator, sizeof(struct Msg_Port));
         if (mp && idle_node) {
                 msq_init(&mp->ms_queue, idle_node);
-                mp->allocator_id = kallocator->allocator_id;
         } else {
                 return NULL;
         }
@@ -20,7 +19,6 @@ struct Msg* create_message(i64 msg_type, u64 append_info_len, char* append_info)
         struct Msg* msg = kallocator->m_alloc(
                 kallocator, sizeof(struct Msg) + append_info_len);
         if (msg) {
-                msg->allocator_id = kallocator->allocator_id;
                 msg->append_info_len = append_info_len;
                 msg->msg_type = msg_type;
                 memcpy(&msg->append_info, append_info, append_info_len);
@@ -43,7 +41,7 @@ Message_t* recv_msg(Message_Port_t* port)
                 container_of(tp_get_ptr(dequeue_ptr), struct Msg, ms_node);
         Message_t* next_ptr = container_of(
                 tp_get_ptr(get_ptr->ms_node.next), struct Msg, ms_node);
-        malloc = per_cpu(kallocator, get_ptr->allocator_id);
+        malloc = percpu(kallocator);
         malloc->m_free(malloc, get_ptr);
         return next_ptr;
 }

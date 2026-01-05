@@ -5,11 +5,6 @@
 #include <rendezvos/mm/kmalloc.h>
 #include <rendezvos/error.h>
 DEFINE_PER_CPU(struct allocator*, kallocator);
-struct mem_allocator tmp_k_alloctor = {
-        .init = kinit,
-        .m_alloc = kalloc,
-        .m_free = kfree,
-};
 size_t slot_size[MAX_GROUP_SLOTS] =
         {8, 16, 24, 32, 48, 64, 96, 128, 256, 512, 1024, 2048};
 static int bytes_to_slot(size_t Bytes)
@@ -226,64 +221,7 @@ static void* collect_chunk_from_other_group(struct mem_allocator* k_allocator_p,
         }
         return alloc_chunk;
 }
-struct allocator* kinit(struct nexus_node* nexus_root, int allocator_id)
-{
-        if (!nexus_root || allocator_id < 0) {
-                pr_error("[ERROR]illegal sp init parameter\n");
-                return NULL;
-        }
-        tmp_k_alloctor.allocator_id = allocator_id;
-        tmp_k_alloctor.nexus_root = nexus_root;
-        tmp_k_alloctor.page_chunk_root.rb_root = NULL;
-        for (int i = 0; i < MAX_GROUP_SLOTS; i++) {
-                tmp_k_alloctor.groups[i].allocator_id = allocator_id;
-                tmp_k_alloctor.groups[i].chunk_order = i;
-                tmp_k_alloctor.groups[i].full_chunk_num = 0;
-                tmp_k_alloctor.groups[i].empty_chunk_num = 0;
-                tmp_k_alloctor.groups[i].free_chunk_num = 0;
-                INIT_LIST_HEAD(&tmp_k_alloctor.groups[i].empty_list);
-                INIT_LIST_HEAD(&tmp_k_alloctor.groups[i].full_list);
-        }
-        /*bootstrap*/
-        struct mem_allocator* k_allocator =
-                kalloc((struct allocator*)&tmp_k_alloctor,
-                       sizeof(struct mem_allocator));
-        if (k_allocator) {
-                memcpy(k_allocator,
-                       &tmp_k_alloctor,
-                       sizeof(struct mem_allocator));
-                for (int i = 0; i < MAX_GROUP_SLOTS; i++) {
-                        if (!list_empty(&k_allocator->groups[i].empty_list)) {
-                                list_replace(
-                                        &tmp_k_alloctor.groups[i].empty_list,
-                                        &k_allocator->groups[i].empty_list);
-                        } else {
-                                INIT_LIST_HEAD(
-                                        &k_allocator->groups[i].empty_list);
-                                INIT_LIST_HEAD(
-                                        &k_allocator->groups[i].full_list);
-                        }
-                }
-                if (per_cpu(kallocator, allocator_id)) {
-                        pr_error(
-                                "[ERROR]we have already have one allocator with id %d\n",
-                                allocator_id);
-                        return NULL;
-                }
-                per_cpu(kallocator, allocator_id) =
-                        (struct allocator*)k_allocator;
-                void* buffer_idle_node = kalloc(
-                        (struct allocator*)&tmp_k_alloctor, slot_size[0]);
-                struct object_header* idle_obj_ptr = container_of(
-                        buffer_idle_node, struct object_header, obj);
-                msq_init(&k_allocator->buffer_msq, &idle_obj_ptr->msq_node);
-                idle_obj_ptr->allocator_id = allocator_id;
-                return (struct allocator*)k_allocator;
-        } else {
-                pr_error("[ERROR]kalloc cannot get a space of mem allocator\n");
-                return NULL;
-        }
-}
+
 static void* _k_alloc(struct mem_allocator* k_allocator_p, size_t Bytes)
 {
         /*we allocate from the  kmalloc*/
@@ -527,5 +465,68 @@ void kfree(struct allocator* allocator_p, void* p)
         if (e) {
                 pr_error(
                         "[ ERROR ]sp free have generated an error but no error handle\n");
+        }
+}
+struct mem_allocator tmp_k_alloctor = {
+        .init = kinit,
+        .m_alloc = kalloc,
+        .m_free = kfree,
+};
+struct allocator* kinit(struct nexus_node* nexus_root, int allocator_id)
+{
+        if (!nexus_root || allocator_id < 0) {
+                pr_error("[ERROR]illegal sp init parameter\n");
+                return NULL;
+        }
+        tmp_k_alloctor.allocator_id = allocator_id;
+        tmp_k_alloctor.nexus_root = nexus_root;
+        tmp_k_alloctor.page_chunk_root.rb_root = NULL;
+        for (int i = 0; i < MAX_GROUP_SLOTS; i++) {
+                tmp_k_alloctor.groups[i].allocator_id = allocator_id;
+                tmp_k_alloctor.groups[i].chunk_order = i;
+                tmp_k_alloctor.groups[i].full_chunk_num = 0;
+                tmp_k_alloctor.groups[i].empty_chunk_num = 0;
+                tmp_k_alloctor.groups[i].free_chunk_num = 0;
+                INIT_LIST_HEAD(&tmp_k_alloctor.groups[i].empty_list);
+                INIT_LIST_HEAD(&tmp_k_alloctor.groups[i].full_list);
+        }
+        /*bootstrap*/
+        struct mem_allocator* k_allocator =
+                kalloc((struct allocator*)&tmp_k_alloctor,
+                       sizeof(struct mem_allocator));
+        if (k_allocator) {
+                memcpy(k_allocator,
+                       &tmp_k_alloctor,
+                       sizeof(struct mem_allocator));
+                for (int i = 0; i < MAX_GROUP_SLOTS; i++) {
+                        if (!list_empty(&k_allocator->groups[i].empty_list)) {
+                                list_replace(
+                                        &tmp_k_alloctor.groups[i].empty_list,
+                                        &k_allocator->groups[i].empty_list);
+                        } else {
+                                INIT_LIST_HEAD(
+                                        &k_allocator->groups[i].empty_list);
+                                INIT_LIST_HEAD(
+                                        &k_allocator->groups[i].full_list);
+                        }
+                }
+                if (per_cpu(kallocator, allocator_id)) {
+                        pr_error(
+                                "[ERROR]we have already have one allocator with id %d\n",
+                                allocator_id);
+                        return NULL;
+                }
+                per_cpu(kallocator, allocator_id) =
+                        (struct allocator*)k_allocator;
+                void* buffer_idle_node = kalloc(
+                        (struct allocator*)&tmp_k_alloctor, slot_size[0]);
+                struct object_header* idle_obj_ptr = container_of(
+                        buffer_idle_node, struct object_header, obj);
+                msq_init(&k_allocator->buffer_msq, &idle_obj_ptr->msq_node);
+                idle_obj_ptr->allocator_id = allocator_id;
+                return (struct allocator*)k_allocator;
+        } else {
+                pr_error("[ERROR]kalloc cannot get a space of mem allocator\n");
+                return NULL;
         }
 }

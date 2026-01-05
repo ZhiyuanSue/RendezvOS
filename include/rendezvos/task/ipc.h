@@ -4,7 +4,6 @@
 
 /*message structure*/
 #define MESSAGE_COMMON       \
-        i64 allocator_id;    \
         u64 append_info_len; \
         ms_queue_node_t ms_node
 
@@ -18,7 +17,6 @@ struct Msg {
 /*port structure*/
 typedef struct Msg_Port Message_Port_t;
 struct Msg_Port {
-        i64 allocator_id;
         ms_queue_t ms_queue;
         atomic64_t msg_cnt;
 };

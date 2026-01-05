@@ -11,7 +11,7 @@
 #include <rendezvos/mm/allocator.h>
 #include <rendezvos/sync/cas_lock.h>
 #define MAX_GROUP_SLOTS 12
-#define PAGE_PER_CHUNK  2
+#define PAGE_PER_CHUNK  4
 #define CHUNK_MAGIC     0xa11ca11ca11ca11c
 /*
         In one kmalloc, it have NR_CHUNK linked list groups
@@ -106,11 +106,6 @@ struct mem_allocator {
         cas_lock_t lock;
 } __attribute__((aligned(sizeof(u64))));
 /*chunk*/
-error_t chunk_init(struct mem_chunk* chunk, int chunk_order, int allocator_id);
-struct object_header* chunk_get_obj(struct mem_chunk* chunk);
-error_t chunk_free_obj(struct object_header* obj, struct mem_chunk* chunk);
 struct allocator* kinit(struct nexus_node* nexus_root, int allocator_id);
-void* kalloc(struct allocator* allocator_p, size_t Bytes);
-void kfree(struct allocator* allocator_p, void* p);
 
 #endif
