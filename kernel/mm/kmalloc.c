@@ -361,10 +361,11 @@ static error_t _k_free(void* p)
         } else {
                 /*put the free object to the target allocator lockfree buffer
                  * list*/
-                msq_enqueue(&((struct mem_allocator*)per_cpu(
-                                      kallocator, header->allocator_id))
-                                     ->buffer_msq,
-                            &header->msq_node);
+                struct mem_allocator* k_allocator_p =
+                        (struct mem_allocator*)per_cpu(kallocator,
+                                                       header->allocator_id);
+                msq_enqueue(&k_allocator_p->buffer_msq, &header->msq_node);
+                atomic64_inc(&k_allocator_p->buffer_size);
         }
         return 0;
 }
@@ -373,7 +374,10 @@ static void clean_buffer_msq()
         struct mem_allocator* k_allocator_p =
                 (struct mem_allocator*)percpu(kallocator);
         tagged_ptr_t dequeue_tagged_ptr;
-        while ((dequeue_tagged_ptr = msq_dequeue(&k_allocator_p->buffer_msq))) {
+        while (atomic64_load(
+                       (volatile u64*)&(k_allocator_p->buffer_size.counter))
+               && (dequeue_tagged_ptr =
+                           msq_dequeue(&k_allocator_p->buffer_msq))) {
                 void* dequeue_ptr = tp_get_ptr(dequeue_tagged_ptr);
                 struct object_header* header = container_of(
                         dequeue_ptr, struct object_header, msq_node);
@@ -382,6 +386,7 @@ static void clean_buffer_msq()
                 int order = chunk->chunk_order;
                 struct mem_group* group = &k_allocator_p->groups[order];
                 group_free_obj(header, chunk, group);
+                atomic64_dec(&k_allocator_p->buffer_size);
         }
 }
 void* kalloc(struct allocator* allocator_p, size_t Bytes)
@@ -523,6 +528,7 @@ struct allocator* kinit(struct nexus_node* nexus_root, int allocator_id)
                 struct object_header* idle_obj_ptr = container_of(
                         buffer_idle_node, struct object_header, obj);
                 msq_init(&k_allocator->buffer_msq, &idle_obj_ptr->msq_node);
+                atomic64_init(&k_allocator->buffer_size, 0);
                 idle_obj_ptr->allocator_id = allocator_id;
                 return (struct allocator*)k_allocator;
         } else {
