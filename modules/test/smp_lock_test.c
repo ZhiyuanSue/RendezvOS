@@ -13,11 +13,19 @@ static cas_lock_t cas_lock;
 static volatile int mcs_add_value = 0;
 static volatile int cas_add_value = 0;
 static volatile bool have_inited = false;
+static atomic64_t atomic64_inc_value;
+static atomic64_t atomic64_dec_value;
+static atomic64_t atomic64_add_value;
+static atomic64_t atomic64_sub_value;
 int smp_lock_test(void)
 {
         if (percpu(cpu_number) == BSP_ID) {
                 lock_init_cas(&cas_lock);
                 have_inited = true;
+                atomic64_inc_value.counter = 0;
+                atomic64_dec_value.counter = NR_CPU * TEST_ROUND;
+                atomic64_add_value.counter = 0;
+                atomic64_sub_value.counter = NR_CPU * TEST_ROUND * 2;
         } else {
                 while (!have_inited)
                         ;
@@ -33,10 +41,27 @@ int smp_lock_test(void)
                 cas_add_value++;
                 unlock_cas(&cas_lock);
         }
+        /*atomic test*/
+        for (int i = 0; i < TEST_ROUND; i++) {
+                atomic64_inc(&atomic64_inc_value);
+        }
+        for (int i = 0; i < TEST_ROUND; i++) {
+                atomic64_dec(&atomic64_dec_value);
+        }
+        for (int i = 0; i < TEST_ROUND; i++) {
+                atomic64_add(&atomic64_add_value, 2);
+        }
+        for (int i = 0; i < TEST_ROUND; i++) {
+                atomic64_sub(&atomic64_sub_value, 2);
+        }
         return 0;
 }
 bool smp_lock_check(void)
 {
         return NR_CPU * TEST_ROUND == mcs_add_value
-               && NR_CPU * TEST_ROUND == cas_add_value;
+               && NR_CPU * TEST_ROUND == cas_add_value
+               && atomic64_inc_value.counter == NR_CPU * TEST_ROUND
+               && atomic64_dec_value.counter == 0
+               && atomic64_add_value.counter == NR_CPU * TEST_ROUND * 2
+               && atomic64_sub_value.counter == 0;
 }

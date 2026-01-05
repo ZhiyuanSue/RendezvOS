@@ -16,10 +16,4 @@
 #else
 #include <arch/x86_64/sync/atomic.h>
 #endif
-typedef struct {
-        volatile i32 counter;
-} atomic_t;
-typedef struct {
-        volatile i64 counter;
-} atomic64_t;
 #endif

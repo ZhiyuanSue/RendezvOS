@@ -179,7 +179,7 @@ static inline i64 ppn_Zone_index(MemZone* zone, ppn_t ppn)
                          paddr pmm_phy_end_addr);                             \
         i64 (*pmm_alloc)(struct pmm * pmm,                                    \
                          size_t page_number,                                  \
-                         size_t* alloced_page_number);                        \
+                         size_t * alloced_page_number);                       \
         error_t (*pmm_free)(struct pmm * pmm, ppn_t ppn, size_t page_number); \
         size_t (*pmm_calculate_manage_space)(size_t zone_page_number);        \
         void (*pmm_show_info)(struct pmm * pmm);                              \

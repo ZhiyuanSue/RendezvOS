@@ -51,4 +51,42 @@ static inline void atomic64_store(volatile u64 *ptr, u64 value)
         dmb(ISH);
         *ptr = value;
 }
+static inline void atomic64_init(atomic64_t *ptr, i64 value)
+{
+        atomic64_store((volatile u64 *)&ptr->counter, (u64)value);
+}
+static inline void atomic64_add(atomic64_t *ptr, i64 value)
+{
+        i64 tmp;
+        i64 old;
+
+        __asm__ volatile("1: ldxr %0, [%2]\n"
+                         "   add  %0, %0, %3\n"
+                         "   stxr %w1, %0, [%2]\n"
+                         "   cbnz %w1, 1b"
+                         : "=&r"(tmp), "=&r"(old)
+                         : "r"(&ptr->counter), "r"(value)
+                         : "cc", "memory");
+}
+static inline void atomic64_sub(atomic64_t *ptr, i64 value)
+{
+        i64 tmp;
+        i64 old;
+
+        __asm__ volatile("1: ldxr %0, [%2]\n"
+                         "   sub  %0, %0, %3\n"
+                         "   stxr %w1, %0, [%2]\n"
+                         "   cbnz %w1, 1b"
+                         : "=&r"(tmp), "=&r"(old)
+                         : "r"(&ptr->counter), "r"(value)
+                         : "cc", "memory");
+}
+static inline void atomic64_inc(atomic64_t *ptr)
+{
+        atomic64_add(ptr, 1);
+}
+static inline void atomic64_dec(atomic64_t *ptr)
+{
+        atomic64_sub(ptr, 1);
+}
 #endif

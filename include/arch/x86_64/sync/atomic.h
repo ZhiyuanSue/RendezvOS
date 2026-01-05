@@ -34,4 +34,36 @@ static inline void atomic64_store(volatile u64 *ptr, u64 value)
         barrier();
         *ptr = value;
 }
+static inline void atomic64_init(atomic64_t *ptr, i64 value)
+{
+        atomic64_store((volatile u64 *)&ptr->counter, (u64)value);
+}
+static inline void atomic64_add(atomic64_t *ptr, i64 value)
+{
+        __asm__ volatile("lock addq %1, %0"
+                         : "+m"(ptr->counter)
+                         : "re"(value)
+                         : "cc", "memory");
+}
+static inline void atomic64_sub(atomic64_t *ptr, i64 value)
+{
+        __asm__ volatile("lock subq %1, %0"
+                         : "+m"(ptr->counter)
+                         : "re"(value)
+                         : "cc", "memory");
+}
+static inline void atomic64_inc(atomic64_t *ptr)
+{
+        __asm__ volatile("lock incq %0"
+                         : "+m"(ptr->counter)
+                         :
+                         : "cc", "memory");
+}
+static inline void atomic64_dec(atomic64_t *ptr)
+{
+        __asm__ volatile("lock decq %0"
+                         : "+m"(ptr->counter)
+                         :
+                         : "cc", "memory");
+}
 #endif
