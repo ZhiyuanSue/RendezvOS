@@ -55,6 +55,11 @@ extern Task_Manager* core_tm;
         i64 thread_number;                  \
         struct list_entry thread_head_node; \
         VSpace* vs;                         \
+        ms_queue_node_t port_queue_node;    \
+        ms_queue_t thread_recv_msg_queue;        \
+        ms_queue_node_t thread_recv_msg_queue_dummy_node; \
+        ms_queue_t thread_send_msg_queue;        \
+        ms_queue_node_t thread_send_msg_queue_dummy_node; \
         TASK_SCHE_COMMON
 /* as the base class of tcb */
 typedef struct {
@@ -79,6 +84,9 @@ extern u64 thread_kstack_page_num;
         u64 kstack_num;                                 \
         Arch_Task_Context ctx;                          \
         Thread_Init_Para* init_parameter;               \
+        ms_queue_node_t port_queue_node;                \
+        ms_queue_t thread_send_msg_queue;                       \
+        ms_queue_t thread_recv_msg_queue;                       \
         THERAD_SCHE_COMMON
 
 #define THREAD_FLAG_NONE               0
@@ -131,6 +139,15 @@ error_t create_idle_thread(Tcb_Base* root_task);
 Thread_Base* create_thread(void* __func, int nr_parameter, ...);
 void delete_thread(Thread_Base* thread);
 void delete_task(Tcb_Base* tcb);
+
+static inline Thread_Base* get_cpu_current_thread()
+{
+        return percpu(core_tm)->current_thread;
+}
+static inline Tcb_Base* get_cpu_current_task()
+{
+        return percpu(core_tm)->current_task;
+}
 
 static inline void thread_set_flags(u64 flags, Thread_Base* thread)
 {

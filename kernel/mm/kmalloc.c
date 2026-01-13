@@ -364,7 +364,8 @@ static error_t _k_free(void* p)
                 struct mem_allocator* k_allocator_p =
                         (struct mem_allocator*)per_cpu(kallocator,
                                                        header->allocator_id);
-                msq_enqueue(&k_allocator_p->buffer_msq, &header->msq_node);
+                msq_enqueue(
+                        &k_allocator_p->buffer_msq, &header->msq_node, 0);
                 atomic64_inc(&k_allocator_p->buffer_size);
         }
         return 0;
@@ -527,7 +528,7 @@ struct allocator* kinit(struct nexus_node* nexus_root, int allocator_id)
                         (struct allocator*)&tmp_k_alloctor, slot_size[0]);
                 struct object_header* idle_obj_ptr = container_of(
                         buffer_idle_node, struct object_header, obj);
-                msq_init(&k_allocator->buffer_msq, &idle_obj_ptr->msq_node);
+                msq_init(&k_allocator->buffer_msq, &idle_obj_ptr->msq_node,0);
                 atomic64_init(&k_allocator->buffer_size, 0);
                 idle_obj_ptr->allocator_id = allocator_id;
                 return (struct allocator*)k_allocator;

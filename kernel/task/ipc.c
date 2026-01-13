@@ -5,10 +5,11 @@ struct Msg_Port* create_message_port()
 {
         struct Msg_Port* mp =
                 kallocator->m_alloc(kallocator, sizeof(struct Msg_Port));
-        ms_queue_node_t* idle_node =
-                kallocator->m_alloc(kallocator, sizeof(struct Msg_Port));
-        if (mp && idle_node) {
-                msq_init(&mp->ms_queue, idle_node);
+        if (mp) {
+                /*TODO: maybe need to init the header idle msg and the header
+                 * tcb*/
+                msq_init(&mp->tcb_queue, &mp->tcb_queue_dummy_node,IPC_ENDPOINT_APPEND_BITS);
+                msq_init(&mp->send_msg_queue, &mp->send_msg_queue_dummy_node,IPC_ENDPOINT_APPEND_BITS);
         } else {
                 return NULL;
         }
@@ -27,22 +28,45 @@ struct Msg* create_message(i64 msg_type, u64 append_info_len, char* append_info)
 }
 void send_msg(Message_Port_t* port, Message_t* message)
 {
-        msq_enqueue(&port->ms_queue, &message->ms_node);
+        Thread_Base* send_thread = get_cpu_current_thread();
+        /*TODO*/
+        (void)send_thread;
+        (void)message;
+        while(1){
+                u16 tcb_queue_state = ipc_get_queue_state(port);
+                switch (tcb_queue_state)
+                {
+                case IPC_ENDPOINT_STATE_EMPTY:
+                case IPC_ENDPOINT_STATE_SEND:
+                        break;
+                case IPC_ENDPOINT_STATE_RECV:
+                        break;
+                default:
+                        /*should not achieve here*/
+                        arch_cpu_relax();
+                        continue;
+                }
+        }
+}
+Message_t* recv_msg(Message_Port_t* port)
+{
+        /*TODO*/
+        while(1){
+                u16 tcb_queue_state = ipc_get_queue_state(port);
+                switch (tcb_queue_state)
+                {
+                case IPC_ENDPOINT_STATE_EMPTY:
+                case IPC_ENDPOINT_STATE_RECV:
+                        break;
+                case IPC_ENDPOINT_STATE_SEND:
+                        break;
+                default:
+                        /*should not achieve here*/
+                        arch_cpu_relax();
+                        continue;
+                }
+        }
 }
 void send_msg_async(Message_Port_t* port, Message_t* message);
 void send_msg_async_broadcast(Message_Port_t* port, Message_t* message);
-Message_t* recv_msg(Message_Port_t* port)
-{
-        struct allocator* malloc;
-        tagged_ptr_t dequeue_ptr = tp_new_none();
-        while ((dequeue_ptr = msq_dequeue(&port->ms_queue)) == 0)
-                ;
-        Message_t* get_ptr =
-                container_of(tp_get_ptr(dequeue_ptr), struct Msg, ms_node);
-        Message_t* next_ptr = container_of(
-                tp_get_ptr(get_ptr->ms_node.next), struct Msg, ms_node);
-        malloc = percpu(kallocator);
-        malloc->m_free(malloc, get_ptr);
-        return next_ptr;
-}
 Message_t* recv_msg_await(Message_Port_t* port);
