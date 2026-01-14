@@ -1,5 +1,6 @@
 #include <modules/log/log.h>
 #include <rendezvos/task/tcb.h>
+#include <rendezvos/task/ipc.h>
 #include <rendezvos/smp/percpu.h>
 #include <rendezvos/error.h>
 #include <common/string.h>
@@ -12,7 +13,7 @@ Task_Manager* init_proc(void)
 {
         percpu(core_tm) = new_task_manager();
         /*create the root task and init it*/
-        Tcb_Base* root_task = new_task();
+        Tcb_Base* root_task = new_task_structure();
         root_task->pid = get_new_pid();
         root_task->vs = percpu(current_vspace);
         add_task_to_manager(percpu(core_tm), root_task);
@@ -115,13 +116,17 @@ error_t del_thread_from_manager(Thread_Base* thread)
         return 0;
 }
 
-Tcb_Base* new_task(void)
+Tcb_Base* new_task_structure(void)
 {
         struct allocator* cpu_allocator = percpu(kallocator);
         if (!cpu_allocator)
                 return NULL;
         Tcb_Base* tcb = (Tcb_Base*)(cpu_allocator->m_alloc(cpu_allocator,
                                                            sizeof(Tcb_Base)));
+        Message_t* dummy_recv_msg_node = (Message_t*)(cpu_allocator->m_alloc(
+                cpu_allocator, sizeof(Message_t)));
+        Message_t* dummy_send_msg_node = (Message_t*)(cpu_allocator->m_alloc(
+                cpu_allocator, sizeof(Message_t)));
         if (tcb) {
                 memset((void*)tcb, 0, sizeof(Tcb_Base));
                 tcb->pid = INVALID_ID;
@@ -130,6 +135,10 @@ Tcb_Base* new_task(void)
                 INIT_LIST_HEAD(&(tcb->thread_head_node));
                 tcb->vs = NULL;
                 tcb->tm = NULL;
+                if (dummy_recv_msg_node)
+                        msq_init(&tcb->recv_msg_queue, dummy_recv_msg_node, 0);
+                if (dummy_send_msg_node)
+                        msq_init(&tcb->send_msg_queue, dummy_send_msg_node, 0);
         }
         return tcb;
 }

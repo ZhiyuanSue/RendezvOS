@@ -3,13 +3,25 @@
 
 struct Msg_Port* create_message_port()
 {
-        struct Msg_Port* mp =
-                kallocator->m_alloc(kallocator, sizeof(struct Msg_Port));
+        struct allocator* cpu_kallocator = percpu(kallocator);
+        struct Msg_Port* mp = cpu_kallocator->m_alloc(cpu_kallocator,
+                                                      sizeof(struct Msg_Port));
+        Message_t* dummy_tcb_queue_node = (Message_t*)(cpu_kallocator->m_alloc(
+                cpu_kallocator, sizeof(Message_t)));
+        Message_t* dummy_msg_queue_node = (Message_t*)(cpu_kallocator->m_alloc(
+                cpu_kallocator, sizeof(Message_t)));
         if (mp) {
                 /*TODO: maybe need to init the header idle msg and the header
                  * tcb*/
-                msq_init(&mp->tcb_queue, &mp->tcb_queue_dummy_node,IPC_ENDPOINT_APPEND_BITS);
-                msq_init(&mp->send_msg_queue, &mp->send_msg_queue_dummy_node,IPC_ENDPOINT_APPEND_BITS);
+                if (dummy_tcb_queue_node)
+                        msq_init(&mp->tcb_queue,
+                                 dummy_tcb_queue_node,
+                                 IPC_ENDPOINT_APPEND_BITS);
+
+                if (dummy_msg_queue_node)
+                        msq_init(&mp->send_msg_queue,
+                                 dummy_msg_queue_node,
+                                 IPC_ENDPOINT_APPEND_BITS);
         } else {
                 return NULL;
         }
@@ -17,8 +29,9 @@ struct Msg_Port* create_message_port()
 }
 struct Msg* create_message(i64 msg_type, u64 append_info_len, char* append_info)
 {
-        struct Msg* msg = kallocator->m_alloc(
-                kallocator, sizeof(struct Msg) + append_info_len);
+        struct allocator* cpu_kallocator = percpu(kallocator);
+        struct Msg* msg = cpu_kallocator->m_alloc(
+                cpu_kallocator, sizeof(struct Msg) + append_info_len);
         if (msg) {
                 msg->append_info_len = append_info_len;
                 msg->msg_type = msg_type;
@@ -32,10 +45,9 @@ void send_msg(Message_Port_t* port, Message_t* message)
         /*TODO*/
         (void)send_thread;
         (void)message;
-        while(1){
+        while (1) {
                 u16 tcb_queue_state = ipc_get_queue_state(port);
-                switch (tcb_queue_state)
-                {
+                switch (tcb_queue_state) {
                 case IPC_ENDPOINT_STATE_EMPTY:
                 case IPC_ENDPOINT_STATE_SEND:
                         break;
@@ -51,10 +63,9 @@ void send_msg(Message_Port_t* port, Message_t* message)
 Message_t* recv_msg(Message_Port_t* port)
 {
         /*TODO*/
-        while(1){
+        while (1) {
                 u16 tcb_queue_state = ipc_get_queue_state(port);
-                switch (tcb_queue_state)
-                {
+                switch (tcb_queue_state) {
                 case IPC_ENDPOINT_STATE_EMPTY:
                 case IPC_ENDPOINT_STATE_RECV:
                         break;

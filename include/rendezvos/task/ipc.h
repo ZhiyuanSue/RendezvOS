@@ -15,27 +15,24 @@ struct Msg {
 };
 
 #define IPC_ENDPOINT_APPEND_BITS 2
-#define IPC_ENDPOINT_STATE_EMPTY  0
-#define IPC_ENDPOINT_STATE_SEND   1
-#define IPC_ENDPOINT_STATE_RECV   2
-
+#define IPC_ENDPOINT_STATE_EMPTY 0
+#define IPC_ENDPOINT_STATE_SEND  1
+#define IPC_ENDPOINT_STATE_RECV  2
 
 /*port structure*/
 typedef struct Msg_Port Message_Port_t;
 struct Msg_Port {
         ms_queue_t tcb_queue;
-        ms_queue_node_t tcb_queue_dummy_node;
         atomic64_t tcb_queue_cnt;
 
         ms_queue_t send_msg_queue;
-        ms_queue_node_t send_msg_queue_dummy_node;
         atomic64_t send_msg_cnt;
 };
 
 static inline u16 ipc_get_queue_state(Message_Port_t* port)
 {
-    tagged_ptr_t tail = atomic64_load(&port->send_msg_queue.tail);
-    return tp_get_tag(tail) & ((1 << IPC_ENDPOINT_APPEND_BITS) - 1);
+        tagged_ptr_t tail = atomic64_load(&port->send_msg_queue.tail);
+        return tp_get_tag(tail) & ((1 << IPC_ENDPOINT_APPEND_BITS) - 1);
 }
 
 struct Msg_Port* create_message_port();

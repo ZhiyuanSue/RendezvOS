@@ -1,6 +1,7 @@
 #include <common/string.h>
 #include <modules/log/log.h>
 #include <rendezvos/task/tcb.h>
+#include <rendezvos/task/ipc.h>
 #include <rendezvos/smp/percpu.h>
 #include <rendezvos/error.h>
 #include <rendezvos/mm/allocator.h>
@@ -107,7 +108,10 @@ Thread_Base* new_thread_structure(void)
                 return NULL;
         Thread_Base* thread = (Thread_Base*)(cpu_allocator->m_alloc(
                 cpu_allocator, sizeof(Thread_Base)));
-
+        Message_t* dummy_recv_msg_node = (Message_t*)(cpu_allocator->m_alloc(
+                cpu_allocator, sizeof(Message_t)));
+        Message_t* dummy_send_msg_node = (Message_t*)(cpu_allocator->m_alloc(
+                cpu_allocator, sizeof(Message_t)));
         if (thread) {
                 memset((void*)thread, 0, sizeof(Thread_Base));
                 thread->tid = INVALID_ID;
@@ -122,6 +126,14 @@ Thread_Base* new_thread_structure(void)
                 thread->name = NULL;
                 thread->init_parameter = new_init_parameter_structure();
                 thread->flags = THREAD_FLAG_NONE;
+                if (dummy_recv_msg_node)
+                        msq_init(&thread->recv_msg_queue,
+                                 dummy_recv_msg_node,
+                                 0);
+                if (dummy_send_msg_node)
+                        msq_init(&thread->send_msg_queue,
+                                 dummy_send_msg_node,
+                                 0);
         }
         return thread;
 }

@@ -127,7 +127,7 @@ error_t gen_task_from_elf(vaddr elf_start, vaddr elf_end,
                           elf_task_set_user_stack_func func)
 {
         error_t e = 0;
-        Tcb_Base *elf_task = new_task();
+        Tcb_Base *elf_task = new_task_structure();
         if (!elf_task) {
                 e = -E_RENDEZVOS;
                 goto gen_task_from_elf_error;

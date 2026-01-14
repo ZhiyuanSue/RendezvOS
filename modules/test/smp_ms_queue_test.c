@@ -27,7 +27,7 @@ int ms_data_test_seq[ms_data_len] = {0};
 void smp_ms_queue_init(void)
 {
         dummy.data = -1;
-        msq_init(&ms_queue, &dummy.ms_node,0);
+        msq_init(&ms_queue, &dummy.ms_node, 0);
         for (int i = 0; i < ms_data_len; i++) {
                 ms_data[i].ms_node.next = tp_new_none();
                 ms_data[i].data = i;
@@ -90,7 +90,7 @@ void smp_ms_queue_dyn_alloc_init(void)
                 malloc->m_alloc(malloc, sizeof(struct ms_test_data));
         tmp->data = -1;
         tmp->ms_node.next = tp_new_none();
-        msq_init(&ms_queue, &tmp->ms_node,0);
+        msq_init(&ms_queue, &tmp->ms_node, 0);
         memset(ms_data_test_seq, 0, ms_data_len * sizeof(int));
 }
 void smp_ms_queue_dyn_alloc_put(int offset)
