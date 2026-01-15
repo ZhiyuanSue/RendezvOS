@@ -7,7 +7,7 @@ int smp_log_test(void)
         for (int i = 0; i < SMP_LOG_TEST_ROUND; i++) {
                 pr_info("smp test\n");
         }
-        return 0;
+        return REND_SUCCESS;
 }
 bool smp_log_check(void)
 {

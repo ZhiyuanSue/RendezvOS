@@ -140,5 +140,5 @@ int rb_tree_test(void)
                         rb_tree_test_remove(&node_list[j - 1], &t_root);
                 }
         }
-        return 0;
+        return REND_SUCCESS;
 }

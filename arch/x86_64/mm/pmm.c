@@ -86,7 +86,7 @@ error_t reserve_arch_region(struct setup_info *arch_setup_info)
                 acpi_probe_rsdp(KERNEL_VIRT_OFFSET);
         if (!rsdp_table) {
                 print("not find any rsdp\n");
-                return 0;
+                return REND_SUCCESS;
         }
         // print("====== rsdp @[0x%x]] ======\n", rsdp_table);
         arch_setup_info->rsdp_addr = (vaddr)rsdp_table;
@@ -111,7 +111,7 @@ error_t reserve_arch_region(struct setup_info *arch_setup_info)
                       rsdp_table->revision);
                 return -E_RENDEZVOS;
         }
-        return 0;
+        return REND_SUCCESS;
 }
 void arch_init_pmm(struct setup_info *arch_setup_info,
                    vaddr *next_region_phy_start)

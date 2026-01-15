@@ -63,7 +63,7 @@ static int bin_check(struct bin* b)
                         return -E_REND_TEST;
                 }
         }
-        return 0;
+        return REND_SUCCESS;
 }
 static void bin_write(struct bin* b)
 {
@@ -161,5 +161,5 @@ int smp_kmalloc_test(void)
                 pr_error("alloc and free time unequal\n");
                 return -E_REND_TEST;
         }
-        return 0;
+        return REND_SUCCESS;
 }

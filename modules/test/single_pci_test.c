@@ -67,7 +67,7 @@ error_t simple_print_callback(u8 bus, u8 device, u8 func,
                         hdr->common.class_code,
                         hdr->common.subclass);
         }
-        return 0;
+        return REND_SUCCESS;
 }
 
 int test_pci_scan(void)
@@ -75,6 +75,6 @@ int test_pci_scan(void)
 #ifdef PCI
         return pci_scan_all(simple_print_callback);
 #else
-        return 0;
+        return REND_SUCCESS;
 #endif
 }

@@ -98,7 +98,7 @@ static inline void msq_enqueue(ms_queue_t* q, ms_queue_node_t* new_node,
                                 tmp = tp_new(tp_get_ptr(next),
                                              ((tp_get_tag(tail) + tag_step)
                                               & tag_mask)
-                                                     | (append_info
+                                                     | (tp_get_tag(tail)
                                                         & append_info_mask));
                                 atomic64_cas((volatile u64*)&q->tail,
                                              *(u64*)&tail,
@@ -106,10 +106,6 @@ static inline void msq_enqueue(ms_queue_t* q, ms_queue_node_t* new_node,
                         }
                 }
         }
-        tmp = tp_new(new_node,
-                     ((tp_get_tag(tail) + tag_step) & tag_mask)
-                             | (append_info & append_info_mask));
-        atomic64_cas((volatile u64*)&q->tail, *(u64*)&tail, *(u64*)&tmp);
 }
 /* @brief dequeue a node and return the ptr
  * @param q, the ms queue
@@ -188,6 +184,73 @@ static inline tagged_ptr_t msq_dequeue(ms_queue_t* q)
                 }
         }
         return res;
+}
+/*
+ * @brief enqueue a new_node into the queue,
+ * only if the tail node's append info is the same as expected
+ * @param q the queue structure
+ * @param new_node, which should be allocated by the caller function
+ * @param append_info_bits, which define the append_info length
+ * @param append_info,  which also store the append_info in the 16bits tag
+ * @param expect_append_info, the expected match info
+ * @return , we return whether have we successfully enqueue, REND_SUCCESS -
+ * success, other - fail
+ */
+static inline error_t msq_enqueue_check_tail(ms_queue_t* q,
+                                             ms_queue_node_t* new_node,
+                                             u64 append_info,
+                                             u64 expect_append_info)
+{
+        tagged_ptr_t tail, next, tmp;
+        if (q->append_info_bits == 0) {
+                msq_enqueue(q, new_node, append_info);
+                return REND_SUCCESS;
+        }
+        u16 tag_step = 1 << q->append_info_bits;
+        u16 append_info_mask = tag_step - 1;
+        u16 tag_mask = ~append_info_mask;
+
+        new_node->next = 0;
+        while (1) {
+                tail = atomic64_load(&q->tail);
+                next = ((ms_queue_node_t*)tp_get_ptr(tail))->next;
+
+                if (atomic64_cas(
+                            (volatile u64*)&q->tail, *(u64*)&tail, *(u64*)&tail)
+                    == *(u64*)&tail) {
+                        u16 tail_info = tp_get_tag(tail) & append_info_mask;
+                        if (tail_info != (u16)expect_append_info) {
+                                return -E_RENDEZVOS;
+                        }
+                        if (tp_get_ptr(next) == NULL) {
+                                tmp = tp_new(new_node,
+                                             ((tp_get_tag(tail) + tag_step)
+                                              & tag_mask)
+                                                     | (append_info
+                                                        & append_info_mask));
+                                if (atomic64_cas(
+                                            (volatile u64*)&(
+                                                    (ms_queue_node_t*)
+                                                            tp_get_ptr(tail))
+                                                    ->next,
+                                            *(u64*)&next,
+                                            *(u64*)&tmp)
+                                    == *(u64*)&next) {
+                                        break;
+                                }
+                        } else {
+                                tmp = tp_new(tp_get_ptr(next),
+                                             ((tp_get_tag(tail) + tag_step)
+                                              & tag_mask)
+                                                     | (tp_get_tag(tail)
+                                                        & append_info_mask));
+                                atomic64_cas((volatile u64*)&q->tail,
+                                             *(u64*)&tail,
+                                             *(u64*)&tmp);
+                        }
+                }
+        }
+        return REND_SUCCESS;
 }
 /* @brief dequeue a node and check the head node's append info, if match, return
  * the ptr

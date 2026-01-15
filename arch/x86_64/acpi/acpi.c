@@ -9,7 +9,7 @@ struct acpi_table_fadt *fadt_table;
 extern struct acpi_table_madt *madt_table;
 static inline error_t parser_facp(void)
 {
-        return 0;
+        return REND_SUCCESS;
 }
 static inline error_t parser_acpi_tables(enum acpi_table_sig_enum sig_enum,
                                          struct acpi_table_head *table_head)
@@ -85,5 +85,5 @@ error_t acpi_init(vaddr rsdp_addr)
                       rsdp_table->revision);
                 return -E_RENDEZVOS;
         }
-        return 0;
+        return REND_SUCCESS;
 }

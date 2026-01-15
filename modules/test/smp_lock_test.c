@@ -54,7 +54,7 @@ int smp_lock_test(void)
         for (int i = 0; i < TEST_ROUND; i++) {
                 atomic64_sub(&atomic64_sub_value, 2);
         }
-        return 0;
+        return REND_SUCCESS;
 }
 bool smp_lock_check(void)
 {

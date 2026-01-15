@@ -29,7 +29,7 @@ error_t virt_mm_init(u32 cpu_id, struct setup_info* arch_setup_info)
                  mem_zones[ZONE_NORMAL].pmm);
         per_cpu(nexus_root, cpu_id) = init_nexus(&per_cpu(Map_Handler, cpu_id));
         kinit(per_cpu(nexus_root, cpu_id), cpu_id);
-        return 0;
+        return REND_SUCCESS;
 }
 
 VSpace* new_vspace(void)

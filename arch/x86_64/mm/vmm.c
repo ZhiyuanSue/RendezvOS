@@ -44,7 +44,7 @@ ARCH_PFLAGS_t arch_decode_flags(int entry_level, ENTRY_FLAGS_t ENTRY_FLAGS)
         static ENTRY_FLAGS_t arch_entry_flags_huge_bit[4] = {
                 0, PDPTE_PS, PDE_PS, 0};
         if (entry_level < 0 || entry_level > 3)
-                return 0;
+                return REND_SUCCESS;
         if (ENTRY_FLAGS & PAGE_ENTRY_VALID) {
                 ARCH_PFLAGS = set_mask(ARCH_PFLAGS,
                                        arch_entry_flags_valid_bit[entry_level]);

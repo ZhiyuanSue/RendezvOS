@@ -102,5 +102,5 @@ int smp_nexus_test(void)
                                    0,
                                    percpu(nexus_root));
         }
-        return 0;
+        return REND_SUCCESS;
 }

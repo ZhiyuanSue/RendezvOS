@@ -35,5 +35,5 @@ error_t parser_apic(void)
                         break;
                 }
         }
-        return 0;
+        return REND_SUCCESS;
 }

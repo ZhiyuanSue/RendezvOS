@@ -13,7 +13,7 @@ Task_Manager* init_proc(void)
 {
         percpu(core_tm) = new_task_manager();
         /*create the root task and init it*/
-        Tcb_Base* root_task = new_task_structure();
+        Tcb_Base* root_task = new_task_structure(percpu(kallocator));
         root_task->pid = get_new_pid();
         root_task->vs = percpu(current_vspace);
         add_task_to_manager(percpu(core_tm), root_task);
@@ -54,7 +54,7 @@ error_t add_thread_to_task(Tcb_Base* task, Thread_Base* thread)
         task->thread_number++;
         thread->belong_tcb = task;
 
-        return 0;
+        return REND_SUCCESS;
 }
 error_t del_thread_from_task(Tcb_Base* task, Thread_Base* thread)
 {
@@ -68,7 +68,7 @@ error_t del_thread_from_task(Tcb_Base* task, Thread_Base* thread)
         list_del_init(&(thread->thread_list_node));
         thread->belong_tcb->thread_number--;
         thread->belong_tcb = NULL;
-        return 0;
+        return REND_SUCCESS;
 }
 error_t add_task_to_manager(Task_Manager* core_tm, Tcb_Base* task)
 {
@@ -79,7 +79,7 @@ error_t add_task_to_manager(Task_Manager* core_tm, Tcb_Base* task)
                 return -E_RENDEZVOS;
         }
         list_add_tail(&(task->sched_task_list), &(core_tm->sched_task_list));
-        return 0;
+        return REND_SUCCESS;
 }
 error_t del_task_from_manager(Tcb_Base* task)
 {
@@ -90,19 +90,19 @@ error_t del_task_from_manager(Tcb_Base* task)
                 return -E_RENDEZVOS;
         }
         list_del_init(&task->sched_task_list);
-        return 0;
+        return REND_SUCCESS;
 }
 error_t add_thread_to_manager(Task_Manager* core_tm, Thread_Base* thread)
 {
         if (!core_tm || !thread)
-                return 0;
+                return REND_SUCCESS;
         if (thread->tm) {
                 pr_error("[ERROR] this thread have has a manager\n");
                 return -E_RENDEZVOS;
         }
         list_add_tail(&(thread->sched_thread_list),
                       &(core_tm->sched_thread_list));
-        return 0;
+        return REND_SUCCESS;
 }
 error_t del_thread_from_manager(Thread_Base* thread)
 {
@@ -113,20 +113,15 @@ error_t del_thread_from_manager(Thread_Base* thread)
                 return -E_RENDEZVOS;
         }
         list_del_init(&thread->sched_thread_list);
-        return 0;
+        return REND_SUCCESS;
 }
 
-Tcb_Base* new_task_structure(void)
+Tcb_Base* new_task_structure(struct allocator* cpu_allocator)
 {
-        struct allocator* cpu_allocator = percpu(kallocator);
         if (!cpu_allocator)
                 return NULL;
         Tcb_Base* tcb = (Tcb_Base*)(cpu_allocator->m_alloc(cpu_allocator,
                                                            sizeof(Tcb_Base)));
-        Message_t* dummy_recv_msg_node = (Message_t*)(cpu_allocator->m_alloc(
-                cpu_allocator, sizeof(Message_t)));
-        Message_t* dummy_send_msg_node = (Message_t*)(cpu_allocator->m_alloc(
-                cpu_allocator, sizeof(Message_t)));
         if (tcb) {
                 memset((void*)tcb, 0, sizeof(Tcb_Base));
                 tcb->pid = INVALID_ID;
@@ -135,10 +130,9 @@ Tcb_Base* new_task_structure(void)
                 INIT_LIST_HEAD(&(tcb->thread_head_node));
                 tcb->vs = NULL;
                 tcb->tm = NULL;
-                if (dummy_recv_msg_node)
-                        msq_init(&tcb->recv_msg_queue, dummy_recv_msg_node, 0);
-                if (dummy_send_msg_node)
-                        msq_init(&tcb->send_msg_queue, dummy_send_msg_node, 0);
+                tcb->ipc_info = new_task_ipc_base_structure(cpu_allocator);
+                tcb->ipc_info->belong_thread = NULL;
+                tcb->ipc_info->belong_process = (void*)tcb;
         }
         return tcb;
 }

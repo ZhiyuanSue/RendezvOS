@@ -79,7 +79,7 @@ error_t elf_Phdr_64_load_handle(vaddr elf_start, Elf64_Phdr *phdr_ptr,
                 u64 bss_size = bss_end - bss_start;
                 memset((void *)bss_start, 0, bss_size);
         }
-        return 0;
+        return REND_SUCCESS;
 }
 error_t elf_Phdr_64_dynamic_handle(vaddr elf_start, Elf64_Phdr *phdr_ptr,
                                    VSpace *vs)
@@ -87,7 +87,7 @@ error_t elf_Phdr_64_dynamic_handle(vaddr elf_start, Elf64_Phdr *phdr_ptr,
         (void)elf_start;
         (void)vs;
         print_elf_ph64(phdr_ptr);
-        return 0;
+        return REND_SUCCESS;
 }
 error_t run_elf_program(vaddr elf_start, vaddr elf_end, VSpace *vs)
 {
@@ -120,14 +120,14 @@ error_t run_elf_program(vaddr elf_start, vaddr elf_end, VSpace *vs)
 
         Thread_Base *current_thread = percpu(core_tm)->current_thread;
         arch_drop_to_user(current_thread->kstack_bottom, entry_addr);
-        return 0;
+        return REND_SUCCESS;
 }
 /*we must load all the elf file into kernel memory before we use this function*/
 error_t gen_task_from_elf(vaddr elf_start, vaddr elf_end,
                           elf_task_set_user_stack_func func)
 {
         error_t e = 0;
-        Tcb_Base *elf_task = new_task_structure();
+        Tcb_Base *elf_task = new_task_structure(percpu(kallocator));
         if (!elf_task) {
                 e = -E_RENDEZVOS;
                 goto gen_task_from_elf_error;

@@ -101,7 +101,7 @@ error_t chunk_init(struct mem_chunk* chunk, int chunk_order, int allocator_id)
                 padding_start += slot_size[chunk->chunk_order]
                                  + sizeof(struct object_header);
         }
-        return 0;
+        return REND_SUCCESS;
 }
 struct object_header* chunk_get_obj(struct mem_chunk* chunk)
 {
@@ -367,7 +367,7 @@ static error_t _k_free(void* p)
                 msq_enqueue(&k_allocator_p->buffer_msq, &header->msq_node, 0);
                 atomic64_inc(&k_allocator_p->buffer_size);
         }
-        return 0;
+        return REND_SUCCESS;
 }
 static void clean_buffer_msq()
 {

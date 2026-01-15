@@ -68,7 +68,7 @@ int smp_ms_queue_test(void)
                 smp_ms_queue_get((percpu(cpu_number) / 2)
                                  * percpu_ms_queue_test_number);
         }
-        return 0;
+        return REND_SUCCESS;
 }
 bool smp_ms_queue_check(void)
 {
@@ -143,7 +143,7 @@ int smp_ms_queue_dyn_alloc_test(void)
         }
 #ifdef NR_CPUS
         if (NR_CPUS % 2 && NR_CPUS - 1 == percpu(cpu_number))
-                return 0;
+                return REND_SUCCESS;
 #endif
         if (percpu(cpu_number) % 2) {
                 smp_ms_queue_dyn_alloc_put((percpu(cpu_number) / 2)
@@ -152,7 +152,7 @@ int smp_ms_queue_dyn_alloc_test(void)
                 smp_ms_queue_dyn_alloc_get((percpu(cpu_number) / 2)
                                            * percpu_ms_queue_test_number);
         }
-        return 0;
+        return REND_SUCCESS;
 }
 bool smp_ms_queue_dyn_alloc_check(void)
 {

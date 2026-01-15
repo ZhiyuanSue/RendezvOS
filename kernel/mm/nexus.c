@@ -744,7 +744,7 @@ error_t user_fill_range(struct nexus_node* first_entry, int page_num,
         }
 
         unlock_cas(&vspace_node->vs->nexus_vspace_lock);
-        return 0;
+        return REND_SUCCESS;
 fail:
         return -E_RENDEZVOS;
 }
@@ -817,7 +817,7 @@ static error_t _unfill_range(void* p, int page_num, VSpace* vs,
                 if (need_break)
                         break;
         }
-        return 0;
+        return REND_SUCCESS;
 }
 static error_t _kernel_free_pages(void* p, int page_num,
                                   struct nexus_node* nexus_root)
@@ -878,7 +878,7 @@ static error_t _kernel_free_pages(void* p, int page_num,
         }
 
         unlock_cas(&nexus_root->vs->nexus_vspace_lock);
-        return 0;
+        return REND_SUCCESS;
 }
 /*
         we try to unmap and free the physical pages but do not free the virtual
@@ -948,7 +948,7 @@ static error_t _user_release_range(void* p, int page_num, VSpace* vs,
                         break;
         }
         unlock_cas(&vs->nexus_vspace_lock);
-        return 0;
+        return REND_SUCCESS;
 }
 void* get_free_page(size_t page_num, vaddr target_vaddr,
                     struct nexus_node* nexus_root, VSpace* vs,
@@ -1054,5 +1054,5 @@ error_t unfill_phy_page(MemZone* zone, ppn_t ppn, u64 new_entry_addr)
         pmm_ptr->pmm_free(pmm_ptr, ppn, 1);
         unlock_mcs(&pmm_ptr->spin_ptr,
                    &percpu(pmm_spin_lock[pmm_ptr->zone->zone_id]));
-        return 0;
+        return REND_SUCCESS;
 }

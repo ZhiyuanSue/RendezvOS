@@ -161,7 +161,7 @@ error_t arch_cpu_info(struct setup_info *arch_setup_info)
         (void)arch_setup_info;
         get_cpu_info();
         BSP_ID = cpu_info.APICID;
-        return 0;
+        return REND_SUCCESS;
 }
 struct pci_node *pci_tree_build_callback(u8 bus, u8 device, u8 func,
                                          const pci_header_t *hdr)

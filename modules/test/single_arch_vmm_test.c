@@ -245,7 +245,7 @@ int arch_vmm_test(void)
         }
         pr_info("[ TEST ] PASS: vmm:map a 4K and unmap and map 2M to same place ok!\n");
 
-        return 0;
+        return REND_SUCCESS;
 arch_vmm_test_error:
         return -E_REND_TEST;
 }

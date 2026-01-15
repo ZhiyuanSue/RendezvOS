@@ -115,7 +115,7 @@ error_t arch_cpu_info(struct setup_info *arch_setup_info)
         (void)arch_setup_info;
         get_cpu_info();
         BSP_ID = 0;
-        return 0;
+        return REND_SUCCESS;
 }
 /*
  * @brief recursively build the device tree structure from dtb file
@@ -202,7 +202,7 @@ error_t arch_start_platform(struct setup_info *arch_setup_info)
         psci_init();
         gic.probe();
         gic.init_distributor();
-        return 0;
+        return REND_SUCCESS;
 }
 /*
  * @brief the arch_start_core function is used for each core start,

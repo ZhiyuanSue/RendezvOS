@@ -48,5 +48,5 @@ int elf_read_test(void)
                 pr_info("app %d start:%x end:%x\n", i, app_start, app_end);
                 elf_read((vaddr)app_start);
         }
-        return 0;
+        return REND_SUCCESS;
 }

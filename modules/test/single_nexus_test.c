@@ -139,7 +139,7 @@ int nexus_test(void)
                         free_pages(test_ptrs[i], 2, vs, nexus_root);
         }
 
-        return 0;
+        return REND_SUCCESS;
 nexus_test_fail:
         return e;
 }

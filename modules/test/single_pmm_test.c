@@ -119,7 +119,7 @@ int pmm_test(void)
                 pr_error("alloc boundary error\n");
                 goto pmm_test_error;
         }
-        return 0;
+        return REND_SUCCESS;
 pmm_test_error:
         return -E_REND_TEST;
 }

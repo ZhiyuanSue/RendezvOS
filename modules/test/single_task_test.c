@@ -22,5 +22,5 @@ int task_test(void)
                         continue;
                 // schedule(percpu(core_tm));
         }
-        return 0;
+        return REND_SUCCESS;
 }

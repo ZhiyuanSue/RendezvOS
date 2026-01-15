@@ -390,7 +390,7 @@ static inline error_t generate_zone_data(paddr zone_data_phy_start,
         if (zone_data_phy_start > zone_data_phy_end) {
                 return -E_RENDEZVOS;
         }
-        return 0;
+        return REND_SUCCESS;
 }
 void clean_pmm_region(paddr pmm_data_phy_start, paddr pmm_data_phy_end)
 {
@@ -528,7 +528,7 @@ error_t phy_mm_init(struct setup_info *arch_setup_info)
                                                   * PAGE_SIZE);
                 }
         }
-        return 0;
+        return REND_SUCCESS;
 init_pmm_error:
         return (-E_RENDEZVOS);
 }

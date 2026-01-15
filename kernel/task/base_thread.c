@@ -16,7 +16,8 @@ void idle_thread(void)
 error_t create_init_thread(Tcb_Base* root_task)
 {
         /*we let the current execution flow as init thread*/
-        Thread_Base* init_t = percpu(init_thread_ptr) = new_thread_structure();
+        Thread_Base* init_t = percpu(init_thread_ptr) =
+                new_thread_structure(percpu(kallocator));
         init_t->tid = get_new_tid();
         add_thread_to_task(root_task, init_t);
         add_thread_to_manager(percpu(core_tm), init_t);
@@ -25,7 +26,7 @@ error_t create_init_thread(Tcb_Base* root_task)
         thread_set_status(thread_status_running, init_t); /*init thread is the
                                                              running thread*/
         thread_set_name(init_thread_name, init_t);
-        return 0;
+        return REND_SUCCESS;
 }
 error_t create_idle_thread(Tcb_Base* root_task)
 {

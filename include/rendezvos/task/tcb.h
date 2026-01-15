@@ -24,7 +24,16 @@
 #define TASK_IPC_COMMON                  \
         ms_queue_node_t port_queue_node; \
         ms_queue_t recv_msg_queue;       \
-        ms_queue_t send_msg_queue
+        ms_queue_t send_msg_queue;
+
+typedef struct {
+        TASK_IPC_COMMON;
+        void* belong_thread;
+        void* belong_process;
+} Task_Ipc_Base;
+
+Task_Ipc_Base* new_task_ipc_base_structure(struct allocator* cpu_allocator);
+void delete_task_ipc_base_structure(Task_Ipc_Base* task_ipc_info);
 
 enum thread_status_base {
         thread_status_init,
@@ -61,7 +70,7 @@ extern Task_Manager* core_tm;
         i64 thread_number;                  \
         struct list_entry thread_head_node; \
         VSpace* vs;                         \
-        TASK_IPC_COMMON;                    \
+        Task_Ipc_Base* ipc_info;            \
         TASK_SCHE_COMMON
 /* as the base class of tcb */
 typedef struct {
@@ -86,7 +95,7 @@ extern u64 thread_kstack_page_num;
         u64 kstack_num;                                 \
         Arch_Task_Context ctx;                          \
         Thread_Init_Para* init_parameter;               \
-        TASK_IPC_COMMON;                                \
+        Task_Ipc_Base* ipc_info;                        \
         THERAD_SCHE_COMMON
 
 #define THREAD_FLAG_NONE               0
@@ -118,10 +127,10 @@ void choose_schedule(Task_Manager* tm);
  * idle thread*/
 Task_Manager* init_proc();
 /* general task and thread new function */
-Tcb_Base* new_task_structure();
+Tcb_Base* new_task_structure(struct allocator* cpu_allocator);
 Task_Manager* new_task_manager();
 void del_thread_structure(Thread_Base* thread);
-Thread_Base* new_thread_structure();
+Thread_Base* new_thread_structure(struct allocator* cpu_allocator);
 
 Thread_Init_Para* new_init_parameter_structure();
 void del_init_parameter_structure(Thread_Init_Para* pm);
