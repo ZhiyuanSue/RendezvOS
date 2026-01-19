@@ -8,6 +8,7 @@ enum Error_t {
         E_IN_PARAM,
         E_REND_TEST,
         E_REND_IPC,
+        E_REND_AGAIN,
 };
 
 #endif

@@ -130,9 +130,6 @@ Tcb_Base* new_task_structure(struct allocator* cpu_allocator)
                 INIT_LIST_HEAD(&(tcb->thread_head_node));
                 tcb->vs = NULL;
                 tcb->tm = NULL;
-                tcb->ipc_info = new_task_ipc_base_structure(cpu_allocator);
-                tcb->ipc_info->belong_thread = NULL;
-                tcb->ipc_info->belong_process = (void*)tcb;
         }
         return tcb;
 }

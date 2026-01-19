@@ -73,6 +73,7 @@ void delete_thread(Thread_Base* thread)
 {
         if (!thread)
                 return;
+        /*TODO:free the thread's messages*/
         if (thread->kstack_bottom) {
                 /*
                  * at some time,
@@ -121,9 +122,23 @@ Thread_Base* new_thread_structure(struct allocator* cpu_allocator)
                 thread->name = NULL;
                 thread->init_parameter = new_init_parameter_structure();
                 thread->flags = THREAD_FLAG_NONE;
-                thread->ipc_info = new_task_ipc_base_structure(cpu_allocator);
-                thread->ipc_info->belong_thread = (void*)thread;
-                thread->belong_tcb = NULL;
+
+                /*ipc part*/
+                Message_t* dummy_recv_msg_node =
+                        (Message_t*)(cpu_allocator->m_alloc(cpu_allocator,
+                                                            sizeof(Message_t)));
+                Message_t* dummy_send_msg_node =
+                        (Message_t*)(cpu_allocator->m_alloc(cpu_allocator,
+                                                            sizeof(Message_t)));
+                if (dummy_recv_msg_node)
+                        msq_init(&thread->recv_msg_queue,
+                                 &dummy_recv_msg_node->msg_queue_node,
+                                 0);
+                if (dummy_send_msg_node)
+                        msq_init(&thread->send_msg_queue,
+                                 &dummy_send_msg_node->msg_queue_node,
+                                 0);
+                thread->port_ptr = NULL;
         }
         return thread;
 }

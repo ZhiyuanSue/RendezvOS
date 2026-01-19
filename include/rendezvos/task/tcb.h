@@ -20,21 +20,6 @@
 
 #include "id.h"
 
-/*thread and process all have ipc part*/
-#define TASK_IPC_COMMON                  \
-        ms_queue_node_t port_queue_node; \
-        ms_queue_t recv_msg_queue;       \
-        ms_queue_t send_msg_queue;
-
-typedef struct {
-        TASK_IPC_COMMON;
-        void* belong_thread;
-        void* belong_process;
-} Task_Ipc_Base;
-
-Task_Ipc_Base* new_task_ipc_base_structure(struct allocator* cpu_allocator);
-void delete_task_ipc_base_structure(Task_Ipc_Base* task_ipc_info);
-
 enum thread_status_base {
         thread_status_init,
         thread_status_running,
@@ -70,7 +55,6 @@ extern Task_Manager* core_tm;
         i64 thread_number;                  \
         struct list_entry thread_head_node; \
         VSpace* vs;                         \
-        Task_Ipc_Base* ipc_info;            \
         TASK_SCHE_COMMON
 /* as the base class of tcb */
 typedef struct {
@@ -84,6 +68,7 @@ extern u64 thread_kstack_page_num;
                 struct list_entry sched_thread_list; \
         };
 #define THREAD_COMMON                                   \
+        atomic64_t ref_count;                           \
         char* name;                                     \
         i64 tid;                                        \
         u64 flags;                                      \
@@ -95,7 +80,10 @@ extern u64 thread_kstack_page_num;
         u64 kstack_num;                                 \
         Arch_Task_Context ctx;                          \
         Thread_Init_Para* init_parameter;               \
-        Task_Ipc_Base* ipc_info;                        \
+        ms_queue_node_t port_queue_node;                \
+        ms_queue_t recv_msg_queue;                      \
+        ms_queue_t send_msg_queue;                      \
+        void* port_ptr;                                 \
         THERAD_SCHE_COMMON
 
 #define THREAD_FLAG_NONE               0

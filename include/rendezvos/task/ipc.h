@@ -24,7 +24,7 @@ struct Msg {
 /*port structure*/
 typedef struct Msg_Port Message_Port_t;
 struct Msg_Port {
-        ms_queue_t tcb_queue;
+        ms_queue_t thread_queue;
         /*
         we must record the tcb_queue's dummy_node_ptr,and when we try to free
         the port,we also free this ptr,because other node in this queue,is
@@ -34,7 +34,7 @@ struct Msg_Port {
         but this step is not the same when we handle the message, because the
         message always free directly.
         */
-        Task_Ipc_Base* tcb_queue_dummy_node_ptr;
+        Thread_Base* thread_queue_dummy_node_ptr;
         ms_queue_t send_msg_queue;
 };
 
