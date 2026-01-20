@@ -81,6 +81,25 @@ static inline void atomic64_sub(atomic64_t *ptr, i64 value)
                          : "r"(&ptr->counter), "r"(value)
                          : "cc", "memory");
 }
+static inline i64 atomic64_fetch_add(volatile i64 *ptr, i64 value)
+{
+        i64 result;
+        i64 tmp;
+
+        __asm__ volatile("1: ldaxr %0, [%3]\n"
+                         "   add   %1, %0, %4\n"
+                         "   stlxr %w2, %1, [%3]\n"
+                         "   cbnz  %w2, 1b"
+                         : "=&r"(result), "=&r"(tmp), "=&r"(value)
+                         : "r"(ptr), "r"(value)
+                         : "cc", "memory");
+        return result;
+}
+
+static inline i64 atomic64_fetch_sub(volatile i64 *ptr, i64 value)
+{
+        return atomic64_fetch_add(ptr, -value);
+}
 static inline void atomic64_inc(atomic64_t *ptr)
 {
         atomic64_add(ptr, 1);
@@ -88,5 +107,12 @@ static inline void atomic64_inc(atomic64_t *ptr)
 static inline void atomic64_dec(atomic64_t *ptr)
 {
         atomic64_sub(ptr, 1);
+}
+static inline i64 atomic64_fetch_inc(volatile i64 *ptr) {
+    return atomic64_fetch_add(ptr, 1);
+}
+
+static inline i64 atomic64_fetch_dec(volatile i64 *ptr) {
+    return atomic64_fetch_add(ptr, -1);
 }
 #endif

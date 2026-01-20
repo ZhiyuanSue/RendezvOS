@@ -52,6 +52,20 @@ static inline void atomic64_sub(atomic64_t *ptr, i64 value)
                          : "re"(value)
                          : "cc", "memory");
 }
+static inline i64 atomic64_fetch_add(atomic64_t *ptr, i64 value) {
+    i64 result;
+    __asm__ volatile(
+        "lock xaddq %0, %1"
+        : "=r" (result), "+m" (ptr->counter)
+        : "0" (value)
+        : "cc", "memory"
+    );
+    return result;
+}
+
+static inline i64 atomic64_fetch_sub(atomic64_t *ptr, i64 value) {
+    return atomic64_fetch_add(ptr, -value);
+}
 static inline void atomic64_inc(atomic64_t *ptr)
 {
         __asm__ volatile("lock incq %0"
@@ -65,5 +79,24 @@ static inline void atomic64_dec(atomic64_t *ptr)
                          : "+m"(ptr->counter)
                          :
                          : "cc", "memory");
+}
+static inline i64 atomic64_fetch_inc(atomic64_t *ptr)
+{
+        i64 result = 1;
+        __asm__ volatile("lock xaddq %0, %1"
+                         : "+r"(result), "+m"(ptr->counter)
+                         :
+                         : "cc", "memory");
+        return result;
+}
+
+static inline i64 atomic64_fetch_dec(atomic64_t *ptr)
+{
+        i64 result = -1;
+        __asm__ volatile("lock xaddq %0, %1"
+                         : "+r"(result), "+m"(ptr->counter)
+                         :
+                         : "cc", "memory");
+        return result;
 }
 #endif
