@@ -108,11 +108,13 @@ static inline void atomic64_dec(atomic64_t *ptr)
 {
         atomic64_sub(ptr, 1);
 }
-static inline i64 atomic64_fetch_inc(volatile i64 *ptr) {
-    return atomic64_fetch_add(ptr, 1);
+static inline i64 atomic64_fetch_inc(volatile i64 *ptr)
+{
+        return atomic64_fetch_add(ptr, 1);
 }
 
-static inline i64 atomic64_fetch_dec(volatile i64 *ptr) {
-    return atomic64_fetch_add(ptr, -1);
+static inline i64 atomic64_fetch_dec(volatile i64 *ptr)
+{
+        return atomic64_fetch_add(ptr, -1);
 }
 #endif

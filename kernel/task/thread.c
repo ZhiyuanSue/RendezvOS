@@ -33,75 +33,6 @@ static void thread_entry(void)
         thread_set_status(thread_status_zombie, current_thread);
         schedule(percpu(core_tm));
 }
-/*general thread create function*/
-Thread_Base* create_thread(void* __func, int nr_parameter, ...)
-{
-        Thread_Base* thread = new_thread_structure(percpu(kallocator));
-        thread->tid = get_new_tid();
-        va_list arg_list;
-        va_start(arg_list, nr_parameter);
-        /*
-                TODO: we alloc a page as idle thread's stack, we must record
-                although idle thread is always exist.
-        */
-        void* kstack = get_free_page(thread_kstack_page_num,
-                                     KERNEL_VIRT_OFFSET,
-                                     percpu(nexus_root),
-                                     0,
-                                     PAGE_ENTRY_NONE);
-        thread->kstack_bottom =
-                (vaddr)kstack + thread_kstack_page_num * PAGE_SIZE;
-        memset(kstack, '\0', thread_kstack_page_num * PAGE_SIZE);
-        arch_set_new_thread_ctx(&(thread->ctx),
-                                (void*)(thread_entry),
-                                kstack + thread_kstack_page_num * PAGE_SIZE);
-        /*
-        set the init parameter of the thread
-        the parameter must no more then the NR_ABI_PARAMETER_INT_REG
-        and must all are integer, otherwise more parameters will be ignore
-        */
-        for (int i = 0; i < nr_parameter && i < NR_ABI_PARAMETER_INT_REG; i++) {
-                /*here we think in rendezvos kernel,we only use the int
-                 * parameters*/
-                thread->init_parameter->int_para[i] = va_arg(arg_list, u64);
-        }
-        thread->init_parameter->thread_func_ptr = __func;
-        va_end(arg_list);
-        return thread;
-}
-void delete_thread(Thread_Base* thread)
-{
-        if (!thread)
-                return;
-        /*TODO:free the thread's messages*/
-        if (thread->kstack_bottom) {
-                /*
-                 * at some time,
-                 * if you using the new_thread_structure and try to use
-                 * delete_thread, the kstack bottom is 0,but not an error
-                 */
-                void* thread_stack_start = (void*)thread->kstack_bottom
-                                           - thread->kstack_num * PAGE_SIZE;
-                free_pages(thread_stack_start,
-                           thread->kstack_num,
-                           thread->belong_tcb->vs,
-                           percpu(nexus_root));
-        }
-        del_thread_from_task(thread->belong_tcb, thread);
-        del_thread_from_manager(thread);
-        del_thread_structure(thread);
-        return;
-}
-error_t thread_join(Tcb_Base* task, Thread_Base* thread)
-{
-        error_t res = 0;
-        res = add_thread_to_task(task, thread);
-        if (res)
-                return res;
-        res = add_thread_to_manager(percpu(core_tm), thread);
-        thread_set_status(thread_status_ready, thread);
-        return res;
-}
 Thread_Base* new_thread_structure(struct allocator* cpu_allocator)
 {
         if (!cpu_allocator)
@@ -151,6 +82,30 @@ void del_thread_structure(Thread_Base* thread)
         del_init_parameter_structure(thread->init_parameter);
         cpu_allocator->m_free(cpu_allocator, thread);
 }
+/**
+ * @brief inc the ref count of thread control block structure
+ * @param thread thread control block
+ */
+void thread_structure_ref_inc(Thread_Base* thread)
+{
+        atomic64_inc(&thread->ref_count);
+        barrier();
+}
+/**
+ * @brief dec the ref count of thread control block structure
+ * @param thread thead control block
+ * @return true, the structure have been release, false, not released
+ */
+bool thread_structure_ref_dec(Thread_Base* thread)
+{
+        i64 old_ref_value = atomic64_fetch_dec(&thread->ref_count);
+        if (old_ref_value == 1) {
+                del_thread_structure(thread);
+                return true;
+        }
+        return false;
+}
+
 Thread_Init_Para* new_init_parameter_structure(void)
 {
         struct allocator* cpu_allocator = percpu(kallocator);
@@ -172,4 +127,75 @@ void del_init_parameter_structure(Thread_Init_Para* pm)
         if (!pm || !cpu_allocator)
                 return;
         cpu_allocator->m_free(cpu_allocator, (void*)pm);
+}
+/*general thread create function*/
+Thread_Base* create_thread(void* __func, int nr_parameter, ...)
+{
+        Thread_Base* thread = new_thread_structure(percpu(kallocator));
+        thread_structure_ref_inc(thread);
+        thread->tid = get_new_tid();
+        va_list arg_list;
+        va_start(arg_list, nr_parameter);
+        /*
+                TODO: we alloc a page as idle thread's stack, we must record
+                although idle thread is always exist.
+        */
+        void* kstack = get_free_page(thread_kstack_page_num,
+                                     KERNEL_VIRT_OFFSET,
+                                     percpu(nexus_root),
+                                     0,
+                                     PAGE_ENTRY_NONE);
+        thread->kstack_bottom =
+                (vaddr)kstack + thread_kstack_page_num * PAGE_SIZE;
+        memset(kstack, '\0', thread_kstack_page_num * PAGE_SIZE);
+        arch_set_new_thread_ctx(&(thread->ctx),
+                                (void*)(thread_entry),
+                                kstack + thread_kstack_page_num * PAGE_SIZE);
+        /*
+        set the init parameter of the thread
+        the parameter must no more then the NR_ABI_PARAMETER_INT_REG
+        and must all are integer, otherwise more parameters will be ignore
+        */
+        for (int i = 0; i < nr_parameter && i < NR_ABI_PARAMETER_INT_REG; i++) {
+                /*here we think in rendezvos kernel,we only use the int
+                 * parameters*/
+                thread->init_parameter->int_para[i] = va_arg(arg_list, u64);
+        }
+        thread->init_parameter->thread_func_ptr = __func;
+        va_end(arg_list);
+        return thread;
+}
+void delete_thread(Thread_Base* thread)
+{
+        if (!thread)
+                return;
+        atomic64_store(&thread->status, thread_status_exit);
+        /*TODO:free the thread's messages*/
+        if (thread->kstack_bottom) {
+                /*
+                 * at some time,
+                 * if you using the new_thread_structure and try to use
+                 * delete_thread, the kstack bottom is 0,but not an error
+                 */
+                void* thread_stack_start = (void*)thread->kstack_bottom
+                                           - thread->kstack_num * PAGE_SIZE;
+                free_pages(thread_stack_start,
+                           thread->kstack_num,
+                           thread->belong_tcb->vs,
+                           percpu(nexus_root));
+        }
+        del_thread_from_task(thread->belong_tcb, thread);
+        del_thread_from_manager(thread);
+        thread_structure_ref_dec(thread);
+        return;
+}
+error_t thread_join(Tcb_Base* task, Thread_Base* thread)
+{
+        error_t res = 0;
+        res = add_thread_to_task(task, thread);
+        if (res)
+                return res;
+        res = add_thread_to_manager(percpu(core_tm), thread);
+        thread_set_status(thread_status_ready, thread);
+        return res;
 }

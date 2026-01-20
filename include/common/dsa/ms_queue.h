@@ -39,7 +39,7 @@ typedef struct {
         tagged_ptr_t tail;
         size_t append_info_bits;
 } ms_queue_t;
-/*
+/**
  * @brief init the msq
  * @param q the queue structure
  * @param new_node use an empty node as the head, this must be allocated by the
@@ -55,7 +55,7 @@ static inline void msq_init(ms_queue_t* q, ms_queue_node_t* new_node,
                 q->append_info_bits = 15;
         }
 }
-/*
+/**
  * @brief enqueue a new_node into the queue
  * @param q the queue structure
  * @param new_node, which should be allocated by the caller function
@@ -107,7 +107,8 @@ static inline void msq_enqueue(ms_queue_t* q, ms_queue_node_t* new_node,
                 }
         }
 }
-/* @brief dequeue a node and return the ptr
+/**
+ * @brief dequeue a node and return the ptr
  * @param q, the ms queue
  * @param append_info_bits, which define the append_info length
  * @return , we return the old head node, the real valid head node is return
@@ -185,7 +186,7 @@ static inline tagged_ptr_t msq_dequeue(ms_queue_t* q)
         }
         return res;
 }
-/*
+/**
  * @brief enqueue a new_node into the queue,
  * only if the tail node's append info is the same as expected
  * @param q the queue structure
@@ -220,7 +221,7 @@ static inline error_t msq_enqueue_check_tail(ms_queue_t* q,
                     == *(u64*)&tail) {
                         u16 tail_info = tp_get_tag(tail) & append_info_mask;
                         if (tail_info != (u16)expect_append_info) {
-                                return -E_RENDEZVOS;
+                                return -E_REND_AGAIN;
                         }
                         if (tp_get_ptr(next) == NULL) {
                                 tmp = tp_new(new_node,
@@ -252,7 +253,8 @@ static inline error_t msq_enqueue_check_tail(ms_queue_t* q,
         }
         return REND_SUCCESS;
 }
-/* @brief dequeue a node and check the head node's append info, if match, return
+/**
+ * @brief dequeue a node and check the head node's append info, if match, return
  * the ptr
  * @param q, the ms queue
  * @param expect_append_info, the expected match info

@@ -119,6 +119,8 @@ Tcb_Base* new_task_structure(struct allocator* cpu_allocator);
 Task_Manager* new_task_manager();
 void del_thread_structure(Thread_Base* thread);
 Thread_Base* new_thread_structure(struct allocator* cpu_allocator);
+bool thread_structure_ref_dec(Thread_Base* thread);
+void thread_structure_ref_inc(Thread_Base* thread);
 
 Thread_Init_Para* new_init_parameter_structure();
 void del_init_parameter_structure(Thread_Init_Para* pm);
