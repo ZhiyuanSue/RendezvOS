@@ -5,8 +5,8 @@
 #include "tcb.h"
 
 /*message structure*/
-#define MESSAGE_COMMON       \
-        u64 append_info_len; \
+#define MESSAGE_COMMON                  \
+        u64 append_info_len;            \
         ms_queue_node_t msg_queue_node; \
         atomic64_t ref_count
 
@@ -47,16 +47,13 @@ static inline u16 ipc_get_queue_state(Message_Port_t* port)
 
 struct Msg_Port* create_message_port();
 void delete_message_port(Message_Port_t* port);
-Message_t* create_message(i64 msg_type, u64 append_info_len,
-                           char* append_info);
+Message_t* create_message(i64 msg_type, u64 append_info_len, char* append_info);
 void delete_message_structure(Message_t* msg);
 void message_structure_ref_inc(Message_t* msg);
 bool message_structure_ref_dec(Message_t* msg);
 
 void clean_message_queue(ms_queue_t* ms_queue);
 
-error_t send_msg(Message_Port_t* port, Message_t* message);
-void send_msg_async(Message_Port_t* port, Message_t* message);
-void send_msg_async_broadcast(Message_Port_t* port, Message_t* message);
-Message_t* recv_msg(Message_Port_t* port);
-Message_t* recv_msg_await(Message_Port_t* port);
+error_t ipc_transfer_message(Thread_Base* sender, Thread_Base* receiver);
+error_t send_msg(Message_Port_t* port);
+error_t recv_msg(Message_Port_t* port);

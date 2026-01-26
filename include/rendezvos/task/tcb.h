@@ -27,6 +27,7 @@ enum thread_status_base {
         thread_status_zombie,
         thread_status_block_on_send,
         thread_status_block_on_receive,
+        thread_status_cancel_ipc,
         thread_status_suspend,
         thread_status_exit,
 };
@@ -84,6 +85,7 @@ extern u64 thread_kstack_page_num;
         ms_queue_t recv_msg_queue;                             \
         ms_queue_t send_msg_queue;                             \
         volatile void* send_pending_msg; /* expect Message_t*/ \
+        atomic64_t recv_pending_cnt; /*how much msg arrive*/   \
         volatile void* port_ptr; /*expect Message_Port_t*/     \
         THERAD_SCHE_COMMON
 

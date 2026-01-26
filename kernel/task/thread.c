@@ -69,6 +69,8 @@ Thread_Base* new_thread_structure(struct allocator* cpu_allocator)
                         msq_init(&thread->send_msg_queue,
                                  &dummy_send_msg_node->msg_queue_node,
                                  0);
+                thread->send_pending_msg = NULL;
+                thread->recv_pending_cnt.counter = 0;
                 thread->port_ptr = NULL;
         }
         return thread;
@@ -171,14 +173,15 @@ void delete_thread(Thread_Base* thread)
                 return;
         atomic64_store(&thread->status, thread_status_exit);
         /*free the send pending msg*/
-        if(thread->send_pending_msg){
-                message_structure_ref_dec((Message_t*)(thread->send_pending_msg));
+        if (thread->send_pending_msg) {
+                message_structure_ref_dec(
+                        (Message_t*)(thread->send_pending_msg));
         }
         /*clean the send msg queue*/
         clean_message_queue(&thread->send_msg_queue);
         /*clean the recv msg queue*/
         clean_message_queue(&thread->recv_msg_queue);
-        
+
         if (thread->kstack_bottom) {
                 /*
                  * at some time,
