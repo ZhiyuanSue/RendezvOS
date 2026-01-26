@@ -49,6 +49,37 @@ struct Msg* create_message(i64 msg_type, u64 append_info_len, char* append_info)
         }
         return msg;
 }
+void delete_message_structure(Message_t* msg)
+{
+        struct allocator* cpu_kallocator = percpu(kallocator);
+        cpu_kallocator->m_free(cpu_kallocator, (void*)msg);
+}
+void message_structure_ref_inc(Message_t* msg)
+{
+        atomic64_inc(&msg->ref_count);
+        barrier();
+}
+bool message_structure_ref_dec(Message_t* msg)
+{
+        i64 old_ref_value = atomic64_fetch_dec(&msg->ref_count);
+        if (old_ref_value == 1) {
+                delete_message_structure(msg);
+                return true;
+        }
+        return false;
+}
+void clean_message_queue(ms_queue_t* ms_queue)
+{
+        tagged_ptr_t dequeued_ptr;
+        Message_t* clean_msg_ptr;
+        while (!tp_is_none(dequeued_ptr = msq_dequeue(ms_queue))) {
+                ms_queue_node_t* dequeued_node =
+                        (ms_queue_node_t*)tp_get_ptr(dequeued_ptr);
+                clean_msg_ptr =
+                        container_of(dequeued_node, Message_t, msg_queue_node);
+                message_structure_ref_dec(clean_msg_ptr);
+        }
+}
 /**
  * @brief try to get a thread from the port
  * @param port the port we need to send to or recv from
@@ -78,7 +109,8 @@ Thread_Base* ipc_port_try_match(Message_Port_t* port, u16 my_ipc_state)
                 barrier();
                 /*if we find the opposite_thread is dead ,dec the ref count(may
                  * be free the structure)*/
-                atomic64_store(&opposite_thread->port_ptr, (u64)NULL);
+                atomic64_store((volatile u64*)&opposite_thread->port_ptr,
+                               (u64)NULL);
                 if (thread_get_status(opposite_thread) == thread_status_exit) {
                         thread_structure_ref_dec(opposite_thread);
                         continue;
@@ -111,7 +143,7 @@ error_t ipc_port_enqueue_wait(Message_Port_t* port, u16 my_ipc_state,
         /*set my thread structure also belong to the port, and set the
          * port_ptr*/
         thread_structure_ref_inc(my_thread);
-        atomic64_store(&my_thread->port_ptr, (u64)port);
+        atomic64_store((volatile u64*)&my_thread->port_ptr, (u64)port);
         barrier();
         error_t ret = msq_enqueue_check_tail(&port->thread_queue,
                                              &my_thread->port_queue_node,
@@ -119,10 +151,26 @@ error_t ipc_port_enqueue_wait(Message_Port_t* port, u16 my_ipc_state,
                                              expected_ipc_state);
         if (ret != REND_SUCCESS) {
                 thread_structure_ref_dec(my_thread);
-                atomic64_store(&my_thread->port_ptr, (u64)NULL);
+                atomic64_store((volatile u64*)&my_thread->port_ptr, (u64)NULL);
         }
         return ret;
 }
+/**
+ * @brief when we get the opposite thread, we need to send the message, here we
+ * get a message from sender and put it to the recv's recv queue
+ * @param sender , the sender thread
+ * @param receiver, the rece thread
+ * @return , REND_SUCCESS, successfully put a sender's message into receiver's
+ * recv queue, other return ,the error reseaon
+ */
+error_t ipc_transfer_message(Thread_Base* sender, Thread_Base* receiver)
+{
+        /*TODO*/
+        (void)sender;
+        (void)receiver;
+        return REND_SUCCESS;
+}
+
 error_t send_msg(Message_Port_t* port, Message_t* message)
 {
         (void)message;

@@ -170,7 +170,15 @@ void delete_thread(Thread_Base* thread)
         if (!thread)
                 return;
         atomic64_store(&thread->status, thread_status_exit);
-        /*TODO:free the thread's messages*/
+        /*free the send pending msg*/
+        if(thread->send_pending_msg){
+                message_structure_ref_dec((Message_t*)(thread->send_pending_msg));
+        }
+        /*clean the send msg queue*/
+        clean_message_queue(&thread->send_msg_queue);
+        /*clean the recv msg queue*/
+        clean_message_queue(&thread->recv_msg_queue);
+        
         if (thread->kstack_bottom) {
                 /*
                  * at some time,
