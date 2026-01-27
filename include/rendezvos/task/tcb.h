@@ -19,6 +19,7 @@
 #endif
 
 #include "id.h"
+#include "message.h"
 
 enum thread_status_base {
         thread_status_init,
@@ -68,25 +69,25 @@ extern u64 thread_kstack_page_num;
         struct {                                     \
                 struct list_entry sched_thread_list; \
         };
-#define THREAD_COMMON                                          \
-        atomic64_t ref_count;                                  \
-        char* name;                                            \
-        i64 tid;                                               \
-        u64 flags;                                             \
-        Tcb_Base* belong_tcb;                                  \
-        Task_Manager* tm;                                      \
-        u64 status;                                            \
-        struct list_entry thread_list_node;                    \
-        u64 kstack_bottom; /*for stack,it's high addr*/        \
-        u64 kstack_num;                                        \
-        Arch_Task_Context ctx;                                 \
-        Thread_Init_Para* init_parameter;                      \
-        ms_queue_node_t port_queue_node;                       \
-        ms_queue_t recv_msg_queue;                             \
-        ms_queue_t send_msg_queue;                             \
-        volatile void* send_pending_msg; /* expect Message_t*/ \
-        atomic64_t recv_pending_cnt; /*how much msg arrive*/   \
-        volatile void* port_ptr; /*expect Message_Port_t*/     \
+#define THREAD_COMMON                                               \
+        atomic64_t ref_count;                                       \
+        char* name;                                                 \
+        i64 tid;                                                    \
+        u64 flags;                                                  \
+        Tcb_Base* belong_tcb;                                       \
+        Task_Manager* tm;                                           \
+        u64 status;                                                 \
+        struct list_entry thread_list_node;                         \
+        u64 kstack_bottom; /*for stack,it's high addr*/             \
+        u64 kstack_num;                                             \
+        Arch_Task_Context ctx;                                      \
+        Thread_Init_Para* init_parameter;                           \
+        ms_queue_node_t port_queue_node;                            \
+        ms_queue_t recv_msg_queue;                                  \
+        ms_queue_t send_msg_queue;                                  \
+        volatile Message_t* send_pending_msg; /* expect Message_t*/ \
+        atomic64_t recv_pending_cnt; /*how much msg arrive*/        \
+        volatile void* port_ptr; /*expect Message_Port_t*/          \
         THERAD_SCHE_COMMON
 
 #define THREAD_FLAG_NONE               0

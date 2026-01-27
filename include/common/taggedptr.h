@@ -12,7 +12,7 @@
 typedef u64 tagged_ptr_t;
 static inline tagged_ptr_t tp_new_none(void)
 {
-        return REND_SUCCESS;
+        return (u64)0;
 }
 static inline bool tp_is_none(tagged_ptr_t tp)
 {

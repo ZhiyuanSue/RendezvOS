@@ -6,6 +6,7 @@
 #include <common/stddef.h>
 #include <common/taggedptr.h>
 #include <rendezvos/sync/atomic.h>
+#include <rendezvos/error.h>
 
 /*a lock free implement*/
 
