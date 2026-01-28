@@ -215,15 +215,14 @@ error_t ipc_transfer_message(Thread_Base* sender, Thread_Base* receiver)
         /* first try to give this message to the receiver and add the ref count
          * of this message, which means now the receiver and the
          * send_pending_msg all have this message*/
+        message_structure_ref_inc(send_msg_ptr);
         msq_enqueue(
                 &receiver->recv_msg_queue, &send_msg_ptr->msg_queue_node, 0);
-        message_structure_ref_inc(send_msg_ptr);
         i64 new_cnt = atomic64_fetch_add(&receiver->recv_pending_cnt, 1) + 1;
 
         /*check whether the receiver is alive*/
         if (thread_get_status(receiver) == thread_status_exit) {
                 /*
-                if not ,the receiver will clean the message ref count.
                 if the receiver is exiting, the delete thread function will dec
                 the ref count, but the sender still heve this message. So we
                 don't need dec the ref count(have given to the receiver) here.
