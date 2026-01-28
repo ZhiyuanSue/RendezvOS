@@ -200,6 +200,10 @@ error_t ipc_transfer_message(Thread_Base* sender, Thread_Base* receiver)
                 send_msg_ptr =
                         container_of(dequeued_node, Message_t, msg_queue_node);
                 if (thread_get_status(sender) == thread_status_exit) {
+                        /*the sender will not clean this message because the
+                         * owner now is send_msg_ptr*/
+                        message_structure_ref_dec(send_msg_ptr);
+                        return -E_REND_NO_MSG;
                 }
         }
 
@@ -244,8 +248,8 @@ error_t ipc_transfer_message(Thread_Base* sender, Thread_Base* receiver)
                 return -E_REND_AGAIN;
         }
         /*now the send_msg_ptr should not hold this message*/
-        send_msg_ptr = NULL;
         message_structure_ref_dec(send_msg_ptr);
+        send_msg_ptr = NULL;
         barrier();
 
         /*TODO: do some ops based on new cnt*/

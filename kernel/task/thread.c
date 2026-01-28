@@ -173,9 +173,10 @@ void delete_thread(Thread_Base* thread)
                 return;
         atomic64_store(&thread->status, thread_status_exit);
         /*free the send pending msg*/
-        if (thread->send_pending_msg) {
-                message_structure_ref_dec(
-                        (Message_t*)(thread->send_pending_msg));
+        Message_t* pending_msg = (Message_t*)atomic64_exchange(
+                (volatile u64*)(&thread->send_pending_msg), (u64)NULL);
+        if (pending_msg) {
+                message_structure_ref_dec((Message_t*)(pending_msg));
         }
         /*clean the send msg queue*/
         clean_message_queue(&thread->send_msg_queue);
