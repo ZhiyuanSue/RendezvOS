@@ -268,10 +268,59 @@ error_t ipc_transfer_message(Thread_Base* sender, Thread_Base* receiver)
  */
 error_t send_msg(Message_Port_t* port)
 {
-        Thread_Base* send_thread = get_cpu_current_thread();
-        /*TODO*/
-        (void)port;
-        (void)send_thread;
+        if (!port) {
+                return -E_RENDEZVOS;
+        }
+        Thread_Base* sender = get_cpu_current_thread();
+        while (1) {
+                Thread_Base* receiver =
+                        ipc_port_try_match(port, IPC_ENDPOINT_STATE_SEND);
+                if (receiver) {
+                        error_t try_transfer_result =
+                                ipc_transfer_message(sender, receiver);
+                        switch (try_transfer_result) {
+                        case REND_SUCCESS: {
+                                /*successfully transfer the message*/
+                                break;
+                        }
+                        case -E_REND_NO_MSG: {
+                                /*impossible, the ipc_send function find self
+                                 * have no message or is exiting */
+                                break;
+                        }
+                        case -E_REND_AGAIN: {
+                                /*the receiver have exit, we need try to dequeue
+                                 * a receiver again.*/
+                                break;
+                        }
+                        default: {
+                                /*no other case is set now, and seems
+                                 * impossible*/
+                                break;
+                        }
+                        }
+                        thread_structure_ref_dec(receiver);
+                } else {
+                        error_t enqueue_result = ipc_port_enqueue_wait(
+                                port, IPC_ENDPOINT_STATE_SEND, sender);
+                        switch (enqueue_result) {
+                        case REND_SUCCESS: {
+                                /*successfully enqueue on the port queue*/
+                                break;
+                        }
+                        case -E_REND_AGAIN: {
+                                /*the queue have change the state, we need
+                                 * retry.*/
+                                break;
+                        }
+                        default: {
+                                /*no other case is set now, and seems
+                                 * impossible*/
+                                break;
+                        }
+                        }
+                }
+        }
         return REND_SUCCESS;
 }
 /**
@@ -284,9 +333,58 @@ error_t send_msg(Message_Port_t* port)
  */
 error_t recv_msg(Message_Port_t* port)
 {
-        Thread_Base* recv_thread = get_cpu_current_thread();
-        /*TODO*/
-        (void)port;
-        (void)recv_thread;
+        if (!port) {
+                return -E_RENDEZVOS;
+        }
+        Thread_Base* receiver = get_cpu_current_thread();
+        while (1) {
+                Thread_Base* sender =
+                        ipc_port_try_match(port, IPC_ENDPOINT_STATE_RECV);
+                if (sender) {
+                        error_t try_transfer_result =
+                                ipc_transfer_message(sender, receiver);
+                        switch (try_transfer_result) {
+                        case REND_SUCCESS: {
+                                /*successfully receive a message*/
+                                break;
+                        }
+                        case -E_REND_NO_MSG: {
+                                /*the sender have no message to send or is
+                                 * exiting*/
+                                break;
+                        }
+                        case -E_REND_AGAIN: {
+                                /*impossible, only receiver is exiting can
+                                 * return -E_REND_AGAIN*/
+                                break;
+                        }
+                        default: {
+                                /*no other case is set now, and seems
+                                 * impossible*/
+                                break;
+                        }
+                        }
+                } else {
+                        error_t enqueue_result = ipc_port_enqueue_wait(
+                                port, IPC_ENDPOINT_STATE_RECV, receiver);
+                        switch (enqueue_result) {
+                        case REND_SUCCESS: {
+                                /*successfully enqueue on the port queue*/
+                                break;
+                        }
+                        case -E_REND_AGAIN: {
+                                /*the queue have change the state, we need
+                                 * retry.*/
+                                break;
+                        }
+                        default: {
+                                /*no other case is set now, and seems
+                                 * impossible*/
+                                break;
+                        }
+                        }
+                }
+        }
+
         return REND_SUCCESS;
 }
