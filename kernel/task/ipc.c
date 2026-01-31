@@ -10,9 +10,6 @@ struct Msg_Port* create_message_port()
                 mp->thread_queue_dummy_node_ptr =
                         (Thread_Base*)(cpu_kallocator->m_alloc(
                                 cpu_kallocator, sizeof(Thread_Base)));
-                Message_t* dummy_msg_queue_node =
-                        (Message_t*)(cpu_kallocator->m_alloc(
-                                cpu_kallocator, sizeof(Message_t)));
                 /*TODO: maybe need to init the header idle msg and the header
                  * tcb*/
                 if (mp->thread_queue_dummy_node_ptr) {
@@ -21,11 +18,6 @@ struct Msg_Port* create_message_port()
                                           ->port_queue_node,
                                  IPC_ENDPOINT_APPEND_BITS);
                 }
-
-                if (dummy_msg_queue_node)
-                        msq_init(&mp->send_msg_queue,
-                                 &dummy_msg_queue_node->msg_queue_node,
-                                 IPC_ENDPOINT_APPEND_BITS);
         } else {
                 return NULL;
         }
@@ -359,18 +351,18 @@ error_t recv_msg(Message_Port_t* port)
                         }
                         case -E_REND_NO_MSG: {
                                 /*the sender have no message to send or is
-                                 * exiting*/
-                                break;
+                                 * exiting, retry to get another sender*/
+                                continue;
                         }
                         case -E_REND_AGAIN: {
                                 /*impossible, only receiver is exiting can
                                  * return -E_REND_AGAIN*/
-                                break;
+                                return -E_RENDEZVOS;
                         }
                         default: {
                                 /*no other case is set now, and seems
                                  * impossible*/
-                                break;
+                                return -E_RENDEZVOS;
                         }
                         }
                 } else {
@@ -379,17 +371,18 @@ error_t recv_msg(Message_Port_t* port)
                         switch (enqueue_result) {
                         case REND_SUCCESS: {
                                 /*successfully enqueue on the port queue*/
+                                /*TODO:schedule*/
                                 break;
                         }
                         case -E_REND_AGAIN: {
                                 /*the queue have change the state, we need
                                  * retry.*/
-                                break;
+                                continue;
                         }
                         default: {
                                 /*no other case is set now, and seems
                                  * impossible*/
-                                break;
+                                return -E_RENDEZVOS;
                         }
                         }
                 }
@@ -413,7 +406,34 @@ error_t cancel_ipc(Thread_Base* target_thread)
         queue, we can remove it from the queue even there's no opposite thread
         try to remove it.
         */
-        /*TODO*/
-        (void)target_thread;
+        /*
+        Remember:
+        we do not care about the msq_dequeue_check_head result.
+        You need to check the thread's status and decide how to schedule after
+        this function
+        */
+        if (!target_thread) {
+                return -E_IN_PARAM;
+        }
+        Message_Port_t* port = (Message_Port_t*)(target_thread->port_ptr);
+        if (atomic64_cas((volatile u64*)(&target_thread->status),
+                         thread_status_block_on_send,
+                         thread_status_cancel_ipc)
+            == thread_status_block_on_send) {
+                msq_dequeue_check_head(
+                        &port->thread_queue,
+                        MSQ_CHECK_FIELD_PTR,
+                        tp_new((void*)(&target_thread->port_queue_node),
+                               IPC_ENDPOINT_STATE_SEND));
+        } else if (atomic64_cas((volatile u64*)(&target_thread->status),
+                                thread_status_block_on_receive,
+                                thread_status_cancel_ipc)
+                   == thread_status_block_on_receive) {
+                msq_dequeue_check_head(
+                        &port->thread_queue,
+                        MSQ_CHECK_FIELD_PTR,
+                        tp_new((void*)(&target_thread->port_queue_node),
+                               IPC_ENDPOINT_STATE_RECV));
+        }
         return REND_SUCCESS;
 }

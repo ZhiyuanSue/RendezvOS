@@ -27,12 +27,11 @@ struct Msg_Port {
         message always free directly.
         */
         Thread_Base* thread_queue_dummy_node_ptr;
-        ms_queue_t send_msg_queue;
 };
 
 static inline u16 ipc_get_queue_state(Message_Port_t* port)
 {
-        tagged_ptr_t tail = atomic64_load(&port->send_msg_queue.tail);
+        tagged_ptr_t tail = atomic64_load(&port->thread_queue.tail);
         return tp_get_tag(tail) & ((1 << IPC_ENDPOINT_APPEND_BITS) - 1);
 }
 
@@ -42,5 +41,6 @@ void delete_message_port(Message_Port_t* port);
 error_t ipc_transfer_message(Thread_Base* sender, Thread_Base* receiver);
 error_t send_msg(Message_Port_t* port);
 error_t recv_msg(Message_Port_t* port);
+error_t cancel_ipc(Thread_Base* target_thread);
 
 #endif

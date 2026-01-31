@@ -197,14 +197,14 @@ static inline tagged_ptr_t msq_dequeue(ms_queue_t* q)
  * @param append_info_bits, point out how much bits the append info used
  * @return true, pass the check .false, check fail.
  */
-#define MSA_CHECK_FIELD_PTR    1
+#define MSQ_CHECK_FIELD_PTR    1
 #define MSQ_CHECK_FIELD_APPEND 2
 static inline bool msq_queue_check_tp(tagged_ptr_t need_check_tp,
                                       u64 check_field_mask,
                                       tagged_ptr_t expect_tp,
                                       u64 append_info_bits)
 {
-        if (check_field_mask & MSA_CHECK_FIELD_PTR) {
+        if (check_field_mask & MSQ_CHECK_FIELD_PTR) {
                 if (tp_get_ptr(need_check_tp) != tp_get_ptr(expect_tp)) {
                         return false;
                 }
@@ -306,7 +306,7 @@ static inline tagged_ptr_t msq_dequeue_check_head(ms_queue_t* q,
         tagged_ptr_t head, tail, next, tmp;
         tagged_ptr_t res = tp_new_none();
         if (q->append_info_bits == 0
-            && ((check_field_mask & MSA_CHECK_FIELD_PTR) == 0)) {
+            && ((check_field_mask & MSQ_CHECK_FIELD_PTR) == 0)) {
                 /*no append info and no need to check the ptr ,normal case*/
                 return msq_dequeue(q);
         }
