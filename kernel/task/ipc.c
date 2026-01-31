@@ -52,8 +52,10 @@ Thread_Base* ipc_port_try_match(Message_Port_t* port, u16 my_ipc_state)
                                        IPC_ENDPOINT_STATE_RECV :
                                        IPC_ENDPOINT_STATE_SEND;
         while (1) {
-                tagged_ptr_t dequeued_ptr = msq_dequeue_check_head(
-                        &port->thread_queue, target_ipc_state);
+                tagged_ptr_t dequeued_ptr =
+                        msq_dequeue_check_head(&port->thread_queue,
+                                               MSQ_CHECK_FIELD_APPEND,
+                                               tp_new(NULL, target_ipc_state));
                 if (tp_is_none(dequeued_ptr)) {
                         return NULL;
                 }
@@ -68,9 +70,13 @@ Thread_Base* ipc_port_try_match(Message_Port_t* port, u16 my_ipc_state)
                  * be free the structure)*/
                 atomic64_store((volatile u64*)&opposite_thread->port_ptr,
                                (u64)NULL);
-                if (thread_get_status(opposite_thread) == thread_status_exit
-                    || thread_get_status(opposite_thread)
-                               == thread_status_cancel_ipc) {
+                if (thread_get_status(opposite_thread) == thread_status_exit) {
+                        thread_structure_ref_dec(opposite_thread);
+                        continue;
+                }
+                if (thread_get_status(opposite_thread)
+                    == thread_status_cancel_ipc) {
+                        /*TODO: change the cancel ipc thread status*/
                         thread_structure_ref_dec(opposite_thread);
                         continue;
                 }
@@ -107,7 +113,7 @@ error_t ipc_port_enqueue_wait(Message_Port_t* port, u16 my_ipc_state,
         error_t ret = msq_enqueue_check_tail(&port->thread_queue,
                                              &my_thread->port_queue_node,
                                              my_ipc_state,
-                                             expected_ipc_state);
+                                             tp_new(NULL, expected_ipc_state));
         if (ret != REND_SUCCESS) {
                 thread_structure_ref_dec(my_thread);
                 atomic64_store((volatile u64*)&my_thread->port_ptr, (u64)NULL);
@@ -269,7 +275,7 @@ error_t ipc_transfer_message(Thread_Base* sender, Thread_Base* receiver)
 error_t send_msg(Message_Port_t* port)
 {
         if (!port) {
-                return -E_RENDEZVOS;
+                return -E_IN_PARAM;
         }
         Thread_Base* sender = get_cpu_current_thread();
         while (1) {
@@ -278,45 +284,47 @@ error_t send_msg(Message_Port_t* port)
                 if (receiver) {
                         error_t try_transfer_result =
                                 ipc_transfer_message(sender, receiver);
+                        thread_structure_ref_dec(receiver);
                         switch (try_transfer_result) {
                         case REND_SUCCESS: {
                                 /*successfully transfer the message*/
-                                break;
+                                return REND_SUCCESS;
                         }
                         case -E_REND_NO_MSG: {
                                 /*impossible, the ipc_send function find self
                                  * have no message or is exiting */
-                                break;
+                                return -E_RENDEZVOS;
                         }
                         case -E_REND_AGAIN: {
                                 /*the receiver have exit, we need try to dequeue
                                  * a receiver again.*/
-                                break;
+                                continue;
                         }
                         default: {
                                 /*no other case is set now, and seems
                                  * impossible*/
-                                break;
+                                return -E_RENDEZVOS;
                         }
                         }
-                        thread_structure_ref_dec(receiver);
                 } else {
                         error_t enqueue_result = ipc_port_enqueue_wait(
                                 port, IPC_ENDPOINT_STATE_SEND, sender);
                         switch (enqueue_result) {
                         case REND_SUCCESS: {
-                                /*successfully enqueue on the port queue*/
+                                /*successfully enqueue on the port queue, need
+                                 * schedule*/
+                                /*TODO*/
                                 break;
                         }
                         case -E_REND_AGAIN: {
                                 /*the queue have change the state, we need
                                  * retry.*/
-                                break;
+                                continue;
                         }
                         default: {
                                 /*no other case is set now, and seems
                                  * impossible*/
-                                break;
+                                return -E_RENDEZVOS;
                         }
                         }
                 }
@@ -334,7 +342,7 @@ error_t send_msg(Message_Port_t* port)
 error_t recv_msg(Message_Port_t* port)
 {
         if (!port) {
-                return -E_RENDEZVOS;
+                return -E_IN_PARAM;
         }
         Thread_Base* receiver = get_cpu_current_thread();
         while (1) {
@@ -343,10 +351,11 @@ error_t recv_msg(Message_Port_t* port)
                 if (sender) {
                         error_t try_transfer_result =
                                 ipc_transfer_message(sender, receiver);
+                        thread_structure_ref_dec(sender);
                         switch (try_transfer_result) {
                         case REND_SUCCESS: {
                                 /*successfully receive a message*/
-                                break;
+                                return REND_SUCCESS;
                         }
                         case -E_REND_NO_MSG: {
                                 /*the sender have no message to send or is
@@ -386,5 +395,25 @@ error_t recv_msg(Message_Port_t* port)
                 }
         }
 
+        return REND_SUCCESS;
+}
+/**
+ * @brief cancel ipc, just as the description of this function. It's an async
+ * function, you need to check the target_thread's status until it's not
+ * thread_status_cancel_ipc after this funciton.
+ * @param target_thread, the thread that need to cancel ipc/
+ * @return true, successfully dequeue the thread or set the thread's status as
+ * cancel ipc, false, some error happen
+ */
+error_t cancel_ipc(Thread_Base* target_thread)
+{
+        /*
+        first we need to check the thread's status, only blocked on send/recv
+        can we cancel the ipc. second, if the thread is the head of the waiting
+        queue, we can remove it from the queue even there's no opposite thread
+        try to remove it.
+        */
+        /*TODO*/
+        (void)target_thread;
         return REND_SUCCESS;
 }

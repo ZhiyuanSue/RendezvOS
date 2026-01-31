@@ -158,11 +158,11 @@ static inline void thread_set_flags(u64 flags, Thread_Base* thread)
 }
 static inline u64 thread_get_status(Thread_Base* thread)
 {
-        return atomic64_load((volatile u64 *)(&thread->status));
+        return atomic64_load((volatile u64*)(&thread->status));
 }
 static inline void thread_set_status(u64 status, Thread_Base* thread)
 {
-        atomic64_store((volatile u64 *)(&thread->status),status);
+        atomic64_store((volatile u64*)(&thread->status), status);
 }
 static inline void thread_set_name(char* name, Thread_Base* thread)
 {

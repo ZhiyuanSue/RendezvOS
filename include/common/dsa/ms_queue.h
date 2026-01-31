@@ -188,6 +188,37 @@ static inline tagged_ptr_t msq_dequeue(ms_queue_t* q)
         return res;
 }
 /**
+ * @brief this function is used for msq_dequeue_check_head and
+ * msq_enqueue_check_tail. Only the checked tp is our expected tp, can we
+ * return.
+ * @param need_check_tp, the check tagged ptr need to check
+ * @param check_field_mask, point out which field to be check.
+ * @param expect_tp, the expected value of tagged ptr
+ * @param append_info_bits, point out how much bits the append info used
+ * @return true, pass the check .false, check fail.
+ */
+#define MSA_CHECK_FIELD_PTR    1
+#define MSQ_CHECK_FIELD_APPEND 2
+static inline bool msq_queue_check_tp(tagged_ptr_t need_check_tp,
+                                      u64 check_field_mask,
+                                      tagged_ptr_t expect_tp,
+                                      u64 append_info_bits)
+{
+        if (check_field_mask & MSA_CHECK_FIELD_PTR) {
+                if (tp_get_ptr(need_check_tp) != tp_get_ptr(expect_tp)) {
+                        return false;
+                }
+        }
+        u16 append_info_mask = (1 << append_info_bits) - 1;
+        if (check_field_mask & MSQ_CHECK_FIELD_APPEND) {
+                if ((tp_get_tag(need_check_tp) & append_info_mask)
+                    != (tp_get_tag(expect_tp) & append_info_mask)) {
+                        return false;
+                }
+        }
+        return true;
+}
+/**
  * @brief enqueue a new_node into the queue,
  * only if the tail node's append info is the same as expected
  * @param q the queue structure
@@ -201,7 +232,7 @@ static inline tagged_ptr_t msq_dequeue(ms_queue_t* q)
 static inline error_t msq_enqueue_check_tail(ms_queue_t* q,
                                              ms_queue_node_t* new_node,
                                              u64 append_info,
-                                             u64 expect_append_info)
+                                             tagged_ptr_t expect_tp)
 {
         tagged_ptr_t tail, next, tmp;
         if (q->append_info_bits == 0) {
@@ -220,8 +251,10 @@ static inline error_t msq_enqueue_check_tail(ms_queue_t* q,
                 if (atomic64_cas(
                             (volatile u64*)&q->tail, *(u64*)&tail, *(u64*)&tail)
                     == *(u64*)&tail) {
-                        u16 tail_info = tp_get_tag(tail) & append_info_mask;
-                        if (tail_info != (u16)expect_append_info) {
+                        if (!msq_queue_check_tp(tail,
+                                                MSQ_CHECK_FIELD_APPEND,
+                                                expect_tp,
+                                                q->append_info_bits)) {
                                 return -E_REND_AGAIN;
                         }
                         if (tp_get_ptr(next) == NULL) {
@@ -254,22 +287,27 @@ static inline error_t msq_enqueue_check_tail(ms_queue_t* q,
         }
         return REND_SUCCESS;
 }
+
 /**
- * @brief dequeue a node and check the head node's append info, if match, return
- * the ptr
+ * @brief dequeue a node and check the head node's ptr and/or append
+ * info(pointed by check_field_mask), if match, return the ptr
  * @param q, the ms queue
+ * @param check_field_mask, a mask that decide which file to be
+ * checked(MSA_CHECK_FIELD_PTR/MSQ_CHECK_FIELD_APPEND)
  * @param expect_append_info, the expected match info
  * @return , we return the old head node, the real valid head node is return
  * node's next
  * @note others are all the same with the msq_dequeue
  */
 static inline tagged_ptr_t msq_dequeue_check_head(ms_queue_t* q,
-                                                  u64 expect_append_info)
+                                                  u64 check_field_mask,
+                                                  tagged_ptr_t expect_tp)
 {
         tagged_ptr_t head, tail, next, tmp;
         tagged_ptr_t res = tp_new_none();
-        if (q->append_info_bits == 0) {
-                /*no append info ,normal case*/
+        if (q->append_info_bits == 0
+            && ((check_field_mask & MSA_CHECK_FIELD_PTR) == 0)) {
+                /*no append info and no need to check the ptr ,normal case*/
                 return msq_dequeue(q);
         }
         u16 tag_step = 1 << q->append_info_bits;
@@ -306,13 +344,10 @@ static inline tagged_ptr_t msq_dequeue_check_head(ms_queue_t* q,
                                              *(u64*)&tail,
                                              *(u64*)&tmp);
                         } else {
-                                u16 head_append_info = tp_get_tag(next)
-                                                       & append_info_mask;
-                                if (head_append_info
-                                    != (expect_append_info
-                                        & append_info_mask)) {
-                                        /*if the head node append info is not
-                                         * the expect node, return none*/
+                                if (!msq_queue_check_tp(next,
+                                                        check_field_mask,
+                                                        expect_tp,
+                                                        q->append_info_bits)) {
                                         return tp_new_none();
                                 }
                                 res = head;
