@@ -229,7 +229,6 @@ error_t ipc_transfer_message(Thread_Base* sender, Thread_Base* receiver)
                 */
                 /*try to return the owner from send_msg_ptr to
                  * sender->send_pending_msg*/
-                thread_set_status(thread_status_block_on_send, sender);
                 int retry_count = 0;
                 while (atomic64_cas((volatile u64*)(&sender->send_pending_msg),
                                     (u64)NULL,
@@ -238,6 +237,8 @@ error_t ipc_transfer_message(Thread_Base* sender, Thread_Base* receiver)
                         arch_cpu_relax();
                         retry_count++;
                         if (retry_count == 100) {
+                                thread_set_status(thread_status_block_on_send,
+                                                  sender);
                                 schedule(percpu(core_tm));
                                 retry_count = 0;
                         }
@@ -306,8 +307,8 @@ error_t send_msg(Message_Port_t* port)
                         case REND_SUCCESS: {
                                 /*successfully enqueue on the port queue, need
                                  * schedule*/
-                                atomic64_store((volatile u64*)(&sender->status),
-                                               thread_status_block_on_send);
+                                thread_set_status(sender,
+                                                  thread_status_block_on_send);
                                 schedule(percpu(core_tm));
                                 break;
                         }
@@ -377,9 +378,8 @@ error_t recv_msg(Message_Port_t* port)
                         switch (enqueue_result) {
                         case REND_SUCCESS: {
                                 /*successfully enqueue on the port queue*/
-                                atomic64_store(
-                                        (volatile u64*)(&receiver->status),
-                                        thread_status_block_on_receive);
+                                thread_set_status(
+                                        sender, thread_status_block_on_receive);
                                 schedule(percpu(core_tm));
                                 break;
                         }
@@ -417,9 +417,9 @@ error_t cancel_ipc(Thread_Base* target_thread)
         */
         /*
         Remember:
-        we do not care about the msq_dequeue_check_head result.
         You need to check the thread's status and decide how to schedule after
-        this function, only it's ready means the target thread's ipc have canceled
+        this function, only it's ready means the target thread's ipc have
+        canceled
         */
         if (!target_thread) {
                 return -E_IN_PARAM;
