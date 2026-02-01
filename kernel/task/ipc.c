@@ -66,9 +66,10 @@ Thread_Base* ipc_port_try_match(Message_Port_t* port, u16 my_ipc_state)
                         thread_structure_ref_dec(opposite_thread);
                         continue;
                 }
-                if (thread_get_status(opposite_thread)
+                if (atomic64_cas((volatile u64*)(&opposite_thread->status),
+                                 thread_status_cancel_ipc,
+                                 thread_status_ready)
                     == thread_status_cancel_ipc) {
-                        /*TODO: change the cancel ipc thread status*/
                         thread_structure_ref_dec(opposite_thread);
                         continue;
                 }
@@ -214,9 +215,9 @@ error_t ipc_transfer_message(Thread_Base* sender, Thread_Base* receiver)
          * of this message, which means now the receiver and the
          * send_pending_msg all have this message*/
         message_structure_ref_inc(send_msg_ptr);
+        atomic64_fetch_add(&receiver->recv_pending_cnt, 1);
         msq_enqueue(
                 &receiver->recv_msg_queue, &send_msg_ptr->msg_queue_node, 0);
-        i64 new_cnt = atomic64_fetch_add(&receiver->recv_pending_cnt, 1) + 1;
 
         /*check whether the receiver is alive*/
         if (thread_get_status(receiver) == thread_status_exit) {
@@ -249,10 +250,6 @@ error_t ipc_transfer_message(Thread_Base* sender, Thread_Base* receiver)
         send_msg_ptr = NULL;
         barrier();
 
-        /*TODO: do some ops based on new cnt*/
-        (void)new_cnt;
-        /*TODO：set the sender and receiver's status*/
-
         return REND_SUCCESS;
 }
 /**
@@ -280,6 +277,10 @@ error_t send_msg(Message_Port_t* port)
                         switch (try_transfer_result) {
                         case REND_SUCCESS: {
                                 /*successfully transfer the message*/
+                                /*need to change the receiver's status*/
+                                atomic64_cas((volatile u64*)(&receiver->status),
+                                             thread_status_block_on_receive,
+                                             thread_status_ready);
                                 return REND_SUCCESS;
                         }
                         case -E_REND_NO_MSG: {
@@ -305,7 +306,9 @@ error_t send_msg(Message_Port_t* port)
                         case REND_SUCCESS: {
                                 /*successfully enqueue on the port queue, need
                                  * schedule*/
-                                /*TODO*/
+                                atomic64_store((volatile u64*)(&sender->status),
+                                               thread_status_block_on_send);
+                                schedule(percpu(core_tm));
                                 break;
                         }
                         case -E_REND_AGAIN: {
@@ -347,6 +350,9 @@ error_t recv_msg(Message_Port_t* port)
                         switch (try_transfer_result) {
                         case REND_SUCCESS: {
                                 /*successfully receive a message*/
+                                atomic64_cas((volatile u64*)(&sender->status),
+                                             thread_status_block_on_send,
+                                             thread_status_ready);
                                 return REND_SUCCESS;
                         }
                         case -E_REND_NO_MSG: {
@@ -371,7 +377,10 @@ error_t recv_msg(Message_Port_t* port)
                         switch (enqueue_result) {
                         case REND_SUCCESS: {
                                 /*successfully enqueue on the port queue*/
-                                /*TODO:schedule*/
+                                atomic64_store(
+                                        (volatile u64*)(&receiver->status),
+                                        thread_status_block_on_receive);
+                                schedule(percpu(core_tm));
                                 break;
                         }
                         case -E_REND_AGAIN: {
@@ -410,30 +419,40 @@ error_t cancel_ipc(Thread_Base* target_thread)
         Remember:
         we do not care about the msq_dequeue_check_head result.
         You need to check the thread's status and decide how to schedule after
-        this function
+        this function, only it's ready means the target thread's ipc have canceled
         */
         if (!target_thread) {
                 return -E_IN_PARAM;
         }
         Message_Port_t* port = (Message_Port_t*)(target_thread->port_ptr);
+        tagged_ptr_t dequeue_head_ptr = tp_new_none();
         if (atomic64_cas((volatile u64*)(&target_thread->status),
                          thread_status_block_on_send,
                          thread_status_cancel_ipc)
             == thread_status_block_on_send) {
-                msq_dequeue_check_head(
+                dequeue_head_ptr = msq_dequeue_check_head(
                         &port->thread_queue,
                         MSQ_CHECK_FIELD_PTR,
                         tp_new((void*)(&target_thread->port_queue_node),
                                IPC_ENDPOINT_STATE_SEND));
+
         } else if (atomic64_cas((volatile u64*)(&target_thread->status),
                                 thread_status_block_on_receive,
                                 thread_status_cancel_ipc)
                    == thread_status_block_on_receive) {
-                msq_dequeue_check_head(
+                dequeue_head_ptr = msq_dequeue_check_head(
                         &port->thread_queue,
                         MSQ_CHECK_FIELD_PTR,
                         tp_new((void*)(&target_thread->port_queue_node),
                                IPC_ENDPOINT_STATE_RECV));
+        }
+        if (!tp_is_none(dequeue_head_ptr)) {
+                if (atomic64_cas((volatile u64*)(&target_thread->status),
+                                 thread_status_cancel_ipc,
+                                 thread_status_ready)
+                    != thread_status_cancel_ipc) {
+                        return -E_RENDEZVOS;
+                }
         }
         return REND_SUCCESS;
 }
