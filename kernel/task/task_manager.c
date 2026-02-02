@@ -85,14 +85,12 @@ void schedule(Task_Manager* tm)
                                 new->vs->vspace_root_addr);
                 }
         }
-
-        if (thread_get_status(curr) == thread_status_running) {
-                /*
-                 * if before the schedule no status is set
-                 * set it to ready
-                 */
-                thread_set_status(thread_status_ready, curr);
-        }
-        thread_set_status(thread_status_running, tm->current_thread);
+        /*
+         * if before the schedule no status is set
+         * set it to ready, otherwise using the set status
+         */
+        thread_set_status_with_expect(
+                curr, thread_status_running, thread_status_ready);
+        thread_set_status(tm->current_thread, thread_status_running);
         switch_to(&(curr->ctx), &(tm->current_thread->ctx));
 }

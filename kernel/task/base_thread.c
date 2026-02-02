@@ -23,7 +23,7 @@ error_t create_init_thread(Tcb_Base* root_task)
         add_thread_to_manager(percpu(core_tm), init_t);
         /*we have to set the kstack bottom to the percpu stack*/
         init_t->kstack_bottom = percpu(boot_stack_bottom);
-        thread_set_status(thread_status_running, init_t); /*init thread is the
+        thread_set_status(init_t, thread_status_running); /*init thread is the
                                                              running thread*/
         thread_set_name(init_thread_name, init_t);
         return REND_SUCCESS;

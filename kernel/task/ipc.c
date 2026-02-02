@@ -66,10 +66,9 @@ Thread_Base* ipc_port_try_match(Message_Port_t* port, u16 my_ipc_state)
                         thread_structure_ref_dec(opposite_thread);
                         continue;
                 }
-                if (atomic64_cas((volatile u64*)(&opposite_thread->status),
-                                 thread_status_cancel_ipc,
-                                 thread_status_ready)
-                    == thread_status_cancel_ipc) {
+                if (thread_set_status_with_expect(opposite_thread,
+                                                  thread_status_cancel_ipc,
+                                                  thread_status_ready)) {
                         thread_structure_ref_dec(opposite_thread);
                         continue;
                 }
@@ -237,8 +236,8 @@ error_t ipc_transfer_message(Thread_Base* sender, Thread_Base* receiver)
                         arch_cpu_relax();
                         retry_count++;
                         if (retry_count == 100) {
-                                thread_set_status(thread_status_block_on_send,
-                                                  sender);
+                                thread_set_status(sender,
+                                                  thread_status_block_on_send);
                                 schedule(percpu(core_tm));
                                 retry_count = 0;
                         }
@@ -279,9 +278,10 @@ error_t send_msg(Message_Port_t* port)
                         case REND_SUCCESS: {
                                 /*successfully transfer the message*/
                                 /*need to change the receiver's status*/
-                                atomic64_cas((volatile u64*)(&receiver->status),
-                                             thread_status_block_on_receive,
-                                             thread_status_ready);
+                                thread_set_status_with_expect(
+                                        receiver,
+                                        thread_status_block_on_receive,
+                                        thread_status_ready);
                                 return REND_SUCCESS;
                         }
                         case -E_REND_NO_MSG: {
@@ -351,9 +351,10 @@ error_t recv_msg(Message_Port_t* port)
                         switch (try_transfer_result) {
                         case REND_SUCCESS: {
                                 /*successfully receive a message*/
-                                atomic64_cas((volatile u64*)(&sender->status),
-                                             thread_status_block_on_send,
-                                             thread_status_ready);
+                                thread_set_status_with_expect(
+                                        sender,
+                                        thread_status_block_on_send,
+                                        thread_status_ready);
                                 return REND_SUCCESS;
                         }
                         case -E_REND_NO_MSG: {
@@ -426,20 +427,18 @@ error_t cancel_ipc(Thread_Base* target_thread)
         }
         Message_Port_t* port = (Message_Port_t*)(target_thread->port_ptr);
         tagged_ptr_t dequeue_head_ptr = tp_new_none();
-        if (atomic64_cas((volatile u64*)(&target_thread->status),
-                         thread_status_block_on_send,
-                         thread_status_cancel_ipc)
-            == thread_status_block_on_send) {
+        if (thread_set_status_with_expect(target_thread,
+                                          thread_status_block_on_send,
+                                          thread_status_cancel_ipc)) {
                 dequeue_head_ptr = msq_dequeue_check_head(
                         &port->thread_queue,
                         MSQ_CHECK_FIELD_PTR,
                         tp_new((void*)(&target_thread->port_queue_node),
                                IPC_ENDPOINT_STATE_SEND));
 
-        } else if (atomic64_cas((volatile u64*)(&target_thread->status),
-                                thread_status_block_on_receive,
-                                thread_status_cancel_ipc)
-                   == thread_status_block_on_receive) {
+        } else if (thread_set_status_with_expect(target_thread,
+                                                 thread_status_block_on_receive,
+                                                 thread_status_cancel_ipc)) {
                 dequeue_head_ptr = msq_dequeue_check_head(
                         &port->thread_queue,
                         MSQ_CHECK_FIELD_PTR,
@@ -447,10 +446,9 @@ error_t cancel_ipc(Thread_Base* target_thread)
                                IPC_ENDPOINT_STATE_RECV));
         }
         if (!tp_is_none(dequeue_head_ptr)) {
-                if (atomic64_cas((volatile u64*)(&target_thread->status),
-                                 thread_status_cancel_ipc,
-                                 thread_status_ready)
-                    != thread_status_cancel_ipc) {
+                if (!thread_set_status_with_expect(target_thread,
+                                                   thread_status_cancel_ipc,
+                                                   thread_status_ready)) {
                         return -E_RENDEZVOS;
                 }
         }

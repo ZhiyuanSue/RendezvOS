@@ -152,7 +152,7 @@ static inline Tcb_Base* get_cpu_current_task()
         return percpu(core_tm)->current_task;
 }
 
-static inline void thread_set_flags(u64 flags, Thread_Base* thread)
+static inline void thread_set_flags(Thread_Base* thread, u64 flags)
 {
         thread->flags = flags;
 }
@@ -160,9 +160,18 @@ static inline u64 thread_get_status(Thread_Base* thread)
 {
         return atomic64_load((volatile u64*)(&thread->status));
 }
-static inline void thread_set_status(u64 status, Thread_Base* thread)
+static inline void thread_set_status(Thread_Base* thread, u64 status)
 {
         atomic64_store((volatile u64*)(&thread->status), status);
+}
+static inline bool thread_set_status_with_expect(Thread_Base* thread,
+                                                 u64 expect_status,
+                                                 u64 target_status)
+{
+        return atomic64_cas((volatile u64*)(&thread->status),
+                            expect_status,
+                            target_status)
+               == expect_status;
 }
 static inline void thread_set_name(char* name, Thread_Base* thread)
 {

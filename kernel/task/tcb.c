@@ -24,9 +24,9 @@ Task_Manager* init_proc(void)
         if (percpu(init_thread_ptr) && percpu(idle_thread_ptr)) {
                 percpu(core_tm)->current_thread = percpu(idle_thread_ptr);
                 /*manually set the status of the thread*/
-                thread_set_status(thread_status_ready, percpu(init_thread_ptr));
-                thread_set_status(thread_status_running,
-                                  percpu(idle_thread_ptr));
+                thread_set_status(percpu(init_thread_ptr), thread_status_ready);
+                thread_set_status(percpu(idle_thread_ptr),
+                                  thread_status_running);
                 switch_to(&(percpu(init_thread_ptr)->ctx),
                           &(percpu(idle_thread_ptr)->ctx));
         } else {

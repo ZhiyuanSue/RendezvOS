@@ -7,6 +7,7 @@ void BSP_test(void)
         single_cpu_test();
         multi_cpu_test();
 #endif
+        thread_set_status(percpu(init_thread_ptr), thread_status_ready);
         schedule(percpu(core_tm));
 }
 void AP_test(void)
@@ -14,6 +15,7 @@ void AP_test(void)
 #ifdef TEST
         multi_cpu_test();
 #endif
+        thread_set_status(percpu(init_thread_ptr), thread_status_ready);
         schedule(percpu(core_tm));
 }
 char test_thread_name[] = "test_thread";

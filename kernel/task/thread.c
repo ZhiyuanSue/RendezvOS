@@ -30,7 +30,7 @@ static void thread_entry(void)
            the trace of the thread_entry and run_thread will be cover
                         */
         pr_info("go back to thread entry and try to clean\n");
-        thread_set_status(thread_status_zombie, current_thread);
+        thread_set_status(current_thread, thread_status_zombie);
         schedule(percpu(core_tm));
 }
 Thread_Base* new_thread_structure(struct allocator* cpu_allocator)
@@ -43,7 +43,7 @@ Thread_Base* new_thread_structure(struct allocator* cpu_allocator)
                 memset((void*)thread, 0, sizeof(Thread_Base));
                 thread->tid = INVALID_ID;
                 arch_task_ctx_init(&(thread->ctx));
-                thread_set_status(thread_status_init, thread);
+                thread_set_status(thread, thread_status_init);
                 INIT_LIST_HEAD(&(thread->sched_thread_list));
                 INIT_LIST_HEAD(&(thread->thread_list_node));
                 thread->belong_tcb = NULL;
@@ -208,6 +208,6 @@ error_t thread_join(Tcb_Base* task, Thread_Base* thread)
         if (res)
                 return res;
         res = add_thread_to_manager(percpu(core_tm), thread);
-        thread_set_status(thread_status_ready, thread);
+        thread_set_status(thread, thread_status_ready);
         return res;
 }
