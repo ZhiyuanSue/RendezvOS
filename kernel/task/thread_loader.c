@@ -1,7 +1,5 @@
-#include <rendezvos/task/elf_loader.h>
+#include <rendezvos/task/thread_loader.h>
 #include <modules/log/log.h>
-#include <arch/x86_64/sys_ctrl.h>
-#include <arch/x86_64/msr.h>
 
 vaddr generate_user_stack(VSpace *vs, elf_task_set_user_stack_func func)
 {
@@ -164,5 +162,18 @@ error_t gen_task_from_elf(vaddr elf_start, vaddr elf_end,
         }
         e = thread_join(elf_task, elf_thread);
 gen_task_from_elf_error:
+        return e;
+}
+error_t gen_thread_from_func(kthread_func thread, char *thread_name,
+                             Task_Manager *tm, void *arg)
+{
+        Thread_Base *ipc_server_t;
+        ipc_server_t = create_thread((void *)thread, 1, arg);
+        if (!ipc_server_t) {
+                pr_error("[Error] create kernel thread fail\n");
+                return -E_RENDEZVOS;
+        }
+        thread_set_name(thread_name, ipc_server_t);
+        error_t e = thread_join(tm->current_task, ipc_server_t);
         return e;
 }

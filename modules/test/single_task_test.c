@@ -2,7 +2,7 @@
 #include <modules/elf/elf.h>
 #include <rendezvos/mm/vmm.h>
 #include <rendezvos/task/tcb.h>
-#include <rendezvos/task/elf_loader.h>
+#include <rendezvos/task/thread_loader.h>
 
 extern u64 _num_app;
 int task_test(void)

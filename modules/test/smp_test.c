@@ -14,7 +14,11 @@ static struct smp_test_case smp_test[MAX_SMP_TEST_CASE] = {
         {smp_ms_queue_dyn_alloc_test,
          "smp ms queue dyn alloc test",
          smp_ms_queue_dyn_alloc_check},
-};
+        {
+                smp_ipc_test,
+                "smp ipc test",
+                NULL,
+        }};
 enum multi_cpu_test_state {
         multi_cpu_test_not_start,
         multi_cpu_test_running,

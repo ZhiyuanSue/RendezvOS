@@ -1,5 +1,5 @@
-#ifndef _RENDEZVOS_ELF_LOADER_
-#define _RENDEZVOS_ELF_LOADER_
+#ifndef _RENDEZVOS_THREAD_LOADER_
+#define _RENDEZVOS_THREAD_LOADER_
 #include <common/string.h>
 #include <modules/elf/elf.h>
 #include <rendezvos/error.h>
@@ -11,5 +11,7 @@ error_t run_elf_program(vaddr elf_start, vaddr elf_end, VSpace* vs);
 typedef void* (*elf_task_set_user_stack_func)(void* user_sp_ptr);
 error_t gen_task_from_elf(vaddr elf_start, vaddr elf_end,
                           elf_task_set_user_stack_func func);
-
+typedef void* (*kthread_func)(void*);
+error_t gen_thread_from_func(kthread_func thread, char* thread_name,
+                             Task_Manager* tm, void* arg);
 #endif

@@ -12,8 +12,8 @@
 #define MAX_SINGLE_TEST_CASE 10
 #define MAX_SMP_TEST_CASE    10
 
-void BSP_test();
-void AP_test();
+void* BSP_test(void* arg);
+void* AP_test(void* arg);
 error_t create_test_thread(bool is_bsp_test);
 
 void single_cpu_test(void);
@@ -45,6 +45,7 @@ int smp_ms_queue_dyn_alloc_test(void);
 bool smp_ms_queue_dyn_alloc_check(void);
 int smp_log_test(void);
 bool smp_log_check(void);
+int smp_ipc_test(void);
 
 struct single_test_case {
         int (*test)(void);
