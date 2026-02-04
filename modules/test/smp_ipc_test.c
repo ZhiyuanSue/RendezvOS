@@ -11,9 +11,6 @@
 #include <rendezvos/task/message.h>
 #include <rendezvos/smp/percpu.h>
 #include <rendezvos/limits.h>
-#include <common/dsa/ms_queue.h>
-#include <common/stddef.h>
-#include <common/taggedptr.h>
 #include <common/string.h>
 
 extern u32 BSP_ID;
@@ -28,7 +25,6 @@ static volatile u64 smp_ipc_recv_ok[RENDEZVOS_MAX_CPU_NUMBER];
 
 static void smp_ipc_sender_loop(u32 cpu_id, int count)
 {
-        Thread_Base* self = get_cpu_current_thread();
         char payload[16];
         for (int i = 0; i < count; i++) {
                 /* unique msg_type per (cpu, index) for optional check */
@@ -47,7 +43,10 @@ static void smp_ipc_sender_loop(u32 cpu_id, int count)
                         payload);
                 if (!msg)
                         break;
-                msq_enqueue(&self->send_msg_queue, &msg->msg_queue_node, 0);
+                if (enqueue_msg_for_send(msg) != REND_SUCCESS) {
+                        message_structure_ref_dec(msg);
+                        break;
+                }
                 if (send_msg(smp_ipc_port) != REND_SUCCESS) {
                         message_structure_ref_dec(msg);
                         break;
@@ -58,15 +57,14 @@ static void smp_ipc_sender_loop(u32 cpu_id, int count)
 
 static void smp_ipc_receiver_loop(u32 cpu_id, int count)
 {
-        Thread_Base* self = get_cpu_current_thread();
         for (int i = 0; i < count; i++) {
                 if (recv_msg(smp_ipc_port) != REND_SUCCESS)
                         break;
-                tagged_ptr_t dp = msq_dequeue(&self->recv_msg_queue);
-                if (tp_is_none(dp))
+                Message_t* msg = dequeue_recv_msg();
+                if (!msg)
                         break;
-                ms_queue_node_t* node = (ms_queue_node_t*)tp_get_ptr(dp);
-                Message_t* msg = container_of(node, Message_t, msg_queue_node);
+                pr_info("[smp_ipc_test] cpu %u recv #%d msg_type=%d\n",
+                        (unsigned)cpu_id, i, (int)msg->msg_type);
                 message_structure_ref_dec(msg);
                 smp_ipc_recv_ok[cpu_id]++;
         }

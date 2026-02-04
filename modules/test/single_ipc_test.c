@@ -10,9 +10,7 @@
 #include <rendezvos/task/message.h>
 #include <rendezvos/task/thread_loader.h>
 #include <rendezvos/smp/percpu.h>
-#include <common/dsa/ms_queue.h>
 #include <common/stddef.h>
-#include <common/taggedptr.h>
 #include <common/string.h>
 
 #define IPC_TEST_MSG_TYPE  42
@@ -26,7 +24,6 @@ static char single_ipc_received_payload[32];
 static void* ipc_sender_thread(void* arg)
 {
         Message_Port_t* port = (Message_Port_t*)arg;
-        Thread_Base* self = get_cpu_current_thread();
         char payload[] = IPC_TEST_PAYLOAD;
         Message_t* msg = create_message(IPC_TEST_MSG_TYPE,
                                         sizeof(payload),
@@ -36,7 +33,12 @@ static void* ipc_sender_thread(void* arg)
                 single_ipc_sender_done = 1;
                 return NULL;
         }
-        msq_enqueue(&self->send_msg_queue, &msg->msg_queue_node, 0);
+        if (enqueue_msg_for_send(msg) != REND_SUCCESS) {
+                pr_error("[single_ipc_test] sender: enqueue_msg_for_send failed\n");
+                message_structure_ref_dec(msg);
+                single_ipc_sender_done = 1;
+                return NULL;
+        }
         if (send_msg(port) != REND_SUCCESS) {
                 pr_error("[single_ipc_test] sender: send_msg failed\n");
                 message_structure_ref_dec(msg);
@@ -50,23 +52,17 @@ static void* ipc_sender_thread(void* arg)
 static void* ipc_receiver_thread(void* arg)
 {
         Message_Port_t* port = (Message_Port_t*)arg;
-        Thread_Base* self = get_cpu_current_thread();
         if (recv_msg(port) != REND_SUCCESS) {
                 pr_error("[single_ipc_test] receiver: recv_msg failed\n");
                 single_ipc_receiver_done = 1;
                 return NULL;
         }
-        tagged_ptr_t dp = msq_dequeue(&self->recv_msg_queue);
-        if (tp_is_none(dp)) {
+        Message_t* msg = dequeue_recv_msg();
+        if (!msg) {
                 pr_error("[single_ipc_test] receiver: recv_queue empty\n");
                 single_ipc_receiver_done = 1;
                 return NULL;
         }
-        /* msq_dequeue returns the old head (dummy); real message is in next */
-        ms_queue_node_t* dummy_node = (ms_queue_node_t*)tp_get_ptr(dp);
-        ms_queue_node_t* msg_node =
-                (ms_queue_node_t*)tp_get_ptr(dummy_node->next);
-        Message_t* msg = container_of(msg_node, Message_t, msg_queue_node);
         single_ipc_received_type = msg->msg_type;
         if (msg->append_info_len < sizeof(single_ipc_received_payload)) {
                 memcpy(single_ipc_received_payload,
@@ -74,6 +70,8 @@ static void* ipc_receiver_thread(void* arg)
                        msg->append_info_len);
                 single_ipc_received_payload[msg->append_info_len] = '\0';
         }
+        pr_info("[single_ipc_test] receiver got msg_type=%d payload=\"%s\"\n",
+                (int)msg->msg_type, single_ipc_received_payload);
         message_structure_ref_dec(msg);
         single_ipc_receiver_done = 1;
         return NULL;

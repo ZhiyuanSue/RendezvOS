@@ -84,20 +84,11 @@ void del_thread_structure(Thread_Base* thread)
         del_init_parameter_structure(thread->init_parameter);
         cpu_allocator->m_free(cpu_allocator, thread);
 }
-/**
- * @brief inc the ref count of thread control block structure
- * @param thread thread control block
- */
 void thread_structure_ref_inc(Thread_Base* thread)
 {
         atomic64_inc(&thread->ref_count);
         barrier();
 }
-/**
- * @brief dec the ref count of thread control block structure
- * @param thread thead control block
- * @return true, the structure have been release, false, not released
- */
 bool thread_structure_ref_dec(Thread_Base* thread)
 {
         i64 old_ref_value = atomic64_fetch_dec(&thread->ref_count);

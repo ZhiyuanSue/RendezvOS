@@ -112,17 +112,6 @@ error_t ipc_port_enqueue_wait(Message_Port_t* port, u16 my_ipc_state,
         }
         return ret;
 }
-/**
- * @brief when we get the opposite thread, we need to send the message, here we
- * get a message from sender and put it to the recv's recv queue, if you want to
- * use this funciton ,you must make sure you have get the ref count of opposite
- * thread
- * @param sender , the sender thread
- * @param receiver, the rece thread
- * @return , REND_SUCCESS, successfully put a sender's message into receiver's
- * recv queue, E_REND_NO_MSG, no message from sender need to sendto(here the
- * receiver might retry)
- */
 error_t ipc_transfer_message(Thread_Base* sender, Thread_Base* receiver)
 {
         tagged_ptr_t dequeued_ptr;
@@ -255,15 +244,6 @@ error_t ipc_transfer_message(Thread_Base* sender, Thread_Base* receiver)
 
         return REND_SUCCESS;
 }
-/**
- * @brief we try to send a message, before this step , we must have put the
- * message into the send queue, and this function only make sure if there's a
- * receiver ,we can send a message from our send queue ,otherwise ,we are
- * blocked
- * @param port, the port that we find the opposite thread
- * @return. the value means the send status, if REND_SUCCESS, a message have
- * sent. others, the reason we fail
- */
 error_t send_msg(Message_Port_t* port)
 {
         if (!port) {
@@ -331,14 +311,6 @@ error_t send_msg(Message_Port_t* port)
         }
         return REND_SUCCESS;
 }
-/**
- * @brief we try to receive a message, after this step, we need try to dequeue a
- * message from the recv queue, this function only make sure we have receive a
- * message
- * @param port, the port that we find the opposite thread
- * @return. the value means the send status, if REND_SUCCESS, a message have
- * receive. others, the reason we fail
- */
 error_t recv_msg(Message_Port_t* port)
 {
         if (!port) {
@@ -407,14 +379,33 @@ error_t recv_msg(Message_Port_t* port)
 
         return REND_SUCCESS;
 }
-/**
- * @brief cancel ipc, just as the description of this function. It's an async
- * function, you need to check the target_thread's status until it's not
- * thread_status_cancel_ipc after this funciton.
- * @param target_thread, the thread that need to cancel ipc/
- * @return true, successfully dequeue the thread or set the thread's status as
- * cancel ipc, false, some error happen
- */
+
+error_t enqueue_msg_for_send(Message_t* msg)
+{
+        if (!msg)
+                return -E_IN_PARAM;
+        Thread_Base* self = get_cpu_current_thread();
+        if (!self)
+                return -E_REND_AGAIN;
+        msq_enqueue(&self->send_msg_queue, &msg->msg_queue_node, 0);
+        return REND_SUCCESS;
+}
+
+Message_t* dequeue_recv_msg(void)
+{
+        Thread_Base* self = get_cpu_current_thread();
+        if (!self)
+                return NULL;
+        tagged_ptr_t dp = msq_dequeue(&self->recv_msg_queue);
+        if (tp_is_none(dp))
+                return NULL;
+        ms_queue_node_t* dummy_node = (ms_queue_node_t*)tp_get_ptr(dp);
+        tagged_ptr_t next_tp = dummy_node->next;
+        if (tp_is_none(next_tp))
+                return NULL;
+        ms_queue_node_t* msg_node = (ms_queue_node_t*)tp_get_ptr(next_tp);
+        return container_of(msg_node, Message_t, msg_queue_node);
+}
 error_t cancel_ipc(Thread_Base* target_thread)
 {
         /*

@@ -123,7 +123,16 @@ Tcb_Base* new_task_structure(struct allocator* cpu_allocator);
 Task_Manager* new_task_manager();
 void del_thread_structure(Thread_Base* thread);
 Thread_Base* new_thread_structure(struct allocator* cpu_allocator);
+/**
+ * @brief Decrement the reference count of a thread control block.
+ * @param thread Thread control block.
+ * @return true if the structure was released (ref dropped to 0); false otherwise.
+ */
 bool thread_structure_ref_dec(Thread_Base* thread);
+/**
+ * @brief Increment the reference count of a thread control block.
+ * @param thread Thread control block.
+ */
 void thread_structure_ref_inc(Thread_Base* thread);
 
 Thread_Init_Para* new_init_parameter_structure();
