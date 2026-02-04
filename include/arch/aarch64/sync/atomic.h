@@ -12,10 +12,10 @@ static inline u64 atomic64_cas(volatile u64 *addr, u64 expected, u64 newval)
 
         __asm__ volatile("1: ldaxr %0, [%2]\n"
                          "   cmp %0, %3\n"
-                         "   b.ne atomic64_cas_end\n"
+                         "   b.ne 2f\n"
                          "   stlxr %w1, %4, [%2]\n"
                          "   cbnz %w1, 1b\n"
-                         "atomic64_cas_end:"
+                         "2:"
                          : "=&r"(oldval), "=&r"(result)
                          : "r"(addr), "r"(expected), "r"(newval)
                          : "memory", "cc");
@@ -81,7 +81,7 @@ static inline void atomic64_sub(atomic64_t *ptr, i64 value)
                          : "r"(&ptr->counter), "r"(value)
                          : "cc", "memory");
 }
-static inline i64 atomic64_fetch_add(volatile i64 *ptr, i64 value)
+static inline i64 atomic64_fetch_add(atomic64_t *ptr, i64 value)
 {
         i64 result;
         i64 tmp;
@@ -91,12 +91,12 @@ static inline i64 atomic64_fetch_add(volatile i64 *ptr, i64 value)
                          "   stlxr %w2, %1, [%3]\n"
                          "   cbnz  %w2, 1b"
                          : "=&r"(result), "=&r"(tmp), "=&r"(value)
-                         : "r"(ptr), "r"(value)
+                         : "r"(ptr->counter), "r"(value)
                          : "cc", "memory");
         return result;
 }
 
-static inline i64 atomic64_fetch_sub(volatile i64 *ptr, i64 value)
+static inline i64 atomic64_fetch_sub(atomic64_t *ptr, i64 value)
 {
         return atomic64_fetch_add(ptr, -value);
 }
@@ -108,12 +108,12 @@ static inline void atomic64_dec(atomic64_t *ptr)
 {
         atomic64_sub(ptr, 1);
 }
-static inline i64 atomic64_fetch_inc(volatile i64 *ptr)
+static inline i64 atomic64_fetch_inc(atomic64_t *ptr)
 {
         return atomic64_fetch_add(ptr, 1);
 }
 
-static inline i64 atomic64_fetch_dec(volatile i64 *ptr)
+static inline i64 atomic64_fetch_dec(atomic64_t *ptr)
 {
         return atomic64_fetch_add(ptr, -1);
 }

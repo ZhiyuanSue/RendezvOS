@@ -121,8 +121,8 @@ error_t run_elf_program(vaddr elf_start, vaddr elf_end, VSpace *vs)
         return REND_SUCCESS;
 }
 /*we must load all the elf file into kernel memory before we use this function*/
-error_t gen_task_from_elf(vaddr elf_start, vaddr elf_end,
-                          elf_task_set_user_stack_func func)
+error_t gen_task_from_elf(Thread_Base **elf_thread_ptr, vaddr elf_start,
+                          vaddr elf_end, elf_task_set_user_stack_func func)
 {
         error_t e = 0;
         Tcb_Base *elf_task = new_task_structure(percpu(kallocator));
@@ -160,20 +160,24 @@ error_t gen_task_from_elf(vaddr elf_start, vaddr elf_end,
                 pr_error("[Error] create elf_thread fail\n");
                 return -E_RENDEZVOS;
         }
+        if (elf_thread_ptr)
+                *elf_thread_ptr = elf_thread;
         e = thread_join(elf_task, elf_thread);
 gen_task_from_elf_error:
         return e;
 }
-error_t gen_thread_from_func(kthread_func thread, char *thread_name,
-                             Task_Manager *tm, void *arg)
+error_t gen_thread_from_func(Thread_Base **func_thread_ptr, kthread_func thread,
+                             char *thread_name, Task_Manager *tm, void *arg)
 {
-        Thread_Base *ipc_server_t;
-        ipc_server_t = create_thread((void *)thread, 1, arg);
-        if (!ipc_server_t) {
+        Thread_Base *func_t;
+        func_t = create_thread((void *)thread, 1, arg);
+        if (!func_t) {
                 pr_error("[Error] create kernel thread fail\n");
                 return -E_RENDEZVOS;
         }
-        thread_set_name(thread_name, ipc_server_t);
-        error_t e = thread_join(tm->current_task, ipc_server_t);
+        thread_set_name(thread_name, func_t);
+        if (func_thread_ptr)
+                *func_thread_ptr = func_t;
+        error_t e = thread_join(tm->current_task, func_t);
         return e;
 }

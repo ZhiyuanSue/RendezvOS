@@ -13,6 +13,13 @@ SECTIONS {
 		*(.text .text.*)
 		*(.boot.*)
 	}
+	. = ALIGN(8);
+	_s_init = .;
+	.init :
+	{
+		*(.init.call)	
+	}
+	_e_init = .;
 	. = ALIGN(4K);
 	_sdata = .;
 	.data :
@@ -26,7 +33,6 @@ SECTIONS {
 		. = ALIGN(8);
 		*(.user)
 	}
-	
 	_edata = .;
 	. = ALIGN(4K);
 	_bss_start = .;

@@ -5,10 +5,29 @@
 #include <rendezvos/error.h>
 #include <common/string.h>
 #include <rendezvos/mm/allocator.h>
+#include <rendezvos/task/initcall.h>
 
 u64 thread_kstack_page_num = 2;
 u64 thread_ustack_page_num = 8;
 
+DEFINE_PER_CPU(Thread_Base*, init_thread_ptr);
+char init_thread_name[] = "init_thread";
+
+error_t create_init_thread(Tcb_Base* root_task)
+{
+        /*we let the current execution flow as init thread*/
+        Thread_Base* init_t = percpu(init_thread_ptr) =
+                new_thread_structure(percpu(kallocator));
+        init_t->tid = get_new_tid();
+        add_thread_to_task(root_task, init_t);
+        add_thread_to_manager(percpu(core_tm), init_t);
+        /*we have to set the kstack bottom to the percpu stack*/
+        init_t->kstack_bottom = percpu(boot_stack_bottom);
+        thread_set_status(init_t, thread_status_running); /*init thread is the
+                                                             running thread*/
+        thread_set_name(init_thread_name, init_t);
+        return REND_SUCCESS;
+}
 Task_Manager* init_proc(void)
 {
         percpu(core_tm) = new_task_manager();
@@ -20,7 +39,7 @@ Task_Manager* init_proc(void)
         percpu(core_tm)->current_task = root_task;
 
         create_init_thread(root_task);
-        create_idle_thread(root_task);
+        do_init_call();
         if (percpu(init_thread_ptr) && percpu(idle_thread_ptr)) {
                 percpu(core_tm)->current_thread = percpu(idle_thread_ptr);
                 /*manually set the status of the thread*/
@@ -31,6 +50,7 @@ Task_Manager* init_proc(void)
                           &(percpu(idle_thread_ptr)->ctx));
         } else {
                 pr_error("[Error] init_proc fail\n");
+                return NULL;
         }
         return percpu(core_tm);
 }

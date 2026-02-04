@@ -15,6 +15,13 @@ SECTIONS {
 		*(.text .text.*)
 		*(.trap .trap.*)
 	}
+	. = ALIGN(8);
+	_s_init = .;
+	.init :
+	{
+		*(.init.call)	
+	}
+	_e_init = .;
 	. = ALIGN(4K);
 	_sdata = .;
 	.data :

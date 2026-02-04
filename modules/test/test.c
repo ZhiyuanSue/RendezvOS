@@ -28,11 +28,14 @@ error_t create_test_thread(bool is_bsp_test)
 {
         error_t e;
         if (is_bsp_test) {
-                e = gen_thread_from_func(
-                        BSP_test, test_thread_name, percpu(core_tm), NULL);
+                e = gen_thread_from_func(NULL,
+                                         BSP_test,
+                                         test_thread_name,
+                                         percpu(core_tm),
+                                         NULL);
         } else {
                 e = gen_thread_from_func(
-                        AP_test, test_thread_name, percpu(core_tm), NULL);
+                        NULL, AP_test, test_thread_name, percpu(core_tm), NULL);
         }
         return e;
 }
