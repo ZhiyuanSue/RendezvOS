@@ -193,10 +193,13 @@ error_t ipc_transfer_message(Thread_Base* sender, Thread_Base* receiver)
                 if (tp_is_none(dequeued_ptr)) {
                         return -E_REND_NO_MSG;
                 }
-                ms_queue_node_t* dequeued_node =
+                /* msq_dequeue returns old head (dummy); real message is in next */
+                ms_queue_node_t* dummy_node =
                         (ms_queue_node_t*)tp_get_ptr(dequeued_ptr);
+                ms_queue_node_t* msg_node =
+                        (ms_queue_node_t*)tp_get_ptr(dummy_node->next);
                 send_msg_ptr =
-                        container_of(dequeued_node, Message_t, msg_queue_node);
+                        container_of(msg_node, Message_t, msg_queue_node);
                 if (thread_get_status(sender) == thread_status_exit) {
                         /*the sender will not clean this message because the
                          * owner now is send_msg_ptr*/
@@ -306,11 +309,12 @@ error_t send_msg(Message_Port_t* port)
                         switch (enqueue_result) {
                         case REND_SUCCESS: {
                                 /*successfully enqueue on the port queue, need
-                                 * schedule*/
+                                 * schedule; when we are woken up, a receiver
+                                 * has matched us and transferred the message*/
                                 thread_set_status(sender,
                                                   thread_status_block_on_send);
                                 schedule(percpu(core_tm));
-                                break;
+                                return REND_SUCCESS;
                         }
                         case -E_REND_AGAIN: {
                                 /*the queue have change the state, we need
@@ -378,11 +382,14 @@ error_t recv_msg(Message_Port_t* port)
                                 port, IPC_ENDPOINT_STATE_RECV, receiver);
                         switch (enqueue_result) {
                         case REND_SUCCESS: {
-                                /*successfully enqueue on the port queue*/
+                                /*successfully enqueue on the port queue; when
+                                 * we are woken up, a sender has matched us and
+                                 * transferred the message*/
                                 thread_set_status(
-                                        sender, thread_status_block_on_receive);
+                                        receiver,
+                                        thread_status_block_on_receive);
                                 schedule(percpu(core_tm));
-                                break;
+                                return REND_SUCCESS;
                         }
                         case -E_REND_AGAIN: {
                                 /*the queue have change the state, we need

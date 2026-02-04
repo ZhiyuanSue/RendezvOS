@@ -49,6 +49,7 @@ typedef struct {
 static inline void msq_init(ms_queue_t* q, ms_queue_node_t* new_node,
                             size_t append_info_bits)
 {
+        new_node->next = tp_new_none();
         q->head = q->tail = tp_new((void*)new_node, 0);
         q->append_info_bits = append_info_bits;
         if (q->append_info_bits >= 16) {

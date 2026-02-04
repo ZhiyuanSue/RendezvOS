@@ -89,7 +89,6 @@ void smp_ms_queue_dyn_alloc_init(void)
         struct ms_test_data* tmp =
                 malloc->m_alloc(malloc, sizeof(struct ms_test_data));
         tmp->data = -1;
-        tmp->ms_node.next = tp_new_none();
         msq_init(&ms_queue, &tmp->ms_node, 0);
         memset(ms_data_test_seq, 0, ms_data_len * sizeof(int));
 }
