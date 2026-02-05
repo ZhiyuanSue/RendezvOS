@@ -94,6 +94,9 @@ static inline void msq_enqueue(ms_queue_t* q, ms_queue_node_t* new_node,
                                             *(u64*)&next,
                                             *(u64*)&tmp)
                                     == *(u64*)&next) {
+                                        atomic64_cas((volatile u64*)&q->tail,
+                                                     *(u64*)&tail,
+                                                     *(u64*)&tmp);
                                         break;
                                 }
                         } else {

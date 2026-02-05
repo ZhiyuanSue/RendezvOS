@@ -4,13 +4,12 @@ struct Msg* create_message(i64 msg_type, u64 append_info_len, char* append_info)
 {
         struct allocator* cpu_kallocator = percpu(kallocator);
         struct Msg* msg = cpu_kallocator->m_alloc(
-                cpu_kallocator, sizeof(struct Msg) + append_info_len);
+                cpu_kallocator, sizeof(struct Msg));
         if (msg) {
                 message_structure_ref_inc(msg);
                 msg->append_info_len = append_info_len;
                 msg->msg_type = msg_type;
-                if (append_info)
-                        memcpy(&msg->append_info, append_info, append_info_len);
+                msg->append_info = append_info;
         }
         return msg;
 }

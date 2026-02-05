@@ -15,7 +15,7 @@ typedef struct Msg Message_t;
 struct Msg {
         MESSAGE_COMMON;
         i64 msg_type;
-        char append_info[];
+        char* append_info;
 };
 
 Message_t* create_message(i64 msg_type, u64 append_info_len, char* append_info);

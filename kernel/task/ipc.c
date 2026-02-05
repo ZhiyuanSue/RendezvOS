@@ -145,6 +145,13 @@ error_t ipc_transfer_message(Thread_Base* sender, Thread_Base* receiver)
         there might have more then one receiver here, but we have only one
         send_pending_ptr, which might leading to some race condition
 
+		 - Problem 4:
+		The msq queue is designed to the dequeued is old dummy node, 
+		and it's next is the real data node, which now as the new dummy node.
+		but we cannot directly put real data node to receive queue.
+
+		here we reuse the old dummy node, copy the data to the dummy node, now the 
+
         so here we must first try get send_msg_ptr from
         sender->send_pending_msg(using atomic exchange).
         If not null, we have get the send message ptr, which means tell other
@@ -182,12 +189,15 @@ error_t ipc_transfer_message(Thread_Base* sender, Thread_Base* receiver)
                 if (tp_is_none(dequeued_ptr)) {
                         return -E_REND_NO_MSG;
                 }
-                /* msq_dequeue returns old head (dummy); real message is in next */
+                /* msq_dequeue returns old head (dummy); real message is in next
+                 */
                 ms_queue_node_t* dummy_node =
                         (ms_queue_node_t*)tp_get_ptr(dequeued_ptr);
                 ms_queue_node_t* msg_node =
                         (ms_queue_node_t*)tp_get_ptr(dummy_node->next);
                 send_msg_ptr =
+                        container_of(dummy_node, Message_t, msg_queue_node);
+				Message_t* data_msg_ptr =
                         container_of(msg_node, Message_t, msg_queue_node);
                 if (thread_get_status(sender) == thread_status_exit) {
                         /*the sender will not clean this message because the
@@ -195,6 +205,9 @@ error_t ipc_transfer_message(Thread_Base* sender, Thread_Base* receiver)
                         message_structure_ref_dec(send_msg_ptr);
                         return -E_REND_NO_MSG;
                 }
+				send_msg_ptr->msg_type=data_msg_ptr->msg_type;
+				send_msg_ptr->append_info_len = data_msg_ptr->append_info_len;
+				send_msg_ptr->append_info = data_msg_ptr->append_info;
         }
 
         /*after we get the send msg, we only need to consider the receiver is
@@ -206,7 +219,7 @@ error_t ipc_transfer_message(Thread_Base* sender, Thread_Base* receiver)
          * of this message, which means now the receiver and the
          * send_pending_msg all have this message*/
         message_structure_ref_inc(send_msg_ptr);
-        atomic64_fetch_add(&receiver->recv_pending_cnt, 1);
+        atomic64_add(&receiver->recv_pending_cnt, 1);
         msq_enqueue(
                 &receiver->recv_msg_queue, &send_msg_ptr->msg_queue_node, 0);
 
@@ -234,6 +247,7 @@ error_t ipc_transfer_message(Thread_Base* sender, Thread_Base* receiver)
                                 retry_count = 0;
                         }
                 }
+				message_structure_ref_dec(send_msg_ptr);
                 send_msg_ptr = NULL;
                 return -E_REND_AGAIN;
         }
