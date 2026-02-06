@@ -65,6 +65,7 @@ static void smp_ipc_receiver_loop(u32 cpu_id, int count)
                         break;
                 pr_info("[smp_ipc_test] cpu %u recv #%d msg_type=%d\n",
                         (unsigned)cpu_id, i, (int)msg->msg_type);
+                msq_node_ref_put(&msg->msg_queue_node, NULL);
                 message_structure_ref_dec(msg);
                 smp_ipc_recv_ok[cpu_id]++;
         }

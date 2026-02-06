@@ -86,12 +86,12 @@ void del_thread_structure(Thread_Base* thread)
 }
 void thread_structure_ref_inc(Thread_Base* thread)
 {
-        atomic64_inc(&thread->ref_count);
+        atomic64_inc(&(thread->port_queue_node.refcount));
         barrier();
 }
 bool thread_structure_ref_dec(Thread_Base* thread)
 {
-        i64 old_ref_value = atomic64_fetch_dec(&thread->ref_count);
+        i64 old_ref_value = atomic64_fetch_dec(&(thread->port_queue_node.refcount));
         if (old_ref_value == 1) {
                 del_thread_structure(thread);
                 return true;
@@ -170,9 +170,9 @@ void delete_thread(Thread_Base* thread)
                 message_structure_ref_dec((Message_t*)(pending_msg));
         }
         /*clean the send msg queue*/
-        clean_message_queue(&thread->send_msg_queue);
+        clean_message_queue(&thread->send_msg_queue, true);
         /*clean the recv msg queue*/
-        clean_message_queue(&thread->recv_msg_queue);
+        clean_message_queue(&thread->recv_msg_queue, true);
 
         if (thread->kstack_bottom) {
                 /*

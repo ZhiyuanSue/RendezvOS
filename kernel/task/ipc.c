@@ -47,15 +47,15 @@ Thread_Base* ipc_port_try_match(Message_Port_t* port, u16 my_ipc_state)
                 tagged_ptr_t dequeued_ptr =
                         msq_dequeue_check_head(&port->thread_queue,
                                                MSQ_CHECK_FIELD_APPEND,
-                                               tp_new(NULL, target_ipc_state));
+                                               tp_new(NULL, target_ipc_state),
+                                               NULL);
                 if (tp_is_none(dequeued_ptr)) {
                         return NULL;
                 }
                 ms_queue_node_t* dequeued_node =
                         (ms_queue_node_t*)tp_get_ptr(dequeued_ptr);
                 Thread_Base* opposite_thread =
-                        container_of(tp_get_ptr(dequeued_node->next),
-                                     Thread_Base,
+                        container_of(dequeued_node, Thread_Base,
                                      port_queue_node);
                 barrier();
                 /*if we find the opposite_thread is dead ,dec the ref count(may
@@ -63,15 +63,18 @@ Thread_Base* ipc_port_try_match(Message_Port_t* port, u16 my_ipc_state)
                 atomic64_store((volatile u64*)&opposite_thread->port_ptr,
                                (u64)NULL);
                 if (thread_get_status(opposite_thread) == thread_status_exit) {
+                        msq_node_ref_put(dequeued_node, NULL);
                         thread_structure_ref_dec(opposite_thread);
                         continue;
                 }
                 if (thread_set_status_with_expect(opposite_thread,
                                                   thread_status_cancel_ipc,
                                                   thread_status_ready)) {
+                        msq_node_ref_put(dequeued_node, NULL);
                         thread_structure_ref_dec(opposite_thread);
                         continue;
                 }
+                msq_node_ref_put(dequeued_node, NULL);
                 return opposite_thread;
         }
 }
@@ -185,29 +188,17 @@ error_t ipc_transfer_message(Thread_Base* sender, Thread_Base* receiver)
         if ((send_msg_ptr = (Message_t*)atomic64_exchange(
                      (volatile u64*)(&sender->send_pending_msg), (u64)NULL))
             == NULL) {
-                dequeued_ptr = msq_dequeue(&sender->send_msg_queue);
+                dequeued_ptr = msq_dequeue(&sender->send_msg_queue, NULL);
                 if (tp_is_none(dequeued_ptr)) {
                         return -E_REND_NO_MSG;
                 }
-                /* msq_dequeue returns old head (dummy); real message is in next
-                 */
-                ms_queue_node_t* dummy_node =
-                        (ms_queue_node_t*)tp_get_ptr(dequeued_ptr);
-                ms_queue_node_t* msg_node =
-                        (ms_queue_node_t*)tp_get_ptr(dummy_node->next);
-                send_msg_ptr =
-                        container_of(dummy_node, Message_t, msg_queue_node);
-				Message_t* data_msg_ptr =
-                        container_of(msg_node, Message_t, msg_queue_node);
+                send_msg_ptr = container_of(tp_get_ptr(dequeued_ptr),
+                                          Message_t, msg_queue_node);
                 if (thread_get_status(sender) == thread_status_exit) {
-                        /*the sender will not clean this message because the
-                         * owner now is send_msg_ptr*/
+                        msq_node_ref_put(&send_msg_ptr->msg_queue_node, NULL);
                         message_structure_ref_dec(send_msg_ptr);
                         return -E_REND_NO_MSG;
                 }
-				send_msg_ptr->msg_type=data_msg_ptr->msg_type;
-				send_msg_ptr->append_info_len = data_msg_ptr->append_info_len;
-				send_msg_ptr->append_info = data_msg_ptr->append_info;
         }
 
         /*after we get the send msg, we only need to consider the receiver is
@@ -222,6 +213,7 @@ error_t ipc_transfer_message(Thread_Base* sender, Thread_Base* receiver)
         atomic64_add(&receiver->recv_pending_cnt, 1);
         msq_enqueue(
                 &receiver->recv_msg_queue, &send_msg_ptr->msg_queue_node, 0);
+        msq_node_ref_put(&send_msg_ptr->msg_queue_node, NULL);
 
         /*check whether the receiver is alive*/
         if (thread_get_status(receiver) == thread_status_exit) {
@@ -410,14 +402,10 @@ Message_t* dequeue_recv_msg(void)
         Thread_Base* self = get_cpu_current_thread();
         if (!self)
                 return NULL;
-        tagged_ptr_t dp = msq_dequeue(&self->recv_msg_queue);
+        tagged_ptr_t dp = msq_dequeue(&self->recv_msg_queue, NULL);
         if (tp_is_none(dp))
                 return NULL;
-        ms_queue_node_t* dummy_node = (ms_queue_node_t*)tp_get_ptr(dp);
-        tagged_ptr_t next_tp = dummy_node->next;
-        if (tp_is_none(next_tp))
-                return NULL;
-        ms_queue_node_t* msg_node = (ms_queue_node_t*)tp_get_ptr(next_tp);
+        ms_queue_node_t* msg_node = (ms_queue_node_t*)tp_get_ptr(dp);
         return container_of(msg_node, Message_t, msg_queue_node);
 }
 error_t cancel_ipc(Thread_Base* target_thread)
@@ -446,7 +434,8 @@ error_t cancel_ipc(Thread_Base* target_thread)
                         &port->thread_queue,
                         MSQ_CHECK_FIELD_PTR,
                         tp_new((void*)(&target_thread->port_queue_node),
-                               IPC_ENDPOINT_STATE_SEND));
+                               IPC_ENDPOINT_STATE_SEND),
+                        NULL);
 
         } else if (thread_set_status_with_expect(target_thread,
                                                  thread_status_block_on_receive,
@@ -455,9 +444,12 @@ error_t cancel_ipc(Thread_Base* target_thread)
                         &port->thread_queue,
                         MSQ_CHECK_FIELD_PTR,
                         tp_new((void*)(&target_thread->port_queue_node),
-                               IPC_ENDPOINT_STATE_RECV));
+                               IPC_ENDPOINT_STATE_RECV),
+                        NULL);
         }
         if (!tp_is_none(dequeue_head_ptr)) {
+                msq_node_ref_put(
+                        (ms_queue_node_t*)tp_get_ptr(dequeue_head_ptr), NULL);
                 if (!thread_set_status_with_expect(target_thread,
                                                    thread_status_cancel_ipc,
                                                    thread_status_ready)) {

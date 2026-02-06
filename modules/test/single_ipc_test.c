@@ -72,6 +72,7 @@ static void* ipc_receiver_thread(void* arg)
         }
         pr_info("[single_ipc_test] receiver got msg_type=%d payload=\"%s\"\n",
                 (int)msg->msg_type, single_ipc_received_payload);
+        msq_node_ref_put(&msg->msg_queue_node, NULL);
         message_structure_ref_dec(msg);
         single_ipc_receiver_done = 1;
         return NULL;

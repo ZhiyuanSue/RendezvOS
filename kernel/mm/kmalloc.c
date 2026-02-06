@@ -28,7 +28,7 @@ static int bytes_to_pages(size_t Bytes)
 static void page_chunk_rb_tree_insert(struct page_chunk_node* node,
                                       struct rb_root* page_chunk_root)
 {
-        struct rb_node** new = &page_chunk_root->rb_root, *parent = NULL;
+        struct rb_node **new = &page_chunk_root->rb_root, *parent = NULL;
         u64 key = node->page_addr;
         while (*new) {
                 parent = *new;
@@ -364,28 +364,43 @@ static error_t _k_free(void* p)
                 struct mem_allocator* k_allocator_p =
                         (struct mem_allocator*)per_cpu(kallocator,
                                                        header->allocator_id);
+                msq_node_ref_init_zero(&header->msq_node);
                 msq_enqueue(&k_allocator_p->buffer_msq, &header->msq_node, 0);
                 atomic64_inc(&k_allocator_p->buffer_size);
         }
         return REND_SUCCESS;
 }
+/* Free function for buffer_msq nodes (both dummy and data nodes).
+ * Returns the object_header to the memory pool via group_free_obj. */
+static void free_buffer_object(void* node)
+{
+        struct object_header* header = container_of(
+                (ms_queue_node_t*)node, struct object_header, msq_node);
+        struct mem_chunk* chunk = (struct mem_chunk*)ROUND_DOWN(
+                ((vaddr)header), PAGE_SIZE * PAGE_PER_CHUNK);
+        int order = chunk->chunk_order;
+        struct mem_allocator* k_allocator_p =
+                (struct mem_allocator*)percpu(kallocator);
+        struct mem_group* group = &k_allocator_p->groups[order];
+        group_free_obj(header, chunk, group);
+}
+
 static void clean_buffer_msq()
 {
         struct mem_allocator* k_allocator_p =
                 (struct mem_allocator*)percpu(kallocator);
         tagged_ptr_t dequeue_tagged_ptr;
+        /* free_func releases old dummy (object_header), not the data node. */
         while (atomic64_load(
                        (volatile u64*)&(k_allocator_p->buffer_size.counter))
-               && (dequeue_tagged_ptr =
-                           msq_dequeue(&k_allocator_p->buffer_msq))) {
-                void* dequeue_ptr = tp_get_ptr(dequeue_tagged_ptr);
-                struct object_header* header = container_of(
-                        dequeue_ptr, struct object_header, msq_node);
-                struct mem_chunk* chunk = (struct mem_chunk*)ROUND_DOWN(
-                        ((vaddr)dequeue_ptr), PAGE_SIZE * PAGE_PER_CHUNK);
-                int order = chunk->chunk_order;
-                struct mem_group* group = &k_allocator_p->groups[order];
-                group_free_obj(header, chunk, group);
+               && (dequeue_tagged_ptr = msq_dequeue(&k_allocator_p->buffer_msq,
+                                                    free_buffer_object))) {
+                /* Release ref held by dequeue on the data node.
+                 * When refcount drops to 0, free_buffer_object will
+                 * automatically return it to the pool via group_free_obj. */
+                msq_node_ref_put(
+                        (ms_queue_node_t*)tp_get_ptr(dequeue_tagged_ptr),
+                        free_buffer_object);
                 atomic64_dec(&k_allocator_p->buffer_size);
         }
 }

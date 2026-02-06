@@ -31,9 +31,62 @@ and we do not include the data, please use the container_of
 
 in order to avoid the ABA problem, we need to add the
 */
+
+/* Reference count: nodes in the queue have refcount >= 1. Dequeue returns
+ * the data node (head->next) with refcount already incremented; caller
+ * must msq_node_ref_put when done. Old dummy is ref_put with free_func. */
 typedef struct {
+        atomic64_t refcount;
         tagged_ptr_t next;
 } ms_queue_node_t;
+
+/**
+ * @brief Initialize refcount to 1 (for dummy or single-owner node).
+ * @param node call before putting in queue as the initial dummy.
+ */
+static inline void msq_node_ref_init(ms_queue_node_t* node)
+{
+        atomic64_init(&node->refcount, 1);
+}
+
+/**
+ * @brief Initialize refcount to 0 (for a node to be enqueued).
+ *        Enqueue will ref_get before linking. Call for new nodes.
+ */
+static inline void msq_node_ref_init_zero(ms_queue_node_t* node)
+{
+        atomic64_init(&node->refcount, 0);
+}
+
+/**
+ * @brief Increment refcount; safe to call on a pointer you already hold.
+ */
+static inline void msq_node_ref_get(ms_queue_node_t* node)
+{
+        atomic64_inc(&node->refcount);
+}
+
+/**
+ * @brief Decrement refcount; if it becomes 0 and free_func is non-NULL,
+ *        call free_func(node). Pass NULL to decrement without freeing.
+ */
+static inline void msq_node_ref_put(ms_queue_node_t* node,
+                                    void (*free_func)(void*))
+{
+        i64 prev = atomic64_fetch_dec(&node->refcount);
+        if (prev == 1 && free_func != NULL) {
+                free_func((void*)node);
+        }
+}
+
+/**
+ * @brief Read current refcount (racy: only for debugging or heuristics).
+ *        Do not use the result to decide whether the node is still valid.
+ */
+static inline i64 msq_node_ref_count(ms_queue_node_t* node)
+{
+        return (i64)atomic64_load((volatile const u64*)&node->refcount.counter);
+}
 
 typedef struct {
         tagged_ptr_t head;
@@ -49,6 +102,7 @@ typedef struct {
 static inline void msq_init(ms_queue_t* q, ms_queue_node_t* new_node,
                             size_t append_info_bits)
 {
+        msq_node_ref_init(new_node);
         new_node->next = tp_new_none();
         q->head = q->tail = tp_new((void*)new_node, 0);
         q->append_info_bits = append_info_bits;
@@ -81,6 +135,7 @@ static inline void msq_enqueue(ms_queue_t* q, ms_queue_node_t* new_node,
                             (volatile u64*)&q->tail, *(u64*)&tail, *(u64*)&tail)
                     == *(u64*)&tail) {
                         if (tp_get_ptr(next) == NULL) {
+                                msq_node_ref_get(new_node);
                                 tmp = tp_new(new_node,
                                              ((tp_get_tag(tail) + tag_step)
                                               & tag_mask)
@@ -99,6 +154,7 @@ static inline void msq_enqueue(ms_queue_t* q, ms_queue_node_t* new_node,
                                                      *(u64*)&tmp);
                                         break;
                                 }
+                                msq_node_ref_put(new_node, NULL);
                         } else {
                                 tmp = tp_new(tp_get_ptr(next),
                                              ((tp_get_tag(tail) + tag_step)
@@ -114,18 +170,13 @@ static inline void msq_enqueue(ms_queue_t* q, ms_queue_node_t* new_node,
 }
 /**
  * @brief dequeue a node and return the ptr
- * @param q, the ms queue
- * @param append_info_bits, which define the append_info length
- * @return , we return the old head node, the real valid head node is return
- * node's next
- * @note we also just unlink the node,
- * but don't free the node,
- * which should be done by the upper level code
- * beside, the data node must be the return ptr->next,
- * see test function smp_ms_queue_dyn_alloc_get
- * the append info is no need to set again
+ * @param q the ms queue
+ * @param free_func called when old dummy's ref drops to 0; may be NULL to
+ *        not free (e.g. if dummy is pooled).
+ * @return tagged_ptr of the data node (real payload), or tp_new_none() if
+ *        queue empty. Caller must msq_node_ref_put(ptr, free_func) when done.
  */
-static inline tagged_ptr_t msq_dequeue(ms_queue_t* q)
+static inline tagged_ptr_t msq_dequeue(ms_queue_t* q, void (*free_func)(void*))
 {
         tagged_ptr_t head, tail, next, tmp;
         tagged_ptr_t res = tp_new_none();
@@ -134,12 +185,19 @@ static inline tagged_ptr_t msq_dequeue(ms_queue_t* q)
         u16 tag_mask = ~append_info_mask;
         while (1) {
                 head = atomic64_load(&q->head);
+                ms_queue_node_t* head_node = (ms_queue_node_t*)tp_get_ptr(head);
+
+                if (!head_node)
+                        continue;
+
+                msq_node_ref_get(head_node);
+
                 tail = atomic64_load(&q->tail);
-                next = atomic64_load(
-                        &(((ms_queue_node_t*)tp_get_ptr(head))->next));
-                if (atomic64_cas((volatile u64*)&q->head,
-                                 *(u64*)&head,
-                                 *(u64*)&head)) {
+                next = atomic64_load(&head_node->next);
+
+                if (atomic64_cas(
+                            (volatile u64*)&q->head, *(u64*)&head, *(u64*)&head)
+                    == *(u64*)&head) {
                         if (tp_get_ptr(head) == tp_get_ptr(tail)) {
                                 if (tp_get_ptr(next) == NULL) {
                                         /*
@@ -163,6 +221,7 @@ static inline tagged_ptr_t msq_dequeue(ms_queue_t* q)
                                         atomic64_cas((volatile u64*)&q->tail,
                                                      *(u64*)&tail,
                                                      *(u64*)&tmp);
+                                        msq_node_ref_put(head_node, free_func);
                                         return tp_new_none();
                                 }
                                 tmp = tp_new(tp_get_ptr(next),
@@ -173,9 +232,20 @@ static inline tagged_ptr_t msq_dequeue(ms_queue_t* q)
                                 atomic64_cas((volatile u64*)&q->tail,
                                              *(u64*)&tail,
                                              *(u64*)&tmp);
+                                msq_node_ref_put(head_node, free_func);
                         } else {
-                                res = head;
-                                tmp = tp_new(tp_get_ptr(next),
+                                ms_queue_node_t* next_node =
+                                        (ms_queue_node_t*)tp_get_ptr(next);
+                                if (!next_node) {
+                                        msq_node_ref_put(head_node, free_func);
+                                        continue;
+                                }
+
+                                msq_node_ref_get(next_node);
+
+                                /* Use tail tag for queue state (e.g. send/recv
+                                 * in append_info). */
+                                tmp = tp_new(next_node,
                                              ((tp_get_tag(tail) + tag_step)
                                               & tag_mask)
                                                      | (tp_get_tag(next)
@@ -184,9 +254,18 @@ static inline tagged_ptr_t msq_dequeue(ms_queue_t* q)
                                                  *(u64*)&head,
                                                  *(u64*)&tmp)
                                     == *(u64*)&head) {
+                                        /* Release our ref from ref_get(head_node). */
+                                        msq_node_ref_put(head_node, free_func);
+                                        /* Release queue's ref (head no longer holds old dummy). */
+                                        msq_node_ref_put(head_node, free_func);
+                                        res = next;
                                         break;
                                 }
+                                msq_node_ref_put(next_node, free_func);
+                                msq_node_ref_put(head_node, free_func);
                         }
+                } else {
+                        msq_node_ref_put(head_node, free_func);
                 }
         }
         return res;
@@ -262,6 +341,7 @@ static inline error_t msq_enqueue_check_tail(ms_queue_t* q,
                                 return -E_REND_AGAIN;
                         }
                         if (tp_get_ptr(next) == NULL) {
+                                msq_node_ref_get(new_node);
                                 tmp = tp_new(new_node,
                                              ((tp_get_tag(tail) + tag_step)
                                               & tag_mask)
@@ -275,8 +355,12 @@ static inline error_t msq_enqueue_check_tail(ms_queue_t* q,
                                             *(u64*)&next,
                                             *(u64*)&tmp)
                                     == *(u64*)&next) {
+                                        atomic64_cas((volatile u64*)&q->tail,
+                                                     *(u64*)&tail,
+                                                     *(u64*)&tmp);
                                         break;
                                 }
+                                msq_node_ref_put(new_node, NULL);
                         } else {
                                 tmp = tp_new(tp_get_ptr(next),
                                              ((tp_get_tag(tail) + tag_step)
@@ -293,38 +377,40 @@ static inline error_t msq_enqueue_check_tail(ms_queue_t* q,
 }
 
 /**
- * @brief dequeue a node and check the head node's ptr and/or append
- * info(pointed by check_field_mask), if match, return the ptr
- * @param q, the ms queue
- * @param check_field_mask, a mask that decide which file to be
- * checked(MSA_CHECK_FIELD_PTR/MSQ_CHECK_FIELD_APPEND)
- * @param expect_append_info, the expected match info
- * @return , we return the old head node, the real valid head node is return
- * node's next
- * @note others are all the same with the msq_dequeue
+ * @brief Dequeue with check: return data node only if next matches expect_tp.
+ * @param q the ms queue
+ * @param check_field_mask MSQ_CHECK_FIELD_PTR and/or MSQ_CHECK_FIELD_APPEND
+ * @param expect_tp expected value for the check
+ * @param free_func same as msq_dequeue
+ * @return tagged_ptr of data node (ref held) or tp_new_none() if empty or
+ *         check failed. Caller must msq_node_ref_put when done.
  */
 static inline tagged_ptr_t msq_dequeue_check_head(ms_queue_t* q,
                                                   u64 check_field_mask,
-                                                  tagged_ptr_t expect_tp)
+                                                  tagged_ptr_t expect_tp,
+                                                  void (*free_func)(void*))
 {
         tagged_ptr_t head, tail, next, tmp;
         tagged_ptr_t res = tp_new_none();
         if (q->append_info_bits == 0
             && ((check_field_mask & MSQ_CHECK_FIELD_PTR) == 0)) {
                 /*no append info and no need to check the ptr ,normal case*/
-                return msq_dequeue(q);
+                return msq_dequeue(q, free_func);
         }
         u16 tag_step = 1 << q->append_info_bits;
         u16 append_info_mask = tag_step - 1;
         u16 tag_mask = ~append_info_mask;
         while (1) {
                 head = atomic64_load(&q->head);
+                ms_queue_node_t* head_node = (ms_queue_node_t*)tp_get_ptr(head);
+                if (!head_node)
+                        continue;
+                msq_node_ref_get(head_node);
                 tail = atomic64_load(&q->tail);
-                next = atomic64_load(
-                        &(((ms_queue_node_t*)tp_get_ptr(head))->next));
-                if (atomic64_cas((volatile u64*)&q->head,
-                                 *(u64*)&head,
-                                 *(u64*)&head)) {
+                next = atomic64_load(&head_node->next);
+                if (atomic64_cas(
+                            (volatile u64*)&q->head, *(u64*)&head, *(u64*)&head)
+                    == *(u64*)&head) {
                         if (tp_get_ptr(head) == tp_get_ptr(tail)) {
                                 if (tp_get_ptr(next) == NULL) {
                                         /*
@@ -337,6 +423,7 @@ static inline tagged_ptr_t msq_dequeue_check_head(ms_queue_t* q,
                                         atomic64_cas((volatile u64*)&q->tail,
                                                      *(u64*)&tail,
                                                      *(u64*)&tmp);
+                                        msq_node_ref_put(head_node, free_func);
                                         return tp_new_none();
                                 }
                                 tmp = tp_new(tp_get_ptr(next),
@@ -347,15 +434,26 @@ static inline tagged_ptr_t msq_dequeue_check_head(ms_queue_t* q,
                                 atomic64_cas((volatile u64*)&q->tail,
                                              *(u64*)&tail,
                                              *(u64*)&tmp);
+                                msq_node_ref_put(head_node, free_func);
                         } else {
                                 if (!msq_queue_check_tp(next,
                                                         check_field_mask,
                                                         expect_tp,
                                                         q->append_info_bits)) {
+                                        msq_node_ref_put(head_node, free_func);
                                         return tp_new_none();
                                 }
-                                res = head;
-                                tmp = tp_new(tp_get_ptr(next),
+                                ms_queue_node_t* next_node =
+                                        (ms_queue_node_t*)tp_get_ptr(next);
+                                if (!next_node) {
+                                        msq_node_ref_put(head_node, free_func);
+                                        continue;
+                                }
+                                msq_node_ref_get(next_node);
+                                /* Use tail tag for queue state (e.g. send/recv
+                                 * in append_info).
+                                 */
+                                tmp = tp_new(next_node,
                                              ((tp_get_tag(tail) + tag_step)
                                               & tag_mask)
                                                      | (tp_get_tag(next)
@@ -364,11 +462,47 @@ static inline tagged_ptr_t msq_dequeue_check_head(ms_queue_t* q,
                                                  *(u64*)&head,
                                                  *(u64*)&tmp)
                                     == *(u64*)&head) {
+                                        /* Release our ref from ref_get(head_node). */
+                                        msq_node_ref_put(head_node, free_func);
+                                        /* Release queue's ref (head no longer holds old dummy). */
+                                        msq_node_ref_put(head_node, free_func);
+                                        res = next;
                                         break;
                                 }
+                                msq_node_ref_put(next_node, free_func);
+                                msq_node_ref_put(head_node, free_func);
                         }
+                } else {
+                        msq_node_ref_put(head_node, free_func);
                 }
         }
         return res;
 }
+
+/*
+ * Refcount and races after dequeue
+ * --------------------------------
+ * After msq_dequeue / msq_dequeue_check_head you hold one reference on the
+ * returned data node. You may call msq_node_ref_count(node) to read the
+ * current refcount, but that value is racy:
+ *
+ * 1. The value can change immediately: another thread may ref_get or ref_put
+ *    after you read, so you cannot use it to decide "am I the only holder?"
+ *    or "is it safe to free?".
+ *
+ * 2. The node must not be dereferenced after you call msq_node_ref_put and
+ *    the refcount drops to 0 (and free_func runs). So "read refcount then
+ *    use node" is safe only while you still hold at least one ref (e.g. you
+ *    have not yet called ref_put). After ref_put, the node may be freed.
+ *
+ * 3. The only safe use of refcount is: you know you did one dequeue (so you
+ *    hold 1 ref). When you call ref_put, that ref is released; if the value
+ *    was 1, ref_put may call free_func. So "get refcount for debugging or
+ *    heuristics" is OK; "get refcount to decide whether to free" is wrong
+ *    (use ref_put with the right free_func instead).
+ *
+ * Summary: you can read msq_node_ref_count after dequeue for debugging or
+ * statistics, but do not rely on it for correctness. Correctness comes from
+ * always pairing ref_get (from dequeue) with ref_put when done.
+ */
 #endif

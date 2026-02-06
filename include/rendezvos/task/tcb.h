@@ -70,7 +70,6 @@ extern u64 thread_kstack_page_num;
                 struct list_entry sched_thread_list; \
         };
 #define THREAD_COMMON                                               \
-        atomic64_t ref_count;                                       \
         char* name;                                                 \
         i64 tid;                                                    \
         u64 flags;                                                  \
