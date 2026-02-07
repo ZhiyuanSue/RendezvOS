@@ -19,7 +19,7 @@ static struct smp_test_case smp_test[MAX_SMP_TEST_CASE] = {
         //         "smp ipc test",
         //         NULL,
         // }
-        };
+};
 enum multi_cpu_test_state {
         multi_cpu_test_not_start,
         multi_cpu_test_running,

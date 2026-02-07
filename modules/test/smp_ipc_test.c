@@ -38,9 +38,7 @@ static void smp_ipc_sender_loop(u32 cpu_id, int count)
                         payload[len++] = '0';
 
                 Message_t* msg = create_message(
-                        (i64)((u64)cpu_id * 10000 + (u64)i),
-                        (u64)len,
-                        payload);
+                        (i64)((u64)cpu_id * 10000 + (u64)i), (u64)len, payload);
                 if (!msg)
                         break;
                 if (enqueue_msg_for_send(msg) != REND_SUCCESS) {
@@ -64,7 +62,9 @@ static void smp_ipc_receiver_loop(u32 cpu_id, int count)
                 if (!msg)
                         break;
                 pr_info("[smp_ipc_test] cpu %u recv #%d msg_type=%d\n",
-                        (unsigned)cpu_id, i, (int)msg->msg_type);
+                        (unsigned)cpu_id,
+                        i,
+                        (int)msg->msg_type);
                 msq_node_ref_put(&msg->msg_queue_node, NULL);
                 message_structure_ref_dec(msg);
                 smp_ipc_recv_ok[cpu_id]++;
@@ -128,9 +128,10 @@ int smp_ipc_test(void)
                         total_recv += smp_ipc_recv_ok[i];
                 }
                 if (total_sent != total_recv) {
-                        pr_error("[smp_ipc_test] total_sent %llu != total_recv %llu\n",
-                                 (unsigned long long)total_sent,
-                                 (unsigned long long)total_recv);
+                        pr_error(
+                                "[smp_ipc_test] total_sent %llu != total_recv %llu\n",
+                                (unsigned long long)total_sent,
+                                (unsigned long long)total_recv);
                         return -E_REND_TEST;
                 }
         }

@@ -59,11 +59,33 @@ static inline void msq_node_ref_init_zero(ms_queue_node_t* node)
 }
 
 /**
- * @brief Increment refcount; safe to call on a pointer you already hold.
+ * @brief Increment refcount only if it was > 0. Prevents "revival" of a dying
+ *        object (refcount 0, another CPU about to free).
+ * @return true if ref acquired, false if refcount was 0 (object is dying).
  */
-static inline void msq_node_ref_get(ms_queue_node_t* node)
+static inline bool msq_node_ref_get_not_zero(ms_queue_node_t* node)
 {
-        atomic64_inc(&node->refcount);
+        i64 old;
+        do {
+                old = (i64)atomic64_load(
+                        (volatile const u64*)&node->refcount.counter);
+                if (old <= 0)
+                        return false;
+        } while (atomic64_cas((volatile u64*)&node->refcount.counter,
+                              (u64)old,
+                              (u64)(old + 1))
+                 != (u64)old);
+        return true;
+}
+
+/**
+ * @brief Claim a node with refcount 0 (e.g. new node before enqueue).
+ *        0 -> 1 via CAS. Use only for nodes you know start at 0.
+ * @return true if claimed, false if refcount was not 0.
+ */
+static inline bool msq_node_ref_get_claim(ms_queue_node_t* node)
+{
+        return atomic64_cas((volatile u64*)&node->refcount.counter, 0, 1) == 0;
 }
 
 /**
@@ -119,7 +141,7 @@ static inline void msq_init(ms_queue_t* q, ms_queue_node_t* new_node,
  * @param append_info,  which also store the append_info in the 16bits tag
  */
 static inline void msq_enqueue(ms_queue_t* q, ms_queue_node_t* new_node,
-                               u64 append_info)
+                               u64 append_info, void (*free_func)(void*))
 {
         tagged_ptr_t tail, next, tmp;
         u16 tag_step = 1 << q->append_info_bits;
@@ -130,9 +152,8 @@ static inline void msq_enqueue(ms_queue_t* q, ms_queue_node_t* new_node,
         while (1) {
                 tail = atomic64_load(&q->tail);
                 ms_queue_node_t* tail_node = (ms_queue_node_t*)tp_get_ptr(tail);
-                if (!tail_node)
+                if (!tail_node || !msq_node_ref_get_not_zero(tail_node))
                         continue;
-                msq_node_ref_get(tail_node);
 
                 next = atomic64_load((volatile u64*)(&(tail_node->next)));
 
@@ -140,7 +161,10 @@ static inline void msq_enqueue(ms_queue_t* q, ms_queue_node_t* new_node,
                             (volatile u64*)&q->tail, *(u64*)&tail, *(u64*)&tail)
                     == *(u64*)&tail) {
                         if (tp_get_ptr(next) == NULL) {
-                                msq_node_ref_get(new_node);
+                                if (!msq_node_ref_get_claim(new_node)) {
+                                        msq_node_ref_put(tail_node, free_func);
+                                        continue;
+                                }
                                 tmp = tp_new(new_node,
                                              ((tp_get_tag(tail) + tag_step)
                                               & tag_mask)
@@ -153,11 +177,11 @@ static inline void msq_enqueue(ms_queue_t* q, ms_queue_node_t* new_node,
                                         atomic64_cas((volatile u64*)&q->tail,
                                                      *(u64*)&tail,
                                                      *(u64*)&tmp);
-                                        msq_node_ref_put(tail_node, NULL);
+                                        msq_node_ref_put(tail_node, free_func);
                                         break;
                                 }
                                 msq_node_ref_put(new_node, NULL);
-                                msq_node_ref_put(tail_node, NULL);
+                                msq_node_ref_put(tail_node, free_func);
                         } else {
                                 tmp = tp_new(tp_get_ptr(next),
                                              ((tp_get_tag(tail) + tag_step)
@@ -167,10 +191,10 @@ static inline void msq_enqueue(ms_queue_t* q, ms_queue_node_t* new_node,
                                 atomic64_cas((volatile u64*)&q->tail,
                                              *(u64*)&tail,
                                              *(u64*)&tmp);
-                                msq_node_ref_put(tail_node, NULL);
+                                msq_node_ref_put(tail_node, free_func);
                         }
                 } else {
-                        msq_node_ref_put(tail_node, NULL);
+                        msq_node_ref_put(tail_node, free_func);
                 }
         }
 }
@@ -193,10 +217,8 @@ static inline tagged_ptr_t msq_dequeue(ms_queue_t* q, void (*free_func)(void*))
                 head = atomic64_load(&q->head);
                 ms_queue_node_t* head_node = (ms_queue_node_t*)tp_get_ptr(head);
 
-                if (!head_node)
+                if (!head_node || !msq_node_ref_get_not_zero(head_node))
                         continue;
-
-                msq_node_ref_get(head_node);
 
                 tail = atomic64_load(&q->tail);
                 next = atomic64_load(&head_node->next);
@@ -227,7 +249,7 @@ static inline tagged_ptr_t msq_dequeue(ms_queue_t* q, void (*free_func)(void*))
                                         atomic64_cas((volatile u64*)&q->tail,
                                                      *(u64*)&tail,
                                                      *(u64*)&tmp);
-                                        msq_node_ref_put(head_node, NULL);
+                                        msq_node_ref_put(head_node, free_func);
                                         return tp_new_none();
                                 }
                                 tmp = tp_new(tp_get_ptr(next),
@@ -238,16 +260,19 @@ static inline tagged_ptr_t msq_dequeue(ms_queue_t* q, void (*free_func)(void*))
                                 atomic64_cas((volatile u64*)&q->tail,
                                              *(u64*)&tail,
                                              *(u64*)&tmp);
-                                msq_node_ref_put(head_node, NULL);
+                                msq_node_ref_put(head_node, free_func);
                         } else {
                                 ms_queue_node_t* next_node =
                                         (ms_queue_node_t*)tp_get_ptr(next);
                                 if (!next_node) {
-                                        msq_node_ref_put(head_node, NULL);
+                                        msq_node_ref_put(head_node, free_func);
                                         continue;
                                 }
 
-                                msq_node_ref_get(next_node);
+                                if (!msq_node_ref_get_not_zero(next_node)) {
+                                        msq_node_ref_put(head_node, free_func);
+                                        continue;
+                                }
 
                                 /* Use tail tag for queue state (e.g. send/recv
                                  * in append_info). */
@@ -262,7 +287,7 @@ static inline tagged_ptr_t msq_dequeue(ms_queue_t* q, void (*free_func)(void*))
                                     == *(u64*)&head) {
                                         /* Release our ref from
                                          * ref_get(head_node). */
-                                        msq_node_ref_put(head_node, NULL);
+                                        msq_node_ref_put(head_node, free_func);
                                         /* Release queue's ref (head no longer
                                          * holds old dummy). Only here have
                                          * chance to free the dummy node*/
@@ -270,11 +295,11 @@ static inline tagged_ptr_t msq_dequeue(ms_queue_t* q, void (*free_func)(void*))
                                         res = next;
                                         break;
                                 }
-                                msq_node_ref_put(next_node, NULL);
-                                msq_node_ref_put(head_node, NULL);
+                                msq_node_ref_put(next_node, free_func);
+                                msq_node_ref_put(head_node, free_func);
                         }
                 } else {
-                        msq_node_ref_put(head_node, NULL);
+                        msq_node_ref_put(head_node, free_func);
                 }
         }
         return res;
@@ -324,11 +349,12 @@ static inline bool msq_queue_check_tp(tagged_ptr_t need_check_tp,
 static inline error_t msq_enqueue_check_tail(ms_queue_t* q,
                                              ms_queue_node_t* new_node,
                                              u64 append_info,
-                                             tagged_ptr_t expect_tp)
+                                             tagged_ptr_t expect_tp,
+                                             void (*free_func)(void*))
 {
         tagged_ptr_t tail, next, tmp;
         if (q->append_info_bits == 0) {
-                msq_enqueue(q, new_node, append_info);
+                msq_enqueue(q, new_node, append_info, free_func);
                 return REND_SUCCESS;
         }
         u16 tag_step = 1 << q->append_info_bits;
@@ -339,9 +365,8 @@ static inline error_t msq_enqueue_check_tail(ms_queue_t* q,
         while (1) {
                 tail = atomic64_load(&q->tail);
                 ms_queue_node_t* tail_node = (ms_queue_node_t*)tp_get_ptr(tail);
-                if (!tail_node)
+                if (!tail_node || !msq_node_ref_get_not_zero(tail_node))
                         continue;
-                msq_node_ref_get(tail_node);
 
                 next = atomic64_load((volatile u64*)(&(tail_node->next)));
 
@@ -352,11 +377,14 @@ static inline error_t msq_enqueue_check_tail(ms_queue_t* q,
                                                 MSQ_CHECK_FIELD_APPEND,
                                                 expect_tp,
                                                 q->append_info_bits)) {
-                                msq_node_ref_put(tail_node, NULL);
+                                msq_node_ref_put(tail_node, free_func);
                                 return -E_REND_AGAIN;
                         }
                         if (tp_get_ptr(next) == NULL) {
-                                msq_node_ref_get(new_node);
+                                if (!msq_node_ref_get_claim(new_node)) {
+                                        msq_node_ref_put(tail_node, free_func);
+                                        return -E_REND_AGAIN;
+                                }
                                 tmp = tp_new(new_node,
                                              ((tp_get_tag(tail) + tag_step)
                                               & tag_mask)
@@ -373,11 +401,11 @@ static inline error_t msq_enqueue_check_tail(ms_queue_t* q,
                                         atomic64_cas((volatile u64*)&q->tail,
                                                      *(u64*)&tail,
                                                      *(u64*)&tmp);
-                                        msq_node_ref_put(tail_node, NULL);
+                                        msq_node_ref_put(tail_node, free_func);
                                         break;
                                 }
                                 msq_node_ref_put(new_node, NULL);
-                                msq_node_ref_put(tail_node, NULL);
+                                msq_node_ref_put(tail_node, free_func);
                         } else {
                                 tmp = tp_new(tp_get_ptr(next),
                                              ((tp_get_tag(tail) + tag_step)
@@ -387,10 +415,10 @@ static inline error_t msq_enqueue_check_tail(ms_queue_t* q,
                                 atomic64_cas((volatile u64*)&q->tail,
                                              *(u64*)&tail,
                                              *(u64*)&tmp);
-                                msq_node_ref_put(tail_node, NULL);
+                                msq_node_ref_put(tail_node, free_func);
                         }
                 } else {
-                        msq_node_ref_put(tail_node, NULL);
+                        msq_node_ref_put(tail_node, free_func);
                 }
         }
         return REND_SUCCESS;
@@ -423,9 +451,8 @@ static inline tagged_ptr_t msq_dequeue_check_head(ms_queue_t* q,
         while (1) {
                 head = atomic64_load(&q->head);
                 ms_queue_node_t* head_node = (ms_queue_node_t*)tp_get_ptr(head);
-                if (!head_node)
+                if (!head_node || !msq_node_ref_get_not_zero(head_node))
                         continue;
-                msq_node_ref_get(head_node);
                 tail = atomic64_load(&q->tail);
                 next = atomic64_load(&head_node->next);
                 if (atomic64_cas(
@@ -443,7 +470,7 @@ static inline tagged_ptr_t msq_dequeue_check_head(ms_queue_t* q,
                                         atomic64_cas((volatile u64*)&q->tail,
                                                      *(u64*)&tail,
                                                      *(u64*)&tmp);
-                                        msq_node_ref_put(head_node, NULL);
+                                        msq_node_ref_put(head_node, free_func);
                                         return tp_new_none();
                                 }
                                 tmp = tp_new(tp_get_ptr(next),
@@ -454,22 +481,25 @@ static inline tagged_ptr_t msq_dequeue_check_head(ms_queue_t* q,
                                 atomic64_cas((volatile u64*)&q->tail,
                                              *(u64*)&tail,
                                              *(u64*)&tmp);
-                                msq_node_ref_put(head_node, NULL);
+                                msq_node_ref_put(head_node, free_func);
                         } else {
                                 if (!msq_queue_check_tp(next,
                                                         check_field_mask,
                                                         expect_tp,
                                                         q->append_info_bits)) {
-                                        msq_node_ref_put(head_node, NULL);
+                                        msq_node_ref_put(head_node, free_func);
                                         return tp_new_none();
                                 }
                                 ms_queue_node_t* next_node =
                                         (ms_queue_node_t*)tp_get_ptr(next);
                                 if (!next_node) {
-                                        msq_node_ref_put(head_node, NULL);
+                                        msq_node_ref_put(head_node, free_func);
                                         continue;
                                 }
-                                msq_node_ref_get(next_node);
+                                if (!msq_node_ref_get_not_zero(next_node)) {
+                                        msq_node_ref_put(head_node, free_func);
+                                        continue;
+                                }
                                 /* Use tail tag for queue state (e.g. send/recv
                                  * in append_info).
                                  */
@@ -484,18 +514,18 @@ static inline tagged_ptr_t msq_dequeue_check_head(ms_queue_t* q,
                                     == *(u64*)&head) {
                                         /* Release our ref from
                                          * ref_get(head_node). */
-                                        msq_node_ref_put(head_node, NULL);
+                                        msq_node_ref_put(head_node, free_func);
                                         /* Release queue's ref (head no longer
                                          * holds old dummy). */
                                         msq_node_ref_put(head_node, free_func);
                                         res = next;
                                         break;
                                 }
-                                msq_node_ref_put(next_node, NULL);
-                                msq_node_ref_put(head_node, NULL);
+                                msq_node_ref_put(next_node, free_func);
+                                msq_node_ref_put(head_node, free_func);
                         }
                 } else {
-                        msq_node_ref_put(head_node, NULL);
+                        msq_node_ref_put(head_node, free_func);
                 }
         }
         return res;

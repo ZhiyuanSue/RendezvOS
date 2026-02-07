@@ -125,7 +125,8 @@ Thread_Base* new_thread_structure(struct allocator* cpu_allocator);
 /**
  * @brief Decrement the reference count of a thread control block.
  * @param thread Thread control block.
- * @return true if the structure was released (ref dropped to 0); false otherwise.
+ * @return true if the structure was released (ref dropped to 0); false
+ * otherwise.
  */
 bool thread_structure_ref_dec(Thread_Base* thread);
 /**

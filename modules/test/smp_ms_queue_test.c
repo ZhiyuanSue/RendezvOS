@@ -37,7 +37,7 @@ void smp_ms_queue_init(void)
 void smp_ms_queue_put(int offset)
 {
         for (int i = 0; i < percpu_ms_queue_test_number; i++) {
-                msq_enqueue(&ms_queue, &ms_data[offset + i].ms_node, 0);
+                msq_enqueue(&ms_queue, &ms_data[offset + i].ms_node, 0, NULL);
         }
 }
 void smp_ms_queue_get(int offset)
@@ -96,8 +96,8 @@ void smp_ms_queue_dyn_alloc_init(void)
 }
 static void dyn_alloc_free_node(void* node)
 {
-        struct ms_test_data* p = container_of((ms_queue_node_t*)node,
-                                              struct ms_test_data, ms_node);
+        struct ms_test_data* p = container_of(
+                (ms_queue_node_t*)node, struct ms_test_data, ms_node);
         struct allocator* malloc = percpu(kallocator);
         malloc->m_free(malloc, p);
 }
@@ -111,7 +111,10 @@ void smp_ms_queue_dyn_alloc_put(int offset)
                 if (tmp_ms_data) {
                         msq_node_ref_init_zero(&tmp_ms_data->ms_node);
                         tmp_ms_data->data = i;
-                        msq_enqueue(&ms_queue, &tmp_ms_data->ms_node, 0);
+                        msq_enqueue(&ms_queue,
+                                    &tmp_ms_data->ms_node,
+                                    0,
+                                    dyn_alloc_free_node);
                 } else {
                         pr_error("malloc fail\n");
                 }
@@ -122,8 +125,9 @@ void smp_ms_queue_dyn_alloc_get(int offset)
         int i = offset;
         while (i < offset + percpu_ms_queue_test_number) {
                 tagged_ptr_t dequeue_ptr = tp_new_none();
-                while ((dequeue_ptr = msq_dequeue(&ms_queue,
-                                                  dyn_alloc_free_node)) == 0)
+                while ((dequeue_ptr =
+                                msq_dequeue(&ms_queue, dyn_alloc_free_node))
+                       == 0)
                         ;
                 struct ms_test_data* get_ptr = container_of(
                         tp_get_ptr(dequeue_ptr), struct ms_test_data, ms_node);

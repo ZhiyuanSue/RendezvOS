@@ -28,7 +28,7 @@ static int bytes_to_pages(size_t Bytes)
 static void page_chunk_rb_tree_insert(struct page_chunk_node* node,
                                       struct rb_root* page_chunk_root)
 {
-        struct rb_node **new = &page_chunk_root->rb_root, *parent = NULL;
+        struct rb_node** new = &page_chunk_root->rb_root, *parent = NULL;
         u64 key = node->page_addr;
         while (*new) {
                 parent = *new;
@@ -185,6 +185,21 @@ error_t group_free_obj(struct object_header* header, struct mem_chunk* chunk,
                 list_add_head(&chunk->chunk_list, &group->empty_list);
         }
         return res;
+}
+
+/* Free function for buffer_msq nodes (both dummy and data nodes).
+ * Returns the object_header to the memory pool via group_free_obj. */
+static void free_buffer_object(void* node)
+{
+        struct object_header* header = container_of(
+                (ms_queue_node_t*)node, struct object_header, msq_node);
+        struct mem_chunk* chunk = (struct mem_chunk*)ROUND_DOWN(
+                ((vaddr)header), PAGE_SIZE * PAGE_PER_CHUNK);
+        int order = chunk->chunk_order;
+        struct mem_allocator* k_allocator_p =
+                (struct mem_allocator*)percpu(kallocator);
+        struct mem_group* group = &k_allocator_p->groups[order];
+        group_free_obj(header, chunk, group);
 }
 static void* collect_chunk_from_other_group(struct mem_allocator* k_allocator_p,
                                             int slot_index)
@@ -365,24 +380,13 @@ static error_t _k_free(void* p)
                         (struct mem_allocator*)per_cpu(kallocator,
                                                        header->allocator_id);
                 msq_node_ref_init_zero(&header->msq_node);
-                msq_enqueue(&k_allocator_p->buffer_msq, &header->msq_node, 0);
+                msq_enqueue(&k_allocator_p->buffer_msq,
+                            &header->msq_node,
+                            0,
+                            free_buffer_object);
                 atomic64_inc(&k_allocator_p->buffer_size);
         }
         return REND_SUCCESS;
-}
-/* Free function for buffer_msq nodes (both dummy and data nodes).
- * Returns the object_header to the memory pool via group_free_obj. */
-static void free_buffer_object(void* node)
-{
-        struct object_header* header = container_of(
-                (ms_queue_node_t*)node, struct object_header, msq_node);
-        struct mem_chunk* chunk = (struct mem_chunk*)ROUND_DOWN(
-                ((vaddr)header), PAGE_SIZE * PAGE_PER_CHUNK);
-        int order = chunk->chunk_order;
-        struct mem_allocator* k_allocator_p =
-                (struct mem_allocator*)percpu(kallocator);
-        struct mem_group* group = &k_allocator_p->groups[order];
-        group_free_obj(header, chunk, group);
 }
 
 static void clean_buffer_msq()

@@ -91,7 +91,8 @@ void thread_structure_ref_inc(Thread_Base* thread)
 }
 bool thread_structure_ref_dec(Thread_Base* thread)
 {
-        i64 old_ref_value = atomic64_fetch_dec(&(thread->port_queue_node.refcount));
+        i64 old_ref_value =
+                atomic64_fetch_dec(&(thread->port_queue_node.refcount));
         if (old_ref_value == 1) {
                 del_thread_structure(thread);
                 return true;

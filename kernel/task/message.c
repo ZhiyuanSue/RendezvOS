@@ -59,8 +59,7 @@ void clean_message_queue(ms_queue_t* ms_queue, bool delete_dummy)
         if (delete_dummy) {
                 tagged_ptr_t head_tp =
                         atomic64_load((volatile u64*)&ms_queue->head);
-                ms_queue_node_t* dummy =
-                        (ms_queue_node_t*)tp_get_ptr(head_tp);
+                ms_queue_node_t* dummy = (ms_queue_node_t*)tp_get_ptr(head_tp);
                 if (dummy) {
                         msq_node_ref_put(dummy, free_message_dummy);
                         atomic64_store((volatile u64*)&ms_queue->head, 0);
