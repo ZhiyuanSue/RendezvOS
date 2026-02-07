@@ -91,7 +91,7 @@ static inline i64 atomic64_fetch_add(atomic64_t *ptr, i64 value)
                          "   stlxr %w2, %1, [%3]\n"
                          "   cbnz  %w2, 1b"
                          : "=&r"(result), "=&r"(tmp), "=&r"(value)
-                         : "r"(ptr->counter), "r"(value)
+                         : "r"(&ptr->counter), "r"(value)
                          : "cc", "memory");
         return result;
 }
