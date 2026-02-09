@@ -84,7 +84,7 @@ error_t cancel_ipc(Thread_Base* target_thread);
  * @return REND_SUCCESS on success; -E_IN_PARAM if msg is NULL;
  *         -E_REND_AGAIN if no current thread (e.g. wrong context).
  */
-error_t enqueue_msg_for_send(Message_t* msg);
+error_t enqueue_msg_for_send(Message_t* msg, bool refcount_is_zero);
 
 /**
  * @brief Dequeue one message from the current thread's recv queue (after

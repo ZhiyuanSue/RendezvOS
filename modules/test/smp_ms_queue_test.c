@@ -37,7 +37,8 @@ void smp_ms_queue_init(void)
 void smp_ms_queue_put(int offset)
 {
         for (int i = 0; i < percpu_ms_queue_test_number; i++) {
-                msq_enqueue(&ms_queue, &ms_data[offset + i].ms_node, 0, NULL);
+                msq_enqueue(&ms_queue, &ms_data[offset + i].ms_node, 0, NULL,
+                            true /* refcount_is_zero */);
         }
 }
 void smp_ms_queue_get(int offset)
@@ -116,7 +117,8 @@ void smp_ms_queue_dyn_alloc_put(int offset)
                         msq_enqueue(&ms_queue,
                                     &tmp_ms_data->ms_node,
                                     0,
-                                    dyn_alloc_free_node);
+                                    dyn_alloc_free_node,
+                                    true /* refcount_is_zero */);
                 } else {
                         pr_error("malloc fail\n");
                 }

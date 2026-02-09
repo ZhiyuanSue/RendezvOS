@@ -67,11 +67,14 @@ static inline void msq_init(ms_queue_t* q, ms_queue_node_t* new_node,
  * @brief enqueue a new_node into the queue
  * @param q the queue structure
  * @param new_node, which should be allocated by the caller function
- * @param append_info_bits, which define the append_info length
- * @param append_info,  which also store the append_info in the 16bits tag
+ * @param append_info, which also store the append_info in the 16bits tag
+ * @param free_func called when old tail's ref drops to 0
+ * @param refcount_is_zero true: node has refcount 0 (ref_init_zero), use ref_get_claim;
+ *        false: node has refcount >= 1, use ref_get_not_zero (avoids revival)
  */
 static inline void msq_enqueue(ms_queue_t* q, ms_queue_node_t* new_node,
-                               u64 append_info, void (*free_func)(ref_count_t*))
+                               u64 append_info, void (*free_func)(ref_count_t*),
+                               bool refcount_is_zero)
 {
         tagged_ptr_t tail, next, tmp;
         u16 tag_step = 1 << q->append_info_bits;
@@ -91,7 +94,10 @@ static inline void msq_enqueue(ms_queue_t* q, ms_queue_node_t* new_node,
                             (volatile u64*)&q->tail, *(u64*)&tail, *(u64*)&tail)
                     == *(u64*)&tail) {
                         if (tp_get_ptr(next) == NULL) {
-                                if (!ref_get_claim(&new_node->refcount)) {
+                                bool acquired = refcount_is_zero ?
+                                        ref_get_claim(&new_node->refcount) :
+                                        ref_get_not_zero(&new_node->refcount);
+                                if (!acquired) {
                                         ref_put(&tail_node->refcount,
                                                 free_func);
                                         continue;
@@ -278,21 +284,22 @@ static inline bool msq_queue_check_tp(tagged_ptr_t need_check_tp,
  * only if the tail node's append info is the same as expected
  * @param q the queue structure
  * @param new_node, which should be allocated by the caller function
- * @param append_info_bits, which define the append_info length
- * @param append_info,  which also store the append_info in the 16bits tag
- * @param expect_append_info, the expected match info
- * @return , we return whether have we successfully enqueue, REND_SUCCESS -
- * success, other - fail
+ * @param append_info, which also store the append_info in the 16bits tag
+ * @param expect_tp expected tail tag for the check
+ * @param free_func called when old tail's ref drops to 0
+ * @param refcount_is_zero same as msq_enqueue
+ * @return REND_SUCCESS on success, -E_REND_AGAIN on check fail or ref acquire fail
  */
 static inline error_t msq_enqueue_check_tail(ms_queue_t* q,
                                              ms_queue_node_t* new_node,
                                              u64 append_info,
                                              tagged_ptr_t expect_tp,
-                                             void (*free_func)(ref_count_t*))
+                                             void (*free_func)(ref_count_t*),
+                                             bool refcount_is_zero)
 {
         tagged_ptr_t tail, next, tmp;
         if (q->append_info_bits == 0) {
-                msq_enqueue(q, new_node, append_info, free_func);
+                msq_enqueue(q, new_node, append_info, free_func, refcount_is_zero);
                 return REND_SUCCESS;
         }
         u16 tag_step = 1 << q->append_info_bits;
@@ -319,7 +326,10 @@ static inline error_t msq_enqueue_check_tail(ms_queue_t* q,
                                 return -E_REND_AGAIN;
                         }
                         if (tp_get_ptr(next) == NULL) {
-                                if (!ref_get_claim(&new_node->refcount)) {
+                                bool acquired = refcount_is_zero ?
+                                        ref_get_claim(&new_node->refcount) :
+                                        ref_get_not_zero(&new_node->refcount);
+                                if (!acquired) {
                                         ref_put(&tail_node->refcount,
                                                 free_func);
                                         return -E_REND_AGAIN;
@@ -498,8 +508,8 @@ msq_dequeue_check_head(ms_queue_t* q, u64 check_field_mask,
  *    heuristics" is OK; "get refcount to decide whether to free" is wrong
  *    (use ref_put with the right free_func instead).
  *
- * Summary: you can read msq_node_ref_count after dequeue for debugging or
- * statistics, but do not rely on it for correctness. Correctness comes from
- * always pairing ref_get (from dequeue) with ref_put when done.
+ * Summary: you can read ref_count(refcount_ptr) after dequeue for debugging
+ * or statistics, but do not rely on it for correctness. Correctness comes
+ * from always pairing ref_get (from dequeue) with ref_put when done.
  */
 #endif

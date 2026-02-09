@@ -45,7 +45,7 @@ static void smp_ipc_sender_loop(u32 cpu_id, int count)
                                        &payload_ptr);
                 if (!msg)
                         break;
-                if (enqueue_msg_for_send(msg) != REND_SUCCESS) {
+                if (enqueue_msg_for_send(msg, false) != REND_SUCCESS) {
                         ref_put(&msg->ms_queue_node.refcount, free_message_ref);
                         break;
                 }

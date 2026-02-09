@@ -33,7 +33,7 @@ static void* ipc_sender_thread(void* arg)
                 single_ipc_sender_done = 1;
                 return NULL;
         }
-        if (enqueue_msg_for_send(msg) != REND_SUCCESS) {
+        if (enqueue_msg_for_send(msg, false) != REND_SUCCESS) {
                 pr_error(
                         "[single_ipc_test] sender: enqueue_msg_for_send failed\n");
                 ref_put(&msg->ms_queue_node.refcount, free_message_ref);
