@@ -1,10 +1,7 @@
-#ifndef _RENDEZVOS_ARCH_ATOMIC_H_
-#define _RENDEZVOS_ARCH_ATOMIC_H_
-#include <common/types.h>
-#include <common/stdbool.h>
-#include "barrier.h"
+#include <common/atomic.h>
+#include <arch/aarch64/sync/barrier.h>
 
-static inline u64 atomic64_cas(volatile u64 *addr, u64 expected, u64 newval)
+u64 atomic64_cas(volatile u64 *addr, u64 expected, u64 newval)
 {
         u64 oldval;
         u64 result;
@@ -23,7 +20,7 @@ static inline u64 atomic64_cas(volatile u64 *addr, u64 expected, u64 newval)
         return oldval;
 }
 
-static inline u64 atomic64_exchange(volatile u64 *addr, u64 newval)
+u64 atomic64_exchange(volatile u64 *addr, u64 newval)
 {
         u64 oldval, result;
         dmb(ISH);
@@ -36,26 +33,24 @@ static inline u64 atomic64_exchange(volatile u64 *addr, u64 newval)
         dmb(ISH);
         return oldval;
 }
-
-static inline u64 atomic64_load(volatile const u64 *ptr)
+u64 atomic64_load(volatile const u64 *ptr)
 {
         u64 value = *ptr;
         barrier();
         dmb(ISH);
         return value;
 }
-
-static inline void atomic64_store(volatile u64 *ptr, u64 value)
+void atomic64_store(volatile u64 *ptr, u64 value)
 {
         barrier();
         dmb(ISH);
         *ptr = value;
 }
-static inline void atomic64_init(atomic64_t *ptr, i64 value)
+void atomic64_init(atomic64_t *ptr, i64 value)
 {
         atomic64_store((volatile u64 *)&ptr->counter, (u64)value);
 }
-static inline void atomic64_add(atomic64_t *ptr, i64 value)
+void atomic64_add(atomic64_t *ptr, i64 value)
 {
         i64 tmp;
         i64 old;
@@ -68,7 +63,7 @@ static inline void atomic64_add(atomic64_t *ptr, i64 value)
                          : "r"(&ptr->counter), "r"(value)
                          : "cc", "memory");
 }
-static inline void atomic64_sub(atomic64_t *ptr, i64 value)
+void atomic64_sub(atomic64_t *ptr, i64 value)
 {
         i64 tmp;
         i64 old;
@@ -81,7 +76,7 @@ static inline void atomic64_sub(atomic64_t *ptr, i64 value)
                          : "r"(&ptr->counter), "r"(value)
                          : "cc", "memory");
 }
-static inline i64 atomic64_fetch_add(atomic64_t *ptr, i64 value)
+i64 atomic64_fetch_add(atomic64_t *ptr, i64 value)
 {
         i64 result;
         i64 tmp;
@@ -96,25 +91,24 @@ static inline i64 atomic64_fetch_add(atomic64_t *ptr, i64 value)
         return result;
 }
 
-static inline i64 atomic64_fetch_sub(atomic64_t *ptr, i64 value)
+i64 atomic64_fetch_sub(atomic64_t *ptr, i64 value)
 {
         return atomic64_fetch_add(ptr, -value);
 }
-static inline void atomic64_inc(atomic64_t *ptr)
+void atomic64_inc(atomic64_t *ptr)
 {
         atomic64_add(ptr, 1);
 }
-static inline void atomic64_dec(atomic64_t *ptr)
+void atomic64_dec(atomic64_t *ptr)
 {
         atomic64_sub(ptr, 1);
 }
-static inline i64 atomic64_fetch_inc(atomic64_t *ptr)
+i64 atomic64_fetch_inc(atomic64_t *ptr)
 {
         return atomic64_fetch_add(ptr, 1);
 }
 
-static inline i64 atomic64_fetch_dec(atomic64_t *ptr)
+i64 atomic64_fetch_dec(atomic64_t *ptr)
 {
         return atomic64_fetch_add(ptr, -1);
 }
-#endif

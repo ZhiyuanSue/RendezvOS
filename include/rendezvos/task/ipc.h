@@ -90,7 +90,7 @@ error_t enqueue_msg_for_send(Message_t* msg);
  * @brief Dequeue one message from the current thread's recv queue (after
  * recv_msg). Hides ms_queue dummy-node semantics: returns the actual Message_t,
  * not the internal head node.
- * @return The Message_t* (caller must message_structure_ref_dec when done),
+ * @return The Message_t* (caller must ref_dec when done),
  *         or NULL if queue is empty or no current thread.
  */
 Message_t* dequeue_recv_msg(void);

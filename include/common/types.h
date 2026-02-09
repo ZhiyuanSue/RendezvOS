@@ -41,11 +41,4 @@ typedef addr_t vaddr;
 typedef addr_t paddr;
 typedef int error_t;
 
-typedef struct {
-        volatile i32 counter;
-} atomic_t;
-typedef struct {
-        volatile i64 counter;
-} atomic64_t;
-
 #endif

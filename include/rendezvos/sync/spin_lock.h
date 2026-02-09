@@ -11,7 +11,7 @@
     but use gcc built-in atomic functions rewrite it
 */
 #include <common/stddef.h>
-#include "atomic.h"
+#include <common/atomic.h>
 #include "barrier.h"
 
 typedef struct spin_lock_t spin_lock_t;

@@ -2,7 +2,7 @@
 #define _RENDEZVOS_CAS_SPIN_LOCK_H_
 #include <common/stddef.h>
 #include <common/types.h>
-#include "atomic.h"
+#include <common/atomic.h>
 #include "barrier.h"
 
 typedef u64 cas_lock_t;

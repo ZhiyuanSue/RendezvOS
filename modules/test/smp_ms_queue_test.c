@@ -29,7 +29,7 @@ void smp_ms_queue_init(void)
         dummy.data = -1;
         msq_init(&ms_queue, &dummy.ms_node, 0);
         for (int i = 0; i < ms_data_len; i++) {
-                msq_node_ref_init_zero(&ms_data[i].ms_node);
+                ref_init_zero(&ms_data[i].ms_node.refcount);
                 ms_data[i].ms_node.next = tp_new_none();
                 ms_data[i].data = i;
         }
@@ -50,7 +50,7 @@ void smp_ms_queue_get(int offset)
                 struct ms_test_data* get_ptr = container_of(
                         tp_get_ptr(dequeue_ptr), struct ms_test_data, ms_node);
                 ms_data_test_seq[offset + i] = get_ptr->data;
-                msq_node_ref_put(&get_ptr->ms_node, NULL);
+                ref_put(&get_ptr->ms_node.refcount, NULL);
                 i++;
         }
 }
@@ -94,10 +94,12 @@ void smp_ms_queue_dyn_alloc_init(void)
         msq_init(&ms_queue, &tmp->ms_node, 0);
         memset(ms_data_test_seq, 0, ms_data_len * sizeof(int));
 }
-static void dyn_alloc_free_node(void* node)
+static void dyn_alloc_free_node(ref_count_t* refcount)
 {
-        struct ms_test_data* p = container_of(
-                (ms_queue_node_t*)node, struct ms_test_data, ms_node);
+        ms_queue_node_t* node =
+                container_of(refcount, ms_queue_node_t, refcount);
+        struct ms_test_data* p =
+                container_of(node, struct ms_test_data, ms_node);
         struct allocator* malloc = percpu(kallocator);
         malloc->m_free(malloc, p);
 }
@@ -109,7 +111,7 @@ void smp_ms_queue_dyn_alloc_put(int offset)
                 struct ms_test_data* tmp_ms_data =
                         malloc->m_alloc(malloc, sizeof(struct ms_test_data));
                 if (tmp_ms_data) {
-                        msq_node_ref_init_zero(&tmp_ms_data->ms_node);
+                        ref_init_zero(&tmp_ms_data->ms_node.refcount);
                         tmp_ms_data->data = i;
                         msq_enqueue(&ms_queue,
                                     &tmp_ms_data->ms_node,
@@ -132,7 +134,7 @@ void smp_ms_queue_dyn_alloc_get(int offset)
                 struct ms_test_data* get_ptr = container_of(
                         tp_get_ptr(dequeue_ptr), struct ms_test_data, ms_node);
                 ms_data_test_seq[i] = get_ptr->data;
-                msq_node_ref_put(&get_ptr->ms_node, dyn_alloc_free_node);
+                ref_put(&get_ptr->ms_node.refcount, dyn_alloc_free_node);
                 lock_cas(&cas_lock);
                 cas_add_value++;
                 unlock_cas(&cas_lock);

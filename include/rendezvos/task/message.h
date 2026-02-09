@@ -9,17 +9,15 @@
 /*message structure*/
 typedef struct Msg Message_t;
 struct Msg {
-        ms_queue_node_t msg_queue_node;
+        ms_queue_node_t ms_queue_node;
         i64 msg_type;
         u64 append_info_len;
         char* append_info;
 };
 
-Message_t* create_message(i64 msg_type, u64 append_info_len, char* append_info);
-void delete_message_structure(Message_t* msg);
-void message_structure_ref_inc(Message_t* msg);
-bool message_structure_ref_dec(Message_t* msg);
-
+Message_t* create_message(i64 msg_type, u64 append_info_len,
+                          char** append_info);
+void free_message_ref(ref_count_t* ref_count_ptr);
 void clean_message_queue(ms_queue_t* ms_queue, bool delete_dummy);
 
 #endif

@@ -13,10 +13,10 @@ struct Msg_Port* create_message_port()
                 /*TODO: maybe need to init the header idle msg and the header
                  * tcb*/
                 if (mp->thread_queue_dummy_node_ptr) {
-                        msq_init(&mp->thread_queue,
-                                 &mp->thread_queue_dummy_node_ptr
-                                          ->port_queue_node,
-                                 IPC_ENDPOINT_APPEND_BITS);
+                        msq_init(
+                                &mp->thread_queue,
+                                &mp->thread_queue_dummy_node_ptr->ms_queue_node,
+                                IPC_ENDPOINT_APPEND_BITS);
                 }
         } else {
                 return NULL;
@@ -54,26 +54,24 @@ Thread_Base* ipc_port_try_match(Message_Port_t* port, u16 my_ipc_state)
                 }
                 ms_queue_node_t* dequeued_node =
                         (ms_queue_node_t*)tp_get_ptr(dequeued_ptr);
-                Thread_Base* opposite_thread = container_of(
-                        dequeued_node, Thread_Base, port_queue_node);
+                Thread_Base* opposite_thread =
+                        container_of(dequeued_node, Thread_Base, ms_queue_node);
                 barrier();
                 /*if we find the opposite_thread is dead ,dec the ref count(may
                  * be free the structure)*/
                 atomic64_store((volatile u64*)&opposite_thread->port_ptr,
                                (u64)NULL);
                 if (thread_get_status(opposite_thread) == thread_status_exit) {
-                        msq_node_ref_put(dequeued_node, NULL);
-                        thread_structure_ref_dec(opposite_thread);
+                        ref_put(&dequeued_node->refcount, free_thread_ref);
                         continue;
                 }
                 if (thread_set_status_with_expect(opposite_thread,
                                                   thread_status_cancel_ipc,
                                                   thread_status_ready)) {
-                        msq_node_ref_put(dequeued_node, NULL);
-                        thread_structure_ref_dec(opposite_thread);
+                        ref_put(&dequeued_node->refcount, free_thread_ref);
                         continue;
                 }
-                msq_node_ref_put(dequeued_node, NULL);
+                ref_put(&dequeued_node->refcount, NULL);
                 return opposite_thread;
         }
 }
@@ -100,17 +98,20 @@ error_t ipc_port_enqueue_wait(Message_Port_t* port, u16 my_ipc_state,
                 return -E_REND_AGAIN;
         }
         /*set my thread structure also belong to the port, and set the
-         * port_ptr*/
-        thread_structure_ref_inc(my_thread);
+         * port_ptr, return E_REND_AGAIN is impossible, because my thread is
+         * alive*/
+        if (!ref_get_not_zero(&my_thread->ms_queue_node.refcount)) {
+                return -E_REND_AGAIN;
+        }
         atomic64_store((volatile u64*)&my_thread->port_ptr, (u64)port);
         barrier();
         error_t ret = msq_enqueue_check_tail(&port->thread_queue,
-                                             &my_thread->port_queue_node,
+                                             &my_thread->ms_queue_node,
                                              my_ipc_state,
                                              tp_new(NULL, expected_ipc_state),
                                              NULL);
         if (ret != REND_SUCCESS) {
-                thread_structure_ref_dec(my_thread);
+                ref_put(&my_thread->ms_queue_node.refcount, free_thread_ref);
                 atomic64_store((volatile u64*)&my_thread->port_ptr, (u64)NULL);
         }
         return ret;
@@ -194,10 +195,9 @@ error_t ipc_transfer_message(Thread_Base* sender, Thread_Base* receiver)
                         return -E_REND_NO_MSG;
                 }
                 send_msg_ptr = container_of(
-                        tp_get_ptr(dequeued_ptr), Message_t, msg_queue_node);
+                        tp_get_ptr(dequeued_ptr), Message_t, ms_queue_node);
                 if (thread_get_status(sender) == thread_status_exit) {
-                        msq_node_ref_put(&send_msg_ptr->msg_queue_node, NULL);
-                        message_structure_ref_dec(send_msg_ptr);
+                        ref_put(&send_msg_ptr->ms_queue_node.refcount, NULL);
                         return -E_REND_NO_MSG;
                 }
         }
@@ -210,13 +210,15 @@ error_t ipc_transfer_message(Thread_Base* sender, Thread_Base* receiver)
         /* first try to give this message to the receiver and add the ref count
          * of this message, which means now the receiver and the
          * send_pending_msg all have this message*/
-        message_structure_ref_inc(send_msg_ptr);
+
+        /*TODO:*/
+        // message_structure_ref_inc(send_msg_ptr);
         atomic64_add(&receiver->recv_pending_cnt, 1);
         msq_enqueue(&receiver->recv_msg_queue,
-                    &send_msg_ptr->msg_queue_node,
+                    &send_msg_ptr->ms_queue_node,
                     0,
                     NULL);
-        msq_node_ref_put(&send_msg_ptr->msg_queue_node, NULL);
+        ref_put(&send_msg_ptr->ms_queue_node.refcount, NULL);
 
         /*check whether the receiver is alive*/
         if (thread_get_status(receiver) == thread_status_exit) {
@@ -242,12 +244,13 @@ error_t ipc_transfer_message(Thread_Base* sender, Thread_Base* receiver)
                                 retry_count = 0;
                         }
                 }
-                message_structure_ref_dec(send_msg_ptr);
+                ref_put(&send_msg_ptr->ms_queue_node.refcount,
+                        free_message_ref);
                 send_msg_ptr = NULL;
                 return -E_REND_AGAIN;
         }
         /*now the send_msg_ptr should not hold this message*/
-        message_structure_ref_dec(send_msg_ptr);
+        ref_put(&send_msg_ptr->ms_queue_node.refcount, free_message_ref);
         send_msg_ptr = NULL;
         barrier();
 
@@ -265,7 +268,8 @@ error_t send_msg(Message_Port_t* port)
                 if (receiver) {
                         error_t try_transfer_result =
                                 ipc_transfer_message(sender, receiver);
-                        thread_structure_ref_dec(receiver);
+                        ref_put(&receiver->ms_queue_node.refcount,
+                                free_thread_ref);
                         switch (try_transfer_result) {
                         case REND_SUCCESS: {
                                 /*successfully transfer the message*/
@@ -332,7 +336,8 @@ error_t recv_msg(Message_Port_t* port)
                 if (sender) {
                         error_t try_transfer_result =
                                 ipc_transfer_message(sender, receiver);
-                        thread_structure_ref_dec(sender);
+                        ref_put(&sender->ms_queue_node.refcount,
+                                free_thread_ref);
                         switch (try_transfer_result) {
                         case REND_SUCCESS: {
                                 /*successfully receive a message*/
@@ -396,7 +401,7 @@ error_t enqueue_msg_for_send(Message_t* msg)
         Thread_Base* self = get_cpu_current_thread();
         if (!self)
                 return -E_REND_AGAIN;
-        msq_enqueue(&self->send_msg_queue, &msg->msg_queue_node, 0, NULL);
+        msq_enqueue(&self->send_msg_queue, &msg->ms_queue_node, 0, NULL);
         return REND_SUCCESS;
 }
 
@@ -409,7 +414,7 @@ Message_t* dequeue_recv_msg(void)
         if (tp_is_none(dp))
                 return NULL;
         ms_queue_node_t* msg_node = (ms_queue_node_t*)tp_get_ptr(dp);
-        return container_of(msg_node, Message_t, msg_queue_node);
+        return container_of(msg_node, Message_t, ms_queue_node);
 }
 error_t cancel_ipc(Thread_Base* target_thread)
 {
@@ -436,7 +441,7 @@ error_t cancel_ipc(Thread_Base* target_thread)
                 dequeue_head_ptr = msq_dequeue_check_head(
                         &port->thread_queue,
                         MSQ_CHECK_FIELD_PTR,
-                        tp_new((void*)(&target_thread->port_queue_node),
+                        tp_new((void*)(&target_thread->ms_queue_node),
                                IPC_ENDPOINT_STATE_SEND),
                         NULL);
 
@@ -446,13 +451,14 @@ error_t cancel_ipc(Thread_Base* target_thread)
                 dequeue_head_ptr = msq_dequeue_check_head(
                         &port->thread_queue,
                         MSQ_CHECK_FIELD_PTR,
-                        tp_new((void*)(&target_thread->port_queue_node),
+                        tp_new((void*)(&target_thread->ms_queue_node),
                                IPC_ENDPOINT_STATE_RECV),
                         NULL);
         }
         if (!tp_is_none(dequeue_head_ptr)) {
-                msq_node_ref_put((ms_queue_node_t*)tp_get_ptr(dequeue_head_ptr),
-                                 NULL);
+                ref_put(&((ms_queue_node_t*)tp_get_ptr(dequeue_head_ptr))
+                                 ->refcount,
+                        NULL);
                 if (!thread_set_status_with_expect(target_thread,
                                                    thread_status_cancel_ipc,
                                                    thread_status_ready)) {

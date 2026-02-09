@@ -81,7 +81,7 @@ extern u64 thread_kstack_page_num;
         u64 kstack_num;                                             \
         Arch_Task_Context ctx;                                      \
         Thread_Init_Para* init_parameter;                           \
-        ms_queue_node_t port_queue_node;                            \
+        ms_queue_node_t ms_queue_node;                              \
         ms_queue_t recv_msg_queue;                                  \
         ms_queue_t send_msg_queue;                                  \
         volatile Message_t* send_pending_msg; /* expect Message_t*/ \
@@ -122,18 +122,7 @@ Tcb_Base* new_task_structure(struct allocator* cpu_allocator);
 Task_Manager* new_task_manager();
 void del_thread_structure(Thread_Base* thread);
 Thread_Base* new_thread_structure(struct allocator* cpu_allocator);
-/**
- * @brief Decrement the reference count of a thread control block.
- * @param thread Thread control block.
- * @return true if the structure was released (ref dropped to 0); false
- * otherwise.
- */
-bool thread_structure_ref_dec(Thread_Base* thread);
-/**
- * @brief Increment the reference count of a thread control block.
- * @param thread Thread control block.
- */
-void thread_structure_ref_inc(Thread_Base* thread);
+void free_thread_ref(ref_count_t* ref_count_ptr);
 
 Thread_Init_Para* new_init_parameter_structure();
 void del_init_parameter_structure(Thread_Init_Para* pm);

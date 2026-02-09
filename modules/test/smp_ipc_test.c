@@ -26,6 +26,7 @@ static volatile u64 smp_ipc_recv_ok[RENDEZVOS_MAX_CPU_NUMBER];
 static void smp_ipc_sender_loop(u32 cpu_id, int count)
 {
         char payload[16];
+        char* payload_ptr;
         for (int i = 0; i < count; i++) {
                 /* unique msg_type per (cpu, index) for optional check */
                 i64 msg_type = (i64)((u64)cpu_id * 10000 + (u64)i);
@@ -37,16 +38,19 @@ static void smp_ipc_sender_loop(u32 cpu_id, int count)
                 if (len == 0)
                         payload[len++] = '0';
 
-                Message_t* msg = create_message(
-                        (i64)((u64)cpu_id * 10000 + (u64)i), (u64)len, payload);
+                payload_ptr = payload;
+                Message_t* msg =
+                        create_message((i64)((u64)cpu_id * 10000 + (u64)i),
+                                       (u64)len,
+                                       &payload_ptr);
                 if (!msg)
                         break;
                 if (enqueue_msg_for_send(msg) != REND_SUCCESS) {
-                        message_structure_ref_dec(msg);
+                        ref_put(&msg->ms_queue_node.refcount, free_message_ref);
                         break;
                 }
                 if (send_msg(smp_ipc_port) != REND_SUCCESS) {
-                        message_structure_ref_dec(msg);
+                        ref_put(&msg->ms_queue_node.refcount, free_message_ref);
                         break;
                 }
                 smp_ipc_send_ok[cpu_id]++;
@@ -65,8 +69,7 @@ static void smp_ipc_receiver_loop(u32 cpu_id, int count)
                         (unsigned)cpu_id,
                         i,
                         (int)msg->msg_type);
-                msq_node_ref_put(&msg->msg_queue_node, NULL);
-                message_structure_ref_dec(msg);
+                ref_put(&msg->ms_queue_node.refcount, free_message_ref);
                 smp_ipc_recv_ok[cpu_id]++;
         }
 }

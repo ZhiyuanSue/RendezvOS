@@ -54,6 +54,7 @@ CFLAGS	+= -fno-stack-protector -std=c11
 CFLAGS	+=	-I $(INCLUDE_DIR) -DNR_CPUS=$(SMP)
 
 LDFLAGS	+=	-T $(SCRIPT_LINK_DIR)/$(ARCH)_linker.ld
+LDFLAGS	+=	--no-relax
 
 ARFLAGS	+=	-rcs
 

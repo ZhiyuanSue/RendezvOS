@@ -25,8 +25,9 @@ static void* ipc_sender_thread(void* arg)
 {
         Message_Port_t* port = (Message_Port_t*)arg;
         char payload[] = IPC_TEST_PAYLOAD;
-        Message_t* msg =
-                create_message(IPC_TEST_MSG_TYPE, sizeof(payload), payload);
+        char* payload_ptr = payload;
+        Message_t* msg = create_message(
+                IPC_TEST_MSG_TYPE, sizeof(payload), &payload_ptr);
         if (!msg) {
                 pr_error("[single_ipc_test] sender: create_message failed\n");
                 single_ipc_sender_done = 1;
@@ -35,13 +36,13 @@ static void* ipc_sender_thread(void* arg)
         if (enqueue_msg_for_send(msg) != REND_SUCCESS) {
                 pr_error(
                         "[single_ipc_test] sender: enqueue_msg_for_send failed\n");
-                message_structure_ref_dec(msg);
+                ref_put(&msg->ms_queue_node.refcount, free_message_ref);
                 single_ipc_sender_done = 1;
                 return NULL;
         }
         if (send_msg(port) != REND_SUCCESS) {
                 pr_error("[single_ipc_test] sender: send_msg failed\n");
-                message_structure_ref_dec(msg);
+                ref_put(&msg->ms_queue_node.refcount, free_message_ref);
                 single_ipc_sender_done = 1;
                 return NULL;
         }
@@ -73,8 +74,7 @@ static void* ipc_receiver_thread(void* arg)
         pr_info("[single_ipc_test] receiver got msg_type=%d payload=\"%s\"\n",
                 (int)msg->msg_type,
                 single_ipc_received_payload);
-        msq_node_ref_put(&msg->msg_queue_node, NULL);
-        message_structure_ref_dec(msg);
+        ref_put(&msg->ms_queue_node.refcount, free_message_ref);
         single_ipc_receiver_done = 1;
         return NULL;
 }

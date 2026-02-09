@@ -63,11 +63,11 @@ Thread_Base* new_thread_structure(struct allocator* cpu_allocator)
                                                             sizeof(Message_t)));
                 if (dummy_recv_msg_node)
                         msq_init(&thread->recv_msg_queue,
-                                 &dummy_recv_msg_node->msg_queue_node,
+                                 &dummy_recv_msg_node->ms_queue_node,
                                  0);
                 if (dummy_send_msg_node)
                         msq_init(&thread->send_msg_queue,
-                                 &dummy_send_msg_node->msg_queue_node,
+                                 &dummy_send_msg_node->ms_queue_node,
                                  0);
                 thread->send_pending_msg = NULL;
                 thread->recv_pending_cnt.counter = 0;
@@ -84,20 +84,14 @@ void del_thread_structure(Thread_Base* thread)
         del_init_parameter_structure(thread->init_parameter);
         cpu_allocator->m_free(cpu_allocator, thread);
 }
-void thread_structure_ref_inc(Thread_Base* thread)
+void free_thread_ref(ref_count_t* ref_count_ptr)
 {
-        atomic64_inc(&(thread->port_queue_node.refcount));
-        barrier();
-}
-bool thread_structure_ref_dec(Thread_Base* thread)
-{
-        i64 old_ref_value =
-                atomic64_fetch_dec(&(thread->port_queue_node.refcount));
-        if (old_ref_value == 1) {
-                del_thread_structure(thread);
-                return true;
-        }
-        return false;
+        if (!ref_count_ptr)
+                return;
+        ms_queue_node_t* node =
+                container_of(ref_count_ptr, ms_queue_node_t, refcount);
+        Thread_Base* thread = container_of(node, Thread_Base, ms_queue_node);
+        del_thread_structure(thread);
 }
 
 Thread_Init_Para* new_init_parameter_structure(void)
@@ -126,7 +120,7 @@ void del_init_parameter_structure(Thread_Init_Para* pm)
 Thread_Base* create_thread(void* __func, int nr_parameter, ...)
 {
         Thread_Base* thread = new_thread_structure(percpu(kallocator));
-        thread_structure_ref_inc(thread);
+        ref_get_claim(&thread->ms_queue_node.refcount);
         thread->tid = get_new_tid();
         va_list arg_list;
         va_start(arg_list, nr_parameter);
@@ -168,7 +162,7 @@ void delete_thread(Thread_Base* thread)
         Message_t* pending_msg = (Message_t*)atomic64_exchange(
                 (volatile u64*)(&thread->send_pending_msg), (u64)NULL);
         if (pending_msg) {
-                message_structure_ref_dec((Message_t*)(pending_msg));
+                ref_put(&pending_msg->ms_queue_node.refcount, free_message_ref);
         }
         /*clean the send msg queue*/
         clean_message_queue(&thread->send_msg_queue, true);
@@ -190,7 +184,7 @@ void delete_thread(Thread_Base* thread)
         }
         del_thread_from_task(thread->belong_tcb, thread);
         del_thread_from_manager(thread);
-        thread_structure_ref_dec(thread);
+        ref_put(&thread->ms_queue_node.refcount, free_thread_ref);
         return;
 }
 error_t thread_join(Tcb_Base* task, Thread_Base* thread)

@@ -189,8 +189,10 @@ error_t group_free_obj(struct object_header* header, struct mem_chunk* chunk,
 
 /* Free function for buffer_msq nodes (both dummy and data nodes).
  * Returns the object_header to the memory pool via group_free_obj. */
-static void free_buffer_object(void* node)
+static void free_buffer_object(ref_count_t* refcount)
 {
+        ms_queue_node_t* node =
+                container_of(refcount, ms_queue_node_t, refcount);
         struct object_header* header = container_of(
                 (ms_queue_node_t*)node, struct object_header, msq_node);
         struct mem_chunk* chunk = (struct mem_chunk*)ROUND_DOWN(
@@ -379,7 +381,7 @@ static error_t _k_free(void* p)
                 struct mem_allocator* k_allocator_p =
                         (struct mem_allocator*)per_cpu(kallocator,
                                                        header->allocator_id);
-                msq_node_ref_init_zero(&header->msq_node);
+                ref_init_zero(&header->msq_node.refcount);
                 msq_enqueue(&k_allocator_p->buffer_msq,
                             &header->msq_node,
                             0,
@@ -402,8 +404,8 @@ static void clean_buffer_msq()
                 /* Release ref held by dequeue on the data node.
                  * When refcount drops to 0, free_buffer_object will
                  * automatically return it to the pool via group_free_obj. */
-                msq_node_ref_put(
-                        (ms_queue_node_t*)tp_get_ptr(dequeue_tagged_ptr),
+                ref_put(&((ms_queue_node_t*)tp_get_ptr(dequeue_tagged_ptr))
+                                 ->refcount,
                         free_buffer_object);
                 atomic64_dec(&k_allocator_p->buffer_size);
         }
