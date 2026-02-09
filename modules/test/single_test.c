@@ -14,6 +14,7 @@ static struct single_test_case single_test[MAX_SINGLE_TEST_CASE] = {
         {task_test, "task_test\0"},
         {test_pci_scan, "test_pci_scan\0"},
         {ipc_test, "ipc\0"},
+        {ipc_multi_round_test, "ipc_multi_round\0"},
 };
 
 void single_cpu_test(void)

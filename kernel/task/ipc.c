@@ -77,7 +77,6 @@ Thread_Base* ipc_port_try_match(Message_Port_t* port, u16 my_ipc_state)
                         ref_put(&dequeued_node->refcount, free_thread_ref);
                         continue;
                 }
-                ref_put(&dequeued_node->refcount, free_thread_ref);
                 return opposite_thread;
         }
 }

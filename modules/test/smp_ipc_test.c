@@ -27,6 +27,7 @@ static void smp_ipc_sender_loop(u32 cpu_id, int count)
 {
         char payload[16];
         char* payload_ptr;
+        pr_info("cpu %u sender start, count=%d\n", (unsigned)cpu_id, count);
         for (int i = 0; i < count; i++) {
                 /* unique msg_type per (cpu, index) for optional check */
                 i64 msg_type = (i64)((u64)cpu_id * 10000 + (u64)i);
@@ -43,28 +44,62 @@ static void smp_ipc_sender_loop(u32 cpu_id, int count)
                         create_message((i64)((u64)cpu_id * 10000 + (u64)i),
                                        (u64)len,
                                        &payload_ptr);
-                if (!msg)
+                if (!msg) {
+                        pr_info("cpu %u sender create_message failed at i=%d\n",
+                                (unsigned)cpu_id,
+                                i);
                         break;
+                }
                 if (enqueue_msg_for_send(msg, false) != REND_SUCCESS) {
                         ref_put(&msg->ms_queue_node.refcount, free_message_ref);
+                        pr_info("cpu %u sender enqueue_msg failed at i=%d\n",
+                                (unsigned)cpu_id,
+                                i);
                         break;
                 }
+                pr_info("cpu %u sender calling send_msg #%d\n",
+                        (unsigned)cpu_id,
+                        i);
                 if (send_msg(smp_ipc_port) != REND_SUCCESS) {
                         ref_put(&msg->ms_queue_node.refcount, free_message_ref);
+                        pr_info("cpu %u sender send_msg failed at i=%d\n",
+                                (unsigned)cpu_id,
+                                i);
                         break;
                 }
+                pr_info("cpu %u sender send_msg returned SUCCESS #%d\n",
+                        (unsigned)cpu_id,
+                        i);
                 smp_ipc_send_ok[cpu_id]++;
         }
+        pr_info("cpu %u sender done, total=%u\n",
+                (unsigned)cpu_id,
+                (unsigned long long)smp_ipc_send_ok[cpu_id]);
 }
 
 static void smp_ipc_receiver_loop(u32 cpu_id, int count)
 {
+        pr_info("cpu %u receiver start, count=%d\n", (unsigned)cpu_id, count);
         for (int i = 0; i < count; i++) {
-                if (recv_msg(smp_ipc_port) != REND_SUCCESS)
+                pr_info("cpu %u receiver calling recv_msg #%d\n",
+                        (unsigned)cpu_id,
+                        i);
+                if (recv_msg(smp_ipc_port) != REND_SUCCESS) {
+                        pr_info("cpu %u receiver recv_msg failed at i=%d\n",
+                                (unsigned)cpu_id,
+                                i);
                         break;
+                }
+                pr_info("cpu %u receiver recv_msg returned SUCCESS #%d\n",
+                        (unsigned)cpu_id,
+                        i);
                 Message_t* msg = dequeue_recv_msg();
-                if (!msg)
+                if (!msg) {
+                        pr_info("cpu %u receiver dequeue_recv_msg NULL at i=%d\n",
+                                (unsigned)cpu_id,
+                                i);
                         break;
+                }
                 pr_info("[smp_ipc_test] cpu %u recv #%d msg_type=%d\n",
                         (unsigned)cpu_id,
                         i,
@@ -72,6 +107,9 @@ static void smp_ipc_receiver_loop(u32 cpu_id, int count)
                 ref_put(&msg->ms_queue_node.refcount, free_message_ref);
                 smp_ipc_recv_ok[cpu_id]++;
         }
+        pr_info("cpu %u receiver done, total=%u\n",
+                (unsigned)cpu_id,
+                (unsigned long long)smp_ipc_recv_ok[cpu_id]);
 }
 
 int smp_ipc_test(void)
@@ -79,6 +117,7 @@ int smp_ipc_test(void)
         u32 cpu_id = percpu(cpu_number);
 
         if (cpu_id == BSP_ID) {
+                pr_info("BSP creating message port\n");
                 smp_ipc_port = create_message_port();
                 if (!smp_ipc_port) {
                         pr_error("[smp_ipc_test] create_message_port failed\n");
@@ -89,9 +128,12 @@ int smp_ipc_test(void)
                         smp_ipc_recv_ok[i] = 0;
                 }
                 smp_ipc_port_ready = true;
+                pr_info("BSP port ready, NR_CPU=%d\n", NR_CPU);
         } else {
+                pr_info("cpu %u waiting for port_ready\n", (unsigned)cpu_id);
                 while (!smp_ipc_port_ready)
                         ;
+                pr_info("cpu %u port ready\n", (unsigned)cpu_id);
         }
 
         if (cpu_id % 2 == 0) {
@@ -104,6 +146,7 @@ int smp_ipc_test(void)
 
         if (cpu_id == BSP_ID) {
                 /* wait for all CPUs to finish then check counts */
+                pr_info("BSP entering all_done wait loop\n");
                 while (1) {
                         bool all_done = true;
                         for (int i = 0; i < NR_CPU; i++) {
@@ -121,6 +164,7 @@ int smp_ipc_test(void)
                         if (all_done)
                                 break;
                 }
+                pr_info("BSP all_done, exiting wait\n");
                 delete_message_port(smp_ipc_port);
                 smp_ipc_port_ready = false;
 
@@ -132,7 +176,7 @@ int smp_ipc_test(void)
                 }
                 if (total_sent != total_recv) {
                         pr_error(
-                                "[smp_ipc_test] total_sent %llu != total_recv %llu\n",
+                                "[smp_ipc_test] total_sent %u != total_recv %u\n",
                                 (unsigned long long)total_sent,
                                 (unsigned long long)total_recv);
                         return -E_REND_TEST;

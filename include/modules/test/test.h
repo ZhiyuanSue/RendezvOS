@@ -28,6 +28,7 @@ int elf_read_test(void);
 int task_test(void);
 int test_pci_scan(void);
 int ipc_test(void);
+int ipc_multi_round_test(void);
 
 /*in smp case
 one test function cannot easily be checked
