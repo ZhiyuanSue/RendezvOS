@@ -213,12 +213,10 @@ error_t ipc_transfer_message(Thread_Base* sender, Thread_Base* receiver)
         /* first try to give this message to the receiver and add the ref count
          * of this message, which means now the receiver and the
          * send_pending_msg all have this message*/
-
-        Message_t* recv_msg_ptr = create_message(send_msg_ptr->msg_type,
-                                                 send_msg_ptr->append_info_len,
-                                                 &(send_msg_ptr->append_info));
+        Message_t* recv_msg_ptr = create_message(send_msg_ptr->data);
         atomic64_add(&receiver->recv_pending_cnt, 1);
-        /* recv_msg_ptr from create_message has refcount=1; refcount_is_zero=false */
+        /* recv_msg_ptr from create_message has refcount=1;
+         * refcount_is_zero=false */
         msq_enqueue(&receiver->recv_msg_queue,
                     &recv_msg_ptr->ms_queue_node,
                     0,
@@ -228,10 +226,8 @@ error_t ipc_transfer_message(Thread_Base* sender, Thread_Base* receiver)
         /*check whether the receiver is alive*/
         if (thread_get_status(receiver) == thread_status_exit) {
                 /*
-                if the receiver is exiting, the delete thread function will dec
-                the ref count, but the sender still heve this message. So we
-                don't need dec the ref count(have given to the receiver) here.
-                The upper function should handle this try again return.
+                The upper function should handle this try again
+                return.
                 */
                 /*try to return the owner from send_msg_ptr to
                  * sender->send_pending_msg*/
@@ -406,6 +402,10 @@ error_t enqueue_msg_for_send(Message_t* msg, bool refcount_is_zero)
         Thread_Base* self = get_cpu_current_thread();
         if (!self)
                 return -E_REND_AGAIN;
+        if (!ref_count(&msg->ms_queue_node.refcount)
+            || (msg->data &&!ref_count(&msg->data->refcount))) {
+                return -E_REND_IPC;
+        }
         msq_enqueue(&self->send_msg_queue,
                     &msg->ms_queue_node,
                     0,

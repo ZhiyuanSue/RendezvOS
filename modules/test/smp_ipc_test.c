@@ -11,7 +11,10 @@
 #include <rendezvos/task/message.h>
 #include <rendezvos/smp/percpu.h>
 #include <rendezvos/limits.h>
+#include <rendezvos/mm/kmalloc.h>
 #include <common/string.h>
+
+extern struct allocator* kallocator;
 
 extern u32 BSP_ID;
 extern int NR_CPU;
@@ -23,33 +26,78 @@ static volatile bool smp_ipc_port_ready;
 static volatile u64 smp_ipc_send_ok[RENDEZVOS_MAX_CPU_NUMBER];
 static volatile u64 smp_ipc_recv_ok[RENDEZVOS_MAX_CPU_NUMBER];
 
+static void free_payload_data(ref_count_t* msgdata_refcount)
+{
+        if (!msgdata_refcount)
+                return;
+        Msg_Data_t* msg_data = container_of(msgdata_refcount, Msg_Data_t, refcount);
+        if (msg_data->data) {
+                struct allocator* cpu_kallocator = percpu(kallocator);
+                cpu_kallocator->m_free(cpu_kallocator, msg_data->data);
+        }
+        delete_msgdata_structure(msg_data);
+}
+
 static void smp_ipc_sender_loop(u32 cpu_id, int count)
 {
-        char payload[16];
-        char* payload_ptr;
         pr_info("cpu %u sender start, count=%d\n", (unsigned)cpu_id, count);
         for (int i = 0; i < count; i++) {
                 /* unique msg_type per (cpu, index) for optional check */
                 i64 msg_type = (i64)((u64)cpu_id * 10000 + (u64)i);
-                int len = 0;
-                for (int j = 0; j < 8 && msg_type != 0; j++) {
-                        payload[len++] = (char)('0' + (msg_type % 10));
-                        msg_type /= 10;
-                }
-                if (len == 0)
-                        payload[len++] = '0';
-
-                payload_ptr = payload;
-                Message_t* msg =
-                        create_message((i64)((u64)cpu_id * 10000 + (u64)i),
-                                       (u64)len,
-                                       &payload_ptr);
-                if (!msg) {
-                        pr_info("cpu %u sender create_message failed at i=%d\n",
+                
+                /* Allocate payload on heap */
+                char* payload = (char*)percpu(kallocator)->m_alloc(percpu(kallocator), 16);
+                if (!payload) {
+                        pr_info("cpu %u sender payload alloc failed at i=%d\n",
                                 (unsigned)cpu_id,
                                 i);
                         break;
                 }
+                
+                /* Fill payload with msg_type as string */
+                int len = 0;
+                i64 num = msg_type;
+                if (num < 0) {
+                        payload[len++] = '-';
+                        num = -num;
+                }
+                if (num == 0) {
+                        payload[len++] = '0';
+                } else {
+                        char digits[16];
+                        int digit_count = 0;
+                        while (num > 0 && digit_count < 15) {
+                                digits[digit_count++] = '0' + (num % 10);
+                                num /= 10;
+                        }
+                        for (int j = digit_count - 1; j >= 0 && len < 15; j--) {
+                                payload[len++] = digits[j];
+                        }
+                }
+                payload[len] = '\0';
+
+                void* payload_ptr = payload;
+                Msg_Data_t* msgdata = create_message_data(
+                        msg_type, (u64)len, &payload_ptr, free_payload_data);
+                if (!msgdata) {
+                        pr_info("cpu %u sender create_message_data failed at i=%d\n",
+                                (unsigned)cpu_id,
+                                i);
+                        percpu(kallocator)->m_free(percpu(kallocator), payload);
+                        break;
+                }
+
+                Message_t* msg = create_message(msgdata);
+                if (!msg) {
+                        pr_info("cpu %u sender create_message failed at i=%d\n",
+                                (unsigned)cpu_id,
+                                i);
+                        ref_put(&msgdata->refcount, free_payload_data);
+                        break;
+                }
+                /* After create_message, we can release our reference to msgdata */
+                ref_put(&msgdata->refcount, free_payload_data);
+                
                 if (enqueue_msg_for_send(msg, false) != REND_SUCCESS) {
                         ref_put(&msg->ms_queue_node.refcount, free_message_ref);
                         pr_info("cpu %u sender enqueue_msg failed at i=%d\n",
@@ -100,10 +148,17 @@ static void smp_ipc_receiver_loop(u32 cpu_id, int count)
                                 i);
                         break;
                 }
+                if (!msg->data) {
+                        pr_info("cpu %u receiver msg->data is NULL at i=%d\n",
+                                (unsigned)cpu_id,
+                                i);
+                        ref_put(&msg->ms_queue_node.refcount, free_message_ref);
+                        break;
+                }
                 pr_info("[smp_ipc_test] cpu %u recv #%d msg_type=%d\n",
                         (unsigned)cpu_id,
                         i,
-                        (int)msg->msg_type);
+                        (int)msg->data->msg_type);
                 ref_put(&msg->ms_queue_node.refcount, free_message_ref);
                 smp_ipc_recv_ok[cpu_id]++;
         }

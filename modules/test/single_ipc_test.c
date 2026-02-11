@@ -14,25 +14,54 @@
 #include <common/string.h>
 
 #define IPC_TEST_MSG_TYPE 42
-#define IPC_TEST_PAYLOAD  "ipc_hello"
 
 static volatile int single_ipc_sender_done;
 static volatile int single_ipc_receiver_done;
 static i64 single_ipc_received_type;
+static char single_ipc_send_payload[32] = "ipc_hello";
+static char multi_ipc_send_payload[32] = "round_";
 static char single_ipc_received_payload[32];
 
 static void* ipc_sender_thread(void* arg)
 {
         Message_Port_t* port = (Message_Port_t*)arg;
-        char payload[] = IPC_TEST_PAYLOAD;
-        char* payload_ptr = payload;
-        Message_t* msg = create_message(
-                IPC_TEST_MSG_TYPE, sizeof(payload), &payload_ptr);
+        char* payload = (char*)percpu(kallocator)
+                                ->m_alloc(percpu(kallocator),
+                                          sizeof(single_ipc_send_payload));
+        if (!payload) {
+                pr_error("[single_ipc_test] sender: payload alloc failed\n");
+                single_ipc_sender_done = 1;
+                return NULL;
+        }
+        pr_info("1\n");
+        memcpy(payload,
+               single_ipc_send_payload,
+               sizeof(single_ipc_send_payload));
+        pr_info("2\n");
+        void* payload_ptr = payload;
+
+        Msg_Data_t* msgdata =
+                create_message_data(IPC_TEST_MSG_TYPE,
+                                    sizeof(single_ipc_send_payload),
+                                    &payload_ptr,
+                                    free_msgdata_ref_default);
+        if (!msgdata) {
+                pr_error(
+                        "[single_ipc_test] sender: create_message_data failed\n");
+                percpu(kallocator)->m_free(percpu(kallocator), payload);
+                single_ipc_sender_done = 1;
+                return NULL;
+        }
+        Message_t* msg = create_message(msgdata);
         if (!msg) {
                 pr_error("[single_ipc_test] sender: create_message failed\n");
                 single_ipc_sender_done = 1;
                 return NULL;
         }
+        /* After create_message, we can release our reference to msgdata */
+        ref_put(&msgdata->refcount, free_msgdata_ref_default);
+        msgdata = NULL;
+
         if (enqueue_msg_for_send(msg, false) != REND_SUCCESS) {
                 pr_error(
                         "[single_ipc_test] sender: enqueue_msg_for_send failed\n");
@@ -64,16 +93,24 @@ static void* ipc_receiver_thread(void* arg)
                 single_ipc_receiver_done = 1;
                 return NULL;
         }
-        single_ipc_received_type = msg->msg_type;
-        if (msg->append_info_len < sizeof(single_ipc_received_payload)) {
-                memcpy(single_ipc_received_payload,
-                       msg->append_info,
-                       msg->append_info_len);
-                single_ipc_received_payload[msg->append_info_len] = '\0';
+        if (!msg->data) {
+                pr_error("[single_ipc_test] receiver: msg->data is NULL\n");
+                ref_put(&msg->ms_queue_node.refcount, free_message_ref);
+                single_ipc_receiver_done = 1;
+                return NULL;
         }
-        pr_info("[single_ipc_test] receiver got msg_type=%d payload=\"%s\"\n",
-                (int)msg->msg_type,
-                single_ipc_received_payload);
+        single_ipc_received_type = msg->data->msg_type;
+        u64 data_len = msg->data->data_len;
+        if (data_len > 0 && msg->data->data) {
+                u64 copy_len =
+                        (data_len < sizeof(single_ipc_received_payload) - 1) ?
+                                data_len :
+                                sizeof(single_ipc_received_payload) - 1;
+                memcpy(single_ipc_received_payload, msg->data->data, copy_len);
+                single_ipc_received_payload[copy_len] = '\0';
+        } else {
+                single_ipc_received_payload[0] = '\0';
+        }
         ref_put(&msg->ms_queue_node.refcount, free_message_ref);
         single_ipc_receiver_done = 1;
         return NULL;
@@ -123,11 +160,11 @@ int ipc_test(void)
                         (int)IPC_TEST_MSG_TYPE);
                 return -E_REND_TEST;
         }
-        if (strcmp(single_ipc_received_payload, IPC_TEST_PAYLOAD) != 0) {
+        if (strcmp(single_ipc_received_payload, single_ipc_send_payload) != 0) {
                 pr_error(
                         "[single_ipc_test] received payload \"%s\", expected \"%s\"\n",
                         single_ipc_received_payload,
-                        IPC_TEST_PAYLOAD);
+                        single_ipc_send_payload);
                 return -E_REND_TEST;
         }
         return REND_SUCCESS;
@@ -147,19 +184,70 @@ static void* ipc_multi_round_sender_thread(void* arg)
         multi_round_send_count = 0;
 
         for (u64 i = 0; i < IPC_MULTI_ROUND_COUNT; i++) {
-                /* Use simple payload: just the message type as a string */
-                char payload[] = "ipc_multi_round";
-                char* payload_ptr = payload;
-
-                Message_t* msg =
-                        create_message((i64)i, sizeof(payload), &payload_ptr);
-                if (!msg) {
+                /* Use simple payload: allocate on heap to avoid stack reuse
+                 * issues */
+                char* payload =
+                        (char*)percpu(kallocator)
+                                ->m_alloc(percpu(kallocator),
+                                          sizeof(multi_ipc_send_payload));
+                if (!payload) {
                         pr_error(
-                                "[single_ipc_multi_round_test] sender: create_message failed at round %llu\n",
+                                "[single_ipc_multi_round_test] sender: payload alloc failed at round %llu\n",
                                 (unsigned long long)i);
                         break;
                 }
 
+                /* Fill payload with round number (simple format) */
+                memcpy(payload,
+                       multi_ipc_send_payload,
+                       sizeof(multi_ipc_send_payload));
+
+                /* Convert i to string manually */
+                u64 num = i;
+                int pos = 6;
+                if (num == 0) {
+                        payload[pos++] = '0';
+                } else {
+                        char digits[16];
+                        int digit_count = 0;
+                        while (num > 0 && digit_count < 15) {
+                                digits[digit_count++] = '0' + (num % 10);
+                                num /= 10;
+                        }
+                        for (int j = digit_count - 1; j >= 0 && pos < 15; j--) {
+                                payload[pos++] = digits[j];
+                        }
+                }
+                payload[pos] = '\0';
+                void* payload_ptr = payload;
+
+                Msg_Data_t* msgdata = create_message_data(
+                        (i64)i, 16, &payload_ptr, free_msgdata_ref_default);
+                if (!msgdata) {
+                        pr_error(
+                                "[single_ipc_multi_round_test] sender: create_message_data failed at round %llu\n",
+                                (unsigned long long)i);
+                        percpu(kallocator)->m_free(percpu(kallocator), payload);
+                        break;
+                }
+
+                // pr_info("5\n");
+
+                Message_t* msg = create_message(msgdata);
+                if (!msg) {
+                        pr_error(
+                                "[single_ipc_multi_round_test] sender: create_message failed at round %llu\n",
+                                (unsigned long long)i);
+                        ref_put(&msgdata->refcount, free_msgdata_ref_default);
+                        break;
+                }
+
+                // pr_info("6\n");
+                /* After create_message, we can release our reference to msgdata
+                 */
+                ref_put(&msgdata->refcount, free_msgdata_ref_default);
+
+                // pr_info("7\n");
                 if (enqueue_msg_for_send(msg, false) != REND_SUCCESS) {
                         pr_error(
                                 "[single_ipc_multi_round_test] sender: enqueue_msg_for_send failed at round %llu\n",
@@ -168,6 +256,8 @@ static void* ipc_multi_round_sender_thread(void* arg)
                         break;
                 }
 
+                // pr_info("8\n");
+
                 if (send_msg(port) != REND_SUCCESS) {
                         pr_error(
                                 "[single_ipc_multi_round_test] sender: send_msg failed at round %llu\n",
@@ -175,6 +265,8 @@ static void* ipc_multi_round_sender_thread(void* arg)
                         ref_put(&msg->ms_queue_node.refcount, free_message_ref);
                         break;
                 }
+
+                // pr_info("9\n");
 
                 multi_round_send_count++;
 
@@ -213,7 +305,15 @@ static void* ipc_multi_round_receiver_thread(void* arg)
                         break;
                 }
 
-                multi_round_last_recv_type = msg->msg_type;
+                if (!msg->data) {
+                        pr_error(
+                                "[single_ipc_multi_round_test] receiver: msg->data is NULL at round %u\n",
+                                (unsigned long long)i);
+                        ref_put(&msg->ms_queue_node.refcount, free_message_ref);
+                        break;
+                }
+
+                multi_round_last_recv_type = msg->data->msg_type;
                 multi_round_recv_count++;
 
                 ref_put(&msg->ms_queue_node.refcount, free_message_ref);

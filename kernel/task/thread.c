@@ -61,14 +61,19 @@ Thread_Base* new_thread_structure(struct allocator* cpu_allocator)
                 Message_t* dummy_send_msg_node =
                         (Message_t*)(cpu_allocator->m_alloc(cpu_allocator,
                                                             sizeof(Message_t)));
-                if (dummy_recv_msg_node)
+                if (dummy_recv_msg_node) {
+                        memset(dummy_recv_msg_node, 0, sizeof(Message_t));
                         msq_init(&thread->recv_msg_queue,
                                  &dummy_recv_msg_node->ms_queue_node,
                                  0);
-                if (dummy_send_msg_node)
+                }
+                if (dummy_send_msg_node) {
+                        memset(dummy_send_msg_node, 0, sizeof(Message_t));
                         msq_init(&thread->send_msg_queue,
                                  &dummy_send_msg_node->ms_queue_node,
                                  0);
+                }
+
                 thread->send_pending_msg = NULL;
                 thread->recv_pending_cnt.counter = 0;
                 thread->port_ptr = NULL;
