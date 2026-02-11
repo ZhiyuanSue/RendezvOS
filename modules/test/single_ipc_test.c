@@ -18,9 +18,9 @@
 static volatile int single_ipc_sender_done;
 static volatile int single_ipc_receiver_done;
 static i64 single_ipc_received_type;
-static char single_ipc_send_payload[32] = "ipc_hello";
-static char multi_ipc_send_payload[32] = "round_";
-static char single_ipc_received_payload[32];
+static char single_ipc_send_payload[32] __attribute__((aligned(16))) = "ipc_hello";
+static char multi_ipc_send_payload[32] __attribute__((aligned(16))) = "round_";
+static char single_ipc_received_payload[32] __attribute__((aligned(16)));
 
 static void* ipc_sender_thread(void* arg)
 {
@@ -33,11 +33,9 @@ static void* ipc_sender_thread(void* arg)
                 single_ipc_sender_done = 1;
                 return NULL;
         }
-        pr_info("1\n");
         memcpy(payload,
                single_ipc_send_payload,
                sizeof(single_ipc_send_payload));
-        pr_info("2\n");
         void* payload_ptr = payload;
 
         Msg_Data_t* msgdata =
