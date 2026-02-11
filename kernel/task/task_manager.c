@@ -6,6 +6,7 @@
 extern Thread_Base* init_thread_ptr;
 extern Thread_Base* idle_thread_ptr;
 DEFINE_PER_CPU(Task_Manager*, core_tm);
+volatile bool is_print_sche_info;
 Thread_Base* round_robin_schedule(Task_Manager* tm)
 {
         struct list_entry* next = tm->current_thread->sched_thread_list.next;
@@ -29,9 +30,12 @@ Task_Manager* new_task_manager(void)
 void choose_schedule(Task_Manager* tm)
 {
         tm->scheduler = round_robin_schedule;
+		is_print_sche_info = true;
 }
 void print_sche_info(Thread_Base* old, Thread_Base* new)
 {
+		if(!is_print_sche_info)
+			return;
         if (old->name) {
                 if (new->name) {
                         pr_info("[CPU %d SCHE INFO] old %s new %s\n",

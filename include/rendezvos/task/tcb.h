@@ -100,6 +100,7 @@ typedef struct {
 
 extern Thread_Base* init_thread_ptr;
 extern Thread_Base* idle_thread_ptr;
+extern volatile bool is_print_sche_info;
 struct task_manager {
         TASK_MANAGER_SCHE_COMMON
         Tcb_Base* current_task;

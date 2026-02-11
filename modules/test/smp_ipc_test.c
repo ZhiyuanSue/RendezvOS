@@ -172,6 +172,7 @@ int smp_ipc_test(void)
         u32 cpu_id = percpu(cpu_number);
 
         if (cpu_id == BSP_ID) {
+				is_print_sche_info = false;
                 pr_info("BSP creating message port\n");
                 smp_ipc_port = create_message_port();
                 if (!smp_ipc_port) {
@@ -237,6 +238,6 @@ int smp_ipc_test(void)
                         return -E_REND_TEST;
                 }
         }
-
+		is_print_sche_info = true;
         return REND_SUCCESS;
 }

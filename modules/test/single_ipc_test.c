@@ -18,7 +18,8 @@
 static volatile int single_ipc_sender_done;
 static volatile int single_ipc_receiver_done;
 static i64 single_ipc_received_type;
-static char single_ipc_send_payload[32] __attribute__((aligned(16))) = "ipc_hello";
+static char single_ipc_send_payload[32]
+        __attribute__((aligned(16))) = "ipc_hello";
 static char multi_ipc_send_payload[32] __attribute__((aligned(16))) = "round_";
 static char single_ipc_received_payload[32] __attribute__((aligned(16)));
 
@@ -126,7 +127,7 @@ int ipc_test(void)
         memset(single_ipc_received_payload,
                0,
                sizeof(single_ipc_received_payload));
-
+        is_print_sche_info = false;
         port = create_message_port();
         if (!port) {
                 pr_error("[single_ipc_test] create_message_port failed\n");
@@ -165,6 +166,7 @@ int ipc_test(void)
                         single_ipc_send_payload);
                 return -E_REND_TEST;
         }
+        is_print_sche_info = true;
         return REND_SUCCESS;
 }
 
@@ -343,7 +345,7 @@ int ipc_multi_round_test(void)
 
         pr_info("[single_ipc_multi_round_test] starting multi-round IPC test (%u rounds)\n",
                 IPC_MULTI_ROUND_COUNT);
-
+        is_print_sche_info = false;
         port = create_message_port();
         if (!port) {
                 pr_error(
@@ -410,5 +412,6 @@ int ipc_multi_round_test(void)
 
         pr_info("[single_ipc_multi_round_test] PASS: all %u messages sent and received correctly\n",
                 IPC_MULTI_ROUND_COUNT);
+        is_print_sche_info = true;
         return REND_SUCCESS;
 }
