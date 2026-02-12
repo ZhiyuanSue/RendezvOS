@@ -86,7 +86,6 @@ extern u64 thread_kstack_page_num;
         ms_queue_t send_msg_queue;                                  \
         volatile Message_t* send_pending_msg; /* expect Message_t*/ \
         atomic64_t recv_pending_cnt; /*how much msg arrive*/        \
-        volatile void* port_ptr; /*expect Message_Port_t*/          \
         THERAD_SCHE_COMMON
 
 #define THREAD_FLAG_NONE               0

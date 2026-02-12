@@ -65,8 +65,6 @@ Thread_Base* ipc_port_try_match(Message_Port_t* port, u16 my_ipc_state)
                 barrier();
                 /*if we find the opposite_thread is dead ,dec the ref count(may
                  * be free the structure)*/
-                atomic64_store((volatile u64*)&opposite_thread->port_ptr,
-                               (u64)NULL);
                 if (thread_get_status(opposite_thread) == thread_status_exit) {
                         ref_put(&dequeued_node->refcount, free_thread_ref);
                         continue;
@@ -104,7 +102,7 @@ error_t ipc_port_enqueue_wait(Message_Port_t* port, u16 my_ipc_state,
         }
         /* Thread has refcount=1 from create_thread; refcount_is_zero=false to
          * avoid revival risk (ref_get_not_zero instead of ref_get_claim). */
-        atomic64_store((volatile u64*)&my_thread->port_ptr, (u64)port);
+        
         barrier();
         error_t ret = msq_enqueue_check_tail(&port->thread_queue,
                                              &my_thread->ms_queue_node,
@@ -112,9 +110,6 @@ error_t ipc_port_enqueue_wait(Message_Port_t* port, u16 my_ipc_state,
                                              tp_new(NULL, expected_ipc_state),
                                              free_thread_ref,
                                              false /* refcount_is_zero */);
-        if (ret != REND_SUCCESS) {
-                atomic64_store((volatile u64*)&my_thread->port_ptr, (u64)NULL);
-        }
         return ret;
 }
 error_t ipc_transfer_message(Thread_Base* sender, Thread_Base* receiver)
@@ -403,7 +398,7 @@ error_t enqueue_msg_for_send(Message_t* msg, bool refcount_is_zero)
         if (!self)
                 return -E_REND_AGAIN;
         if (!ref_count(&msg->ms_queue_node.refcount)
-            || (msg->data &&!ref_count(&msg->data->refcount))) {
+            || (msg->data && !ref_count(&msg->data->refcount))) {
                 return -E_REND_IPC;
         }
         msq_enqueue(&self->send_msg_queue,
@@ -442,7 +437,10 @@ error_t cancel_ipc(Thread_Base* target_thread)
         if (!target_thread) {
                 return -E_IN_PARAM;
         }
-        Message_Port_t* port = (Message_Port_t*)(target_thread->port_ptr);
+        Message_Port_t* port =
+                container_of(target_thread->ms_queue_node.queue_ptr,
+                             Message_Port_t,
+                             thread_queue);
         tagged_ptr_t dequeue_head_ptr = tp_new_none();
         if (thread_set_status_with_expect(target_thread,
                                           thread_status_block_on_send,

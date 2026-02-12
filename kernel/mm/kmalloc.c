@@ -98,6 +98,7 @@ error_t chunk_init(struct mem_chunk* chunk, int chunk_order, int allocator_id)
                         (struct object_header*)((vaddr)chunk + padding_start);
                 list_add_head(&obj_ptr->obj_list, &chunk->empty_obj_list);
                 obj_ptr->allocator_id = allocator_id;
+				memset(&obj_ptr->msq_node,0,sizeof(ms_queue_node_t));
                 padding_start += slot_size[chunk->chunk_order]
                                  + sizeof(struct object_header);
         }
@@ -164,6 +165,7 @@ error_t chunk_free_obj(struct object_header* obj, struct mem_chunk* chunk)
         list_add_head(&obj->obj_list, &chunk->empty_obj_list);
         /*we do not clean it*/
         chunk->nr_used_objs--;
+		memset(&obj->msq_node,0,sizeof(ms_queue_node_t));
         return obj->allocator_id;
 }
 error_t group_free_obj(struct object_header* header, struct mem_chunk* chunk,
@@ -382,6 +384,8 @@ static error_t _k_free(void* p)
                         (struct mem_allocator*)per_cpu(kallocator,
                                                        header->allocator_id);
                 ref_init_zero(&header->msq_node.refcount);
+				if(header->msq_node.queue_ptr)
+					pr_info("unexpect queue %x\n",header->msq_node.queue_ptr);
                 msq_enqueue(&k_allocator_p->buffer_msq,
                             &header->msq_node,
                             0,

@@ -76,7 +76,6 @@ Thread_Base* new_thread_structure(struct allocator* cpu_allocator)
 
                 thread->send_pending_msg = NULL;
                 thread->recv_pending_cnt.counter = 0;
-                thread->port_ptr = NULL;
         }
         return thread;
 }

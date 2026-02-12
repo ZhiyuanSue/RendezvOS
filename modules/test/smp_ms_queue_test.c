@@ -37,7 +37,10 @@ void smp_ms_queue_init(void)
 void smp_ms_queue_put(int offset)
 {
         for (int i = 0; i < percpu_ms_queue_test_number; i++) {
-                msq_enqueue(&ms_queue, &ms_data[offset + i].ms_node, 0, NULL,
+                msq_enqueue(&ms_queue,
+                            &ms_data[offset + i].ms_node,
+                            0,
+                            NULL,
                             true /* refcount_is_zero */);
         }
 }
@@ -112,6 +115,7 @@ void smp_ms_queue_dyn_alloc_put(int offset)
                 struct ms_test_data* tmp_ms_data =
                         malloc->m_alloc(malloc, sizeof(struct ms_test_data));
                 if (tmp_ms_data) {
+						memset(tmp_ms_data,0,sizeof(struct ms_test_data));
                         ref_init_zero(&tmp_ms_data->ms_node.refcount);
                         tmp_ms_data->data = i;
                         msq_enqueue(&ms_queue,

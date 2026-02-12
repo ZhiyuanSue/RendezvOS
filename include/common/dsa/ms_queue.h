@@ -35,16 +35,18 @@ in order to avoid the ABA problem, we need to add the
 /* Reference count: nodes in the queue have refcount >= 1. Dequeue returns
  * the data node (head->next) with refcount already incremented; caller
  * must msq_node_ref_put when done. Old dummy is ref_put with free_func. */
+typedef struct Michael_Scott_Queue ms_queue_t;
 typedef struct {
         ref_count_t refcount;
         tagged_ptr_t next;
+        ms_queue_t* queue_ptr;
 } ms_queue_node_t;
 
-typedef struct {
+struct Michael_Scott_Queue {
         tagged_ptr_t head;
         tagged_ptr_t tail;
         size_t append_info_bits;
-} ms_queue_t;
+};
 /**
  * @brief init the msq
  * @param q the queue structure
@@ -69,13 +71,17 @@ static inline void msq_init(ms_queue_t* q, ms_queue_node_t* new_node,
  * @param new_node, which should be allocated by the caller function
  * @param append_info, which also store the append_info in the 16bits tag
  * @param free_func called when old tail's ref drops to 0
- * @param refcount_is_zero true: node has refcount 0 (ref_init_zero), use ref_get_claim;
- *        false: node has refcount >= 1, use ref_get_not_zero (avoids revival)
+ * @param refcount_is_zero true: node has refcount 0 (ref_init_zero), use
+ * ref_get_claim; false: node has refcount >= 1, use ref_get_not_zero (avoids
+ * revival)
  */
 static inline void msq_enqueue(ms_queue_t* q, ms_queue_node_t* new_node,
                                u64 append_info, void (*free_func)(ref_count_t*),
                                bool refcount_is_zero)
 {
+        if (new_node->queue_ptr) {
+                return;
+        }
         tagged_ptr_t tail, next, tmp;
         u16 tag_step = 1 << q->append_info_bits;
         u16 append_info_mask = tag_step - 1;
@@ -94,9 +100,12 @@ static inline void msq_enqueue(ms_queue_t* q, ms_queue_node_t* new_node,
                             (volatile u64*)&q->tail, *(u64*)&tail, *(u64*)&tail)
                     == *(u64*)&tail) {
                         if (tp_get_ptr(next) == NULL) {
-                                bool acquired = refcount_is_zero ?
-                                        ref_get_claim(&new_node->refcount) :
-                                        ref_get_not_zero(&new_node->refcount);
+                                bool acquired =
+                                        refcount_is_zero ?
+                                                ref_get_claim(
+                                                        &new_node->refcount) :
+                                                ref_get_not_zero(
+                                                        &new_node->refcount);
                                 if (!acquired) {
                                         ref_put(&tail_node->refcount,
                                                 free_func);
@@ -114,6 +123,9 @@ static inline void msq_enqueue(ms_queue_t* q, ms_queue_node_t* new_node,
                                         atomic64_cas((volatile u64*)&q->tail,
                                                      *(u64*)&tail,
                                                      *(u64*)&tmp);
+                                        atomic64_store((volatile u64*)&new_node
+                                                               ->queue_ptr,
+                                                       (u64)q);
                                         ref_put(&tail_node->refcount,
                                                 free_func);
                                         break;
@@ -234,6 +246,9 @@ static inline tagged_ptr_t msq_dequeue(ms_queue_t* q,
                                         /* Release queue's ref (head no longer
                                          * holds old dummy). Only here have
                                          * chance to free the dummy node*/
+                                        atomic64_store((volatile u64*)&head_node
+                                                               ->queue_ptr,
+                                                       (u64)NULL);
                                         ref_put(&head_node->refcount,
                                                 free_func);
                                         res = next;
@@ -288,18 +303,21 @@ static inline bool msq_queue_check_tp(tagged_ptr_t need_check_tp,
  * @param expect_tp expected tail tag for the check
  * @param free_func called when old tail's ref drops to 0
  * @param refcount_is_zero same as msq_enqueue
- * @return REND_SUCCESS on success, -E_REND_AGAIN on check fail or ref acquire fail
+ * @return REND_SUCCESS on success, -E_REND_AGAIN on check fail or ref acquire
+ * fail
  */
-static inline error_t msq_enqueue_check_tail(ms_queue_t* q,
-                                             ms_queue_node_t* new_node,
-                                             u64 append_info,
-                                             tagged_ptr_t expect_tp,
-                                             void (*free_func)(ref_count_t*),
-                                             bool refcount_is_zero)
+static inline error_t
+msq_enqueue_check_tail(ms_queue_t* q, ms_queue_node_t* new_node,
+                       u64 append_info, tagged_ptr_t expect_tp,
+                       void (*free_func)(ref_count_t*), bool refcount_is_zero)
 {
+        if (new_node->queue_ptr) {
+                return -E_REND_AGAIN;
+        }
         tagged_ptr_t tail, next, tmp;
         if (q->append_info_bits == 0) {
-                msq_enqueue(q, new_node, append_info, free_func, refcount_is_zero);
+                msq_enqueue(
+                        q, new_node, append_info, free_func, refcount_is_zero);
                 return REND_SUCCESS;
         }
         u16 tag_step = 1 << q->append_info_bits;
@@ -326,9 +344,12 @@ static inline error_t msq_enqueue_check_tail(ms_queue_t* q,
                                 return -E_REND_AGAIN;
                         }
                         if (tp_get_ptr(next) == NULL) {
-                                bool acquired = refcount_is_zero ?
-                                        ref_get_claim(&new_node->refcount) :
-                                        ref_get_not_zero(&new_node->refcount);
+                                bool acquired =
+                                        refcount_is_zero ?
+                                                ref_get_claim(
+                                                        &new_node->refcount) :
+                                                ref_get_not_zero(
+                                                        &new_node->refcount);
                                 if (!acquired) {
                                         ref_put(&tail_node->refcount,
                                                 free_func);
@@ -350,6 +371,9 @@ static inline error_t msq_enqueue_check_tail(ms_queue_t* q,
                                         atomic64_cas((volatile u64*)&q->tail,
                                                      *(u64*)&tail,
                                                      *(u64*)&tmp);
+                                        atomic64_store((volatile u64*)&new_node
+                                                               ->queue_ptr,
+                                                       (u64)q);
                                         ref_put(&tail_node->refcount,
                                                 free_func);
                                         break;
@@ -471,6 +495,9 @@ msq_dequeue_check_head(ms_queue_t* q, u64 check_field_mask,
                                                 free_func);
                                         /* Release queue's ref (head no longer
                                          * holds old dummy). */
+                                        atomic64_store((volatile u64*)&head_node
+                                                               ->queue_ptr,
+                                                       (u64)NULL);
                                         ref_put(&head_node->refcount,
                                                 free_func);
                                         res = next;
