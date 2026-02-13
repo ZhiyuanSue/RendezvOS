@@ -60,7 +60,7 @@ Message_t* create_message(Msg_Data_t* msgdata)
         now the old msg refcount is 1, and old msgdata refcount is 1
         new msg create, will add the msgdata refcount to 2.
         */
-        if (!msgdata||!ref_get_not_zero(&msgdata->refcount))
+        if (!msgdata || !ref_get_not_zero(&msgdata->refcount))
                 return NULL;
         struct allocator* cpu_kallocator = percpu(kallocator);
         Message_t* msg =
@@ -86,7 +86,7 @@ void free_message_ref(ref_count_t* ref_count_ptr)
         ms_queue_node_t* node =
                 container_of(ref_count_ptr, ms_queue_node_t, refcount);
         Message_t* dummy_msg = container_of(node, Message_t, ms_queue_node);
-        if(dummy_msg->data){
+        if (dummy_msg->data) {
                 ref_put(&dummy_msg->data->refcount, dummy_msg->data->free_data);
         }
         delete_message_structure(dummy_msg);

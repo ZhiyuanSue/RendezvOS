@@ -30,12 +30,12 @@ Task_Manager* new_task_manager(void)
 void choose_schedule(Task_Manager* tm)
 {
         tm->scheduler = round_robin_schedule;
-		is_print_sche_info = true;
+        is_print_sche_info = true;
 }
 void print_sche_info(Thread_Base* old, Thread_Base* new)
 {
-		if(!is_print_sche_info)
-			return;
+        if (!is_print_sche_info)
+                return;
         if (old->name) {
                 if (new->name) {
                         pr_info("[CPU %d SCHE INFO] old %s new %s\n",

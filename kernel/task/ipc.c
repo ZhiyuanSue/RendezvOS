@@ -102,7 +102,7 @@ error_t ipc_port_enqueue_wait(Message_Port_t* port, u16 my_ipc_state,
         }
         /* Thread has refcount=1 from create_thread; refcount_is_zero=false to
          * avoid revival risk (ref_get_not_zero instead of ref_get_claim). */
-        
+
         barrier();
         error_t ret = msq_enqueue_check_tail(&port->thread_queue,
                                              &my_thread->ms_queue_node,

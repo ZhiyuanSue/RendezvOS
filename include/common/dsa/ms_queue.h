@@ -136,7 +136,7 @@ static inline void msq_enqueue(ms_queue_t* q, ms_queue_node_t* new_node,
                                 tmp = tp_new(tp_get_ptr(next),
                                              ((tp_get_tag(tail) + tag_step)
                                               & tag_mask)
-                                                     | (tp_get_tag(tail)
+                                                     | (tp_get_tag(next)
                                                         & append_info_mask));
                                 atomic64_cas((volatile u64*)&q->tail,
                                              *(u64*)&tail,
@@ -384,7 +384,7 @@ msq_enqueue_check_tail(ms_queue_t* q, ms_queue_node_t* new_node,
                                 tmp = tp_new(tp_get_ptr(next),
                                              ((tp_get_tag(tail) + tag_step)
                                               & tag_mask)
-                                                     | (tp_get_tag(tail)
+                                                     | (tp_get_tag(next)
                                                         & append_info_mask));
                                 atomic64_cas((volatile u64*)&q->tail,
                                              *(u64*)&tail,

@@ -115,7 +115,7 @@ void smp_ms_queue_dyn_alloc_put(int offset)
                 struct ms_test_data* tmp_ms_data =
                         malloc->m_alloc(malloc, sizeof(struct ms_test_data));
                 if (tmp_ms_data) {
-						memset(tmp_ms_data,0,sizeof(struct ms_test_data));
+                        memset(tmp_ms_data, 0, sizeof(struct ms_test_data));
                         ref_init_zero(&tmp_ms_data->ms_node.refcount);
                         tmp_ms_data->data = i;
                         msq_enqueue(&ms_queue,
