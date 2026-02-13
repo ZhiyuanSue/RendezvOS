@@ -170,13 +170,15 @@ static inline tagged_ptr_t msq_dequeue(ms_queue_t* q,
                                         ref_put(&head_node->refcount,
                                                 free_func);
                                         return tp_new_none();
+                                } else {
+                                        tmp = tp_new(tp_get_ptr(next),
+                                                     (tp_get_tag(tail) + 1));
+                                        atomic64_cas((volatile u64*)&q->tail,
+                                                     *(u64*)&tail,
+                                                     *(u64*)&tmp);
+                                        ref_put(&head_node->refcount,
+                                                free_func);
                                 }
-                                tmp = tp_new(tp_get_ptr(next),
-                                             (tp_get_tag(tail) + 1));
-                                atomic64_cas((volatile u64*)&q->tail,
-                                             *(u64*)&tail,
-                                             *(u64*)&tmp);
-                                ref_put(&head_node->refcount, free_func);
                         } else {
                                 ms_queue_node_t* next_node =
                                         (ms_queue_node_t*)tp_get_ptr(next);
@@ -238,14 +240,13 @@ static inline tagged_ptr_t msq_dequeue(ms_queue_t* q,
 static inline bool msq_queue_check_tp(tagged_ptr_t need_check_tp,
                                       u64 check_field_mask,
                                       tagged_ptr_t expect_tp,
-                                      u64 append_info_bits)
+                                      u16 append_info_mask)
 {
         if (check_field_mask & MSQ_CHECK_FIELD_PTR) {
                 if (tp_get_ptr(need_check_tp) != tp_get_ptr(expect_tp)) {
                         return false;
                 }
         }
-        u16 append_info_mask = (1 << append_info_bits) - 1;
         if (check_field_mask & MSQ_CHECK_FIELD_APPEND) {
                 if ((tp_get_tag(need_check_tp) & append_info_mask)
                     != (tp_get_tag(expect_tp) & append_info_mask)) {
@@ -298,7 +299,7 @@ msq_enqueue_check_tail(ms_queue_t* q, ms_queue_node_t* new_node,
                         if (!msq_queue_check_tp(tail,
                                                 MSQ_CHECK_FIELD_APPEND,
                                                 expect_tp,
-                                                q->append_info_bits)) {
+                                                append_info_mask)) {
                                 ref_put(&tail_node->refcount, free_func);
                                 return -E_REND_AGAIN;
                         }
@@ -399,6 +400,8 @@ msq_dequeue_check_head(ms_queue_t* q, u64 check_field_mask,
                                            info represent something, 0 must be
                                            the normal case,
                                         */
+                                        ref_put(&head_node->refcount,
+                                                free_func);
                                         tmp = tp_new(
                                                 tp_get_ptr(tail),
                                                 ((tp_get_tag(tail) + tag_step)
@@ -410,27 +413,30 @@ msq_dequeue_check_head(ms_queue_t* q, u64 check_field_mask,
                                                 and no more need for this idle
                                            node's info
                                         */
+                                        if (atomic64_cas((volatile u64*)&q->tail,
+                                                         *(u64*)&tail,
+                                                         *(u64*)&tmp)
+                                            == *(u64*)&tail) {
+                                                return tp_new_none();
+                                        }
+                                } else {
+                                        tmp = tp_new(
+                                                tp_get_ptr(next),
+                                                ((tp_get_tag(tail) + tag_step)
+                                                 & tag_mask)
+                                                        | (tp_get_tag(next)
+                                                           & append_info_mask));
                                         atomic64_cas((volatile u64*)&q->tail,
                                                      *(u64*)&tail,
                                                      *(u64*)&tmp);
                                         ref_put(&head_node->refcount,
                                                 free_func);
-                                        return tp_new_none();
                                 }
-                                tmp = tp_new(tp_get_ptr(next),
-                                             ((tp_get_tag(tail) + tag_step)
-                                              & tag_mask)
-                                                     | (tp_get_tag(next)
-                                                        & append_info_mask));
-                                atomic64_cas((volatile u64*)&q->tail,
-                                             *(u64*)&tail,
-                                             *(u64*)&tmp);
-                                ref_put(&head_node->refcount, free_func);
                         } else {
                                 if (!msq_queue_check_tp(next,
                                                         check_field_mask,
                                                         expect_tp,
-                                                        q->append_info_bits)) {
+                                                        append_info_mask)) {
                                         ref_put(&head_node->refcount,
                                                 free_func);
                                         return tp_new_none();
