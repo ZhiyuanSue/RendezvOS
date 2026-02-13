@@ -182,3 +182,215 @@ bool smp_ms_queue_dyn_alloc_check(void)
         // pr_info("dyn get time %d\n",cas_add_value);
         return cas_add_value == ms_data_len;
 }
+
+/* Test for msq_enqueue_check_tail and msq_dequeue_check_head */
+#define IPC_ENDPOINT_APPEND_BITS 2
+#define IPC_ENDPOINT_STATE_EMPTY 0
+#define IPC_ENDPOINT_STATE_SEND  1
+#define IPC_ENDPOINT_STATE_RECV  2
+
+#define ms_check_test_data_len 10000
+struct ms_test_data ms_check_test_data[ms_check_test_data_len];
+struct ms_test_data ms_check_dummy;
+ms_queue_t ms_check_queue;
+static volatile bool ms_check_have_inited = false;
+static volatile int ms_check_enqueue_count = 0;
+static volatile int ms_check_dequeue_count = 0;
+static cas_lock_t ms_check_lock;
+int ms_check_test_seq[ms_check_test_data_len] = {0};
+
+void smp_ms_queue_check_init(void)
+{
+        ms_check_dummy.data = -1;
+        msq_init(&ms_check_queue, &ms_check_dummy.ms_node,
+                 IPC_ENDPOINT_APPEND_BITS);
+        for (int i = 0; i < ms_check_test_data_len; i++) {
+                ref_init_zero(&ms_check_test_data[i].ms_node.refcount);
+                ms_check_test_data[i].ms_node.next = tp_new_none();
+                ms_check_test_data[i].data = i;
+        }
+        lock_init_cas(&ms_check_lock);
+        ms_check_enqueue_count = 0;
+        ms_check_dequeue_count = 0;
+}
+
+/* Test enqueue_check_tail: enqueue with SEND state when tail is EMPTY */
+void smp_ms_queue_check_enqueue_empty_to_send(int offset)
+{
+        for (int i = 0; i < ms_check_test_data_len / 2; i++) {
+                int retry_count = 0;
+                while (retry_count < 100) {
+                        tagged_ptr_t expect_tail = tp_new(NULL, IPC_ENDPOINT_STATE_EMPTY);
+                        error_t ret = msq_enqueue_check_tail(
+                                &ms_check_queue,
+                                &ms_check_test_data[offset + i].ms_node,
+                                IPC_ENDPOINT_STATE_SEND,
+                                expect_tail,
+                                NULL,
+                                true /* refcount_is_zero */);
+                        if (ret == REND_SUCCESS) {
+                                lock_cas(&ms_check_lock);
+                                ms_check_enqueue_count++;
+                                unlock_cas(&ms_check_lock);
+                                break;
+                        }
+                        retry_count++;
+                }
+        }
+}
+
+/* Test enqueue_check_tail: enqueue with RECV state when tail is SEND or EMPTY */
+void smp_ms_queue_check_enqueue_send_to_recv(int offset)
+{
+        for (int i = 0; i < ms_check_test_data_len / 2; i++) {
+                int retry_count = 0;
+                bool success = false;
+                while (retry_count < 100 && !success) {
+                        /* First try with SEND state */
+                        tagged_ptr_t expect_tail = tp_new(NULL, IPC_ENDPOINT_STATE_SEND);
+                        error_t ret = msq_enqueue_check_tail(
+                                &ms_check_queue,
+                                &ms_check_test_data[offset + i].ms_node,
+                                IPC_ENDPOINT_STATE_RECV,
+                                expect_tail,
+                                NULL,
+                                true /* refcount_is_zero */);
+                        if (ret == REND_SUCCESS) {
+                                lock_cas(&ms_check_lock);
+                                ms_check_enqueue_count++;
+                                unlock_cas(&ms_check_lock);
+                                success = true;
+                                break;
+                        }
+                        /* If failed, retry with EMPTY state (queue might be empty) */
+                        expect_tail = tp_new(NULL, IPC_ENDPOINT_STATE_EMPTY);
+                        ret = msq_enqueue_check_tail(
+                                &ms_check_queue,
+                                &ms_check_test_data[offset + i].ms_node,
+                                IPC_ENDPOINT_STATE_RECV,
+                                expect_tail,
+                                NULL,
+                                true /* refcount_is_zero */);
+                        if (ret == REND_SUCCESS) {
+                                lock_cas(&ms_check_lock);
+                                ms_check_enqueue_count++;
+                                unlock_cas(&ms_check_lock);
+                                success = true;
+                                break;
+                        }
+                        retry_count++;
+                }
+        }
+}
+
+/* Test dequeue_check_head: dequeue nodes with SEND state */
+void smp_ms_queue_check_dequeue_send(int offset)
+{
+        int i = 0;
+        int retry_count = 0;
+        while (i < ms_check_test_data_len / 2) {
+                tagged_ptr_t expect_head = tp_new(NULL, IPC_ENDPOINT_STATE_SEND);
+                tagged_ptr_t dequeue_ptr = msq_dequeue_check_head(
+                        &ms_check_queue,
+                        MSQ_CHECK_FIELD_APPEND,
+                        expect_head,
+                        NULL);
+                if (!tp_is_none(dequeue_ptr)) {
+                        struct ms_test_data* get_ptr = container_of(
+                                tp_get_ptr(dequeue_ptr),
+                                struct ms_test_data,
+                                ms_node);
+                        ms_check_test_seq[offset + i] = get_ptr->data;
+                        ref_put(&get_ptr->ms_node.refcount, NULL);
+                        lock_cas(&ms_check_lock);
+                        ms_check_dequeue_count++;
+                        unlock_cas(&ms_check_lock);
+                        i++;
+                        retry_count = 0;
+                } else {
+                        /* Queue might be empty or state mismatch, wait a bit */
+                        retry_count++;
+                        if (retry_count > 10000) {
+                                /* Give up if queue is empty for too long */
+                                break;
+                        }
+                }
+        }
+}
+
+/* Test dequeue_check_head: dequeue nodes with RECV state */
+void smp_ms_queue_check_dequeue_recv(int offset)
+{
+        int i = 0;
+        int retry_count = 0;
+        while (i < ms_check_test_data_len / 2) {
+                tagged_ptr_t expect_head = tp_new(NULL, IPC_ENDPOINT_STATE_RECV);
+                tagged_ptr_t dequeue_ptr = msq_dequeue_check_head(
+                        &ms_check_queue,
+                        MSQ_CHECK_FIELD_APPEND,
+                        expect_head,
+                        NULL);
+                if (!tp_is_none(dequeue_ptr)) {
+                        struct ms_test_data* get_ptr = container_of(
+                                tp_get_ptr(dequeue_ptr),
+                                struct ms_test_data,
+                                ms_node);
+                        ms_check_test_seq[offset + i] = get_ptr->data;
+                        ref_put(&get_ptr->ms_node.refcount, NULL);
+                        lock_cas(&ms_check_lock);
+                        ms_check_dequeue_count++;
+                        unlock_cas(&ms_check_lock);
+                        i++;
+                        retry_count = 0;
+                } else {
+                        /* Queue might be empty or state mismatch, wait a bit */
+                        retry_count++;
+                        if (retry_count > 10000) {
+                                /* Give up if queue is empty for too long */
+                                break;
+                        }
+                }
+        }
+}
+
+int smp_ms_queue_check_test(void)
+{
+        if (percpu(cpu_number) == BSP_ID) {
+                smp_ms_queue_check_init();
+                ms_check_have_inited = true;
+        } else {
+                while (!ms_check_have_inited)
+                        ;
+        }
+
+        /* Test scenario: 
+         * CPU 0: enqueue SEND nodes when tail is EMPTY
+         * CPU 1: dequeue SEND nodes
+         * CPU 2: enqueue RECV nodes when tail is SEND (or EMPTY)
+         * CPU 3: dequeue RECV nodes
+         */
+        u32 cpu_num = percpu(cpu_number);
+        int offset = (cpu_num % 2) * (ms_check_test_data_len / 2);
+
+        if (cpu_num % 4 == 0) {
+                /* Enqueue SEND when tail is EMPTY */
+                smp_ms_queue_check_enqueue_empty_to_send(offset);
+        } else if (cpu_num % 4 == 1) {
+                /* Dequeue SEND */
+                smp_ms_queue_check_dequeue_send(offset);
+        } else if (cpu_num % 4 == 2) {
+                /* Enqueue RECV when tail is SEND */
+                smp_ms_queue_check_enqueue_send_to_recv(offset);
+        } else {
+                /* Dequeue RECV */
+                smp_ms_queue_check_dequeue_recv(offset);
+        }
+
+        return REND_SUCCESS;
+}
+
+bool smp_ms_queue_check_test_check(void)
+{
+        /* Check that enqueue and dequeue counts match */
+        return ms_check_enqueue_count == ms_check_dequeue_count;
+}
