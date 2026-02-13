@@ -9,7 +9,7 @@ struct ms_test_data {
         u64 data;
 };
 extern u32 BSP_ID;
-#define percpu_ms_queue_test_number 10000
+#define percpu_ms_queue_test_number 100000
 #ifdef NR_CPUS
 #define ms_data_len percpu_ms_queue_test_number* NR_CPUS / 2
 #else
@@ -39,7 +39,6 @@ void smp_ms_queue_put(int offset)
         for (int i = 0; i < percpu_ms_queue_test_number; i++) {
                 msq_enqueue(&ms_queue,
                             &ms_data[offset + i].ms_node,
-                            0,
                             NULL,
                             true /* refcount_is_zero */);
         }
@@ -120,7 +119,6 @@ void smp_ms_queue_dyn_alloc_put(int offset)
                         tmp_ms_data->data = i;
                         msq_enqueue(&ms_queue,
                                     &tmp_ms_data->ms_node,
-                                    0,
                                     dyn_alloc_free_node,
                                     true /* refcount_is_zero */);
                 } else {
@@ -189,7 +187,7 @@ bool smp_ms_queue_dyn_alloc_check(void)
 #define IPC_ENDPOINT_STATE_SEND  1
 #define IPC_ENDPOINT_STATE_RECV  2
 
-#define ms_check_test_data_len 10000
+#define ms_check_test_data_len 100000
 struct ms_test_data ms_check_test_data[ms_check_test_data_len];
 struct ms_test_data ms_check_dummy;
 ms_queue_t ms_check_queue;
@@ -202,7 +200,8 @@ int ms_check_test_seq[ms_check_test_data_len] = {0};
 void smp_ms_queue_check_init(void)
 {
         ms_check_dummy.data = -1;
-        msq_init(&ms_check_queue, &ms_check_dummy.ms_node,
+        msq_init(&ms_check_queue,
+                 &ms_check_dummy.ms_node,
                  IPC_ENDPOINT_APPEND_BITS);
         for (int i = 0; i < ms_check_test_data_len; i++) {
                 ref_init_zero(&ms_check_test_data[i].ms_node.refcount);
@@ -218,9 +217,15 @@ void smp_ms_queue_check_init(void)
 void smp_ms_queue_check_enqueue_empty_to_send(int offset)
 {
         for (int i = 0; i < ms_check_test_data_len / 2; i++) {
+                if (i % 10000 == 0) {
+                        pr_info("finish enqueue_empty_to_send %d/%d test\n",
+                                i,
+                                ms_check_test_data_len / 2);
+                }
                 int retry_count = 0;
                 while (retry_count < 100) {
-                        tagged_ptr_t expect_tail = tp_new(NULL, IPC_ENDPOINT_STATE_EMPTY);
+                        tagged_ptr_t expect_tail =
+                                tp_new(NULL, IPC_ENDPOINT_STATE_EMPTY);
                         error_t ret = msq_enqueue_check_tail(
                                 &ms_check_queue,
                                 &ms_check_test_data[offset + i].ms_node,
@@ -239,15 +244,22 @@ void smp_ms_queue_check_enqueue_empty_to_send(int offset)
         }
 }
 
-/* Test enqueue_check_tail: enqueue with RECV state when tail is SEND or EMPTY */
+/* Test enqueue_check_tail: enqueue with RECV state when tail is SEND or EMPTY
+ */
 void smp_ms_queue_check_enqueue_send_to_recv(int offset)
 {
         for (int i = 0; i < ms_check_test_data_len / 2; i++) {
+                if (i % 10000 == 0) {
+                        pr_info("finish enqueue_send_to_recv %d/%d test\n",
+                                i,
+                                ms_check_test_data_len / 2);
+                }
                 int retry_count = 0;
                 bool success = false;
                 while (retry_count < 100 && !success) {
                         /* First try with SEND state */
-                        tagged_ptr_t expect_tail = tp_new(NULL, IPC_ENDPOINT_STATE_SEND);
+                        tagged_ptr_t expect_tail =
+                                tp_new(NULL, IPC_ENDPOINT_STATE_SEND);
                         error_t ret = msq_enqueue_check_tail(
                                 &ms_check_queue,
                                 &ms_check_test_data[offset + i].ms_node,
@@ -262,7 +274,8 @@ void smp_ms_queue_check_enqueue_send_to_recv(int offset)
                                 success = true;
                                 break;
                         }
-                        /* If failed, retry with EMPTY state (queue might be empty) */
+                        /* If failed, retry with EMPTY state (queue might be
+                         * empty) */
                         expect_tail = tp_new(NULL, IPC_ENDPOINT_STATE_EMPTY);
                         ret = msq_enqueue_check_tail(
                                 &ms_check_queue,
@@ -289,17 +302,23 @@ void smp_ms_queue_check_dequeue_send(int offset)
         int i = 0;
         int retry_count = 0;
         while (i < ms_check_test_data_len / 2) {
-                tagged_ptr_t expect_head = tp_new(NULL, IPC_ENDPOINT_STATE_SEND);
-                tagged_ptr_t dequeue_ptr = msq_dequeue_check_head(
-                        &ms_check_queue,
-                        MSQ_CHECK_FIELD_APPEND,
-                        expect_head,
-                        NULL);
+                if (i % 10000 == 0) {
+                        pr_info("finish dequeue_send %d/%d test\n",
+                                i,
+                                ms_check_test_data_len / 2);
+                }
+                tagged_ptr_t expect_head =
+                        tp_new(NULL, IPC_ENDPOINT_STATE_SEND);
+                tagged_ptr_t dequeue_ptr =
+                        msq_dequeue_check_head(&ms_check_queue,
+                                               MSQ_CHECK_FIELD_APPEND,
+                                               expect_head,
+                                               NULL);
                 if (!tp_is_none(dequeue_ptr)) {
-                        struct ms_test_data* get_ptr = container_of(
-                                tp_get_ptr(dequeue_ptr),
-                                struct ms_test_data,
-                                ms_node);
+                        struct ms_test_data* get_ptr =
+                                container_of(tp_get_ptr(dequeue_ptr),
+                                             struct ms_test_data,
+                                             ms_node);
                         ms_check_test_seq[offset + i] = get_ptr->data;
                         ref_put(&get_ptr->ms_node.refcount, NULL);
                         lock_cas(&ms_check_lock);
@@ -324,17 +343,23 @@ void smp_ms_queue_check_dequeue_recv(int offset)
         int i = 0;
         int retry_count = 0;
         while (i < ms_check_test_data_len / 2) {
-                tagged_ptr_t expect_head = tp_new(NULL, IPC_ENDPOINT_STATE_RECV);
-                tagged_ptr_t dequeue_ptr = msq_dequeue_check_head(
-                        &ms_check_queue,
-                        MSQ_CHECK_FIELD_APPEND,
-                        expect_head,
-                        NULL);
+                if (i % 10000 == 0) {
+                        pr_info("finish dequeue_recv %d/%d test\n",
+                                i,
+                                ms_check_test_data_len / 2);
+                }
+                tagged_ptr_t expect_head =
+                        tp_new(NULL, IPC_ENDPOINT_STATE_RECV);
+                tagged_ptr_t dequeue_ptr =
+                        msq_dequeue_check_head(&ms_check_queue,
+                                               MSQ_CHECK_FIELD_APPEND,
+                                               expect_head,
+                                               NULL);
                 if (!tp_is_none(dequeue_ptr)) {
-                        struct ms_test_data* get_ptr = container_of(
-                                tp_get_ptr(dequeue_ptr),
-                                struct ms_test_data,
-                                ms_node);
+                        struct ms_test_data* get_ptr =
+                                container_of(tp_get_ptr(dequeue_ptr),
+                                             struct ms_test_data,
+                                             ms_node);
                         ms_check_test_seq[offset + i] = get_ptr->data;
                         ref_put(&get_ptr->ms_node.refcount, NULL);
                         lock_cas(&ms_check_lock);
@@ -363,7 +388,7 @@ int smp_ms_queue_check_test(void)
                         ;
         }
 
-        /* Test scenario: 
+        /* Test scenario:
          * CPU 0: enqueue SEND nodes when tail is EMPTY
          * CPU 1: dequeue SEND nodes
          * CPU 2: enqueue RECV nodes when tail is SEND (or EMPTY)

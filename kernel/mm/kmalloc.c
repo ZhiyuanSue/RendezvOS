@@ -389,7 +389,6 @@ static error_t _k_free(void* p)
                                 header->msq_node.queue_ptr);
                 msq_enqueue(&k_allocator_p->buffer_msq,
                             &header->msq_node,
-                            0,
                             free_buffer_object,
                             true /* refcount_is_zero */);
                 atomic64_inc(&k_allocator_p->buffer_size);

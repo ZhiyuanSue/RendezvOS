@@ -214,7 +214,6 @@ error_t ipc_transfer_message(Thread_Base* sender, Thread_Base* receiver)
          * refcount_is_zero=false */
         msq_enqueue(&receiver->recv_msg_queue,
                     &recv_msg_ptr->ms_queue_node,
-                    0,
                     free_message_ref,
                     false /* refcount_is_zero */);
 
@@ -403,7 +402,6 @@ error_t enqueue_msg_for_send(Message_t* msg, bool refcount_is_zero)
         }
         msq_enqueue(&self->send_msg_queue,
                     &msg->ms_queue_node,
-                    0,
                     free_message_ref,
                     refcount_is_zero);
         return REND_SUCCESS;

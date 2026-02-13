@@ -173,9 +173,9 @@ static void smp_ipc_receiver_loop(u32 cpu_id, int count)
 int smp_ipc_test(void)
 {
         u32 cpu_id = percpu(cpu_number);
-        is_print_sche_info = false;
 
         if (cpu_id == BSP_ID) {
+                is_print_sche_info = false;
                 pr_info("BSP creating message port\n");
                 smp_ipc_port = create_message_port();
                 if (!smp_ipc_port) {
@@ -240,7 +240,7 @@ int smp_ipc_test(void)
                                 (unsigned long long)total_recv);
                         return -E_REND_TEST;
                 }
+                is_print_sche_info = true;
         }
-        is_print_sche_info = true;
         return REND_SUCCESS;
 }

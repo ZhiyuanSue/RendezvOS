@@ -76,16 +76,13 @@ static inline void msq_init(ms_queue_t* q, ms_queue_node_t* new_node,
  * revival)
  */
 static inline void msq_enqueue(ms_queue_t* q, ms_queue_node_t* new_node,
-                               u64 append_info, void (*free_func)(ref_count_t*),
+                               void (*free_func)(ref_count_t*),
                                bool refcount_is_zero)
 {
         if (new_node->queue_ptr) {
                 return;
         }
         tagged_ptr_t tail, next, tmp;
-        u16 tag_step = 1 << q->append_info_bits;
-        u16 append_info_mask = tag_step - 1;
-        u16 tag_mask = ~append_info_mask;
 
         atomic64_store((volatile u64*)(&(new_node->next)), 0);
         while (1) {
@@ -111,11 +108,7 @@ static inline void msq_enqueue(ms_queue_t* q, ms_queue_node_t* new_node,
                                                 free_func);
                                         continue;
                                 }
-                                tmp = tp_new(new_node,
-                                             ((tp_get_tag(tail) + tag_step)
-                                              & tag_mask)
-                                                     | (append_info
-                                                        & append_info_mask));
+                                tmp = tp_new(new_node, (tp_get_tag(tail) + 1));
                                 if (atomic64_cas((volatile u64*)&tail_node->next,
                                                  *(u64*)&next,
                                                  *(u64*)&tmp)
@@ -134,10 +127,7 @@ static inline void msq_enqueue(ms_queue_t* q, ms_queue_node_t* new_node,
                                 ref_put(&tail_node->refcount, free_func);
                         } else {
                                 tmp = tp_new(tp_get_ptr(next),
-                                             ((tp_get_tag(tail) + tag_step)
-                                              & tag_mask)
-                                                     | (tp_get_tag(next)
-                                                        & append_info_mask));
+                                             (tp_get_tag(tail) + 1));
                                 atomic64_cas((volatile u64*)&q->tail,
                                              *(u64*)&tail,
                                              *(u64*)&tmp);
@@ -161,9 +151,7 @@ static inline tagged_ptr_t msq_dequeue(ms_queue_t* q,
 {
         tagged_ptr_t head, tail, next, tmp;
         tagged_ptr_t res = tp_new_none();
-        u16 tag_step = 1 << q->append_info_bits;
-        u16 append_info_mask = tag_step - 1;
-        u16 tag_mask = ~append_info_mask;
+
         while (1) {
                 head = atomic64_load(&q->head);
                 ms_queue_node_t* head_node = (ms_queue_node_t*)tp_get_ptr(head);
@@ -179,36 +167,12 @@ static inline tagged_ptr_t msq_dequeue(ms_queue_t* q,
                     == *(u64*)&head) {
                         if (tp_get_ptr(head) == tp_get_ptr(tail)) {
                                 if (tp_get_ptr(next) == NULL) {
-                                        /*
-                                                if the queue is empty ,
-                                                let the idle node's append info
-                                           be 0, if you want to use the append
-                                           info represent something, 0 must be
-                                           the normal case,
-                                        */
-                                        tmp = tp_new(
-                                                tp_get_ptr(tail),
-                                                ((tp_get_tag(tail) + tag_step)
-                                                 & tag_mask));
-                                        /*
-                                                only need try once,
-                                                if succ,the queue be empty,
-                                                if fail,new node is enqueue,
-                                                and no more need for this idle
-                                           node's info
-                                        */
-                                        atomic64_cas((volatile u64*)&q->tail,
-                                                     *(u64*)&tail,
-                                                     *(u64*)&tmp);
                                         ref_put(&head_node->refcount,
                                                 free_func);
                                         return tp_new_none();
                                 }
                                 tmp = tp_new(tp_get_ptr(next),
-                                             ((tp_get_tag(tail) + tag_step)
-                                              & tag_mask)
-                                                     | (tp_get_tag(next)
-                                                        & append_info_mask));
+                                             (tp_get_tag(tail) + 1));
                                 atomic64_cas((volatile u64*)&q->tail,
                                              *(u64*)&tail,
                                              *(u64*)&tmp);
@@ -230,11 +194,7 @@ static inline tagged_ptr_t msq_dequeue(ms_queue_t* q,
 
                                 /* Use tail tag for queue state (e.g. send/recv
                                  * in append_info). */
-                                tmp = tp_new(next_node,
-                                             ((tp_get_tag(tail) + tag_step)
-                                              & tag_mask)
-                                                     | (tp_get_tag(next)
-                                                        & append_info_mask));
+                                tmp = tp_new(next_node, (tp_get_tag(tail) + 1));
                                 if (atomic64_cas((volatile u64*)&q->head,
                                                  *(u64*)&head,
                                                  *(u64*)&tmp)
@@ -316,8 +276,7 @@ msq_enqueue_check_tail(ms_queue_t* q, ms_queue_node_t* new_node,
         }
         tagged_ptr_t tail, next, tmp;
         if (q->append_info_bits == 0) {
-                msq_enqueue(
-                        q, new_node, append_info, free_func, refcount_is_zero);
+                msq_enqueue(q, new_node, free_func, refcount_is_zero);
                 return REND_SUCCESS;
         }
         u16 tag_step = 1 << q->append_info_bits;
@@ -434,12 +393,23 @@ msq_dequeue_check_head(ms_queue_t* q, u64 check_field_mask,
                         if (tp_get_ptr(head) == tp_get_ptr(tail)) {
                                 if (tp_get_ptr(next) == NULL) {
                                         /*
-                                                the same with the msq_dequeue
+                                                if the queue is empty ,
+                                                let the idle node's append info
+                                           be 0, if you want to use the append
+                                           info represent something, 0 must be
+                                           the normal case,
                                         */
                                         tmp = tp_new(
                                                 tp_get_ptr(tail),
                                                 ((tp_get_tag(tail) + tag_step)
                                                  & tag_mask));
+                                        /*
+                                                only need try once,
+                                                if succ,the queue be empty,
+                                                if fail,new node is enqueue,
+                                                and no more need for this idle
+                                           node's info
+                                        */
                                         atomic64_cas((volatile u64*)&q->tail,
                                                      *(u64*)&tail,
                                                      *(u64*)&tmp);
