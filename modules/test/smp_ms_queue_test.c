@@ -220,7 +220,7 @@ void smp_ms_queue_check_enqueue_empty_to_send(int offset)
         tagged_ptr_t expect_tail;
         error_t ret;
         for (int i = 0; i < ms_check_test_data_len / 2; i++) {
-                if (i % 1000 == 0) {
+                if (i % (ms_check_test_data_len / 10) == 0) {
                         pr_info("finish enqueue_empty_to_send %d/%d test\n",
                                 i,
                                 ms_check_test_data_len / 2);
@@ -246,6 +246,10 @@ void smp_ms_queue_check_enqueue_empty_to_send(int offset)
                                 expect_tail,
                                 NULL,
                                 true /* refcount_is_zero */);
+                        if (ret == REND_SUCCESS) {
+                                atomic64_inc(&ms_check_enqueue_count);
+                                break;
+                        }
                 }
         }
 }
@@ -257,7 +261,7 @@ void smp_ms_queue_check_enqueue_empty_to_recv(int offset)
         tagged_ptr_t expect_tail;
         error_t ret;
         for (int i = 0; i < ms_check_test_data_len / 2; i++) {
-                if (i % 1000 == 0) {
+                if (i % (ms_check_test_data_len / 10) == 0) {
                         pr_info("finish enqueue_empty_to_recv %d/%d test\n",
                                 i,
                                 ms_check_test_data_len / 2);
@@ -283,6 +287,10 @@ void smp_ms_queue_check_enqueue_empty_to_recv(int offset)
                                 expect_tail,
                                 NULL,
                                 true /* refcount_is_zero */);
+                        if (ret == REND_SUCCESS) {
+                                atomic64_inc(&ms_check_enqueue_count);
+                                break;
+                        }
                 }
         }
 }
@@ -292,7 +300,7 @@ void smp_ms_queue_check_dequeue_send(int offset)
 {
         int i = 0;
         while (i < ms_check_test_data_len / 2) {
-                if (i % 1000 == 0) {
+                if (i % (ms_check_test_data_len / 10) == 0) {
                         pr_info("finish dequeue_send %d/%d test\n",
                                 i,
                                 ms_check_test_data_len / 2);
@@ -322,7 +330,7 @@ void smp_ms_queue_check_dequeue_recv(int offset)
 {
         int i = 0;
         while (i < ms_check_test_data_len / 2) {
-                if (i % 1000 == 0) {
+                if (i % (ms_check_test_data_len / 10) == 0) {
                         pr_info("finish dequeue_recv %d/%d test\n",
                                 i,
                                 ms_check_test_data_len / 2);
@@ -356,15 +364,9 @@ int smp_ms_queue_check_test(void)
                 while (!ms_check_have_inited)
                         ;
         }
-
-        /* Test scenario:
-         * CPU 0: enqueue SEND nodes when tail is EMPTY
-         * CPU 1: dequeue SEND nodes
-         * CPU 2: enqueue RECV nodes when tail is SEND (or EMPTY)
-         * CPU 3: dequeue RECV nodes
-         */
         u32 cpu_num = percpu(cpu_number);
-        int offset = (cpu_num % 2) * (ms_check_test_data_len / 2);
+        /* CPU 0 and 1 operate on first half, CPU 2 and 3 on second half */
+        int offset = (cpu_num / 2) * (ms_check_test_data_len / 2);
 
         if (cpu_num % 4 == 0) {
                 /* Enqueue SEND when tail is EMPTY */
@@ -386,5 +388,13 @@ int smp_ms_queue_check_test(void)
 bool smp_ms_queue_check_test_check(void)
 {
         /* Check that enqueue and dequeue counts match */
-        return ms_check_enqueue_count.counter == ms_check_dequeue_count.counter;
+        bool res =
+                (ms_check_enqueue_count.counter == ms_check_test_data_len)
+                && (ms_check_dequeue_count.counter == ms_check_test_data_len);
+        if (res == false) {
+                pr_error("[smp queue check test]enqueue %d dequeue %d\n",
+                         ms_check_enqueue_count.counter,
+                         ms_check_dequeue_count.counter);
+        }
+        return res;
 }

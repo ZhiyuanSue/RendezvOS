@@ -79,7 +79,7 @@ static inline void msq_enqueue(ms_queue_t* q, ms_queue_node_t* new_node,
                                void (*free_func)(ref_count_t*),
                                bool refcount_is_zero)
 {
-        if (new_node->queue_ptr) {
+        if (!q || new_node->queue_ptr) {
                 return;
         }
         tagged_ptr_t tail, next, tmp;
@@ -149,6 +149,8 @@ static inline void msq_enqueue(ms_queue_t* q, ms_queue_node_t* new_node,
 static inline tagged_ptr_t msq_dequeue(ms_queue_t* q,
                                        void (*free_func)(ref_count_t*))
 {
+        if (!q)
+                return tp_new_none();
         tagged_ptr_t head, tail, next, tmp;
         tagged_ptr_t res = tp_new_none();
 
@@ -272,7 +274,10 @@ msq_enqueue_check_tail(ms_queue_t* q, ms_queue_node_t* new_node,
                        u64 append_info, tagged_ptr_t expect_tp,
                        void (*free_func)(ref_count_t*), bool refcount_is_zero)
 {
-        if (new_node->queue_ptr) {
+        if (!q || !new_node) {
+                return -E_IN_PARAM;
+        }
+        if (atomic64_load((volatile u64*)&(new_node->queue_ptr))) {
                 return -E_REND_AGAIN;
         }
         tagged_ptr_t tail, next, tmp;
@@ -320,13 +325,9 @@ msq_enqueue_check_tail(ms_queue_t* q, ms_queue_node_t* new_node,
                                               & tag_mask)
                                                      | (append_info
                                                         & append_info_mask));
-                                if (atomic64_cas(
-                                            (volatile u64*)&(
-                                                    (ms_queue_node_t*)
-                                                            tp_get_ptr(tail))
-                                                    ->next,
-                                            *(u64*)&next,
-                                            *(u64*)&tmp)
+                                if (atomic64_cas((volatile u64*)&tail_node->next,
+                                                 *(u64*)&next,
+                                                 *(u64*)&tmp)
                                     == *(u64*)&next) {
                                         atomic64_cas((volatile u64*)&q->tail,
                                                      *(u64*)&tail,
@@ -371,6 +372,8 @@ static inline tagged_ptr_t
 msq_dequeue_check_head(ms_queue_t* q, u64 check_field_mask,
                        tagged_ptr_t expect_tp, void (*free_func)(ref_count_t*))
 {
+        if (!q)
+                return tp_new_none();
         tagged_ptr_t head, tail, next, tmp;
         tagged_ptr_t res = tp_new_none();
         if (q->append_info_bits == 0
@@ -393,32 +396,9 @@ msq_dequeue_check_head(ms_queue_t* q, u64 check_field_mask,
                     == *(u64*)&head) {
                         if (tp_get_ptr(head) == tp_get_ptr(tail)) {
                                 if (tp_get_ptr(next) == NULL) {
-                                        /*
-                                                if the queue is empty ,
-                                                let the idle node's append info
-                                           be 0, if you want to use the append
-                                           info represent something, 0 must be
-                                           the normal case,
-                                        */
                                         ref_put(&head_node->refcount,
                                                 free_func);
-                                        tmp = tp_new(
-                                                tp_get_ptr(tail),
-                                                ((tp_get_tag(tail) + tag_step)
-                                                 & tag_mask));
-                                        /*
-                                                only need try once,
-                                                if succ,the queue be empty,
-                                                if fail,new node is enqueue,
-                                                and no more need for this idle
-                                           node's info
-                                        */
-                                        if (atomic64_cas((volatile u64*)&q->tail,
-                                                         *(u64*)&tail,
-                                                         *(u64*)&tmp)
-                                            == *(u64*)&tail) {
-                                                return tp_new_none();
-                                        }
+                                        return tp_new_none();
                                 } else {
                                         tmp = tp_new(
                                                 tp_get_ptr(next),
@@ -476,6 +456,18 @@ msq_dequeue_check_head(ms_queue_t* q, u64 check_field_mask,
                                                        (u64)NULL);
                                         ref_put(&head_node->refcount,
                                                 free_func);
+                                        if (tp_get_ptr(next)
+                                            == tp_get_ptr(tail)) {
+                                                tmp = tp_new(tp_get_ptr(tail),
+                                                             ((tp_get_tag(tail)
+                                                               + tag_step)
+                                                              & tag_mask));
+
+                                                atomic64_cas(
+                                                        (volatile u64*)&q->tail,
+                                                        *(u64*)&tail,
+                                                        *(u64*)&tmp);
+                                        }
                                         res = next;
                                         break;
                                 }
