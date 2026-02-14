@@ -170,7 +170,7 @@ int ipc_test(void)
         return REND_SUCCESS;
 }
 
-#define IPC_MULTI_ROUND_COUNT 500
+#define IPC_MULTI_ROUND_COUNT 50000
 
 static volatile int multi_round_sender_done;
 static volatile int multi_round_receiver_done;
@@ -231,8 +231,6 @@ static void* ipc_multi_round_sender_thread(void* arg)
                         break;
                 }
 
-                // pr_info("5\n");
-
                 Message_t* msg = create_message(msgdata);
                 if (!msg) {
                         pr_error(
@@ -242,12 +240,10 @@ static void* ipc_multi_round_sender_thread(void* arg)
                         break;
                 }
 
-                // pr_info("6\n");
                 /* After create_message, we can release our reference to msgdata
                  */
                 ref_put(&msgdata->refcount, free_msgdata_ref_default);
 
-                // pr_info("7\n");
                 if (enqueue_msg_for_send(msg, false) != REND_SUCCESS) {
                         pr_error(
                                 "[single_ipc_multi_round_test] sender: enqueue_msg_for_send failed at round %llu\n",
@@ -255,8 +251,6 @@ static void* ipc_multi_round_sender_thread(void* arg)
                         ref_put(&msg->ms_queue_node.refcount, free_message_ref);
                         break;
                 }
-
-                // pr_info("8\n");
 
                 if (send_msg(port) != REND_SUCCESS) {
                         pr_error(
@@ -266,11 +260,9 @@ static void* ipc_multi_round_sender_thread(void* arg)
                         break;
                 }
 
-                // pr_info("9\n");
-
                 multi_round_send_count++;
 
-                if ((i + 1) % 100 == 0) {
+                if ((i + 1) % (IPC_MULTI_ROUND_COUNT/5) == 0) {
                         pr_info("[single_ipc_multi_round_test] sender: sent %u/%u messages\n",
                                 (unsigned long long)(i + 1),
                                 IPC_MULTI_ROUND_COUNT);
@@ -318,7 +310,7 @@ static void* ipc_multi_round_receiver_thread(void* arg)
 
                 ref_put(&msg->ms_queue_node.refcount, free_message_ref);
 
-                if ((i + 1) % 100 == 0) {
+                if ((i + 1) % (IPC_MULTI_ROUND_COUNT/5) == 0) {
                         pr_info("[single_ipc_multi_round_test] receiver: received %u/%u messages\n",
                                 (unsigned long long)(i + 1),
                                 IPC_MULTI_ROUND_COUNT);
