@@ -1,5 +1,6 @@
 #include <rendezvos/task/ipc.h>
 #include <common/string.h>
+#include <modules/log/log.h>
 
 struct Msg_Port* create_message_port()
 {
@@ -100,16 +101,15 @@ error_t ipc_port_enqueue_wait(Message_Port_t* port, u16 my_ipc_state,
                 /*the state is wrong,and let the caller retry*/
                 return -E_REND_AGAIN;
         }
-        /* Thread has refcount=1 from create_thread; refcount_is_zero=false to
-         * avoid revival risk (ref_get_not_zero instead of ref_get_claim). */
+        /* Thread has refcount=1 from create_thread; but after msq enqueue check
+         * tail,we should not put ref of this thread */
 
         barrier();
         error_t ret = msq_enqueue_check_tail(&port->thread_queue,
                                              &my_thread->ms_queue_node,
                                              my_ipc_state,
                                              tp_new(NULL, expected_ipc_state),
-                                             free_thread_ref,
-                                             false /* refcount_is_zero */);
+                                             free_thread_ref);
         return ret;
 }
 error_t ipc_transfer_message(Thread_Base* sender, Thread_Base* receiver)
@@ -214,8 +214,9 @@ error_t ipc_transfer_message(Thread_Base* sender, Thread_Base* receiver)
          * refcount_is_zero=false */
         msq_enqueue(&receiver->recv_msg_queue,
                     &recv_msg_ptr->ms_queue_node,
-                    free_message_ref,
-                    false /* refcount_is_zero */);
+                    free_message_ref);
+        ref_put(&recv_msg_ptr->ms_queue_node.refcount, free_message_ref);
+        recv_msg_ptr = NULL;
 
         /*check whether the receiver is alive*/
         if (thread_get_status(receiver) == thread_status_exit) {
@@ -325,7 +326,10 @@ error_t recv_msg(Message_Port_t* port)
                 return -E_IN_PARAM;
         }
         Thread_Base* receiver = get_cpu_current_thread();
+        int retry_cnt = 0;
         while (1) {
+                if (retry_cnt == 10) {
+                }
                 Thread_Base* sender =
                         ipc_port_try_match(port, IPC_ENDPOINT_STATE_RECV);
                 if (sender) {
@@ -389,7 +393,7 @@ error_t recv_msg(Message_Port_t* port)
         return REND_SUCCESS;
 }
 
-error_t enqueue_msg_for_send(Message_t* msg, bool refcount_is_zero)
+error_t enqueue_msg_for_send(Message_t* msg)
 {
         if (!msg)
                 return -E_IN_PARAM;
@@ -400,10 +404,8 @@ error_t enqueue_msg_for_send(Message_t* msg, bool refcount_is_zero)
             || (msg->data && !ref_count(&msg->data->refcount))) {
                 return -E_REND_IPC;
         }
-        msq_enqueue(&self->send_msg_queue,
-                    &msg->ms_queue_node,
-                    free_message_ref,
-                    refcount_is_zero);
+        msq_enqueue(
+                &self->send_msg_queue, &msg->ms_queue_node, free_message_ref);
         return REND_SUCCESS;
 }
 

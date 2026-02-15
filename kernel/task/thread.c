@@ -124,7 +124,7 @@ void del_init_parameter_structure(Thread_Init_Para* pm)
 Thread_Base* create_thread(void* __func, int nr_parameter, ...)
 {
         Thread_Base* thread = new_thread_structure(percpu(kallocator));
-        ref_get_claim(&thread->ms_queue_node.refcount);
+        ref_init(&thread->ms_queue_node.refcount);
         thread->tid = get_new_tid();
         va_list arg_list;
         va_start(arg_list, nr_parameter);

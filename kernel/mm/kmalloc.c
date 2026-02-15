@@ -383,14 +383,15 @@ static error_t _k_free(void* p)
                 struct mem_allocator* k_allocator_p =
                         (struct mem_allocator*)per_cpu(kallocator,
                                                        header->allocator_id);
-                ref_init_zero(&header->msq_node.refcount);
+                ref_init(&header->msq_node.refcount);
                 if (header->msq_node.queue_ptr)
                         pr_info("unexpect queue %x\n",
                                 header->msq_node.queue_ptr);
                 msq_enqueue(&k_allocator_p->buffer_msq,
                             &header->msq_node,
-                            free_buffer_object,
-                            true /* refcount_is_zero */);
+                            free_buffer_object);
+                ref_put(&header->msq_node.refcount, free_buffer_object);
+                header = NULL;
                 atomic64_inc(&k_allocator_p->buffer_size);
         }
         return REND_SUCCESS;

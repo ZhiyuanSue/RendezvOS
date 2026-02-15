@@ -61,7 +61,7 @@ static void* ipc_sender_thread(void* arg)
         ref_put(&msgdata->refcount, free_msgdata_ref_default);
         msgdata = NULL;
 
-        if (enqueue_msg_for_send(msg, false) != REND_SUCCESS) {
+        if (enqueue_msg_for_send(msg) != REND_SUCCESS) {
                 pr_error(
                         "[single_ipc_test] sender: enqueue_msg_for_send failed\n");
                 ref_put(&msg->ms_queue_node.refcount, free_message_ref);
@@ -244,7 +244,7 @@ static void* ipc_multi_round_sender_thread(void* arg)
                  */
                 ref_put(&msgdata->refcount, free_msgdata_ref_default);
 
-                if (enqueue_msg_for_send(msg, false) != REND_SUCCESS) {
+                if (enqueue_msg_for_send(msg) != REND_SUCCESS) {
                         pr_error(
                                 "[single_ipc_multi_round_test] sender: enqueue_msg_for_send failed at round %llu\n",
                                 (unsigned long long)i);
@@ -262,7 +262,7 @@ static void* ipc_multi_round_sender_thread(void* arg)
 
                 multi_round_send_count++;
 
-                if ((i + 1) % (IPC_MULTI_ROUND_COUNT/5) == 0) {
+                if ((i + 1) % (IPC_MULTI_ROUND_COUNT / 5) == 0) {
                         pr_info("[single_ipc_multi_round_test] sender: sent %u/%u messages\n",
                                 (unsigned long long)(i + 1),
                                 IPC_MULTI_ROUND_COUNT);
@@ -310,7 +310,7 @@ static void* ipc_multi_round_receiver_thread(void* arg)
 
                 ref_put(&msg->ms_queue_node.refcount, free_message_ref);
 
-                if ((i + 1) % (IPC_MULTI_ROUND_COUNT/5) == 0) {
+                if ((i + 1) % (IPC_MULTI_ROUND_COUNT / 5) == 0) {
                         pr_info("[single_ipc_multi_round_test] receiver: received %u/%u messages\n",
                                 (unsigned long long)(i + 1),
                                 IPC_MULTI_ROUND_COUNT);

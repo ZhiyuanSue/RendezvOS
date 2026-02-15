@@ -76,8 +76,7 @@ static inline void msq_init(ms_queue_t* q, ms_queue_node_t* new_node,
  * revival)
  */
 static inline void msq_enqueue(ms_queue_t* q, ms_queue_node_t* new_node,
-                               void (*free_func)(ref_count_t*),
-                               bool refcount_is_zero)
+                               void (*free_func)(ref_count_t*))
 {
         if (!q || new_node->queue_ptr) {
                 return;
@@ -97,13 +96,7 @@ static inline void msq_enqueue(ms_queue_t* q, ms_queue_node_t* new_node,
                             (volatile u64*)&q->tail, *(u64*)&tail, *(u64*)&tail)
                     == *(u64*)&tail) {
                         if (tp_get_ptr(next) == NULL) {
-                                bool acquired =
-                                        refcount_is_zero ?
-                                                ref_get_claim(
-                                                        &new_node->refcount) :
-                                                ref_get_not_zero(
-                                                        &new_node->refcount);
-                                if (!acquired) {
+                                if (!ref_get_not_zero(&new_node->refcount)) {
                                         ref_put(&tail_node->refcount,
                                                 free_func);
                                         continue;
@@ -269,10 +262,11 @@ static inline bool msq_queue_check_tp(tagged_ptr_t need_check_tp,
  * @return REND_SUCCESS on success, -E_REND_AGAIN on check fail or ref acquire
  * fail
  */
-static inline error_t
-msq_enqueue_check_tail(ms_queue_t* q, ms_queue_node_t* new_node,
-                       u64 append_info, tagged_ptr_t expect_tp,
-                       void (*free_func)(ref_count_t*), bool refcount_is_zero)
+static inline error_t msq_enqueue_check_tail(ms_queue_t* q,
+                                             ms_queue_node_t* new_node,
+                                             u64 append_info,
+                                             tagged_ptr_t expect_tp,
+                                             void (*free_func)(ref_count_t*))
 {
         if (!q || !new_node) {
                 return -E_IN_PARAM;
@@ -282,7 +276,7 @@ msq_enqueue_check_tail(ms_queue_t* q, ms_queue_node_t* new_node,
         }
         tagged_ptr_t tail, next, tmp;
         if (q->append_info_bits == 0) {
-                msq_enqueue(q, new_node, free_func, refcount_is_zero);
+                msq_enqueue(q, new_node, free_func);
                 return REND_SUCCESS;
         }
         u16 tag_step = 1 << q->append_info_bits;
@@ -309,13 +303,7 @@ msq_enqueue_check_tail(ms_queue_t* q, ms_queue_node_t* new_node,
                                 return -E_REND_AGAIN;
                         }
                         if (tp_get_ptr(next) == NULL) {
-                                bool acquired =
-                                        refcount_is_zero ?
-                                                ref_get_claim(
-                                                        &new_node->refcount) :
-                                                ref_get_not_zero(
-                                                        &new_node->refcount);
-                                if (!acquired) {
+                                if (!ref_get_not_zero(&new_node->refcount)) {
                                         ref_put(&tail_node->refcount,
                                                 free_func);
                                         return -E_REND_AGAIN;

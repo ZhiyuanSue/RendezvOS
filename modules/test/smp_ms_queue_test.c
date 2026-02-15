@@ -29,7 +29,7 @@ void smp_ms_queue_init(void)
         dummy.data = -1;
         msq_init(&ms_queue, &dummy.ms_node, 0);
         for (int i = 0; i < ms_data_len; i++) {
-                ref_init_zero(&ms_data[i].ms_node.refcount);
+                ref_init(&ms_data[i].ms_node.refcount);
                 ms_data[i].ms_node.next = tp_new_none();
                 ms_data[i].data = i;
         }
@@ -37,10 +37,8 @@ void smp_ms_queue_init(void)
 void smp_ms_queue_put(int offset)
 {
         for (int i = 0; i < percpu_ms_queue_test_number; i++) {
-                msq_enqueue(&ms_queue,
-                            &ms_data[offset + i].ms_node,
-                            NULL,
-                            true /* refcount_is_zero */);
+                msq_enqueue(&ms_queue, &ms_data[offset + i].ms_node, NULL);
+                ref_put(&ms_data[offset + i].ms_node.refcount, NULL);
         }
 }
 void smp_ms_queue_get(int offset)
@@ -115,12 +113,13 @@ void smp_ms_queue_dyn_alloc_put(int offset)
                         malloc->m_alloc(malloc, sizeof(struct ms_test_data));
                 if (tmp_ms_data) {
                         memset(tmp_ms_data, 0, sizeof(struct ms_test_data));
-                        ref_init_zero(&tmp_ms_data->ms_node.refcount);
+                        ref_init(&tmp_ms_data->ms_node.refcount);
                         tmp_ms_data->data = i;
                         msq_enqueue(&ms_queue,
                                     &tmp_ms_data->ms_node,
-                                    dyn_alloc_free_node,
-                                    true /* refcount_is_zero */);
+                                    dyn_alloc_free_node);
+                        ref_put(&tmp_ms_data->ms_node.refcount,
+                                dyn_alloc_free_node);
                 } else {
                         pr_error("malloc fail\n");
                 }
@@ -205,7 +204,7 @@ void smp_ms_queue_check_init(void)
                  &ms_check_dummy.ms_node,
                  IPC_ENDPOINT_APPEND_BITS);
         for (int i = 0; i < ms_check_test_data_len; i++) {
-                ref_init_zero(&ms_check_test_data[i].ms_node.refcount);
+                ref_init(&ms_check_test_data[i].ms_node.refcount);
                 ms_check_test_data[i].ms_node.next = tp_new_none();
                 ms_check_test_data[i].data = i;
         }
@@ -232,8 +231,7 @@ void smp_ms_queue_check_enqueue_empty_to_send(int offset)
                                 &ms_check_test_data[offset + i].ms_node,
                                 IPC_ENDPOINT_STATE_SEND,
                                 expect_tail,
-                                NULL,
-                                true /* refcount_is_zero */);
+                                NULL);
                         if (ret == REND_SUCCESS) {
                                 atomic64_inc(&ms_check_enqueue_count);
                                 break;
@@ -244,13 +242,13 @@ void smp_ms_queue_check_enqueue_empty_to_send(int offset)
                                 &ms_check_test_data[offset + i].ms_node,
                                 IPC_ENDPOINT_STATE_SEND,
                                 expect_tail,
-                                NULL,
-                                true /* refcount_is_zero */);
+                                NULL);
                         if (ret == REND_SUCCESS) {
                                 atomic64_inc(&ms_check_enqueue_count);
                                 break;
                         }
                 }
+                ref_put(&ms_check_test_data[offset + i].ms_node.refcount, NULL);
         }
 }
 
@@ -273,8 +271,7 @@ void smp_ms_queue_check_enqueue_empty_to_recv(int offset)
                                 &ms_check_test_data[offset + i].ms_node,
                                 IPC_ENDPOINT_STATE_RECV,
                                 expect_tail,
-                                NULL,
-                                true /* refcount_is_zero */);
+                                NULL);
                         if (ret == REND_SUCCESS) {
                                 atomic64_inc(&ms_check_enqueue_count);
                                 break;
@@ -285,13 +282,13 @@ void smp_ms_queue_check_enqueue_empty_to_recv(int offset)
                                 &ms_check_test_data[offset + i].ms_node,
                                 IPC_ENDPOINT_STATE_RECV,
                                 expect_tail,
-                                NULL,
-                                true /* refcount_is_zero */);
+                                NULL);
                         if (ret == REND_SUCCESS) {
                                 atomic64_inc(&ms_check_enqueue_count);
                                 break;
                         }
                 }
+                ref_put(&ms_check_test_data[offset + i].ms_node.refcount, NULL);
         }
 }
 

@@ -101,7 +101,7 @@ static void smp_ipc_sender_loop(u32 cpu_id, int count)
                  */
                 ref_put(&msgdata->refcount, free_payload_data);
 
-                if (enqueue_msg_for_send(msg, false) != REND_SUCCESS) {
+                if (enqueue_msg_for_send(msg) != REND_SUCCESS) {
                         ref_put(&msg->ms_queue_node.refcount, free_message_ref);
                         pr_info("cpu %u sender enqueue_msg failed at i=%d\n",
                                 (unsigned)cpu_id,
