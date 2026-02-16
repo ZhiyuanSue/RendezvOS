@@ -5,7 +5,11 @@
 		"CROSS_COMPLIER":"",
 		"DBG":false,
 		"CFLAGS":[
-
+			"-mno-sse",
+			"-mno-sse2",
+			"-mno-mmx",
+			"-mno-3dnow",
+			"-msoft-float"
 		],
 		"features":[
 			"_X86_64_",

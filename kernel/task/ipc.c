@@ -104,12 +104,16 @@ error_t ipc_port_enqueue_wait(Message_Port_t* port, u16 my_ipc_state,
         /* Thread has refcount=1 from create_thread; but after msq enqueue check
          * tail,we should not put ref of this thread */
 
+        atomic64_store((volatile u64*)&my_thread->port_ptr, (u64)port);
         barrier();
         error_t ret = msq_enqueue_check_tail(&port->thread_queue,
                                              &my_thread->ms_queue_node,
                                              my_ipc_state,
                                              tp_new(NULL, expected_ipc_state),
                                              free_thread_ref);
+        if (ret != REND_SUCCESS) {
+                atomic64_store((volatile u64*)&my_thread->port_ptr, (u64)NULL);
+        }
         return ret;
 }
 error_t ipc_transfer_message(Thread_Base* sender, Thread_Base* receiver)
@@ -444,10 +448,7 @@ error_t cancel_ipc(Thread_Base* target_thread)
         if (!target_thread) {
                 return -E_IN_PARAM;
         }
-        Message_Port_t* port =
-                container_of(target_thread->ms_queue_node.queue_ptr,
-                             Message_Port_t,
-                             thread_queue);
+        Message_Port_t* port = (Message_Port_t*)(target_thread->port_ptr);
         tagged_ptr_t dequeue_head_ptr = tp_new_none();
         if (thread_set_status_with_expect(target_thread,
                                           thread_status_block_on_send,

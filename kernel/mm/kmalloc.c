@@ -384,9 +384,6 @@ static error_t _k_free(void* p)
                         (struct mem_allocator*)per_cpu(kallocator,
                                                        header->allocator_id);
                 ref_init(&header->msq_node.refcount);
-                if (header->msq_node.queue_ptr)
-                        pr_info("unexpect queue %x\n",
-                                header->msq_node.queue_ptr);
                 msq_enqueue(&k_allocator_p->buffer_msq,
                             &header->msq_node,
                             free_buffer_object);
