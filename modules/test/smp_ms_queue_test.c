@@ -186,7 +186,11 @@ bool smp_ms_queue_dyn_alloc_check(void)
 #define IPC_ENDPOINT_STATE_SEND  1
 #define IPC_ENDPOINT_STATE_RECV  2
 
-#define ms_check_test_data_len 200000
+// #define ms_check_use_per_cpu
+
+#define ms_check_test_data_len   200000
+#define ms_check_test_cpu_number 4
+struct ms_test_data ms_check_test_data_cpu[ms_check_test_cpu_number];
 struct ms_test_data ms_check_test_data[ms_check_test_data_len];
 struct ms_test_data ms_check_dummy;
 ms_queue_t ms_check_queue;
@@ -203,6 +207,11 @@ void smp_ms_queue_check_init(void)
         msq_init(&ms_check_queue,
                  &ms_check_dummy.ms_node,
                  IPC_ENDPOINT_APPEND_BITS);
+        for (int i = 0; i < ms_check_test_cpu_number; i++) {
+                ref_init(&ms_check_test_data_cpu[i].ms_node.refcount);
+                ms_check_test_data_cpu[i].ms_node.next = tp_new_none();
+                ms_check_test_data_cpu[i].data = i;
+        }
         for (int i = 0; i < ms_check_test_data_len; i++) {
                 ref_init(&ms_check_test_data[i].ms_node.refcount);
                 ms_check_test_data[i].ms_node.next = tp_new_none();
@@ -213,7 +222,7 @@ void smp_ms_queue_check_init(void)
         atomic64_init(&ms_check_dequeue_count, 0);
 }
 
-void smp_ms_queue_check_enqueue(int offset, bool send_recv)
+void smp_ms_queue_check_with_status(int offset, bool send_recv)
 {
         tagged_ptr_t expect;
         error_t ret;
@@ -256,18 +265,35 @@ void smp_ms_queue_check_enqueue(int offset, bool send_recv)
                                 expected_second_op = second_op;
                         }
                         expect = tp_new(NULL, expected_second_op);
+#ifdef ms_check_use_per_cpu
+                        ret = msq_enqueue_check_tail(
+                                &ms_check_queue,
+                                &ms_check_test_data_cpu[offset].ms_node,
+                                second_op,
+                                expect,
+                                NULL);
+#else
                         ret = msq_enqueue_check_tail(
                                 &ms_check_queue,
                                 &ms_check_test_data[offset + i].ms_node,
                                 second_op,
                                 expect,
                                 NULL);
+#endif
                         if (ret == REND_SUCCESS) {
                                 atomic64_inc(&ms_check_enqueue_count);
+#ifdef ms_check_use_per_cpu
+                                ref_put(&ms_check_test_data_cpu[offset]
+                                                 .ms_node.refcount,
+                                        NULL);
+#else
+                                ref_put(&ms_check_test_data[offset + i]
+                                                 .ms_node.refcount,
+                                        NULL);
+#endif
                                 break;
                         }
                 }
-                ref_put(&ms_check_test_data[offset + i].ms_node.refcount, NULL);
         }
 }
 
@@ -282,12 +308,16 @@ int smp_ms_queue_check_test(void)
         }
         u32 cpu_num = percpu(cpu_number);
 
+#ifdef ms_check_use_per_cpu
+        int offset = cpu_num;
+#else
         int offset = cpu_num * (ms_check_test_data_len / 4);
+#endif
 
         if (cpu_num % 2 == 0) {
-                smp_ms_queue_check_enqueue(offset, 0);
+                smp_ms_queue_check_with_status(offset, 0);
         } else {
-                smp_ms_queue_check_enqueue(offset, 1);
+                smp_ms_queue_check_with_status(offset, 1);
         }
 
         return REND_SUCCESS;
