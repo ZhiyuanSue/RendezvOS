@@ -258,9 +258,14 @@ error_t send_msg(Message_Port_t* port)
                 return -E_IN_PARAM;
         }
         Thread_Base* sender = get_cpu_current_thread();
+        Thread_Base* receiver = NULL;
         while (1) {
-                Thread_Base* receiver =
-                        ipc_port_try_match(port, IPC_ENDPOINT_STATE_SEND);
+                if (!receiver
+                    || thread_get_status(receiver)
+                               != thread_status_block_on_receive) {
+                        receiver = ipc_port_try_match(port,
+                                                      IPC_ENDPOINT_STATE_SEND);
+                }
                 if (receiver) {
                         error_t try_transfer_result =
                                 ipc_transfer_message(sender, receiver);
@@ -326,12 +331,14 @@ error_t recv_msg(Message_Port_t* port)
                 return -E_IN_PARAM;
         }
         Thread_Base* receiver = get_cpu_current_thread();
-        int retry_cnt = 0;
+        Thread_Base* sender = NULL;
         while (1) {
-                if (retry_cnt == 10) {
+                if (!sender
+                    || thread_get_status(sender)
+                               != thread_status_block_on_send) {
+                        sender = ipc_port_try_match(port,
+                                                    IPC_ENDPOINT_STATE_RECV);
                 }
-                Thread_Base* sender =
-                        ipc_port_try_match(port, IPC_ENDPOINT_STATE_RECV);
                 if (sender) {
                         error_t try_transfer_result =
                                 ipc_transfer_message(sender, receiver);
