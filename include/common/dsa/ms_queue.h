@@ -195,11 +195,6 @@ static inline tagged_ptr_t msq_dequeue(ms_queue_t* q,
                                          * ref_get(head_node). */
                                         ref_put(&head_node->refcount,
                                                 free_func);
-                                        /* Release queue's ref (head no longer
-                                         * holds old dummy). Only here have
-                                         * chance to free the dummy node*/
-                                        ref_put(&head_node->refcount,
-                                                free_func);
                                         res = next;
                                         break;
                                 }
@@ -421,10 +416,6 @@ msq_dequeue_check_head(ms_queue_t* q, u64 check_field_mask,
                                     == *(u64*)&head) {
                                         /* Release our ref from
                                          * ref_get(head_node). */
-                                        ref_put(&head_node->refcount,
-                                                free_func);
-                                        /* Release queue's ref (head no longer
-                                         * holds old dummy). */
                                         ref_put(&head_node->refcount,
                                                 free_func);
                                         if (tp_get_ptr(next)

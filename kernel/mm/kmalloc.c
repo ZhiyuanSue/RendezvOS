@@ -456,8 +456,8 @@ void* kalloc(struct allocator* allocator_p, size_t Bytes)
                 page_chunk_rb_tree_insert(pcn, &k_allocator_p->page_chunk_root);
                 unlock_cas(&k_allocator_p->lock);
         } else {
-                clean_buffer_msq(k_allocator_p);
                 res_ptr = _k_alloc(k_allocator_p, Bytes);
+                clean_buffer_msq(k_allocator_p);
         }
         return res_ptr;
 }
