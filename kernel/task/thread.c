@@ -92,9 +92,8 @@ void free_thread_ref(ref_count_t* ref_count_ptr)
 {
         if (!ref_count_ptr)
                 return;
-        ms_queue_node_t* node =
-                container_of(ref_count_ptr, ms_queue_node_t, refcount);
-        Thread_Base* thread = container_of(node, Thread_Base, ms_queue_node);
+        Thread_Base* thread =
+                container_of(ref_count_ptr, Thread_Base, refcount);
         del_thread_structure(thread);
 }
 
@@ -124,7 +123,7 @@ void del_init_parameter_structure(Thread_Init_Para* pm)
 Thread_Base* create_thread(void* __func, int nr_parameter, ...)
 {
         Thread_Base* thread = new_thread_structure(percpu(kallocator));
-        ref_init(&thread->ms_queue_node.refcount);
+        ref_init(&thread->refcount);
         thread->tid = get_new_tid();
         va_list arg_list;
         va_start(arg_list, nr_parameter);
@@ -188,7 +187,7 @@ void delete_thread(Thread_Base* thread)
         }
         del_thread_from_task(thread->belong_tcb, thread);
         del_thread_from_manager(thread);
-        ref_put(&thread->ms_queue_node.refcount, free_thread_ref);
+        ref_put(&thread->refcount, free_thread_ref);
         return;
 }
 error_t thread_join(Tcb_Base* task, Thread_Base* thread)

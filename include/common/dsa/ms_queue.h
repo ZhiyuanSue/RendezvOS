@@ -44,7 +44,7 @@ typedef struct Michael_Scott_Queue {
         tagged_ptr_t head;
         tagged_ptr_t tail;
         size_t append_info_bits;
-}ms_queue_t;
+} ms_queue_t;
 /**
  * @brief init the msq
  * @param q the queue structure

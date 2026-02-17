@@ -81,7 +81,7 @@ extern u64 thread_kstack_page_num;
         u64 kstack_num;                                             \
         Arch_Task_Context ctx;                                      \
         Thread_Init_Para* init_parameter;                           \
-        ms_queue_node_t ms_queue_node;                              \
+        ref_count_t refcount;                                       \
         ms_queue_t recv_msg_queue;                                  \
         ms_queue_t send_msg_queue;                                  \
         volatile Message_t* send_pending_msg; /* expect Message_t*/ \

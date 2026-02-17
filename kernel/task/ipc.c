@@ -2,28 +2,53 @@
 #include <common/string.h>
 #include <modules/log/log.h>
 
-struct Msg_Port* create_message_port()
+Ipc_Request_t* create_ipc_request(Thread_Base* thread)
 {
         struct allocator* cpu_kallocator = percpu(kallocator);
-        struct Msg_Port* mp = cpu_kallocator->m_alloc(cpu_kallocator,
-                                                      sizeof(struct Msg_Port));
+        Ipc_Request_t* req =
+                cpu_kallocator->m_alloc(cpu_kallocator, sizeof(Ipc_Request_t));
+        if (req) {
+                ref_init(&req->ms_queue_node.refcount);
+                req->thread = thread;
+        }
+        return req;
+}
+void delete_ipc_request(Ipc_Request_t* req)
+{
+        struct allocator* cpu_kallocator = percpu(kallocator);
+
+        ref_put(&req->thread->refcount, free_thread_ref);
+        cpu_kallocator->m_free(cpu_kallocator, req);
+}
+void free_ipc_request(ref_count_t* refcount)
+{
+        // struct allocator* cpu_kallocator = percpu(kallocator);
+
+        ms_queue_node_t* node =
+                container_of(refcount, ms_queue_node_t, refcount);
+        Ipc_Request_t* req = container_of(node, Ipc_Request_t, ms_queue_node);
+        delete_ipc_request(req);
+}
+
+Message_Port_t* create_message_port()
+{
+        struct allocator* cpu_kallocator = percpu(kallocator);
+        Message_Port_t* mp =
+                cpu_kallocator->m_alloc(cpu_kallocator, sizeof(Message_Port_t));
 
         if (mp) {
-                mp->thread_queue_dummy_node_ptr =
-                        (Thread_Base*)(cpu_kallocator->m_alloc(
-                                cpu_kallocator, sizeof(Thread_Base)));
+                Ipc_Request_t* dummy_requeust_node =
+                        (Ipc_Request_t*)(cpu_kallocator->m_alloc(
+                                cpu_kallocator, sizeof(Ipc_Request_t)));
                 /* Dummy must be zeroed so free_thread_ref (via
                  * del_thread_structure) does not dereference garbage
                  * init_parameter when the dummy is dequeued and freed by
                  * msq_dequeue_check_head. */
-                if (mp->thread_queue_dummy_node_ptr) {
-                        memset(mp->thread_queue_dummy_node_ptr,
-                               0,
-                               sizeof(Thread_Base));
-                        msq_init(
-                                &mp->thread_queue,
-                                &mp->thread_queue_dummy_node_ptr->ms_queue_node,
-                                IPC_ENDPOINT_APPEND_BITS);
+                if (dummy_requeust_node) {
+                        memset(dummy_requeust_node, 0, sizeof(Ipc_Request_t));
+                        msq_init(&mp->thread_queue,
+                                 &dummy_requeust_node->ms_queue_node,
+                                 IPC_ENDPOINT_APPEND_BITS);
                 }
         } else {
                 return NULL;
@@ -32,8 +57,7 @@ struct Msg_Port* create_message_port()
 }
 void delete_message_port(Message_Port_t* port)
 {
-        percpu(kallocator)
-                ->m_free(percpu(kallocator), port->thread_queue_dummy_node_ptr);
+        /*TODO: clean the queue*/
         percpu(kallocator)->m_free(percpu(kallocator), port);
 }
 /**
@@ -45,7 +69,7 @@ void delete_message_port(Message_Port_t* port)
  * get the thread, you need to dec the ref count of the opposite thread
  * structure
  */
-Thread_Base* ipc_port_try_match(Message_Port_t* port, u16 my_ipc_state)
+Ipc_Request_t* ipc_port_try_match(Message_Port_t* port, u16 my_ipc_state)
 {
         u16 target_ipc_state = (my_ipc_state == IPC_ENDPOINT_STATE_SEND) ?
                                        IPC_ENDPOINT_STATE_RECV :
@@ -61,22 +85,31 @@ Thread_Base* ipc_port_try_match(Message_Port_t* port, u16 my_ipc_state)
                 }
                 ms_queue_node_t* dequeued_node =
                         (ms_queue_node_t*)tp_get_ptr(dequeued_ptr);
-                Thread_Base* opposite_thread =
-                        container_of(dequeued_node, Thread_Base, ms_queue_node);
-                barrier();
+                Ipc_Request_t* opposite_request = container_of(
+                        dequeued_node, Ipc_Request_t, ms_queue_node);
+                Thread_Base* opposite_thread = opposite_request->thread;
                 /*if we find the opposite_thread is dead ,dec the ref count(may
                  * be free the structure)*/
                 if (thread_get_status(opposite_thread) == thread_status_exit) {
-                        ref_put(&dequeued_node->refcount, free_thread_ref);
+                        ref_put(&dequeued_node->refcount, free_ipc_request);
                         continue;
                 }
                 if (thread_set_status_with_expect(opposite_thread,
                                                   thread_status_cancel_ipc,
                                                   thread_status_ready)) {
-                        ref_put(&dequeued_node->refcount, free_thread_ref);
+                        ref_put(&dequeued_node->refcount, free_ipc_request);
                         continue;
                 }
-                return opposite_thread;
+                if (atomic64_cas((volatile u64*)&opposite_thread->port_ptr,
+                                 (u64)port,
+                                 (u64)NULL)
+                    != (u64)port) {
+                        /* the thread hold by the request have had a port and
+                         * not this port, this request is useless*/
+                        ref_put(&dequeued_node->refcount, free_ipc_request);
+                        continue;
+                }
+                return opposite_request;
         }
 }
 /**
@@ -104,16 +137,33 @@ error_t ipc_port_enqueue_wait(Message_Port_t* port, u16 my_ipc_state,
         /* Thread has refcount=1 from create_thread; but after msq enqueue check
          * tail,we should not put ref of this thread */
 
-        atomic64_store((volatile u64*)&my_thread->port_ptr, (u64)port);
-        barrier();
+        Ipc_Request_t* req = create_ipc_request(my_thread);
+        if (!req) {
+                return -E_REND_IPC;
+        }
+
+        atomic64_store((volatile u64*)&req->queue_ptr,
+                       (u64)(&port->thread_queue));
         error_t ret = msq_enqueue_check_tail(&port->thread_queue,
-                                             &my_thread->ms_queue_node,
+                                             &req->ms_queue_node,
                                              my_ipc_state,
                                              tp_new(NULL, expected_ipc_state),
                                              free_thread_ref);
         if (ret != REND_SUCCESS) {
                 atomic64_store((volatile u64*)&my_thread->port_ptr, (u64)NULL);
         }
+        /*
+           we just try to cas change the thread's port, but it might fail。
+           but it's not a problem,because if it fail,
+           when opposite thread using ipc_port_try_match to dequeue,
+           such a request will be abandon,
+           some special case will happen, for example, the thread first put
+           request to port A enqueue,and then try to enqueue port B, the this
+           cas to B fail, then port A dequeue, then dequeue from B cas success.
+        */
+        atomic64_cas((volatile u64*)&my_thread->port_ptr, (u64)NULL, (u64)port);
+        /*put the create refcount, now only queue hold one request*/
+        ref_put(&req->ms_queue_node.refcount, free_ipc_request);
         return ret;
 }
 error_t ipc_transfer_message(Thread_Base* sender, Thread_Base* receiver)
@@ -262,25 +312,25 @@ error_t send_msg(Message_Port_t* port)
                 return -E_IN_PARAM;
         }
         Thread_Base* sender = get_cpu_current_thread();
-        Thread_Base* receiver = NULL;
+        Ipc_Request_t* receiver_request = NULL;
         while (1) {
-                if (!receiver
-                    || thread_get_status(receiver)
+                if (!receiver_request
+                    || thread_get_status(receiver_request->thread)
                                != thread_status_block_on_receive) {
-                        receiver = ipc_port_try_match(port,
-                                                      IPC_ENDPOINT_STATE_SEND);
+                        receiver_request = ipc_port_try_match(
+                                port, IPC_ENDPOINT_STATE_SEND);
                 }
-                if (receiver) {
-                        error_t try_transfer_result =
-                                ipc_transfer_message(sender, receiver);
-                        ref_put(&receiver->ms_queue_node.refcount,
-                                free_thread_ref);
+                if (receiver_request) {
+                        error_t try_transfer_result = ipc_transfer_message(
+                                sender, receiver_request->thread);
+                        ref_put(&receiver_request->ms_queue_node.refcount,
+                                free_ipc_request);
                         switch (try_transfer_result) {
                         case REND_SUCCESS: {
                                 /*successfully transfer the message*/
                                 /*need to change the receiver's status*/
                                 thread_set_status_with_expect(
-                                        receiver,
+                                        receiver_request->thread,
                                         thread_status_block_on_receive,
                                         thread_status_ready);
                                 return REND_SUCCESS;
@@ -335,24 +385,24 @@ error_t recv_msg(Message_Port_t* port)
                 return -E_IN_PARAM;
         }
         Thread_Base* receiver = get_cpu_current_thread();
-        Thread_Base* sender = NULL;
+        Ipc_Request_t* sender_request = NULL;
         while (1) {
-                if (!sender
-                    || thread_get_status(sender)
+                if (!sender_request
+                    || thread_get_status(sender_request->thread)
                                != thread_status_block_on_send) {
-                        sender = ipc_port_try_match(port,
-                                                    IPC_ENDPOINT_STATE_RECV);
+                        sender_request = ipc_port_try_match(
+                                port, IPC_ENDPOINT_STATE_RECV);
                 }
-                if (sender) {
-                        error_t try_transfer_result =
-                                ipc_transfer_message(sender, receiver);
-                        ref_put(&sender->ms_queue_node.refcount,
+                if (sender_request) {
+                        error_t try_transfer_result = ipc_transfer_message(
+                                sender_request->thread, receiver);
+                        ref_put(&sender_request->ms_queue_node.refcount,
                                 free_thread_ref);
                         switch (try_transfer_result) {
                         case REND_SUCCESS: {
                                 /*successfully receive a message*/
                                 thread_set_status_with_expect(
-                                        sender,
+                                        sender_request->thread,
                                         thread_status_block_on_send,
                                         thread_status_ready);
                                 return REND_SUCCESS;
@@ -431,54 +481,54 @@ Message_t* dequeue_recv_msg(void)
         ms_queue_node_t* msg_node = (ms_queue_node_t*)tp_get_ptr(dp);
         return container_of(msg_node, Message_t, ms_queue_node);
 }
-error_t cancel_ipc(Thread_Base* target_thread)
-{
-        /*
-        first we need to check the thread's status, only blocked on send/recv
-        can we cancel the ipc. second, if the thread is the head of the waiting
-        queue, we can remove it from the queue even there's no opposite thread
-        try to remove it.
-        */
-        /*
-        Remember:
-        You need to check the thread's status and decide how to schedule after
-        this function, only it's ready means the target thread's ipc have
-        canceled
-        */
-        if (!target_thread) {
-                return -E_IN_PARAM;
-        }
-        Message_Port_t* port = (Message_Port_t*)(target_thread->port_ptr);
-        tagged_ptr_t dequeue_head_ptr = tp_new_none();
-        if (thread_set_status_with_expect(target_thread,
-                                          thread_status_block_on_send,
-                                          thread_status_cancel_ipc)) {
-                dequeue_head_ptr = msq_dequeue_check_head(
-                        &port->thread_queue,
-                        MSQ_CHECK_FIELD_PTR,
-                        tp_new((void*)(&target_thread->ms_queue_node),
-                               IPC_ENDPOINT_STATE_SEND),
-                        NULL);
+// error_t cancel_ipc(Thread_Base* target_thread)
+// {
+//         /*
+//         first we need to check the thread's status, only blocked on send/recv
+//         can we cancel the ipc. second, if the thread is the head of the
+//         waiting queue, we can remove it from the queue even there's no
+//         opposite thread try to remove it.
+//         */
+//         /*
+//         Remember:
+//         You need to check the thread's status and decide how to schedule
+//         after this function, only it's ready means the target thread's ipc
+//         have canceled
+//         */
+//         if (!target_thread) {
+//                 return -E_IN_PARAM;
+//         }
+//         Message_Port_t* port = (Message_Port_t*)(target_thread->port_ptr);
+//         tagged_ptr_t dequeue_head_ptr = tp_new_none();
+//         if (thread_set_status_with_expect(target_thread,
+//                                           thread_status_block_on_send,
+//                                           thread_status_cancel_ipc)) {
+//                 dequeue_head_ptr = msq_dequeue_check_head(
+//                         &port->thread_queue,
+//                         MSQ_CHECK_FIELD_PTR,
+//                         tp_new((void*)(&target_thread->ms_queue_node),
+//                                IPC_ENDPOINT_STATE_SEND),
+//                         NULL);
 
-        } else if (thread_set_status_with_expect(target_thread,
-                                                 thread_status_block_on_receive,
-                                                 thread_status_cancel_ipc)) {
-                dequeue_head_ptr = msq_dequeue_check_head(
-                        &port->thread_queue,
-                        MSQ_CHECK_FIELD_PTR,
-                        tp_new((void*)(&target_thread->ms_queue_node),
-                               IPC_ENDPOINT_STATE_RECV),
-                        NULL);
-        }
-        if (!tp_is_none(dequeue_head_ptr)) {
-                ref_put(&((ms_queue_node_t*)tp_get_ptr(dequeue_head_ptr))
-                                 ->refcount,
-                        NULL);
-                if (!thread_set_status_with_expect(target_thread,
-                                                   thread_status_cancel_ipc,
-                                                   thread_status_ready)) {
-                        return -E_RENDEZVOS;
-                }
-        }
-        return REND_SUCCESS;
-}
+//         } else if (thread_set_status_with_expect(target_thread,
+//                                                  thread_status_block_on_receive,
+//                                                  thread_status_cancel_ipc)) {
+//                 dequeue_head_ptr = msq_dequeue_check_head(
+//                         &port->thread_queue,
+//                         MSQ_CHECK_FIELD_PTR,
+//                         tp_new((void*)(&target_thread->ms_queue_node),
+//                                IPC_ENDPOINT_STATE_RECV),
+//                         NULL);
+//         }
+//         if (!tp_is_none(dequeue_head_ptr)) {
+//                 ref_put(&((ms_queue_node_t*)tp_get_ptr(dequeue_head_ptr))
+//                                  ->refcount,
+//                         NULL);
+//                 if (!thread_set_status_with_expect(target_thread,
+//                                                    thread_status_cancel_ipc,
+//                                                    thread_status_ready)) {
+//                         return -E_RENDEZVOS;
+//                 }
+//         }
+//         return REND_SUCCESS;
+// }

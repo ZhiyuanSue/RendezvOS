@@ -13,20 +13,21 @@
 #define IPC_ENDPOINT_STATE_SEND  1
 #define IPC_ENDPOINT_STATE_RECV  2
 
+/*ipc request structure*/
+typedef struct {
+        ms_queue_node_t ms_queue_node;
+        Thread_Base* thread;
+        ms_queue_t* queue_ptr;
+} Ipc_Request_t;
+
+Ipc_Request_t* create_ipc_request(Thread_Base* thread);
+void delete_ipc_request(Ipc_Request_t* req);
+void free_ipc_request(ref_count_t* refcount);
+
 /*port structure*/
 typedef struct Msg_Port Message_Port_t;
 struct Msg_Port {
         ms_queue_t thread_queue;
-        /*
-        we must record the tcb_queue's dummy_node_ptr,and when we try to free
-        the port,we also free this ptr,because other node in this queue,is
-        inside the tcb base structure, and they are not always delete after they
-        dequeue, but if the dummy is not record, we must try to free the dummy
-        node, otherwise this space will lead to a memory leak.
-        but this step is not the same when we handle the message, because the
-        message always free directly.
-        */
-        Thread_Base* thread_queue_dummy_node_ptr;
 };
 
 static inline u16 ipc_get_queue_state(Message_Port_t* port)
@@ -35,7 +36,7 @@ static inline u16 ipc_get_queue_state(Message_Port_t* port)
         return tp_get_tag(tail) & ((1 << IPC_ENDPOINT_APPEND_BITS) - 1);
 }
 
-struct Msg_Port* create_message_port();
+Message_Port_t* create_message_port();
 void delete_message_port(Message_Port_t* port);
 
 /**
