@@ -384,7 +384,7 @@ static error_t _k_free(void* p)
                         (struct mem_allocator*)per_cpu(kallocator,
                                                        header->allocator_id);
                 ref_init(&header->msq_node.refcount);
-                msq_enqueue(&k_allocator_p->buffer_msq,
+                msq_enqueue(k_allocator_p->buffer_msq,
                             &header->msq_node,
                             free_buffer_object);
                 ref_put(&header->msq_node.refcount, free_buffer_object);
@@ -394,15 +394,15 @@ static error_t _k_free(void* p)
         return REND_SUCCESS;
 }
 
-static void clean_buffer_msq()
+static void clean_buffer_msq(struct mem_allocator* k_allocator_p)
 {
-        struct mem_allocator* k_allocator_p =
-                (struct mem_allocator*)percpu(kallocator);
+        if(!k_allocator_p->buffer_msq)
+                return;
         tagged_ptr_t dequeue_tagged_ptr;
         /* free_func releases old dummy (object_header), not the data node. */
         while (atomic64_load(
                        (volatile u64*)&(k_allocator_p->buffer_size.counter))
-               && (dequeue_tagged_ptr = msq_dequeue(&k_allocator_p->buffer_msq,
+               && (dequeue_tagged_ptr = msq_dequeue(k_allocator_p->buffer_msq,
                                                     free_buffer_object))) {
                 /* Release ref held by dequeue on the data node.
                  * When refcount drops to 0, free_buffer_object will
@@ -456,6 +456,7 @@ void* kalloc(struct allocator* allocator_p, size_t Bytes)
                 page_chunk_rb_tree_insert(pcn, &k_allocator_p->page_chunk_root);
                 unlock_cas(&k_allocator_p->lock);
         } else {
+                clean_buffer_msq(k_allocator_p);
                 res_ptr = _k_alloc(k_allocator_p, Bytes);
         }
         return res_ptr;
@@ -470,7 +471,7 @@ void kfree(struct allocator* allocator_p, void* p)
                 (struct mem_allocator*)allocator_p;
         error_t e = 0;
         if (((vaddr)p) & (PAGE_SIZE - 1)) {
-                clean_buffer_msq();
+                clean_buffer_msq(k_allocator_p);
                 /*free from the chunks*/
                 e = _k_free(p);
         } else {
@@ -500,6 +501,7 @@ struct mem_allocator tmp_k_alloctor = {
         .init = kinit,
         .m_alloc = kalloc,
         .m_free = kfree,
+        .buffer_msq=NULL,
 };
 struct allocator* kinit(struct nexus_node* nexus_root, int allocator_id)
 {
@@ -551,9 +553,12 @@ struct allocator* kinit(struct nexus_node* nexus_root, int allocator_id)
                         (struct allocator*)&tmp_k_alloctor, slot_size[0]);
                 struct object_header* idle_obj_ptr = container_of(
                         buffer_idle_node, struct object_header, obj);
-                msq_init(&k_allocator->buffer_msq, &idle_obj_ptr->msq_node, 0);
+                ms_queue_t* buffer_msq = kalloc(
+                        (struct allocator*)&tmp_k_alloctor, sizeof(ms_queue_t));
+                msq_init(buffer_msq, &idle_obj_ptr->msq_node, 0);
                 atomic64_init(&k_allocator->buffer_size, 0);
                 idle_obj_ptr->allocator_id = allocator_id;
+                k_allocator->buffer_msq = buffer_msq;
                 return (struct allocator*)k_allocator;
         } else {
                 pr_error("[ERROR]kalloc cannot get a space of mem allocator\n");
