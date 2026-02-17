@@ -8,6 +8,17 @@ struct ms_test_data {
         ms_queue_node_t ms_node;
         u64 data;
 };
+
+void free_ms_test_data(ref_count_t* refcount)
+{
+        if (!refcount)
+                return;
+        ms_queue_node_t* node =
+                container_of(refcount, ms_queue_node_t, refcount);
+        struct ms_test_data* test_data =
+                container_of(node, struct ms_test_data, ms_node);
+        percpu(kallocator)->m_free(percpu(kallocator), test_data);
+}
 extern u32 BSP_ID;
 #define percpu_ms_queue_test_number 100000
 #ifdef NR_CPUS
@@ -238,7 +249,8 @@ void smp_ms_queue_check_with_status(int offset, bool send_recv)
         }
         for (int i = 0; i < ms_check_test_data_len / 4; i++) {
                 if (i % (ms_check_test_data_len / 20) == 0) {
-                        pr_info("finish ms check %d/%d tests\n",
+                        pr_info("offset %d finish ms check %d/%d tests\n",
+                                offset,
                                 i,
                                 ms_check_test_data_len / 4);
                 }
@@ -250,6 +262,10 @@ void smp_ms_queue_check_with_status(int offset, bool send_recv)
                                                        expect,
                                                        NULL);
                         if (dequeue_res != tp_new_none()) {
+                                ms_queue_node_t* node =
+                                        (ms_queue_node_t*)tp_get_ptr(
+                                                dequeue_res);
+                                ref_put(&node->refcount, free_ms_test_data);
                                 atomic64_inc(&ms_check_dequeue_count);
                                 break;
                         }
@@ -272,25 +288,24 @@ void smp_ms_queue_check_with_status(int offset, bool send_recv)
                                 second_op,
                                 expect,
                                 NULL);
-#else
-                        ret = msq_enqueue_check_tail(
-                                &ms_check_queue,
-                                &ms_check_test_data[offset + i].ms_node,
-                                second_op,
-                                expect,
+                        ref_put(&ms_check_test_data_cpu[offset].ms_node.refcount,
                                 NULL);
+#else
+                        struct ms_test_data* tmp_test_node =
+                                percpu(kallocator)
+                                        ->m_alloc(percpu(kallocator),
+                                                  sizeof(struct ms_test_data));
+                        ref_init(&tmp_test_node->ms_node.refcount);
+                        ret = msq_enqueue_check_tail(&ms_check_queue,
+                                                     &tmp_test_node->ms_node,
+                                                     second_op,
+                                                     expect,
+                                                     free_ms_test_data);
+                        ref_put(&tmp_test_node->ms_node.refcount,
+                                free_ms_test_data);
 #endif
                         if (ret == REND_SUCCESS) {
                                 atomic64_inc(&ms_check_enqueue_count);
-#ifdef ms_check_use_per_cpu
-                                ref_put(&ms_check_test_data_cpu[offset]
-                                                 .ms_node.refcount,
-                                        NULL);
-#else
-                                ref_put(&ms_check_test_data[offset + i]
-                                                 .ms_node.refcount,
-                                        NULL);
-#endif
                                 break;
                         }
                 }
