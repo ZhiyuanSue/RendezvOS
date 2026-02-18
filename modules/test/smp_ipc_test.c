@@ -19,7 +19,7 @@ extern struct allocator* kallocator;
 extern u32 BSP_ID;
 extern int NR_CPU;
 
-#define SMP_IPC_MSG_COUNT 500
+#define SMP_IPC_MSG_COUNT 50000
 
 static Message_Port_t* smp_ipc_port;
 static volatile bool smp_ipc_port_ready;
@@ -43,6 +43,12 @@ static void smp_ipc_sender_loop(u32 cpu_id, int count)
 {
         pr_info("cpu %u sender start, count=%d\n", (unsigned)cpu_id, count);
         for (int i = 0; i < count; i++) {
+                if (i % (count / 10) == 0) {
+                        pr_info("cpu %d finish smp ipc send %d/%d\n",
+                                cpu_id,
+                                i,
+                                count);
+                }
                 /* unique msg_type per (cpu, index) for optional check */
                 i64 msg_type = (i64)((u64)cpu_id * 10000 + (u64)i);
 
@@ -108,9 +114,6 @@ static void smp_ipc_sender_loop(u32 cpu_id, int count)
                                 i);
                         break;
                 }
-                // pr_info("cpu %u sender calling send_msg #%d\n",
-                //         (unsigned)cpu_id,
-                //         i);
                 if (send_msg(smp_ipc_port) != REND_SUCCESS) {
                         ref_put(&msg->ms_queue_node.refcount, free_message_ref);
                         pr_info("cpu %u sender send_msg failed at i=%d\n",
@@ -118,9 +121,6 @@ static void smp_ipc_sender_loop(u32 cpu_id, int count)
                                 i);
                         break;
                 }
-                // pr_info("cpu %u sender send_msg returned SUCCESS #%d\n",
-                //         (unsigned)cpu_id,
-                //         i);
                 smp_ipc_send_ok[cpu_id]++;
         }
         pr_info("cpu %u sender done, total=%u\n",
@@ -132,18 +132,18 @@ static void smp_ipc_receiver_loop(u32 cpu_id, int count)
 {
         pr_info("cpu %u receiver start, count=%d\n", (unsigned)cpu_id, count);
         for (int i = 0; i < count; i++) {
-                // pr_info("cpu %u receiver calling recv_msg #%d\n",
-                //         (unsigned)cpu_id,
-                //         i);
+                if (i % (count / 10) == 0) {
+                        pr_info("cpu %d finish smp ipc recv %d/%d\n",
+                                cpu_id,
+                                i,
+                                count);
+                }
                 if (recv_msg(smp_ipc_port) != REND_SUCCESS) {
                         pr_info("cpu %u receiver recv_msg failed at i=%d\n",
                                 (unsigned)cpu_id,
                                 i);
                         break;
                 }
-                // pr_info("cpu %u receiver recv_msg returned SUCCESS #%d\n",
-                //         (unsigned)cpu_id,
-                //         i);
                 Message_t* msg = dequeue_recv_msg();
                 if (!msg) {
                         pr_info("cpu %u receiver dequeue_recv_msg NULL at i=%d\n",
@@ -158,10 +158,6 @@ static void smp_ipc_receiver_loop(u32 cpu_id, int count)
                         ref_put(&msg->ms_queue_node.refcount, free_message_ref);
                         break;
                 }
-                // pr_info("[smp_ipc_test] cpu %u recv #%d msg_type=%d\n",
-                //         (unsigned)cpu_id,
-                //         i,
-                //         (int)msg->data->msg_type);
                 ref_put(&msg->ms_queue_node.refcount, free_message_ref);
                 smp_ipc_recv_ok[cpu_id]++;
         }

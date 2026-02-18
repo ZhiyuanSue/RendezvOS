@@ -104,15 +104,20 @@ Ipc_Request_t* ipc_port_try_match(Message_Port_t* port, u16 my_ipc_state)
                         ref_put(&dequeued_node->refcount, free_ipc_request);
                         continue;
                 }
-                if (atomic64_cas((volatile u64*)&opposite_thread->port_ptr,
-                                 (u64)port,
-                                 (u64)NULL)
-                    != (u64)port) {
+                u64 thread_port =
+                        atomic64_cas((volatile u64*)&opposite_thread->port_ptr,
+                                     (u64)port,
+                                     (u64)NULL);
+                if (thread_port != (u64)port && thread_port != (u64)NULL) {
                         /* the thread hold by the request have had a port and
                          * not this port, this request is useless*/
+                        /*for some cases, it might be null, but it's normal*/
                         ref_put(&dequeued_node->refcount, free_ipc_request);
                         continue;
                 }
+                atomic64_cas((volatile u64*)&opposite_thread->port_ptr,
+                             (u64)thread_port,
+                             (u64)NULL);
                 return opposite_request;
         }
 }
@@ -328,19 +333,22 @@ error_t send_msg(Message_Port_t* port)
                         switch (try_transfer_result) {
                         case REND_SUCCESS: {
                                 /*successfully transfer the message*/
-                                ref_put(&receiver_request->ms_queue_node
-                                                 .refcount,
-                                        free_ipc_request);
                                 /*need to change the receiver's status*/
                                 thread_set_status_with_expect(
                                         receiver_request->thread,
                                         thread_status_block_on_receive,
                                         thread_status_ready);
+                                ref_put(&receiver_request->ms_queue_node
+                                                 .refcount,
+                                        free_ipc_request);
                                 return REND_SUCCESS;
                         }
                         case -E_REND_NO_MSG: {
                                 /*impossible, the ipc_send function find self
                                  * have no message or is exiting */
+                                ref_put(&receiver_request->ms_queue_node
+                                                 .refcount,
+                                        free_ipc_request);
                                 return -E_RENDEZVOS;
                         }
                         case -E_REND_AGAIN: {
@@ -351,6 +359,9 @@ error_t send_msg(Message_Port_t* port)
                         default: {
                                 /*no other case is set now, and seems
                                  * impossible*/
+                                ref_put(&receiver_request->ms_queue_node
+                                                 .refcount,
+                                        free_ipc_request);
                                 return -E_RENDEZVOS;
                         }
                         }
@@ -407,13 +418,13 @@ error_t recv_msg(Message_Port_t* port)
                                 sender_request->thread, receiver);
                         switch (try_transfer_result) {
                         case REND_SUCCESS: {
-                                ref_put(&sender_request->ms_queue_node.refcount,
-                                        free_ipc_request);
                                 /*successfully receive a message*/
                                 thread_set_status_with_expect(
                                         sender_request->thread,
                                         thread_status_block_on_send,
                                         thread_status_ready);
+                                ref_put(&sender_request->ms_queue_node.refcount,
+                                        free_ipc_request);
                                 return REND_SUCCESS;
                         }
                         case -E_REND_NO_MSG: {
@@ -424,11 +435,15 @@ error_t recv_msg(Message_Port_t* port)
                         case -E_REND_AGAIN: {
                                 /*impossible, only receiver is exiting can
                                  * return -E_REND_AGAIN*/
+                                ref_put(&sender_request->ms_queue_node.refcount,
+                                        free_ipc_request);
                                 return -E_RENDEZVOS;
                         }
                         default: {
                                 /*no other case is set now, and seems
                                  * impossible*/
+                                ref_put(&sender_request->ms_queue_node.refcount,
+                                        free_ipc_request);
                                 return -E_RENDEZVOS;
                         }
                         }

@@ -238,7 +238,7 @@ void smp_ms_queue_check_with_status(int offset, bool send_recv)
         tagged_ptr_t expect;
         error_t ret;
         tagged_ptr_t dequeue_res = tp_new_none();
-        int first_op, second_op, expected_second_op;
+        u64 first_op, second_op, expected_second_op;
 
         if (send_recv == 0) {
                 first_op = IPC_ENDPOINT_STATE_SEND;
@@ -265,6 +265,12 @@ void smp_ms_queue_check_with_status(int offset, bool send_recv)
                                 ms_queue_node_t* node =
                                         (ms_queue_node_t*)tp_get_ptr(
                                                 dequeue_res);
+                                struct ms_test_data* res = container_of(
+                                        node, struct ms_test_data, ms_node);
+                                if (res->data != first_op) {
+                                        pr_error(
+                                                "the dequeue node type is not expect!\n");
+                                }
                                 ref_put(&node->refcount, free_ms_test_data);
                                 atomic64_inc(&ms_check_dequeue_count);
                                 break;
@@ -295,6 +301,7 @@ void smp_ms_queue_check_with_status(int offset, bool send_recv)
                                 percpu(kallocator)
                                         ->m_alloc(percpu(kallocator),
                                                   sizeof(struct ms_test_data));
+                        tmp_test_node->data = second_op;
                         ref_init(&tmp_test_node->ms_node.refcount);
                         ret = msq_enqueue_check_tail(&ms_check_queue,
                                                      &tmp_test_node->ms_node,
