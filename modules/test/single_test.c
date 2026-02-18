@@ -2,17 +2,17 @@
 
 extern volatile i64 jeffies;
 static struct single_test_case single_test[MAX_SINGLE_TEST_CASE] = {
-        // {rb_tree_test, "rb_tree\0"},
-        // {arch_vmm_test, "arch_vmm\0"},
+        {rb_tree_test, "rb_tree\0"},
+        {arch_vmm_test, "arch_vmm\0"},
         // {nexus_test, "nexus\0"},
         /* if kmalloc is ok ,then nexus must be ok*/
-        // {kmalloc_test, "kmalloc\0"},
+        {kmalloc_test, "kmalloc\0"},
         /*the pmm test will use almost all of the memory frame, so it must put
          * at the end*/
         // {pmm_test, "pmm\0"},
-        // {elf_read_test, "elf_read\0"},
-        // {task_test, "task_test\0"},
-        // {test_pci_scan, "test_pci_scan\0"},
+        {elf_read_test, "elf_read\0"},
+        {task_test, "task_test\0"},
+        {test_pci_scan, "test_pci_scan\0"},
         {ipc_test, "ipc\0"},
         {ipc_multi_round_test, "ipc_multi_round\0"},
 };
