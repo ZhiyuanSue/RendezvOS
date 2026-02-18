@@ -102,7 +102,7 @@ struct mem_allocator {
         struct nexus_node* nexus_root;
         struct mem_group groups[MAX_GROUP_SLOTS];
         struct rb_root page_chunk_root;
-        ms_queue_t *buffer_msq;
+        ms_queue_t* buffer_msq;
         atomic64_t buffer_size;
         cas_lock_t lock;
 } __attribute__((aligned(sizeof(u64))));

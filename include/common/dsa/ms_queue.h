@@ -358,8 +358,8 @@ msq_dequeue_check_head(ms_queue_t* q, u64 check_field_mask,
                 ms_queue_node_t* head_node = (ms_queue_node_t*)tp_get_ptr(head);
                 if (!head_node || !ref_get_not_zero(&head_node->refcount))
                         continue;
-                tail = atomic64_load(&q->tail);
                 next = atomic64_load(&head_node->next);
+                tail = atomic64_load(&q->tail);
                 if (atomic64_cas(
                             (volatile u64*)&q->head, *(u64*)&head, *(u64*)&head)
                     == *(u64*)&head) {

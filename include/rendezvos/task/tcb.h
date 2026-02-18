@@ -159,9 +159,9 @@ static inline u64 thread_get_status(Thread_Base* thread)
 {
         return atomic64_load((volatile u64*)(&thread->status));
 }
-static inline void thread_set_status(Thread_Base* thread, u64 status)
+static inline u64 thread_set_status(Thread_Base* thread, u64 status)
 {
-        atomic64_store((volatile u64*)(&thread->status), status);
+        return atomic64_exchange((volatile u64*)(&thread->status), status);
 }
 static inline bool thread_set_status_with_expect(Thread_Base* thread,
                                                  u64 expect_status,

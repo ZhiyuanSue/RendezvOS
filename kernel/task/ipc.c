@@ -74,6 +74,9 @@ Ipc_Request_t* ipc_port_try_match(Message_Port_t* port, u16 my_ipc_state)
         u16 target_ipc_state = (my_ipc_state == IPC_ENDPOINT_STATE_SEND) ?
                                        IPC_ENDPOINT_STATE_RECV :
                                        IPC_ENDPOINT_STATE_SEND;
+        u64 target_thread_status = (my_ipc_state == IPC_ENDPOINT_STATE_SEND) ?
+                                           thread_status_block_on_receive :
+                                           thread_status_block_on_send;
         while (1) {
                 tagged_ptr_t dequeued_ptr =
                         msq_dequeue_check_head(&port->thread_queue,
@@ -90,7 +93,8 @@ Ipc_Request_t* ipc_port_try_match(Message_Port_t* port, u16 my_ipc_state)
                 Thread_Base* opposite_thread = opposite_request->thread;
                 /*if we find the opposite_thread is dead ,dec the ref count(may
                  * be free the structure)*/
-                if (thread_get_status(opposite_thread) == thread_status_exit) {
+                if (thread_get_status(opposite_thread)
+                    != target_thread_status) {
                         ref_put(&dequeued_node->refcount, free_ipc_request);
                         continue;
                 }
@@ -148,7 +152,7 @@ error_t ipc_port_enqueue_wait(Message_Port_t* port, u16 my_ipc_state,
                                              &req->ms_queue_node,
                                              my_ipc_state,
                                              tp_new(NULL, expected_ipc_state),
-                                             free_thread_ref);
+                                             free_ipc_request);
         if (ret != REND_SUCCESS) {
                 atomic64_store((volatile u64*)&my_thread->port_ptr, (u64)NULL);
         }
@@ -314,20 +318,19 @@ error_t send_msg(Message_Port_t* port)
         Thread_Base* sender = get_cpu_current_thread();
         Ipc_Request_t* receiver_request = NULL;
         while (1) {
-                if (!receiver_request
-                    || thread_get_status(receiver_request->thread)
-                               != thread_status_block_on_receive) {
+                if (!receiver_request) {
                         receiver_request = ipc_port_try_match(
                                 port, IPC_ENDPOINT_STATE_SEND);
                 }
                 if (receiver_request) {
                         error_t try_transfer_result = ipc_transfer_message(
                                 sender, receiver_request->thread);
-                        ref_put(&receiver_request->ms_queue_node.refcount,
-                                free_ipc_request);
                         switch (try_transfer_result) {
                         case REND_SUCCESS: {
                                 /*successfully transfer the message*/
+                                ref_put(&receiver_request->ms_queue_node
+                                                 .refcount,
+                                        free_ipc_request);
                                 /*need to change the receiver's status*/
                                 thread_set_status_with_expect(
                                         receiver_request->thread,
@@ -352,6 +355,8 @@ error_t send_msg(Message_Port_t* port)
                         }
                         }
                 } else {
+                        u64 old_status = thread_set_status(
+                                sender, thread_status_block_on_send);
                         error_t enqueue_result = ipc_port_enqueue_wait(
                                 port, IPC_ENDPOINT_STATE_SEND, sender);
                         switch (enqueue_result) {
@@ -359,19 +364,25 @@ error_t send_msg(Message_Port_t* port)
                                 /*successfully enqueue on the port queue, need
                                  * schedule; when we are woken up, a receiver
                                  * has matched us and transferred the message*/
-                                thread_set_status(sender,
-                                                  thread_status_block_on_send);
                                 schedule(percpu(core_tm));
                                 return REND_SUCCESS;
                         }
                         case -E_REND_AGAIN: {
                                 /*the queue have change the state, we need
                                  * retry.*/
+                                thread_set_status_with_expect(
+                                        sender,
+                                        thread_status_block_on_send,
+                                        old_status);
                                 continue;
                         }
                         default: {
                                 /*no other case is set now, and seems
                                  * impossible*/
+                                thread_set_status_with_expect(
+                                        sender,
+                                        thread_status_block_on_send,
+                                        old_status);
                                 return -E_RENDEZVOS;
                         }
                         }
@@ -387,19 +398,17 @@ error_t recv_msg(Message_Port_t* port)
         Thread_Base* receiver = get_cpu_current_thread();
         Ipc_Request_t* sender_request = NULL;
         while (1) {
-                if (!sender_request
-                    || thread_get_status(sender_request->thread)
-                               != thread_status_block_on_send) {
+                if (!sender_request) {
                         sender_request = ipc_port_try_match(
                                 port, IPC_ENDPOINT_STATE_RECV);
                 }
                 if (sender_request) {
                         error_t try_transfer_result = ipc_transfer_message(
                                 sender_request->thread, receiver);
-                        ref_put(&sender_request->ms_queue_node.refcount,
-                                free_thread_ref);
                         switch (try_transfer_result) {
                         case REND_SUCCESS: {
+                                ref_put(&sender_request->ms_queue_node.refcount,
+                                        free_ipc_request);
                                 /*successfully receive a message*/
                                 thread_set_status_with_expect(
                                         sender_request->thread,
@@ -424,6 +433,8 @@ error_t recv_msg(Message_Port_t* port)
                         }
                         }
                 } else {
+                        u64 old_status = thread_set_status(
+                                receiver, thread_status_block_on_receive);
                         error_t enqueue_result = ipc_port_enqueue_wait(
                                 port, IPC_ENDPOINT_STATE_RECV, receiver);
                         switch (enqueue_result) {
@@ -431,20 +442,25 @@ error_t recv_msg(Message_Port_t* port)
                                 /*successfully enqueue on the port queue; when
                                  * we are woken up, a sender has matched us and
                                  * transferred the message*/
-                                thread_set_status(
-                                        receiver,
-                                        thread_status_block_on_receive);
                                 schedule(percpu(core_tm));
                                 return REND_SUCCESS;
                         }
                         case -E_REND_AGAIN: {
                                 /*the queue have change the state, we need
                                  * retry.*/
+                                thread_set_status_with_expect(
+                                        receiver,
+                                        thread_status_block_on_receive,
+                                        old_status);
                                 continue;
                         }
                         default: {
                                 /*no other case is set now, and seems
                                  * impossible*/
+                                thread_set_status_with_expect(
+                                        receiver,
+                                        thread_status_block_on_receive,
+                                        old_status);
                                 return -E_RENDEZVOS;
                         }
                         }

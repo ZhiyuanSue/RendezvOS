@@ -396,7 +396,7 @@ static error_t _k_free(void* p)
 
 static void clean_buffer_msq(struct mem_allocator* k_allocator_p)
 {
-        if(!k_allocator_p->buffer_msq)
+        if (!k_allocator_p->buffer_msq)
                 return;
         tagged_ptr_t dequeue_tagged_ptr;
         /* free_func releases old dummy (object_header), not the data node. */
@@ -501,7 +501,7 @@ struct mem_allocator tmp_k_alloctor = {
         .init = kinit,
         .m_alloc = kalloc,
         .m_free = kfree,
-        .buffer_msq=NULL,
+        .buffer_msq = NULL,
 };
 struct allocator* kinit(struct nexus_node* nexus_root, int allocator_id)
 {

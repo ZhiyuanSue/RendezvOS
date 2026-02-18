@@ -180,7 +180,9 @@ i64 pmm_alloc(struct pmm *pmm, size_t page_number, size_t *alloced_page_number)
         }
 
         if (bp->total_avaliable_pages < page_number) {
-                pr_error("[ BUDDY ]this zone have no memory to alloc, left %d avaliables\n",bp->total_avaliable_pages);
+                pr_error(
+                        "[ BUDDY ]this zone have no memory to alloc, left %d avaliables\n",
+                        bp->total_avaliable_pages);
                 /*TODO:if so ,we need to swap the memory*/
                 *alloced_page_number = 0;
                 return (-E_RENDEZVOS);
