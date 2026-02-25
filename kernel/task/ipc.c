@@ -271,49 +271,55 @@ error_t ipc_transfer_message(Thread_Base* sender, Thread_Base* receiver)
         /* first try to give this message to the receiver and add the ref count
          * of this message, which means now the receiver and the
          * send_pending_msg all have this message*/
-        Message_t* recv_msg_ptr = create_message(send_msg_ptr->data);
-        atomic64_add(&receiver->recv_pending_cnt, 1);
-        /* recv_msg_ptr from create_message has refcount=1;
-         * refcount_is_zero=false */
-        msq_enqueue(&receiver->recv_msg_queue,
-                    &recv_msg_ptr->ms_queue_node,
-                    free_message_ref);
-        ref_put(&recv_msg_ptr->ms_queue_node.refcount, free_message_ref);
-        recv_msg_ptr = NULL;
-
-        /*check whether the receiver is alive*/
         if (thread_get_status(receiver) == thread_status_exit) {
-                /*
-                The upper function should handle this try again
-                return.
-                */
-                /*try to return the owner from send_msg_ptr to
-                 * sender->send_pending_msg*/
-                int retry_count = 0;
-                while (atomic64_cas((volatile u64*)(&sender->send_pending_msg),
-                                    (u64)NULL,
-                                    (u64)send_msg_ptr)
-                       != (u64)NULL) {
-                        arch_cpu_relax();
-                        retry_count++;
-                        if (retry_count == 100) {
-                                thread_set_status(sender,
-                                                  thread_status_block_on_send);
-                                schedule(percpu(core_tm));
-                                retry_count = 0;
-                        }
+                if (atomic64_cas((volatile u64*)(&sender->send_pending_msg),
+                                 (u64)NULL,
+                                 (u64)send_msg_ptr)
+                    != (u64)NULL) {
+                        ref_put(&send_msg_ptr->ms_queue_node.refcount,
+                                free_message_ref);
+                        send_msg_ptr = NULL;
+                        return -E_REND_ABANDON;
                 }
-                /*no need to ref put the send msg ptr, it just change the owner
-                 * to sender->send_pending_msg*/
-                send_msg_ptr = NULL;
                 return -E_REND_AGAIN;
         }
-        /*now the send_msg_ptr should not hold this message*/
-        ref_put(&send_msg_ptr->ms_queue_node.refcount, free_message_ref);
-        send_msg_ptr = NULL;
-        barrier();
+        Message_t* recv_msg_ptr = create_message(send_msg_ptr->data);
+        if (recv_msg_ptr) {
+                atomic64_add(&receiver->recv_pending_cnt, 1);
+                /* recv_msg_ptr from create_message has refcount=1;
+                 * refcount_is_zero=false */
+                msq_enqueue(&receiver->recv_msg_queue,
+                            &recv_msg_ptr->ms_queue_node,
+                            free_message_ref);
+                ref_put(&recv_msg_ptr->ms_queue_node.refcount,
+                        free_message_ref);
+                recv_msg_ptr = NULL;
 
-        return REND_SUCCESS;
+                if (thread_get_status(receiver) == thread_status_exit) {
+                        if (atomic64_cas(
+                                    (volatile u64*)(&sender->send_pending_msg),
+                                    (u64)NULL,
+                                    (u64)send_msg_ptr)
+                            != (u64)NULL) {
+                                ref_put(&send_msg_ptr->ms_queue_node.refcount,
+                                        free_message_ref);
+                                send_msg_ptr = NULL;
+                                return -E_REND_ABANDON;
+                        }
+                        return -E_REND_AGAIN;
+                }
+                /*now the send_msg_ptr should not hold this message*/
+                ref_put(&send_msg_ptr->ms_queue_node.refcount,
+                        free_message_ref);
+                send_msg_ptr = NULL;
+                return REND_SUCCESS;
+        } else {
+                /*here we give up the message*/
+                ref_put(&send_msg_ptr->ms_queue_node.refcount,
+                        free_message_ref);
+                send_msg_ptr = NULL;
+                return -E_REND_ABANDON;
+        }
 }
 error_t send_msg(Message_Port_t* port)
 {
@@ -343,26 +349,20 @@ error_t send_msg(Message_Port_t* port)
                                         free_ipc_request);
                                 return REND_SUCCESS;
                         }
-                        case -E_REND_NO_MSG: {
-                                /*impossible, the ipc_send function find self
-                                 * have no message or is exiting */
-                                ref_put(&receiver_request->ms_queue_node
-                                                 .refcount,
-                                        free_ipc_request);
-                                return -E_RENDEZVOS;
-                        }
                         case -E_REND_AGAIN: {
                                 /*the receiver have exit, we need try to dequeue
                                  * a receiver again.*/
                                 continue;
                         }
                         default: {
-                                /*no other case is set now, and seems
-                                 * impossible*/
+                                /*
+                                 * no msg error
+                                 * abandon error
+                                 */
                                 ref_put(&receiver_request->ms_queue_node
                                                  .refcount,
                                         free_ipc_request);
-                                return -E_RENDEZVOS;
+                                return try_transfer_result;
                         }
                         }
                 } else {
@@ -444,7 +444,7 @@ error_t recv_msg(Message_Port_t* port)
                                  * impossible*/
                                 ref_put(&sender_request->ms_queue_node.refcount,
                                         free_ipc_request);
-                                return -E_RENDEZVOS;
+                                return try_transfer_result;
                         }
                         }
                 } else {

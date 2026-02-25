@@ -9,6 +9,7 @@ enum Error_t {
         E_REND_TEST,
         E_REND_IPC,
         E_REND_AGAIN,
+        E_REND_ABANDON,
         E_REND_NO_MSG,
 };
 

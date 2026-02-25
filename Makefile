@@ -121,8 +121,7 @@ show_config:
 user: have_config
 	@python3 $(SCRIPT_CONFIG_DIR)/user.py $(ARCH) ${ROOT_DIR} $(SCRIPT_CONFIG_DIR)/user.json
 fmt:
-	@find . -name '*.c' -print0 | xargs -0 clang-format -i -style=file
-	@find . -name '*.h' -print0 | xargs -0 clang-format -i -style=file
+	@git ls-files '*.c' '*.h' | xargs -P 0 clang-format -i -style=file
 
 #if you want to use dump, please use 'make run DUMP=true'(maybe with other flags) first and then 'make dump'
 dump:

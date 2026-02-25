@@ -83,12 +83,12 @@ static inline void msq_enqueue(ms_queue_t* q, ms_queue_node_t* new_node,
 
         atomic64_store((volatile u64*)(&(new_node->next)), 0);
         while (1) {
-                tail = atomic64_load(&q->tail);
+                tail = q->tail;
                 ms_queue_node_t* tail_node = (ms_queue_node_t*)tp_get_ptr(tail);
                 if (!tail_node || !ref_get_not_zero(&tail_node->refcount))
                         continue;
 
-                next = atomic64_load((volatile u64*)(&(tail_node->next)));
+                next = tail_node->next;
 
                 if (atomic64_cas(
                             (volatile u64*)&q->tail, *(u64*)&tail, *(u64*)&tail)
@@ -143,14 +143,14 @@ static inline tagged_ptr_t msq_dequeue(ms_queue_t* q,
         tagged_ptr_t res = tp_new_none();
 
         while (1) {
-                head = atomic64_load(&q->head);
+                head = q->head;
                 ms_queue_node_t* head_node = (ms_queue_node_t*)tp_get_ptr(head);
 
                 if (!head_node || !ref_get_not_zero(&head_node->refcount))
                         continue;
 
-                tail = atomic64_load(&q->tail);
-                next = atomic64_load(&head_node->next);
+                tail = q->tail;
+                next = head_node->next;
 
                 if (atomic64_cas(
                             (volatile u64*)&q->head, *(u64*)&head, *(u64*)&head)
@@ -269,12 +269,12 @@ static inline error_t msq_enqueue_check_tail(ms_queue_t* q,
 
         atomic64_store((volatile u64*)(&(new_node->next)), 0);
         while (1) {
-                tail = atomic64_load(&q->tail);
+                tail = q->tail;
                 ms_queue_node_t* tail_node = (ms_queue_node_t*)tp_get_ptr(tail);
                 if (!tail_node || !ref_get_not_zero(&tail_node->refcount))
                         continue;
 
-                next = atomic64_load((volatile u64*)(&(tail_node->next)));
+                next = tail_node->next;
 
                 if (atomic64_cas(
                             (volatile u64*)&q->tail, *(u64*)&tail, *(u64*)&tail)
@@ -354,12 +354,12 @@ msq_dequeue_check_head(ms_queue_t* q, u64 check_field_mask,
         u16 append_info_mask = tag_step - 1;
         u16 tag_mask = ~append_info_mask;
         while (1) {
-                head = atomic64_load(&q->head);
+                head = q->head;
                 ms_queue_node_t* head_node = (ms_queue_node_t*)tp_get_ptr(head);
                 if (!head_node || !ref_get_not_zero(&head_node->refcount))
                         continue;
-                next = atomic64_load(&head_node->next);
-                tail = atomic64_load(&q->tail);
+                next = head_node->next;
+                tail = q->tail;
                 if (atomic64_cas(
                             (volatile u64*)&q->head, *(u64*)&head, *(u64*)&head)
                     == *(u64*)&head) {
