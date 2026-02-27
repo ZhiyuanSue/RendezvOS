@@ -211,7 +211,8 @@ error_t ipc_transfer_message(Thread_Base* sender, Thread_Base* receiver)
          - Problem 4:
         The msq queue is designed to the dequeued is old dummy node,
         and it's next is the real data node, which now as the new dummy
-        node. but we cannot directly put real data node to receive queue.
+        node. but we cannot directly put real data node to receive queue, for
+        it's still linked
 
         To fix problem 4, I have to copy it to a new message structure. And put
         the new message structure to receiver queue.
@@ -226,17 +227,11 @@ error_t ipc_transfer_message(Thread_Base* sender, Thread_Base* receiver)
         the ref count of this message should not change, but the owner have
         changed from sender (send_pending_msg or send_msg_queue) to send_msg_ptr
 
-        After we try to send to receiver and find this message transfer fail, we
-        need to using while and atomic64_cas try to change the send_pending_msg
-        using send_msg_ptr when it's null.(it's sender push case, the receiver
-        pull case have no such problem). The owner of this message change from
-        send_msg_ptr to sender->send_pending_msg
-
-        Remember, it's in kernel, no timer interrupt, so if this while happen,
-        means a message have take the send_pending_msg ptr, and we try to put
-        another messsage on this ptr, we have to wait, and no more receiver try
-        to get this message, this while will not break. So, we must set the
-        sender thread's status and schedule after several tries fail.
+        After we try to send to receiver and find this message transfer fail,
+        maybe it's caused by no memory or the receiver is exiting. so we need to
+        use senders' send_pending_msg ptr to store the dequeued but not
+        successfully transfered msg. but if there's more then one receiver and
+        they all find no memory, only one send_pending_msg will be a problem.
 
         No need to consider sender is exiting and transfer message fail case——if
         so, who is running this function? so it's impossible
@@ -272,16 +267,7 @@ error_t ipc_transfer_message(Thread_Base* sender, Thread_Base* receiver)
          * of this message, which means now the receiver and the
          * send_pending_msg all have this message*/
         if (thread_get_status(receiver) == thread_status_exit) {
-                if (atomic64_cas((volatile u64*)(&sender->send_pending_msg),
-                                 (u64)NULL,
-                                 (u64)send_msg_ptr)
-                    != (u64)NULL) {
-                        ref_put(&send_msg_ptr->ms_queue_node.refcount,
-                                free_message_ref);
-                        send_msg_ptr = NULL;
-                        return -E_REND_ABANDON;
-                }
-                return -E_REND_AGAIN;
+                goto ipc_transfer_message_no_receiver;
         }
         Message_t* recv_msg_ptr = create_message(send_msg_ptr->data);
         if (recv_msg_ptr) {
@@ -296,17 +282,7 @@ error_t ipc_transfer_message(Thread_Base* sender, Thread_Base* receiver)
                 recv_msg_ptr = NULL;
 
                 if (thread_get_status(receiver) == thread_status_exit) {
-                        if (atomic64_cas(
-                                    (volatile u64*)(&sender->send_pending_msg),
-                                    (u64)NULL,
-                                    (u64)send_msg_ptr)
-                            != (u64)NULL) {
-                                ref_put(&send_msg_ptr->ms_queue_node.refcount,
-                                        free_message_ref);
-                                send_msg_ptr = NULL;
-                                return -E_REND_ABANDON;
-                        }
-                        return -E_REND_AGAIN;
+                        goto ipc_transfer_message_no_receiver;
                 }
                 /*now the send_msg_ptr should not hold this message*/
                 ref_put(&send_msg_ptr->ms_queue_node.refcount,
@@ -314,12 +290,52 @@ error_t ipc_transfer_message(Thread_Base* sender, Thread_Base* receiver)
                 send_msg_ptr = NULL;
                 return REND_SUCCESS;
         } else {
-                /*here we give up the message*/
-                ref_put(&send_msg_ptr->ms_queue_node.refcount,
-                        free_message_ref);
-                send_msg_ptr = NULL;
-                return -E_REND_ABANDON;
+                goto ipc_transfer_message_no_mem;
         }
+ipc_transfer_message_no_mem:
+        if (atomic64_cas((volatile u64*)(&sender->send_pending_msg),
+                         (u64)NULL,
+                         (u64)send_msg_ptr)
+            != (u64)NULL) {
+                /*means before me, a node have dequeued and on
+                 * send_pending_msg*/
+                tagged_ptr_t q_head_ptr = atomic64_load(
+                        (volatile u64*)&sender->send_msg_queue.head);
+                if (tp_get_ptr(q_head_ptr) == (u64)send_msg_ptr) {
+                        /*the send msg ptr is the dummy and the
+                         * send_pending_msg is a real unlinked node,we can
+                         * directly send message to receiver, the ref count
+                         * should not dec, which only transfer to the receiver*/
+                } else {
+                        /*the send msg ptr is not the dummy, which must
+                         * be unlinked node, so we can transfer send_pending_msg
+                         * to receiver, and put send msg ptr as
+                         * send_pending_msg*/
+                }
+        }
+        /*the send pending msg is this round dequeued but cannot
+         * successfully sent msg,try again*/
+        return -E_REND_AGAIN;
+ipc_transfer_message_no_receiver:
+        if (atomic64_cas((volatile u64*)(&sender->send_pending_msg),
+                         (u64)NULL,
+                         (u64)send_msg_ptr)
+            != (u64)NULL) {
+                /*means before me,  a node have dequeued and on
+                 * send_pending_msg*/
+                tagged_ptr_t q_head_ptr = atomic64_load(
+                        (volatile u64*)&sender->send_msg_queue.head);
+                if (tp_get_ptr(q_head_ptr) == (u64)send_msg_ptr) {
+                        /*the send msg ptr is the dummy and the
+                         * send_pending_msg is a real unlinked node*/
+                } else {
+                        /*the send msg ptr is not the dummy, which must
+                         * be unlinked node*/
+                }
+        }
+        /*the send pending msg is this round dequeued but cannot
+         * successfully sent msg,try again*/
+        return -E_REND_AGAIN;
 }
 error_t send_msg(Message_Port_t* port)
 {
@@ -350,8 +366,8 @@ error_t send_msg(Message_Port_t* port)
                                 return REND_SUCCESS;
                         }
                         case -E_REND_AGAIN: {
-                                /*the receiver have exit, we need try to dequeue
-                                 * a receiver again.*/
+                                /*the receiver have exit, we need try to
+                                 * dequeue a receiver again.*/
                                 continue;
                         }
                         default: {
@@ -372,15 +388,16 @@ error_t send_msg(Message_Port_t* port)
                                 port, IPC_ENDPOINT_STATE_SEND, sender);
                         switch (enqueue_result) {
                         case REND_SUCCESS: {
-                                /*successfully enqueue on the port queue, need
-                                 * schedule; when we are woken up, a receiver
-                                 * has matched us and transferred the message*/
+                                /*successfully enqueue on the port
+                                 * queue, need schedule; when we are
+                                 * woken up, a receiver has matched us
+                                 * and transferred the message*/
                                 schedule(percpu(core_tm));
                                 return REND_SUCCESS;
                         }
                         case -E_REND_AGAIN: {
-                                /*the queue have change the state, we need
-                                 * retry.*/
+                                /*the queue have change the state, we
+                                 * need retry.*/
                                 thread_set_status_with_expect(
                                         sender,
                                         thread_status_block_on_send,
@@ -428,13 +445,14 @@ error_t recv_msg(Message_Port_t* port)
                                 return REND_SUCCESS;
                         }
                         case -E_REND_NO_MSG: {
-                                /*the sender have no message to send or is
-                                 * exiting, retry to get another sender*/
+                                /*the sender have no message to send or
+                                 * is exiting, retry to get another
+                                 * sender*/
                                 continue;
                         }
                         case -E_REND_AGAIN: {
-                                /*impossible, only receiver is exiting can
-                                 * return -E_REND_AGAIN*/
+                                /*impossible, only receiver is exiting
+                                 * can return -E_REND_AGAIN*/
                                 ref_put(&sender_request->ms_queue_node.refcount,
                                         free_ipc_request);
                                 return -E_RENDEZVOS;
@@ -454,15 +472,16 @@ error_t recv_msg(Message_Port_t* port)
                                 port, IPC_ENDPOINT_STATE_RECV, receiver);
                         switch (enqueue_result) {
                         case REND_SUCCESS: {
-                                /*successfully enqueue on the port queue; when
-                                 * we are woken up, a sender has matched us and
-                                 * transferred the message*/
+                                /*successfully enqueue on the port
+                                 * queue; when we are woken up, a sender
+                                 * has matched us and transferred the
+                                 * message*/
                                 schedule(percpu(core_tm));
                                 return REND_SUCCESS;
                         }
                         case -E_REND_AGAIN: {
-                                /*the queue have change the state, we need
-                                 * retry.*/
+                                /*the queue have change the state, we
+                                 * need retry.*/
                                 thread_set_status_with_expect(
                                         receiver,
                                         thread_status_block_on_receive,
@@ -515,25 +534,27 @@ Message_t* dequeue_recv_msg(void)
 // error_t cancel_ipc(Thread_Base* target_thread)
 // {
 //         /*
-//         first we need to check the thread's status, only blocked on send/recv
-//         can we cancel the ipc. second, if the thread is the head of the
-//         waiting queue, we can remove it from the queue even there's no
-//         opposite thread try to remove it.
+//         first we need to check the thread's status, only blocked on
+//         send/recv can we cancel the ipc. second, if the thread is the
+//         head of the waiting queue, we can remove it from the queue
+//         even there's no opposite thread try to remove it.
 //         */
 //         /*
 //         Remember:
-//         You need to check the thread's status and decide how to schedule
-//         after this function, only it's ready means the target thread's ipc
-//         have canceled
+//         You need to check the thread's status and decide how to
+//         schedule after this function, only it's ready means the
+//         target thread's ipc have canceled
 //         */
 //         if (!target_thread) {
 //                 return -E_IN_PARAM;
 //         }
-//         Message_Port_t* port = (Message_Port_t*)(target_thread->port_ptr);
-//         tagged_ptr_t dequeue_head_ptr = tp_new_none();
-//         if (thread_set_status_with_expect(target_thread,
+//         Message_Port_t* port =
+//         (Message_Port_t*)(target_thread->port_ptr); tagged_ptr_t
+//         dequeue_head_ptr = tp_new_none(); if
+//         (thread_set_status_with_expect(target_thread,
 //                                           thread_status_block_on_send,
-//                                           thread_status_cancel_ipc)) {
+//                                           thread_status_cancel_ipc))
+//                                           {
 //                 dequeue_head_ptr = msq_dequeue_check_head(
 //                         &port->thread_queue,
 //                         MSQ_CHECK_FIELD_PTR,
@@ -543,7 +564,8 @@ Message_t* dequeue_recv_msg(void)
 
 //         } else if (thread_set_status_with_expect(target_thread,
 //                                                  thread_status_block_on_receive,
-//                                                  thread_status_cancel_ipc)) {
+//                                                  thread_status_cancel_ipc))
+//                                                  {
 //                 dequeue_head_ptr = msq_dequeue_check_head(
 //                         &port->thread_queue,
 //                         MSQ_CHECK_FIELD_PTR,
@@ -557,7 +579,8 @@ Message_t* dequeue_recv_msg(void)
 //                         NULL);
 //                 if (!thread_set_status_with_expect(target_thread,
 //                                                    thread_status_cancel_ipc,
-//                                                    thread_status_ready)) {
+//                                                    thread_status_ready))
+//                                                    {
 //                         return -E_RENDEZVOS;
 //                 }
 //         }
