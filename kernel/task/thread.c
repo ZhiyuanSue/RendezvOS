@@ -42,6 +42,8 @@ Thread_Base* new_thread_structure(struct allocator* cpu_allocator)
         if (!thread) {
                 goto alloc_thread_error;
         }
+        memset((void*)thread, 0, sizeof(Thread_Base));
+
         /*first do alloc*/
         thread->init_parameter = new_init_parameter_structure();
         if (!thread->init_parameter) {
@@ -59,7 +61,6 @@ Thread_Base* new_thread_structure(struct allocator* cpu_allocator)
                 goto alloc_dummy_send_msg_error;
         }
 
-        memset((void*)thread, 0, sizeof(Thread_Base));
         thread->tid = INVALID_ID;
         arch_task_ctx_init(&(thread->ctx));
         thread_set_status(thread, thread_status_init);

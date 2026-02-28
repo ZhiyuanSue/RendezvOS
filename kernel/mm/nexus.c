@@ -189,7 +189,7 @@ static struct nexus_node* init_vspace_nexus(vaddr nexus_page_addr, VSpace* vs,
                                             struct map_handler* handler,
                                             struct rb_root* _vspace_rb_root)
 {
-        if (!vs || !handler || !_vspace_rb_root
+        if (!vs || !handler
             || !ALIGNED(nexus_page_addr, PAGE_SIZE)) {
                 pr_error("[ NEXUS ] ERROR: init vspace nexus input error\n");
                 return NULL;
@@ -1045,7 +1045,7 @@ void* get_free_page(size_t page_num, vaddr target_vaddr,
 error_t free_pages(void* p, int page_num, VSpace* vs,
                    struct nexus_node* nexus_root)
 {
-        if (!p || !nexus_root || !vs || (((vaddr)p) & 0xfff)) {
+        if (!p || !nexus_root || (((vaddr)p) & 0xfff)) {
                 pr_error("[ ERROR ] ERROR: error input arg\n");
                 return -E_IN_PARAM;
         }

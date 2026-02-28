@@ -84,7 +84,7 @@ error_t map(VSpace *vs, ppn_t ppn, vpn_t vpn, int level, ENTRY_FLAGS_t eflags,
         /*for a new alloced page, we must memset to all 0, use this flag to
          * decide whether memset*/
 
-        if (!vs || !handler || !handler->pmm || !lock) {
+        if (!vs || !handler || !handler->pmm) {
                 return -E_IN_PARAM;
         }
         /*=== === === L0 table === === ===*/
@@ -431,7 +431,7 @@ map_fail:
 ppn_t unmap(VSpace *vs, vpn_t vpn, u64 new_entry_addr,
             struct map_handler *handler, spin_lock *lock)
 {
-        if (!vs || !handler || !lock) {
+        if (!vs || !handler) {
                 return 0;
         }
         if (lock)
@@ -693,8 +693,13 @@ new_vs_root_fail:
 }
 void del_vs_root(paddr vs_root_paddr, struct map_handler *handler)
 {
+        if (!handler)
+                return;
         struct pmm *pmm_ptr = handler->pmm;
         MemZone *zone = pmm_ptr->zone;
+        if (!pmm_ptr || zone) {
+                return;
+        }
         lock_mcs(&pmm_ptr->spin_ptr,
                  &per_cpu(pmm_spin_lock[zone->zone_id], handler->cpu_id));
         pmm_ptr->pmm_free(pmm_ptr, PPN(vs_root_paddr), 1);

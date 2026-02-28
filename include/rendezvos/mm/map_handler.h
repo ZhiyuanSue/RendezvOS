@@ -72,7 +72,7 @@ ppn_t have_mapped(VSpace* vs, vpn_t vpn, struct map_handler* handler);
         it's TODO
 */
 paddr new_vs_root(paddr old_vs_root_paddr, struct map_handler* handler);
-void del_vs_root(paddr vs_root_paddr);
+void del_vs_root(paddr vs_root_paddr, struct map_handler* handler);
 
 /*
         TODO: we need to add a function to change the page entry's attribute

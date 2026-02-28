@@ -222,9 +222,9 @@ add_task_to_manager_error:
         nexus_delete_vspace(new_vs_nexus_root, elf_task->vs);
 nexus_create_vspace_root_node_error:
         unset_vspace_root_addr(elf_task->vs);
-        del_vs_root(new_vs_paddr);
+        del_vs_root(new_vs_paddr,&percpu(Map_Handler));
 new_vs_root_error:
-        del_vspace(elf_task->vs);
+        del_vspace(&elf_task->vs);
 new_vspace_error:
         delete_task(elf_task);
 gen_task_from_elf_error:

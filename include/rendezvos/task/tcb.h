@@ -146,11 +146,15 @@ void delete_task(Tcb_Base* tcb);
 
 static inline Thread_Base* get_cpu_current_thread()
 {
-        return percpu(core_tm) && percpu(core_tm)->current_thread;
+        if (!percpu(core_tm))
+                return NULL;
+        return percpu(core_tm)->current_thread;
 }
 static inline Tcb_Base* get_cpu_current_task()
 {
-        return percpu(core_tm) && percpu(core_tm)->current_task;
+        if (!percpu(core_tm))
+                return NULL;
+        return percpu(core_tm)->current_task;
 }
 
 static inline void thread_set_flags(Thread_Base* thread, u64 flags)

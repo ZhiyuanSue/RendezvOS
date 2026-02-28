@@ -314,7 +314,7 @@ ipc_transfer_message_no_mem:
                  * send_pending_msg*/
                 tagged_ptr_t q_head_ptr = atomic64_load(
                         (volatile u64*)&sender->send_msg_queue.head);
-                if (tp_get_ptr(q_head_ptr) == (u64)send_msg_ptr) {
+                if ((u64)tp_get_ptr(q_head_ptr) == (u64)send_msg_ptr) {
                         /*the send msg ptr is the dummy and the
                          * send_pending_msg is a real unlinked node,we can
                          * directly send message to receiver, the ref count
@@ -338,7 +338,7 @@ ipc_transfer_message_no_receiver:
                  * send_pending_msg*/
                 tagged_ptr_t q_head_ptr = atomic64_load(
                         (volatile u64*)&sender->send_msg_queue.head);
-                if (tp_get_ptr(q_head_ptr) == (u64)send_msg_ptr) {
+                if ((u64)tp_get_ptr(q_head_ptr) == (u64)send_msg_ptr) {
                         /*the send msg ptr is the dummy and the
                          * send_pending_msg is a real unlinked node*/
                 } else {

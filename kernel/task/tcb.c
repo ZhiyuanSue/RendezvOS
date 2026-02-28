@@ -75,8 +75,8 @@ Task_Manager* init_proc(void)
         percpu(core_tm)->current_task = root_task;
 
         e = create_init_thread(root_task);
-        if (!e) {
-                pr_error("[ Error ] create init thread fail\n");
+        if (e) {
+                pr_error("[ Error ] create init thread fail %d\n",e);
                 goto create_init_thread_fail;
         }
         do_init_call();
@@ -103,7 +103,7 @@ add_task_to_manager_fail:
 new_root_task_fail:
         del_task_manager_structure(percpu(core_tm));
 new_task_manager_fail:
-        return e;
+        return NULL;
 }
 error_t add_thread_to_task(Tcb_Base* task, Thread_Base* thread)
 {
