@@ -70,7 +70,7 @@ page_chunk_rb_tree_search(struct rb_root* page_chunk_root, vaddr page_addr)
 
 error_t chunk_init(struct mem_chunk* chunk, int chunk_order, int allocator_id)
 {
-        if (((vaddr)chunk) % PAGE_SIZE != 0 || chunk_order < 0
+        if (!chunk || ((vaddr)chunk) % PAGE_SIZE != 0 || chunk_order < 0
             || chunk_order >= MAX_GROUP_SLOTS) {
                 pr_info("the chunk init parameter is wrong, please check\n");
                 return -E_IN_PARAM;
@@ -171,6 +171,8 @@ error_t chunk_free_obj(struct object_header* obj, struct mem_chunk* chunk)
 error_t group_free_obj(struct object_header* header, struct mem_chunk* chunk,
                        struct mem_group* group)
 {
+        if (!header || !chunk || !group)
+                return -E_IN_PARAM;
         error_t res = 0;
         bool full = (chunk->nr_max_objs == chunk->nr_used_objs);
         if ((res = chunk_free_obj(header, chunk)) < 0)

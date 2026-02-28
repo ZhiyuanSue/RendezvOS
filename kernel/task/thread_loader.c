@@ -3,6 +3,9 @@
 
 vaddr generate_user_stack(VSpace *vs, elf_task_set_user_stack_func func)
 {
+        if (!vs) {
+                return 0;
+        }
         /*alloc the user stack for this thread*/
         int page_num = thread_ustack_page_num;
         ENTRY_FLAGS_t page_flags = PAGE_ENTRY_USER | PAGE_ENTRY_VALID
@@ -35,6 +38,9 @@ vaddr generate_user_stack(VSpace *vs, elf_task_set_user_stack_func func)
 error_t elf_Phdr_64_load_handle(vaddr elf_start, Elf64_Phdr *phdr_ptr,
                                 VSpace *vs)
 {
+        if (!vs || !phdr_ptr || !elf_start) {
+                return -E_IN_PARAM;
+        }
         /*
                 TODO: we should add a data structure to record the used
            user space, which will be used for clean. and it might affect the
@@ -85,8 +91,9 @@ error_t elf_Phdr_64_load_handle(vaddr elf_start, Elf64_Phdr *phdr_ptr,
 error_t elf_Phdr_64_dynamic_handle(vaddr elf_start, Elf64_Phdr *phdr_ptr,
                                    VSpace *vs)
 {
-        (void)elf_start;
-        (void)vs;
+        if (!vs || !elf_start || !phdr_ptr) {
+                return -E_IN_PARAM;
+        }
         print_elf_ph64(phdr_ptr);
         return REND_SUCCESS;
 }
@@ -96,6 +103,9 @@ error_t run_elf_program(vaddr elf_start, vaddr elf_end, VSpace *vs)
                 elf_start,
                 elf_end,
                 vs);
+        if (!elf_start || !elf_end || !vs) {
+                return -E_IN_PARAM;
+        }
         error_t e = -E_RENDEZVOS;
         if (!check_elf_header(elf_start)) {
                 pr_error("[ERROR] bad elf file\n");
@@ -138,6 +148,9 @@ error_t run_elf_program(vaddr elf_start, vaddr elf_end, VSpace *vs)
 error_t gen_task_from_elf(Thread_Base **elf_thread_ptr, vaddr elf_start,
                           vaddr elf_end, elf_task_set_user_stack_func func)
 {
+        if (!elf_thread_ptr || !elf_start || !elf_end) {
+                return -E_IN_PARAM;
+        }
         error_t e = REND_SUCCESS;
         Tcb_Base *elf_task = new_task_structure(percpu(kallocator));
         if (!elf_task) {
@@ -220,6 +233,9 @@ gen_task_from_elf_error:
 error_t gen_thread_from_func(Thread_Base **func_thread_ptr, kthread_func thread,
                              char *thread_name, Task_Manager *tm, void *arg)
 {
+        if (!thread_name || !tm) {
+                return -E_IN_PARAM;
+        }
         Thread_Base *func_t;
         func_t = create_thread((void *)thread, 1, arg);
         if (!func_t) {

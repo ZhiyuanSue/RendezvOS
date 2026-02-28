@@ -22,7 +22,8 @@
 #include "message.h"
 
 enum thread_status_base {
-        thread_status_init,
+        thread_status_error = -1,
+        thread_status_init = 0,
         thread_status_running,
         thread_status_ready,
         thread_status_zombie,
@@ -145,29 +146,37 @@ void delete_task(Tcb_Base* tcb);
 
 static inline Thread_Base* get_cpu_current_thread()
 {
-        return percpu(core_tm)->current_thread;
+        return percpu(core_tm) && percpu(core_tm)->current_thread;
 }
 static inline Tcb_Base* get_cpu_current_task()
 {
-        return percpu(core_tm)->current_task;
+        return percpu(core_tm) && percpu(core_tm)->current_task;
 }
 
 static inline void thread_set_flags(Thread_Base* thread, u64 flags)
 {
+        if (!thread)
+                return;
         thread->flags = flags;
 }
 static inline u64 thread_get_status(Thread_Base* thread)
 {
+        if (!thread)
+                return thread_status_error;
         return atomic64_load((volatile u64*)(&thread->status));
 }
 static inline u64 thread_set_status(Thread_Base* thread, u64 status)
 {
+        if (!thread)
+                return thread_status_error;
         return atomic64_exchange((volatile u64*)(&thread->status), status);
 }
 static inline bool thread_set_status_with_expect(Thread_Base* thread,
                                                  u64 expect_status,
                                                  u64 target_status)
 {
+        if (!thread)
+                return false;
         return atomic64_cas((volatile u64*)(&thread->status),
                             expect_status,
                             target_status)
@@ -175,6 +184,8 @@ static inline bool thread_set_status_with_expect(Thread_Base* thread,
 }
 static inline void thread_set_name(char* name, Thread_Base* thread)
 {
+        if (!name || !thread)
+                return;
         thread->name = name;
 }
 error_t thread_join(Tcb_Base* task, Thread_Base* thread);

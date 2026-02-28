@@ -15,15 +15,20 @@ Ipc_Request_t* create_ipc_request(Thread_Base* thread)
 }
 void delete_ipc_request(Ipc_Request_t* req)
 {
+        if (!req)
+                return;
         struct allocator* cpu_kallocator = percpu(kallocator);
 
-        ref_put(&req->thread->refcount, free_thread_ref);
+        if (req->thread)
+                ref_put(&req->thread->refcount, free_thread_ref);
         cpu_kallocator->m_free(cpu_kallocator, req);
 }
 void free_ipc_request(ref_count_t* refcount)
 {
         // struct allocator* cpu_kallocator = percpu(kallocator);
 
+        if (!refcount)
+                return;
         ms_queue_node_t* node =
                 container_of(refcount, ms_queue_node_t, refcount);
         Ipc_Request_t* req = container_of(node, Ipc_Request_t, ms_queue_node);
@@ -57,6 +62,8 @@ Message_Port_t* create_message_port()
 }
 void delete_message_port(Message_Port_t* port)
 {
+        if (!port)
+                return;
         /*TODO: clean the queue*/
         percpu(kallocator)->m_free(percpu(kallocator), port);
 }
@@ -71,6 +78,8 @@ void delete_message_port(Message_Port_t* port)
  */
 Ipc_Request_t* ipc_port_try_match(Message_Port_t* port, u16 my_ipc_state)
 {
+        if (!port)
+                return NULL;
         u16 target_ipc_state = (my_ipc_state == IPC_ENDPOINT_STATE_SEND) ?
                                        IPC_ENDPOINT_STATE_RECV :
                                        IPC_ENDPOINT_STATE_SEND;
@@ -133,6 +142,8 @@ Ipc_Request_t* ipc_port_try_match(Message_Port_t* port, u16 my_ipc_state)
 error_t ipc_port_enqueue_wait(Message_Port_t* port, u16 my_ipc_state,
                               Thread_Base* my_thread)
 {
+        if (!port || !my_thread)
+                return -E_IN_PARAM;
         u8 queue_ipc_state = ipc_get_queue_state(port);
         u64 expected_ipc_state;
         if (queue_ipc_state == IPC_ENDPOINT_STATE_EMPTY) {
@@ -179,6 +190,8 @@ error_t ipc_transfer_message(Thread_Base* sender, Thread_Base* receiver)
 {
         tagged_ptr_t dequeued_ptr;
         Message_t* send_msg_ptr;
+        if (!sender || !receiver)
+                return -E_RENDEZVOS;
         /*
          - Problem 1:
         if the sender try to send, but we find the receiver is exiting, a

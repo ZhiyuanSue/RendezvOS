@@ -15,6 +15,8 @@ char init_thread_name[] = "init_thread";
 
 error_t create_init_thread(Tcb_Base* root_task)
 {
+        if (!root_task || !percpu(core_tm))
+                return -E_IN_PARAM;
         /*we let the current execution flow as init thread*/
         Thread_Base* init_t = percpu(init_thread_ptr) =
                 new_thread_structure(percpu(kallocator));
@@ -129,6 +131,8 @@ error_t del_thread_from_task(Thread_Base* thread)
 {
         if (!thread)
                 return -E_IN_PARAM;
+        if (!thread->belong_tcb)
+                return REND_SUCCESS;
         thread->belong_tcb->thread_number--;
         thread->belong_tcb = NULL;
         list_del_init(&(thread->thread_list_node));
@@ -204,7 +208,8 @@ void delete_task(Tcb_Base* tcb)
         if (tcb->thread_number)
                 return;
 
-        del_vspace(&tcb->vs);
+        if (tcb->vs)
+                del_vspace(&tcb->vs);
         error_t e = del_task_from_manager(tcb);
         if (e) {
                 pr_error(

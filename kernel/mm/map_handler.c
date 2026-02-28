@@ -39,6 +39,9 @@ void sys_init_map(void)
 }
 void init_map(struct map_handler *handler, int cpu_id, struct pmm *pmm)
 {
+        if (!handler || !pmm) {
+                return;
+        }
         handler->cpu_id = cpu_id;
         handler->pmm = pmm;
         vaddr map_vaddr = map_pages + cpu_id * PAGE_SIZE * 4;
@@ -81,6 +84,9 @@ error_t map(VSpace *vs, ppn_t ppn, vpn_t vpn, int level, ENTRY_FLAGS_t eflags,
         /*for a new alloced page, we must memset to all 0, use this flag to
          * decide whether memset*/
 
+        if (!vs || !handler || !handler->pmm || !lock) {
+                return -E_IN_PARAM;
+        }
         /*=== === === L0 table === === ===*/
         /*some check*/
         if (level != 2 && level != 3) {
@@ -425,6 +431,9 @@ map_fail:
 ppn_t unmap(VSpace *vs, vpn_t vpn, u64 new_entry_addr,
             struct map_handler *handler, spin_lock *lock)
 {
+        if (!vs || !handler || !lock) {
+                return 0;
+        }
         if (lock)
                 lock_mcs(lock, &per_cpu(handler_spin_lock, handler->cpu_id));
         vaddr v = VADDR(vpn);
@@ -562,7 +571,7 @@ ppn_t have_mapped(VSpace *vs, vpn_t vpn, struct map_handler *handler)
         union L1_entry L1_E;
         union L2_entry L2_E;
         union L3_entry L3_E;
-        if (!vs || !vs->vspace_root_addr || !vpn) {
+        if (!vs || !vs->vspace_root_addr || !vpn || !handler) {
                 pr_error("[ ERROR ] check input is not right\n");
                 ppn = -E_IN_PARAM;
                 goto have_mapped_fail;
@@ -635,7 +644,7 @@ paddr new_vs_root(paddr old_vs_root_paddr, struct map_handler *handler)
         /*no need to lock here*/
         paddr vs_root = 0;
         size_t alloced_page_number;
-        if (invalid_ppn(handler->handler_ppn[0])) {
+        if (!handler || !handler->pmm || invalid_ppn(handler->handler_ppn[0])) {
                 pr_error("[ ERROR ] L0 try alloc vspace root ppn fail\n");
                 goto new_vs_root_fail;
         }

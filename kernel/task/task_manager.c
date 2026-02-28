@@ -9,6 +9,8 @@ DEFINE_PER_CPU(Task_Manager*, core_tm);
 volatile bool is_print_sche_info;
 Thread_Base* round_robin_schedule(Task_Manager* tm)
 {
+        if (!tm || !tm->current_task)
+                return NULL;
         struct list_entry* next = tm->current_thread->sched_thread_list.next;
         while (next == &(tm->sched_thread_list)
                || container_of(next, Thread_Base, sched_thread_list)->status
@@ -37,11 +39,15 @@ void del_task_manager_structure(Task_Manager* tm)
 }
 void choose_schedule(Task_Manager* tm)
 {
+        if (!tm)
+                return;
         tm->scheduler = round_robin_schedule;
         is_print_sche_info = true;
 }
 void print_sche_info(Thread_Base* old, Thread_Base* new)
 {
+        if (!old || !new)
+                return;
         if (!is_print_sche_info)
                 return;
         if (old->name) {
@@ -76,8 +82,9 @@ void schedule(Task_Manager* tm)
         if (!tm)
                 return;
         Thread_Base* curr = tm->current_thread;
-        tm->current_thread = tm->scheduler(tm);
-        if (curr == tm->current_thread) /*still running current thread*/
+        if (tm->scheduler)
+                tm->current_thread = tm->scheduler(tm);
+        if (!tm->current_thread || curr == tm->current_thread)
                 return;
         print_sche_info(curr, tm->current_thread);
 
@@ -88,6 +95,9 @@ void schedule(Task_Manager* tm)
                 */
                 Tcb_Base* old = curr->belong_tcb;
                 Tcb_Base* new = tm->current_thread->belong_tcb;
+                if (!old || !new || !new->vs) {
+                        pr_error("[ Error ] unexpect thread config\n");
+                }
                 if (old != new) {
                         /*
                          * we think every task have a vspace

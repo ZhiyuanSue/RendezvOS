@@ -6,6 +6,9 @@ Id_Manager tid_manager;
 DEFINE_PER_CPU(struct spin_lock_t, tid_spin_lock);
 void init_id_manager(Id_Manager* im)
 {
+        if (!im) {
+                return;
+        }
         im->id = 0;
         im->spin_ptr = NULL;
 }

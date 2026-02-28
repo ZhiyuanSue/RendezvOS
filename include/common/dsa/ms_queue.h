@@ -54,6 +54,9 @@ typedef struct Michael_Scott_Queue {
 static inline void msq_init(ms_queue_t* q, ms_queue_node_t* new_node,
                             size_t append_info_bits)
 {
+        if (!q || !new_node) {
+                return;
+        }
         ref_init(&new_node->refcount);
         new_node->next = tp_new_none();
         q->head = q->tail = tp_new((void*)new_node, 0);
@@ -76,7 +79,7 @@ static inline void msq_init(ms_queue_t* q, ms_queue_node_t* new_node,
 static inline void msq_enqueue(ms_queue_t* q, ms_queue_node_t* new_node,
                                void (*free_func)(ref_count_t*))
 {
-        if (!q) {
+        if (!q || !new_node) {
                 return;
         }
         tagged_ptr_t tail, next, tmp;

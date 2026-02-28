@@ -39,45 +39,62 @@ Thread_Base* new_thread_structure(struct allocator* cpu_allocator)
                 return NULL;
         Thread_Base* thread = (Thread_Base*)(cpu_allocator->m_alloc(
                 cpu_allocator, sizeof(Thread_Base)));
-        if (thread) {
-                memset((void*)thread, 0, sizeof(Thread_Base));
-                thread->tid = INVALID_ID;
-                arch_task_ctx_init(&(thread->ctx));
-                thread_set_status(thread, thread_status_init);
-                INIT_LIST_HEAD(&(thread->sched_thread_list));
-                INIT_LIST_HEAD(&(thread->thread_list_node));
-                thread->belong_tcb = NULL;
-                thread->tm = NULL;
-                thread->kstack_bottom = 0;
-                thread->kstack_num = thread_kstack_page_num;
-                thread->name = NULL;
-                thread->init_parameter = new_init_parameter_structure();
-                thread->flags = THREAD_FLAG_NONE;
-
-                /*ipc part*/
-                Message_t* dummy_recv_msg_node =
-                        (Message_t*)(cpu_allocator->m_alloc(cpu_allocator,
-                                                            sizeof(Message_t)));
-                Message_t* dummy_send_msg_node =
-                        (Message_t*)(cpu_allocator->m_alloc(cpu_allocator,
-                                                            sizeof(Message_t)));
-                if (dummy_recv_msg_node) {
-                        memset(dummy_recv_msg_node, 0, sizeof(Message_t));
-                        msq_init(&thread->recv_msg_queue,
-                                 &dummy_recv_msg_node->ms_queue_node,
-                                 0);
-                }
-                if (dummy_send_msg_node) {
-                        memset(dummy_send_msg_node, 0, sizeof(Message_t));
-                        msq_init(&thread->send_msg_queue,
-                                 &dummy_send_msg_node->ms_queue_node,
-                                 0);
-                }
-
-                thread->send_pending_msg = NULL;
-                thread->recv_pending_cnt.counter = 0;
+        if (!thread) {
+                goto alloc_thread_error;
         }
+        /*first do alloc*/
+        thread->init_parameter = new_init_parameter_structure();
+        if (!thread->init_parameter) {
+                goto alloc_init_param_error;
+        }
+
+        Message_t* dummy_recv_msg_node = (Message_t*)(cpu_allocator->m_alloc(
+                cpu_allocator, sizeof(Message_t)));
+        if (!dummy_recv_msg_node) {
+                goto alloc_dummy_recv_msg_error;
+        }
+        Message_t* dummy_send_msg_node = (Message_t*)(cpu_allocator->m_alloc(
+                cpu_allocator, sizeof(Message_t)));
+        if (!dummy_send_msg_node) {
+                goto alloc_dummy_send_msg_error;
+        }
+
+        memset((void*)thread, 0, sizeof(Thread_Base));
+        thread->tid = INVALID_ID;
+        arch_task_ctx_init(&(thread->ctx));
+        thread_set_status(thread, thread_status_init);
+        INIT_LIST_HEAD(&(thread->sched_thread_list));
+        INIT_LIST_HEAD(&(thread->thread_list_node));
+        thread->belong_tcb = NULL;
+        thread->tm = NULL;
+        thread->kstack_bottom = 0;
+        thread->kstack_num = thread_kstack_page_num;
+        thread->name = NULL;
+        thread->flags = THREAD_FLAG_NONE;
+
+        /*ipc part*/
+        memset(dummy_recv_msg_node, 0, sizeof(Message_t));
+        msq_init(&thread->recv_msg_queue,
+                 &dummy_recv_msg_node->ms_queue_node,
+                 0);
+
+        memset(dummy_send_msg_node, 0, sizeof(Message_t));
+        msq_init(&thread->send_msg_queue,
+                 &dummy_send_msg_node->ms_queue_node,
+                 0);
+
+        thread->send_pending_msg = NULL;
+        thread->recv_pending_cnt.counter = 0;
         return thread;
+
+alloc_dummy_send_msg_error:
+        cpu_allocator->m_free(cpu_allocator, dummy_recv_msg_node);
+alloc_dummy_recv_msg_error:
+        cpu_allocator->m_free(cpu_allocator, thread->init_parameter);
+alloc_init_param_error:
+        cpu_allocator->m_free(cpu_allocator, thread);
+alloc_thread_error:
+        return NULL;
 }
 void del_thread_structure(Thread_Base* thread)
 {
@@ -168,7 +185,7 @@ new_thread_structure_error:
 }
 void delete_thread(Thread_Base* thread)
 {
-        if (!thread)
+        if (!thread || !thread->belong_tcb)
                 return;
         atomic64_store(&thread->status, thread_status_exit);
         /*free the send pending msg*/
@@ -215,6 +232,9 @@ void delete_thread(Thread_Base* thread)
 }
 error_t thread_join(Tcb_Base* task, Thread_Base* thread)
 {
+        if (!task || !thread) {
+                return -E_IN_PARAM;
+        }
         error_t res = 0;
         res = add_thread_to_task(task, thread);
         if (res)
