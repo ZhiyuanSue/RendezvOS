@@ -271,14 +271,20 @@ static void* _k_alloc(struct mem_allocator* k_allocator_p, size_t Bytes)
                                                group->chunk_order,
                                                group->allocator_id);
                         if (e) {
+                                pr_error(
+                                        "[ERROR]unknown reason lead to the chunk init fail e code %d\n",
+                                        e);
                                 /*just clean this time
                                  * allocated*/
-                                free_pages(page_ptr,
-                                           PAGE_PER_CHUNK,
-                                           0,
-                                           k_allocator_p->nexus_root);
-                                pr_error(
-                                        "[ERROR]unknown reason lead to the chunk init fail\n");
+                                e = free_pages(page_ptr,
+                                               PAGE_PER_CHUNK,
+                                               0,
+                                               k_allocator_p->nexus_root);
+                                if (e) {
+                                        pr_error(
+                                                "[Error] fail to free pages e code %d\n",
+                                                e);
+                                }
                                 return NULL;
                         }
                         list_add_head(
@@ -368,10 +374,14 @@ static error_t _k_free(void* p)
                         if (!(free_chunk->nr_used_objs)) {
                                 list_del(&free_chunk->chunk_list);
                                 group->free_chunk_num--;
-                                free_pages(free_chunk,
-                                           PAGE_PER_CHUNK,
-                                           0,
-                                           k_allocator_p->nexus_root);
+                                res = free_pages(free_chunk,
+                                                 PAGE_PER_CHUNK,
+                                                 0,
+                                                 k_allocator_p->nexus_root);
+                                if (res != REND_SUCCESS) {
+                                        pr_error(
+                                                "[Error] k free's free page fail\n");
+                                }
                         }
                         free_chunk = next_free_chunk;
                         if (&free_chunk->chunk_list == &group->empty_list)
@@ -487,6 +497,9 @@ void kfree(struct allocator* allocator_p, void* p)
                         return;
                 }
                 e = free_pages(p, pcn->page_num, 0, k_allocator_p->nexus_root);
+                if (e) {
+                        pr_error("[ ERROR ] kfree free page failed\n");
+                }
                 lock_cas(&k_allocator_p->lock);
                 page_chunk_rb_tree_remove(pcn, &k_allocator_p->page_chunk_root);
                 unlock_cas(&k_allocator_p->lock);
@@ -494,7 +507,7 @@ void kfree(struct allocator* allocator_p, void* p)
         }
         if (e) {
                 pr_error(
-                        "[ ERROR ]sp free have generated an error but no error handle\n");
+                        "[ ERROR ]kfree have generated an error but no error handle\n");
         }
 }
 struct mem_allocator tmp_k_alloctor = {

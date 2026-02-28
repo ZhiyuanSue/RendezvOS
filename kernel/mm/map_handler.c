@@ -666,8 +666,7 @@ paddr new_vs_root(paddr old_vs_root_paddr, struct map_handler *handler)
         }
 
         arch_tlb_invalidate_page(0, handler->map_vaddr[0]);
-        return vs_root;
-new_vs_root_fail:
+
         if (handler->handler_ppn[0] == -E_RENDEZVOS) {
                 struct pmm *pmm_ptr = handler->pmm;
                 MemZone *zone = pmm_ptr->zone;
@@ -680,5 +679,16 @@ new_vs_root_fail:
                            &per_cpu(pmm_spin_lock[zone->zone_id],
                                     handler->cpu_id));
         }
+new_vs_root_fail:
         return vs_root;
+}
+void del_vs_root(paddr vs_root_paddr, struct map_handler *handler)
+{
+        struct pmm *pmm_ptr = handler->pmm;
+        MemZone *zone = pmm_ptr->zone;
+        lock_mcs(&pmm_ptr->spin_ptr,
+                 &per_cpu(pmm_spin_lock[zone->zone_id], handler->cpu_id));
+        pmm_ptr->pmm_free(pmm_ptr, PPN(vs_root_paddr), 1);
+        unlock_mcs(&pmm_ptr->spin_ptr,
+                   &per_cpu(pmm_spin_lock[zone->zone_id], handler->cpu_id));
 }

@@ -96,11 +96,18 @@ int smp_nexus_test(void)
         //         }
         // }
         for (u64 i = 0; i < NR_MAX_TEST; i++) {
-                if (percpu(smp_test_ptrs)[i])
-                        free_pages(percpu(smp_test_ptrs)[i],
-                                   2,
-                                   0,
-                                   percpu(nexus_root));
+                if (percpu(smp_test_ptrs)[i]) {
+                        error_t ret = free_pages(percpu(smp_test_ptrs)[i],
+                                                 2,
+                                                 0,
+                                                 percpu(nexus_root));
+                        if (ret != REND_SUCCESS) {
+                                pr_error(
+                                        "[TEST] Failed to free pages: ret=%d\n",
+                                        ret);
+                                return -E_REND_TEST;
+                        }
+                }
         }
         return REND_SUCCESS;
 }

@@ -123,6 +123,9 @@ void del_init_parameter_structure(Thread_Init_Para* pm)
 Thread_Base* create_thread(void* __func, int nr_parameter, ...)
 {
         Thread_Base* thread = new_thread_structure(percpu(kallocator));
+        if (!thread) {
+                goto new_thread_structure_error;
+        }
         ref_init(&thread->refcount);
         thread->tid = get_new_tid();
         va_list arg_list;
@@ -136,6 +139,9 @@ Thread_Base* create_thread(void* __func, int nr_parameter, ...)
                                      percpu(nexus_root),
                                      0,
                                      PAGE_ENTRY_NONE);
+        if (!kstack) {
+                goto get_kstack_error;
+        }
         thread->kstack_bottom =
                 (vaddr)kstack + thread_kstack_page_num * PAGE_SIZE;
         memset(kstack, '\0', thread_kstack_page_num * PAGE_SIZE);
@@ -155,6 +161,10 @@ Thread_Base* create_thread(void* __func, int nr_parameter, ...)
         thread->init_parameter->thread_func_ptr = __func;
         va_end(arg_list);
         return thread;
+get_kstack_error:
+        del_thread_structure(thread);
+new_thread_structure_error:
+        return NULL;
 }
 void delete_thread(Thread_Base* thread)
 {
@@ -172,6 +182,7 @@ void delete_thread(Thread_Base* thread)
         /*clean the recv msg queue*/
         clean_message_queue(&thread->recv_msg_queue, true);
 
+        error_t e = -E_RENDEZVOS;
         if (thread->kstack_bottom) {
                 /*
                  * at some time,
@@ -180,13 +191,25 @@ void delete_thread(Thread_Base* thread)
                  */
                 void* thread_stack_start = (void*)thread->kstack_bottom
                                            - thread->kstack_num * PAGE_SIZE;
-                free_pages(thread_stack_start,
-                           thread->kstack_num,
-                           thread->belong_tcb->vs,
-                           percpu(nexus_root));
+                e = free_pages(thread_stack_start,
+                               thread->kstack_num,
+                               thread->belong_tcb->vs,
+                               percpu(nexus_root));
+                if (e) {
+                        pr_error(
+                                "[ Error ] free pages fail please check the parameters\n");
+                }
         }
-        del_thread_from_task(thread->belong_tcb, thread);
-        del_thread_from_manager(thread);
+        e = del_thread_from_task(thread);
+        if (e) {
+                pr_error(
+                        "[ Error ] delete thread from task fail, please check\n");
+        }
+        e = del_thread_from_manager(thread);
+        if (e) {
+                pr_error(
+                        "[ Error ] delete thread from manager fail,please check\n");
+        }
         ref_put(&thread->refcount, free_thread_ref);
         return;
 }

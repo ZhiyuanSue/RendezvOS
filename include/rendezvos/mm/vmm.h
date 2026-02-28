@@ -39,6 +39,10 @@ static inline void set_vspace_root_addr(VSpace* vs, paddr root_paddr)
 {
         vs->vspace_root_addr = root_paddr;
 }
+static inline void unset_vspace_root_addr(VSpace* vs)
+{
+        vs->vspace_root_addr = 0;
+}
 
 void arch_set_L0_entry(paddr p, vaddr v, union L0_entry* pt_addr,
                        ARCH_PFLAGS_t flags);

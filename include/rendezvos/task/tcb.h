@@ -121,6 +121,7 @@ Task_Manager* init_proc();
 /* general task and thread new function */
 Tcb_Base* new_task_structure(struct allocator* cpu_allocator);
 Task_Manager* new_task_manager();
+void del_task_manager_structure(Task_Manager* tm);
 void del_thread_structure(Thread_Base* thread);
 Thread_Base* new_thread_structure(struct allocator* cpu_allocator);
 void free_thread_ref(ref_count_t* ref_count_ptr);
@@ -129,7 +130,7 @@ Thread_Init_Para* new_init_parameter_structure();
 void del_init_parameter_structure(Thread_Init_Para* pm);
 
 error_t add_thread_to_task(Tcb_Base* task, Thread_Base* thread);
-error_t del_thread_from_task(Tcb_Base* task, Thread_Base* thread);
+error_t del_thread_from_task(Thread_Base* thread);
 error_t add_task_to_manager(Task_Manager* core_tm, Tcb_Base* task);
 error_t del_task_from_manager(Tcb_Base* task);
 error_t add_thread_to_manager(Task_Manager* core_tm, Thread_Base* thread);

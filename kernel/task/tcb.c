@@ -18,27 +18,65 @@ error_t create_init_thread(Tcb_Base* root_task)
         /*we let the current execution flow as init thread*/
         Thread_Base* init_t = percpu(init_thread_ptr) =
                 new_thread_structure(percpu(kallocator));
+
+        error_t e = -E_RENDEZVOS;
+        if (!init_t) {
+                pr_error("[ Error ] new thread structure fail\n");
+                goto new_thread_fail;
+        }
         init_t->tid = get_new_tid();
-        add_thread_to_task(root_task, init_t);
-        add_thread_to_manager(percpu(core_tm), init_t);
+        e = add_thread_to_task(root_task, init_t);
+        if (e) {
+                pr_error("[ Error ] add thread to task fail\n");
+                goto add_thread_to_task_fail;
+        }
+        e = add_thread_to_manager(percpu(core_tm), init_t);
+        if (e) {
+                pr_error("[ Error ] add thread to manager fail\n");
+                goto add_thread_to_manager_fail;
+        }
         /*we have to set the kstack bottom to the percpu stack*/
         init_t->kstack_bottom = percpu(boot_stack_bottom);
         thread_set_status(init_t, thread_status_running); /*init thread is the
                                                              running thread*/
         thread_set_name(init_thread_name, init_t);
         return REND_SUCCESS;
+add_thread_to_manager_fail:
+        list_del_init(&(init_t->thread_list_node));
+        root_task->thread_number--;
+add_thread_to_task_fail:
+        del_thread_structure(init_t);
+new_thread_fail:
+        return e;
 }
 Task_Manager* init_proc(void)
 {
+        error_t e = -E_RENDEZVOS;
         percpu(core_tm) = new_task_manager();
+        if (!percpu(core_tm)) {
+                pr_error("[ Error ] new task manager fail\n");
+                goto new_task_manager_fail;
+        }
         /*create the root task and init it*/
         Tcb_Base* root_task = new_task_structure(percpu(kallocator));
+        if (!root_task) {
+                pr_error("[ Error ] new root task fail\n");
+                goto new_root_task_fail;
+        }
         root_task->pid = get_new_pid();
         root_task->vs = percpu(current_vspace);
-        add_task_to_manager(percpu(core_tm), root_task);
+        e = add_task_to_manager(percpu(core_tm), root_task);
+        if (e) {
+                pr_error("[ Error ] add root task to manager fail\n");
+                goto add_task_to_manager_fail;
+        }
         percpu(core_tm)->current_task = root_task;
 
-        create_init_thread(root_task);
+        e = create_init_thread(root_task);
+        if (!e) {
+                pr_error("[ Error ] create init thread fail\n");
+                goto create_init_thread_fail;
+        }
         do_init_call();
         if (percpu(init_thread_ptr) && percpu(idle_thread_ptr)) {
                 percpu(core_tm)->current_thread = percpu(idle_thread_ptr);
@@ -53,6 +91,17 @@ Task_Manager* init_proc(void)
                 return NULL;
         }
         return percpu(core_tm);
+create_init_thread_fail:
+        if (del_task_from_manager(root_task) != REND_SUCCESS) {
+                pr_error(
+                        "fail to delete task from task manager, please check\n");
+        }
+add_task_to_manager_fail:
+        delete_task(root_task);
+new_root_task_fail:
+        del_task_manager_structure(percpu(core_tm));
+new_task_manager_fail:
+        return e;
 }
 error_t add_thread_to_task(Tcb_Base* task, Thread_Base* thread)
 {
@@ -76,18 +125,13 @@ error_t add_thread_to_task(Tcb_Base* task, Thread_Base* thread)
 
         return REND_SUCCESS;
 }
-error_t del_thread_from_task(Tcb_Base* task, Thread_Base* thread)
+error_t del_thread_from_task(Thread_Base* thread)
 {
-        if (!task || !thread)
+        if (!thread)
                 return -E_IN_PARAM;
-        /*first check whether the thread belongs to the task*/
-        if (thread->belong_tcb != task) {
-                pr_error("[ERROR] try to delete a thread from another task\n");
-                return -E_RENDEZVOS;
-        }
-        list_del_init(&(thread->thread_list_node));
         thread->belong_tcb->thread_number--;
         thread->belong_tcb = NULL;
+        list_del_init(&(thread->thread_list_node));
         return REND_SUCCESS;
 }
 error_t add_task_to_manager(Task_Manager* core_tm, Tcb_Base* task)
@@ -161,7 +205,11 @@ void delete_task(Tcb_Base* tcb)
                 return;
 
         del_vspace(&tcb->vs);
-        del_task_from_manager(tcb);
+        error_t e = del_task_from_manager(tcb);
+        if (e) {
+                pr_error(
+                        "[ Error ] delete task from manager fail, please check\n");
+        }
 
         struct allocator* cpu_allocator = percpu(kallocator);
         if (!cpu_allocator)

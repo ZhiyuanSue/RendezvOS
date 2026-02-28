@@ -27,6 +27,14 @@ Task_Manager* new_task_manager(void)
         INIT_LIST_HEAD(&(tm->sched_thread_list));
         return tm;
 }
+void del_task_manager_structure(Task_Manager* tm)
+{
+        /*only delete the structure, the upper code should make sure the tm have
+         * no resources*/
+        if (!tm)
+                return;
+        percpu(kallocator)->m_free(percpu(kallocator), tm);
+}
 void choose_schedule(Task_Manager* tm)
 {
         tm->scheduler = round_robin_schedule;

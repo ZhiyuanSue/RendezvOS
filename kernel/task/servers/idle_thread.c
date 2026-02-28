@@ -15,10 +15,13 @@ void* idle_thread(void* arg)
 }
 void idle_thread_init(void)
 {
-        gen_thread_from_func(&percpu(idle_thread_ptr),
-                             idle_thread,
-                             idle_thread_name,
-                             percpu(core_tm),
-                             NULL);
+        error_t e = gen_thread_from_func(&percpu(idle_thread_ptr),
+                                         idle_thread,
+                                         idle_thread_name,
+                                         percpu(core_tm),
+                                         NULL);
+        if (e) {
+                pr_error("[ Error ]idle thread init fail\n");
+        }
 }
 DEFINE_INIT(idle_thread_init);

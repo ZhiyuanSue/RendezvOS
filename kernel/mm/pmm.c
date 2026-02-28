@@ -63,8 +63,11 @@ int memory_regions_reserve_region(paddr phy_start, paddr phy_end)
                         } else {
                                 // both side have space, adjust the region and
                                 // insert a new one
-                                m_regions.memory_regions_insert(
-                                        reg->addr, phy_start - reg->addr);
+                                if (m_regions.memory_regions_insert(
+                                            reg->addr, phy_start - reg->addr)
+                                    != REND_SUCCESS) {
+                                        continue;
+                                };
                                 reg->addr = phy_end;
                                 reg->len = region_end - phy_end;
                         }
@@ -91,8 +94,11 @@ int memory_regions_reserve_region_with_length(size_t length,
                         *phy_end = *phy_start + length;
                         /* if need , split */
                         if (reg->addr != *phy_start) {
-                                m_regions.memory_regions_insert(
-                                        reg->addr, *phy_start - reg->addr);
+                                if (m_regions.memory_regions_insert(
+                                            reg->addr, *phy_start - reg->addr)
+                                    != REND_SUCCESS) {
+                                        continue;
+                                };
                         }
                         /* adjust this region's start */
                         reg->addr = *phy_end;

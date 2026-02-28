@@ -333,10 +333,16 @@ static void free_manage_node_with_page(struct nexus_node* page_manage_node,
         lock_mcs(&pmm_ptr->spin_ptr,
                  &per_cpu(pmm_spin_lock[pmm_ptr->zone->zone_id],
                           vspace_root->handler->cpu_id));
-        pmm_ptr->pmm_free(pmm_ptr, ppn, 1);
+        error_t e = pmm_ptr->pmm_free(pmm_ptr, ppn, 1);
         unlock_mcs(&pmm_ptr->spin_ptr,
                    &per_cpu(pmm_spin_lock[pmm_ptr->zone->zone_id],
                             vspace_root->handler->cpu_id));
+        if (e) {
+                pr_error(
+                        "[ Error ] pmm free error %d in free manage node with page %d\n",
+                        e,
+                        ppn);
+        }
 }
 static void nexus_free_entry(struct nexus_node* nexus_entry,
                              struct nexus_node* nexus_root)
@@ -500,11 +506,17 @@ void nexus_delete_vspace(struct nexus_node* nexus_root, VSpace* vs)
                 lock_mcs(&pmm_ptr->spin_ptr,
                          &per_cpu(pmm_spin_lock[pmm_ptr->zone->zone_id],
                                   vspace_node->handler->cpu_id));
-                pmm_ptr->pmm_free(pmm_ptr, ppn, nexus_node_get_pages(node));
+                error_t e = pmm_ptr->pmm_free(
+                        pmm_ptr, ppn, nexus_node_get_pages(node));
                 unlock_mcs(&pmm_ptr->spin_ptr,
                            &per_cpu(pmm_spin_lock[pmm_ptr->zone->zone_id],
                                     vspace_node->handler->cpu_id));
-
+                if (e) {
+                        pr_error(
+                                "[ Error ] pmm free error %d in free manage node with page %d\n",
+                                e,
+                                ppn);
+                }
                 list_del_init(curr);
                 /*no need to maintain the rb tree*/
                 nexus_free_entry(node, vspace_node);
@@ -778,6 +790,7 @@ static error_t _unfill_range(void* p, int page_num, VSpace* vs,
                              struct nexus_node* vspace_node,
                              struct nexus_node* node)
 {
+        error_t e = REND_SUCCESS;
         vaddr free_end = (vaddr)p + page_num * PAGE_SIZE;
         while (node) {
                 bool need_break = false;
@@ -805,10 +818,16 @@ static error_t _unfill_range(void* p, int page_num, VSpace* vs,
                 lock_mcs(&pmm_ptr->spin_ptr,
                          &per_cpu(pmm_spin_lock[pmm_ptr->zone->zone_id],
                                   vspace_node->handler->cpu_id));
-                pmm_ptr->pmm_free(pmm_ptr, ppn, nexus_node_get_pages(node));
+                e = pmm_ptr->pmm_free(pmm_ptr, ppn, nexus_node_get_pages(node));
                 unlock_mcs(&pmm_ptr->spin_ptr,
                            &per_cpu(pmm_spin_lock[pmm_ptr->zone->zone_id],
                                     vspace_node->handler->cpu_id));
+                if (e) {
+                        pr_error(
+                                "[ Error ] pmm free error %d in free manage node with page %d\n",
+                                e,
+                                ppn);
+                }
                 unlink_rmap_list(node);
                 node = nexus_rb_tree_next(node);
                 if (!node || is_page_manage_node(node)) {
@@ -817,7 +836,7 @@ static error_t _unfill_range(void* p, int page_num, VSpace* vs,
                 if (need_break)
                         break;
         }
-        return REND_SUCCESS;
+        return e;
 }
 static error_t _kernel_free_pages(void* p, int page_num,
                                   struct nexus_node* nexus_root)
@@ -1051,8 +1070,15 @@ error_t unfill_phy_page(MemZone* zone, ppn_t ppn, u64 new_entry_addr)
         struct pmm* pmm_ptr = p_ptr->sec->zone->pmm;
         lock_mcs(&pmm_ptr->spin_ptr,
                  &percpu(pmm_spin_lock[pmm_ptr->zone->zone_id]));
-        pmm_ptr->pmm_free(pmm_ptr, ppn, 1);
+        error_t e = pmm_ptr->pmm_free(pmm_ptr, ppn, 1);
         unlock_mcs(&pmm_ptr->spin_ptr,
                    &percpu(pmm_spin_lock[pmm_ptr->zone->zone_id]));
+        if (e) {
+                pr_error(
+                        "[ Error ] pmm free error %d in free manage node with page %d\n",
+                        e,
+                        ppn);
+                return -E_RENDEZVOS;
+        }
         return REND_SUCCESS;
 }
