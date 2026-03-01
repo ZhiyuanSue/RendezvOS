@@ -17,7 +17,8 @@ int task_test(void)
                 u64 app_start = *(app_start_ptr);
                 u64 app_end = *(app_end_ptr);
 
-                error_t e = gen_task_from_elf(NULL, app_start, app_end, NULL);
+                error_t e =
+                        gen_task_from_elf(NULL, 0, 0, app_start, app_end, NULL);
                 if (e)
                         continue;
                 // schedule(percpu(core_tm));

@@ -19,7 +19,7 @@ error_t create_init_thread(Tcb_Base* root_task)
                 return -E_IN_PARAM;
         /*we let the current execution flow as init thread*/
         Thread_Base* init_t = percpu(init_thread_ptr) =
-                new_thread_structure(percpu(kallocator));
+                new_thread_structure(percpu(kallocator), 0);
 
         error_t e = -E_RENDEZVOS;
         if (!init_t) {
@@ -60,7 +60,7 @@ Task_Manager* init_proc(void)
                 goto new_task_manager_fail;
         }
         /*create the root task and init it*/
-        Tcb_Base* root_task = new_task_structure(percpu(kallocator));
+        Tcb_Base* root_task = new_task_structure(percpu(kallocator), 0);
         if (!root_task) {
                 pr_error("[ Error ] new root task fail\n");
                 goto new_root_task_fail;
@@ -76,7 +76,7 @@ Task_Manager* init_proc(void)
 
         e = create_init_thread(root_task);
         if (e) {
-                pr_error("[ Error ] create init thread fail %d\n",e);
+                pr_error("[ Error ] create init thread fail %d\n", e);
                 goto create_init_thread_fail;
         }
         do_init_call();
@@ -184,14 +184,15 @@ error_t del_thread_from_manager(Thread_Base* thread)
         return REND_SUCCESS;
 }
 
-Tcb_Base* new_task_structure(struct allocator* cpu_allocator)
+Tcb_Base* new_task_structure(struct allocator* cpu_allocator,
+                             size_t append_tcb_info_len)
 {
         if (!cpu_allocator)
                 return NULL;
-        Tcb_Base* tcb = (Tcb_Base*)(cpu_allocator->m_alloc(cpu_allocator,
-                                                           sizeof(Tcb_Base)));
+        Tcb_Base* tcb = (Tcb_Base*)(cpu_allocator->m_alloc(
+                cpu_allocator, sizeof(Tcb_Base) + append_tcb_info_len));
         if (tcb) {
-                memset((void*)tcb, 0, sizeof(Tcb_Base));
+                memset((void*)tcb, 0, sizeof(Tcb_Base) + append_tcb_info_len);
                 tcb->pid = INVALID_ID;
                 INIT_LIST_HEAD(&(tcb->sched_task_list));
                 tcb->thread_number = 0;

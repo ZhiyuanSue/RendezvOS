@@ -189,8 +189,7 @@ static struct nexus_node* init_vspace_nexus(vaddr nexus_page_addr, VSpace* vs,
                                             struct map_handler* handler,
                                             struct rb_root* _vspace_rb_root)
 {
-        if (!vs || !handler
-            || !ALIGNED(nexus_page_addr, PAGE_SIZE)) {
+        if (!vs || !handler || !ALIGNED(nexus_page_addr, PAGE_SIZE)) {
                 pr_error("[ NEXUS ] ERROR: init vspace nexus input error\n");
                 return NULL;
         }

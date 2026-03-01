@@ -9,7 +9,9 @@
 error_t load_elf_Phdr_64(vaddr elf_start, Elf64_Phdr* phdr_ptr, VSpace* vs);
 error_t run_elf_program(vaddr elf_start, vaddr elf_end, VSpace* vs);
 typedef void* (*elf_task_set_user_stack_func)(void* user_sp_ptr);
-error_t gen_task_from_elf(Thread_Base** elf_thread_ptr, vaddr elf_start,
+error_t gen_task_from_elf(Thread_Base** elf_thread_ptr,
+                          size_t append_tcb_info_len,
+                          size_t append_thread_info_len, vaddr elf_start,
                           vaddr elf_end, elf_task_set_user_stack_func func);
 typedef void* (*kthread_func)(void*);
 error_t gen_thread_from_func(Thread_Base** func_thread_ptr, kthread_func thread,

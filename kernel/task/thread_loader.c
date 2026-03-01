@@ -145,14 +145,17 @@ error_t run_elf_program(vaddr elf_start, vaddr elf_end, VSpace *vs)
         return REND_SUCCESS;
 }
 /*we must load all the elf file into kernel memory before we use this function*/
-error_t gen_task_from_elf(Thread_Base **elf_thread_ptr, vaddr elf_start,
+error_t gen_task_from_elf(Thread_Base **elf_thread_ptr,
+                          size_t append_tcb_info_len,
+                          size_t append_thread_info_len, vaddr elf_start,
                           vaddr elf_end, elf_task_set_user_stack_func func)
 {
         if (!elf_thread_ptr || !elf_start || !elf_end) {
                 return -E_IN_PARAM;
         }
         error_t e = REND_SUCCESS;
-        Tcb_Base *elf_task = new_task_structure(percpu(kallocator));
+        Tcb_Base *elf_task =
+                new_task_structure(percpu(kallocator), append_tcb_info_len);
         if (!elf_task) {
                 e = -E_RENDEZVOS;
                 goto gen_task_from_elf_error;
@@ -183,8 +186,12 @@ error_t gen_task_from_elf(Thread_Base **elf_thread_ptr, vaddr elf_start,
                 goto add_task_to_manager_error;
         }
 
-        Thread_Base *elf_thread = create_thread(
-                (void *)run_elf_program, 3, elf_start, elf_end, elf_task->vs);
+        Thread_Base *elf_thread = create_thread((void *)run_elf_program,
+                                                append_thread_info_len,
+                                                3,
+                                                elf_start,
+                                                elf_end,
+                                                elf_task->vs);
         if (!elf_thread) {
                 e = -E_RENDEZVOS;
                 goto create_thread_error;
@@ -222,7 +229,7 @@ add_task_to_manager_error:
         nexus_delete_vspace(new_vs_nexus_root, elf_task->vs);
 nexus_create_vspace_root_node_error:
         unset_vspace_root_addr(elf_task->vs);
-        del_vs_root(new_vs_paddr,&percpu(Map_Handler));
+        del_vs_root(new_vs_paddr, &percpu(Map_Handler));
 new_vs_root_error:
         del_vspace(&elf_task->vs);
 new_vspace_error:
@@ -237,7 +244,7 @@ error_t gen_thread_from_func(Thread_Base **func_thread_ptr, kthread_func thread,
                 return -E_IN_PARAM;
         }
         Thread_Base *func_t;
-        func_t = create_thread((void *)thread, 1, arg);
+        func_t = create_thread((void *)thread, 0, 1, arg);
         if (!func_t) {
                 pr_error("[Error] create kernel thread fail\n");
                 return -E_RENDEZVOS;

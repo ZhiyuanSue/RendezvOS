@@ -62,6 +62,7 @@ extern Task_Manager* core_tm;
 /* as the base class of tcb */
 typedef struct {
         TCB_COMMON
+        u64 append_tcb_info[];
 } Tcb_Base;
 
 /* thread */
@@ -97,6 +98,7 @@ extern u64 thread_kstack_page_num;
 
 typedef struct {
         THREAD_COMMON
+        u64 append_thread_info[];
 } Thread_Base;
 
 extern Thread_Base* init_thread_ptr;
@@ -120,11 +122,13 @@ void choose_schedule(Task_Manager* tm);
  * idle thread*/
 Task_Manager* init_proc();
 /* general task and thread new function */
-Tcb_Base* new_task_structure(struct allocator* cpu_allocator);
+Tcb_Base* new_task_structure(struct allocator* cpu_allocator,
+                             size_t append_tcb_info_len);
 Task_Manager* new_task_manager();
 void del_task_manager_structure(Task_Manager* tm);
 void del_thread_structure(Thread_Base* thread);
-Thread_Base* new_thread_structure(struct allocator* cpu_allocator);
+Thread_Base* new_thread_structure(struct allocator* cpu_allocator,
+                                  size_t append_thread_info_len);
 void free_thread_ref(ref_count_t* ref_count_ptr);
 
 Thread_Init_Para* new_init_parameter_structure();
@@ -140,7 +144,8 @@ error_t del_thread_from_manager(Thread_Base* thread);
 error_t create_init_thread(Tcb_Base* root_task);
 error_t create_idle_thread(Tcb_Base* root_task);
 
-Thread_Base* create_thread(void* __func, int nr_parameter, ...);
+Thread_Base* create_thread(void* __func, size_t append_thread_info_len,
+                           int nr_parameter, ...);
 void delete_thread(Thread_Base* thread);
 void delete_task(Tcb_Base* tcb);
 

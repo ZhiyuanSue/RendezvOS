@@ -33,16 +33,17 @@ static void thread_entry(void)
         thread_set_status(current_thread, thread_status_zombie);
         schedule(percpu(core_tm));
 }
-Thread_Base* new_thread_structure(struct allocator* cpu_allocator)
+Thread_Base* new_thread_structure(struct allocator* cpu_allocator,
+                                  size_t append_thread_info_len)
 {
         if (!cpu_allocator)
                 return NULL;
         Thread_Base* thread = (Thread_Base*)(cpu_allocator->m_alloc(
-                cpu_allocator, sizeof(Thread_Base)));
+                cpu_allocator, sizeof(Thread_Base) + append_thread_info_len));
         if (!thread) {
                 goto alloc_thread_error;
         }
-        memset((void*)thread, 0, sizeof(Thread_Base));
+        memset((void*)thread, 0, sizeof(Thread_Base) + append_thread_info_len);
 
         /*first do alloc*/
         thread->init_parameter = new_init_parameter_structure();
@@ -138,9 +139,11 @@ void del_init_parameter_structure(Thread_Init_Para* pm)
         cpu_allocator->m_free(cpu_allocator, (void*)pm);
 }
 /*general thread create function*/
-Thread_Base* create_thread(void* __func, int nr_parameter, ...)
+Thread_Base* create_thread(void* __func, size_t append_thread_info_len,
+                           int nr_parameter, ...)
 {
-        Thread_Base* thread = new_thread_structure(percpu(kallocator));
+        Thread_Base* thread = new_thread_structure(percpu(kallocator),
+                                                   append_thread_info_len);
         if (!thread) {
                 goto new_thread_structure_error;
         }
