@@ -174,12 +174,23 @@ def configure_module(module_name,module_config,root_dir):
 		repo_git_ignore_file_path=os.path.join(include_dir_path,".gitignore")
 		with open(repo_git_ignore_file_path, "w", encoding="utf-8") as f:
 			f.write("*\n")
-		# copy all the include file to target
-		target_module_include_dir = os.path.join(target_module_dir,"include")
-		if os.path.isdir(target_module_include_dir) == False:
-			print("ERROR:target module include dir is not exist")
+		# create symlink all the include file
+		# delete the exist symlink(if exist)
+		if os.path.lexists(include_dir_path):
+			if os.path.islink(include_dir_path) or os.path.isfile(include_dir_path):
+				os.unlink(include_dir_path)
+			else:
+				shutil.rmtree(include_dir_path)
+
+		# source include dir
+		source_include = os.path.join(target_module_dir, "include")
+		if not os.path.isdir(source_include):
+			print("ERROR: target module include dir does not exist after pull")
 			return 2
-		shutil.copytree(target_module_include_dir, include_dir_path, dirs_exist_ok=True, copy_function=shutil.copy2)
+
+		# create sym link
+		os.symlink(source_include, include_dir_path, target_is_directory=True)
+		print(f"Created symlink: \n{include_dir_path}\n\t -> {source_include}")
 	else:
 		# append the gitignore rule at modules/.gitignore
 		target_ignore_file_path = os.path.join(root_dir,"modules",target_ignore_file_name)

@@ -20,30 +20,37 @@ if __name__ =='__main__':
 	current_dir = os.getcwd()
 	target_subrepo_path = os.path.join(current_dir,subrepo_path)
 	
-	if os.path.isdir(target_subrepo_path)==False:
+	if not os.path.isdir(target_subrepo_path):
 		print("Error:no such a subrepo")
 		exit(2)
 	target_subrepo_git_path = os.path.join(target_subrepo_path,".git")
-	if os.path.isdir(target_subrepo_git_path)==False:
+	if not os.path.isdir(target_subrepo_git_path):
 		print("Error:target is not a git repo")
 		exit(2)
     
 	# copy the include files to the module repo
-	src_subrepo_include = os.path.join(current_dir,"include",subrepo_path)
 	dst_subrepo_include = os.path.join(current_dir,subrepo_path,"include")
-	shutil.copytree(src_subrepo_include, dst_subrepo_include, dirs_exist_ok=True, copy_function=shutil.copy2)
     
 	dst_git_ignore = os.path.join(dst_subrepo_include,".gitignore")
-	os.remove(dst_git_ignore)
+	if os.path.exists(dst_git_ignore):
+		os.remove(dst_git_ignore)
     
 	# try to push
 
-	subprocess.run(["git", "add", "."], cwd=target_subrepo_path, check=True,
-					capture_output=True, text=True)
+	try:
+		subprocess.run(["git", "add", "."], cwd=target_subrepo_path, check=True,
+						capture_output=True, text=True)
  
-	subprocess.run(["git", "commit", "-m", commit_message],
-					cwd=target_subrepo_path, check=True, capture_output=True, text=True)
+		subprocess.run(["git", "commit", "-m", commit_message],
+						cwd=target_subrepo_path, check=True, capture_output=True, text=True)
 
-	subprocess.run(["git", "push"], cwd=target_subrepo_path, check=True,
-					capture_output=True, text=True)
-    
+		subprocess.run(["git", "push"], cwd=target_subrepo_path, check=True,
+						capture_output=True, text=True)
+
+	except Exception as e:
+		print(f"Git operation failed:{e}",file = sys.stderr)
+		raise
+
+	finally:
+		with open(dst_git_ignore, "w", encoding="utf-8") as f:
+			f.write("*\n")

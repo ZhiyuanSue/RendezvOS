@@ -150,7 +150,7 @@ error_t gen_task_from_elf(Thread_Base **elf_thread_ptr,
                           size_t append_thread_info_len, vaddr elf_start,
                           vaddr elf_end, elf_task_set_user_stack_func func)
 {
-        if (!elf_thread_ptr || !elf_start || !elf_end) {
+        if (!elf_start || !elf_end) {
                 return -E_IN_PARAM;
         }
         error_t e = REND_SUCCESS;
