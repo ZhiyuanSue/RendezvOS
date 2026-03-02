@@ -1,6 +1,4 @@
 #include <rendezvos/task/ipc.h>
-#include <common/string.h>
-#include <modules/log/log.h>
 
 Ipc_Request_t* create_ipc_request(Thread_Base* thread)
 {
@@ -35,38 +33,6 @@ void free_ipc_request(ref_count_t* refcount)
         delete_ipc_request(req);
 }
 
-Message_Port_t* create_message_port()
-{
-        struct allocator* cpu_kallocator = percpu(kallocator);
-        Message_Port_t* mp =
-                cpu_kallocator->m_alloc(cpu_kallocator, sizeof(Message_Port_t));
-
-        if (mp) {
-                Ipc_Request_t* dummy_requeust_node =
-                        (Ipc_Request_t*)(cpu_kallocator->m_alloc(
-                                cpu_kallocator, sizeof(Ipc_Request_t)));
-                /* Dummy must be zeroed so free_thread_ref (via
-                 * del_thread_structure) does not dereference garbage
-                 * init_parameter when the dummy is dequeued and freed by
-                 * msq_dequeue_check_head. */
-                if (dummy_requeust_node) {
-                        memset(dummy_requeust_node, 0, sizeof(Ipc_Request_t));
-                        msq_init(&mp->thread_queue,
-                                 &dummy_requeust_node->ms_queue_node,
-                                 IPC_ENDPOINT_APPEND_BITS);
-                }
-        } else {
-                return NULL;
-        }
-        return mp;
-}
-void delete_message_port(Message_Port_t* port)
-{
-        if (!port)
-                return;
-        /*TODO: clean the queue*/
-        percpu(kallocator)->m_free(percpu(kallocator), port);
-}
 /**
  * @brief try to get a thread from the port
  * @param port the port we need to send to or recv from
@@ -80,10 +46,10 @@ Ipc_Request_t* ipc_port_try_match(Message_Port_t* port, u16 my_ipc_state)
 {
         if (!port)
                 return NULL;
-        u16 target_ipc_state = (my_ipc_state == IPC_ENDPOINT_STATE_SEND) ?
-                                       IPC_ENDPOINT_STATE_RECV :
-                                       IPC_ENDPOINT_STATE_SEND;
-        u64 target_thread_status = (my_ipc_state == IPC_ENDPOINT_STATE_SEND) ?
+        u16 target_ipc_state = (my_ipc_state == IPC_PORT_STATE_SEND) ?
+                                       IPC_PORT_STATE_RECV :
+                                       IPC_PORT_STATE_SEND;
+        u64 target_thread_status = (my_ipc_state == IPC_PORT_STATE_SEND) ?
                                            thread_status_block_on_receive :
                                            thread_status_block_on_send;
         while (1) {
@@ -146,8 +112,8 @@ error_t ipc_port_enqueue_wait(Message_Port_t* port, u16 my_ipc_state,
                 return -E_IN_PARAM;
         u8 queue_ipc_state = ipc_get_queue_state(port);
         u64 expected_ipc_state;
-        if (queue_ipc_state == IPC_ENDPOINT_STATE_EMPTY) {
-                expected_ipc_state = IPC_ENDPOINT_STATE_EMPTY;
+        if (queue_ipc_state == IPC_PORT_STATE_EMPTY) {
+                expected_ipc_state = IPC_PORT_STATE_EMPTY;
         } else if (queue_ipc_state == my_ipc_state) {
                 expected_ipc_state = my_ipc_state;
         } else {
@@ -343,8 +309,8 @@ error_t send_msg(Message_Port_t* port)
         Ipc_Request_t* receiver_request = NULL;
         while (1) {
                 if (!receiver_request) {
-                        receiver_request = ipc_port_try_match(
-                                port, IPC_ENDPOINT_STATE_SEND);
+                        receiver_request =
+                                ipc_port_try_match(port, IPC_PORT_STATE_SEND);
                 }
                 if (receiver_request) {
                         error_t try_transfer_result = ipc_transfer_message(
@@ -382,7 +348,7 @@ error_t send_msg(Message_Port_t* port)
                         u64 old_status = thread_set_status(
                                 sender, thread_status_block_on_send);
                         error_t enqueue_result = ipc_port_enqueue_wait(
-                                port, IPC_ENDPOINT_STATE_SEND, sender);
+                                port, IPC_PORT_STATE_SEND, sender);
                         switch (enqueue_result) {
                         case REND_SUCCESS: {
                                 /*successfully enqueue on the port
@@ -424,8 +390,8 @@ error_t recv_msg(Message_Port_t* port)
         Ipc_Request_t* sender_request = NULL;
         while (1) {
                 if (!sender_request) {
-                        sender_request = ipc_port_try_match(
-                                port, IPC_ENDPOINT_STATE_RECV);
+                        sender_request =
+                                ipc_port_try_match(port, IPC_PORT_STATE_RECV);
                 }
                 if (sender_request) {
                         error_t try_transfer_result = ipc_transfer_message(
@@ -466,7 +432,7 @@ error_t recv_msg(Message_Port_t* port)
                         u64 old_status = thread_set_status(
                                 receiver, thread_status_block_on_receive);
                         error_t enqueue_result = ipc_port_enqueue_wait(
-                                port, IPC_ENDPOINT_STATE_RECV, receiver);
+                                port, IPC_PORT_STATE_RECV, receiver);
                         switch (enqueue_result) {
                         case REND_SUCCESS: {
                                 /*successfully enqueue on the port
@@ -556,7 +522,7 @@ Message_t* dequeue_recv_msg(void)
 //                         &port->thread_queue,
 //                         MSQ_CHECK_FIELD_PTR,
 //                         tp_new((void*)(&target_thread->ms_queue_node),
-//                                IPC_ENDPOINT_STATE_SEND),
+//                                IPC_PORT_STATE_SEND),
 //                         NULL);
 
 //         } else if (thread_set_status_with_expect(target_thread,
@@ -567,7 +533,7 @@ Message_t* dequeue_recv_msg(void)
 //                         &port->thread_queue,
 //                         MSQ_CHECK_FIELD_PTR,
 //                         tp_new((void*)(&target_thread->ms_queue_node),
-//                                IPC_ENDPOINT_STATE_RECV),
+//                                IPC_PORT_STATE_RECV),
 //                         NULL);
 //         }
 //         if (!tp_is_none(dequeue_head_ptr)) {

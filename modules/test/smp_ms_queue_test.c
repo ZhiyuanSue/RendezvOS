@@ -192,10 +192,10 @@ bool smp_ms_queue_dyn_alloc_check(void)
 }
 
 /* Test for msq_enqueue_check_tail and msq_dequeue_check_head */
-#define IPC_ENDPOINT_APPEND_BITS 2
-#define IPC_ENDPOINT_STATE_EMPTY 0
-#define IPC_ENDPOINT_STATE_SEND  1
-#define IPC_ENDPOINT_STATE_RECV  2
+#define IPC_PORT_APPEND_BITS 2
+#define IPC_PORT_STATE_EMPTY 0
+#define IPC_PORT_STATE_SEND  1
+#define IPC_PORT_STATE_RECV  2
 
 // #define ms_check_use_per_cpu
 
@@ -215,9 +215,8 @@ int ms_check_test_seq[ms_check_test_data_len] = {0};
 void smp_ms_queue_check_init(void)
 {
         ms_check_dummy.data = -1;
-        msq_init(&ms_check_queue,
-                 &ms_check_dummy.ms_node,
-                 IPC_ENDPOINT_APPEND_BITS);
+        msq_init(
+                &ms_check_queue, &ms_check_dummy.ms_node, IPC_PORT_APPEND_BITS);
         for (int i = 0; i < ms_check_test_cpu_number; i++) {
                 ref_init(&ms_check_test_data_cpu[i].ms_node.refcount);
                 ms_check_test_data_cpu[i].ms_node.next = tp_new_none();
@@ -241,11 +240,11 @@ void smp_ms_queue_check_with_status(int offset, bool send_recv)
         u64 first_op, second_op, expected_second_op;
 
         if (send_recv == 0) {
-                first_op = IPC_ENDPOINT_STATE_SEND;
-                second_op = IPC_ENDPOINT_STATE_RECV;
+                first_op = IPC_PORT_STATE_SEND;
+                second_op = IPC_PORT_STATE_RECV;
         } else {
-                first_op = IPC_ENDPOINT_STATE_RECV;
-                second_op = IPC_ENDPOINT_STATE_SEND;
+                first_op = IPC_PORT_STATE_RECV;
+                second_op = IPC_PORT_STATE_SEND;
         }
         for (int i = 0; i < ms_check_test_data_len / 4; i++) {
                 if (i % (ms_check_test_data_len / 20) == 0) {
@@ -279,10 +278,10 @@ void smp_ms_queue_check_with_status(int offset, bool send_recv)
                         tagged_ptr_t tail = atomic64_load(&ms_check_queue.tail);
                         u8 queue_ipc_state =
                                 tp_get_tag(tail)
-                                & ((1 << IPC_ENDPOINT_APPEND_BITS) - 1);
+                                & ((1 << IPC_PORT_APPEND_BITS) - 1);
 
-                        if (queue_ipc_state == IPC_ENDPOINT_STATE_EMPTY) {
-                                expected_second_op = IPC_ENDPOINT_STATE_EMPTY;
+                        if (queue_ipc_state == IPC_PORT_STATE_EMPTY) {
+                                expected_second_op = IPC_PORT_STATE_EMPTY;
                         } else {
                                 expected_second_op = second_op;
                         }

@@ -3,15 +3,11 @@
 
 #include "../error.h"
 #include "message.h"
-#include <common/dsa/ms_queue.h>
+#include "port.h"
 #include <rendezvos/mm/allocator.h>
+#include <common/string.h>
 
 #include "tcb.h"
-
-#define IPC_ENDPOINT_APPEND_BITS 2
-#define IPC_ENDPOINT_STATE_EMPTY 0
-#define IPC_ENDPOINT_STATE_SEND  1
-#define IPC_ENDPOINT_STATE_RECV  2
 
 /*ipc request structure*/
 typedef struct {
@@ -23,21 +19,6 @@ typedef struct {
 Ipc_Request_t* create_ipc_request(Thread_Base* thread);
 void delete_ipc_request(Ipc_Request_t* req);
 void free_ipc_request(ref_count_t* refcount);
-
-/*port structure*/
-typedef struct Msg_Port Message_Port_t;
-struct Msg_Port {
-        ms_queue_t thread_queue;
-};
-
-static inline u16 ipc_get_queue_state(Message_Port_t* port)
-{
-        tagged_ptr_t tail = atomic64_load(&port->thread_queue.tail);
-        return tp_get_tag(tail) & ((1 << IPC_ENDPOINT_APPEND_BITS) - 1);
-}
-
-Message_Port_t* create_message_port();
-void delete_message_port(Message_Port_t* port);
 
 /**
  * @brief Transfer one message from sender to receiver (caller must hold ref to

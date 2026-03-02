@@ -103,7 +103,8 @@ static void smp_ipc_sender_loop(u32 cpu_id, int count)
                         ref_put(&msgdata->refcount, free_payload_data);
                         break;
                 }
-                /* After create_message_with_msg, we can release our reference to msgdata
+                /* After create_message_with_msg, we can release our reference
+                 * to msgdata
                  */
                 ref_put(&msgdata->refcount, free_payload_data);
 
