@@ -95,15 +95,15 @@ static void smp_ipc_sender_loop(u32 cpu_id, int count)
                         break;
                 }
 
-                Message_t* msg = create_message(msgdata);
+                Message_t* msg = create_message_with_msg(msgdata);
                 if (!msg) {
-                        pr_info("cpu %u sender create_message failed at i=%d\n",
+                        pr_info("cpu %u sender create_message_with_msg failed at i=%d\n",
                                 (unsigned)cpu_id,
                                 i);
                         ref_put(&msgdata->refcount, free_payload_data);
                         break;
                 }
-                /* After create_message, we can release our reference to msgdata
+                /* After create_message_with_msg, we can release our reference to msgdata
                  */
                 ref_put(&msgdata->refcount, free_payload_data);
 

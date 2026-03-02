@@ -192,6 +192,14 @@ error_t ipc_transfer_message(Thread_Base* sender, Thread_Base* receiver)
         Message_t* send_msg_ptr;
         if (!sender || !receiver)
                 return -E_RENDEZVOS;
+
+        if (thread_get_status(receiver) == thread_status_exit) {
+                return -E_REND_AGAIN;
+        }
+
+        Message_t* recv_msg_ptr = create_message_structure();
+        if (!recv_msg_ptr)
+                return -E_RENDEZVOS;
         /*
          - Problem 1:
         if the sender try to send, but we find the receiver is exiting, a
@@ -260,6 +268,7 @@ error_t ipc_transfer_message(Thread_Base* sender, Thread_Base* receiver)
                 dequeued_ptr =
                         msq_dequeue(&sender->send_msg_queue, free_message_ref);
                 if (tp_is_none(dequeued_ptr)) {
+                        delete_message_structure(recv_msg_ptr);
                         return -E_REND_NO_MSG;
                 }
                 send_msg_ptr = container_of(
@@ -267,6 +276,7 @@ error_t ipc_transfer_message(Thread_Base* sender, Thread_Base* receiver)
                 if (thread_get_status(sender) == thread_status_exit) {
                         ref_put(&send_msg_ptr->ms_queue_node.refcount,
                                 free_message_ref);
+                        delete_message_structure(recv_msg_ptr);
                         return -E_REND_NO_MSG;
                 }
         }
@@ -279,76 +289,50 @@ error_t ipc_transfer_message(Thread_Base* sender, Thread_Base* receiver)
         /* first try to give this message to the receiver and add the ref count
          * of this message, which means now the receiver and the
          * send_pending_msg all have this message*/
-        if (thread_get_status(receiver) == thread_status_exit) {
-                goto ipc_transfer_message_no_receiver;
-        }
-        Message_t* recv_msg_ptr = create_message(send_msg_ptr->data);
-        if (recv_msg_ptr) {
-                atomic64_add(&receiver->recv_pending_cnt, 1);
-                /* recv_msg_ptr from create_message has refcount=1;
-                 * refcount_is_zero=false */
-                msq_enqueue(&receiver->recv_msg_queue,
-                            &recv_msg_ptr->ms_queue_node,
-                            free_message_ref);
-                ref_put(&recv_msg_ptr->ms_queue_node.refcount,
-                        free_message_ref);
-                recv_msg_ptr = NULL;
-
-                if (thread_get_status(receiver) == thread_status_exit) {
-                        goto ipc_transfer_message_no_receiver;
-                }
-                /*now the send_msg_ptr should not hold this message*/
+        atomic64_add(&receiver->recv_pending_cnt, 1);
+        /* recv_msg_ptr from create_message_with_msg has refcount=1;
+         * refcount_is_zero=false */
+        if (fill_message_data(recv_msg_ptr, send_msg_ptr->data)
+            != REND_SUCCESS) {
+                /**
+                 * The data is invalid, we have to clean
+                 */
                 ref_put(&send_msg_ptr->ms_queue_node.refcount,
                         free_message_ref);
-                send_msg_ptr = NULL;
-                return REND_SUCCESS;
-        } else {
-                goto ipc_transfer_message_no_mem;
+                delete_message_structure(recv_msg_ptr);
+                return -E_REND_NO_MSG;
         }
-ipc_transfer_message_no_mem:
-        if (atomic64_cas((volatile u64*)(&sender->send_pending_msg),
-                         (u64)NULL,
-                         (u64)send_msg_ptr)
-            != (u64)NULL) {
-                /*means before me, a node have dequeued and on
-                 * send_pending_msg*/
-                tagged_ptr_t q_head_ptr = atomic64_load(
-                        (volatile u64*)&sender->send_msg_queue.head);
-                if ((u64)tp_get_ptr(q_head_ptr) == (u64)send_msg_ptr) {
-                        /*the send msg ptr is the dummy and the
-                         * send_pending_msg is a real unlinked node,we can
-                         * directly send message to receiver, the ref count
-                         * should not dec, which only transfer to the receiver*/
-                } else {
-                        /*the send msg ptr is not the dummy, which must
-                         * be unlinked node, so we can transfer send_pending_msg
-                         * to receiver, and put send msg ptr as
-                         * send_pending_msg*/
+        msq_enqueue(&receiver->recv_msg_queue,
+                    &recv_msg_ptr->ms_queue_node,
+                    free_message_ref);
+        ref_put(&recv_msg_ptr->ms_queue_node.refcount, free_message_ref);
+        recv_msg_ptr = NULL;
+
+        if (thread_get_status(receiver) == thread_status_exit) {
+                /*
+                        Only sender push case can find the receiver is exiting
+                        And receiver(maybe more then one) pull case should not
+                   run into here The sender must only one, so just directly
+                   change send_pending_ptr No Problem 3 case
+                */
+                if (atomic64_cas((volatile u64*)(&sender->send_pending_msg),
+                                 (u64)NULL,
+                                 (u64)send_msg_ptr)
+                    != (u64)NULL) {
+                        /*its impossible case, if so ,we drop this message
+                         * directly*/
+                        ref_put(&send_msg_ptr->ms_queue_node.refcount,
+                                free_message_ref);
+                        send_msg_ptr = NULL;
+                        return -E_RENDEZVOS;
                 }
+
+                return -E_REND_AGAIN;
         }
-        /*the send pending msg is this round dequeued but cannot
-         * successfully sent msg,try again*/
-        return -E_REND_AGAIN;
-ipc_transfer_message_no_receiver:
-        if (atomic64_cas((volatile u64*)(&sender->send_pending_msg),
-                         (u64)NULL,
-                         (u64)send_msg_ptr)
-            != (u64)NULL) {
-                /*means before me,  a node have dequeued and on
-                 * send_pending_msg*/
-                tagged_ptr_t q_head_ptr = atomic64_load(
-                        (volatile u64*)&sender->send_msg_queue.head);
-                if ((u64)tp_get_ptr(q_head_ptr) == (u64)send_msg_ptr) {
-                        /*the send msg ptr is the dummy and the
-                         * send_pending_msg is a real unlinked node*/
-                } else {
-                        /*the send msg ptr is not the dummy, which must
-                         * be unlinked node*/
-                }
-        }
-        /*the send pending msg is this round dequeued but cannot
-         * successfully sent msg,try again*/
-        return -E_REND_AGAIN;
+        /*now the send_msg_ptr should not hold this message*/
+        ref_put(&send_msg_ptr->ms_queue_node.refcount, free_message_ref);
+        send_msg_ptr = NULL;
+        return REND_SUCCESS;
 }
 error_t send_msg(Message_Port_t* port)
 {

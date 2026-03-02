@@ -43,7 +43,7 @@ void free_msgdata_ref_default(ref_count_t* msgdata_refcount)
         delete_msgdata_structure(msg_data);
 }
 
-Message_t* create_message(Msg_Data_t* msgdata)
+Message_t* create_message_with_msg(Msg_Data_t* msgdata)
 {
         /*
         if you want to create a message,
@@ -67,10 +67,28 @@ Message_t* create_message(Msg_Data_t* msgdata)
                 cpu_kallocator->m_alloc(cpu_kallocator, sizeof(Message_t));
         if (msg) {
                 memset(msg, 0, sizeof(Message_t));
-                msg->data = msgdata;
+                atomic64_store((volatile u64*)&(msg->data),(u64)msgdata);
                 ref_init(&msg->ms_queue_node.refcount);
         }
         return msg;
+}
+
+Message_t* create_message_structure(void){
+        struct allocator* cpu_kallocator = percpu(kallocator);
+        Message_t* msg =
+                cpu_kallocator->m_alloc(cpu_kallocator, sizeof(Message_t));
+        if(msg){
+                memset(msg, 0, sizeof(Message_t));
+                ref_init(&msg->ms_queue_node.refcount);
+        }
+        return msg;
+}
+error_t fill_message_data(Message_t* msg,Msg_Data_t* msgdata){
+        if(!msg||!msgdata||!ref_get_not_zero(&msgdata->refcount)){
+                return -E_IN_PARAM;
+        }
+        atomic64_store((volatile u64*)&(msg->data),(u64)msgdata);
+        return REND_SUCCESS;
 }
 void delete_message_structure(Message_t* msg)
 {

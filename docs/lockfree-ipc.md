@@ -790,15 +790,16 @@ struct MsgData {
 
 所以需要一个地方存放，我设置了一个`volatile Message_t* send_pending_msg;`用于表示已经在ipc_transfer_message过程中，已经从发送队列取出来，但是发送失败了的情况。
 
-如果**ipc_transfer_message是在receiver这边执行**，那么可能存在多个receiver同时试图从sender这里取出来，并且均发送失败的情况。所以只有一个`send_pending_msg`指针，可能不够用，一种方案是pending也搞成队列，另一种方案是，取出来之后，在执行栈上，有对应节点的指针`send_msg_ptr`，然后再while循环试图塞回去这个栈上的指针到线程的`send_pending_msg`，超过尝试次数就阻塞住。
+如果**ipc_transfer_message是在receiver这边执行**，那么可能存在多个receiver同时试图从sender这里取出来，并且均发送失败的情况。这种情况确实过于复杂，我们必须想办法避免。
 
-但是这种情况下，不可能存在receiver为exiting的情况，因为它正在执行。只有可能出现取出消息的时候sender没消息，或者复制消息的时候申请内存失败等问题。——我们总是可以认为，receiver塞入一个已经存在的消息到自己的recv msg队列是一定能成功的。
+我们考虑到：这种情况下，不可能存在receiver为exiting的情况，因为它正在执行。只有可能出现取出消息的时候sender没消息，或者复制消息的时候申请内存失败等问题。——我们总是可以认为，receiver塞入一个已经存在的消息到自己的recv msg队列是一定能成功的。所以，我们必须让他取出来之后，只有sender（sender是发送者自己，最多一个）可以在处理这个send_pending_msg。这样，一个槽位就够了。
 
 ```c
 error_t ipc_transfer_message(Thread_Base* sender, Thread_Base* receiver)
 {
         申请一个栈上的指针（这个得是tagged ptr）dequeued_ptr，表示从send msg队列取出的Msg的tagged ptr
         申请一个栈上的指针Message_t* send_msg_ptr，表示send_pending_msg或send msg队列中取出的Msg
+        预分配一块Message_t* recv_msg_ptr
           
         
         if ((send_msg_ptr = (Message_t*)atomic64_exchange(
@@ -814,21 +815,26 @@ error_t ipc_transfer_message(Thread_Base* sender, Thread_Base* receiver)
                 如果是sender执行，那么这没关系，一定不是exiting
                 如果是receiver在执行，sender可能正在退出，那么他发送的消息是无效的
                 此时，栈上的指针send_msg_ptr通过之前的dequeue，持有了这个消息的一个refcount，必须做一次ref put
+                  
+                此外，失败的情况必须清理掉预分配的recv_msg_ptr
         }
   			如果通过exchange成功获取到了，说明是之前一次尝试失败了，存在一个取出来但是没发送成功的消息，直接用
           
         从而，我们获取到了一条sender待发送的消息。
          
-        创建一个消息结构体并复制过去。
+        这时候我们再把send_msg_ptr的msgdata复制给recv_msg_ptr。
+        这个复制也需要考虑复制的send_msg_ptr实际没有持有任何msgdata或者该msgdata的refcount已经清零。
+        这时候直接清理掉消息并让上层重试。
         enqueue到recevier的recv msg队列。
 
         随后，需要检查一些错误的情形，比如sender这里执行该函数，发现receiver正在exiting
         那么必须把已经取出来但是没有发送成功的消息，还原到send_pending_msg这里。
-        因为我们没有使用pending队列，所以，只能循环cas一下试图塞进去了。
+        因为只有sender可以操作send_pending_msg，而receiver不会去动它（receiver的pull情形，receiver一定活着）
+        所以正常cas即可。
 }
 ```
 
-如果**ipc_transfer_message是在sender这边执行**，那么sender只有一个（就是正在执行的线程，不可能竞态），但是不确定receiver的状态（可能exiting），所以先尝试取出该消息到栈上的指针，失败同样返回no msg的错误，复制消息并塞入消息，后检查，如果receiver在exiting，就回退，如前所述，在这种情况下要反复尝试cas，把已经取出来到执行栈上的指针，塞回到`send_pending_msg`。
+如果**ipc_transfer_message是在sender这边执行**，那么sender只有一个（就是正在执行的线程，不可能竞态），但是不确定receiver的状态（可能exiting），所以预分配空间用于复制，先尝试取出该消息到栈上的指针，失败同样返回no msg的错误，塞入消息，后检查，如果receiver在exiting，就回退，塞回到`send_pending_msg`，并让上层重试。
 
 
 

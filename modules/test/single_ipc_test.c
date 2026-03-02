@@ -51,13 +51,13 @@ static void* ipc_sender_thread(void* arg)
                 single_ipc_sender_done = 1;
                 return NULL;
         }
-        Message_t* msg = create_message(msgdata);
+        Message_t* msg = create_message_with_msg(msgdata);
         if (!msg) {
-                pr_error("[single_ipc_test] sender: create_message failed\n");
+                pr_error("[single_ipc_test] sender: create_message_with_msg failed\n");
                 single_ipc_sender_done = 1;
                 return NULL;
         }
-        /* After create_message, we can release our reference to msgdata */
+        /* After create_message_with_msg, we can release our reference to msgdata */
         ref_put(&msgdata->refcount, free_msgdata_ref_default);
         msgdata = NULL;
 
@@ -231,16 +231,16 @@ static void* ipc_multi_round_sender_thread(void* arg)
                         break;
                 }
 
-                Message_t* msg = create_message(msgdata);
+                Message_t* msg = create_message_with_msg(msgdata);
                 if (!msg) {
                         pr_error(
-                                "[single_ipc_multi_round_test] sender: create_message failed at round %llu\n",
+                                "[single_ipc_multi_round_test] sender: create_message_with_msg failed at round %llu\n",
                                 (unsigned long long)i);
                         ref_put(&msgdata->refcount, free_msgdata_ref_default);
                         break;
                 }
 
-                /* After create_message, we can release our reference to msgdata
+                /* After create_message_with_msg, we can release our reference to msgdata
                  */
                 ref_put(&msgdata->refcount, free_msgdata_ref_default);
 
