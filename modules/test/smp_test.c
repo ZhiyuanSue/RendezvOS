@@ -51,6 +51,7 @@ void multi_cpu_test(void)
                                         break;
                                 }
                         }
+                        arch_cpu_relax();
                         if (!have_cpu_not_start)
                                 break;
                 }
@@ -82,6 +83,7 @@ void multi_cpu_test(void)
                                                 break;
                                         }
                                 }
+                                arch_cpu_relax();
                                 if (!have_cpu_not_finish)
                                         break;
                         }
@@ -113,8 +115,9 @@ void multi_cpu_test(void)
                                 test_state[j] = multi_cpu_test_not_start;
                         curr_test++;
                 } else {
-                        while (curr_test == i)
-                                ;
+                        while (curr_test == i){
+                                arch_cpu_relax();
+                        }
                 }
         }
         if (percpu(cpu_number) == BSP_ID) {
