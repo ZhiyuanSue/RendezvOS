@@ -9,7 +9,6 @@
 #define IPC_PORT_STATE_SEND  1
 #define IPC_PORT_STATE_RECV  2
 
-
 /*port structure*/
 typedef struct Msg_Port Message_Port_t;
 struct Msg_Port {
@@ -24,6 +23,5 @@ static inline u16 ipc_get_queue_state(Message_Port_t* port)
 
 Message_Port_t* create_message_port();
 void delete_message_port(Message_Port_t* port);
-
 
 #endif

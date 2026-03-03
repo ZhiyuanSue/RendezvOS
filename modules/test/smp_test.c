@@ -115,7 +115,7 @@ void multi_cpu_test(void)
                                 test_state[j] = multi_cpu_test_not_start;
                         curr_test++;
                 } else {
-                        while (curr_test == i){
+                        while (curr_test == i) {
                                 arch_cpu_relax();
                         }
                 }
