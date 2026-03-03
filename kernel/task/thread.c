@@ -5,6 +5,7 @@
 #include <rendezvos/smp/percpu.h>
 #include <rendezvos/error.h>
 #include <rendezvos/mm/allocator.h>
+#include <rendezvos/task/port.h>
 /*
 we first generate a context that after the return will goto thread entry（this
 function) then the stack frame is the only one thread_entry frame then here we
@@ -87,6 +88,7 @@ Thread_Base* new_thread_structure(struct allocator* cpu_allocator,
 
         thread->send_pending_msg = NULL;
         thread->recv_pending_cnt.counter = 0;
+        thread_port_cache_init(&thread->port_cache);
         return thread;
 
 alloc_dummy_send_msg_error:
@@ -103,7 +105,13 @@ void del_thread_structure(Thread_Base* thread)
         struct allocator* cpu_allocator = percpu(kallocator);
         if (!thread || !cpu_allocator)
                 return;
-        /*first free the init parameter*/
+        if (thread->exposed_port_name)
+                thread_unregister_port(thread);
+        thread_port_cache_clear(&thread->port_cache);
+        if (thread->exposed_port) {
+                delete_message_port(thread->exposed_port);
+                thread->exposed_port = NULL;
+        }
         del_init_parameter_structure(thread->init_parameter);
         cpu_allocator->m_free(cpu_allocator, thread);
 }
