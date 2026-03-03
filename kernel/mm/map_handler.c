@@ -53,6 +53,20 @@ void init_map(struct map_handler *handler, int cpu_id, struct pmm *pmm)
                 if (invalid_ppn(handler->handler_ppn[i])
                     || alloced_page_number != 1) {
                         pr_error("[ERROR] init map no ppn can alloc\n");
+                        /* Rollback: free already allocated pages */
+                        for (int j = 0; j < i; j++) {
+                                if (!invalid_ppn(handler->handler_ppn[j])) {
+                                        lock_mcs(&pmm->spin_ptr,
+                                                 &per_cpu(pmm_spin_lock[pmm->zone->zone_id],
+                                                          cpu_id));
+                                        pmm->pmm_free(pmm, handler->handler_ppn[j], 1);
+                                        unlock_mcs(&pmm->spin_ptr,
+                                                  &per_cpu(pmm_spin_lock[pmm->zone->zone_id],
+                                                           cpu_id));
+                                        handler->handler_ppn[j] = -E_RENDEZVOS;
+                                }
+                        }
+                        return;
                 }
                 map_vaddr += PAGE_SIZE;
         }
@@ -411,6 +425,13 @@ map_l0_fail:
         if (lock)
                 unlock_mcs(lock, &per_cpu(handler_spin_lock, handler->cpu_id));
 map_fail:
+        /*
+         * Replenish handler_ppn[] slots consumed during this map attempt. We do
+         * not roll back already-installed page-table pages here: kernel page
+         * table growth is bounded by design and parameters; user page tables
+         * are torn down on process exit. Unbounded growth would indicate
+         * leakage or misuse above this layer, not something to fix by rollback.
+         */
         struct pmm *pmm_ptr = handler->pmm;
         MemZone *zone = pmm_ptr->zone;
         for (int i = 0; i < 4; i++) {

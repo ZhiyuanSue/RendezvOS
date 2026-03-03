@@ -543,6 +543,13 @@ void nexus_delete_vspace(struct nexus_node* nexus_root, VSpace* vs)
                                   vspace_node->handler,
                                   &(vs->vspace_lock));
                 if (ppn < 0) {
+                        /*
+                         * Unmap failure means bad parameters or broken
+                         * page-table structure (e.g. missing entry). Fix the
+                         * bug in the caller or page-table maintenance; we are
+                         * on an error path and cannot roll back already-freed
+                         * entries.
+                         */
                         pr_error("[ NEXUS ] ERROR: unmap error!\n");
                         unlock_cas(&vspace_node->vs->nexus_vspace_lock);
                         goto fail;
@@ -970,6 +977,13 @@ static error_t _unfill_range(void* p, int page_num, VSpace* vs,
                                   vspace_node->handler,
                                   &vspace_node->vs->vspace_lock);
                 if (ppn < 0) {
+                        /*
+                         * Unmap failure here means bad parameters or broken
+                         * page-table structure (e.g. missing entry). That is a
+                         * bug to fix in the caller or page-table maintenance,
+                         * not a rollback scenario: we are already on an error
+                         * path and cannot meaningfully "roll back" unfill.
+                         */
                         pr_error("[ NEXUS ] ERROR: unmap error!\n");
                         unlock_cas(&vspace_node->vs->nexus_vspace_lock);
                         return -E_RENDEZVOS;
