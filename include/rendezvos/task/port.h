@@ -51,14 +51,8 @@ error_t register_port(struct Port_Table* table, Message_Port_t* port);
 error_t unregister_port(struct Port_Table* table, const char* name);
 void delete_port_table_structure(struct Port_Table* table);
 
-/* High-level port discovery API */
-void port_discovery_init(void);
-
-/* Convenience functions using global port table */
-error_t register_port_to_global(Message_Port_t* port);
-error_t unregister_port_from_global(const char* name);
-
 /* Global port table - declared in port.c */
 extern struct Port_Table* global_port_table;
+error_t global_port_init(void);
 
 #endif

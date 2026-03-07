@@ -35,6 +35,32 @@ static void thread_entry(void)
         thread_set_status(current_thread, thread_status_zombie);
         schedule(percpu(core_tm));
 }
+
+static void thread_port_cache_init(struct thread_port_cache* cache)
+{
+        if (!cache)
+                return;
+        cache->count = 0;
+        for (u32 i = 0; i < THREAD_MAX_KNOWN_PORTS; i++) {
+                cache->entries[i].port = NULL;
+                cache->entries[i].lru_counter = 0;
+        }
+}
+
+static void thread_port_cache_clear(struct thread_port_cache* cache)
+{
+        if (!cache)
+                return;
+        for (u32 i = 0; i < THREAD_MAX_KNOWN_PORTS; i++) {
+                Message_Port_t* port = cache->entries[i].port;
+                if (port)
+                        ref_put(&port->refcount, free_message_port_ref);
+                cache->entries[i].port = NULL;
+                cache->entries[i].lru_counter = 0;
+        }
+        cache->count = 0;
+}
+
 Thread_Base* new_thread_structure(struct allocator* cpu_allocator,
                                   size_t append_thread_info_len)
 {
@@ -251,71 +277,22 @@ error_t thread_join(Tcb_Base* task, Thread_Base* thread)
         return res;
 }
 
-void thread_port_cache_init(struct thread_port_cache* cache)
+static void thread_port_cache_invalidate_entry(struct thread_port_cache* c,
+                                               u32 idx, Message_Port_t* port)
 {
-        if (!cache)
-                return;
-        cache->count = 0;
-        for (u32 i = 0; i < THREAD_MAX_KNOWN_PORTS; i++) {
-                cache->entries[i].port = NULL;
-                cache->entries[i].lru_counter = 0;
-        }
+        c->entries[idx].port = NULL;
+        c->entries[idx].lru_counter = 0;
+        c->count--;
+        ref_put(&port->refcount, free_message_port_ref);
 }
 
-void thread_port_cache_clear(struct thread_port_cache* cache)
-{
-        if (!cache)
-                return;
-        for (u32 i = 0; i < THREAD_MAX_KNOWN_PORTS; i++) {
-                Message_Port_t* port = cache->entries[i].port;
-                if (port)
-                        ref_put(&port->refcount, free_message_port_ref);
-                cache->entries[i].port = NULL;
-                cache->entries[i].lru_counter = 0;
-        }
-        cache->count = 0;
-}
-
-Message_Port_t* thread_lookup_port(const char* name)
-{
-        Thread_Base* self = get_cpu_current_thread();
-        if (!self || !name || !global_port_table)
-                return NULL;
-
-        /* 1. 先查cache */
-        Message_Port_t* port = thread_port_cache_lookup(self, name);
-        if (port) {
-                /* cache命中：cache已持有ref，调用者也需要ref */
-                if (!ref_get_not_zero(&port->refcount)) {
-                        /* port正在被释放 */
-                        return NULL;
-                }
-                return port;
-        }
-
-        /* 2. cache未命中，从全局表查找 */
-        port = port_table_lookup(global_port_table, name);
-        if (!port)
-                return NULL;
-
-        /* 3. 放入cache（cache_add会增加refcount给cache） */
-        if (thread_port_cache_add(self, port) != REND_SUCCESS) {
-                /* cache add失败，释放lookup时增加的ref */
-                ref_put(&port->refcount, free_message_port_ref);
-                return NULL;
-        }
-        /* 此时：lookup增加了1个ref（给调用者），cache_add增加了1个ref（给cache）
-         * 调用者已经有了ref，直接返回即可 */
-        return port;
-}
-
-Message_Port_t* thread_port_cache_lookup(Thread_Base* thread, const char* name)
+static Message_Port_t* thread_port_cache_lookup(Thread_Base* thread,
+                                                const char* name)
 {
         struct thread_port_cache* c = &thread->port_cache;
         Message_Port_t* found_port = NULL;
         u32 found_idx = THREAD_MAX_KNOWN_PORTS;
 
-        /* cache是thread-local的，不需要锁 */
         for (u32 i = 0; i < THREAD_MAX_KNOWN_PORTS; i++) {
                 Message_Port_t* port = c->entries[i].port;
                 if (!port)
@@ -327,8 +304,29 @@ Message_Port_t* thread_port_cache_lookup(Thread_Base* thread, const char* name)
                 break;
         }
 
-        /* LRU更新：新访问的设为0，其他非空的都+1 */
         if (found_port && found_port->registered) {
+                if (!found_port->table) {
+                        thread_port_cache_invalidate_entry(
+                                c, found_idx, found_port);
+                        return NULL;
+                }
+
+                if (global_port_table) {
+                        struct spin_lock_t* my_lock =
+                                &percpu(port_table_spin_lock);
+                        lock_mcs(&global_port_table->lock, my_lock);
+                        bool still_valid =
+                                (found_port->table == global_port_table)
+                                && found_port->registered;
+                        unlock_mcs(&global_port_table->lock, my_lock);
+
+                        if (!still_valid) {
+                                thread_port_cache_invalidate_entry(
+                                        c, found_idx, found_port);
+                                return NULL;
+                        }
+                }
+
                 for (u32 i = 0; i < THREAD_MAX_KNOWN_PORTS; i++) {
                         if (!c->entries[i].port)
                                 continue;
@@ -338,60 +336,28 @@ Message_Port_t* thread_port_cache_lookup(Thread_Base* thread, const char* name)
                                 c->entries[i].lru_counter++;
                         }
                 }
-                /* cache已持有ref，调用者也需要ref */
                 if (!ref_get_not_zero(&found_port->refcount)) {
-                        /* port正在被释放 */
                         found_port = NULL;
                 }
-        } else {
-                found_port = NULL;
+        } else if (found_port) {
+                thread_port_cache_invalidate_entry(c, found_idx, found_port);
+                return NULL;
         }
 
         return found_port;
 }
 
-void thread_port_cache_remove(Thread_Base* thread, const char* name)
-{
-        struct thread_port_cache* c = &thread->port_cache;
-
-        /* 先找到要移除的条目（不需要锁，因为是thread-local） */
-        u32 remove_idx = THREAD_MAX_KNOWN_PORTS;
-        for (u32 i = 0; i < THREAD_MAX_KNOWN_PORTS; i++) {
-                Message_Port_t* port = c->entries[i].port;
-                if (!port || strcmp(port->name, name) != 0)
-                        continue;
-                remove_idx = i;
-                break;
-        }
-
-        if (remove_idx >= THREAD_MAX_KNOWN_PORTS)
-                return; /* 没找到 */
-
-        Message_Port_t* port = c->entries[remove_idx].port;
-
-        /* 需要释放ref（ref_put是原子操作，不需要锁） */
-        ref_put(&port->refcount, free_message_port_ref);
-
-        /* 从cache中移除（不需要锁）：清空该条目，count减1 */
-        c->entries[remove_idx].port = NULL;
-        c->entries[remove_idx].lru_counter = 0;
-        c->count--;
-}
-
-error_t thread_port_cache_add(Thread_Base* thread, Message_Port_t* port)
+static error_t thread_port_cache_add(Thread_Base* thread, Message_Port_t* port)
 {
         if (!port || !port->registered)
                 return -E_IN_PARAM;
 
-        /* cache持有port需要增加refcount */
         if (!ref_get_not_zero(&port->refcount))
                 return -E_RENDEZVOS;
 
         struct thread_port_cache* c = &thread->port_cache;
 
-        /* 如果缓存未满，查找空位添加（不需要锁，因为是thread-local） */
         if (c->count < THREAD_MAX_KNOWN_PORTS) {
-                /* 查找空位 */
                 u32 empty_idx = THREAD_MAX_KNOWN_PORTS;
                 for (u32 i = 0; i < THREAD_MAX_KNOWN_PORTS; i++) {
                         if (!c->entries[i].port) {
@@ -400,9 +366,8 @@ error_t thread_port_cache_add(Thread_Base* thread, Message_Port_t* port)
                         }
                 }
                 if (empty_idx >= THREAD_MAX_KNOWN_PORTS)
-                        return -E_RENDEZVOS; /* 不应该发生 */
+                        return -E_RENDEZVOS;
 
-                /* 新添加的设为0，其他非空的+1 */
                 for (u32 i = 0; i < THREAD_MAX_KNOWN_PORTS; i++) {
                         if (c->entries[i].port && i != empty_idx) {
                                 c->entries[i].lru_counter++;
@@ -414,7 +379,6 @@ error_t thread_port_cache_add(Thread_Base* thread, Message_Port_t* port)
                 return REND_SUCCESS;
         }
 
-        /* 缓存已满，使用LRU淘汰：找到计数最大的条目（不需要锁） */
         u32 lru_idx = 0;
         u64 max_counter = 0;
         bool found = false;
@@ -428,14 +392,12 @@ error_t thread_port_cache_add(Thread_Base* thread, Message_Port_t* port)
                 }
         }
         if (!found)
-                return -E_RENDEZVOS; /* 不应该发生 */
+                return -E_RENDEZVOS;
 
-        /* 淘汰LRU条目：需要释放ref（ref_put是原子操作，不需要锁） */
         Message_Port_t* evicted = c->entries[lru_idx].port;
         if (evicted)
                 ref_put(&evicted->refcount, free_message_port_ref);
 
-        /* 将新条目放在LRU位置，设为0，其他非空的+1（不需要锁） */
         for (u32 i = 0; i < THREAD_MAX_KNOWN_PORTS; i++) {
                 if (c->entries[i].port && i != lru_idx) {
                         c->entries[i].lru_counter++;
@@ -445,4 +407,30 @@ error_t thread_port_cache_add(Thread_Base* thread, Message_Port_t* port)
         c->entries[lru_idx].lru_counter = 0;
 
         return REND_SUCCESS;
+}
+/*You have to use ref put after finish use of this function*/
+Message_Port_t* thread_lookup_port(const char* name)
+{
+        Thread_Base* self = get_cpu_current_thread();
+        if (!self || !name || !global_port_table)
+                return NULL;
+
+        Message_Port_t* port = thread_port_cache_lookup(self, name);
+        if (port) {
+                if (!ref_get_not_zero(&port->refcount)) {
+                        return NULL;
+                }
+                return port;
+        }
+
+        port = port_table_lookup(global_port_table, name);
+        if (!port)
+                return NULL;
+
+        if (thread_port_cache_add(self, port) != REND_SUCCESS) {
+                ref_put(&port->refcount, free_message_port_ref);
+                return NULL;
+        }
+
+        return port;
 }

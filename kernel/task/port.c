@@ -55,8 +55,6 @@ void delete_message_port_structure(Message_Port_t* port)
         percpu(kallocator)->m_free(percpu(kallocator), port);
 }
 
-struct Port_Table* global_port_table;
-
 static Message_Port_t* port_table_search(struct Port_Table* table,
                                          const char* name)
 {
@@ -104,7 +102,6 @@ static void port_table_insert_port(Message_Port_t* port,
         port->registered = true;
 }
 
-/* 从红黑树中移除port并清理rb_node字段 */
 static void port_table_remove_port(Message_Port_t* port,
                                    struct Port_Table* table)
 {
@@ -153,14 +150,14 @@ void port_table_init(struct Port_Table* table)
         if (!table)
                 return;
         table->root.rb_root = NULL;
-        table->lock = NULL; /* MCS锁初始化为NULL */
+        table->lock = NULL;
 }
 
 void delete_port_table_structure(struct Port_Table* table)
 {
         if (!table)
                 return;
-        /*TODO: 清理所有port？或者要求先unregister所有port */
+        /*TODO: clean all the ports */
         percpu(kallocator)->m_free(percpu(kallocator), table);
 }
 
@@ -173,18 +170,14 @@ error_t register_port(struct Port_Table* table, Message_Port_t* port)
         lock_mcs(&table->lock, my_lock);
         Message_Port_t* existing = port_table_search(table, port->name);
         if (existing) {
-                /* 同名port已存在 */
                 if (existing == port) {
-                        /* 同一个port重复注册，直接返回成功 */
                         unlock_mcs(&table->lock, my_lock);
                         return REND_SUCCESS;
                 }
-                /* 不同的port同名，返回错误 */
                 unlock_mcs(&table->lock, my_lock);
                 return -E_RENDEZVOS;
         }
 
-        /* 插入新port到树中 */
         port_table_init_rb_node(port);
         port_table_insert_port(port, table);
         /* table holds one ref */
@@ -207,7 +200,6 @@ error_t unregister_port(struct Port_Table* table, const char* name)
         lock_mcs(&table->lock, my_lock);
         Message_Port_t* port = port_table_search(table, name);
         if (!port || !port->registered) {
-                /* port不存在或已unregister，幂等操作，返回成功 */
                 unlock_mcs(&table->lock, my_lock);
                 return REND_SUCCESS;
         }
@@ -239,18 +231,14 @@ Message_Port_t* port_table_lookup(struct Port_Table* table, const char* name)
         return port;
 }
 
-void port_discovery_init(void)
+struct Port_Table* global_port_table;
+error_t global_port_init(void)
 {
         global_port_table = port_table_create();
+        if (!global_port_table) {
+                pr_error("[ PORT ] Failed to create global port table\n");
+                return -E_RENDEZVOS;
+        }
         port_table_init(global_port_table);
-}
-
-error_t register_port_to_global(Message_Port_t* port)
-{
-        return register_port(global_port_table, port);
-}
-
-error_t unregister_port_from_global(const char* name)
-{
-        return unregister_port(global_port_table, name);
+        return REND_SUCCESS;
 }
