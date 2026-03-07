@@ -30,8 +30,7 @@ static void* port_discovery_receiver_thread(void* arg)
         (void)arg;
         receiver_port = create_message_port(PORT_DISCOVERY_PORT_NAME);
         if (!receiver_port) {
-                pr_error(
-                        "[port_test] receiver: create port failed\n");
+                pr_error("[port_test] receiver: create port failed\n");
                 port_discovery_receiver_done = 1;
                 return NULL;
         }
@@ -91,8 +90,7 @@ static void* port_discovery_sender_thread(void* arg)
                                 ->m_alloc(percpu(kallocator),
                                           sizeof(port_discovery_payload));
         if (!payload) {
-                pr_error(
-                        "[port_test] sender: alloc payload failed\n");
+                pr_error("[port_test] sender: alloc payload failed\n");
                 port_discovery_sender_done = 1;
                 return NULL;
         }
@@ -172,10 +170,9 @@ int single_port_test(void)
                 return -E_REND_TEST;
         }
         if (strcmp(port_discovery_recv_buf, port_discovery_payload) != 0) {
-                pr_error(
-                        "[port_test] recv payload \"%s\" expected \"%s\"\n",
-                        port_discovery_recv_buf,
-                        port_discovery_payload);
+                pr_error("[port_test] recv payload \"%s\" expected \"%s\"\n",
+                         port_discovery_recv_buf,
+                         port_discovery_payload);
                 is_print_sche_info = true;
                 return -E_REND_TEST;
         }
