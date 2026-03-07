@@ -16,12 +16,13 @@
 
 #define PORT_DISCOVERY_PORT_NAME "svc"
 #define PORT_DISCOVERY_MSG_TYPE  100
-static const char port_discovery_payload[] = "port_discovery_hello";
+static char port_discovery_payload[32]
+        __attribute__((aligned(16))) = "port_discovery_hello\0";
 
 static volatile int port_discovery_receiver_done;
 static volatile int port_discovery_sender_done;
 static volatile i64 port_discovery_recv_type;
-static char port_discovery_recv_buf[64];
+static char port_discovery_recv_buf[64] __attribute__((aligned(16)));
 
 static Message_Port_t* receiver_port = NULL;
 
@@ -64,9 +65,14 @@ static void* port_discovery_receiver_thread(void* arg)
         u64 len = msg->data->data_len;
         if (len > sizeof(port_discovery_recv_buf) - 1)
                 len = sizeof(port_discovery_recv_buf) - 1;
-        if (msg->data->data && len)
-                memcpy(port_discovery_recv_buf, msg->data->data, len);
-        port_discovery_recv_buf[len] = '\0';
+        if (msg->data->data && len) {
+                strncpy(port_discovery_recv_buf,
+                        (const char*)msg->data->data,
+                        len);
+                port_discovery_recv_buf[len] = '\0';
+        } else {
+                port_discovery_recv_buf[0] = '\0';
+        }
         ref_put(&msg->ms_queue_node.refcount, free_message_ref);
         if (unregister_port(global_port_table, PORT_DISCOVERY_PORT_NAME)
             != REND_SUCCESS)
@@ -86,21 +92,21 @@ static void* port_discovery_sender_thread(void* arg)
                 port_discovery_sender_done = 1;
                 return NULL;
         }
+        size_t payload_buf_size = sizeof(port_discovery_payload);
         char* payload = (char*)percpu(kallocator)
-                                ->m_alloc(percpu(kallocator),
-                                          sizeof(port_discovery_payload));
+                                ->m_alloc(percpu(kallocator), payload_buf_size);
         if (!payload) {
                 pr_error("[port_test] sender: alloc payload failed\n");
                 port_discovery_sender_done = 1;
                 return NULL;
         }
-        memcpy(payload, port_discovery_payload, sizeof(port_discovery_payload));
+        strncpy(payload, port_discovery_payload, payload_buf_size);
+        u64 payload_len = strlen(payload) + 1;
         void* payload_ptr = payload;
-        Msg_Data_t* msgdata =
-                create_message_data(PORT_DISCOVERY_MSG_TYPE,
-                                    (u64)sizeof(port_discovery_payload),
-                                    &payload_ptr,
-                                    free_msgdata_ref_default);
+        Msg_Data_t* msgdata = create_message_data(PORT_DISCOVERY_MSG_TYPE,
+                                                  payload_len,
+                                                  &payload_ptr,
+                                                  free_msgdata_ref_default);
         if (!msgdata) {
                 percpu(kallocator)->m_free(percpu(kallocator), payload);
                 port_discovery_sender_done = 1;
