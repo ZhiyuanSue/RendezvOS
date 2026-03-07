@@ -130,7 +130,7 @@ int ipc_test(void)
                0,
                sizeof(single_ipc_received_payload));
         is_print_sche_info = false;
-        port = create_message_port();
+        port = create_message_port("test_port");
         if (!port) {
                 pr_error("[single_ipc_test] create_message_port failed\n");
                 return -E_REND_TEST;
@@ -139,20 +139,20 @@ int ipc_test(void)
         e = gen_thread_from_func(
                 NULL, ipc_sender_thread, "ipc_sender", tm, port);
         if (e) {
-                delete_message_port(port);
+                delete_message_port_structure(port);
                 return -E_REND_TEST;
         }
         e = gen_thread_from_func(
                 NULL, ipc_receiver_thread, "ipc_receiver", tm, port);
         if (e) {
-                delete_message_port(port);
+                delete_message_port_structure(port);
                 return -E_REND_TEST;
         }
 
         while (!single_ipc_sender_done || !single_ipc_receiver_done)
                 schedule(tm);
 
-        delete_message_port(port);
+        delete_message_port_structure(port);
 
         if (single_ipc_received_type != IPC_TEST_MSG_TYPE) {
                 pr_error(
@@ -341,7 +341,7 @@ int ipc_multi_round_test(void)
         pr_info("[single_ipc_multi_round_test] starting multi-round IPC test (%u rounds)\n",
                 IPC_MULTI_ROUND_COUNT);
         is_print_sche_info = false;
-        port = create_message_port();
+        port = create_message_port("test_port");
         if (!port) {
                 pr_error(
                         "[single_ipc_multi_round_test] create_message_port failed\n");
@@ -356,7 +356,7 @@ int ipc_multi_round_test(void)
         if (e) {
                 pr_error(
                         "[single_ipc_multi_round_test] failed to create sender thread\n");
-                delete_message_port(port);
+                delete_message_port_structure(port);
                 return -E_REND_TEST;
         }
 
@@ -368,14 +368,14 @@ int ipc_multi_round_test(void)
         if (e) {
                 pr_error(
                         "[single_ipc_multi_round_test] failed to create receiver thread\n");
-                delete_message_port(port);
+                delete_message_port_structure(port);
                 return -E_REND_TEST;
         }
 
         while (!multi_round_sender_done || !multi_round_receiver_done)
                 schedule(tm);
 
-        delete_message_port(port);
+        delete_message_port_structure(port);
 
         pr_info("[single_ipc_multi_round_test] test completed: sent=%u received=%u\n",
                 (unsigned long long)multi_round_send_count,

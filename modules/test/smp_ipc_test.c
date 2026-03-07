@@ -174,7 +174,7 @@ int smp_ipc_test(void)
         if (cpu_id == BSP_ID) {
                 is_print_sche_info = false;
                 pr_info("BSP creating message port\n");
-                smp_ipc_port = create_message_port();
+                smp_ipc_port = create_message_port("smp_ipc_port");
                 if (!smp_ipc_port) {
                         pr_error("[smp_ipc_test] create_message_port failed\n");
                         return -E_REND_TEST;
@@ -221,7 +221,7 @@ int smp_ipc_test(void)
                                 break;
                 }
                 pr_info("BSP all_done, exiting wait\n");
-                delete_message_port(smp_ipc_port);
+                delete_message_port_structure(smp_ipc_port);
                 smp_ipc_port_ready = false;
 
                 u64 total_sent = 0;

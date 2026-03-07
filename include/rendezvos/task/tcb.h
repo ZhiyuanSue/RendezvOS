@@ -20,6 +20,7 @@
 
 #include "id.h"
 #include "message.h"
+#include "port.h"
 
 enum thread_status_base {
         thread_status_error = -1,
@@ -65,6 +66,19 @@ typedef struct {
         u64 append_tcb_info[];
 } Tcb_Base;
 
+/* Thread port cache */
+#define THREAD_MAX_KNOWN_PORTS 32
+
+struct thread_port_cache_entry {
+        Message_Port_t* port;
+        u64 lru_counter;
+};
+
+struct thread_port_cache {
+        struct thread_port_cache_entry entries[THREAD_MAX_KNOWN_PORTS];
+        u64 count;
+};
+
 /* thread */
 extern u64 thread_kstack_page_num;
 #define THERAD_SCHE_COMMON                           \
@@ -89,6 +103,7 @@ extern u64 thread_kstack_page_num;
         volatile Message_t* send_pending_msg; /* expect Message_t*/ \
         atomic64_t recv_pending_cnt; /*how much msg arrive*/        \
         volatile void* port_ptr; /*expect Message_Port_t*/          \
+        struct thread_port_cache port_cache;                        \
         THERAD_SCHE_COMMON
 
 #define THREAD_FLAG_NONE               0
@@ -96,10 +111,11 @@ extern u64 thread_kstack_page_num;
 #define THREAD_FLAG_USER               (0x1ull)
 /*let the default is kernel thread*/
 
-typedef struct {
+struct Thread_Base {
         THREAD_COMMON
         u64 append_thread_info[];
-} Thread_Base;
+};
+typedef struct Thread_Base Thread_Base;
 
 extern Thread_Base* init_thread_ptr;
 extern Thread_Base* idle_thread_ptr;
@@ -148,6 +164,8 @@ Thread_Base* create_thread(void* __func, size_t append_thread_info_len,
                            int nr_parameter, ...);
 void delete_thread(Thread_Base* thread);
 void delete_task(Tcb_Base* tcb);
+
+Message_Port_t* thread_lookup_port(const char* name);
 
 static inline Thread_Base* get_cpu_current_thread()
 {

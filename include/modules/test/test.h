@@ -29,6 +29,7 @@ int task_test(void);
 int test_pci_scan(void);
 int ipc_test(void);
 int ipc_multi_round_test(void);
+int single_port_test(void);
 
 /*in smp case
 one test function cannot easily be checked
@@ -50,6 +51,7 @@ bool smp_ms_queue_check_test_check(void);
 int smp_log_test(void);
 bool smp_log_check(void);
 int smp_ipc_test(void);
+int smp_port_robustness_test(void);
 
 struct single_test_case {
         int (*test)(void);

@@ -48,6 +48,11 @@ void cmain(struct setup_info *arch_setup_info)
                 return;
         }
 
+        if (global_port_init()) {
+                print("[ERROR] init port table fail\n");
+                return;
+        }
+
         percpu(core_tm) = init_proc();
         if (!percpu(core_tm)) {
                 print("[ERROR] init proc\n");

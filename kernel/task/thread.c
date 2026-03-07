@@ -5,6 +5,8 @@
 #include <rendezvos/smp/percpu.h>
 #include <rendezvos/error.h>
 #include <rendezvos/mm/allocator.h>
+#include <rendezvos/task/port.h>
+#include <rendezvos/sync/spin_lock.h>
 /*
 we first generate a context that after the return will goto thread entry（this
 function) then the stack frame is the only one thread_entry frame then here we
@@ -33,6 +35,32 @@ static void thread_entry(void)
         thread_set_status(current_thread, thread_status_zombie);
         schedule(percpu(core_tm));
 }
+
+static void thread_port_cache_init(struct thread_port_cache* cache)
+{
+        if (!cache)
+                return;
+        cache->count = 0;
+        for (u32 i = 0; i < THREAD_MAX_KNOWN_PORTS; i++) {
+                cache->entries[i].port = NULL;
+                cache->entries[i].lru_counter = 0;
+        }
+}
+
+static void thread_port_cache_clear(struct thread_port_cache* cache)
+{
+        if (!cache)
+                return;
+        for (u32 i = 0; i < THREAD_MAX_KNOWN_PORTS; i++) {
+                Message_Port_t* port = cache->entries[i].port;
+                if (port)
+                        ref_put(&port->refcount, free_message_port_ref);
+                cache->entries[i].port = NULL;
+                cache->entries[i].lru_counter = 0;
+        }
+        cache->count = 0;
+}
+
 Thread_Base* new_thread_structure(struct allocator* cpu_allocator,
                                   size_t append_thread_info_len)
 {
@@ -87,6 +115,7 @@ Thread_Base* new_thread_structure(struct allocator* cpu_allocator,
 
         thread->send_pending_msg = NULL;
         thread->recv_pending_cnt.counter = 0;
+        thread_port_cache_init(&thread->port_cache);
         return thread;
 
 alloc_dummy_send_msg_error:
@@ -103,7 +132,7 @@ void del_thread_structure(Thread_Base* thread)
         struct allocator* cpu_allocator = percpu(kallocator);
         if (!thread || !cpu_allocator)
                 return;
-        /*first free the init parameter*/
+        thread_port_cache_clear(&thread->port_cache);
         del_init_parameter_structure(thread->init_parameter);
         cpu_allocator->m_free(cpu_allocator, thread);
 }
@@ -246,4 +275,162 @@ error_t thread_join(Tcb_Base* task, Thread_Base* thread)
         res = add_thread_to_manager(percpu(core_tm), thread);
         thread_set_status(thread, thread_status_ready);
         return res;
+}
+
+static void thread_port_cache_invalidate_entry(struct thread_port_cache* c,
+                                               u32 idx, Message_Port_t* port)
+{
+        c->entries[idx].port = NULL;
+        c->entries[idx].lru_counter = 0;
+        c->count--;
+        ref_put(&port->refcount, free_message_port_ref);
+}
+
+static Message_Port_t* thread_port_cache_lookup(Thread_Base* thread,
+                                                const char* name)
+{
+        struct thread_port_cache* c = &thread->port_cache;
+        Message_Port_t* found_port = NULL;
+        u32 found_idx = THREAD_MAX_KNOWN_PORTS;
+
+        for (u32 i = 0; i < THREAD_MAX_KNOWN_PORTS; i++) {
+                Message_Port_t* port = c->entries[i].port;
+                if (!port)
+                        continue;
+                if (strcmp(port->name, name) != 0)
+                        continue;
+                found_port = port;
+                found_idx = i;
+                break;
+        }
+
+        if (found_port && found_port->registered) {
+                if (!found_port->table) {
+                        thread_port_cache_invalidate_entry(
+                                c, found_idx, found_port);
+                        return NULL;
+                }
+
+                if (global_port_table) {
+                        struct spin_lock_t* my_lock =
+                                &percpu(port_table_spin_lock);
+                        lock_mcs(&global_port_table->lock, my_lock);
+                        bool still_valid =
+                                (found_port->table == global_port_table)
+                                && found_port->registered;
+                        unlock_mcs(&global_port_table->lock, my_lock);
+
+                        if (!still_valid) {
+                                thread_port_cache_invalidate_entry(
+                                        c, found_idx, found_port);
+                                return NULL;
+                        }
+                }
+
+                for (u32 i = 0; i < THREAD_MAX_KNOWN_PORTS; i++) {
+                        if (!c->entries[i].port)
+                                continue;
+                        if (i == found_idx) {
+                                c->entries[i].lru_counter = 0;
+                        } else {
+                                c->entries[i].lru_counter++;
+                        }
+                }
+                if (!ref_get_not_zero(&found_port->refcount)) {
+                        found_port = NULL;
+                }
+        } else if (found_port) {
+                thread_port_cache_invalidate_entry(c, found_idx, found_port);
+                return NULL;
+        }
+
+        return found_port;
+}
+
+static error_t thread_port_cache_add(Thread_Base* thread, Message_Port_t* port)
+{
+        if (!port || !port->registered)
+                return -E_IN_PARAM;
+
+        if (!ref_get_not_zero(&port->refcount))
+                return -E_RENDEZVOS;
+
+        struct thread_port_cache* c = &thread->port_cache;
+
+        if (c->count < THREAD_MAX_KNOWN_PORTS) {
+                u32 empty_idx = THREAD_MAX_KNOWN_PORTS;
+                for (u32 i = 0; i < THREAD_MAX_KNOWN_PORTS; i++) {
+                        if (!c->entries[i].port) {
+                                empty_idx = i;
+                                break;
+                        }
+                }
+                if (empty_idx >= THREAD_MAX_KNOWN_PORTS)
+                        return -E_RENDEZVOS;
+
+                for (u32 i = 0; i < THREAD_MAX_KNOWN_PORTS; i++) {
+                        if (c->entries[i].port && i != empty_idx) {
+                                c->entries[i].lru_counter++;
+                        }
+                }
+                c->entries[empty_idx].port = port;
+                c->entries[empty_idx].lru_counter = 0;
+                c->count++;
+                return REND_SUCCESS;
+        }
+
+        u32 lru_idx = 0;
+        u64 max_counter = 0;
+        bool found = false;
+        for (u32 i = 0; i < THREAD_MAX_KNOWN_PORTS; i++) {
+                if (!c->entries[i].port)
+                        continue;
+                if (!found || c->entries[i].lru_counter > max_counter) {
+                        max_counter = c->entries[i].lru_counter;
+                        lru_idx = i;
+                        found = true;
+                }
+        }
+        if (!found)
+                return -E_RENDEZVOS;
+
+        Message_Port_t* evicted = c->entries[lru_idx].port;
+        if (evicted)
+                ref_put(&evicted->refcount, free_message_port_ref);
+
+        for (u32 i = 0; i < THREAD_MAX_KNOWN_PORTS; i++) {
+                if (c->entries[i].port && i != lru_idx) {
+                        c->entries[i].lru_counter++;
+                }
+        }
+        c->entries[lru_idx].port = port;
+        c->entries[lru_idx].lru_counter = 0;
+
+        return REND_SUCCESS;
+}
+/*You have to use ref put after finish use of this function*/
+Message_Port_t* thread_lookup_port(const char* name)
+{
+        Thread_Base* self = get_cpu_current_thread();
+        if (!self || !name || !global_port_table)
+                return NULL;
+
+        Message_Port_t* port = thread_port_cache_lookup(self, name);
+        if (port) {
+                if (!ref_get_not_zero(&port->refcount)) {
+                        return NULL;
+                }
+                return port;
+        }
+
+        port = port_table_lookup(global_port_table, name);
+        if (!port)
+                return NULL;
+
+        if (thread_port_cache_add(self, port) != REND_SUCCESS) {
+                ref_put(&port->refcount, free_message_port_ref);
+                return NULL;
+        }
+
+        return port;
 }

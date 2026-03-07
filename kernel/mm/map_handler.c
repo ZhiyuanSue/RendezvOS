@@ -56,13 +56,21 @@ void init_map(struct map_handler *handler, int cpu_id, struct pmm *pmm)
                         /* Rollback: free already allocated pages */
                         for (int j = 0; j < i; j++) {
                                 if (!invalid_ppn(handler->handler_ppn[j])) {
-                                        lock_mcs(&pmm->spin_ptr,
-                                                 &per_cpu(pmm_spin_lock[pmm->zone->zone_id],
-                                                          cpu_id));
-                                        pmm->pmm_free(pmm, handler->handler_ppn[j], 1);
-                                        unlock_mcs(&pmm->spin_ptr,
-                                                  &per_cpu(pmm_spin_lock[pmm->zone->zone_id],
-                                                           cpu_id));
+                                        lock_mcs(
+                                                &pmm->spin_ptr,
+                                                &per_cpu(
+                                                        pmm_spin_lock
+                                                                [pmm->zone->zone_id],
+                                                        cpu_id));
+                                        pmm->pmm_free(pmm,
+                                                      handler->handler_ppn[j],
+                                                      1);
+                                        unlock_mcs(
+                                                &pmm->spin_ptr,
+                                                &per_cpu(
+                                                        pmm_spin_lock
+                                                                [pmm->zone->zone_id],
+                                                        cpu_id));
                                         handler->handler_ppn[j] = -E_RENDEZVOS;
                                 }
                         }
