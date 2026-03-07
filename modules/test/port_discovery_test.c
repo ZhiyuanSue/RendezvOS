@@ -23,24 +23,29 @@ static volatile int port_discovery_sender_done;
 static volatile i64 port_discovery_recv_type;
 static char port_discovery_recv_buf[64];
 
+static Message_Port_t* receiver_port = NULL;
+
 static void* port_discovery_receiver_thread(void* arg)
 {
         (void)arg;
-        Thread_Base* self = get_cpu_current_thread();
-        if (!self) {
-                pr_error("[port_discovery_test] receiver: no current thread\n");
+        receiver_port = create_message_port(PORT_DISCOVERY_PORT_NAME);
+        if (!receiver_port) {
+                pr_error("[port_discovery_test] receiver: create port failed\n");
                 port_discovery_receiver_done = 1;
                 return NULL;
         }
-        if (thread_register_port(self, PORT_DISCOVERY_PORT_NAME)
-            != REND_SUCCESS) {
+        if (register_port_to_global(receiver_port) != REND_SUCCESS) {
                 pr_error("[port_discovery_test] receiver: register failed\n");
+                delete_message_port_structure(receiver_port);
+                receiver_port = NULL;
                 port_discovery_receiver_done = 1;
                 return NULL;
         }
-        if (recv_msg(self->exposed_port) != REND_SUCCESS) {
+        if (recv_msg(receiver_port) != REND_SUCCESS) {
                 pr_error("[port_discovery_test] receiver: recv_msg failed\n");
-                thread_unregister_port(self);
+                unregister_port_from_global(PORT_DISCOVERY_PORT_NAME);
+                delete_message_port_structure(receiver_port);
+                receiver_port = NULL;
                 port_discovery_receiver_done = 1;
                 return NULL;
         }
@@ -49,7 +54,9 @@ static void* port_discovery_receiver_thread(void* arg)
                 pr_error("[port_discovery_test] receiver: no message\n");
                 if (msg)
                         ref_put(&msg->ms_queue_node.refcount, free_message_ref);
-                thread_unregister_port(self);
+                unregister_port_from_global(PORT_DISCOVERY_PORT_NAME);
+                delete_message_port_structure(receiver_port);
+                receiver_port = NULL;
                 port_discovery_receiver_done = 1;
                 return NULL;
         }
@@ -61,8 +68,10 @@ static void* port_discovery_receiver_thread(void* arg)
                 memcpy(port_discovery_recv_buf, msg->data->data, len);
         port_discovery_recv_buf[len] = '\0';
         ref_put(&msg->ms_queue_node.refcount, free_message_ref);
-        if (thread_unregister_port(self) != REND_SUCCESS)
+        if (unregister_port_from_global(PORT_DISCOVERY_PORT_NAME) != REND_SUCCESS)
                 pr_error("[port_discovery_test] receiver: unregister failed\n");
+        delete_message_port_structure(receiver_port);
+        receiver_port = NULL;
         port_discovery_receiver_done = 1;
         return NULL;
 }
@@ -110,9 +119,13 @@ static void* port_discovery_sender_thread(void* arg)
         if (send_msg(port) != REND_SUCCESS) {
                 ref_put(&msg->ms_queue_node.refcount, free_message_ref);
                 pr_error("[port_discovery_test] sender: send_msg failed\n");
+                ref_put(&port->refcount, free_message_port_ref);
                 port_discovery_sender_done = 1;
                 return NULL;
         }
+        ref_put(&msg->ms_queue_node.refcount, free_message_ref);
+        /* 释放lookup时持有的ref */
+        ref_put(&port->refcount, free_message_port_ref);
         port_discovery_sender_done = 1;
         return NULL;
 }

@@ -13,15 +13,24 @@
 #define IPC_PORT_STATE_SEND  1
 #define IPC_PORT_STATE_RECV  2
 
-#define THREAD_MAX_KNOWN_PORTS 32
-#define PORT_CACHE_NAME_LEN   64
-#define PORT_REGISTRY_NAME_MAX 64
+#define PORT_NAME_LEN_MAX 64
 
 /*port structure*/
 typedef struct Msg_Port Message_Port_t;
 struct Msg_Port {
-        ms_queue_t thread_queue;
+        struct rb_node rb_node;        /* 用于插入到port_table的红黑树 */
+        ms_queue_t thread_queue;       /* 线程等待队列 */
+        ref_count_t refcount;          /* 引用计数 */
+        struct Port_Table* table;    /* 所属注册表（如果已注册） */
+        char name[PORT_NAME_LEN_MAX];  /* 端口名称 */
+        bool registered;               /* 是否已注册 */
 };
+
+struct Port_Table {
+        struct rb_root root;           /* 红黑树根节点 */
+        spin_lock lock;               /* 保护整个表 */
+};
+extern struct spin_lock_t port_table_spin_lock;
 
 static inline u16 ipc_get_queue_state(Message_Port_t* port)
 {
@@ -29,49 +38,28 @@ static inline u16 ipc_get_queue_state(Message_Port_t* port)
         return tp_get_tag(tail) & ((1 << IPC_PORT_APPEND_BITS) - 1);
 }
 
-/* Port registry structures (internal) */
-struct port_registry_entry {
-        struct rb_node rb_node;
-        char* name;
-        Message_Port_t* port;
-        u16 version;
-        ref_count_t refcount;
-        bool registered;
-        struct port_registry* registry;
-};
-
-struct port_registry {
-        struct rb_root root;
-        cas_lock_t lock;
-        u16 version_counter;
-};
-
-/* Thread port cache */
-struct thread_port_cache_entry {
-        char name[PORT_CACHE_NAME_LEN];
-        struct port_registry_entry* entry;
-        u16 version;
-        u16 lru_counter;  /* LRU: 计数越大表示越久未使用，0表示最近使用 */
-};
-
-struct thread_port_cache {
-        struct thread_port_cache_entry entries[THREAD_MAX_KNOWN_PORTS];
-        u32 count;
-        cas_lock_t lock;
-};
-
-typedef struct Thread_Base Thread_Base;
-
 /* Basic port operations */
-Message_Port_t* create_message_port();
-void delete_message_port(Message_Port_t* port);
+Message_Port_t* create_message_port(const char* name);
+void delete_message_port_structure(Message_Port_t* port);
+void free_message_port_ref(ref_count_t* ref_count_ptr);
 
-/* Port discovery operations */
+/* Port table operations */
+struct Port_Table* port_table_create(void);
+void port_table_init(struct Port_Table* table);
+Message_Port_t* port_table_lookup(struct Port_Table* table, const char* name);
+error_t register_port(struct Port_Table* table, Message_Port_t* port);
+error_t unregister_port(struct Port_Table* table, const char* name);
+void delete_port_table_structure(struct Port_Table* table);
+
+/* High-level port discovery API */
 void port_discovery_init(void);
-void thread_port_cache_init(struct thread_port_cache* cache);
-void thread_port_cache_clear(struct thread_port_cache* cache);
-error_t thread_register_port(Thread_Base* thread, const char* name);
-error_t thread_unregister_port(Thread_Base* thread);
-Message_Port_t* thread_lookup_port(const char* name);
+
+/* Convenience functions using global port table */
+error_t register_port_to_global(Message_Port_t* port);
+error_t unregister_port_from_global(const char* name);
+
+/* Global port table - declared in port.c */
+extern struct Port_Table global_port_table;
+extern bool global_port_table_initialized;
 
 #endif

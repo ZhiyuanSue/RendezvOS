@@ -66,6 +66,19 @@ typedef struct {
         u64 append_tcb_info[];
 } Tcb_Base;
 
+/* Thread port cache */
+#define THREAD_MAX_KNOWN_PORTS 32
+
+struct thread_port_cache_entry {
+        Message_Port_t* port;
+        u64 lru_counter;
+};
+
+struct thread_port_cache {
+        struct thread_port_cache_entry entries[THREAD_MAX_KNOWN_PORTS];
+        u64 count;
+};
+
 /* thread */
 extern u64 thread_kstack_page_num;
 #define THERAD_SCHE_COMMON                           \
@@ -89,10 +102,8 @@ extern u64 thread_kstack_page_num;
         ms_queue_t send_msg_queue;                                  \
         volatile Message_t* send_pending_msg; /* expect Message_t*/ \
         atomic64_t recv_pending_cnt; /*how much msg arrive*/        \
-        volatile void* port_ptr; /*expect Message_Port_t*/           \
-        Message_Port_t* exposed_port;                                \
-        char* exposed_port_name;                                     \
-        struct thread_port_cache port_cache;                         \
+        volatile void* port_ptr; /*expect Message_Port_t*/          \
+        struct thread_port_cache port_cache;                        \
         THERAD_SCHE_COMMON
 
 #define THREAD_FLAG_NONE               0
@@ -153,6 +164,16 @@ Thread_Base* create_thread(void* __func, size_t append_thread_info_len,
                            int nr_parameter, ...);
 void delete_thread(Thread_Base* thread);
 void delete_task(Tcb_Base* tcb);
+
+/* Thread port cache operations */
+void thread_port_cache_init(struct thread_port_cache* cache);
+void thread_port_cache_clear(struct thread_port_cache* cache);
+Message_Port_t* thread_port_cache_lookup(Thread_Base* thread, const char* name);
+error_t thread_port_cache_add(Thread_Base* thread, Message_Port_t* port);
+void thread_port_cache_remove(Thread_Base* thread, const char* name);
+
+/* High-level port discovery API */
+Message_Port_t* thread_lookup_port(const char* name);
 
 static inline Thread_Base* get_cpu_current_thread()
 {

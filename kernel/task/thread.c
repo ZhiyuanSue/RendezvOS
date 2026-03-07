@@ -6,6 +6,7 @@
 #include <rendezvos/error.h>
 #include <rendezvos/mm/allocator.h>
 #include <rendezvos/task/port.h>
+#include <rendezvos/sync/spin_lock.h>
 /*
 we first generate a context that after the return will goto thread entry（this
 function) then the stack frame is the only one thread_entry frame then here we
@@ -105,13 +106,7 @@ void del_thread_structure(Thread_Base* thread)
         struct allocator* cpu_allocator = percpu(kallocator);
         if (!thread || !cpu_allocator)
                 return;
-        if (thread->exposed_port_name)
-                thread_unregister_port(thread);
         thread_port_cache_clear(&thread->port_cache);
-        if (thread->exposed_port) {
-                delete_message_port(thread->exposed_port);
-                thread->exposed_port = NULL;
-        }
         del_init_parameter_structure(thread->init_parameter);
         cpu_allocator->m_free(cpu_allocator, thread);
 }
@@ -254,4 +249,162 @@ error_t thread_join(Tcb_Base* task, Thread_Base* thread)
         res = add_thread_to_manager(percpu(core_tm), thread);
         thread_set_status(thread, thread_status_ready);
         return res;
+}
+
+
+void thread_port_cache_init(struct thread_port_cache* cache)
+{
+        if (!cache)
+                return;
+        cache->count = 0;
+        for (u32 i = 0; i < THREAD_MAX_KNOWN_PORTS; i++) {
+                cache->entries[i].port = NULL;
+                cache->entries[i].lru_counter = 0;
+        }
+}
+
+
+void thread_port_cache_clear(struct thread_port_cache* cache)
+{
+        if (!cache)
+                return;
+        struct spin_lock_t* my_lock = &percpu(port_table_spin_lock);
+        /* 需要访问全局port table来释放ref，需要锁 */
+        lock_mcs(&global_port_table.lock, my_lock);
+        for (u32 i = 0; i < cache->count; i++) {
+                Message_Port_t* port = cache->entries[i].port;
+                if (port)
+                        ref_put(&port->refcount, free_message_port_ref);
+                cache->entries[i].port = NULL;
+                cache->entries[i].lru_counter = 0;
+        }
+        cache->count = 0;
+        unlock_mcs(&global_port_table.lock, my_lock);
+}
+
+Message_Port_t* thread_port_cache_lookup(Thread_Base* thread, const char* name)
+{
+        struct thread_port_cache* c = &thread->port_cache;
+        Message_Port_t* found_port = NULL;
+        u32 found_idx = 0;
+
+        /* cache是thread-local的，不需要锁 */
+        for (u32 i = 0; i < c->count; i++) {
+                Message_Port_t* port = c->entries[i].port;
+                if (!port)
+                        continue;
+                if (strcmp(port->name, name) != 0)
+                        continue;
+                found_port = port;
+                found_idx = i;
+                break;
+        }
+
+        /* LRU更新：新访问的设为0，其他都+1 */
+        if (found_port && found_port->registered) {
+                for (u32 i = 0; i < c->count; i++) {
+                        if (i == found_idx) {
+                                c->entries[i].lru_counter = 0;
+                        } else {
+                                c->entries[i].lru_counter++;
+                        }
+                }
+                /* cache已持有ref，调用者也需要ref */
+                if (!ref_get_not_zero(&found_port->refcount)) {
+                        /* port正在被释放 */
+                        found_port = NULL;
+                }
+        } else {
+                found_port = NULL;
+        }
+
+        return found_port;
+}
+
+void thread_port_cache_remove(Thread_Base* thread, const char* name)
+{
+        struct thread_port_cache* c = &thread->port_cache;
+        
+        /* 先找到要移除的条目（不需要锁，因为是thread-local） */
+        u32 remove_idx = c->count;
+        for (u32 i = 0; i < c->count; i++) {
+                Message_Port_t* port = c->entries[i].port;
+                if (!port || strcmp(port->name, name) != 0)
+                        continue;
+                remove_idx = i;
+                break;
+        }
+        
+        if (remove_idx >= c->count)
+                return; /* 没找到 */
+        
+        Message_Port_t* port = c->entries[remove_idx].port;
+        
+        /* 需要访问全局port table来释放ref，需要锁 */
+        struct spin_lock_t* my_lock = &percpu(port_table_spin_lock);
+        lock_mcs(&global_port_table.lock, my_lock);
+        ref_put(&port->refcount, free_message_port_ref);
+        unlock_mcs(&global_port_table.lock, my_lock);
+        
+        /* 从cache中移除（不需要锁） */
+        c->count--;
+        for (u32 j = remove_idx; j < c->count; j++) {
+                c->entries[j] = c->entries[j + 1];
+        }
+        c->entries[c->count].port = NULL;
+        c->entries[c->count].lru_counter = 0;
+}
+
+error_t thread_port_cache_add(Thread_Base* thread, Message_Port_t* port)
+{
+        if (!port || !port->registered)
+                return -E_IN_PARAM;
+
+        /* cache持有port需要增加refcount */
+        if (!ref_get_not_zero(&port->refcount))
+                return -E_RENDEZVOS;
+
+        struct thread_port_cache* c = &thread->port_cache;
+        
+        /* 如果缓存未满，直接添加（不需要锁，因为是thread-local） */
+        if (c->count < THREAD_MAX_KNOWN_PORTS) {
+                /* 新添加的设为0，其他+1 */
+                for (u32 i = 0; i < c->count; i++) {
+                        c->entries[i].lru_counter++;
+                }
+                c->entries[c->count].port = port;
+                c->entries[c->count].lru_counter = 0;
+                c->count++;
+                return REND_SUCCESS;
+        }
+
+        /* 缓存已满，使用LRU淘汰：找到计数最大的条目（不需要锁） */
+        u32 lru_idx = 0;
+        u64 max_counter = c->entries[0].lru_counter;
+        for (u32 i = 1; i < c->count; i++) {
+                if (c->entries[i].lru_counter > max_counter) {
+                        max_counter = c->entries[i].lru_counter;
+                        lru_idx = i;
+                }
+        }
+
+        /* 淘汰LRU条目：需要访问全局port table，需要锁 */
+        Message_Port_t* evicted = c->entries[lru_idx].port;
+        if (evicted) {
+                struct spin_lock_t* my_lock = &percpu(port_table_spin_lock);
+                lock_mcs(&global_port_table.lock, my_lock);
+                ref_put(&port->refcount, free_message_port_ref);
+                unlock_mcs(&global_port_table.lock, my_lock);
+        }
+
+        /* 将新条目放在LRU位置，设为0，其他+1（不需要锁） */
+        for (u32 i = 0; i < c->count; i++) {
+                if (i != lru_idx) {
+                        c->entries[i].lru_counter++;
+                }
+        }
+        c->entries[lru_idx].port = port;
+        c->entries[lru_idx].lru_counter = 0;
+
+        return REND_SUCCESS;
 }
