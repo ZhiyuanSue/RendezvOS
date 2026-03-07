@@ -18,17 +18,17 @@
 /*port structure*/
 typedef struct Msg_Port Message_Port_t;
 struct Msg_Port {
-        struct rb_node rb_node;        /* 用于插入到port_table的红黑树 */
-        ms_queue_t thread_queue;       /* 线程等待队列 */
-        ref_count_t refcount;          /* 引用计数 */
-        struct Port_Table* table;    /* 所属注册表（如果已注册） */
-        char name[PORT_NAME_LEN_MAX];  /* 端口名称 */
-        bool registered;               /* 是否已注册 */
+        struct rb_node rb_node; /* 用于插入到port_table的红黑树 */
+        ms_queue_t thread_queue; /* 线程等待队列 */
+        ref_count_t refcount; /* 引用计数 */
+        struct Port_Table* table; /* 所属注册表（如果已注册） */
+        char name[PORT_NAME_LEN_MAX]; /* 端口名称 */
+        bool registered; /* 是否已注册 */
 };
 
 struct Port_Table {
-        struct rb_root root;           /* 红黑树根节点 */
-        spin_lock lock;               /* 保护整个表 */
+        struct rb_root root; /* 红黑树根节点 */
+        spin_lock lock; /* 保护整个表 */
 };
 extern struct spin_lock_t port_table_spin_lock;
 
@@ -59,7 +59,6 @@ error_t register_port_to_global(Message_Port_t* port);
 error_t unregister_port_from_global(const char* name);
 
 /* Global port table - declared in port.c */
-extern struct Port_Table global_port_table;
-extern bool global_port_table_initialized;
+extern struct Port_Table* global_port_table;
 
 #endif

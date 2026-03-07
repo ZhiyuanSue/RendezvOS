@@ -30,7 +30,8 @@ static void* port_discovery_receiver_thread(void* arg)
         (void)arg;
         receiver_port = create_message_port(PORT_DISCOVERY_PORT_NAME);
         if (!receiver_port) {
-                pr_error("[port_discovery_test] receiver: create port failed\n");
+                pr_error(
+                        "[port_discovery_test] receiver: create port failed\n");
                 port_discovery_receiver_done = 1;
                 return NULL;
         }
@@ -68,7 +69,8 @@ static void* port_discovery_receiver_thread(void* arg)
                 memcpy(port_discovery_recv_buf, msg->data->data, len);
         port_discovery_recv_buf[len] = '\0';
         ref_put(&msg->ms_queue_node.refcount, free_message_ref);
-        if (unregister_port_from_global(PORT_DISCOVERY_PORT_NAME) != REND_SUCCESS)
+        if (unregister_port_from_global(PORT_DISCOVERY_PORT_NAME)
+            != REND_SUCCESS)
                 pr_error("[port_discovery_test] receiver: unregister failed\n");
         delete_message_port_structure(receiver_port);
         receiver_port = NULL;
@@ -89,17 +91,18 @@ static void* port_discovery_sender_thread(void* arg)
                                 ->m_alloc(percpu(kallocator),
                                           sizeof(port_discovery_payload));
         if (!payload) {
-                pr_error("[port_discovery_test] sender: alloc payload failed\n");
+                pr_error(
+                        "[port_discovery_test] sender: alloc payload failed\n");
                 port_discovery_sender_done = 1;
                 return NULL;
         }
         memcpy(payload, port_discovery_payload, sizeof(port_discovery_payload));
         void* payload_ptr = payload;
-        Msg_Data_t* msgdata = create_message_data(
-                PORT_DISCOVERY_MSG_TYPE,
-                (u64)sizeof(port_discovery_payload),
-                &payload_ptr,
-                free_msgdata_ref_default);
+        Msg_Data_t* msgdata =
+                create_message_data(PORT_DISCOVERY_MSG_TYPE,
+                                    (u64)sizeof(port_discovery_payload),
+                                    &payload_ptr,
+                                    free_msgdata_ref_default);
         if (!msgdata) {
                 percpu(kallocator)->m_free(percpu(kallocator), payload);
                 port_discovery_sender_done = 1;
@@ -145,19 +148,16 @@ int port_discovery_test(void)
         is_print_sche_info = false;
 
         e = gen_thread_from_func(NULL,
-                                port_discovery_receiver_thread,
-                                "port_disc_rcv",
-                                tm,
-                                NULL);
+                                 port_discovery_receiver_thread,
+                                 "port_disc_rcv",
+                                 tm,
+                                 NULL);
         if (e) {
                 pr_error("[port_discovery_test] create receiver failed\n");
                 return -E_REND_TEST;
         }
-        e = gen_thread_from_func(NULL,
-                                port_discovery_sender_thread,
-                                "port_disc_snd",
-                                tm,
-                                NULL);
+        e = gen_thread_from_func(
+                NULL, port_discovery_sender_thread, "port_disc_snd", tm, NULL);
         if (e) {
                 pr_error("[port_discovery_test] create sender failed\n");
                 return -E_REND_TEST;
@@ -174,15 +174,17 @@ int port_discovery_test(void)
                 return -E_REND_TEST;
         }
         if (strcmp(port_discovery_recv_buf, port_discovery_payload) != 0) {
-                pr_error("[port_discovery_test] recv payload \"%s\" expected \"%s\"\n",
-                         port_discovery_recv_buf,
-                         port_discovery_payload);
+                pr_error(
+                        "[port_discovery_test] recv payload \"%s\" expected \"%s\"\n",
+                        port_discovery_recv_buf,
+                        port_discovery_payload);
                 is_print_sche_info = true;
                 return -E_REND_TEST;
         }
 
         if (thread_lookup_port(PORT_DISCOVERY_PORT_NAME) != NULL) {
-                pr_error("[port_discovery_test] lookup after unregister should be NULL\n");
+                pr_error(
+                        "[port_discovery_test] lookup after unregister should be NULL\n");
                 is_print_sche_info = true;
                 return -E_REND_TEST;
         }

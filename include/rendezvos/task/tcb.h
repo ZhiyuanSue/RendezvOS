@@ -172,7 +172,6 @@ Message_Port_t* thread_port_cache_lookup(Thread_Base* thread, const char* name);
 error_t thread_port_cache_add(Thread_Base* thread, Message_Port_t* port);
 void thread_port_cache_remove(Thread_Base* thread, const char* name);
 
-/* High-level port discovery API */
 Message_Port_t* thread_lookup_port(const char* name);
 
 static inline Thread_Base* get_cpu_current_thread()
