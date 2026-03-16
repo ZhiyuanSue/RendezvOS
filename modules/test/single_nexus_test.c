@@ -44,6 +44,10 @@ void nexus_print(struct nexus_node* nexus_root)
         /*then print the rb tree*/
         debug("[ USED PAGES ]\n"); /*include the nexus pages*/
         struct rb_node* tmp_rb = nexus_root->_rb_root.rb_root;
+        if(!tmp_rb){
+                pr_error("\t[ NEXUS ] No used page\n");
+                return;
+        }
         while (tmp_rb->left_child) {
                 tmp_rb = tmp_rb->left_child;
         }
@@ -121,7 +125,7 @@ int nexus_test(void)
         set_vspace_root_addr(vs, new_vs_paddr);
         struct nexus_node* new_vs_nexus_root =
                 nexus_create_vspace_root_node(nexus_root, vs);
-        init_vspace(vs, get_new_pid(), new_vs_nexus_root);
+        init_vspace(vs, get_new_id(&pid_manager), new_vs_nexus_root);
 
         /*start new vspace nexus test*/
         vaddr start_test_addr = PAGE_SIZE;

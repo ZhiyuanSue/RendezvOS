@@ -177,7 +177,7 @@ Thread_Base* create_thread(void* __func, size_t append_thread_info_len,
                 goto new_thread_structure_error;
         }
         ref_init(&thread->refcount);
-        thread->tid = get_new_tid();
+        thread->tid = get_new_id(&tid_manager);
         va_list arg_list;
         va_start(arg_list, nr_parameter);
         /*

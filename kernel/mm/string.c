@@ -8,13 +8,12 @@
  * if you want more better speed ,just do it
  * */
 
-typedef u64 word_t;
-#define WORD_SIZE sizeof(word_t)
+#define WORD_SIZE sizeof(u64)
 #define WORD_MASK (WORD_SIZE - 1)
-static inline int has_zero(word_t x)
+static inline int has_zero(u64 x)
 {
-        const word_t mask = 0x0101010101010101ULL;
-        const word_t high = 0x8080808080808080ULL;
+        const u64 mask = 0x0101010101010101ULL;
+        const u64 high = 0x8080808080808080ULL;
         return ((x - mask) & ~x & high) != 0;
 }
 /*a slow way for basic*/
@@ -28,12 +27,12 @@ static inline void basic_memset(u8 *s, u8 c, size_t count)
                 count--;
         }
 
-        word_t word = uc;
+        u64 word = uc;
         word |= word << 8;
         word |= word << 16;
         word |= word << 32;
         if (count >= WORD_SIZE) {
-                word_t *wp = (word_t *)p;
+                u64 *wp = (u64 *)p;
                 size_t words = count / WORD_SIZE;
                 for (size_t i = 0; i < words; i++) {
                         wp[i] = word;
@@ -58,8 +57,8 @@ static inline void basic_memcpy(u8 *dst, const u8 *src, size_t count)
         const unsigned char *s = src;
 
         if (((uintptr_t)d & 7) == 0 && ((uintptr_t)s & 7) == 0) {
-                uint64_t *wd = (uint64_t *)d;
-                const uint64_t *ws = (const uint64_t *)s;
+                u64 *wd = (u64 *)d;
+                const u64 *ws = (const u64 *)s;
                 size_t words = count / 8;
                 for (size_t i = 0; i < words; i++) {
                         wd[i] = ws[i];
@@ -119,9 +118,9 @@ size_t strlen(const char *str)
                 addr++;
         }
 
-        const word_t *word_ptr = (const word_t *)s;
+        const u64 *word_ptr = (const u64 *)s;
         while (1) {
-                word_t word = *word_ptr++;
+                u64 word = *word_ptr++;
                 if (has_zero(word)) {
                         const char *byte_ptr = (const char *)(word_ptr - 1);
                         for (int i = 0; i < 8; i++) {
@@ -149,11 +148,11 @@ int strcmp(const char *str1, const char *str2)
                 addr2++;
         }
 
-        const word_t *wp1 = (const word_t *)p1;
-        const word_t *wp2 = (const word_t *)p2;
+        const u64 *wp1 = (const u64 *)p1;
+        const u64 *wp2 = (const u64 *)p2;
         while (1) {
-                word_t w1 = *wp1++;
-                word_t w2 = *wp2++;
+                u64 w1 = *wp1++;
+                u64 w2 = *wp2++;
                 if (w1 != w2 || has_zero(w1)) {
                         const unsigned char *bp1 =
                                 (const unsigned char *)(wp1 - 1);
@@ -198,7 +197,7 @@ char *strncpy(char *dst, const char *src, size_t n)
         }
 
         while (remaining >= WORD_SIZE) {
-                word_t w = *(const word_t *)s;
+                u64 w = *(const u64 *)s;
                 if (has_zero(w)) {
                         const unsigned char *p = (const unsigned char *)&w;
                         for (size_t i = 0; i < WORD_SIZE; i++) {
@@ -209,7 +208,7 @@ char *strncpy(char *dst, const char *src, size_t n)
                                 remaining--;
                         }
                 } else {
-                        *(word_t *)d = w;
+                        *(u64 *)d = w;
                         d += WORD_SIZE;
                         s += WORD_SIZE;
                         remaining -= WORD_SIZE;

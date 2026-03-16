@@ -40,10 +40,10 @@ static inline u16 tp_get_tag(tagged_ptr_t tp)
 }
 static inline void tp_set_ptr(tagged_ptr_t* tp, void* new_ptr)
 {
-        *tp |= (((u64)new_ptr) & ADDR_MASK);
+        *tp = (*tp & ~ADDR_MASK) | (((u64)new_ptr) & ADDR_MASK);
 }
 static inline void tp_set_tag(tagged_ptr_t* tp, u16 tag)
 {
-        *tp |= (((u64)tag) << TAG_SHIFT);
+        *tp = (*tp & ~(TAG_MASK << TAG_SHIFT)) | (((u64)tag) << TAG_SHIFT);
 }
 #endif

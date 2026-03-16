@@ -26,7 +26,7 @@ error_t create_init_thread(Tcb_Base* root_task)
                 pr_error("[ Error ] new thread structure fail\n");
                 goto new_thread_fail;
         }
-        init_t->tid = get_new_tid();
+        init_t->tid = get_new_id(&tid_manager);
         e = add_thread_to_task(root_task, init_t);
         if (e) {
                 pr_error("[ Error ] add thread to task fail\n");
@@ -65,7 +65,7 @@ Task_Manager* init_proc(void)
                 pr_error("[ Error ] new root task fail\n");
                 goto new_root_task_fail;
         }
-        root_task->pid = get_new_pid();
+        root_task->pid = get_new_id(&pid_manager);
         root_task->vs = percpu(current_vspace);
         e = add_task_to_manager(percpu(core_tm), root_task);
         if (e) {

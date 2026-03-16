@@ -47,7 +47,7 @@ void cmain(struct setup_info *arch_setup_info)
                 print("[ERROR] start arch\n");
                 return;
         }
-
+        init_id_managers();
         if (global_port_init()) {
                 print("[ERROR] init port table fail\n");
                 return;

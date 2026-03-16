@@ -161,7 +161,7 @@ error_t gen_task_from_elf(Thread_Base **elf_thread_ptr,
                 goto gen_task_from_elf_error;
         }
 
-        elf_task->pid = get_new_pid();
+        elf_task->pid = get_new_id(&pid_manager);
         /*--- vspace part ---*/
         elf_task->vs = new_vspace();
         if (!elf_task->vs) {

@@ -3,7 +3,7 @@
 volatile i64 jeffies = 0;
 u64 loop_per_jeffies;
 u64 udelay_max_loop;
-DEFINE_PER_CPU(i64, tick_cnt);
+DEFINE_PER_CPU(u64, tick_cnt);
 /*
     every core have a local apic, so every core have a tick_cnt
     but it must sync with jeffies
