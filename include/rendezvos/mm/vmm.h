@@ -23,6 +23,7 @@ typedef struct {
         void* _vspace_node;
 } VSpace;
 extern VSpace* current_vspace; // per cpu pointer
+extern VSpace root_vspace;
 extern struct spin_lock_t handler_spin_lock; // per cpu pointer
 #define boot_stack_size 0x10000
 extern u64 boot_stack_bottom;

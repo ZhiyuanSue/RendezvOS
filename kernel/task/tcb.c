@@ -60,21 +60,21 @@ Task_Manager* init_proc(void)
                 goto new_task_manager_fail;
         }
         /*create the root task and init it*/
-        Tcb_Base* root_task = new_task_structure(percpu(kallocator), 0);
-        if (!root_task) {
+        percpu(core_tm)->root_task = new_task_structure(percpu(kallocator), 0);
+        if (!percpu(core_tm)->root_task) {
                 pr_error("[ Error ] new root task fail\n");
                 goto new_root_task_fail;
         }
-        root_task->pid = get_new_id(&pid_manager);
-        root_task->vs = percpu(current_vspace);
-        e = add_task_to_manager(percpu(core_tm), root_task);
+        percpu(core_tm)->root_task->pid = get_new_id(&pid_manager);
+        percpu(core_tm)->root_task->vs = percpu(current_vspace);
+        e = add_task_to_manager(percpu(core_tm), percpu(core_tm)->root_task);
         if (e) {
                 pr_error("[ Error ] add root task to manager fail\n");
                 goto add_task_to_manager_fail;
         }
-        percpu(core_tm)->current_task = root_task;
+        percpu(core_tm)->current_task = percpu(core_tm)->root_task;
 
-        e = create_init_thread(root_task);
+        e = create_init_thread(percpu(core_tm)->root_task);
         if (e) {
                 pr_error("[ Error ] create init thread fail %d\n", e);
                 goto create_init_thread_fail;
@@ -94,12 +94,12 @@ Task_Manager* init_proc(void)
         }
         return percpu(core_tm);
 create_init_thread_fail:
-        if (del_task_from_manager(root_task) != REND_SUCCESS) {
+        if (del_task_from_manager(percpu(core_tm)->root_task) != REND_SUCCESS) {
                 pr_error(
                         "fail to delete task from task manager, please check\n");
         }
 add_task_to_manager_fail:
-        delete_task(root_task);
+        delete_task(percpu(core_tm)->root_task);
 new_root_task_fail:
         del_task_manager_structure(percpu(core_tm));
 new_task_manager_fail:
@@ -147,6 +147,7 @@ error_t add_task_to_manager(Task_Manager* core_tm, Tcb_Base* task)
                 return -E_RENDEZVOS;
         }
         list_add_tail(&(task->sched_task_list), &(core_tm->sched_task_list));
+        task->tm = core_tm;
         return REND_SUCCESS;
 }
 error_t del_task_from_manager(Tcb_Base* task)
@@ -158,6 +159,7 @@ error_t del_task_from_manager(Tcb_Base* task)
                 return -E_RENDEZVOS;
         }
         list_del_init(&task->sched_task_list);
+        task->tm = NULL;
         return REND_SUCCESS;
 }
 error_t add_thread_to_manager(Task_Manager* core_tm, Thread_Base* thread)
@@ -170,6 +172,7 @@ error_t add_thread_to_manager(Task_Manager* core_tm, Thread_Base* thread)
         }
         list_add_tail(&(thread->sched_thread_list),
                       &(core_tm->sched_thread_list));
+        thread->tm = core_tm;
         return REND_SUCCESS;
 }
 error_t del_thread_from_manager(Thread_Base* thread)
@@ -181,6 +184,7 @@ error_t del_thread_from_manager(Thread_Base* thread)
                 return -E_RENDEZVOS;
         }
         list_del_init(&thread->sched_thread_list);
+        thread->tm = NULL;
         return REND_SUCCESS;
 }
 

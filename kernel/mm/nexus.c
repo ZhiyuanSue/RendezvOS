@@ -60,7 +60,7 @@ static inline void nexus_node_set_len(struct nexus_node* nexus_entry,
 static void nexus_rb_tree_insert(struct nexus_node* node,
                                  struct rb_root* vspace_root)
 {
-        struct rb_node** new = &vspace_root->rb_root, *parent = NULL;
+        struct rb_node **new = &vspace_root->rb_root, *parent = NULL;
         u64 key = node->addr;
         while (*new) {
                 parent = *new;
@@ -80,7 +80,7 @@ static void nexus_rb_tree_insert(struct nexus_node* node,
 static void nexus_rb_tree_vspace_insert(struct nexus_node* vspace_node,
                                         struct rb_root* vspace_rb_root)
 {
-        struct rb_node** new = &vspace_rb_root->rb_root, *parent = NULL;
+        struct rb_node **new = &vspace_rb_root->rb_root, *parent = NULL;
         u64 key = vspace_node->vs->vspace_root_addr;
         while (*new) {
                 parent = *new;
@@ -422,8 +422,14 @@ struct nexus_node* nexus_create_vspace_root_node(struct nexus_node* nexus_root,
         /*get a phy page*/
         size_t alloced_page_number;
         struct pmm* pmm_ptr = nexus_root->handler->pmm;
+        lock_mcs(&pmm_ptr->spin_ptr,
+                 &per_cpu(pmm_spin_lock[pmm_ptr->zone->zone_id],
+                          nexus_root->handler->cpu_id));
         ppn_t nexus_init_page =
                 pmm_ptr->pmm_alloc(pmm_ptr, 1, &alloced_page_number);
+        unlock_mcs(&pmm_ptr->spin_ptr,
+                   &per_cpu(pmm_spin_lock[pmm_ptr->zone->zone_id],
+                            nexus_root->handler->cpu_id));
         if (invalid_ppn(nexus_init_page) || alloced_page_number != 1) {
                 pr_error("[ NEXUS ] ERROR: init error\n");
                 goto fail;
@@ -512,6 +518,8 @@ void nexus_delete_vspace(struct nexus_node* nexus_root, VSpace* vs)
         lock_cas(&nexus_root->nexus_lock);
         struct nexus_node* vspace_node = nexus_rb_tree_vspace_search(
                 &nexus_root->_vspace_rb_root, vs->vspace_root_addr);
+        struct nexus_node* vspace_page_manage_node =
+                (struct nexus_node*)ROUND_DOWN((vaddr)vspace_node, PAGE_SIZE);
         if (!vspace_node) {
                 pr_error("[Error] no such a vspace in nexus\n");
                 unlock_cas(&nexus_root->nexus_lock);
@@ -532,11 +540,11 @@ void nexus_delete_vspace(struct nexus_node* nexus_root, VSpace* vs)
         */
         struct list_entry* curr = vspace_node->_vspace_list.next;
         struct list_entry* next;
-        while (curr != &(vspace_node->_vspace_list)) {
+        while (curr != &(vspace_node->_vspace_list)
+               && curr != &(vspace_page_manage_node->_vspace_list)) {
                 next = curr->next;
                 struct nexus_node* node =
                         container_of(curr, struct nexus_node, _vspace_list);
-
                 ppn_t ppn = unmap(vs,
                                   VPN(node->addr),
                                   0,
@@ -579,9 +587,7 @@ void nexus_delete_vspace(struct nexus_node* nexus_root, VSpace* vs)
 
         lock_cas(&nexus_root->nexus_lock);
         /*free the manage page*/
-        struct nexus_node* page_manage_node =
-                (struct nexus_node*)ROUND_DOWN((vaddr)vspace_node, PAGE_SIZE);
-        free_manage_node_with_page(page_manage_node, nexus_root);
+        free_manage_node_with_page(vspace_page_manage_node, nexus_root);
         unlock_cas(&nexus_root->nexus_lock);
         return;
 fail:

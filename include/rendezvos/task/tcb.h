@@ -123,6 +123,7 @@ extern volatile bool is_print_sche_info;
 struct task_manager {
         TASK_MANAGER_SCHE_COMMON
         Tcb_Base* current_task;
+        Tcb_Base* root_task;
         Thread_Base* current_thread;
         Thread_Base* (*scheduler)(Task_Manager* tm);
 };

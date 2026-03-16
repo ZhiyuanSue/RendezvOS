@@ -103,6 +103,7 @@ void schedule(Task_Manager* tm)
                          * we think every task have a vspace
                          */
                         tm->current_task = new;
+                        percpu(current_vspace) = new->vs;
                         arch_set_current_user_vspace_root(
                                 new->vs->vspace_root_addr);
                 }

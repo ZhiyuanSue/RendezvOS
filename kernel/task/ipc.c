@@ -480,6 +480,7 @@ error_t enqueue_msg_for_send(Message_t* msg)
         }
         msq_enqueue(
                 &self->send_msg_queue, &msg->ms_queue_node, free_message_ref);
+        ref_put(&msg->ms_queue_node.refcount, free_message_ref);
         return REND_SUCCESS;
 }
 
