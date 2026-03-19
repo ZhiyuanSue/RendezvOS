@@ -7,6 +7,7 @@
 #include <common/taggedptr.h>
 #include <common/refcount.h>
 #include <rendezvos/error.h>
+#include <rendezvos/task/ebr.h>
 
 /*a lock free implement*/
 
@@ -82,6 +83,7 @@ static inline void msq_enqueue(ms_queue_t* q, ms_queue_node_t* new_node,
         if (!q || !new_node) {
                 return;
         }
+        ebr_enter();
         tagged_ptr_t tail, next, tmp;
 
         atomic64_store((volatile u64*)(&(new_node->next)), 0);
@@ -128,6 +130,7 @@ static inline void msq_enqueue(ms_queue_t* q, ms_queue_node_t* new_node,
                         ref_put(&tail_node->refcount, free_func);
                 }
         }
+        ebr_exit();
 }
 /**
  * @brief dequeue a node and return the ptr
@@ -142,6 +145,7 @@ static inline tagged_ptr_t msq_dequeue(ms_queue_t* q,
 {
         if (!q)
                 return tp_new_none();
+        ebr_enter();
         tagged_ptr_t head, tail, next, tmp;
         tagged_ptr_t res = tp_new_none();
 
@@ -162,6 +166,7 @@ static inline tagged_ptr_t msq_dequeue(ms_queue_t* q,
                                 if (tp_get_ptr(next) == NULL) {
                                         ref_put(&head_node->refcount,
                                                 free_func);
+                                        ebr_exit();
                                         return tp_new_none();
                                 } else {
                                         tmp = tp_new(tp_get_ptr(next),
@@ -208,6 +213,7 @@ static inline tagged_ptr_t msq_dequeue(ms_queue_t* q,
                         ref_put(&head_node->refcount, free_func);
                 }
         }
+        ebr_exit();
         return res;
 }
 /**
@@ -261,9 +267,11 @@ static inline error_t msq_enqueue_check_tail(ms_queue_t* q,
         if (!q || !new_node) {
                 return -E_IN_PARAM;
         }
+        ebr_enter();
         tagged_ptr_t tail, next, tmp;
         if (q->append_info_bits == 0) {
                 msq_enqueue(q, new_node, free_func);
+                ebr_exit();
                 return REND_SUCCESS;
         }
         u16 tag_step = 1 << q->append_info_bits;
@@ -287,12 +295,14 @@ static inline error_t msq_enqueue_check_tail(ms_queue_t* q,
                                                 expect_tp,
                                                 append_info_mask)) {
                                 ref_put(&tail_node->refcount, free_func);
+                                ebr_exit();
                                 return -E_REND_AGAIN;
                         }
                         if (tp_get_ptr(next) == NULL) {
                                 if (!ref_get_not_zero(&new_node->refcount)) {
                                         ref_put(&tail_node->refcount,
                                                 free_func);
+                                        ebr_exit();
                                         return -E_REND_AGAIN;
                                 }
                                 tmp = tp_new(new_node,
@@ -328,6 +338,7 @@ static inline error_t msq_enqueue_check_tail(ms_queue_t* q,
                         ref_put(&tail_node->refcount, free_func);
                 }
         }
+        ebr_exit();
         return REND_SUCCESS;
 }
 
@@ -346,12 +357,15 @@ msq_dequeue_check_head(ms_queue_t* q, u64 check_field_mask,
 {
         if (!q)
                 return tp_new_none();
+        ebr_enter();
         tagged_ptr_t head, tail, next, tmp;
         tagged_ptr_t res = tp_new_none();
         if (q->append_info_bits == 0
             && ((check_field_mask & MSQ_CHECK_FIELD_PTR) == 0)) {
                 /*no append info and no need to check the ptr ,normal case*/
-                return msq_dequeue(q, free_func);
+                tagged_ptr_t out = msq_dequeue(q, free_func);
+                ebr_exit();
+                return out;
         }
         u16 tag_step = 1 << q->append_info_bits;
         u16 append_info_mask = tag_step - 1;
@@ -370,6 +384,7 @@ msq_dequeue_check_head(ms_queue_t* q, u64 check_field_mask,
                                 if (tp_get_ptr(next) == NULL) {
                                         ref_put(&head_node->refcount,
                                                 free_func);
+                                        ebr_exit();
                                         return tp_new_none();
                                 } else {
                                         tmp = tp_new(
@@ -391,6 +406,7 @@ msq_dequeue_check_head(ms_queue_t* q, u64 check_field_mask,
                                                         append_info_mask)) {
                                         ref_put(&head_node->refcount,
                                                 free_func);
+                                        ebr_exit();
                                         return tp_new_none();
                                 }
                                 ms_queue_node_t* next_node =
@@ -443,6 +459,7 @@ msq_dequeue_check_head(ms_queue_t* q, u64 check_field_mask,
                         ref_put(&head_node->refcount, free_func);
                 }
         }
+        ebr_exit();
         return res;
 }
 

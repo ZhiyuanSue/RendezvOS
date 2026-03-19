@@ -1247,6 +1247,8 @@ https://github.com/ZhiyuanSue/RendezvOS
 
 include/common/dsa/ms_queue.h:包含了msqueue标准和扩展的定义和算法
 
+docs/ebr-msqueue.md:补充说明当前代码中的EBR接入方式与回收语义
+
 include/common/taggedptr.h:包含了tagged ptr的基本操作
 
 include/common/atomic.h:包含了原子操作
@@ -1260,6 +1262,8 @@ include/rendezvos/task/tcb.h:线程控制块相关的接口、实现等
 kernel/task/ipc.c:包含了上面说的原语和阻塞式接口
 
 kernel/task/message.c:包含了message相关的操作实现
+
+kernel/task/ebr.c + include/rendezvos/task/ebr.h:EBR最小实现，用于延迟回收msqueue相关节点
 
 ## 9.2 测试样例内容、运行方式及结果说明
 

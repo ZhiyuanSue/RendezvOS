@@ -70,9 +70,9 @@ static void* ipc_sender_thread(void* arg)
                 single_ipc_sender_done = 1;
                 return NULL;
         }
+        msg = NULL;
         if (send_msg(port) != REND_SUCCESS) {
                 pr_error("[single_ipc_test] sender: send_msg failed\n");
-                ref_put(&msg->ms_queue_node.refcount, free_message_ref);
                 single_ipc_sender_done = 1;
                 return NULL;
         }
@@ -254,12 +254,12 @@ static void* ipc_multi_round_sender_thread(void* arg)
                         ref_put(&msg->ms_queue_node.refcount, free_message_ref);
                         break;
                 }
+                msg = NULL;
 
                 if (send_msg(port) != REND_SUCCESS) {
                         pr_error(
                                 "[single_ipc_multi_round_test] sender: send_msg failed at round %llu\n",
                                 (unsigned long long)i);
-                        ref_put(&msg->ms_queue_node.refcount, free_message_ref);
                         break;
                 }
 

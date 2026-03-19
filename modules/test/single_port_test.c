@@ -123,14 +123,13 @@ static void* port_discovery_sender_thread(void* arg)
                 port_discovery_sender_done = 1;
                 return NULL;
         }
+        msg = NULL;
         if (send_msg(port) != REND_SUCCESS) {
-                ref_put(&msg->ms_queue_node.refcount, free_message_ref);
                 pr_error("[port_test] sender: send_msg failed\n");
                 ref_put(&port->refcount, free_message_port_ref);
                 port_discovery_sender_done = 1;
                 return NULL;
         }
-        ref_put(&msg->ms_queue_node.refcount, free_message_ref);
         /* 释放lookup时持有的ref */
         ref_put(&port->refcount, free_message_port_ref);
         port_discovery_sender_done = 1;
