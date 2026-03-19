@@ -7,10 +7,11 @@ typedef struct {
 } Init_Info;
 extern Init_Info _s_init, _e_init;
 
-#define INIT_SECTION ".init.call"
-#define DEFINE_INIT(func_ptr)                                  \
-        __attribute__((used, section(INIT_SECTION))) Init_Info \
+#define __INIT_SECTION(level) ".init.call." #level
+#define DEFINE_INIT_LEVEL(func_ptr, level)                              \
+        __attribute__((used, section(__INIT_SECTION(level)))) Init_Info \
                 __init_##func_ptr = {.init_func_ptr = (func_ptr)}
+#define DEFINE_INIT(func_ptr) DEFINE_INIT_LEVEL(func_ptr, 3)
 
 static inline void do_init_call(void)
 {

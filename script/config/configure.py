@@ -6,7 +6,7 @@ import shutil
 target_config_file_name="Makefile.env"
 target_config_arch_list=[
 	'aarch64',
-	'longarch',
+	'loongarch',
 	'riscv64',
 	'x86_64'
 ]
@@ -37,7 +37,7 @@ def configure_kernel(kernel_config,root_dir):
 		exit(1)
 	ARCH_kernel_config=kernel_config['ARCH']
 	if ARCH_kernel_config not in target_config_arch_list:
-		print("Error:the ARCH must be one of aarch64,longarch,riscv64,x86_64")
+		print("Error:the ARCH must be one of aarch64,loongarch,riscv64,x86_64")
 		exit(1)
 	kernel_config_str = kernel_config_str + "ARCH\t:=\t" + ARCH_kernel_config + "\n"
 		

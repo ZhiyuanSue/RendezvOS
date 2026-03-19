@@ -4,6 +4,7 @@
 #include <rendezvos/task/tcb.h>
 #include <rendezvos/task/thread_loader.h>
 
+#ifdef TOP_LEVEL_BUILD
 extern u64 _num_app;
 int task_test(void)
 {
@@ -25,3 +26,9 @@ int task_test(void)
         }
         return REND_SUCCESS;
 }
+#else
+int task_test(void)
+{
+        return REND_SUCCESS;
+}
+#endif

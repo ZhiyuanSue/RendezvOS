@@ -46,5 +46,4 @@ if __name__ =='__main__':
     gen_makefile(kernel_dir,[])
 
     modules_dir=sys.argv[3]
-    exclude_user_dir = os.path.join(modules_dir,"user")
-    gen_makefile(modules_dir,[exclude_user_dir])
+    gen_makefile(modules_dir,[])

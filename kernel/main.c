@@ -3,6 +3,7 @@
 #include <rendezvos/common.h>
 #include <rendezvos/mm/pmm.h>
 #include <rendezvos/task/tcb.h>
+#include <rendezvos/task/initcall.h>
 #include <arch/aarch64/sys_ctrl.h>
 extern int log_level;
 extern char _bss_start, _bss_end;
@@ -59,12 +60,12 @@ void cmain(struct setup_info *arch_setup_info)
                 return;
         }
 
-        main_init();
+        do_init_call();
         start_smp(arch_setup_info);
 #ifdef TEST
         create_test_thread(true);
         thread_set_status(get_cpu_current_thread(), thread_status_suspend);
-        schedule(percpu(core_tm));
 #endif
+        schedule(percpu(core_tm));
         arch_shutdown();
 }

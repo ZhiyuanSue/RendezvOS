@@ -6,6 +6,7 @@
 #include <common/string.h>
 #include <rendezvos/mm/allocator.h>
 #include <rendezvos/task/initcall.h>
+#include <rendezvos/task/thread_loader.h>
 
 u64 thread_kstack_page_num = 2;
 u64 thread_ustack_page_num = 8;
@@ -13,6 +14,17 @@ u64 thread_ustack_page_num = 8;
 DEFINE_PER_CPU(Thread_Base*, init_thread_ptr);
 char init_thread_name[] = "init_thread";
 
+DEFINE_PER_CPU(Thread_Base*, idle_thread_ptr);
+char idle_thread_name[] = "idle_thread";
+
+void* idle_thread(void* arg)
+{
+        (void)arg;
+        while (1) {
+                /*TODO:might close the int*/
+                schedule(percpu(core_tm));
+        }
+}
 error_t create_init_thread(Tcb_Base* root_task)
 {
         if (!root_task || !percpu(core_tm))
@@ -51,6 +63,19 @@ add_thread_to_task_fail:
 new_thread_fail:
         return e;
 }
+error_t create_idle_thread(void)
+{
+        error_t e = gen_thread_from_func(&percpu(idle_thread_ptr),
+                                         idle_thread,
+                                         idle_thread_name,
+                                         percpu(core_tm),
+                                         NULL);
+        if (e) {
+                pr_error("[ Error ]idle thread init fail\n");
+                return e;
+        }
+        return REND_SUCCESS;
+}
 Task_Manager* init_proc(void)
 {
         error_t e = -E_RENDEZVOS;
@@ -79,7 +104,11 @@ Task_Manager* init_proc(void)
                 pr_error("[ Error ] create init thread fail %d\n", e);
                 goto create_init_thread_fail;
         }
-        do_init_call();
+        e = create_idle_thread();
+        if (e) {
+                pr_error("[ Error ] create idle thread fail %d\n", e);
+                goto create_idle_thread_fail;
+        }
         if (percpu(init_thread_ptr) && percpu(idle_thread_ptr)) {
                 percpu(core_tm)->current_thread = percpu(idle_thread_ptr);
                 /*manually set the status of the thread*/
@@ -93,6 +122,10 @@ Task_Manager* init_proc(void)
                 return NULL;
         }
         return percpu(core_tm);
+create_idle_thread_fail:
+        list_del_init(&(percpu(init_thread_ptr)->thread_list_node));
+        percpu(core_tm)->root_task->thread_number--;
+        del_thread_structure(percpu(init_thread_ptr));
 create_init_thread_fail:
         if (del_task_from_manager(percpu(core_tm)->root_task) != REND_SUCCESS) {
                 pr_error(

@@ -158,9 +158,6 @@ error_t del_task_from_manager(Tcb_Base* task);
 error_t add_thread_to_manager(Task_Manager* core_tm, Thread_Base* thread);
 error_t del_thread_from_manager(Thread_Base* thread);
 
-error_t create_init_thread(Tcb_Base* root_task);
-error_t create_idle_thread(Tcb_Base* root_task);
-
 Thread_Base* create_thread(void* __func, size_t append_thread_info_len,
                            int nr_parameter, ...);
 void delete_thread(Thread_Base* thread);
