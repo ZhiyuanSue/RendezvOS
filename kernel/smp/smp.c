@@ -3,6 +3,7 @@
 #include <rendezvos/smp/smp.h>
 #include <rendezvos/smp/percpu.h>
 #include <rendezvos/common.h>
+#include <rendezvos/task/tcb.h>
 int NR_CPU = 1;
 DEFINE_PER_CPU(enum cpu_status, CPU_STATE);
 void start_smp(struct setup_info *arch_setup_info)

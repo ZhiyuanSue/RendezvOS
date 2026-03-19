@@ -2,7 +2,7 @@
 	"kernel":{
 		"use":true ,
 		"ARCH":"x86_64",
-		"CROSS_COMPLIER":"",
+		"CROSS_COMPLIER":"x86_64-linux-gnu-",
 		"DBG":false,
 		"CFLAGS":[
 			"-mno-avx",
@@ -116,17 +116,6 @@
 				"acpi"
 			],
 			"path":"modules/pci"
-		},
-		"RendezvOS_Linux":{
-			"use":true,
-			"features":[
-				"RendezvOS_Linux"
-			],
-			"depend_module":[
-				"log"
-			],
-			"path":"modules/RendezvOS_Linux",
-			"git":"git@github.com:ZhiyuanSue/RendezvOS_Linux.git"
 		}
 	}
 }

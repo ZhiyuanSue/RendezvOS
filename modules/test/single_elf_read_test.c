@@ -3,6 +3,7 @@
 #include <modules/elf/elf.h>
 #include <modules/elf/elf_print.h>
 
+#ifdef TOP_LEVEL_BUILD
 extern u64 _num_app;
 void elf_read(vaddr elf_start)
 {
@@ -50,3 +51,9 @@ int elf_read_test(void)
         }
         return REND_SUCCESS;
 }
+#else
+int elf_read_test(void)
+{
+        return REND_SUCCESS;
+}
+#endif

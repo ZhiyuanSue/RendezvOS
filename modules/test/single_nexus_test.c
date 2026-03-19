@@ -44,7 +44,7 @@ void nexus_print(struct nexus_node* nexus_root)
         /*then print the rb tree*/
         debug("[ USED PAGES ]\n"); /*include the nexus pages*/
         struct rb_node* tmp_rb = nexus_root->_rb_root.rb_root;
-        if(!tmp_rb){
+        if (!tmp_rb) {
                 pr_error("\t[ NEXUS ] No used page\n");
                 return;
         }

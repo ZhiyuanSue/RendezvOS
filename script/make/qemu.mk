@@ -3,11 +3,12 @@
 #  ---------
 
 LOG	?= false
+QEMU_LOG ?= qemu.log
 
 Qemulator	:= qemu-system-$(ARCH)
 QemuFlags	:= -kernel $(Target_BIN) -smp $(SMP) -m $(MEM_SIZE)
 ifeq ($(LOG), true)
-	QemuFlags	+= -D qemu.log -d in_asm,int,pcall,cpu_reset,guest_errors
+	QemuFlags	+= -D $(QEMU_LOG) -d in_asm,int,pcall,cpu_reset,guest_errors
 endif
 
 ifeq ($(ARCH), x86_64)

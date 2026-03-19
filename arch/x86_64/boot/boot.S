@@ -1,5 +1,4 @@
 #define	kernel_virt_offset 0xffff800000000000
-#define	boot_stack_size	0x10000
 #define	multiboot_header_magic	0x1BADB002
 #define	multiboot_header_flag_addr	0x00000002
 #define	multiboot_header_flag_vbe	0x00010000
@@ -416,4 +415,8 @@ log_buffer:
 	/*stack*/
 stack_field:
 	.p2align 12
-	.comm boot_stack,boot_stack_size
+	.section .boot_stack,"aw",@nobits
+	.global boot_stack
+boot_stack:
+	.zero 0x10000
+	.section .bss,"aw",@nobits

@@ -12,7 +12,17 @@ SECTIONS{
 	_s_init = .;
 	.init :
 	{
-		*(.init.call)	
+		*(.init.call.0)
+		*(.init.call.1)
+		*(.init.call.2)
+		*(.init.call.3)
+		*(.init.call.4)
+		*(.init.call.5)
+		*(.init.call.6)
+		*(.init.call.7)
+		*(.init.call.8)
+		*(.init.call.9)
+		*(.init.call)
 	}
 	_e_init = .;
 	. = ALIGN(4K);

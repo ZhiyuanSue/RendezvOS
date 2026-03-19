@@ -1,5 +1,5 @@
--include ./Makefile.env
-ROOT_DIR	= $(shell pwd)
+ROOT_DIR	?=	$(abspath $(CURDIR))
+-include $(ROOT_DIR)/Makefile.env
 BUILD	?=	$(ROOT_DIR)/build
 CONFIG_FILE	:=	$(ROOT_DIR)/Makefile.env
 SCRIPT_DIR	:=	$(ROOT_DIR)/script
@@ -52,6 +52,7 @@ endif
 CFLAGS	+= -Werror -Wall -Wextra -Werror=return-type -Werror=format -Wmissing-field-initializers -Wunused-result -Os -nostdlib -nostdinc
 CFLAGS	+= -fno-stack-protector -std=c11
 CFLAGS	+=	-I $(INCLUDE_DIR) -DNR_CPUS=$(SMP)
+CFLAGS	+= $(EXTRA_CFLAGS)
 
 LDFLAGS	+=	-T $(SCRIPT_LINK_DIR)/$(ARCH)_linker.ld
 LDFLAGS	+=	--no-relax
@@ -68,28 +69,15 @@ include $(SCRIPT_MAKE_DIR)/qemu.mk
 include $(SCRIPT_MAKE_DIR)/utils.mk
 .PHONY:all
 
-# here's another makefile cmd 'user'
-# we hope you first run 'make user'
-# and you will generate the $(SCRIPT_MAKE_DIR)/user.mk file
-# and then this user.mk file should also have a USER_CMD defination
-# which will override the user_mk
-# if you needn't generate the user files, just not generate this file
-# this design is used for separation architecture
-USER_CMD ?= @echo "$(RED_CHAR)WARNING\t:\tNo User test$(END_CHAR)"
-USER_CLEAN_CMD ?=@echo ""
-user_mk:
-	${USER_CMD}
--include $(SCRIPT_MAKE_DIR)/user.mk
-
 build_objs:
 	@python3 $(SCRIPT_MAKE_DIR)/gen_makefile.py $(ARCH_DIR) $(KERNEL_DIR) $(MODULES_DIR)
 	@$(MAKE) -C $(ARCH_DIR) all
 	@$(MAKE) -C $(KERNEL_DIR) all
 	@$(MAKE) -C $(MODULES_DIR) all
 	
-$(Target_ELF): user_mk build_objs
+$(Target_ELF): build_objs
 	@echo "LD	" $(Target_ELF)
-	@${LD} ${LDFLAGS} -o $@ $(shell find $(BUILD) -name *.o)
+	@${LD} ${LDFLAGS} -o $@ $(shell find $(BUILD) -name '*.o') $(EXTRA_OBJECTS)
 
 $(Target_BIN):	$(Target_ELF)
 	@echo "COPY	" $(Target_BIN)
@@ -117,9 +105,6 @@ show_config:
 	@echo "arch\t=\t"$(ARCH)
 	@echo "kernel_version\t=\t"$(KERNELVERSION)
 	@echo "config_file\t=\t"$(CONFIG_FILE)
-# user must get the ARCH info and then use cross complier
-user: have_config
-	@python3 $(SCRIPT_CONFIG_DIR)/user.py $(ARCH) ${ROOT_DIR} $(SCRIPT_CONFIG_DIR)/user.json
 fmt:
 	@git ls-files '*.c' '*.h' | xargs -P 0 clang-format -i -style=file
 
@@ -129,13 +114,12 @@ dump:
 
 mrproper: clean
 	@echo "RM	Makefile.env"
-	@-rm -f $(shell find $(ROOT_DIR) -name Makefile.env) 
+	@-rm -f $(shell find $(ROOT_DIR) -name 'Makefile.env') 
 	@-rm -rf $(BUILD)/*
-	$(USER_CLEAN_CMD)
-	@-rm -f $(ROOT_DIR)/include/modules/modules.h $(SCRIPT_DIR)/make/user.mk
+	@-rm -f $(ROOT_DIR)/include/modules/modules.h
 
 clean:	init
 	@echo "RM	OBJS"
-	@-rm -f $(shell find $(BUILD) -name *.o)
-	@-rm -f $(shell find $(BUILD) -name *.d)
+	@-rm -f $(shell find $(BUILD) -name '*.o')
+	@-rm -f $(shell find $(BUILD) -name '*.d')
 	@-rm -f ./*.log
