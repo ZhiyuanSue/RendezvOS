@@ -28,7 +28,7 @@ int smp_lock_test(void)
                 atomic64_sub_value.counter = NR_CPU * TEST_ROUND * 2;
         } else {
                 while (!have_inited)
-                        ;
+                        arch_cpu_relax();
         }
         struct spin_lock_t *my_spin_lock = &percpu(test_spin_lock);
         for (int i = 0; i < TEST_ROUND; i++) {

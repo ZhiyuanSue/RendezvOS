@@ -20,6 +20,7 @@ void free_ms_test_data(ref_count_t* refcount)
         percpu(kallocator)->m_free(percpu(kallocator), test_data);
 }
 extern u32 BSP_ID;
+extern int NR_CPU;
 #define percpu_ms_queue_test_number 100000
 #ifdef NR_CPUS
 #define ms_data_len percpu_ms_queue_test_number* NR_CPUS / 2
@@ -32,6 +33,7 @@ struct ms_test_data dummy;
 ms_queue_t ms_queue;
 static volatile bool have_inited = false;
 static volatile bool dyn_have_inited = false;
+static volatile int smp_ms_queue_active_cpus = 0;
 static cas_lock_t cas_lock;
 static volatile int cas_add_value = 0;
 int ms_data_test_seq[ms_data_len] = {0};
@@ -58,7 +60,7 @@ void smp_ms_queue_get(int offset)
         while (i < percpu_ms_queue_test_number) {
                 tagged_ptr_t dequeue_ptr = tp_new_none();
                 while ((dequeue_ptr = msq_dequeue(&ms_queue, NULL)) == 0)
-                        ;
+                        arch_cpu_relax();
                 struct ms_test_data* get_ptr = container_of(
                         tp_get_ptr(dequeue_ptr), struct ms_test_data, ms_node);
                 ms_data_test_seq[offset + i] = get_ptr->data;
@@ -69,12 +71,24 @@ void smp_ms_queue_get(int offset)
 int smp_ms_queue_test(void)
 {
         if (percpu(cpu_number) == BSP_ID) {
+                smp_ms_queue_active_cpus =
+                        (NR_CPU < 2) ? 0 : (NR_CPU - (NR_CPU % 2));
                 smp_ms_queue_init();
                 have_inited = true;
         } else {
                 while (!have_inited)
-                        ;
+                        arch_cpu_relax();
         }
+        /* Need producer/consumer pairing; for odd CPU count skip the last CPU.
+         */
+        /* active CPUs are forced to an even number to keep put/get paired.
+         * CPUs with cpu_id >= active will skip the test.
+         */
+        int active = smp_ms_queue_active_cpus;
+        if (active < 2)
+                return REND_SUCCESS;
+        if ((int)percpu(cpu_number) >= active)
+                return REND_SUCCESS;
         if (percpu(cpu_number) % 2) {
                 smp_ms_queue_put((percpu(cpu_number) / 2)
                                  * percpu_ms_queue_test_number);
@@ -144,7 +158,7 @@ void smp_ms_queue_dyn_alloc_get(int offset)
                 while ((dequeue_ptr =
                                 msq_dequeue(&ms_queue, dyn_alloc_free_node))
                        == 0)
-                        ;
+                        arch_cpu_relax();
                 struct ms_test_data* get_ptr = container_of(
                         tp_get_ptr(dequeue_ptr), struct ms_test_data, ms_node);
                 ms_data_test_seq[i] = get_ptr->data;
@@ -158,16 +172,18 @@ void smp_ms_queue_dyn_alloc_get(int offset)
 int smp_ms_queue_dyn_alloc_test(void)
 {
         if (percpu(cpu_number) == BSP_ID) {
+                smp_ms_queue_active_cpus =
+                        (NR_CPU < 2) ? 0 : (NR_CPU - (NR_CPU % 2));
                 smp_ms_queue_dyn_alloc_init();
                 dyn_have_inited = true;
         } else {
                 while (!dyn_have_inited)
-                        ;
+                        arch_cpu_relax();
         }
-#ifdef NR_CPUS
-        if (NR_CPUS % 2 && NR_CPUS - 1 == percpu(cpu_number))
+        if (smp_ms_queue_active_cpus < 2)
                 return REND_SUCCESS;
-#endif
+        if ((int)percpu(cpu_number) >= smp_ms_queue_active_cpus)
+                return REND_SUCCESS;
         if (percpu(cpu_number) % 2) {
                 smp_ms_queue_dyn_alloc_put((percpu(cpu_number) / 2)
                                            * percpu_ms_queue_test_number);
@@ -179,16 +195,9 @@ int smp_ms_queue_dyn_alloc_test(void)
 }
 bool smp_ms_queue_dyn_alloc_check(void)
 {
-        // if (percpu(cpu_number) == BSP_ID) {
-        //         for (int i = 0; i < ms_data_len; i++) {
-        //                 if (i % 10 == 0 && i)
-        //                         pr_info("\n");
-        //                 pr_info("%d\t", ms_data_test_seq[i]);
-        //         }
-        //         pr_info("\n");
-        // }
-        // pr_info("dyn get time %d\n",cas_add_value);
-        return cas_add_value == ms_data_len;
+        if (smp_ms_queue_active_cpus < 2)
+                return true;
+        return cas_add_value == percpu_ms_queue_test_number * (smp_ms_queue_active_cpus / 2);
 }
 
 /* Test for msq_enqueue_check_tail and msq_dequeue_check_head */
@@ -314,18 +323,22 @@ void smp_ms_queue_check_with_status(int offset, bool send_recv)
                                 atomic64_inc(&ms_check_enqueue_count);
                                 break;
                         }
+                        arch_cpu_relax();
                 }
         }
 }
 
 int smp_ms_queue_check_test(void)
 {
+        /* This test is designed for 4 CPUs (fixed partitioning by /4). */
+        if (NR_CPU != 4)
+                return REND_SUCCESS;
         if (percpu(cpu_number) == BSP_ID) {
                 smp_ms_queue_check_init();
                 ms_check_have_inited = true;
         } else {
                 while (!ms_check_have_inited)
-                        ;
+                        arch_cpu_relax();
         }
         u32 cpu_num = percpu(cpu_number);
 
@@ -346,6 +359,8 @@ int smp_ms_queue_check_test(void)
 
 bool smp_ms_queue_check_test_check(void)
 {
+        if (NR_CPU != 4)
+                return true;
         /* Check that enqueue and dequeue counts match */
         bool res =
                 (ms_check_enqueue_count.counter == ms_check_test_data_len / 2)

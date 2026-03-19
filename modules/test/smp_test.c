@@ -6,23 +6,36 @@ extern u32 BSP_ID;
 extern int NR_CPU;
 extern volatile i64 jeffies;
 static struct smp_test_case smp_test[MAX_SMP_TEST_CASE] = {
+        /* CPU support:
+         * - scalable: works for any NR_CPU >= 1
+         * - even-only: requires paired roles, uses active-even CPUs if NR_CPU is odd
+         * - fixed-4: designed specifically for NR_CPU == 4 (otherwise skipped/pass)
+         */
+        /* scalable */
         {smp_lock_test, "smp spin_lock", smp_lock_check},
         // {smp_log_test, "smp log test", smp_log_check}, // just see the output
+        /* scalable */
         {smp_nexus_test, "smp nexus test", NULL},
+        /* scalable */
         {smp_kmalloc_test, "smp spmalloc", NULL},
+        /* even-only (skips CPUs >= active-even) */
         {smp_ms_queue_test, "smp ms queue test", smp_ms_queue_check},
+        /* even-only (skips CPUs >= active-even) */
         {smp_ms_queue_dyn_alloc_test,
          "smp ms queue dyn alloc test",
          smp_ms_queue_dyn_alloc_check},
+        /* fixed-4 (skipped when NR_CPU != 4) */
         {smp_ms_queue_check_test,
          "smp ms queue check test",
          smp_ms_queue_check_test_check},
         {
+                /* even-only (skips CPUs >= active-even) */
                 smp_ipc_test,
                 "smp ipc test",
                 NULL,
         },
         {
+                /* scalable */
                 smp_port_robustness_test,
                 "smp port robustness test",
                 NULL,

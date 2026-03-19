@@ -40,6 +40,18 @@ def configure_kernel(kernel_config,root_dir):
 		print("Error:the ARCH must be one of aarch64,loongarch,riscv64,x86_64")
 		exit(1)
 	kernel_config_str = kernel_config_str + "ARCH\t:=\t" + ARCH_kernel_config + "\n"
+
+	# SMP (record configured CPU count for later rebuild decisions)
+	# Passed from Makefile as argv[4], default to 4 if missing/invalid.
+	smp_val = 4
+	try:
+		if len(sys.argv) > 4:
+			smp_val = int(sys.argv[4])
+	except Exception:
+		smp_val = 4
+	if smp_val < 1:
+		smp_val = 1
+	kernel_config_str = kernel_config_str + "SMP\t:=\t" + str(smp_val) + "\n"
 		
 	# CROSS COMPLIER
 	if 'CROSS_COMPLIER' not in kernel_config.keys():

@@ -23,6 +23,7 @@ extern int NR_CPU;
 
 static Message_Port_t* smp_ipc_port;
 static volatile bool smp_ipc_port_ready;
+static volatile int smp_ipc_active_cpus;
 static volatile u64 smp_ipc_send_ok[RENDEZVOS_MAX_CPU_NUMBER];
 static volatile u64 smp_ipc_recv_ok[RENDEZVOS_MAX_CPU_NUMBER];
 
@@ -183,14 +184,41 @@ int smp_ipc_test(void)
                         smp_ipc_send_ok[i] = 0;
                         smp_ipc_recv_ok[i] = 0;
                 }
+                /*
+                 * This test requires sender/receiver pairing. If NR_CPU is odd,
+                 * exclude the last CPU from participating to keep an even
+                 * active CPU count and avoid deadlock.
+                 */
+                if (NR_CPU < 2) {
+                        smp_ipc_active_cpus = 0;
+                } else {
+                        smp_ipc_active_cpus = NR_CPU - (NR_CPU % 2);
+                }
                 smp_ipc_port_ready = true;
-                pr_info("BSP port ready, NR_CPU=%d\n", NR_CPU);
+                pr_info("BSP port ready, NR_CPU=%d active=%d\n",
+                        NR_CPU,
+                        smp_ipc_active_cpus);
         } else {
                 pr_info("cpu %u waiting for port_ready\n", (unsigned)cpu_id);
                 while (!smp_ipc_port_ready)
-                        ;
+                        arch_cpu_relax();
                 pr_info("cpu %u port ready\n", (unsigned)cpu_id);
         }
+
+        /* active_cpus is forced to an even number to keep sender/receiver paired.
+         * CPUs with cpu_id >= active_cpus will skip the test.
+         */
+        int active_cpus = smp_ipc_active_cpus;
+        if (active_cpus < 2) {
+                if (cpu_id == BSP_ID) {
+                        delete_message_port_structure(smp_ipc_port);
+                        smp_ipc_port_ready = false;
+                        is_print_sche_info = true;
+                }
+                return REND_SUCCESS;
+        }
+        if ((int)cpu_id >= active_cpus)
+                return REND_SUCCESS;
 
         if (cpu_id % 2 == 0) {
                 /* sender: send SMP_IPC_MSG_COUNT messages */
@@ -205,7 +233,7 @@ int smp_ipc_test(void)
                 pr_info("BSP entering all_done wait loop\n");
                 while (1) {
                         bool all_done = true;
-                        for (int i = 0; i < NR_CPU; i++) {
+                        for (int i = 0; i < active_cpus; i++) {
                                 u64 want = (u64)SMP_IPC_MSG_COUNT;
                                 u64 s = smp_ipc_send_ok[i];
                                 u64 r = smp_ipc_recv_ok[i];
@@ -219,6 +247,7 @@ int smp_ipc_test(void)
                         }
                         if (all_done)
                                 break;
+                        arch_cpu_relax();
                 }
                 pr_info("BSP all_done, exiting wait\n");
                 delete_message_port_structure(smp_ipc_port);
@@ -226,7 +255,7 @@ int smp_ipc_test(void)
 
                 u64 total_sent = 0;
                 u64 total_recv = 0;
-                for (int i = 0; i < NR_CPU; i++) {
+                for (int i = 0; i < active_cpus; i++) {
                         total_sent += smp_ipc_send_ok[i];
                         total_recv += smp_ipc_recv_ok[i];
                 }

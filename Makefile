@@ -96,7 +96,7 @@ have_config:
 run:qemu
 
 config: mrproper
-	@python3 $(SCRIPT_CONFIG_DIR)/configure.py ${ROOT_DIR} ${SCRIPT_CONFIG_DIR} $(SCRIPT_CONFIG_DIR)/${CONFIG}
+	@python3 $(SCRIPT_CONFIG_DIR)/configure.py ${ROOT_DIR} ${SCRIPT_CONFIG_DIR} $(SCRIPT_CONFIG_DIR)/${CONFIG} $(SMP)
 	@if [ $$? -eq 0 ]; \
 		then echo "$(GREEN_CHAR)Config Success$(END_CHAR)";  \
 	else $(MAKE) mrproper;  \
