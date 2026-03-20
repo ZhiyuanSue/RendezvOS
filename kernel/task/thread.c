@@ -7,6 +7,7 @@
 #include <rendezvos/mm/allocator.h>
 #include <rendezvos/task/port.h>
 #include <rendezvos/sync/spin_lock.h>
+
 /*
 we first generate a context that after the return will goto thread entry（this
 function) then the stack frame is the only one thread_entry frame then here we
@@ -41,9 +42,12 @@ static void thread_port_cache_init(struct thread_port_cache* cache)
         if (!cache)
                 return;
         cache->count = 0;
+        cache->lru_clock = 1;
         for (u32 i = 0; i < THREAD_MAX_KNOWN_PORTS; i++) {
-                cache->entries[i].port = NULL;
                 cache->entries[i].lru_counter = 0;
+                cache->entries[i].name_hash = 0;
+                cache->entries[i].slot_index = PORT_TABLE_SLOT_INDEX_INVALID;
+                cache->entries[i].slot_gen = 0;
         }
 }
 
@@ -52,13 +56,13 @@ static void thread_port_cache_clear(struct thread_port_cache* cache)
         if (!cache)
                 return;
         for (u32 i = 0; i < THREAD_MAX_KNOWN_PORTS; i++) {
-                Message_Port_t* port = cache->entries[i].port;
-                if (port)
-                        ref_put(&port->refcount, free_message_port_ref);
-                cache->entries[i].port = NULL;
                 cache->entries[i].lru_counter = 0;
+                cache->entries[i].name_hash = 0;
+                cache->entries[i].slot_index = PORT_TABLE_SLOT_INDEX_INVALID;
+                cache->entries[i].slot_gen = 0;
         }
         cache->count = 0;
+        cache->lru_clock = 1;
 }
 
 Thread_Base* new_thread_structure(struct allocator* cpu_allocator,
@@ -277,137 +281,161 @@ error_t thread_join(Tcb_Base* task, Thread_Base* thread)
         return res;
 }
 
-static void thread_port_cache_invalidate_entry(struct thread_port_cache* c,
-                                               u32 idx, Message_Port_t* port)
+/*
+ * Per-thread port name cache: bounded name copy + FNV-1a hash + table token.
+ * Does not pin Message_Port_t; each hit re-validates under the port table lock.
+ */
+
+/* FNV-1a 64-bit over at most PORT_NAME_LEN_MAX-1 chars of `name` (bounded). */
+static u64 thread_port_name_hash(const char* name)
 {
-        c->entries[idx].port = NULL;
+        const u64 offset = 14695981039346656037ULL;
+        const u64 prime = 1099511628211ULL;
+        u64 h = offset;
+
+        if (!name)
+                return 0;
+        for (u32 i = 0; i < PORT_NAME_LEN_MAX && name[i]; i++) {
+                h ^= (u64)(u8)name[i];
+                h *= prime;
+        }
+        return h;
+}
+
+static bool thread_port_cache_slot_occupied(struct thread_port_cache* c,
+                                                u32 i)
+{
+        return c && i < THREAD_MAX_KNOWN_PORTS
+               && c->entries[i].slot_index != PORT_TABLE_SLOT_INDEX_INVALID;
+}
+
+static void thread_port_cache_evict(struct thread_port_cache* c, u32 idx)
+{
+        if (!thread_port_cache_slot_occupied(c, idx))
+                return;
         c->entries[idx].lru_counter = 0;
-        c->count--;
-        ref_put(&port->refcount, free_message_port_ref);
+        c->entries[idx].slot_gen = 0;
+        c->entries[idx].slot_index = PORT_TABLE_SLOT_INDEX_INVALID;
+        c->entries[idx].name_hash = 0;
+        if (c->count > 0)
+                c->count--;
+}
+
+static void thread_port_cache_fill_entry(struct thread_port_cache* c, u32 idx,
+                                        const char* name,
+                                        const port_table_slot_token_t* tok)
+{
+        /* O(1) LRU update: uses wrap-safe u16 age via lru_clock. */
+        c->lru_clock++;
+        c->entries[idx].lru_counter = (u16)c->lru_clock;
+        c->entries[idx].name_hash = thread_port_name_hash(name);
+        if (tok) {
+                c->entries[idx].slot_index = tok->slot_index;
+                c->entries[idx].slot_gen = tok->slot_gen;
+        } else {
+                c->entries[idx].slot_index = PORT_TABLE_SLOT_INDEX_INVALID;
+                c->entries[idx].slot_gen = 0;
+        }
+}
+
+static void thread_port_cache_bump_lru(struct thread_port_cache* c,
+                                      u32 found_idx)
+{
+        if (!thread_port_cache_slot_occupied(c, found_idx))
+                return;
+        c->lru_clock++;
+        c->entries[found_idx].lru_counter = (u16)c->lru_clock;
 }
 
 static Message_Port_t* thread_port_cache_lookup(Thread_Base* thread,
-                                                const char* name)
+                                               const char* name)
 {
         struct thread_port_cache* c = &thread->port_cache;
-        Message_Port_t* found_port = NULL;
-        u32 found_idx = THREAD_MAX_KNOWN_PORTS;
-
+        u64 target_hash = thread_port_name_hash(name);
         for (u32 i = 0; i < THREAD_MAX_KNOWN_PORTS; i++) {
-                Message_Port_t* port = c->entries[i].port;
-                if (!port)
+                if (!thread_port_cache_slot_occupied(c, i))
                         continue;
-                if (strcmp(port->name, name) != 0)
+                if (c->entries[i].name_hash != target_hash)
                         continue;
-                found_port = port;
-                found_idx = i;
-                break;
+
+                /* If hash collides, we may need to try multiple candidates. */
+                port_table_slot_token_t tok;
+                tok.slot_index = c->entries[i].slot_index;
+                tok.slot_gen = c->entries[i].slot_gen;
+                Message_Port_t* port =
+                        port_table_resolve_token(global_port_table,
+                                                 &tok,
+                                                 name);
+                if (!port) {
+                        /* Stale token (gen mismatch / unregistered) */
+                        thread_port_cache_evict(c, i);
+                        continue;
+                }
+
+                thread_port_cache_bump_lru(c, i);
+                return port;
         }
-
-        if (found_port && found_port->registered) {
-                if (!found_port->table) {
-                        thread_port_cache_invalidate_entry(
-                                c, found_idx, found_port);
-                        return NULL;
-                }
-
-                if (global_port_table) {
-                        struct spin_lock_t* my_lock =
-                                &percpu(port_table_spin_lock);
-                        lock_mcs(&global_port_table->lock, my_lock);
-                        bool still_valid =
-                                (found_port->table == global_port_table)
-                                && found_port->registered;
-                        unlock_mcs(&global_port_table->lock, my_lock);
-
-                        if (!still_valid) {
-                                thread_port_cache_invalidate_entry(
-                                        c, found_idx, found_port);
-                                return NULL;
-                        }
-                }
-
-                for (u32 i = 0; i < THREAD_MAX_KNOWN_PORTS; i++) {
-                        if (!c->entries[i].port)
-                                continue;
-                        if (i == found_idx) {
-                                c->entries[i].lru_counter = 0;
-                        } else {
-                                c->entries[i].lru_counter++;
-                        }
-                }
-                if (!ref_get_not_zero(&found_port->refcount)) {
-                        found_port = NULL;
-                }
-        } else if (found_port) {
-                thread_port_cache_invalidate_entry(c, found_idx, found_port);
-                return NULL;
-        }
-
-        return found_port;
+        return NULL;
 }
 
-static error_t thread_port_cache_add(Thread_Base* thread, Message_Port_t* port)
+static void thread_port_cache_record(Thread_Base* thread, const char* name,
+                                    const port_table_slot_token_t* tok)
 {
-        if (!port || !port->registered)
-                return -E_IN_PARAM;
-
-        if (!ref_get_not_zero(&port->refcount))
-                return -E_RENDEZVOS;
-
         struct thread_port_cache* c = &thread->port_cache;
+        u64 target_hash = thread_port_name_hash(name);
+
+        /* Reuse exact cached token (slot_index+slot_gen), not just hash. */
+        if (tok) {
+                for (u32 i = 0; i < THREAD_MAX_KNOWN_PORTS; i++) {
+                        if (!thread_port_cache_slot_occupied(c, i))
+                                continue;
+                        if (c->entries[i].slot_index != tok->slot_index
+                            || c->entries[i].slot_gen != tok->slot_gen)
+                                continue;
+                        thread_port_cache_bump_lru(c, i);
+                        c->entries[i].name_hash = target_hash;
+                        c->entries[i].slot_index = tok->slot_index;
+                        c->entries[i].slot_gen = tok->slot_gen;
+                        return;
+                }
+        }
 
         if (c->count < THREAD_MAX_KNOWN_PORTS) {
                 u32 empty_idx = THREAD_MAX_KNOWN_PORTS;
                 for (u32 i = 0; i < THREAD_MAX_KNOWN_PORTS; i++) {
-                        if (!c->entries[i].port) {
+                        if (!thread_port_cache_slot_occupied(c, i)) {
                                 empty_idx = i;
                                 break;
                         }
                 }
-                if (empty_idx >= THREAD_MAX_KNOWN_PORTS)
-                        return -E_RENDEZVOS;
-
-                for (u32 i = 0; i < THREAD_MAX_KNOWN_PORTS; i++) {
-                        if (c->entries[i].port && i != empty_idx) {
-                                c->entries[i].lru_counter++;
-                        }
+                if (empty_idx < THREAD_MAX_KNOWN_PORTS) {
+                        thread_port_cache_fill_entry(c, empty_idx, name, tok);
+                        c->count++;
+                        return;
                 }
-                c->entries[empty_idx].port = port;
-                c->entries[empty_idx].lru_counter = 0;
-                c->count++;
-                return REND_SUCCESS;
+                /* count desync or table full — fall through to LRU replace */
         }
 
+        /* Wrap-safe eviction: choose entry with maximum modular age (u16). */
+        u16 cur = (u16)c->lru_clock;
         u32 lru_idx = 0;
-        u64 max_counter = 0;
+        u16 best_age = 0;
         bool found = false;
         for (u32 i = 0; i < THREAD_MAX_KNOWN_PORTS; i++) {
-                if (!c->entries[i].port)
+                if (!thread_port_cache_slot_occupied(c, i))
                         continue;
-                if (!found || c->entries[i].lru_counter > max_counter) {
-                        max_counter = c->entries[i].lru_counter;
+                u16 age = (u16)(cur - c->entries[i].lru_counter);
+                if (!found || age > best_age) {
+                        best_age = age;
                         lru_idx = i;
                         found = true;
                 }
         }
         if (!found)
-                return -E_RENDEZVOS;
-
-        Message_Port_t* evicted = c->entries[lru_idx].port;
-        if (evicted)
-                ref_put(&evicted->refcount, free_message_port_ref);
-
-        for (u32 i = 0; i < THREAD_MAX_KNOWN_PORTS; i++) {
-                if (c->entries[i].port && i != lru_idx) {
-                        c->entries[i].lru_counter++;
-                }
-        }
-        c->entries[lru_idx].port = port;
-        c->entries[lru_idx].lru_counter = 0;
-
-        return REND_SUCCESS;
+                return;
+        thread_port_cache_fill_entry(c, lru_idx, name, tok);
 }
+
 /*You have to use ref put after finish use of this function*/
 Message_Port_t* thread_lookup_port(const char* name)
 {
@@ -417,20 +445,17 @@ Message_Port_t* thread_lookup_port(const char* name)
 
         Message_Port_t* port = thread_port_cache_lookup(self, name);
         if (port) {
-                if (!ref_get_not_zero(&port->refcount)) {
-                        return NULL;
-                }
                 return port;
         }
 
-        port = port_table_lookup(global_port_table, name);
-        if (!port)
-                return NULL;
-
-        if (thread_port_cache_add(self, port) != REND_SUCCESS) {
-                ref_put(&port->refcount, free_message_port_ref);
+        port_table_slot_token_t cold_tok;
+        port_table_slot_token_invalidate(&cold_tok);
+        port = port_table_lookup_with_token(global_port_table, name, &cold_tok);
+        if (!port) {
                 return NULL;
         }
+
+        thread_port_cache_record(self, name, &cold_tok);
 
         return port;
 }

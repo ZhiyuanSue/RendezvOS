@@ -17,11 +17,11 @@
  * Set to 0 (or comment out and redefine in build flags) to disable.
  */
 #ifndef EBR_ENABLE_WATERMARK_LOG
-#define EBR_ENABLE_WATERMARK_LOG 1
+#define EBR_ENABLE_WATERMARK_LOG 0
 #endif
 
 #ifndef EBR_RETIRE_SLOTS
-#define EBR_RETIRE_SLOTS 512
+#define EBR_RETIRE_SLOTS 64
 #endif
 
 /*

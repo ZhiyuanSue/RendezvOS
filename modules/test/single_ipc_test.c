@@ -194,8 +194,8 @@ static void* ipc_multi_round_sender_thread(void* arg)
                                           sizeof(multi_ipc_send_payload));
                 if (!payload) {
                         pr_error(
-                                "[single_ipc_multi_round_test] sender: payload alloc failed at round %llu\n",
-                                (unsigned long long)i);
+                                "[single_ipc_multi_round_test] sender: payload alloc failed at round %u\n",
+                                (u64)i);
                         break;
                 }
 
@@ -227,8 +227,8 @@ static void* ipc_multi_round_sender_thread(void* arg)
                         (i64)i, 16, &payload_ptr, free_msgdata_ref_default);
                 if (!msgdata) {
                         pr_error(
-                                "[single_ipc_multi_round_test] sender: create_message_data failed at round %llu\n",
-                                (unsigned long long)i);
+                                "[single_ipc_multi_round_test] sender: create_message_data failed at round %u\n",
+                                (u64)i);
                         percpu(kallocator)->m_free(percpu(kallocator), payload);
                         break;
                 }
@@ -236,8 +236,8 @@ static void* ipc_multi_round_sender_thread(void* arg)
                 Message_t* msg = create_message_with_msg(msgdata);
                 if (!msg) {
                         pr_error(
-                                "[single_ipc_multi_round_test] sender: create_message_with_msg failed at round %llu\n",
-                                (unsigned long long)i);
+                                "[single_ipc_multi_round_test] sender: create_message_with_msg failed at round %u\n",
+                                (u64)i);
                         ref_put(&msgdata->refcount, free_msgdata_ref_default);
                         break;
                 }
@@ -249,8 +249,8 @@ static void* ipc_multi_round_sender_thread(void* arg)
 
                 if (enqueue_msg_for_send(msg) != REND_SUCCESS) {
                         pr_error(
-                                "[single_ipc_multi_round_test] sender: enqueue_msg_for_send failed at round %llu\n",
-                                (unsigned long long)i);
+                                "[single_ipc_multi_round_test] sender: enqueue_msg_for_send failed at round %u\n",
+                                (u64)i);
                         ref_put(&msg->ms_queue_node.refcount, free_message_ref);
                         break;
                 }
@@ -258,8 +258,8 @@ static void* ipc_multi_round_sender_thread(void* arg)
 
                 if (send_msg(port) != REND_SUCCESS) {
                         pr_error(
-                                "[single_ipc_multi_round_test] sender: send_msg failed at round %llu\n",
-                                (unsigned long long)i);
+                                "[single_ipc_multi_round_test] sender: send_msg failed at round %u\n",
+                                (u64)i);
                         break;
                 }
 

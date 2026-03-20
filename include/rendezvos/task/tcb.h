@@ -67,16 +67,22 @@ typedef struct {
 } Tcb_Base;
 
 /* Thread port cache */
-#define THREAD_MAX_KNOWN_PORTS 32
+#define THREAD_MAX_KNOWN_PORTS 16
 
 struct thread_port_cache_entry {
-        Message_Port_t* port;
-        u64 lru_counter;
+        /* Wrap-safe LRU age uses u16 counter. */
+        u16 lru_counter;
+        /* (index,gen) cache of port table slot token (narrow types). */
+        u16 slot_gen;
+        u32 slot_index;
+        u64 name_hash;
 };
 
 struct thread_port_cache {
         struct thread_port_cache_entry entries[THREAD_MAX_KNOWN_PORTS];
         u64 count;
+        /* Monotonic counter for O(1) LRU updates (no scanning bump). */
+        u64 lru_clock;
 };
 
 /* thread */

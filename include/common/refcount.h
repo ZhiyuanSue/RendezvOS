@@ -65,7 +65,7 @@ static inline void ref_put(ref_count_t* refcount,
                            void (*free_func)(ref_count_t*))
 {
         i64 prev = atomic64_fetch_dec(&refcount->counter);
-        if (prev == 1 && free_func != NULL) {
+        if (prev == 1 && free_func != (void (*)(ref_count_t*))0) {
                 free_func(refcount);
         }
 }

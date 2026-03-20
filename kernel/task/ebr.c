@@ -26,6 +26,7 @@ DEFINE_PER_CPU(atomic64_t, ebr_wm_cross_mask);
 static atomic64_t ebr_global_epoch;
 static atomic64_t ebr_inited;
 static atomic64_t ebr_overflow_log_cnt;
+static atomic64_t ebr_bad_free_func_log_cnt;
 
 #if EBR_ENABLE_WATERMARK
 static const u32 ebr_wm_levels[] = {
@@ -170,6 +171,22 @@ void ebr_try_reclaim(void)
                         continue;
                 ref_count_t* ref = recs[i].ref;
                 void (*free_func)(ref_count_t*) = recs[i].free_func;
+
+                if (ref && free_func
+                    && ((u64)(uintptr_t)free_func) < 0x1000) {
+                        if (atomic64_fetch_inc(&ebr_bad_free_func_log_cnt) < 5) {
+                                pr_error("[ebr] bad free_func ptr slot=%x cpu=%x ref_hi=%x ref_lo=%x fn_hi=%x fn_lo=%x\n",
+                                         i,
+                                         (u32)percpu(cpu_number),
+                                         (u32)(((u64)(uintptr_t)ref >> 32)
+                                               & 0xffffffff),
+                                         (u32)((u64)(uintptr_t)ref & 0xffffffff),
+                                         (u32)(((u64)(uintptr_t)free_func >> 32)
+                                               & 0xffffffff),
+                                         (u32)((u64)(uintptr_t)free_func
+                                               & 0xffffffff));
+                        }
+                }
                 recs[i].used = false;
                 recs[i].ref = NULL;
                 recs[i].free_func = NULL;
@@ -238,8 +255,12 @@ void ebr_retire_ref(ref_count_t* ref, void (*free_func)(ref_count_t*))
          */
         atomic64_inc(&percpu(ebr_overflow_ops));
         if (atomic64_fetch_inc(&ebr_overflow_log_cnt) < 8) {
-                pr_error("[ebr] retire overflow on cpu %u, leaking one node\n",
-                         (u32)percpu(cpu_number));
+                u64 live = (u64)atomic64_load(
+                        (volatile const u64*)&percpu(ebr_retired_count).counter);
+                pr_error("[ebr] retire overflow cpu=%u retired_live=%x leaking one node "
+                         "(raise EBR_RETIRE_SLOTS or fix churn)\n",
+                         (u32)percpu(cpu_number),
+                         (u32)(live & 0xffffffff));
         }
         ebr_try_reclaim();
 }

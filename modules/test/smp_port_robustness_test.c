@@ -16,7 +16,6 @@
 #include <rendezvos/smp/percpu.h>
 #include <rendezvos/mm/kmalloc.h>
 #include <common/string.h>
-#include <common/stddef.h>
 
 extern u32 BSP_ID;
 extern int NR_CPU;
@@ -24,6 +23,8 @@ extern int NR_CPU;
 #define SMP_PORT_TEST_ROUNDS       10000
 #define SMP_PORT_MAX_PORTS_PER_CPU 10
 #define SMP_PORT_NAME_LEN          32
+#define SMP_PORT_HT_SHRINK_EXPAND_PORTS 100
+#define SMP_PORT_HT_SHRINK_REMAIN_PORTS 5
 
 /* Per-CPU test state */
 struct smp_port_test_state {
@@ -38,6 +39,22 @@ struct smp_port_test_state {
 };
 
 static DEFINE_PER_CPU(struct smp_port_test_state, smp_port_test_state);
+
+/* Cross-test barriers: avoid CPU phase pollution between Test1/Test2/Test3. */
+static atomic64_t port_test_stage1_done;
+static atomic64_t port_test_stage2_done;
+static atomic64_t port_test_stage3_done;
+static atomic64_t port_test_stage4_done;
+static volatile bool port_test_barrier_ready = false;
+
+static inline void port_test_wait_all(atomic64_t* done_counter)
+{
+        atomic64_fetch_inc(done_counter);
+        while ((u64)atomic64_load((volatile const u64*)&done_counter->counter)
+               < (u64)NR_CPU) {
+                arch_cpu_relax();
+        }
+}
 
 /* Helper: convert number to string */
 static void num_to_str(u64 num, char* buf, u32 buf_len)
@@ -522,6 +539,107 @@ static int smp_port_mixed_test(u32 cpu_id)
         return (state->error_count > 0) ? -E_REND_TEST : REND_SUCCESS;
 }
 
+/* Test 4: Port table ht growth + tomb-driven shrink */
+static int smp_port_ht_shrink_test(u32 cpu_id)
+{
+        if (cpu_id != BSP_ID)
+                return REND_SUCCESS;
+
+        /* Expand ht capacity by registering many ports at once. */
+        Message_Port_t* ports[SMP_PORT_HT_SHRINK_EXPAND_PORTS];
+        char port_names[SMP_PORT_HT_SHRINK_EXPAND_PORTS][SMP_PORT_NAME_LEN]
+                __attribute__((aligned(16)));
+        memset(ports, 0, sizeof(ports));
+
+        u64 error_count = 0;
+
+        for (u32 i = 0; i < SMP_PORT_HT_SHRINK_EXPAND_PORTS; i++) {
+                make_port_name(port_names[i],
+                               SMP_PORT_NAME_LEN,
+                               cpu_id + 3000,
+                               i);
+
+                ports[i] = create_message_port(port_names[i]);
+                if (!ports[i]) {
+                        error_count++;
+                        continue;
+                }
+                error_t e = register_port(global_port_table, ports[i]);
+                if (e != REND_SUCCESS) {
+                        error_count++;
+                        delete_message_port_structure(ports[i]);
+                        ports[i] = NULL;
+                        continue;
+                }
+        }
+
+        /* Touch a few names to exercise lookup+cache resolve. */
+        for (u32 i = 0; i < 10 && i < SMP_PORT_HT_SHRINK_EXPAND_PORTS; i++) {
+                Message_Port_t* found = thread_lookup_port(port_names[i]);
+                if (!found || found != ports[i]) {
+                        error_count++;
+                        if (found)
+                                ref_put(&found->refcount, free_message_port_ref);
+                        continue;
+                }
+                ref_put(&found->refcount, free_message_port_ref);
+        }
+
+        /* Unregister most ports to accumulate tombs and lower live load. */
+        u32 cut = SMP_PORT_HT_SHRINK_EXPAND_PORTS - SMP_PORT_HT_SHRINK_REMAIN_PORTS;
+        for (u32 i = 0; i < cut; i++) {
+                error_t e = unregister_port(global_port_table, port_names[i]);
+                if (e != REND_SUCCESS) {
+                        error_count++;
+                        continue;
+                }
+                if (ports[i]) {
+                        ref_put(&ports[i]->refcount, free_message_port_ref);
+                        ports[i] = NULL;
+                }
+        }
+
+        /* Removed ports should no longer be findable. */
+        for (u32 i = 0; i < cut; i += 7) {
+                Message_Port_t* found = thread_lookup_port(port_names[i]);
+                if (found != NULL) {
+                        error_count++;
+                        ref_put(&found->refcount, free_message_port_ref);
+                }
+        }
+
+        /* Remaining ports should still be findable. */
+        for (u32 i = cut; i < SMP_PORT_HT_SHRINK_EXPAND_PORTS; i++) {
+                if (!ports[i])
+                        continue;
+                Message_Port_t* found = thread_lookup_port(port_names[i]);
+                if (!found || found != ports[i]) {
+                        error_count++;
+                        if (found)
+                                ref_put(&found->refcount, free_message_port_ref);
+                        continue;
+                }
+                ref_put(&found->refcount, free_message_port_ref);
+        }
+
+        /* Cleanup remaining ports to keep global state stable. */
+        for (u32 i = cut; i < SMP_PORT_HT_SHRINK_EXPAND_PORTS; i++) {
+                if (!ports[i])
+                        continue;
+                unregister_port(global_port_table, port_names[i]);
+                ref_put(&ports[i]->refcount, free_message_port_ref);
+                ports[i] = NULL;
+        }
+
+        if (error_count == 0) {
+                pr_info("[smp_port_test] ht shrink test PASSED\n");
+                return REND_SUCCESS;
+        }
+        pr_error("[smp_port_test] ht shrink test FAILED errors=%u\n",
+                 (u64)error_count);
+        return -E_REND_TEST;
+}
+
 int smp_port_robustness_test(void)
 {
         u32 cpu_id = percpu(cpu_number);
@@ -533,6 +651,14 @@ int smp_port_robustness_test(void)
                                 "[smp_port_test] global_port_table is NULL!\n");
                         return -E_REND_TEST;
                 }
+                atomic64_init(&port_test_stage1_done, 0);
+                atomic64_init(&port_test_stage2_done, 0);
+                atomic64_init(&port_test_stage3_done, 0);
+                atomic64_init(&port_test_stage4_done, 0);
+                port_test_barrier_ready = true;
+        } else {
+                while (!port_test_barrier_ready)
+                        arch_cpu_relax();
         }
 
         /* Test 1: Port table operations */
@@ -540,27 +666,36 @@ int smp_port_robustness_test(void)
                 pr_info("[smp_port_test] Test 1: Port table operations\n");
         }
         int ret1 = smp_port_table_test(cpu_id);
-        if (ret1 != REND_SUCCESS) {
+        port_test_wait_all(&port_test_stage1_done);
+        if (ret1 != REND_SUCCESS)
                 return ret1;
-        }
 
         /* Test 2: Port cache behavior */
         if (cpu_id == BSP_ID) {
                 pr_info("[smp_port_test] Test 2: Port cache behavior\n");
         }
         int ret2 = smp_port_cache_test(cpu_id);
-        if (ret2 != REND_SUCCESS) {
+        port_test_wait_all(&port_test_stage2_done);
+        if (ret2 != REND_SUCCESS)
                 return ret2;
-        }
 
         /* Test 3: Mixed operations */
         if (cpu_id == BSP_ID) {
                 pr_info("[smp_port_test] Test 3: Mixed operations\n");
         }
         int ret3 = smp_port_mixed_test(cpu_id);
-        if (ret3 != REND_SUCCESS) {
+        port_test_wait_all(&port_test_stage3_done);
+        if (ret3 != REND_SUCCESS)
                 return ret3;
+
+        /* Test 4: Port table ht growth + tomb-driven shrink */
+        if (cpu_id == BSP_ID) {
+                pr_info("[smp_port_test] Test 4: Port ht shrink\n");
         }
+        int ret4 = smp_port_ht_shrink_test(cpu_id);
+        port_test_wait_all(&port_test_stage4_done);
+        if (ret4 != REND_SUCCESS)
+                return ret4;
 
         if (cpu_id == BSP_ID) {
                 pr_info("[smp_port_test] All tests PASSED\n");

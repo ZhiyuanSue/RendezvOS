@@ -5,8 +5,8 @@
 #include <rendezvos/mm/allocator.h>
 #include <rendezvos/sync/spin_lock.h>
 #include <common/string.h>
-#include <common/stddef.h>
 #include <modules/log/log.h>
+#include "port_table_slots.h"
 
 DEFINE_PER_CPU(struct spin_lock_t, port_table_spin_lock);
 
@@ -40,9 +40,6 @@ Message_Port_t* create_message_port(const char* name)
         ref_init(&mp->refcount); /* creator holds one ref */
         mp->table = NULL;
         mp->registered = false;
-        mp->rb_node.left_child = mp->rb_node.right_child = NULL;
-        mp->rb_node.black_height = 0;
-        mp->rb_node.rb_parent_color = 0;
 
         return mp;
 }
@@ -52,87 +49,58 @@ void delete_message_port_structure(Message_Port_t* port)
         if (!port)
                 return;
         /*TODO: clean the queue*/
-        percpu(kallocator)->m_free(percpu(kallocator), port);
-}
-
-static Message_Port_t* port_table_search(struct Port_Table* table,
-                                         const char* name)
-{
-        struct rb_node* node = table->root.rb_root;
-        while (node) {
-                Message_Port_t* port =
-                        container_of(node, Message_Port_t, rb_node);
-                int cmp = strcmp(name, port->name);
-                if (cmp < 0)
-                        node = node->left_child;
-                else if (cmp > 0)
-                        node = node->right_child;
-                else
-                        return port;
+        struct allocator* a = percpu(kallocator);
+        if (a && !a->m_free) {
+                pr_error("[port] delete_message_port_structure: m_free is NULL cpu=%x port_hi=%x port_lo=%x\n",
+                         (u32)percpu(cpu_number),
+                         (u32)(((u64)(uintptr_t)port >> 32) & 0xffffffff),
+                         (u32)((u64)(uintptr_t)port & 0xffffffff));
         }
-        return NULL;
+        if (a)
+                a->m_free(a, port);
 }
 
-static void port_table_init_rb_node(Message_Port_t* port)
+bool port_table_port_is_live(struct Port_Table* table, const char* name,
+                            Message_Port_t* port)
 {
-        port->rb_node.left_child = port->rb_node.right_child = NULL;
-        port->rb_node.black_height = 0;
-        port->rb_node.rb_parent_color = RB_RED;
+        if (!table || !name || !port)
+                return false;
+
+        struct spin_lock_t* my_lock = &percpu(port_table_spin_lock);
+        lock_mcs(&table->lock, my_lock);
+        Message_Port_t* p = port_slots_search(table, name, NULL);
+        bool ok = (p == port && port->registered);
+        unlock_mcs(&table->lock, my_lock);
+        return ok;
 }
 
-static void port_table_insert_port(Message_Port_t* port,
-                                   struct Port_Table* table)
-{
-        struct rb_node** new_link = &table->root.rb_root;
-        struct rb_node* parent = NULL;
-        while (*new_link) {
-                parent = *new_link;
-                Message_Port_t* pport =
-                        container_of(parent, Message_Port_t, rb_node);
-                int cmp = strcmp(port->name, pport->name);
-                if (cmp < 0)
-                        new_link = &parent->left_child;
-                else
-                        new_link = &parent->right_child;
-        }
-        RB_Link_Node(&port->rb_node, parent, new_link);
-        RB_SolveDoubleRed(&port->rb_node, &table->root);
-
-        port->table = table;
-        port->registered = true;
-}
-
-static void port_table_remove_port(Message_Port_t* port,
-                                   struct Port_Table* table)
-{
-        RB_Remove(&port->rb_node, &table->root);
-        port->rb_node.left_child = port->rb_node.right_child = NULL;
-        port->rb_node.black_height = 0;
-        port->rb_node.rb_parent_color = 0;
-        port->table = NULL;
-        port->registered = false;
-}
-
-void free_message_port_ref(ref_count_t* ref_count_ptr)
+static void free_message_port_ref_real(ref_count_t* ref_count_ptr)
 {
         if (!ref_count_ptr)
                 return;
         Message_Port_t* port =
                 container_of(ref_count_ptr, Message_Port_t, refcount);
 
-        if (port->registered && port->table) {
-                struct Port_Table* table = port->table;
-                struct spin_lock_t* my_lock = &percpu(port_table_spin_lock);
-                lock_mcs(&table->lock, my_lock);
-
-                if (port->registered && port->table == table) {
-                        port_table_remove_port(port, table);
-                }
-
-                unlock_mcs(&table->lock, my_lock);
+        /*
+         * Final free must not mutate the port table index.
+         * register/unregister is the only legal path to add/remove entries.
+         */
+        if (port->registered || port->table) {
+                pr_error("[port] free_ref still registered name=%s reg=%x table_hi=%x table_lo=%x\n",
+                         port->name,
+                         (u32)port->registered,
+                         (u32)(((u64)(uintptr_t)port->table >> 32) & 0xffffffff),
+                         (u32)((u64)(uintptr_t)port->table & 0xffffffff));
         }
 
         delete_message_port_structure(port);
+}
+
+void free_message_port_ref(ref_count_t* ref_count_ptr)
+{
+        if (!ref_count_ptr)
+                return;
+        free_message_port_ref_real(ref_count_ptr);
 }
 
 struct Port_Table* port_table_create(void)
@@ -149,16 +117,17 @@ void port_table_init(struct Port_Table* table)
 {
         if (!table)
                 return;
-        table->root.rb_root = NULL;
         table->lock = NULL;
+        table->alloc = percpu(kallocator);
+        port_slots_table_init(table);
 }
 
 void delete_port_table_structure(struct Port_Table* table)
 {
         if (!table)
                 return;
-        /*TODO: clean all the ports */
-        percpu(kallocator)->m_free(percpu(kallocator), table);
+        port_slots_table_fini(table);
+        table->alloc->m_free(table->alloc, table);
 }
 
 error_t register_port(struct Port_Table* table, Message_Port_t* port)
@@ -168,7 +137,7 @@ error_t register_port(struct Port_Table* table, Message_Port_t* port)
 
         struct spin_lock_t* my_lock = &percpu(port_table_spin_lock);
         lock_mcs(&table->lock, my_lock);
-        Message_Port_t* existing = port_table_search(table, port->name);
+        Message_Port_t* existing = port_slots_search(table, port->name, NULL);
         if (existing) {
                 if (existing == port) {
                         unlock_mcs(&table->lock, my_lock);
@@ -178,12 +147,14 @@ error_t register_port(struct Port_Table* table, Message_Port_t* port)
                 return -E_RENDEZVOS;
         }
 
-        port_table_init_rb_node(port);
-        port_table_insert_port(port, table);
+        u64 reg_slot_idx = 0;
+        if (port_slots_register(table, port, &reg_slot_idx) != REND_SUCCESS) {
+                unlock_mcs(&table->lock, my_lock);
+                return -E_RENDEZVOS;
+        }
         /* table holds one ref */
         if (!ref_get_not_zero(&port->refcount)) {
-                /* port is being freed, cannot register */
-                port_table_remove_port(port, table);
+                port_slots_register_abort(table, reg_slot_idx, port);
                 unlock_mcs(&table->lock, my_lock);
                 return -E_RENDEZVOS;
         }
@@ -198,13 +169,14 @@ error_t unregister_port(struct Port_Table* table, const char* name)
 
         struct spin_lock_t* my_lock = &percpu(port_table_spin_lock);
         lock_mcs(&table->lock, my_lock);
-        Message_Port_t* port = port_table_search(table, name);
+        u64 slot_idx = 0;
+        Message_Port_t* port = port_slots_search(table, name, &slot_idx);
         if (!port || !port->registered) {
                 unlock_mcs(&table->lock, my_lock);
                 return REND_SUCCESS;
         }
 
-        port_table_remove_port(port, table);
+        port_slots_unregister(table, port, slot_idx, name);
         unlock_mcs(&table->lock, my_lock);
 
         ref_put(&port->refcount, free_message_port_ref);
@@ -215,20 +187,27 @@ Message_Port_t* port_table_lookup(struct Port_Table* table, const char* name)
 {
         if (!table || !name)
                 return NULL;
+        return port_slots_lookup(table, name, NULL);
+}
 
-        struct spin_lock_t* my_lock = &percpu(port_table_spin_lock);
-        lock_mcs(&table->lock, my_lock);
-        Message_Port_t* port = port_table_search(table, name);
-        if (!port || !port->registered) {
-                unlock_mcs(&table->lock, my_lock);
+Message_Port_t* port_table_lookup_with_token(struct Port_Table* table,
+                                            const char* name,
+                                            port_table_slot_token_t* tok_out)
+{
+        if (!table || !name)
                 return NULL;
-        }
-        if (!ref_get_not_zero(&port->refcount)) {
-                unlock_mcs(&table->lock, my_lock);
+        return port_slots_lookup(table, name, tok_out);
+}
+
+Message_Port_t* port_table_resolve_token(struct Port_Table* table,
+                                        const port_table_slot_token_t* tok,
+                                        const char* name)
+{
+        if (!table || !name)
                 return NULL;
-        }
-        unlock_mcs(&table->lock, my_lock);
-        return port;
+        if (!tok)
+                return port_slots_lookup(table, name, NULL);
+        return port_slots_resolve(table, tok, name);
 }
 
 struct Port_Table* global_port_table;
@@ -239,6 +218,5 @@ error_t global_port_init(void)
                 pr_error("[ PORT ] Failed to create global port table\n");
                 return -E_RENDEZVOS;
         }
-        port_table_init(global_port_table);
         return REND_SUCCESS;
 }
