@@ -229,11 +229,14 @@ add_task_to_manager_error:
         nexus_delete_vspace(new_vs_nexus_root, elf_task->vs);
 nexus_create_vspace_root_node_error:
         unset_vspace_root_addr(elf_task->vs);
-        del_vs_root(new_vs_paddr, &percpu(Map_Handler));
+        if (del_vs_root(new_vs_paddr, &percpu(Map_Handler)) != REND_SUCCESS)
+                pr_error("[ Error ] del_vs_root cleanup failed\n");
 new_vs_root_error:
-        del_vspace(&elf_task->vs);
+        if (del_vspace(&elf_task->vs) != REND_SUCCESS)
+                pr_error("[ Error ] del_vspace cleanup failed\n");
 new_vspace_error:
-        delete_task(elf_task);
+        if (delete_task(elf_task) != REND_SUCCESS)
+                pr_error("[ Error ] delete_task cleanup failed\n");
 gen_task_from_elf_error:
         return e;
 }

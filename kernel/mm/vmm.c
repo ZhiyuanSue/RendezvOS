@@ -43,18 +43,61 @@ VSpace* new_vspace(void)
                 memset((void*)new_vs, 0, sizeof(VSpace));
         return new_vs;
 }
-void del_vspace(VSpace** vs)
+error_t del_vspace(VSpace** vs)
 {
         if (!(*vs))
-                return;
-        nexus_delete_vspace(per_cpu(nexus_root,
-                                    ((struct nexus_node*)((*vs)->_vspace_node))
-                                            ->handler->cpu_id),
-                            *vs);
+                return REND_SUCCESS;
+        /* Never free the kernel/root vspace page-table frames. */
+        if (*vs == &root_vspace)
+                return REND_SUCCESS;
+
+        error_t ret = REND_SUCCESS;
+        struct nexus_node* vspace_node = (struct nexus_node*)((*vs)->_vspace_node);
+        if (!vspace_node || !vspace_node->handler) {
+                ret = -E_IN_PARAM;
+                goto free_vspace_only;
+        }
+
+        u32 handler_cpu_id = vspace_node->handler->cpu_id;
+        paddr root_paddr = (*vs)->vspace_root_addr;
+        if (handler_cpu_id >= RENDEZVOS_MAX_CPU_NUMBER) {
+                ret = -E_IN_PARAM;
+                goto free_vspace_only;
+        }
+
+        nexus_delete_vspace(per_cpu(nexus_root, handler_cpu_id), *vs);
+        /* Teardown needs to reclaim the vspace's page-table frames too. */
+        if (root_paddr) {
+                /*
+                 * `del_vs_root()` uses the page-table self-mapping window
+                 * (`handler->map_vaddr[]`), which is tied to the *current CPU's*
+                 * map handler virtual slots.
+                 */
+                error_t e = del_vs_root(root_paddr, &percpu(Map_Handler));
+                /* Still free the VSpace struct; caller may decide whether to print. */
+                if (e)
+                        ret = e;
+        }
 
         struct allocator* cpu_allocator = percpu(kallocator);
         if (!cpu_allocator)
-                return;
+                return ret;
         cpu_allocator->m_free(cpu_allocator, (void*)(*vs));
         *vs = NULL;
+        return ret;
+free_vspace_only:
+        /*
+         * If core invariants are already broken (missing vspace_node/handler),
+         * do not continue page-table teardown: it can easily corrupt other
+         * CPUs' page-table frames. We only free the VSpace struct to avoid
+         * leaving a dangling pointer in the TCB teardown path.
+         */
+        {
+                struct allocator* cpu_allocator = percpu(kallocator);
+                if (cpu_allocator) {
+                        cpu_allocator->m_free(cpu_allocator, (void*)(*vs));
+                }
+                *vs = NULL;
+        }
+        return ret;
 }

@@ -167,7 +167,7 @@ error_t del_thread_from_manager(Thread_Base* thread);
 Thread_Base* create_thread(void* __func, size_t append_thread_info_len,
                            int nr_parameter, ...);
 void delete_thread(Thread_Base* thread);
-void delete_task(Tcb_Base* tcb);
+error_t delete_task(Tcb_Base* tcb);
 
 Message_Port_t* thread_lookup_port(const char* name);
 

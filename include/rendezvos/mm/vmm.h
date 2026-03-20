@@ -15,6 +15,10 @@
 #endif
 #include <common/dsa/rb_tree.h>
 
+#ifndef PTE_SIZE
+#define PTE_SIZE 8
+#endif
+
 typedef struct {
         paddr vspace_root_addr;
         u64 vspace_id;
@@ -35,7 +39,7 @@ static inline void init_vspace(VSpace* vs, u64 vspace_id, void* vspace_node)
         vs->vspace_id = vspace_id;
         vs->_vspace_node = vspace_node;
 }
-void del_vspace(VSpace** vs);
+error_t del_vspace(VSpace** vs);
 static inline void set_vspace_root_addr(VSpace* vs, paddr root_paddr)
 {
         vs->vspace_root_addr = root_paddr;

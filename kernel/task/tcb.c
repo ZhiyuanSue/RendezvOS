@@ -239,24 +239,28 @@ Tcb_Base* new_task_structure(struct allocator* cpu_allocator,
         }
         return tcb;
 }
-void delete_task(Tcb_Base* tcb)
+error_t delete_task(Tcb_Base* tcb)
 {
         if (!tcb)
-                return;
+                return -E_IN_PARAM;
         if (tcb->thread_number)
-                return;
-
-        if (tcb->vs)
-                del_vspace(&tcb->vs);
-        error_t e = del_task_from_manager(tcb);
-        if (e) {
-                pr_error(
-                        "[ Error ] delete task from manager fail, please check\n");
-        }
+                return -E_RENDEZVOS;
 
         struct allocator* cpu_allocator = percpu(kallocator);
         if (!cpu_allocator)
-                return;
+                return -E_RENDEZVOS;
+
+        error_t e = REND_SUCCESS;
+
+        /* First detach from manager so we don't risk freeing a node still linked. */
+        e = del_task_from_manager(tcb);
+        if (e)
+                return e;
+
+        if (tcb->vs) {
+                e = del_vspace(&tcb->vs);
+        }
+
         cpu_allocator->m_free(cpu_allocator, tcb);
-        return;
+        return e;
 }
