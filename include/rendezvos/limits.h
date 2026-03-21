@@ -14,6 +14,12 @@
 #define RENDEZVOS_MAX_CPU_NUMBER MIN(NR_CPUS, 128)
 #endif
 
+/*
+ * Sentinel cpu index: not in [0, RENDEZVOS_MAX_CPU_NUMBER). Use for APIs that
+ * return "which cpu" as int; unrelated to x86's CPUID instruction name.
+ */
+#define INVALID_CPU_ID (-1)
+
 extern u64 thread_kstack_page_num;
 extern u64 thread_ustack_page_num;
 #endif

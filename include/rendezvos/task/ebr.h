@@ -21,7 +21,7 @@
 #endif
 
 #ifndef EBR_RETIRE_SLOTS
-#define EBR_RETIRE_SLOTS 64
+#define EBR_RETIRE_SLOTS 512
 #endif
 
 /*

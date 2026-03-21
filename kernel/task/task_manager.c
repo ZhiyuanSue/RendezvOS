@@ -3,6 +3,8 @@
 #include <rendezvos/sync/spin_lock.h>
 #include <modules/log/log.h>
 #include <rendezvos/mm/allocator.h>
+#include <rendezvos/mm/kmalloc.h>
+#include <rendezvos/task/ebr.h>
 extern Thread_Base* init_thread_ptr;
 extern Thread_Base* idle_thread_ptr;
 DEFINE_PER_CPU(Task_Manager*, core_tm);
@@ -21,9 +23,9 @@ Thread_Base* round_robin_schedule(Task_Manager* tm)
 }
 Task_Manager* new_task_manager(void)
 {
-        struct allocator* cpu_allocator = percpu(kallocator);
-        Task_Manager* tm = (Task_Manager*)(cpu_allocator->m_alloc(
-                cpu_allocator, sizeof(Task_Manager)));
+        struct allocator* cpu_kallocator = percpu(kallocator);
+        Task_Manager* tm = (Task_Manager*)(cpu_kallocator->m_alloc(
+                cpu_kallocator, sizeof(Task_Manager)));
         choose_schedule(tm);
         INIT_LIST_HEAD(&(tm->sched_task_list));
         INIT_LIST_HEAD(&(tm->sched_thread_list));
@@ -81,6 +83,14 @@ void schedule(Task_Manager* tm)
 {
         if (!tm)
                 return;
+        /*
+         * Cross-CPU kfree queues are per-CPU: remote frees land on the owner
+         * allocator’s MSQs. kalloc/kfree entry also drains, but a CPU that
+         * rarely malloc/free (e.g. idle-heavy) would not process inbound work
+         * without another hook—schedule runs on every context switch.
+         */
+        kalloc_process_cross_cpu_frees();
+        ebr_try_reclaim();
         Thread_Base* curr = tm->current_thread;
         if (tm->scheduler)
                 tm->current_thread = tm->scheduler(tm);

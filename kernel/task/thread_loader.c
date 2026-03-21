@@ -1,7 +1,8 @@
 #include <rendezvos/task/thread_loader.h>
 #include <modules/log/log.h>
+#include <rendezvos/smp/percpu.h>
 
-vaddr generate_user_stack(VSpace *vs, elf_task_set_user_stack_func func)
+vaddr generate_user_stack(VS_Common *vs, elf_task_set_user_stack_func func)
 {
         if (!vs) {
                 return 0;
@@ -36,7 +37,7 @@ vaddr generate_user_stack(VSpace *vs, elf_task_set_user_stack_func func)
         return user_sp;
 }
 error_t elf_Phdr_64_load_handle(vaddr elf_start, Elf64_Phdr *phdr_ptr,
-                                VSpace *vs)
+                                VS_Common *vs)
 {
         if (!vs || !phdr_ptr || !elf_start) {
                 return -E_IN_PARAM;
@@ -89,7 +90,7 @@ error_t elf_Phdr_64_load_handle(vaddr elf_start, Elf64_Phdr *phdr_ptr,
         return REND_SUCCESS;
 }
 error_t elf_Phdr_64_dynamic_handle(vaddr elf_start, Elf64_Phdr *phdr_ptr,
-                                   VSpace *vs)
+                                   VS_Common *vs)
 {
         if (!vs || !elf_start || !phdr_ptr) {
                 return -E_IN_PARAM;
@@ -97,7 +98,7 @@ error_t elf_Phdr_64_dynamic_handle(vaddr elf_start, Elf64_Phdr *phdr_ptr,
         print_elf_ph64(phdr_ptr);
         return REND_SUCCESS;
 }
-error_t run_elf_program(vaddr elf_start, vaddr elf_end, VSpace *vs)
+error_t run_elf_program(vaddr elf_start, vaddr elf_end, VS_Common *vs)
 {
         pr_info("start gen task from elf start %x end %x vs %x\n",
                 elf_start,
@@ -174,12 +175,13 @@ error_t gen_task_from_elf(Thread_Base **elf_thread_ptr,
                 goto new_vs_root_error;
         }
         set_vspace_root_addr(elf_task->vs, new_vs_paddr);
-        struct nexus_node *new_vs_nexus_root =
-                nexus_create_vspace_root_node(nexus_root, elf_task->vs);
-        if (!new_vs_nexus_root) {
+        /* Per-vspace nexus root node (one page); not the same as per-CPU nexus_root. */
+        struct nexus_node *new_vs_vspace_node =
+                nexus_create_vspace_root_node(percpu(nexus_root), elf_task->vs);
+        if (!new_vs_vspace_node) {
                 goto nexus_create_vspace_root_node_error;
         }
-        init_vspace(elf_task->vs, elf_task->pid, new_vs_nexus_root);
+        init_vspace(elf_task->vs, elf_task->pid, new_vs_vspace_node);
         /*--- end vspace part ---*/
         e = add_task_to_manager(percpu(core_tm), elf_task);
         if (e) {
@@ -226,7 +228,8 @@ create_thread_error:
                         "fail to delete task from task manager, please check\n");
         }
 add_task_to_manager_error:
-        nexus_delete_vspace(new_vs_nexus_root, elf_task->vs);
+        /* Must pass the same per-CPU tree root used at create time (see del_vspace). */
+        nexus_delete_vspace(percpu(nexus_root), elf_task->vs);
 nexus_create_vspace_root_node_error:
         unset_vspace_root_addr(elf_task->vs);
         if (del_vs_root(new_vs_paddr, &percpu(Map_Handler)) != REND_SUCCESS)

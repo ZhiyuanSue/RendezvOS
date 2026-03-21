@@ -65,13 +65,13 @@ static void thread_port_cache_clear(struct thread_port_cache* cache)
         cache->lru_clock = 1;
 }
 
-Thread_Base* new_thread_structure(struct allocator* cpu_allocator,
+Thread_Base* new_thread_structure(struct allocator* cpu_kallocator,
                                   size_t append_thread_info_len)
 {
-        if (!cpu_allocator)
+        if (!cpu_kallocator)
                 return NULL;
-        Thread_Base* thread = (Thread_Base*)(cpu_allocator->m_alloc(
-                cpu_allocator, sizeof(Thread_Base) + append_thread_info_len));
+        Thread_Base* thread = (Thread_Base*)(cpu_kallocator->m_alloc(
+                cpu_kallocator, sizeof(Thread_Base) + append_thread_info_len));
         if (!thread) {
                 goto alloc_thread_error;
         }
@@ -83,13 +83,13 @@ Thread_Base* new_thread_structure(struct allocator* cpu_allocator,
                 goto alloc_init_param_error;
         }
 
-        Message_t* dummy_recv_msg_node = (Message_t*)(cpu_allocator->m_alloc(
-                cpu_allocator, sizeof(Message_t)));
+        Message_t* dummy_recv_msg_node = (Message_t*)(cpu_kallocator->m_alloc(
+                cpu_kallocator, sizeof(Message_t)));
         if (!dummy_recv_msg_node) {
                 goto alloc_dummy_recv_msg_error;
         }
-        Message_t* dummy_send_msg_node = (Message_t*)(cpu_allocator->m_alloc(
-                cpu_allocator, sizeof(Message_t)));
+        Message_t* dummy_send_msg_node = (Message_t*)(cpu_kallocator->m_alloc(
+                cpu_kallocator, sizeof(Message_t)));
         if (!dummy_send_msg_node) {
                 goto alloc_dummy_send_msg_error;
         }
@@ -123,22 +123,22 @@ Thread_Base* new_thread_structure(struct allocator* cpu_allocator,
         return thread;
 
 alloc_dummy_send_msg_error:
-        cpu_allocator->m_free(cpu_allocator, dummy_recv_msg_node);
+        cpu_kallocator->m_free(cpu_kallocator, dummy_recv_msg_node);
 alloc_dummy_recv_msg_error:
-        cpu_allocator->m_free(cpu_allocator, thread->init_parameter);
+        cpu_kallocator->m_free(cpu_kallocator, thread->init_parameter);
 alloc_init_param_error:
-        cpu_allocator->m_free(cpu_allocator, thread);
+        cpu_kallocator->m_free(cpu_kallocator, thread);
 alloc_thread_error:
         return NULL;
 }
 void del_thread_structure(Thread_Base* thread)
 {
-        struct allocator* cpu_allocator = percpu(kallocator);
-        if (!thread || !cpu_allocator)
+        struct allocator* cpu_kallocator = percpu(kallocator);
+        if (!thread || !cpu_kallocator)
                 return;
         thread_port_cache_clear(&thread->port_cache);
         del_init_parameter_structure(thread->init_parameter);
-        cpu_allocator->m_free(cpu_allocator, thread);
+        cpu_kallocator->m_free(cpu_kallocator, thread);
 }
 void free_thread_ref(ref_count_t* ref_count_ptr)
 {
@@ -151,11 +151,11 @@ void free_thread_ref(ref_count_t* ref_count_ptr)
 
 Thread_Init_Para* new_init_parameter_structure(void)
 {
-        struct allocator* cpu_allocator = percpu(kallocator);
-        if (!cpu_allocator)
+        struct allocator* cpu_kallocator = percpu(kallocator);
+        if (!cpu_kallocator)
                 return NULL;
-        Thread_Init_Para* new_pm = (Thread_Init_Para*)(cpu_allocator->m_alloc(
-                cpu_allocator, sizeof(Thread_Init_Para)));
+        Thread_Init_Para* new_pm = (Thread_Init_Para*)(cpu_kallocator->m_alloc(
+                cpu_kallocator, sizeof(Thread_Init_Para)));
         if (new_pm) {
                 new_pm->thread_func_ptr = NULL;
                 memset(new_pm->int_para,
@@ -166,17 +166,18 @@ Thread_Init_Para* new_init_parameter_structure(void)
 }
 void del_init_parameter_structure(Thread_Init_Para* pm)
 {
-        struct allocator* cpu_allocator = percpu(kallocator);
-        if (!pm || !cpu_allocator)
+        struct allocator* cpu_kallocator = percpu(kallocator);
+        if (!pm || !cpu_kallocator)
                 return;
-        cpu_allocator->m_free(cpu_allocator, (void*)pm);
+        cpu_kallocator->m_free(cpu_kallocator, (void*)pm);
 }
 /*general thread create function*/
 Thread_Base* create_thread(void* __func, size_t append_thread_info_len,
                            int nr_parameter, ...)
 {
-        Thread_Base* thread = new_thread_structure(percpu(kallocator),
-                                                   append_thread_info_len);
+        struct allocator* cpu_kallocator = percpu(kallocator);
+        Thread_Base* thread = new_thread_structure(cpu_kallocator,
+                                                 append_thread_info_len);
         if (!thread) {
                 goto new_thread_structure_error;
         }
@@ -184,15 +185,9 @@ Thread_Base* create_thread(void* __func, size_t append_thread_info_len,
         thread->tid = get_new_id(&tid_manager);
         va_list arg_list;
         va_start(arg_list, nr_parameter);
-        /*
-                TODO: we alloc a page as idle thread's stack, we must record
-                although idle thread is always exist.
-        */
-        void* kstack = get_free_page(thread_kstack_page_num,
-                                     KERNEL_VIRT_OFFSET,
-                                     percpu(nexus_root),
-                                     0,
-                                     PAGE_ENTRY_NONE);
+
+        size_t stack_bytes = thread_kstack_page_num * PAGE_SIZE;
+        void* kstack = cpu_kallocator->m_alloc(cpu_kallocator, stack_bytes);
         if (!kstack) {
                 goto get_kstack_error;
         }
@@ -245,14 +240,10 @@ void delete_thread(Thread_Base* thread)
                  */
                 void* thread_stack_start = (void*)thread->kstack_bottom
                                            - thread->kstack_num * PAGE_SIZE;
-                e = free_pages(thread_stack_start,
-                               thread->kstack_num,
-                               thread->belong_tcb->vs,
-                               percpu(nexus_root));
-                if (e) {
-                        pr_error(
-                                "[ Error ] free pages fail please check the parameters\n");
-                }
+                struct allocator* cpu_kallocator = percpu(kallocator);
+                if (cpu_kallocator)
+                        cpu_kallocator->m_free(cpu_kallocator,
+                                                 thread_stack_start);
         }
         e = del_thread_from_task(thread);
         if (e) {

@@ -19,32 +19,58 @@
 #define PTE_SIZE 8
 #endif
 
-typedef struct {
-        paddr vspace_root_addr;
-        u64 vspace_id;
-        spin_lock vspace_lock;
-        cas_lock_t nexus_vspace_lock;
-        void* _vspace_node;
-} VSpace;
-extern VSpace* current_vspace; // per cpu pointer
-extern VSpace root_vspace;
+/*
+ * One type for nexus vs_common + page-table identity (anonymous union: members
+ * are as if on VS_Common; interpret only per `type`):
+ * - KERNEL_HEAP_REF: `vs` -> shared root VS_Common (table branch); `cpu_id` =
+ *   allocating logical CPU for kmem routing.
+ * - USER_VSPACE: vspace_root_addr, locks, _vspace_node (table branch).
+ * Per-CPU kernel ref object: nexus_kernel_heap_vs_common.
+ */
+enum vs_common_kind {
+        VS_COMMON_NONE = 0,
+        VS_COMMON_KERNEL_HEAP_REF,
+        VS_COMMON_USER_VSPACE,
+};
+
+typedef struct VS_Common {
+        u64 type;
+        union {
+                struct {
+                        struct VS_Common* vs;
+                        u32 cpu_id;
+                };
+                struct {
+                        paddr vspace_root_addr;
+                        u64 vspace_id;
+                        spin_lock vspace_lock;
+                        cas_lock_t nexus_vspace_lock;
+                        void* _vspace_node;
+                };
+        };
+} VS_Common;
+
+extern VS_Common nexus_kernel_heap_vs_common;
+
+extern VS_Common* current_vspace; // per cpu pointer
+extern VS_Common root_vspace;
 extern struct spin_lock_t handler_spin_lock; // per cpu pointer
 #define boot_stack_size 0x10000
 extern u64 boot_stack_bottom;
 
-VSpace* new_vspace();
-static inline void init_vspace(VSpace* vs, u64 vspace_id, void* vspace_node)
+VS_Common* new_vspace(void);
+static inline void init_vspace(VS_Common* vs, u64 vspace_id, void* vspace_node)
 {
         vs->vspace_lock = NULL;
         vs->vspace_id = vspace_id;
         vs->_vspace_node = vspace_node;
 }
-error_t del_vspace(VSpace** vs);
-static inline void set_vspace_root_addr(VSpace* vs, paddr root_paddr)
+error_t del_vspace(VS_Common** vs);
+static inline void set_vspace_root_addr(VS_Common* vs, paddr root_paddr)
 {
         vs->vspace_root_addr = root_paddr;
 }
-static inline void unset_vspace_root_addr(VSpace* vs)
+static inline void unset_vspace_root_addr(VS_Common* vs)
 {
         vs->vspace_root_addr = 0;
 }

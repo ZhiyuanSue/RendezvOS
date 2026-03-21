@@ -90,7 +90,7 @@ static void util_map(paddr p, vaddr v)
                                           | PAGE_ENTRY_WRITE);
         arch_set_L3_entry(p, v, (union L3_entry *)&MAP_L3_table, flags);
 }
-error_t map(VSpace *vs, ppn_t ppn, vpn_t vpn, int level, ENTRY_FLAGS_t eflags,
+error_t map(VS_Common *vs, ppn_t ppn, vpn_t vpn, int level, ENTRY_FLAGS_t eflags,
             struct map_handler *handler, spin_lock *lock)
 {
         ARCH_PFLAGS_t flags = 0;
@@ -457,7 +457,7 @@ map_fail:
         return res;
 }
 
-ppn_t unmap(VSpace *vs, vpn_t vpn, u64 new_entry_addr,
+ppn_t unmap(VS_Common *vs, vpn_t vpn, u64 new_entry_addr,
             struct map_handler *handler, spin_lock *lock)
 {
         if (!vs || !handler) {
@@ -591,7 +591,7 @@ unmap_fail:
                 unlock_mcs(lock, &per_cpu(handler_spin_lock, handler->cpu_id));
         return ppn;
 }
-ppn_t have_mapped(VSpace *vs, vpn_t vpn, struct map_handler *handler)
+ppn_t have_mapped(VS_Common *vs, vpn_t vpn, struct map_handler *handler)
 {
         vaddr v = VADDR(vpn);
         ppn_t ppn = 0;

@@ -58,7 +58,7 @@ extern Task_Manager* core_tm;
         Task_Manager* tm;                   \
         i64 thread_number;                  \
         struct list_entry thread_head_node; \
-        VSpace* vs;                         \
+        VS_Common* vs;                     \
         TASK_SCHE_COMMON
 /* as the base class of tcb */
 typedef struct {

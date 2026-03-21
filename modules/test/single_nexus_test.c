@@ -112,7 +112,7 @@ int nexus_test(void)
         /*try to add a new vs and then use the new vs test user*/
         /*add a new vspace*/
         error_t e = 0;
-        VSpace* vs = new_vspace();
+        VS_Common* vs = new_vspace();
         if (!vs) {
                 e = -E_REND_TEST;
                 goto nexus_test_fail;

@@ -68,7 +68,7 @@ int arch_vmm_test(void)
                 first alloc one page frame, alloc a new 4K virtual region, and
            try map ,expect success
         */
-        VSpace *vs = percpu(current_vspace);
+        VS_Common *vs = percpu(current_vspace);
         /* actually we should lock this pmm_alloc, but it's a test, we think
          * there's no preemt*/
         ppn_t ppn_1 = mem_zones[ZONE_NORMAL].pmm->pmm_alloc(

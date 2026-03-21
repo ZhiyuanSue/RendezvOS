@@ -49,15 +49,15 @@ void delete_message_port_structure(Message_Port_t* port)
         if (!port)
                 return;
         /*TODO: clean the queue*/
-        struct allocator* a = percpu(kallocator);
-        if (a && !a->m_free) {
+        struct allocator* cpu_kallocator = percpu(kallocator);
+        if (cpu_kallocator && !cpu_kallocator->m_free) {
                 pr_error("[port] delete_message_port_structure: m_free is NULL cpu=%x port_hi=%x port_lo=%x\n",
                          (u32)percpu(cpu_number),
                          (u32)(((u64)(uintptr_t)port >> 32) & 0xffffffff),
                          (u32)((u64)(uintptr_t)port & 0xffffffff));
         }
-        if (a)
-                a->m_free(a, port);
+        if (cpu_kallocator)
+                cpu_kallocator->m_free(cpu_kallocator, port);
 }
 
 bool port_table_port_is_live(struct Port_Table* table, const char* name,
@@ -105,9 +105,9 @@ void free_message_port_ref(ref_count_t* ref_count_ptr)
 
 struct Port_Table* port_table_create(void)
 {
-        struct allocator* a = percpu(kallocator);
-        struct Port_Table* table =
-                (struct Port_Table*)a->m_alloc(a, sizeof(struct Port_Table));
+        struct allocator* cpu_kallocator = percpu(kallocator);
+        struct Port_Table* table = (struct Port_Table*)cpu_kallocator->m_alloc(
+                cpu_kallocator, sizeof(struct Port_Table));
         if (table)
                 port_table_init(table);
         return table;

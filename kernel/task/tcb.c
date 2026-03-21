@@ -221,13 +221,13 @@ error_t del_thread_from_manager(Thread_Base* thread)
         return REND_SUCCESS;
 }
 
-Tcb_Base* new_task_structure(struct allocator* cpu_allocator,
+Tcb_Base* new_task_structure(struct allocator* cpu_kallocator,
                              size_t append_tcb_info_len)
 {
-        if (!cpu_allocator)
+        if (!cpu_kallocator)
                 return NULL;
-        Tcb_Base* tcb = (Tcb_Base*)(cpu_allocator->m_alloc(
-                cpu_allocator, sizeof(Tcb_Base) + append_tcb_info_len));
+        Tcb_Base* tcb = (Tcb_Base*)(cpu_kallocator->m_alloc(
+                cpu_kallocator, sizeof(Tcb_Base) + append_tcb_info_len));
         if (tcb) {
                 memset((void*)tcb, 0, sizeof(Tcb_Base) + append_tcb_info_len);
                 tcb->pid = INVALID_ID;
@@ -246,8 +246,8 @@ error_t delete_task(Tcb_Base* tcb)
         if (tcb->thread_number)
                 return -E_RENDEZVOS;
 
-        struct allocator* cpu_allocator = percpu(kallocator);
-        if (!cpu_allocator)
+        struct allocator* cpu_kallocator = percpu(kallocator);
+        if (!cpu_kallocator)
                 return -E_RENDEZVOS;
 
         error_t e = REND_SUCCESS;
@@ -261,6 +261,6 @@ error_t delete_task(Tcb_Base* tcb)
                 e = del_vspace(&tcb->vs);
         }
 
-        cpu_allocator->m_free(cpu_allocator, tcb);
+        cpu_kallocator->m_free(cpu_kallocator, tcb);
         return e;
 }

@@ -25,7 +25,7 @@ void init_map(struct map_handler* handler, int cpu_id, struct pmm* pmm);
         and if the vspace is not exist, it should try to alloc a new one
 */
 
-error_t map(VSpace* vs, ppn_t ppn, vpn_t vpn, int level, ENTRY_FLAGS_t eflags,
+error_t map(VS_Common* vs, ppn_t ppn, vpn_t vpn, int level, ENTRY_FLAGS_t eflags,
             struct map_handler* handler, spin_lock* lock);
 /*
  * @brief : unmap the vpn with that it mapped ppn
@@ -39,7 +39,7 @@ error_t map(VSpace* vs, ppn_t ppn, vpn_t vpn, int level, ENTRY_FLAGS_t eflags,
  * @return i64 : if success, return the ppn(>0) it have mapped, if fail return a
  * <0 error value
  */
-ppn_t unmap(VSpace* vs, vpn_t vpn, u64 new_entry_addr,
+ppn_t unmap(VS_Common* vs, vpn_t vpn, u64 new_entry_addr,
             struct map_handler* handler, spin_lock* lock);
 
 /*
@@ -52,7 +52,7 @@ ppn_t unmap(VSpace* vs, vpn_t vpn, u64 new_entry_addr,
  * @return i64 : >0, the ppn that vpn mapped, ==0, not mapped, maybe the value
  * is 0 or present flag is cleared,<0,error,remember that its' ppn
  */
-ppn_t have_mapped(VSpace* vs, vpn_t vpn, struct map_handler* handler);
+ppn_t have_mapped(VS_Common* vs, vpn_t vpn, struct map_handler* handler);
 
 /*
         in order to generate a new vspace
