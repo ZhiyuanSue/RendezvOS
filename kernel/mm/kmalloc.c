@@ -4,6 +4,13 @@
 #include <rendezvos/smp/percpu.h>
 #include <rendezvos/mm/kmalloc.h>
 #include <rendezvos/error.h>
+
+/* Payload after object_header.obj for cross-CPU page-free MSQ nodes. */
+struct kfree_page_free_info {
+        vaddr page_vaddr;
+        u32 src_cpu;
+};
+
 DEFINE_PER_CPU(struct allocator*, kallocator);
 size_t slot_size[MAX_GROUP_SLOTS] =
         {8, 16, 24, 32, 48, 64, 96, 128, 256, 512, 1024, 2048};
@@ -28,7 +35,7 @@ static int bytes_to_pages(size_t Bytes)
 static void page_chunk_rb_tree_insert(struct page_chunk_node* node,
                                       struct rb_root* page_chunk_root)
 {
-        struct rb_node** new = &page_chunk_root->rb_root, *parent = NULL;
+        struct rb_node **new = &page_chunk_root->rb_root, *parent = NULL;
         u64 key = node->page_addr;
         while (*new) {
                 parent = *new;
@@ -406,26 +413,128 @@ static error_t _k_free(void* p)
         return REND_SUCCESS;
 }
 
-static void clean_buffer_msq(struct mem_allocator* k_allocator_p)
+static error_t kfree_page_local(struct mem_allocator* k_allocator_p, void* p)
 {
-        if (!k_allocator_p->buffer_msq)
+        error_t e = REND_SUCCESS;
+        if (!k_allocator_p || !p)
+                return -E_IN_PARAM;
+        lock_cas(&k_allocator_p->lock);
+        struct page_chunk_node* pcn = page_chunk_rb_tree_search(
+                &k_allocator_p->page_chunk_root, (vaddr)p);
+        unlock_cas(&k_allocator_p->lock);
+        if (!pcn) {
+                pr_error(
+                        "[ERROR] kfree_page_local: missing page_chunk for %x\n",
+                        (vaddr)p);
+                return -E_RENDEZVOS;
+        }
+        e = free_pages(p, pcn->page_num, 0, k_allocator_p->nexus_root);
+        if (e) {
+                pr_error("[ ERROR ] kfree_page_local free_pages failed\n");
+                return e;
+        }
+        lock_cas(&k_allocator_p->lock);
+        page_chunk_rb_tree_remove(pcn, &k_allocator_p->page_chunk_root);
+        unlock_cas(&k_allocator_p->lock);
+        if (_k_free((void*)pcn)) {
+                pr_error("[ ERROR ] kfree_page_local _k_free pcn error\n");
+                return e;
+        }
+        return REND_SUCCESS;
+}
+
+static void free_kpage_msg(ref_count_t* refcount)
+{
+        ms_queue_node_t* msq_node =
+                container_of(refcount, ms_queue_node_t, refcount);
+        struct object_header* header =
+                container_of(msq_node, struct object_header, msq_node);
+        struct kfree_page_free_info* free_info =
+                (struct kfree_page_free_info*)header->obj;
+        /*
+         * Dummy head for kfree_page_msq uses page_vaddr == 0; recycle like
+         * buffer_msq dummy (small-object pool).
+         */
+        if (free_info->page_vaddr == 0) {
+                free_buffer_object(refcount);
                 return;
+        }
+        struct mem_allocator* k_allocator_p =
+                (struct mem_allocator*)percpu(kallocator);
+        if (!k_allocator_p) {
+                pr_error("[ERROR] free_kpage_msg: no percpu kallocator\n");
+                goto free_info;
+        }
+        error_t e = kfree_page_local(k_allocator_p,
+                                     (void*)free_info->page_vaddr);
+        if (e) {
+                pr_error(
+                        "[kfree_page_msq] free_kpage_msg: kfree_page_local failed e=%d page_vaddr=%x src_cpu=%u\n",
+                        e,
+                        (i64)free_info->page_vaddr,
+                        (unsigned)free_info->src_cpu);
+        }
+free_info:
+        struct allocator* src_cpu_kallocator =
+                per_cpu(kallocator, (int)free_info->src_cpu);
+        if (src_cpu_kallocator)
+                src_cpu_kallocator->m_free(src_cpu_kallocator,
+                                           (void*)header->obj);
+}
+
+/*
+ * Both queues carry work from other CPUs onto this allocator: whole-page
+ * kfree (kfree_page_msq) and small-object kfree (buffer_msq). Drain together
+ * on every kalloc/kfree entry so page and object paths behave the same and
+ * backlog stays low.
+ */
+static void mem_allocator_remote_frees(struct mem_allocator* k_allocator_p)
+{
         tagged_ptr_t dequeue_tagged_ptr;
-        /* free_func releases old dummy (object_header), not the data node. */
-        while (atomic64_load(
-                       (volatile u64*)&(k_allocator_p->buffer_size.counter))
-               && (dequeue_tagged_ptr = msq_dequeue(k_allocator_p->buffer_msq,
-                                                    free_buffer_object))) {
-                /* Release ref held by dequeue on the data node.
-                 * When refcount drops to 0, free_buffer_object will
-                 * automatically return it to the pool via group_free_obj. */
-                ref_put(&((ms_queue_node_t*)tp_get_ptr(dequeue_tagged_ptr))
-                                 ->refcount,
-                        free_buffer_object);
-                atomic64_dec(&k_allocator_p->buffer_size);
+        if (k_allocator_p->kfree_page_msq) {
+                while (atomic64_load((volatile u64*)&(
+                               k_allocator_p->kfree_page_pending.counter))
+                       && (dequeue_tagged_ptr =
+                                   msq_dequeue(k_allocator_p->kfree_page_msq,
+                                               free_kpage_msg))) {
+                        ref_put(&((ms_queue_node_t*)tp_get_ptr(
+                                          dequeue_tagged_ptr))
+                                         ->refcount,
+                                free_kpage_msg);
+                        atomic64_dec(&k_allocator_p->kfree_page_pending);
+                }
+        }
+        if (k_allocator_p->buffer_msq) {
+                /* free_func releases old dummy (object_header), not the data
+                 * node. */
+                while (atomic64_load((volatile u64*)&(
+                               k_allocator_p->buffer_size.counter))
+                       && (dequeue_tagged_ptr =
+                                   msq_dequeue(k_allocator_p->buffer_msq,
+                                               free_buffer_object))) {
+                        /* Release ref held by dequeue on the data node.
+                         * When refcount drops to 0, free_buffer_object will
+                         * automatically return it to the pool via
+                         * group_free_obj. */
+                        ref_put(&((ms_queue_node_t*)tp_get_ptr(
+                                          dequeue_tagged_ptr))
+                                         ->refcount,
+                                free_buffer_object);
+                        atomic64_dec(&k_allocator_p->buffer_size);
+                }
         }
 }
-void* kalloc(struct allocator* allocator_p, size_t Bytes)
+
+void kalloc_process_cross_cpu_frees(void)
+{
+        struct mem_allocator* k_allocator_p =
+                (struct mem_allocator*)percpu(kallocator);
+        if (!k_allocator_p)
+                return;
+        mem_allocator_remote_frees(k_allocator_p);
+}
+
+static void* kalloc(struct allocator* allocator_p, size_t Bytes)
 {
         if (!allocator_p) {
                 pr_error("[ERROR]invalid allocator_p parameter\n");
@@ -437,6 +546,7 @@ void* kalloc(struct allocator* allocator_p, size_t Bytes)
         }
         struct mem_allocator* k_allocator_p =
                 (struct mem_allocator*)allocator_p;
+        mem_allocator_remote_frees(k_allocator_p);
         void* res_ptr = NULL;
         if (Bytes > slot_size[MAX_GROUP_SLOTS - 1]) {
                 /*here we allocate from the page allocator*/
@@ -469,11 +579,10 @@ void* kalloc(struct allocator* allocator_p, size_t Bytes)
                 unlock_cas(&k_allocator_p->lock);
         } else {
                 res_ptr = _k_alloc(k_allocator_p, Bytes);
-                clean_buffer_msq(k_allocator_p);
         }
         return res_ptr;
 }
-void kfree(struct allocator* allocator_p, void* p)
+static void kfree(struct allocator* allocator_p, void* p)
 {
         if (!allocator_p || !p) {
                 pr_error("[ERROR] kfree error parameter\n");
@@ -481,31 +590,58 @@ void kfree(struct allocator* allocator_p, void* p)
         }
         struct mem_allocator* k_allocator_p =
                 (struct mem_allocator*)allocator_p;
-        error_t e = 0;
+        error_t e = REND_SUCCESS;
+        mem_allocator_remote_frees(k_allocator_p);
         if (((vaddr)p) & (PAGE_SIZE - 1)) {
-                clean_buffer_msq(k_allocator_p);
                 /*free from the chunks*/
                 e = _k_free(p);
         } else {
-                /*free pages*/
-                lock_cas(&k_allocator_p->lock);
-                struct page_chunk_node* pcn = page_chunk_rb_tree_search(
-                        &k_allocator_p->page_chunk_root, (vaddr)p);
-                unlock_cas(&k_allocator_p->lock);
-                if (!pcn) {
-                        /*another sp allocator alloced it*/
-                        pr_error(
-                                "cannot find the page chunk, might alloced by another sp allocator\n");
+                u32 cur_cpu = percpu(cpu_number);
+                int owner_cpu = nexus_kernel_page_owner_cpu((vaddr)p);
+                if (owner_cpu == INVALID_CPU_ID) {
+                        e = _k_free(p);
+                } else if ((int)cur_cpu != owner_cpu) {
+                        struct mem_allocator* owner_mem_allocator =
+                                (struct mem_allocator*)per_cpu(kallocator,
+                                                               owner_cpu);
+                        if (!owner_mem_allocator
+                            || !owner_mem_allocator->kfree_page_msq) {
+                                pr_error(
+                                        "[ERROR] kfree page: target kallocator/msq missing cpu %d\n",
+                                        owner_cpu);
+                                return;
+                        }
+                        struct allocator* src_cpu_kallocator =
+                                percpu(kallocator);
+                        void* free_info = src_cpu_kallocator->m_alloc(
+                                src_cpu_kallocator,
+                                sizeof(struct kfree_page_free_info));
+                        if (!free_info) {
+                                pr_error(
+                                        "[ERROR] kfree page: cannot alloc cross-cpu msg\n");
+                                return;
+                        }
+                        memset(free_info,
+                               0,
+                               sizeof(struct kfree_page_free_info));
+                        struct kfree_page_free_info* info =
+                                (struct kfree_page_free_info*)free_info;
+                        info->page_vaddr = (vaddr)p;
+                        info->src_cpu = cur_cpu;
+                        struct object_header* oh = container_of(
+                                free_info, struct object_header, obj);
+                        ref_init(&oh->msq_node.refcount);
+                        msq_enqueue(owner_mem_allocator->kfree_page_msq,
+                                    &oh->msq_node,
+                                    free_kpage_msg);
+                        ref_put(&oh->msq_node.refcount, free_kpage_msg);
+                        atomic64_inc(&owner_mem_allocator->kfree_page_pending);
                         return;
                 }
-                e = free_pages(p, pcn->page_num, 0, k_allocator_p->nexus_root);
-                if (e) {
-                        pr_error("[ ERROR ] kfree free page failed\n");
+                e = kfree_page_local(k_allocator_p, p);
+                if (e == -E_RENDEZVOS) {
+                        e = _k_free(p);
                 }
-                lock_cas(&k_allocator_p->lock);
-                page_chunk_rb_tree_remove(pcn, &k_allocator_p->page_chunk_root);
-                unlock_cas(&k_allocator_p->lock);
-                e = _k_free((void*)pcn);
         }
         if (e) {
                 pr_error(
@@ -517,6 +653,7 @@ struct mem_allocator tmp_k_alloctor = {
         .m_alloc = kalloc,
         .m_free = kfree,
         .buffer_msq = NULL,
+        .kfree_page_msq = NULL,
 };
 struct allocator* kinit(struct nexus_node* nexus_root, int allocator_id)
 {
@@ -574,6 +711,34 @@ struct allocator* kinit(struct nexus_node* nexus_root, int allocator_id)
                 atomic64_init(&k_allocator->buffer_size, 0);
                 idle_obj_ptr->allocator_id = allocator_id;
                 k_allocator->buffer_msq = buffer_msq;
+
+                void* kernel_free_page_info_idle_node =
+                        kalloc((struct allocator*)&tmp_k_alloctor,
+                               sizeof(struct kfree_page_free_info));
+                if (!kernel_free_page_info_idle_node) {
+                        pr_error("[ERROR] kfree_page_msq idle alloc fail\n");
+                        return NULL;
+                }
+                memset(kernel_free_page_info_idle_node,
+                       0,
+                       sizeof(struct kfree_page_free_info));
+                struct object_header* kernel_free_page_idle_header =
+                        container_of(kernel_free_page_info_idle_node,
+                                     struct object_header,
+                                     obj);
+                ms_queue_t* kernel_free_page_msq = kalloc(
+                        (struct allocator*)&tmp_k_alloctor, sizeof(ms_queue_t));
+                if (!kernel_free_page_msq) {
+                        pr_error("[ERROR] kfree_page_msq struct alloc fail\n");
+                        return NULL;
+                }
+                msq_init(kernel_free_page_msq,
+                         &kernel_free_page_idle_header->msq_node,
+                         0);
+                kernel_free_page_idle_header->allocator_id = allocator_id;
+                atomic64_init(&k_allocator->kfree_page_pending, 0);
+                k_allocator->kfree_page_msq = kernel_free_page_msq;
+
                 return (struct allocator*)k_allocator;
         } else {
                 pr_error("[ERROR]kalloc cannot get a space of mem allocator\n");

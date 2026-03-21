@@ -104,9 +104,16 @@ struct mem_allocator {
         struct rb_root page_chunk_root;
         ms_queue_t* buffer_msq;
         atomic64_t buffer_size;
+        /* Cross-CPU whole-page free requests (Michael–Scott queue). */
+        ms_queue_t* kfree_page_msq;
+        atomic64_t kfree_page_pending;
         cas_lock_t lock;
 } __attribute__((aligned(sizeof(u64))));
 /*chunk*/
 struct allocator* kinit(struct nexus_node* nexus_root, int allocator_id);
+
+/* Drain cross-CPU kfree work (page MSQ + buffer MSQ) on this CPU. */
+void kalloc_process_cross_cpu_frees(void);
+
 
 #endif
