@@ -9,7 +9,7 @@ CONFIG	?=
 SMP		?=	4
 DUMP	?=
 DUMPFILE	?= $(ROOT_DIR)/objdump.log
-MEM_SIZE	?= 128M
+MEM_SIZE	?= 256M
 SCRIPT_MAKE_DIR		:=	$(SCRIPT_DIR)/make
 SCRIPT_LINK_DIR		:=	$(SCRIPT_DIR)/link
 ARCH_DIR	:=	$(ROOT_DIR)/arch
@@ -49,7 +49,7 @@ else ifeq ($(ARCH), loongarch)
 else ifeq ($(ARCH), null)
 $(error the arch is not supportted or haven't configured)
 endif
-CFLAGS	+= -Werror -Wall -Wextra -Werror=return-type -Werror=format -Wmissing-field-initializers -Wunused-result -Os -nostdlib -nostdinc
+CFLAGS	+= -Werror -Wall -Wextra -Werror=return-type -Werror=format -Wmissing-field-initializers -Wunused-result -Os -nostdlib -nostdinc -fno-builtin
 CFLAGS	+= -fno-stack-protector -std=c11
 CFLAGS	+=	-I $(INCLUDE_DIR) -DNR_CPUS=$(SMP)
 CFLAGS	+= $(EXTRA_CFLAGS)
