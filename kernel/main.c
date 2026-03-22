@@ -29,6 +29,7 @@ void cmain(struct setup_info *arch_setup_info)
                 print("[ERROR] phy mm init error\n");
                 return;
         }
+        arch_enable_percpu(BSP_ID);
         if (arch_cpu_info(arch_setup_info)) {
                 print("[ERROR] arch cpu info error\n");
                 return;

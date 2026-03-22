@@ -213,7 +213,6 @@ error_t arch_start_platform(struct setup_info *arch_setup_info)
 error_t arch_start_core(int cpu_id)
 {
         /*write in the cpuid*/
-        msr("TPIDR_EL1", __per_cpu_offset[cpu_id]);
         per_cpu(cpu_number, cpu_id) = cpu_id;
         isb();
         init_interrupt();

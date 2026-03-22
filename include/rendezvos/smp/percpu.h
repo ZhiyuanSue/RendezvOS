@@ -25,6 +25,7 @@ extern u32 cpu_number;
 #define put_cpu_var(var)
 // TODO
 
+void arch_enable_percpu(i32 cpu_id);
 vaddr get_per_cpu_base();
 void reserve_per_cpu_region(paddr* phy_kernel_end);
 void calculate_per_cpu_offset();

@@ -217,12 +217,6 @@ arch_start_platform_error:
 error_t arch_start_core(int cpu_id)
 {
         set_gdt(cpu_id);
-        /*
-         gs
-         as it's per_cpu base
-         only after we set the gs base can we use percpu
-        */
-        wrmsrq(MSR_GS_BASE, __per_cpu_offset[cpu_id]);
         wrmsr(MSR_KERNEL_GS_BASE, 0);
         per_cpu(cpu_number, cpu_id) = cpu_id;
         /*table_indicator = 1  will cause #GP*/

@@ -22,6 +22,7 @@ void start_secondary_cpu(struct setup_info *arch_setup_info)
         print("[ CPU%d ]", current_cpu_id);
         hello_world();
 #endif
+        arch_enable_percpu(current_cpu_id);
         if (virt_mm_init(current_cpu_id, arch_setup_info)) {
                 print("[ERROR] virt mm init error\n");
                 return;
