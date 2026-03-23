@@ -1,12 +1,13 @@
 #include <common/string.h>
 #include <modules/log/log.h>
 #include <rendezvos/smp/smp.h>
+#include <rendezvos/smp/cpu_id.h>
 #include <rendezvos/time.h>
 #include <rendezvos/mm/nexus.h>
 extern char ap_start;
 extern char ap_start_end;
 extern int NR_CPU;
-extern u32 BSP_ID;
+extern cpu_id_t BSP_ID;
 extern enum cpu_status CPU_STATE;
 extern void clean_tmp_page_table(void);
 static void copy_ap_start_code(void)
@@ -25,7 +26,7 @@ static void clean_ap_start_code(void)
                 (char*)KERNEL_PHY_TO_VIRT(_RENDEZVOS_X86_64_AP_PHY_ADDR_);
         memset(dest_ap_start_ptr, 0x0, (vaddr)&ap_start_end - (vaddr)&ap_start);
 }
-static void send_sipi(int cpu_id, paddr ap_start_addr)
+static void send_sipi(cpu_id_t cpu_id, paddr ap_start_addr)
 {
         APIC_send_IPI(cpu_id,
                       APIC_ICR_DEST_SH_NO,

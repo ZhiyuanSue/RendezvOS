@@ -1,6 +1,7 @@
 #ifndef _RENDEZVOS_ARCH_SETUP_H_
 #define _RENDEZVOS_ARCH_SETUP_H_
 #include <common/types.h>
+#include <rendezvos/smp/cpu_id.h>
 #ifndef KERNEL_VIRT_OFFSET
 #define KERNEL_VIRT_OFFSET 0xffff800000000000
 #endif
@@ -31,11 +32,11 @@ struct setup_info {
         u64 boot_uart_base_addr; /*0x30*/
         u64 boot_dtb_header_base_addr; /*0x38*/
         vaddr ap_boot_stack_ptr; /*0x40*/
-        u64 cpu_id; /*0x48*/
+        cpu_id_t cpu_id; /*0x48*/
 };
 
 error_t prepare_arch(struct setup_info *arch_setup_info);
-error_t arch_start_core(int cpu_id);
+error_t arch_start_core(cpu_id_t cpu_id);
 error_t arch_cpu_info(struct setup_info *arch_setup_info);
 error_t arch_start_platform(struct setup_info *arch_setup_info);
 #endif

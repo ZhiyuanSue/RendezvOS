@@ -3,6 +3,7 @@
 #include <common/types.h>
 #include <common/mm.h>
 #include <rendezvos/mm/vmm.h>
+#include <rendezvos/smp/cpu_id.h>
 
 #define map_pages 0xFFFFFFFFFFE00000
 /*
@@ -12,21 +13,21 @@
         and we think we should not have more than 512 cores
 */
 struct map_handler {
-        u64 cpu_id;
+        cpu_id_t cpu_id;
         vaddr map_vaddr[4];
         ppn_t handler_ppn[4];
         struct pmm* pmm;
-} __attribute__((packed));
+};
 extern struct map_handler Map_Handler;
 void sys_init_map();
-void init_map(struct map_handler* handler, int cpu_id, struct pmm* pmm);
+void init_map(struct map_handler* handler, cpu_id_t cpu_id, struct pmm* pmm);
 /*
         kernel might try to mapping one page to a different vspace
         and if the vspace is not exist, it should try to alloc a new one
 */
 
-error_t map(VS_Common* vs, ppn_t ppn, vpn_t vpn, int level, ENTRY_FLAGS_t eflags,
-            struct map_handler* handler, spin_lock* lock);
+error_t map(VS_Common* vs, ppn_t ppn, vpn_t vpn, int level,
+            ENTRY_FLAGS_t eflags, struct map_handler* handler, spin_lock* lock);
 /*
  * @brief : unmap the vpn with that it mapped ppn
  *

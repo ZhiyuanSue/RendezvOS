@@ -5,7 +5,7 @@
 #include <rendezvos/mm/nexus.h>
 #include <rendezvos/smp/percpu.h>
 #include <rendezvos/error.h>
-extern u32 BSP_ID;
+extern cpu_id_t BSP_ID;
 extern u64 boot_stack;
 DEFINE_PER_CPU(u64, boot_stack_bottom);
 DEFINE_PER_CPU(struct map_handler, Map_Handler);
@@ -13,7 +13,7 @@ DEFINE_PER_CPU(struct nexus_node*, nexus_root);
 DEFINE_PER_CPU(VS_Common*, current_vspace);
 DEFINE_PER_CPU(VS_Common, nexus_kernel_heap_vs_common);
 VS_Common root_vspace;
-error_t virt_mm_init(u32 cpu_id, struct setup_info* arch_setup_info)
+error_t virt_mm_init(cpu_id_t cpu_id, struct setup_info* arch_setup_info)
 {
         if (cpu_id == BSP_ID) {
                 sys_init_map();
@@ -73,7 +73,7 @@ error_t del_vspace(VS_Common** vs)
                 goto free_vspace_only;
         }
 
-        u32 handler_cpu_id = vspace_node->handler->cpu_id;
+        cpu_id_t handler_cpu_id = vspace_node->handler->cpu_id;
         paddr root_paddr = (*vs)->vspace_root_addr;
         if (handler_cpu_id >= RENDEZVOS_MAX_CPU_NUMBER) {
                 ret = -E_IN_PARAM;

@@ -17,12 +17,12 @@
 #include <rendezvos/mm/kmalloc.h>
 #include <common/string.h>
 
-extern u32 BSP_ID;
+extern cpu_id_t BSP_ID;
 extern int NR_CPU;
 
-#define SMP_PORT_TEST_ROUNDS       10000
-#define SMP_PORT_MAX_PORTS_PER_CPU 10
-#define SMP_PORT_NAME_LEN          32
+#define SMP_PORT_TEST_ROUNDS            10000
+#define SMP_PORT_MAX_PORTS_PER_CPU      10
+#define SMP_PORT_NAME_LEN               32
 #define SMP_PORT_HT_SHRINK_EXPAND_PORTS 100
 #define SMP_PORT_HT_SHRINK_REMAIN_PORTS 5
 
@@ -116,7 +116,7 @@ static void make_port_name(char* buf, u32 buf_len, u32 cpu_id, u64 round)
 }
 
 /* Test 1: Port table operations (register/unregister/lookup) */
-static int smp_port_table_test(u32 cpu_id)
+static int smp_port_table_test(cpu_id_t cpu_id)
 {
         struct smp_port_test_state* state = &percpu(smp_port_test_state);
         memset(state, 0, sizeof(*state));
@@ -554,10 +554,8 @@ static int smp_port_ht_shrink_test(u32 cpu_id)
         u64 error_count = 0;
 
         for (u32 i = 0; i < SMP_PORT_HT_SHRINK_EXPAND_PORTS; i++) {
-                make_port_name(port_names[i],
-                               SMP_PORT_NAME_LEN,
-                               cpu_id + 3000,
-                               i);
+                make_port_name(
+                        port_names[i], SMP_PORT_NAME_LEN, cpu_id + 3000, i);
 
                 ports[i] = create_message_port(port_names[i]);
                 if (!ports[i]) {
@@ -579,14 +577,16 @@ static int smp_port_ht_shrink_test(u32 cpu_id)
                 if (!found || found != ports[i]) {
                         error_count++;
                         if (found)
-                                ref_put(&found->refcount, free_message_port_ref);
+                                ref_put(&found->refcount,
+                                        free_message_port_ref);
                         continue;
                 }
                 ref_put(&found->refcount, free_message_port_ref);
         }
 
         /* Unregister most ports to accumulate tombs and lower live load. */
-        u32 cut = SMP_PORT_HT_SHRINK_EXPAND_PORTS - SMP_PORT_HT_SHRINK_REMAIN_PORTS;
+        u32 cut = SMP_PORT_HT_SHRINK_EXPAND_PORTS
+                  - SMP_PORT_HT_SHRINK_REMAIN_PORTS;
         for (u32 i = 0; i < cut; i++) {
                 error_t e = unregister_port(global_port_table, port_names[i]);
                 if (e != REND_SUCCESS) {
@@ -616,7 +616,8 @@ static int smp_port_ht_shrink_test(u32 cpu_id)
                 if (!found || found != ports[i]) {
                         error_count++;
                         if (found)
-                                ref_put(&found->refcount, free_message_port_ref);
+                                ref_put(&found->refcount,
+                                        free_message_port_ref);
                         continue;
                 }
                 ref_put(&found->refcount, free_message_port_ref);

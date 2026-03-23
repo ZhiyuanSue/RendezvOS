@@ -1,6 +1,8 @@
 #ifndef _RENDEZVOS_CPU_TOPOLOGY_H_
 #define _RENDEZVOS_CPU_TOPOLOGY_H_
 
+#include <rendezvos/smp/cpu_id.h>
+
 struct cpu_topology_root {
         struct cpu_socket* first_socket;
 };
@@ -14,7 +16,7 @@ struct cpu_cluster {
         struct cpu_core* first_core;
 };
 struct cpu_core {
-        int cpu_id;
+        cpu_id_t cpu_id;
         struct cpu_core* sibling;
         struct cpuinfo* cpu_info;
 };

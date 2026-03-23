@@ -10,7 +10,6 @@ static void free_ipc_request_real(ref_count_t* refcount)
         delete_ipc_request(req);
 }
 
-
 Ipc_Request_t* create_ipc_request(Thread_Base* thread)
 {
         struct allocator* cpu_kallocator = percpu(kallocator);

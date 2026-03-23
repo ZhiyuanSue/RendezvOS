@@ -4,7 +4,7 @@
 #include <rendezvos/smp/percpu.h>
 #include <rendezvos/mm/vmm.h>
 
-DEFINE_PER_CPU(u32, cpu_number);
+DEFINE_PER_CPU(cpu_id_t, cpu_number);
 
 u64 __per_cpu_offset[RENDEZVOS_MAX_CPU_NUMBER];
 

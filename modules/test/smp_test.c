@@ -2,14 +2,16 @@
 #include <rendezvos/smp/percpu.h>
 #include <rendezvos/limits.h>
 
-extern u32 BSP_ID;
+extern cpu_id_t BSP_ID;
 extern int NR_CPU;
 extern volatile i64 jeffies;
 static struct smp_test_case smp_test[MAX_SMP_TEST_CASE] = {
         /* CPU support:
          * - scalable: works for any NR_CPU >= 1
-         * - even-only: requires paired roles, uses active-even CPUs if NR_CPU is odd
-         * - fixed-4: designed specifically for NR_CPU == 4 (otherwise skipped/pass)
+         * - even-only: requires paired roles, uses active-even CPUs if NR_CPU
+         * is odd
+         * - fixed-4: designed specifically for NR_CPU == 4 (otherwise
+         * skipped/pass)
          */
         /* scalable */
         {smp_lock_test, "smp spin_lock", smp_lock_check},
@@ -50,7 +52,7 @@ volatile enum multi_cpu_test_state test_state[RENDEZVOS_MAX_CPU_NUMBER];
 volatile u64 curr_test = 0;
 void multi_cpu_test(void)
 {
-        u32 cpu_id = percpu(cpu_number);
+        cpu_id_t cpu_id = percpu(cpu_number);
         bool test_pass = true;
         if (cpu_id == BSP_ID)
                 pr_notice("====== [ KERNEL MULTI CPU TEST ] ======\n");

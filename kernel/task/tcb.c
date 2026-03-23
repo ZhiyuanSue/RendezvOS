@@ -252,7 +252,8 @@ error_t delete_task(Tcb_Base* tcb)
 
         error_t e = REND_SUCCESS;
 
-        /* First detach from manager so we don't risk freeing a node still linked. */
+        /* First detach from manager so we don't risk freeing a node still
+         * linked. */
         e = del_task_from_manager(tcb);
         if (e)
                 return e;

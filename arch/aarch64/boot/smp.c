@@ -6,7 +6,7 @@
 #include <rendezvos/mm/vmm.h>
 #include <rendezvos/smp/percpu.h>
 extern char ap_entry;
-extern u32 BSP_ID;
+extern cpu_id_t BSP_ID;
 extern int NR_CPU;
 extern enum cpu_status CPU_STATE;
 extern struct cpuinfo cpu_info;
@@ -46,7 +46,7 @@ void arch_start_smp(struct setup_info* arch_setup_info)
                 u32 reg_val;
                 int err = property_read_u32(reg_prop, &reg_val);
                 if (!err) {
-                        if (reg_val == BSP_ID)
+                        if (reg_val == (u32)BSP_ID)
                                 goto next_cpu_node;
                         vaddr stack_bottom =
                                 (vaddr)get_free_page(2,

@@ -4,8 +4,8 @@
 #include <rendezvos/task/port.h>
 #include <rendezvos/mm/allocator.h>
 
-#define PORT_HT_EMPTY ((i64)-1)
-#define PORT_HT_TOMB  ((i64)-2)
+#define PORT_HT_EMPTY            ((i64) - 1)
+#define PORT_HT_TOMB             ((i64) - 2)
 #define PORT_HT_MAX_LOAD_PERCENT 70u
 
 /*
@@ -34,10 +34,11 @@
 
 /*
  * Initialize/teardown the slots backend storage in Port_Table.
- * - init: bootstrap slot array + hash table (expects t->alloc set by port_table_init).
- * - fini: drops table-held refs on still-registered ports (unregister + ref_put like
- *         unregister_port), then frees slot/ht arrays with t->alloc (or a fallback).
- *         Caller still frees the Port_Table struct with the same allocator.
+ * - init: bootstrap slot array + hash table (expects t->alloc set by
+ * port_table_init).
+ * - fini: drops table-held refs on still-registered ports (unregister + ref_put
+ * like unregister_port), then frees slot/ht arrays with t->alloc (or a
+ * fallback). Caller still frees the Port_Table struct with the same allocator.
  */
 void port_slots_table_init(struct Port_Table* t);
 void port_slots_table_fini(struct Port_Table* t);
@@ -48,7 +49,7 @@ void port_slots_table_fini(struct Port_Table* t);
  * - out_slot_idx: optional slot index of matched entry.
  */
 Message_Port_t* port_slots_search(struct Port_Table* table, const char* name,
-                                 u64* out_slot_idx);
+                                  u64* out_slot_idx);
 
 /*
  * Register a new port into slots+hash.
@@ -56,7 +57,7 @@ Message_Port_t* port_slots_search(struct Port_Table* table, const char* name,
  * - On success, links port->table/registered and returns slot index.
  */
 error_t port_slots_register(struct Port_Table* table, Message_Port_t* port,
-                           u64* out_reg_slot_idx);
+                            u64* out_reg_slot_idx);
 
 /*
  * Remove an existing port using known slot index.
@@ -64,7 +65,7 @@ error_t port_slots_register(struct Port_Table* table, Message_Port_t* port,
  * - Unlinks table ownership, removes hash entry, bumps slot generation.
  */
 void port_slots_unregister(struct Port_Table* table, Message_Port_t* port,
-                          u64 slot_idx, const char* name);
+                           u64 slot_idx, const char* name);
 
 /*
  * Roll back a successful register when upper-layer ref_get fails.
@@ -72,7 +73,7 @@ void port_slots_unregister(struct Port_Table* table, Message_Port_t* port,
  * - Keeps table/port state consistent with "never registered".
  */
 void port_slots_register_abort(struct Port_Table* table, u64 slot_idx,
-                              Message_Port_t* port);
+                               Message_Port_t* port);
 
 /*
  * Lookup by name with lock + ref_get_not_zero inside.
@@ -80,7 +81,7 @@ void port_slots_register_abort(struct Port_Table* table, u64 slot_idx,
  * - Optionally exports a stable slot token (index+generation) for cache.
  */
 Message_Port_t* port_slots_lookup(struct Port_Table* table, const char* name,
-                                 port_table_slot_token_t* tok_out);
+                                  port_table_slot_token_t* tok_out);
 
 /*
  * Resolve cached token under lock.
@@ -88,7 +89,7 @@ Message_Port_t* port_slots_lookup(struct Port_Table* table, const char* name,
  * - Returns one live reference on success (caller must ref_put).
  */
 Message_Port_t* port_slots_resolve(struct Port_Table* table,
-                                  const port_table_slot_token_t* tok,
-                                  const char* name);
+                                   const port_table_slot_token_t* tok,
+                                   const char* name);
 
 #endif

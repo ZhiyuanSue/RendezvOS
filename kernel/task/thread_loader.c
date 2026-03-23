@@ -175,7 +175,8 @@ error_t gen_task_from_elf(Thread_Base **elf_thread_ptr,
                 goto new_vs_root_error;
         }
         set_vspace_root_addr(elf_task->vs, new_vs_paddr);
-        /* Per-vspace nexus root node (one page); not the same as per-CPU nexus_root. */
+        /* Per-vspace nexus root node (one page); not the same as per-CPU
+         * nexus_root. */
         struct nexus_node *new_vs_vspace_node =
                 nexus_create_vspace_root_node(percpu(nexus_root), elf_task->vs);
         if (!new_vs_vspace_node) {
@@ -228,7 +229,8 @@ create_thread_error:
                         "fail to delete task from task manager, please check\n");
         }
 add_task_to_manager_error:
-        /* Must pass the same per-CPU tree root used at create time (see del_vspace). */
+        /* Must pass the same per-CPU tree root used at create time (see
+         * del_vspace). */
         nexus_delete_vspace(percpu(nexus_root), elf_task->vs);
 nexus_create_vspace_root_node_error:
         unset_vspace_root_addr(elf_task->vs);

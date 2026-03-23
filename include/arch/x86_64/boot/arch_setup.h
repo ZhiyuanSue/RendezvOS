@@ -1,6 +1,7 @@
 #ifndef _RENDEZVOS_ARCH_SETUP_H_
 #define _RENDEZVOS_ARCH_SETUP_H_
 #include <common/types.h>
+#include <rendezvos/smp/cpu_id.h>
 #include "multiboot.h"
 #include "multiboot2.h"
 
@@ -20,7 +21,7 @@ struct setup_info {
         u64 log_buffer_addr;
         vaddr rsdp_addr;
         vaddr ap_boot_stack_ptr;
-        u64 cpu_id;
+        cpu_id_t cpu_id;
 } __attribute__((packed));
 
 static inline struct multiboot_info *
@@ -36,7 +37,7 @@ GET_MULTIBOOT2_INFO(struct setup_info *setup_info)
                                            + KERNEL_VIRT_OFFSET));
 }
 error_t prepare_arch(struct setup_info *arch_setup_info);
-error_t arch_start_core(int cpu_id);
+error_t arch_start_core(cpu_id_t cpu_id);
 error_t arch_cpu_info(struct setup_info *arch_setup_info);
 error_t arch_start_platform(struct setup_info *arch_setup_info);
 #endif

@@ -16,7 +16,7 @@
 
 extern struct allocator* kallocator;
 
-extern u32 BSP_ID;
+extern cpu_id_t BSP_ID;
 extern int NR_CPU;
 
 #define SMP_IPC_MSG_COUNT 50000
@@ -170,7 +170,7 @@ static void smp_ipc_receiver_loop(u32 cpu_id, int count)
 
 int smp_ipc_test(void)
 {
-        u32 cpu_id = percpu(cpu_number);
+        cpu_id_t cpu_id = percpu(cpu_number);
 
         if (cpu_id == BSP_ID) {
                 is_print_sche_info = false;
@@ -205,8 +205,8 @@ int smp_ipc_test(void)
                 pr_info("cpu %u port ready\n", (unsigned)cpu_id);
         }
 
-        /* active_cpus is forced to an even number to keep sender/receiver paired.
-         * CPUs with cpu_id >= active_cpus will skip the test.
+        /* active_cpus is forced to an even number to keep sender/receiver
+         * paired. CPUs with cpu_id >= active_cpus will skip the test.
          */
         int active_cpus = smp_ipc_active_cpus;
         if (active_cpus < 2) {

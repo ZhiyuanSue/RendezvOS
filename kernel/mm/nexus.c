@@ -9,10 +9,10 @@
 
 /*
  * Page.rmap_list is part of PMM-owned metadata: link/unlink must run under the
- * same zone pmm MCS lock as readers (nexus_kernel_page_owner_cpu, unfill_phy_page
- * snapshot). Mapping paths hold nexus_vspace_lock before calling link_rmap_list,
- * so lock order is always nexus_vspace_lock -> pmm (no pmm while holding only
- * nexus in the inverse order for the same page).
+ * same zone pmm MCS lock as readers (nexus_kernel_page_owner_cpu,
+ * unfill_phy_page snapshot). Mapping paths hold nexus_vspace_lock before
+ * calling link_rmap_list, so lock order is always nexus_vspace_lock -> pmm (no
+ * pmm while holding only nexus in the inverse order for the same page).
  */
 static inline void link_rmap_list(MemZone* zone, ppn_t ppn,
                                   struct nexus_node* node)
@@ -23,8 +23,7 @@ static inline void link_rmap_list(MemZone* zone, ppn_t ppn,
                 return;
         }
         struct pmm* pmm_ptr = zone->pmm;
-        lock_mcs(&pmm_ptr->spin_ptr,
-                 &percpu(pmm_spin_lock[zone->zone_id]));
+        lock_mcs(&pmm_ptr->spin_ptr, &percpu(pmm_spin_lock[zone->zone_id]));
         /*
                 because nexus might have 2M and 4K range, here we must check,
                 actually, which should not be alloced successfully before,
@@ -52,8 +51,7 @@ static inline void link_rmap_list(MemZone* zone, ppn_t ppn,
                         }
                 }
         }
-        unlock_mcs(&pmm_ptr->spin_ptr,
-                   &percpu(pmm_spin_lock[zone->zone_id]));
+        unlock_mcs(&pmm_ptr->spin_ptr, &percpu(pmm_spin_lock[zone->zone_id]));
 }
 static inline void unlink_rmap_list(MemZone* zone, ppn_t ppn,
                                     struct nexus_node* node)
@@ -61,11 +59,9 @@ static inline void unlink_rmap_list(MemZone* zone, ppn_t ppn,
         if (!ppn_Zone_phy_Page(zone, ppn))
                 return;
         struct pmm* pmm_ptr = zone->pmm;
-        lock_mcs(&pmm_ptr->spin_ptr,
-                 &percpu(pmm_spin_lock[zone->zone_id]));
+        lock_mcs(&pmm_ptr->spin_ptr, &percpu(pmm_spin_lock[zone->zone_id]));
         list_del_init(&node->rmap_list);
-        unlock_mcs(&pmm_ptr->spin_ptr,
-                   &percpu(pmm_spin_lock[zone->zone_id]));
+        unlock_mcs(&pmm_ptr->spin_ptr, &percpu(pmm_spin_lock[zone->zone_id]));
 }
 static inline u64 nexus_node_get_len(struct nexus_node* nexus_entry)
 {
@@ -114,7 +110,8 @@ static void nexus_rb_tree_vspace_insert(struct nexus_node* vspace_node,
                         parent, struct nexus_node, _vspace_rb_node);
                 if (key < (u64)nexus_node_vspace(tmp_node)->vspace_root_addr)
                         new = &parent->left_child;
-                else if (key > (u64)nexus_node_vspace(tmp_node)->vspace_root_addr)
+                else if (key
+                         > (u64)nexus_node_vspace(tmp_node)->vspace_root_addr)
                         new = &parent->right_child;
                 else {
                         return;
@@ -213,7 +210,8 @@ static void nexus_init_manage_page(vaddr vpage_addr,
         list_add_head(&(n_node->_vspace_list), &(vspace_root->_vspace_list));
         nexus_rb_tree_insert(n_node, &vspace_root->_rb_root);
 }
-static struct nexus_node* init_vspace_nexus(vaddr nexus_page_addr, VS_Common* vs,
+static struct nexus_node* init_vspace_nexus(vaddr nexus_page_addr,
+                                            VS_Common* vs,
                                             struct map_handler* handler,
                                             struct rb_root* _vspace_rb_root)
 {
@@ -344,8 +342,7 @@ nexus_get_free_entry(struct nexus_node* vspace_root_node)
                             PAGE_ENTRY_GLOBAL | PAGE_ENTRY_READ
                                     | PAGE_ENTRY_VALID | PAGE_ENTRY_WRITE,
                             vspace_root_node->handler,
-                            &nexus_node_vspace(vspace_root_node)
-                                     ->vspace_lock);
+                            &nexus_node_vspace(vspace_root_node)->vspace_lock);
                 if (map_res) {
                         pr_error("[ NEXUS ] ERROR: get free entry map error\n");
                         lock_mcs(&pmm_ptr->spin_ptr,
@@ -510,10 +507,9 @@ struct nexus_node* nexus_create_vspace_root_node(struct nexus_node* nexus_root,
                          &per_cpu(pmm_spin_lock[pmm_ptr->zone->zone_id],
                                   nexus_root->handler->cpu_id));
                 pmm_ptr->pmm_free(pmm_ptr, nexus_init_page, 1);
-                unlock_mcs(
-                        &pmm_ptr->spin_ptr,
-                        &per_cpu(pmm_spin_lock[pmm_ptr->zone->zone_id],
-                                 nexus_root->handler->cpu_id));
+                unlock_mcs(&pmm_ptr->spin_ptr,
+                           &per_cpu(pmm_spin_lock[pmm_ptr->zone->zone_id],
+                                    nexus_root->handler->cpu_id));
         }
         unlock_cas(&nexus_root->nexus_lock);
         return res;
@@ -612,8 +608,8 @@ void nexus_delete_vspace(struct nexus_node* nexus_root, VS_Common* vs)
                          * entries.
                          */
                         pr_error("[ NEXUS ] ERROR: unmap error!\n");
-                        unlock_cas(
-                                &nexus_node_vspace(vspace_node)->nexus_vspace_lock);
+                        unlock_cas(&nexus_node_vspace(vspace_node)
+                                            ->nexus_vspace_lock);
                         goto fail;
                 }
 
@@ -747,8 +743,7 @@ static void* _kernel_get_free_page(size_t page_num,
                                    struct nexus_node* nexus_root)
 {
         if (!nexus_root) {
-                pr_error(
-                        "[ NEXUS ] _kernel_get_free_page: nexus_root NULL\n");
+                pr_error("[ NEXUS ] _kernel_get_free_page: nexus_root NULL\n");
                 return NULL;
         }
         if (!nexus_node_vspace(nexus_root)) {
@@ -757,8 +752,7 @@ static void* _kernel_get_free_page(size_t page_num,
                 return NULL;
         }
         if (!nexus_root->handler) {
-                pr_error(
-                        "[ NEXUS ] _kernel_get_free_page: handler NULL\n");
+                pr_error("[ NEXUS ] _kernel_get_free_page: handler NULL\n");
                 return NULL;
         }
         vaddr free_page_addr, page_addr_end;
@@ -809,14 +803,14 @@ static void* _kernel_get_free_page(size_t page_num,
 
         while (first_entry) {
                 if (first_entry->region_flags & PAGE_ENTRY_HUGE) {
-                        error_t map_res =
-                                map(vs,
-                                    PPN(KERNEL_VIRT_TO_PHY(first_entry->addr)),
-                                    VPN(first_entry->addr),
-                                    2,
-                                    kernel_eflags,
-                                    nexus_root->handler,
-                                    &nexus_node_vspace(nexus_root)->vspace_lock);
+                        error_t map_res = map(
+                                vs,
+                                PPN(KERNEL_VIRT_TO_PHY(first_entry->addr)),
+                                VPN(first_entry->addr),
+                                2,
+                                kernel_eflags,
+                                nexus_root->handler,
+                                &nexus_node_vspace(nexus_root)->vspace_lock);
                         if (map_res) {
                                 pr_error(
                                         "[ NEXUS ] ERROR: kernel get free page map error 2M\n");
@@ -824,14 +818,14 @@ static void* _kernel_get_free_page(size_t page_num,
                         }
                         page_num -= MIDDLE_PAGES;
                 } else {
-                        error_t map_res =
-                                map(vs,
-                                    PPN(KERNEL_VIRT_TO_PHY(first_entry->addr)),
-                                    VPN(first_entry->addr),
-                                    3,
-                                    kernel_eflags,
-                                    nexus_root->handler,
-                                    &nexus_node_vspace(nexus_root)->vspace_lock);
+                        error_t map_res = map(
+                                vs,
+                                PPN(KERNEL_VIRT_TO_PHY(first_entry->addr)),
+                                VPN(first_entry->addr),
+                                3,
+                                kernel_eflags,
+                                nexus_root->handler,
+                                &nexus_node_vspace(nexus_root)->vspace_lock);
                         if (map_res) {
                                 pr_error(
                                         "[ NEXUS ] ERROR: kernel get free page map error\n");
@@ -868,11 +862,12 @@ map_fail:
                 unlink_rmap_list(pmm_ptr->zone,
                                  PPN(KERNEL_VIRT_TO_PHY(node->addr)),
                                  node);
-                ppn_t unmap_ppn = unmap(vs,
-                                        VPN(node->addr),
-                                        0,
-                                        nexus_root->handler,
-                                        &nexus_node_vspace(nexus_root)->vspace_lock);
+                ppn_t unmap_ppn =
+                        unmap(vs,
+                              VPN(node->addr),
+                              0,
+                              nexus_root->handler,
+                              &nexus_node_vspace(nexus_root)->vspace_lock);
                 (void)unmap_ppn;
                 node = nexus_rb_tree_next(node);
         }
@@ -934,13 +929,14 @@ error_t user_fill_range(struct nexus_node* first_entry, int page_num,
                         goto fail;
                 }
                 current_ppn = ppn;
-                error_t map_res = map(vs,
-                                      ppn,
-                                      VPN(first_entry->addr),
-                                      3,
-                                      first_entry->region_flags,
-                                      vspace_node->handler,
-                                      &nexus_node_vspace(vspace_node)->vspace_lock);
+                error_t map_res =
+                        map(vs,
+                            ppn,
+                            VPN(first_entry->addr),
+                            3,
+                            first_entry->region_flags,
+                            vspace_node->handler,
+                            &nexus_node_vspace(vspace_node)->vspace_lock);
                 if (map_res) {
                         pr_error(
                                 "[ NEXUS ] ERROR: user get free page map error\n");
@@ -972,8 +968,9 @@ fail:
                                  vspace_node->handler,
                                  &nexus_node_vspace(vspace_node)->vspace_lock);
                 if (!invalid_ppn(up)) {
-                        lock_mcs(&pmm_ptr->spin_ptr,
-                                 &percpu(pmm_spin_lock[pmm_ptr->zone->zone_id]));
+                        lock_mcs(
+                                &pmm_ptr->spin_ptr,
+                                &percpu(pmm_spin_lock[pmm_ptr->zone->zone_id]));
                         list_del_init(&node->rmap_list);
                         pmm_ptr->pmm_free(pmm_ptr, up, 1);
                         unlock_mcs(
@@ -1064,7 +1061,8 @@ static error_t _unfill_range(void* p, int page_num, VS_Common* vs,
                          * path and cannot meaningfully "roll back" unfill.
                          */
                         pr_error("[ NEXUS ] ERROR: unmap error!\n");
-                        unlock_cas(&nexus_node_vspace(vspace_node)->nexus_vspace_lock);
+                        unlock_cas(&nexus_node_vspace(vspace_node)
+                                            ->nexus_vspace_lock);
                         return -E_RENDEZVOS;
                 }
                 struct pmm* pmm_ptr = vspace_node->handler->pmm;
@@ -1315,8 +1313,8 @@ error_t unfill_phy_page(MemZone* zone, ppn_t ppn, u64 new_entry_addr)
                                    &percpu(pmm_spin_lock[zone->zone_id]));
                         break;
                 }
-                node = container_of(p_ptr->rmap_list.next, struct nexus_node,
-                                    rmap_list);
+                node = container_of(
+                        p_ptr->rmap_list.next, struct nexus_node, rmap_list);
                 list_del_init(&node->rmap_list);
                 unlock_mcs(&pmm_it->spin_ptr,
                            &percpu(pmm_spin_lock[zone->zone_id]));
@@ -1337,8 +1335,7 @@ error_t unfill_phy_page(MemZone* zone, ppn_t ppn, u64 new_entry_addr)
                                         "[ NEXUS ] unfill_phy_page: no VSpace for node\n";
                                 goto relink_rmap_fail;
                         }
-                        vspace_node =
-                                (struct nexus_node*)(vs->_vspace_node);
+                        vspace_node = (struct nexus_node*)(vs->_vspace_node);
                 }
                 if (!vspace_node || !vspace_node->handler) {
                         relink_err =
@@ -1346,11 +1343,12 @@ error_t unfill_phy_page(MemZone* zone, ppn_t ppn, u64 new_entry_addr)
                         goto relink_rmap_fail;
                 }
                 lock_cas(&nexus_node_vspace(node)->nexus_vspace_lock);
-                ppn_t unmap_ppn = unmap(vs,
-                                        VPN(node->addr),
-                                        new_entry_addr,
-                                        vspace_node->handler,
-                                        &nexus_node_vspace(vspace_node)->vspace_lock);
+                ppn_t unmap_ppn =
+                        unmap(vs,
+                              VPN(node->addr),
+                              new_entry_addr,
+                              vspace_node->handler,
+                              &nexus_node_vspace(vspace_node)->vspace_lock);
                 if (ppn != unmap_ppn) {
                         pr_error(
                                 "[ NEXUS ] try to unmap shared page but return ppn is not equal\n");
@@ -1377,11 +1375,9 @@ error_t unfill_phy_page(MemZone* zone, ppn_t ppn, u64 new_entry_addr)
         return REND_SUCCESS;
 
 relink_rmap_fail:
-        lock_mcs(&zone->pmm->spin_ptr,
-                 &percpu(pmm_spin_lock[zone->zone_id]));
+        lock_mcs(&zone->pmm->spin_ptr, &percpu(pmm_spin_lock[zone->zone_id]));
         list_add_head(&node->rmap_list, &p_ptr->rmap_list);
-        unlock_mcs(&zone->pmm->spin_ptr,
-                   &percpu(pmm_spin_lock[zone->zone_id]));
+        unlock_mcs(&zone->pmm->spin_ptr, &percpu(pmm_spin_lock[zone->zone_id]));
         pr_error("%s", relink_err);
         return -E_RENDEZVOS;
 }
@@ -1398,16 +1394,15 @@ int nexus_kernel_page_owner_cpu(vaddr kva)
         if (!p_ptr)
                 return INVALID_CPU_ID;
         /*
-         * Whole-page kmem routing uses only kernel-heap nexus nodes: `cpu_id` on
-         * KERNEL_HEAP_REF (per-CPU nexus_kernel_heap_vs_common). The same PPN may
-         * also appear on rmap via user mappings; those must not define the kmem
-         * owner (not 1:1 with kmem, list order is not authoritative).
+         * Whole-page kmem routing uses only kernel-heap nexus nodes: `cpu_id`
+         * on KERNEL_HEAP_REF (per-CPU nexus_kernel_heap_vs_common). The same
+         * PPN may also appear on rmap via user mappings; those must not define
+         * the kmem owner (not 1:1 with kmem, list order is not authoritative).
          */
         MemZone* zone = p_ptr->sec->zone;
         struct pmm* pmm_ptr = zone->pmm;
         int out = INVALID_CPU_ID;
-        lock_mcs(&pmm_ptr->spin_ptr,
-                 &percpu(pmm_spin_lock[zone->zone_id]));
+        lock_mcs(&pmm_ptr->spin_ptr, &percpu(pmm_spin_lock[zone->zone_id]));
         struct list_entry* list = p_ptr->rmap_list.next;
         while (list != &p_ptr->rmap_list) {
                 struct nexus_node* node =
@@ -1430,7 +1425,6 @@ int nexus_kernel_page_owner_cpu(vaddr kva)
                         break;
                 }
         }
-        unlock_mcs(&pmm_ptr->spin_ptr,
-                   &percpu(pmm_spin_lock[zone->zone_id]));
+        unlock_mcs(&pmm_ptr->spin_ptr, &percpu(pmm_spin_lock[zone->zone_id]));
         return out;
 }

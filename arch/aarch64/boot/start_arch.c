@@ -18,7 +18,7 @@
 #include <rendezvos/time.h>
 
 extern u64 L2_table;
-u32 BSP_ID = 0;
+cpu_id_t BSP_ID = 0;
 struct cpuinfo cpu_info = {0};
 
 extern void syscall(struct trap_frame *syscall_ctx);
@@ -210,7 +210,7 @@ error_t arch_start_platform(struct setup_info *arch_setup_info)
  * core
  * @param cpu_id point out which cpu core we try to start
  */
-error_t arch_start_core(int cpu_id)
+error_t arch_start_core(cpu_id_t cpu_id)
 {
         /*write in the cpuid*/
         per_cpu(cpu_number, cpu_id) = cpu_id;

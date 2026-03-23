@@ -178,7 +178,8 @@ static error_t port_slots_maybe_grow_ht(struct Port_Table* t)
         return e;
 }
 
-/* Tomb-aware shrink heuristic: rebuild ht with smaller capacity to drop tombs. */
+/* Tomb-aware shrink heuristic: rebuild ht with smaller capacity to drop tombs.
+ */
 #define PORT_HT_SHRINK_LOAD_PERCENT 25u
 #define PORT_HT_SHRINK_TOMB_PERCENT 10u
 static void port_slots_maybe_shrink_ht(struct Port_Table* t)
@@ -296,7 +297,8 @@ static error_t port_slots_alloc_slot(struct Port_Table* t, u64* out_slot_idx)
         return REND_SUCCESS;
 }
 
-/* Free one slot back to freelist and bump generation to invalidate old tokens. */
+/* Free one slot back to freelist and bump generation to invalidate old tokens.
+ */
 static void port_slots_free_slot(struct Port_Table* t, u64 slot_idx)
 {
         if (slot_idx >= t->slot_cap)
@@ -339,8 +341,7 @@ void port_slots_table_fini(struct Port_Table* t)
                 const char* name = NULL;
                 for (u64 i = 0; i < t->slot_cap; i++) {
                         struct port_slot* slot = &t->slots[i];
-                        if (slot->used != PORT_SLOT_USED
-                            || !slot->storage.port)
+                        if (slot->used != PORT_SLOT_USED || !slot->storage.port)
                                 continue;
                         port_to_drop = slot->storage.port;
                         slot_idx = i;
@@ -424,7 +425,8 @@ void port_slots_register_abort(struct Port_Table* table, u64 slot_idx,
         port_slots_maybe_shrink_ht(table);
 }
 
-/* Unregister path: remove ht mapping -> unlink/clear slot -> freelist + gen++. */
+/* Unregister path: remove ht mapping -> unlink/clear slot -> freelist + gen++.
+ */
 void port_slots_unregister(struct Port_Table* table, Message_Port_t* port,
                            u64 slot_idx, const char* name)
 {

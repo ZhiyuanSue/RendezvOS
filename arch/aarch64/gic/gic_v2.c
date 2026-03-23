@@ -4,7 +4,7 @@
 #include <rendezvos/mm/vmm.h>
 #include <rendezvos/mm/map_handler.h>
 #include <rendezvos/smp/percpu.h>
-extern u32 BSP_ID;
+extern cpu_id_t BSP_ID;
 /*
  * @brief map the arm gic v2 register to a virtual address
  *

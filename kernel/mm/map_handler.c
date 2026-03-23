@@ -37,14 +37,14 @@ void sys_init_map(void)
                           (union L2_entry *)&MAP_L2_table,
                           flags);
 }
-void init_map(struct map_handler *handler, int cpu_id, struct pmm *pmm)
+void init_map(struct map_handler *handler, cpu_id_t cpu_id, struct pmm *pmm)
 {
         if (!handler || !pmm) {
                 return;
         }
         handler->cpu_id = cpu_id;
         handler->pmm = pmm;
-        vaddr map_vaddr = map_pages + cpu_id * PAGE_SIZE * 4;
+        vaddr map_vaddr = map_pages + (vaddr)cpu_id * PAGE_SIZE * 4;
         size_t alloced_page_number;
         for (int i = 0; i < 4; i++) {
                 handler->map_vaddr[i] = map_vaddr;
@@ -90,8 +90,8 @@ static void util_map(paddr p, vaddr v)
                                           | PAGE_ENTRY_WRITE);
         arch_set_L3_entry(p, v, (union L3_entry *)&MAP_L3_table, flags);
 }
-error_t map(VS_Common *vs, ppn_t ppn, vpn_t vpn, int level, ENTRY_FLAGS_t eflags,
-            struct map_handler *handler, spin_lock *lock)
+error_t map(VS_Common *vs, ppn_t ppn, vpn_t vpn, int level,
+            ENTRY_FLAGS_t eflags, struct map_handler *handler, spin_lock *lock)
 {
         ARCH_PFLAGS_t flags = 0;
         ENTRY_FLAGS_t entry_flags = 0;
@@ -721,20 +721,20 @@ new_vs_root_fail:
         return vs_root;
 }
 
-static void pmm_free_frame(struct map_handler* handler, paddr frame_paddr)
+static void pmm_free_frame(struct map_handler *handler, paddr frame_paddr)
 {
         if (!handler || !handler->pmm || !frame_paddr)
                 return;
-        struct pmm* pmm_ptr = handler->pmm;
-        MemZone* zone = pmm_ptr->zone;
+        struct pmm *pmm_ptr = handler->pmm;
+        MemZone *zone = pmm_ptr->zone;
         if (!pmm_ptr || !zone)
                 return;
 
         lock_mcs(&pmm_ptr->spin_ptr,
-                  &per_cpu(pmm_spin_lock[zone->zone_id], handler->cpu_id));
+                 &per_cpu(pmm_spin_lock[zone->zone_id], handler->cpu_id));
         (void)pmm_ptr->pmm_free(pmm_ptr, PPN(frame_paddr), 1);
         unlock_mcs(&pmm_ptr->spin_ptr,
-                    &per_cpu(pmm_spin_lock[zone->zone_id], handler->cpu_id));
+                   &per_cpu(pmm_spin_lock[zone->zone_id], handler->cpu_id));
 }
 
 error_t del_vs_root(paddr vs_root_paddr, struct map_handler *handler)
@@ -742,17 +742,17 @@ error_t del_vs_root(paddr vs_root_paddr, struct map_handler *handler)
         if (!handler || !handler->pmm || !vs_root_paddr)
                 return -E_IN_PARAM;
 
-        const u32 pt_entries_per_table =
-                (u32)(PAGE_SIZE / PTE_SIZE);
+        const u32 pt_entries_per_table = (u32)(PAGE_SIZE / PTE_SIZE);
 
         /* free empty siblings, keep non-empty/unsupported paths. */
         util_map(vs_root_paddr, handler->map_vaddr[0]);
-        union L0_entry* l0_table = (union L0_entry*)handler->map_vaddr[0];
+        union L0_entry *l0_table = (union L0_entry *)handler->map_vaddr[0];
 
         bool root_nonempty = false;
 
         /* User canonical space: L0 scans only the lower half. */
-        for (u32 l0_index = 0; l0_index < pt_entries_per_table / 2; l0_index++) {
+        for (u32 l0_index = 0; l0_index < pt_entries_per_table / 2;
+             l0_index++) {
                 ENTRY_FLAGS_t l0_flags = arch_encode_flags(
                         0, (ARCH_PFLAGS_t)l0_table[l0_index].entry);
                 if (!(l0_flags & PAGE_ENTRY_VALID))
@@ -760,11 +760,13 @@ error_t del_vs_root(paddr vs_root_paddr, struct map_handler *handler)
 
                 paddr l1_table_paddr = L0_entry_addr(l0_table[l0_index]);
                 util_map(l1_table_paddr, handler->map_vaddr[1]);
-                union L1_entry* l1_table = (union L1_entry*)handler->map_vaddr[1];
+                union L1_entry *l1_table =
+                        (union L1_entry *)handler->map_vaddr[1];
 
                 bool l1_nonempty = false;
 
-                for (u32 l1_index = 0; l1_index < pt_entries_per_table; l1_index++) {
+                for (u32 l1_index = 0; l1_index < pt_entries_per_table;
+                     l1_index++) {
                         ENTRY_FLAGS_t l1_flags = arch_encode_flags(
                                 1, (ARCH_PFLAGS_t)l1_table[l1_index].entry);
                         if (!(l1_flags & PAGE_ENTRY_VALID))
@@ -777,37 +779,46 @@ error_t del_vs_root(paddr vs_root_paddr, struct map_handler *handler)
                                 continue;
                         }
 
-                        paddr l2_table_paddr = L1_entry_addr(l1_table[l1_index]);
+                        paddr l2_table_paddr =
+                                L1_entry_addr(l1_table[l1_index]);
                         util_map(l2_table_paddr, handler->map_vaddr[2]);
-                        union L2_entry* l2_table =
-                                (union L2_entry*)handler->map_vaddr[2];
+                        union L2_entry *l2_table =
+                                (union L2_entry *)handler->map_vaddr[2];
 
                         bool l2_nonempty = false;
 
-                        for (u32 l2_index = 0; l2_index < pt_entries_per_table; l2_index++) {
+                        for (u32 l2_index = 0; l2_index < pt_entries_per_table;
+                             l2_index++) {
                                 ENTRY_FLAGS_t l2_flags = arch_encode_flags(
                                         2,
                                         (ARCH_PFLAGS_t)l2_table[l2_index].entry);
                                 if (!(l2_flags & PAGE_ENTRY_VALID))
                                         continue;
 
-                                /* Unsupported huge/final-level: keep this path. */
+                                /* Unsupported huge/final-level: keep this path.
+                                 */
                                 if (is_final_level_pt(2, l2_flags)) {
                                         root_nonempty = true;
                                         l2_nonempty = true;
                                         continue;
                                 }
 
-                                paddr l3_table_paddr = L2_entry_addr(l2_table[l2_index]);
+                                paddr l3_table_paddr =
+                                        L2_entry_addr(l2_table[l2_index]);
                                 util_map(l3_table_paddr, handler->map_vaddr[3]);
-                                union L3_entry* l3_table =
-                                        (union L3_entry*)handler->map_vaddr[3];
+                                union L3_entry *l3_table =
+                                        (union L3_entry *)handler->map_vaddr[3];
 
                                 bool l3_nonempty = false;
-                                for (u32 l3_index = 0; l3_index < pt_entries_per_table; l3_index++) {
-                                        ENTRY_FLAGS_t l3_flags = arch_encode_flags(
-                                                3,
-                                                (ARCH_PFLAGS_t)l3_table[l3_index].entry);
+                                for (u32 l3_index = 0;
+                                     l3_index < pt_entries_per_table;
+                                     l3_index++) {
+                                        ENTRY_FLAGS_t l3_flags =
+                                                arch_encode_flags(
+                                                        3,
+                                                        (ARCH_PFLAGS_t)
+                                                                l3_table[l3_index]
+                                                                        .entry);
                                         if (l3_flags & PAGE_ENTRY_VALID) {
                                                 l3_nonempty = true;
                                                 break;
@@ -818,7 +829,8 @@ error_t del_vs_root(paddr vs_root_paddr, struct map_handler *handler)
                                         root_nonempty = true;
                                         l2_nonempty = true;
                                 } else {
-                                        /* Empty L3 => free it, clear parent entry. */
+                                        /* Empty L3 => free it, clear parent
+                                         * entry. */
                                         pmm_free_frame(handler, l3_table_paddr);
                                         l2_table[l2_index].entry = 0;
                                         l2_table[l2_index].paddr = 0;

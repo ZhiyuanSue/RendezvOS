@@ -51,17 +51,18 @@ void delete_message_port_structure(Message_Port_t* port)
         /*TODO: clean the queue*/
         struct allocator* cpu_kallocator = percpu(kallocator);
         if (cpu_kallocator && !cpu_kallocator->m_free) {
-                pr_error("[port] delete_message_port_structure: m_free is NULL cpu=%x port_hi=%x port_lo=%x\n",
-                         (u32)percpu(cpu_number),
-                         (u32)(((u64)(uintptr_t)port >> 32) & 0xffffffff),
-                         (u32)((u64)(uintptr_t)port & 0xffffffff));
+                pr_error(
+                        "[port] delete_message_port_structure: m_free is NULL cpu=%x port_hi=%x port_lo=%x\n",
+                        (u32)percpu(cpu_number),
+                        (u32)(((u64)(uintptr_t)port >> 32) & 0xffffffff),
+                        (u32)((u64)(uintptr_t)port & 0xffffffff));
         }
         if (cpu_kallocator)
                 cpu_kallocator->m_free(cpu_kallocator, port);
 }
 
 bool port_table_port_is_live(struct Port_Table* table, const char* name,
-                            Message_Port_t* port)
+                             Message_Port_t* port)
 {
         if (!table || !name || !port)
                 return false;
@@ -86,11 +87,12 @@ static void free_message_port_ref_real(ref_count_t* ref_count_ptr)
          * register/unregister is the only legal path to add/remove entries.
          */
         if (port->registered || port->table) {
-                pr_error("[port] free_ref still registered name=%s reg=%x table_hi=%x table_lo=%x\n",
-                         port->name,
-                         (u32)port->registered,
-                         (u32)(((u64)(uintptr_t)port->table >> 32) & 0xffffffff),
-                         (u32)((u64)(uintptr_t)port->table & 0xffffffff));
+                pr_error(
+                        "[port] free_ref still registered name=%s reg=%x table_hi=%x table_lo=%x\n",
+                        port->name,
+                        (u32)port->registered,
+                        (u32)(((u64)(uintptr_t)port->table >> 32) & 0xffffffff),
+                        (u32)((u64)(uintptr_t)port->table & 0xffffffff));
         }
 
         delete_message_port_structure(port);
@@ -191,8 +193,8 @@ Message_Port_t* port_table_lookup(struct Port_Table* table, const char* name)
 }
 
 Message_Port_t* port_table_lookup_with_token(struct Port_Table* table,
-                                            const char* name,
-                                            port_table_slot_token_t* tok_out)
+                                             const char* name,
+                                             port_table_slot_token_t* tok_out)
 {
         if (!table || !name)
                 return NULL;
@@ -200,8 +202,8 @@ Message_Port_t* port_table_lookup_with_token(struct Port_Table* table,
 }
 
 Message_Port_t* port_table_resolve_token(struct Port_Table* table,
-                                        const port_table_slot_token_t* tok,
-                                        const char* name)
+                                         const port_table_slot_token_t* tok,
+                                         const char* name)
 {
         if (!table || !name)
                 return NULL;

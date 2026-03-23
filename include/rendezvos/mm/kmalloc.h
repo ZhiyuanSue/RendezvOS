@@ -115,5 +115,4 @@ struct allocator* kinit(struct nexus_node* nexus_root, int allocator_id);
 /* Drain cross-CPU kfree work (page MSQ + buffer MSQ) on this CPU. */
 void kalloc_process_cross_cpu_frees(void);
 
-
 #endif

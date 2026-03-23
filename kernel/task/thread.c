@@ -176,8 +176,8 @@ Thread_Base* create_thread(void* __func, size_t append_thread_info_len,
                            int nr_parameter, ...)
 {
         struct allocator* cpu_kallocator = percpu(kallocator);
-        Thread_Base* thread = new_thread_structure(cpu_kallocator,
-                                                 append_thread_info_len);
+        Thread_Base* thread =
+                new_thread_structure(cpu_kallocator, append_thread_info_len);
         if (!thread) {
                 goto new_thread_structure_error;
         }
@@ -243,17 +243,19 @@ void delete_thread(Thread_Base* thread)
                 struct allocator* cpu_kallocator = percpu(kallocator);
                 if (cpu_kallocator)
                         cpu_kallocator->m_free(cpu_kallocator,
-                                                 thread_stack_start);
+                                               thread_stack_start);
         }
         e = del_thread_from_task(thread);
         if (e) {
                 pr_error(
                         "[ Error ] delete thread from task fail, please check\n");
         }
-        e = del_thread_from_manager(thread);
-        if (e) {
-                pr_error(
-                        "[ Error ] delete thread from manager fail,please check\n");
+        if (thread->tm) {
+                e = del_thread_from_manager(thread);
+                if (e) {
+                        pr_error(
+                                "[ Error ] delete thread from manager fail,please check\n");
+                }
         }
         ref_put(&thread->refcount, free_thread_ref);
         return;
@@ -293,8 +295,7 @@ static u64 thread_port_name_hash(const char* name)
         return h;
 }
 
-static bool thread_port_cache_slot_occupied(struct thread_port_cache* c,
-                                                u32 i)
+static bool thread_port_cache_slot_occupied(struct thread_port_cache* c, u32 i)
 {
         return c && i < THREAD_MAX_KNOWN_PORTS
                && c->entries[i].slot_index != PORT_TABLE_SLOT_INDEX_INVALID;
@@ -313,8 +314,8 @@ static void thread_port_cache_evict(struct thread_port_cache* c, u32 idx)
 }
 
 static void thread_port_cache_fill_entry(struct thread_port_cache* c, u32 idx,
-                                        const char* name,
-                                        const port_table_slot_token_t* tok)
+                                         const char* name,
+                                         const port_table_slot_token_t* tok)
 {
         /* O(1) LRU update: uses wrap-safe u16 age via lru_clock. */
         c->lru_clock++;
@@ -330,7 +331,7 @@ static void thread_port_cache_fill_entry(struct thread_port_cache* c, u32 idx,
 }
 
 static void thread_port_cache_bump_lru(struct thread_port_cache* c,
-                                      u32 found_idx)
+                                       u32 found_idx)
 {
         if (!thread_port_cache_slot_occupied(c, found_idx))
                 return;
@@ -339,7 +340,7 @@ static void thread_port_cache_bump_lru(struct thread_port_cache* c,
 }
 
 static Message_Port_t* thread_port_cache_lookup(Thread_Base* thread,
-                                               const char* name)
+                                                const char* name)
 {
         struct thread_port_cache* c = &thread->port_cache;
         u64 target_hash = thread_port_name_hash(name);
@@ -354,9 +355,7 @@ static Message_Port_t* thread_port_cache_lookup(Thread_Base* thread,
                 tok.slot_index = c->entries[i].slot_index;
                 tok.slot_gen = c->entries[i].slot_gen;
                 Message_Port_t* port =
-                        port_table_resolve_token(global_port_table,
-                                                 &tok,
-                                                 name);
+                        port_table_resolve_token(global_port_table, &tok, name);
                 if (!port) {
                         /* Stale token (gen mismatch / unregistered) */
                         thread_port_cache_evict(c, i);
@@ -370,7 +369,7 @@ static Message_Port_t* thread_port_cache_lookup(Thread_Base* thread,
 }
 
 static void thread_port_cache_record(Thread_Base* thread, const char* name,
-                                    const port_table_slot_token_t* tok)
+                                     const port_table_slot_token_t* tok)
 {
         struct thread_port_cache* c = &thread->port_cache;
         u64 target_hash = thread_port_name_hash(name);

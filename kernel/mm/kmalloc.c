@@ -35,7 +35,7 @@ static int bytes_to_pages(size_t Bytes)
 static void page_chunk_rb_tree_insert(struct page_chunk_node* node,
                                       struct rb_root* page_chunk_root)
 {
-        struct rb_node **new = &page_chunk_root->rb_root, *parent = NULL;
+        struct rb_node** new = &page_chunk_root->rb_root, *parent = NULL;
         u64 key = node->page_addr;
         while (*new) {
                 parent = *new;
@@ -465,8 +465,8 @@ static void free_kpage_msg(ref_count_t* refcount)
                 pr_error("[ERROR] free_kpage_msg: no percpu kallocator\n");
                 goto free_info;
         }
-        error_t e = kfree_page_local(k_allocator_p,
-                                     (void*)free_info->page_vaddr);
+        error_t e =
+                kfree_page_local(k_allocator_p, (void*)free_info->page_vaddr);
         if (e) {
                 pr_error(
                         "[kfree_page_msq] free_kpage_msg: kfree_page_local failed e=%d page_vaddr=%x src_cpu=%u\n",

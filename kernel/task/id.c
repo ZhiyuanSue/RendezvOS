@@ -13,13 +13,15 @@ void init_id_manager(Id_Manager* idmng, spin_lock_t* cpu_spin_lock)
         idmng->spin_ptr = NULL;
         idmng->cpu_spin_lock = cpu_spin_lock;
 }
-i64 get_new_id(Id_Manager* idmng)
+id_t get_new_id(Id_Manager* idmng)
 {
         if (!idmng) {
                 return INVALID_ID;
         }
         lock_mcs(&idmng->spin_ptr, &percpu(*(idmng->cpu_spin_lock)));
-        i64 id = idmng->id++;
+        id_t id = idmng->id;
+        if (id != INVALID_ID)
+                idmng->id = id + 1;
         unlock_mcs(&idmng->spin_ptr, &percpu(*(idmng->cpu_spin_lock)));
         return id;
 }

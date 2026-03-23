@@ -17,7 +17,7 @@ void prepare_per_cpu_tss(struct nexus_node* nexus_root)
         ltr(&tmp_sel);
 }
 void prepare_per_cpu_tss_desc(union desc* desc_lower, union desc* desc_upper,
-                              int cpu_id)
+                              cpu_id_t cpu_id)
 {
         SET_TSS_LDT_DESC_LOWER(((*desc_lower).tss_ldt_desc_lower),
                                (vaddr)(&per_cpu(cpu_tss, cpu_id)),

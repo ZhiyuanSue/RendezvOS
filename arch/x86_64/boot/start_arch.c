@@ -21,7 +21,7 @@
 
 extern u32 max_phy_addr_width;
 struct cpuinfo cpu_info = {0};
-u32 BSP_ID = 0;
+cpu_id_t BSP_ID = 0;
 extern struct pseudo_descriptor gdt_desc;
 extern union desc gdt[GDT_SIZE];
 void prepare_per_cpu_new_gdt(struct pseudo_descriptor *desc, union desc *gdt);
@@ -63,7 +63,7 @@ static void init_syscall(void)
         /*set the MSR_IA32_LSTAR register*/
         arch_set_syscall_entry();
 }
-static void set_gdt(int cpu_id)
+static void set_gdt(cpu_id_t cpu_id)
 {
         union desc *per_cpu_gdt = per_cpu(gdt, cpu_id);
         /*gdt*/
@@ -160,7 +160,7 @@ error_t arch_cpu_info(struct setup_info *arch_setup_info)
 {
         (void)arch_setup_info;
         get_cpu_info();
-        BSP_ID = cpu_info.APICID;
+        BSP_ID = (cpu_id_t)cpu_info.APICID;
         return REND_SUCCESS;
 }
 struct pci_node *pci_tree_build_callback(u8 bus, u8 device, u8 func,
@@ -214,7 +214,7 @@ arch_start_platform_error:
  * core
  * @param cpu_id point out which cpu core we try to start
  */
-error_t arch_start_core(int cpu_id)
+error_t arch_start_core(cpu_id_t cpu_id)
 {
         set_gdt(cpu_id);
         wrmsr(MSR_KERNEL_GS_BASE, 0);

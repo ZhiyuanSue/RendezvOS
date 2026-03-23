@@ -30,8 +30,8 @@ static atomic64_t ebr_bad_free_func_log_cnt;
 
 #if EBR_ENABLE_WATERMARK
 static const u32 ebr_wm_levels[] = {
-        1,    2,    4,    8,    12,   16,   24,   32,   48,   64,
-        96,   128,  192,  256,  384,  512,  1024, 2048, 4096, 8192,
+        1,  2,   4,   8,   12,  16,  24,   32,   48,   64,
+        96, 128, 192, 256, 384, 512, 1024, 2048, 4096, 8192,
 };
 static const u32 ebr_wm_level_count =
         sizeof(ebr_wm_levels) / sizeof(ebr_wm_levels[0]);
@@ -68,9 +68,10 @@ static inline void ebr_update_watermark(u32 live)
         i64 old_peak = atomic64_load(
                 (volatile const u64*)&percpu(ebr_retired_peak).counter);
         while ((u64)old_peak < (u64)live) {
-                if (atomic64_cas((volatile u64*)&percpu(ebr_retired_peak).counter,
-                                 (u64)old_peak,
-                                 (u64)live)
+                if (atomic64_cas(
+                            (volatile u64*)&percpu(ebr_retired_peak).counter,
+                            (u64)old_peak,
+                            (u64)live)
                     == (u64)old_peak) {
                         break;
                 }
@@ -100,7 +101,7 @@ static inline void ebr_update_watermark(u32 live)
                 } else {
                         mask = atomic64_load(
                                 (volatile const u64*)&percpu(ebr_wm_cross_mask)
-                                         .counter);
+                                        .counter);
                 }
         }
 #endif
@@ -138,13 +139,15 @@ void ebr_exit(void)
 
 static u64 ebr_compute_safe_epoch(void)
 {
-        u64 safe = atomic64_load((volatile const u64*)&ebr_global_epoch.counter);
+        u64 safe =
+                atomic64_load((volatile const u64*)&ebr_global_epoch.counter);
         int ncpu = NR_CPU;
         if (ncpu <= 0)
                 ncpu = 1;
         for (int i = 0; i < ncpu; i++) {
-                if (atomic64_load((volatile const u64*)&per_cpu(ebr_active_flag, i)
-                                                           .counter)
+                if (atomic64_load(
+                            (volatile const u64*)&per_cpu(ebr_active_flag, i)
+                                    .counter)
                     == 0)
                         continue;
                 u64 le = atomic64_load(
@@ -172,19 +175,20 @@ void ebr_try_reclaim(void)
                 ref_count_t* ref = recs[i].ref;
                 void (*free_func)(ref_count_t*) = recs[i].free_func;
 
-                if (ref && free_func
-                    && ((u64)(uintptr_t)free_func) < 0x1000) {
-                        if (atomic64_fetch_inc(&ebr_bad_free_func_log_cnt) < 5) {
-                                pr_error("[ebr] bad free_func ptr slot=%x cpu=%x ref_hi=%x ref_lo=%x fn_hi=%x fn_lo=%x\n",
-                                         i,
-                                         (u32)percpu(cpu_number),
-                                         (u32)(((u64)(uintptr_t)ref >> 32)
-                                               & 0xffffffff),
-                                         (u32)((u64)(uintptr_t)ref & 0xffffffff),
-                                         (u32)(((u64)(uintptr_t)free_func >> 32)
-                                               & 0xffffffff),
-                                         (u32)((u64)(uintptr_t)free_func
-                                               & 0xffffffff));
+                if (ref && free_func && ((u64)(uintptr_t)free_func) < 0x1000) {
+                        if (atomic64_fetch_inc(&ebr_bad_free_func_log_cnt)
+                            < 5) {
+                                pr_error(
+                                        "[ebr] bad free_func ptr slot=%x cpu=%x ref_hi=%x ref_lo=%x fn_hi=%x fn_lo=%x\n",
+                                        i,
+                                        (u32)percpu(cpu_number),
+                                        (u32)(((u64)(uintptr_t)ref >> 32)
+                                              & 0xffffffff),
+                                        (u32)((u64)(uintptr_t)ref & 0xffffffff),
+                                        (u32)(((u64)(uintptr_t)free_func >> 32)
+                                              & 0xffffffff),
+                                        (u32)((u64)(uintptr_t)free_func
+                                              & 0xffffffff));
                         }
                 }
                 recs[i].used = false;
@@ -227,7 +231,8 @@ void ebr_retire_ref(ref_count_t* ref, void (*free_func)(ref_count_t*))
                 atomic64_inc(&percpu(ebr_retired_count));
                 atomic64_inc(&percpu(ebr_retire_ops));
                 ebr_update_watermark((u32)atomic64_load(
-                        (volatile const u64*)&percpu(ebr_retired_count).counter));
+                        (volatile const u64*)&percpu(ebr_retired_count)
+                                .counter));
                 ebr_try_reclaim();
                 return;
         }
@@ -244,7 +249,8 @@ void ebr_retire_ref(ref_count_t* ref, void (*free_func)(ref_count_t*))
                 atomic64_inc(&percpu(ebr_retired_count));
                 atomic64_inc(&percpu(ebr_retire_ops));
                 ebr_update_watermark((u32)atomic64_load(
-                        (volatile const u64*)&percpu(ebr_retired_count).counter));
+                        (volatile const u64*)&percpu(ebr_retired_count)
+                                .counter));
                 ebr_try_reclaim();
                 return;
         }
@@ -257,10 +263,11 @@ void ebr_retire_ref(ref_count_t* ref, void (*free_func)(ref_count_t*))
         if (atomic64_fetch_inc(&ebr_overflow_log_cnt) < 8) {
                 u64 live = (u64)atomic64_load(
                         (volatile const u64*)&percpu(ebr_retired_count).counter);
-                pr_error("[ebr] retire overflow cpu=%u retired_live=%x leaking one node "
-                         "(raise EBR_RETIRE_SLOTS or fix churn)\n",
-                         (u32)percpu(cpu_number),
-                         (u32)(live & 0xffffffff));
+                pr_error(
+                        "[ebr] retire overflow cpu=%u retired_live=%x leaking one node "
+                        "(raise EBR_RETIRE_SLOTS or fix churn)\n",
+                        (u32)percpu(cpu_number),
+                        (u32)(live & 0xffffffff));
         }
         ebr_try_reclaim();
 }

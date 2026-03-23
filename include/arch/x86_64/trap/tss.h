@@ -2,6 +2,7 @@
 #define _X86_TSS_H_
 #include <common/types.h>
 #include <rendezvos/mm/nexus.h>
+#include <rendezvos/smp/cpu_id.h>
 #include <arch/x86_64/desc.h>
 /*
         here we only use ia-32e mode tss
@@ -60,5 +61,5 @@ struct TSS {
 
 void prepare_per_cpu_tss(struct nexus_node* nexus_root);
 void prepare_per_cpu_tss_desc(union desc* desc_lower, union desc* desc_upper,
-                              int cpu_id);
+                              cpu_id_t cpu_id);
 #endif

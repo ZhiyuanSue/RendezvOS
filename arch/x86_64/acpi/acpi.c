@@ -4,7 +4,7 @@
 #include <rendezvos/mm/map_handler.h>
 #include <rendezvos/error.h>
 #include <rendezvos/smp/percpu.h>
-extern u32 BSP_ID;
+extern cpu_id_t BSP_ID;
 struct acpi_table_fadt *fadt_table;
 extern struct acpi_table_madt *madt_table;
 static inline error_t parser_facp(void)

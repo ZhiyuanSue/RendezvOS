@@ -20,7 +20,7 @@ void free_ms_test_data(ref_count_t* refcount)
                 container_of(node, struct ms_test_data, ms_node);
         percpu(kallocator)->m_free(percpu(kallocator), test_data);
 }
-extern u32 BSP_ID;
+extern cpu_id_t BSP_ID;
 extern int NR_CPU;
 #define percpu_ms_queue_test_number 100000
 #ifdef NR_CPUS
@@ -198,7 +198,8 @@ bool smp_ms_queue_dyn_alloc_check(void)
 {
         if (smp_ms_queue_active_cpus < 2)
                 return true;
-        return cas_add_value == percpu_ms_queue_test_number * (smp_ms_queue_active_cpus / 2);
+        return cas_add_value
+               == percpu_ms_queue_test_number * (smp_ms_queue_active_cpus / 2);
 }
 
 /* Test for msq_enqueue_check_tail and msq_dequeue_check_head */

@@ -19,7 +19,7 @@
 /** Invalid slot index for freelist (never a valid table index). */
 #define PORT_TABLE_SLOT_FREE_INVALID U64_MAX
 /* Invalid token slot index (never a valid slot index). */
-#define PORT_TABLE_SLOT_INDEX_INVALID ((u32)-1)
+#define PORT_TABLE_SLOT_INDEX_INVALID ((u32) - 1)
 
 #define PORT_NAME_LEN_MAX 64
 
@@ -42,7 +42,8 @@ struct Msg_Port {
 
 struct port_slot {
         u64 gen;
-        /* Use named constants PORT_SLOT_FREE / PORT_SLOT_USED for readability. */
+        /* Use named constants PORT_SLOT_FREE / PORT_SLOT_USED for readability.
+         */
         u64 used;
         /*
          * Slot storage (not an IPC message body). Interpretation:
@@ -60,14 +61,17 @@ struct port_slot {
 
 /*
  * Table sizes and indices are u64 on 64-bit targets: consistent with LP64,
- * no practical RAM for billions of slots, and i64 hash buckets (sentinel + index).
+ * no practical RAM for billions of slots, and i64 hash buckets (sentinel +
+ * index).
  */
 struct Port_Table {
         spin_lock lock; /* 保护整个表 */
-        struct allocator* alloc; /* slot/ht 内存：与建表时 CPU 的 kallocator 一致 */
+        struct allocator* alloc; /* slot/ht 内存：与建表时 CPU 的 kallocator
+                                    一致 */
         struct port_slot* slots;
         u64 slot_cap;
-        u64 free_head; /* freelist head; PORT_TABLE_SLOT_FREE_INVALID if empty */
+        u64 free_head; /* freelist head; PORT_TABLE_SLOT_FREE_INVALID if empty
+                        */
         u64 live_ports; /* used slots count */
         i64* ht; /* open addressing: PORT_HT_EMPTY/TOMB, else slot index */
         u64 ht_cap; /* power of 2 */
@@ -108,18 +112,18 @@ Message_Port_t* port_table_lookup(struct Port_Table* table, const char* name);
  * for per-thread cache. tok_out may be NULL.
  */
 Message_Port_t* port_table_lookup_with_token(struct Port_Table* table,
-                                            const char* name,
-                                            port_table_slot_token_t* tok_out);
+                                             const char* name,
+                                             port_table_slot_token_t* tok_out);
 /*
  * Resolve a cached token under the table lock; on success returns with the same
  * ref semantics as port_table_lookup. If `tok` is NULL, behaves like
  * port_table_lookup.
  */
 Message_Port_t* port_table_resolve_token(struct Port_Table* table,
-                                        const port_table_slot_token_t* tok,
-                                        const char* name);
+                                         const port_table_slot_token_t* tok,
+                                         const char* name);
 bool port_table_port_is_live(struct Port_Table* table, const char* name,
-                            Message_Port_t* port);
+                             Message_Port_t* port);
 error_t register_port(struct Port_Table* table, Message_Port_t* port);
 error_t unregister_port(struct Port_Table* table, const char* name);
 void delete_port_table_structure(struct Port_Table* table);

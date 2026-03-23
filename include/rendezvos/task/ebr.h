@@ -42,8 +42,7 @@
 void ebr_enter(void);
 void ebr_exit(void);
 void ebr_try_reclaim(void);
-void ebr_retire_ref(ref_count_t* ref,
-                    void (*free_func)(ref_count_t*));
+void ebr_retire_ref(ref_count_t* ref, void (*free_func)(ref_count_t*));
 void ebr_dump_stats(void);
 
 #endif

@@ -54,11 +54,11 @@ extern Task_Manager* core_tm;
                 struct list_entry sched_task_list; \
         };
 #define TCB_COMMON                          \
-        i64 pid;                            \
+        pid_t pid;                          \
         Task_Manager* tm;                   \
         i64 thread_number;                  \
         struct list_entry thread_head_node; \
-        VS_Common* vs;                     \
+        VS_Common* vs;                      \
         TASK_SCHE_COMMON
 /* as the base class of tcb */
 typedef struct {
@@ -93,7 +93,7 @@ extern u64 thread_kstack_page_num;
         };
 #define THREAD_COMMON                                               \
         char* name;                                                 \
-        i64 tid;                                                    \
+        tid_t tid;                                                  \
         u64 flags;                                                  \
         Tcb_Base* belong_tcb;                                       \
         Task_Manager* tm;                                           \

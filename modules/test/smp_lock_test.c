@@ -5,7 +5,7 @@
 
 #define TEST_ROUND 100000
 
-extern u32 BSP_ID;
+extern cpu_id_t BSP_ID;
 extern int NR_CPU;
 static spin_lock spin_ptr = NULL;
 DEFINE_PER_CPU(struct spin_lock_t, test_spin_lock);

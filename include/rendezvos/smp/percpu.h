@@ -2,6 +2,7 @@
 #define _RENDEZVOS_PER_CPU_
 #include <common/types.h>
 #include <rendezvos/limits.h>
+#include <rendezvos/smp/cpu_id.h>
 
 #define PER_CPU_SECTION ".percpu..data"
 
@@ -10,7 +11,7 @@
 
 extern char _per_cpu_end, _per_cpu_start;
 extern u64 __per_cpu_offset[RENDEZVOS_MAX_CPU_NUMBER];
-extern u32 cpu_number;
+extern cpu_id_t cpu_number;
 #define per_cpu_offset(x) (__per_cpu_offset[x])
 
 #define per_cpu(var, cpu)                                                \
@@ -25,7 +26,7 @@ extern u32 cpu_number;
 #define put_cpu_var(var)
 // TODO
 
-void arch_enable_percpu(i32 cpu_id);
+void arch_enable_percpu(cpu_id_t cpu_id);
 vaddr get_per_cpu_base();
 void reserve_per_cpu_region(paddr* phy_kernel_end);
 void calculate_per_cpu_offset();

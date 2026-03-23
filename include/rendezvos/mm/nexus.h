@@ -52,11 +52,11 @@ struct nexus_node {
  * role where it matters. These helpers only read `vs_common` / `VS_Common`
  * (discriminated by `vs_common->type`).
  */
-static inline bool nexus_node_vs_is_kernel_kref(const struct nexus_node* nexus_node)
+static inline bool
+nexus_node_vs_is_kernel_kref(const struct nexus_node* nexus_node)
 {
         return nexus_node->vs_common
-               && nexus_node->vs_common->type
-                          == (u64)VS_COMMON_KERNEL_HEAP_REF;
+               && nexus_node->vs_common->type == (u64)VS_COMMON_KERNEL_HEAP_REF;
 }
 
 static inline VS_Common* nexus_node_vspace(const struct nexus_node* nexus_node)
