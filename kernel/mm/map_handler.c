@@ -320,14 +320,12 @@ error_t map(VS_Common *vs, ppn_t ppn, vpn_t vpn, int level,
                                 struct pmm *pmm_ptr = handler->pmm;
                                 MemZone *zone = pmm_ptr->zone;
                                 lock_mcs(&pmm_ptr->spin_ptr,
-                                         &per_cpu(pmm_spin_lock[zone->zone_id],
-                                                  handler->cpu_id));
+                                         &percpu(pmm_spin_lock[zone->zone_id]));
                                 pmm_res = pmm_ptr->pmm_free(
                                         pmm_ptr, (i64)PPN(next_level_paddr), 1);
                                 unlock_mcs(
                                         &pmm_ptr->spin_ptr,
-                                        &per_cpu(pmm_spin_lock[zone->zone_id],
-                                                 handler->cpu_id));
+                                        &percpu(pmm_spin_lock[zone->zone_id]));
                                 if (pmm_res) {
                                         pr_error(
                                                 "[ MAP ] pmm free error with a ppn 0x%x\n",
@@ -445,13 +443,11 @@ map_fail:
         for (int i = 0; i < 4; i++) {
                 if (handler->handler_ppn[i] == -E_RENDEZVOS) {
                         lock_mcs(&pmm_ptr->spin_ptr,
-                                 &per_cpu(pmm_spin_lock[zone->zone_id],
-                                          handler->cpu_id));
+                                 &percpu(pmm_spin_lock[zone->zone_id]));
                         handler->handler_ppn[i] = pmm_ptr->pmm_alloc(
                                 pmm_ptr, 1, &alloced_page_number);
                         unlock_mcs(&pmm_ptr->spin_ptr,
-                                   &per_cpu(pmm_spin_lock[zone->zone_id],
-                                            handler->cpu_id));
+                                   &percpu(pmm_spin_lock[zone->zone_id]));
                 }
         }
         return res;
@@ -709,13 +705,11 @@ paddr new_vs_root(paddr old_vs_root_paddr, struct map_handler *handler)
                 struct pmm *pmm_ptr = handler->pmm;
                 MemZone *zone = pmm_ptr->zone;
                 lock_mcs(&pmm_ptr->spin_ptr,
-                         &per_cpu(pmm_spin_lock[zone->zone_id],
-                                  handler->cpu_id));
+                         &percpu(pmm_spin_lock[zone->zone_id]));
                 handler->handler_ppn[0] =
                         pmm_ptr->pmm_alloc(pmm_ptr, 1, &alloced_page_number);
                 unlock_mcs(&pmm_ptr->spin_ptr,
-                           &per_cpu(pmm_spin_lock[zone->zone_id],
-                                    handler->cpu_id));
+                           &percpu(pmm_spin_lock[zone->zone_id]));
         }
 new_vs_root_fail:
         return vs_root;
@@ -731,10 +725,10 @@ static void pmm_free_frame(struct map_handler *handler, paddr frame_paddr)
                 return;
 
         lock_mcs(&pmm_ptr->spin_ptr,
-                 &per_cpu(pmm_spin_lock[zone->zone_id], handler->cpu_id));
+                 &percpu(pmm_spin_lock[zone->zone_id]));
         (void)pmm_ptr->pmm_free(pmm_ptr, PPN(frame_paddr), 1);
         unlock_mcs(&pmm_ptr->spin_ptr,
-                   &per_cpu(pmm_spin_lock[zone->zone_id], handler->cpu_id));
+                   &percpu(pmm_spin_lock[zone->zone_id]));
 }
 
 error_t del_vs_root(paddr vs_root_paddr, struct map_handler *handler)
