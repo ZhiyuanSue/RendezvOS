@@ -63,7 +63,7 @@ nexus_node_vs_is_kernel_kref(const struct nexus_node* nexus_node)
 
 static inline VS_Common* nexus_node_vspace(const struct nexus_node* nexus_node)
 {
-        if (!nexus_node->vs_common)
+        if (!nexus_node || !nexus_node->vs_common)
                 return NULL;
         switch ((enum vs_common_kind)nexus_node->vs_common->type) {
         case VS_COMMON_KERNEL_HEAP_REF:
@@ -73,6 +73,14 @@ static inline VS_Common* nexus_node_vspace(const struct nexus_node* nexus_node)
         default:
                 return NULL;
         }
+}
+static inline VS_Common*
+nexus_root_heap_ref(const struct nexus_node* nexus_root)
+{
+        if (!nexus_root || !nexus_root->vs_common
+            || nexus_root->vs_common->type != VS_COMMON_KERNEL_HEAP_REF)
+                return NULL;
+        return nexus_root->vs_common;
 }
 
 extern struct nexus_node* nexus_root;
@@ -95,7 +103,7 @@ error_t free_pages(void* p, int page_num, VS_Common* vs,
                    struct nexus_node* nexus_root);
 
 error_t user_fill_range(struct nexus_node* first_entry, int page_num,
-                        struct nexus_node* vspace_node, VS_Common* vs);
+                        struct nexus_node* vspace_node);
 error_t user_unfill_range(void* p, int page_num, VS_Common* vs,
                           struct nexus_node* vspace_node);
 error_t unfill_phy_page(MemZone* zone, ppn_t ppn, u64 new_entry_addr);

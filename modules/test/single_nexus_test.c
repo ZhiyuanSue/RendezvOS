@@ -66,14 +66,14 @@ int nexus_test(void)
 {
         debug("sizeof struct nexus_node is 0x%x\n", sizeof(struct nexus_node));
         /*after the nexus init, we try to print it first*/
-        nexus_print(nexus_root);
+        nexus_print(percpu(nexus_root));
         for (u64 i = 0; i < NR_MAX_TEST; i++) {
                 int page_num = 2;
                 if (i % 2)
                         page_num = MIDDLE_PAGES;
                 test_ptrs[i] = get_free_page(page_num,
                                              KERNEL_VIRT_OFFSET,
-                                             nexus_root,
+                                             percpu(nexus_root),
                                              0,
                                              PAGE_ENTRY_NONE);
                 if (test_ptrs[i]) {
@@ -81,11 +81,11 @@ int nexus_test(void)
                         *((u64*)(test_ptrs[i] + PAGE_SIZE)) = 0;
                 }
         }
-        nexus_print(nexus_root);
+        nexus_print(percpu(nexus_root));
         for (u64 i = 0; i < NR_MAX_TEST; i++) {
                 if (test_ptrs[i] && i % 2) {
                         error_t ret = free_pages(
-                                test_ptrs[i], MIDDLE_PAGES, 0, nexus_root);
+                                test_ptrs[i], MIDDLE_PAGES, 0, percpu(nexus_root));
                         if (ret != REND_SUCCESS) {
                                 pr_error(
                                         "[TEST] Failed to free pages: ret=%d\n",
@@ -94,11 +94,11 @@ int nexus_test(void)
                         }
                 }
         }
-        nexus_print(nexus_root);
+        nexus_print(percpu(nexus_root));
         for (u64 i = 0; i < NR_MAX_TEST; i++) {
                 if (test_ptrs[i] && !(i % 2)) {
                         error_t ret =
-                                free_pages(test_ptrs[i], 2, 0, nexus_root);
+                                free_pages(test_ptrs[i], 2, 0, percpu(nexus_root));
                         if (ret != REND_SUCCESS) {
                                 pr_error(
                                         "[TEST] Failed to free pages: ret=%d\n",
@@ -107,7 +107,7 @@ int nexus_test(void)
                         }
                 }
         }
-        nexus_print(nexus_root);
+        nexus_print(percpu(nexus_root));
 
         /*try to add a new vs and then use the new vs test user*/
         /*add a new vspace*/
@@ -124,7 +124,7 @@ int nexus_test(void)
         }
         set_vspace_root_addr(vs, new_vs_paddr);
         struct nexus_node* new_vs_nexus_root =
-                nexus_create_vspace_root_node(nexus_root, vs);
+                nexus_create_vspace_root_node(percpu(nexus_root), vs);
         init_vspace(vs, get_new_id(&pid_manager), new_vs_nexus_root);
 
         /*start new vspace nexus test*/
@@ -138,7 +138,7 @@ int nexus_test(void)
                 }
                 test_ptrs[i] = get_free_page(page_num,
                                              start_test_addr,
-                                             nexus_root,
+                                             percpu(nexus_root),
                                              vs,
                                              PAGE_ENTRY_READ | PAGE_ENTRY_VALID
                                                      | PAGE_ENTRY_WRITE);
@@ -148,11 +148,11 @@ int nexus_test(void)
                         *((u64*)(test_ptrs[i] + PAGE_SIZE)) = 0;
                 }
         }
-        nexus_print(nexus_root);
+        nexus_print(percpu(nexus_root));
         for (u64 i = 0; i < NR_MAX_TEST; i++) {
                 if (test_ptrs[i] && i % 2) {
                         error_t ret = free_pages(
-                                test_ptrs[i], MIDDLE_PAGES, vs, nexus_root);
+                                test_ptrs[i], MIDDLE_PAGES, vs, percpu(nexus_root));
                         if (ret != REND_SUCCESS) {
                                 pr_error(
                                         "[TEST] Failed to free pages: ret=%d\n",
@@ -161,11 +161,11 @@ int nexus_test(void)
                         }
                 }
         }
-        nexus_print(nexus_root);
+        nexus_print(percpu(nexus_root));
         for (u64 i = 0; i < NR_MAX_TEST; i++) {
                 if (test_ptrs[i] && !(i % 2)) {
                         error_t ret =
-                                free_pages(test_ptrs[i], 2, vs, nexus_root);
+                                free_pages(test_ptrs[i], 2, vs, percpu(nexus_root));
                         if (ret != REND_SUCCESS) {
                                 pr_error(
                                         "[TEST] Failed to free pages: ret=%d\n",
@@ -174,6 +174,9 @@ int nexus_test(void)
                         }
                 }
         }
+        e = del_vspace(&vs);
+        if(e)
+                goto nexus_test_fail;
 
         return REND_SUCCESS;
 nexus_test_fail:

@@ -732,15 +732,15 @@ static void pmm_free_frame(struct map_handler *handler, paddr frame_paddr)
         unlock_mcs(&pmm_ptr->spin_ptr, &percpu(pmm_spin_lock[zone->zone_id]));
 }
 
-error_t del_vs_root(paddr vs_root_paddr, struct map_handler *handler)
+error_t del_vs_root(VS_Common* vs, struct map_handler *handler)
 {
-        if (!handler || !handler->pmm || !vs_root_paddr)
+        if (!handler || !handler->pmm || !vs->vspace_root_addr)
                 return -E_IN_PARAM;
 
         const u32 pt_entries_per_table = (u32)(PAGE_SIZE / PTE_SIZE);
 
         /* free empty siblings, keep non-empty/unsupported paths. */
-        util_map(vs_root_paddr, handler->map_vaddr[0]);
+        util_map(vs->vspace_root_addr, handler->map_vaddr[0]);
         union L0_entry *l0_table = (union L0_entry *)handler->map_vaddr[0];
 
         bool root_nonempty = false;
@@ -829,6 +829,7 @@ error_t del_vs_root(paddr vs_root_paddr, struct map_handler *handler)
                                         pmm_free_frame(handler, l3_table_paddr);
                                         l2_table[l2_index].entry = 0;
                                         l2_table[l2_index].paddr = 0;
+                                        arch_tlb_invalidate_page(vs->vspace_id, handler->map_vaddr[3]);
                                 }
                         }
 
@@ -837,6 +838,7 @@ error_t del_vs_root(paddr vs_root_paddr, struct map_handler *handler)
                                 pmm_free_frame(handler, l2_table_paddr);
                                 l1_table[l1_index].entry = 0;
                                 l1_table[l1_index].paddr = 0;
+                                arch_tlb_invalidate_page(vs->vspace_id, handler->map_vaddr[2]);
                         } else {
                                 l1_nonempty = true;
                         }
@@ -847,11 +849,14 @@ error_t del_vs_root(paddr vs_root_paddr, struct map_handler *handler)
                         pmm_free_frame(handler, l1_table_paddr);
                         l0_table[l0_index].entry = 0;
                         l0_table[l0_index].paddr = 0;
+                        arch_tlb_invalidate_page(vs->vspace_id, handler->map_vaddr[1]);
                 }
         }
 
-        if (!root_nonempty)
-                pmm_free_frame(handler, vs_root_paddr);
+        if (!root_nonempty){
+                pmm_free_frame(handler, vs->vspace_root_addr);
+                arch_tlb_invalidate_page(vs->vspace_id, handler->map_vaddr[0]);
+        }
 
         return root_nonempty ? -E_RENDEZVOS : REND_SUCCESS;
 }

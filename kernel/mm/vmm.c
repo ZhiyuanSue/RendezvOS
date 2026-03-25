@@ -87,7 +87,7 @@ error_t del_vspace(VS_Common** vs)
                  * (`handler->map_vaddr[]`), which is tied to the *current
                  * CPU's* map handler virtual slots.
                  */
-                error_t e = del_vs_root(root_paddr, &percpu(Map_Handler));
+                error_t e = del_vs_root(*vs, &percpu(Map_Handler));
                 /* Still free the VS_Common; caller may decide whether to print.
                  */
                 if (e)
