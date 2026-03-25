@@ -36,6 +36,14 @@ enum vs_common_kind {
 
 typedef struct VS_Common {
         u64 type;
+        /*
+        The nexus_vspace_lock is the lock that protect the nexus nodes under
+        this nexus vspace root. for user space , all the nexus node in this
+        vspace is under the vspace node. but for kernel space, the nexus node's
+        are split to percpu. So we have to use the heap ref to get percpu's
+        nexus_vspace_lock to protect percpu nexus nodes change
+        */
+        cas_lock_t nexus_vspace_lock;
         union {
                 struct {
                         struct VS_Common* vs;
@@ -44,8 +52,12 @@ typedef struct VS_Common {
                 struct {
                         paddr vspace_root_addr;
                         u64 vspace_id;
+                        /*
+                        The vspace lock is the lock that protect the real page
+                        table. Which will be transfer to the map/unmap to
+                        protect the page table change.
+                        */
                         spin_lock vspace_lock;
-                        cas_lock_t nexus_vspace_lock;
                         void* _vspace_node;
                 };
         };

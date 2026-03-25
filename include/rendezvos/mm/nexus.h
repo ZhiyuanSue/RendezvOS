@@ -41,6 +41,8 @@ struct nexus_node {
                         struct map_handler* handler;
                         /* root node*/
                         struct rb_root _vspace_rb_root;
+                        /*The nexus lock is used to protect the vspace's
+                         * register*/
                         cas_lock_t nexus_lock;
                 };
         };

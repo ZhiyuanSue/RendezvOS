@@ -40,7 +40,6 @@ error_t virt_mm_init(cpu_id_t cpu_id, struct setup_info* arch_setup_info)
                 return -E_RENDEZVOS;
         /* init_vspace_nexus wires per-CPU nexus_kernel_heap_vs_common; drop
          * back-pointer. */
-        root_vspace._vspace_node = NULL;
         return REND_SUCCESS;
 }
 

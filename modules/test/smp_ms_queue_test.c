@@ -23,8 +23,16 @@ void free_ms_test_data(ref_count_t* refcount)
 extern cpu_id_t BSP_ID;
 extern int NR_CPU;
 #define percpu_ms_queue_test_number 100000
+/*
+ * One producer/consumer pair uses [offset, offset +
+ * percpu_ms_queue_test_number). Pair count is NR_CPUS/2 for NR_CPUS>=2; for
+ * NR_CPUS==1 the test returns early but the loop bodies are still compiled —
+ * ms_data_len must be >= one full span or aggressive-loop / OOB warnings fire
+ * (e.g. SMP=1 build).
+ */
 #ifdef NR_CPUS
-#define ms_data_len percpu_ms_queue_test_number* NR_CPUS / 2
+#define ms_data_pair_count (((NR_CPUS) / 2) > 0 ? ((NR_CPUS) / 2) : 1)
+#define ms_data_len        (percpu_ms_queue_test_number * ms_data_pair_count)
 #else
 #define ms_data_len \
         percpu_ms_queue_test_number * 4 / 2 /*the default of NR_CPU is 4*/

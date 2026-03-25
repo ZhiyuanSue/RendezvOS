@@ -4,6 +4,7 @@
 #include <rendezvos/smp/percpu.h>
 #include <rendezvos/common.h>
 #include <rendezvos/task/tcb.h>
+#include <rendezvos/task/initcall.h>
 int NR_CPU = 1;
 DEFINE_PER_CPU(enum cpu_status, CPU_STATE);
 void start_smp(struct setup_info *arch_setup_info)
@@ -38,6 +39,7 @@ void start_secondary_cpu(struct setup_info *arch_setup_info)
                 print("[ERROR] init proc fail\n");
                 return;
         }
+        do_init_call();
 #ifdef TEST
         create_test_thread(false);
         thread_set_status(get_cpu_current_thread(), thread_status_suspend);

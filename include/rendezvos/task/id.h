@@ -19,9 +19,8 @@ however, multicore system might need to lock it
 typedef struct {
         id_t id;
         spin_lock spin_ptr;
-        spin_lock_t* cpu_spin_lock;
 } Id_Manager;
-void init_id_manager(Id_Manager* idmng, spin_lock_t* cpu_spin_lock);
+void init_id_manager(Id_Manager* idmng);
 id_t get_new_id(Id_Manager* idmng);
 void init_id_managers();
 

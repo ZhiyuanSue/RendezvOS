@@ -44,12 +44,15 @@ void init_map(struct map_handler *handler, cpu_id_t cpu_id, struct pmm *pmm)
         }
         handler->cpu_id = cpu_id;
         handler->pmm = pmm;
+        MemZone *zone = pmm->zone;
         vaddr map_vaddr = map_pages + (vaddr)cpu_id * PAGE_SIZE * 4;
         size_t alloced_page_number;
         for (int i = 0; i < 4; i++) {
                 handler->map_vaddr[i] = map_vaddr;
+                lock_mcs(&pmm->spin_ptr, &percpu(pmm_spin_lock[zone->zone_id]));
                 handler->handler_ppn[i] =
                         pmm->pmm_alloc(pmm, 1, &alloced_page_number);
+                unlock_mcs(&pmm->spin_ptr, &percpu(pmm_spin_lock[zone->zone_id]));
                 if (invalid_ppn(handler->handler_ppn[i])
                     || alloced_page_number != 1) {
                         pr_error("[ERROR] init map no ppn can alloc\n");
@@ -724,11 +727,9 @@ static void pmm_free_frame(struct map_handler *handler, paddr frame_paddr)
         if (!pmm_ptr || !zone)
                 return;
 
-        lock_mcs(&pmm_ptr->spin_ptr,
-                 &percpu(pmm_spin_lock[zone->zone_id]));
+        lock_mcs(&pmm_ptr->spin_ptr, &percpu(pmm_spin_lock[zone->zone_id]));
         (void)pmm_ptr->pmm_free(pmm_ptr, PPN(frame_paddr), 1);
-        unlock_mcs(&pmm_ptr->spin_ptr,
-                   &percpu(pmm_spin_lock[zone->zone_id]));
+        unlock_mcs(&pmm_ptr->spin_ptr, &percpu(pmm_spin_lock[zone->zone_id]));
 }
 
 error_t del_vs_root(paddr vs_root_paddr, struct map_handler *handler)
