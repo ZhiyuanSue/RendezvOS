@@ -32,7 +32,9 @@ vaddr generate_user_stack(VS_Common *vs, elf_task_set_user_stack_func func)
                  * list, so just set 0 as default),otherwise a page fault will
                  * happen*/
                 user_sp -= 8;
+                pr_error("start write user sp\n");
                 *((u64 *)user_sp) = 0;
+                pr_error("finish write user sp\n");
         }
         return user_sp;
 }

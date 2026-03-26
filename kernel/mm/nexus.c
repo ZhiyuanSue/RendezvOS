@@ -550,6 +550,7 @@ void nexus_delete_vspace(struct nexus_node* nexus_root, VS_Common* vs)
                         "[Error] we should not delete the kernel nexus vspace\n");
                 goto fail;
         }
+        struct pmm* pmm_ptr = nexus_root->handler->pmm;
         /*try to find the vs paddr root ,if not, error*/
         lock_cas(&nexus_root->nexus_lock);
         struct nexus_node* vspace_node = nexus_rb_tree_vspace_search(
@@ -581,11 +582,14 @@ void nexus_delete_vspace(struct nexus_node* nexus_root, VS_Common* vs)
                 next = curr->next;
                 struct nexus_node* node =
                         container_of(curr, struct nexus_node, _vspace_list);
-                ppn_t ppn = unmap(vs,
-                                  VPN(node->addr),
-                                  0,
-                                  vspace_node->handler,
-                                  &(vs->vspace_lock));
+                ppn_t ppn =
+                        have_mapped(vs, VPN(node->addr), vspace_node->handler);
+                unlink_rmap_list(pmm_ptr->zone, ppn, node);
+                (void)unmap(vs,
+                            VPN(node->addr),
+                            0,
+                            vspace_node->handler,
+                            &(vs->vspace_lock));
                 if (ppn < 0) {
                         /*
                          * Unmap failure means bad parameters or broken
@@ -734,7 +738,7 @@ static void* _kernel_get_free_page(size_t page_num,
                 return NULL;
         }
         VS_Common* heap_ref = nexus_root_heap_ref(nexus_root);
-        if(!heap_ref){
+        if (!heap_ref) {
                 pr_error("[ NEXUS ] _kernel_get_free_page: heap ref NULL\n");
                 return NULL;
         }
@@ -1068,7 +1072,7 @@ static error_t _kernel_free_pages(void* p, int page_num,
         /*in kernel alloc, only alloced one time but might mapped
          * several times*/
         VS_Common* heap_ref = nexus_root_heap_ref(nexus_root);
-        if(!heap_ref){
+        if (!heap_ref) {
                 pr_error("[ NEXUS ] _kernel_get_free_page: heap ref NULL\n");
                 return -E_IN_PARAM;
         }
@@ -1219,7 +1223,8 @@ void* get_free_page(size_t page_num, vaddr target_vaddr,
                 struct nexus_node* vspace_node = nexus_rb_tree_vspace_search(
                         &nexus_root->_vspace_rb_root, vs->vspace_root_addr);
                 if (!vspace_node || vspace_node->vs_common != vs) {
-                        pr_error("[Error] no such a vspace in nexus or vs common is not equal\n");
+                        pr_error(
+                                "[Error] no such a vspace in nexus or vs common is not equal\n");
                         unlock_cas(&nexus_root->nexus_lock);
                         return NULL;
                 }
@@ -1227,8 +1232,7 @@ void* get_free_page(size_t page_num, vaddr target_vaddr,
                 struct nexus_node* first_entry = _user_take_range(
                         page_num, target_vaddr, vspace_node, flags);
                 if (first_entry
-                    && !user_fill_range(
-                            first_entry, page_num, vspace_node)) {
+                    && !user_fill_range(first_entry, page_num, vspace_node)) {
                         res = (void*)(first_entry->addr);
                 }
         }

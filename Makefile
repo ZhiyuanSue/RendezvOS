@@ -105,6 +105,7 @@ show_config:
 	@echo "arch\t=\t"$(ARCH)
 	@echo "kernel_version\t=\t"$(KERNELVERSION)
 	@echo "config_file\t=\t"$(CONFIG_FILE)
+	@echo "smp\t=\t"$(SMP)
 fmt:
 	@git ls-files '*.c' '*.h' | xargs -P 0 clang-format -i -style=file
 

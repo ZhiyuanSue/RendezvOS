@@ -41,25 +41,27 @@ void sys_init_map(struct pmm *pmm)
          * No need to lock*/
         flags = arch_decode_flags(0,
                                   PAGE_ENTRY_GLOBAL | PAGE_ENTRY_READ
-                                          | PAGE_ENTRY_VALID
-                                          | PAGE_ENTRY_WRITE|PAGE_ENTRY_EXEC);
+                                          | PAGE_ENTRY_VALID | PAGE_ENTRY_WRITE
+                                          | PAGE_ENTRY_EXEC);
         for (int index = 256; index < 512; index++) {
                 union L0_entry *L0_E =
                         ((union L0_entry *)KERNEL_PHY_TO_VIRT(vspace_root_addr))
                         + index;
-                if(L0_E->entry!=0)
+                if (L0_E->entry != 0)
                         continue;
                 size_t need_page_number = 1;
                 size_t alloced_page_number;
                 ppn_t ppn = pmm->pmm_alloc(
                         pmm, need_page_number, &alloced_page_number);
-                if (alloced_page_number == need_page_number && !invalid_ppn(ppn)) {
-                        arch_set_L0_entry(
-                                PADDR(ppn),
-                                KERNEL_VIRT_OFFSET+(index-256)*HUGE_PAGE_SIZE,
-                                (union L0_entry *)KERNEL_PHY_TO_VIRT(
-                                        vspace_root_addr),
-                                flags);
+                if (alloced_page_number == need_page_number
+                    && !invalid_ppn(ppn)) {
+                        arch_set_L0_entry(PADDR(ppn),
+                                          KERNEL_VIRT_OFFSET
+                                                  + (index - 256)
+                                                            * HUGE_PAGE_SIZE,
+                                          (union L0_entry *)KERNEL_PHY_TO_VIRT(
+                                                  vspace_root_addr),
+                                          flags);
                 }
         }
 }
@@ -839,6 +841,9 @@ error_t del_vs_root(VS_Common *vs, struct map_handler *handler)
                                                 l3_nonempty = true;
                                                 break;
                                         }
+                                        /*no need to clean the va, for all the
+                                         * page must be unmapped and cleaned
+                                         * tlb*/
                                 }
 
                                 if (l3_nonempty) {
