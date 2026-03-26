@@ -7,13 +7,18 @@
 #include <rendezvos/task/initcall.h>
 int NR_CPU = 1;
 DEFINE_PER_CPU(enum cpu_status, CPU_STATE);
+#define ALL_CPU_ENABLED_FAIL 0
+#define ALL_CPU_ENABLED_SUCC 1
+atomic64_t all_enabled;
 void start_smp(struct setup_info *arch_setup_info)
 {
 #ifndef SMP
         return;
 #endif
         pr_info("start smp\n");
+        atomic64_init(&all_enabled, ALL_CPU_ENABLED_FAIL);
         arch_start_smp(arch_setup_info);
+        atomic64_store((volatile u64*)&all_enabled.counter, ALL_CPU_ENABLED_SUCC);
 }
 
 void start_secondary_cpu(struct setup_info *arch_setup_info)
@@ -38,6 +43,9 @@ void start_secondary_cpu(struct setup_info *arch_setup_info)
         if (!percpu(core_tm)) {
                 print("[ERROR] init proc fail\n");
                 return;
+        }
+        while (atomic64_load((volatile u64*)&all_enabled.counter) != ALL_CPU_ENABLED_SUCC) {
+                arch_cpu_relax();
         }
         do_init_call();
 #ifdef TEST

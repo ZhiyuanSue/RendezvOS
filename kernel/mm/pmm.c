@@ -172,7 +172,7 @@ static inline void arch_map_pmm_data_space(paddr prev_region_phy_end,
                 pmm_phy_start_addr = prev_phy_addr_round_up;
 
         pmm_phy_start_round_up_1g =
-                ROUND_UP(pmm_phy_start_addr, HUGE_PAGE_SIZE);
+                ROUND_UP(pmm_phy_start_addr, GIGAN_PAGE_SIZE);
 
         /*for we have mapped the 2m align space of kernel*/
         l2_flags = arch_decode_flags(
@@ -205,7 +205,7 @@ static inline void arch_map_pmm_data_space(paddr prev_region_phy_end,
                         KERNEL_PHY_TO_VIRT(pmm_phy_start_round_up_1g_iter),
                         (union L1_entry *)&L1_table,
                         l1_flags);
-                pmm_phy_start_round_up_1g_iter += HUGE_PAGE_SIZE;
+                pmm_phy_start_round_up_1g_iter += GIGAN_PAGE_SIZE;
         }
         /*try to map the L2 tables under L1 table*/
         pmm_phy_start_round_up_1g_iter = pmm_phy_start_round_up_1g;
@@ -215,7 +215,7 @@ static inline void arch_map_pmm_data_space(paddr prev_region_phy_end,
                 for (pmm_phy_start_addr_iter = pmm_phy_start_round_up_1g_iter;
                      pmm_phy_start_addr_iter < pmm_phy_end
                      && pmm_phy_start_addr_iter < pmm_phy_start_round_up_1g_iter
-                                                          + HUGE_PAGE_SIZE;
+                                                          + GIGAN_PAGE_SIZE;
                      pmm_phy_start_addr_iter += MIDDLE_PAGE_SIZE) {
                         /*As pmm and vmm part is not usable now, we still use
                          * boot page table*/
@@ -225,7 +225,7 @@ static inline void arch_map_pmm_data_space(paddr prev_region_phy_end,
                                 (union L2_entry *)pmm_l2_start_iter,
                                 l2_flags);
                 }
-                pmm_phy_start_round_up_1g_iter += HUGE_PAGE_SIZE;
+                pmm_phy_start_round_up_1g_iter += GIGAN_PAGE_SIZE;
         }
 }
 static inline void
@@ -335,7 +335,7 @@ static inline void calculate_pmm_space(u64 *total_pages, u64 *L2_table_pages)
            not sure of the offset, so it's hard to decide the real 1G spaces we
            need, we just add one page
         */
-        size_t l2_pages = (*total_pages) / (HUGE_PAGE_SIZE / PAGE_SIZE) + 1;
+        size_t l2_pages = (*total_pages) / (GIGAN_PAGE_SIZE / PAGE_SIZE) + 1;
         *L2_table_pages = l2_pages;
         *total_pages = *total_pages + l2_pages;
 }
@@ -440,8 +440,8 @@ error_t phy_mm_init(struct setup_info *arch_setup_info)
                 goto init_pmm_error;
         }
         /*we hope the percpu and kernel are all in the same 1G,check it*/
-        if (ROUND_DOWN(kernel_phy_start, HUGE_PAGE_SIZE)
-            != ROUND_DOWN(per_cpu_phy_end, HUGE_PAGE_SIZE)) {
+        if (ROUND_DOWN(kernel_phy_start, GIGAN_PAGE_SIZE)
+            != ROUND_DOWN(per_cpu_phy_end, GIGAN_PAGE_SIZE)) {
                 print("cannot put percpu data and kernel data in the same 1G space\n");
                 goto init_pmm_error;
         }

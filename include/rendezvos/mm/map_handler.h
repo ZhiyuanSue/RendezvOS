@@ -19,7 +19,7 @@ struct map_handler {
         struct pmm* pmm;
 };
 extern struct map_handler Map_Handler;
-void sys_init_map();
+void sys_init_map(struct pmm* pmm);
 void init_map(struct map_handler* handler, cpu_id_t cpu_id, struct pmm* pmm);
 /*
         kernel might try to mapping one page to a different vspace

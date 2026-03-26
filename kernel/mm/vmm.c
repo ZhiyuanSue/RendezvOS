@@ -16,7 +16,7 @@ VS_Common root_vspace;
 error_t virt_mm_init(cpu_id_t cpu_id, struct setup_info* arch_setup_info)
 {
         if (cpu_id == BSP_ID) {
-                sys_init_map();
+                sys_init_map(mem_zones[ZONE_NORMAL].pmm);
                 root_vspace.type = (u64)VS_COMMON_USER_VSPACE;
                 root_vspace.vspace_root_addr =
                         arch_get_current_kernel_vspace_root();

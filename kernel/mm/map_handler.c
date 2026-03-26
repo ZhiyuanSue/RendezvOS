@@ -4,10 +4,10 @@
 #include <rendezvos/error.h>
 #include <rendezvos/mm/map_handler.h>
 #include <rendezvos/mm/vmm.h>
-extern u64 L0_table;
+extern u64 L0_table[512];
 extern u64 *MAP_L1_table, *MAP_L2_table, *MAP_L3_table;
 DEFINE_PER_CPU(struct spin_lock_t, handler_spin_lock);
-void sys_init_map(void)
+void sys_init_map(struct pmm *pmm)
 {
         ARCH_PFLAGS_t flags;
         paddr vspace_root_addr = arch_get_current_kernel_vspace_root();
@@ -15,6 +15,7 @@ void sys_init_map(void)
                                   PAGE_ENTRY_GLOBAL | PAGE_ENTRY_READ
                                           | PAGE_ENTRY_VALID
                                           | PAGE_ENTRY_WRITE);
+        /*set map handler page table*/
         arch_set_L0_entry(
                 KERNEL_VIRT_TO_PHY((vaddr)&MAP_L1_table),
                 map_pages,
@@ -36,6 +37,31 @@ void sys_init_map(void)
                           map_pages,
                           (union L2_entry *)&MAP_L2_table,
                           flags);
+        /*set kernel L1 tables, it must be BSP alloc and no other AP is alive.
+         * No need to lock*/
+        flags = arch_decode_flags(0,
+                                  PAGE_ENTRY_GLOBAL | PAGE_ENTRY_READ
+                                          | PAGE_ENTRY_VALID
+                                          | PAGE_ENTRY_WRITE|PAGE_ENTRY_EXEC);
+        for (int index = 256; index < 512; index++) {
+                union L0_entry *L0_E =
+                        ((union L0_entry *)KERNEL_PHY_TO_VIRT(vspace_root_addr))
+                        + index;
+                if(L0_E->entry!=0)
+                        continue;
+                size_t need_page_number = 1;
+                size_t alloced_page_number;
+                ppn_t ppn = pmm->pmm_alloc(
+                        pmm, need_page_number, &alloced_page_number);
+                if (alloced_page_number == need_page_number && !invalid_ppn(ppn)) {
+                        arch_set_L0_entry(
+                                PADDR(ppn),
+                                KERNEL_VIRT_OFFSET+(index-256)*HUGE_PAGE_SIZE,
+                                (union L0_entry *)KERNEL_PHY_TO_VIRT(
+                                        vspace_root_addr),
+                                flags);
+                }
+        }
 }
 void init_map(struct map_handler *handler, cpu_id_t cpu_id, struct pmm *pmm)
 {
@@ -52,7 +78,8 @@ void init_map(struct map_handler *handler, cpu_id_t cpu_id, struct pmm *pmm)
                 lock_mcs(&pmm->spin_ptr, &percpu(pmm_spin_lock[zone->zone_id]));
                 handler->handler_ppn[i] =
                         pmm->pmm_alloc(pmm, 1, &alloced_page_number);
-                unlock_mcs(&pmm->spin_ptr, &percpu(pmm_spin_lock[zone->zone_id]));
+                unlock_mcs(&pmm->spin_ptr,
+                           &percpu(pmm_spin_lock[zone->zone_id]));
                 if (invalid_ppn(handler->handler_ppn[i])
                     || alloced_page_number != 1) {
                         pr_error("[ERROR] init map no ppn can alloc\n");
@@ -171,6 +198,8 @@ error_t map(VS_Common *vs, ppn_t ppn, vpn_t vpn, int level,
                    we must check whether that is caused by
                    sync first and then call the page fault handler provide by
                    upper kernel module
+                   FIX:it's impossible to boardcast, so we have to alloc all the
+                   256 L1 tables first, see sys_init_map
                 */
                 if (invalid_ppn(handler->handler_ppn[1])) {
                         pr_error("[ ERROR ] L1 try alloc ppn fail\n");
@@ -185,14 +214,6 @@ error_t map(VS_Common *vs, ppn_t ppn, vpn_t vpn, int level,
                                   v,
                                   (union L0_entry *)(handler->map_vaddr[0]),
                                   flags);
-                /*sync with the root vs*/
-                if (vs->vspace_root_addr
-                    != KERNEL_VIRT_TO_PHY((vaddr)(&L0_table))) {
-                        arch_set_L0_entry(next_level_paddr,
-                                          v,
-                                          (union L0_entry *)(&L0_table),
-                                          flags);
-                }
         }
         /*=== === === L1 table === === ===*/
         /*map the L1 table to one L3 table entry*/
@@ -732,7 +753,7 @@ static void pmm_free_frame(struct map_handler *handler, paddr frame_paddr)
         unlock_mcs(&pmm_ptr->spin_ptr, &percpu(pmm_spin_lock[zone->zone_id]));
 }
 
-error_t del_vs_root(VS_Common* vs, struct map_handler *handler)
+error_t del_vs_root(VS_Common *vs, struct map_handler *handler)
 {
         if (!handler || !handler->pmm || !vs->vspace_root_addr)
                 return -E_IN_PARAM;
@@ -829,8 +850,9 @@ error_t del_vs_root(VS_Common* vs, struct map_handler *handler)
                                         pmm_free_frame(handler, l3_table_paddr);
                                         l2_table[l2_index].entry = 0;
                                         l2_table[l2_index].paddr = 0;
-                                        arch_tlb_invalidate_page(vs->vspace_id, handler->map_vaddr[3]);
                                 }
+                                arch_tlb_invalidate_page(vs->vspace_id,
+                                                         handler->map_vaddr[3]);
                         }
 
                         if (!l2_nonempty) {
@@ -838,10 +860,11 @@ error_t del_vs_root(VS_Common* vs, struct map_handler *handler)
                                 pmm_free_frame(handler, l2_table_paddr);
                                 l1_table[l1_index].entry = 0;
                                 l1_table[l1_index].paddr = 0;
-                                arch_tlb_invalidate_page(vs->vspace_id, handler->map_vaddr[2]);
                         } else {
                                 l1_nonempty = true;
                         }
+                        arch_tlb_invalidate_page(vs->vspace_id,
+                                                 handler->map_vaddr[2]);
                 }
 
                 if (!l1_nonempty) {
@@ -849,14 +872,14 @@ error_t del_vs_root(VS_Common* vs, struct map_handler *handler)
                         pmm_free_frame(handler, l1_table_paddr);
                         l0_table[l0_index].entry = 0;
                         l0_table[l0_index].paddr = 0;
-                        arch_tlb_invalidate_page(vs->vspace_id, handler->map_vaddr[1]);
                 }
+                arch_tlb_invalidate_page(vs->vspace_id, handler->map_vaddr[1]);
         }
 
-        if (!root_nonempty){
+        if (!root_nonempty) {
                 pmm_free_frame(handler, vs->vspace_root_addr);
-                arch_tlb_invalidate_page(vs->vspace_id, handler->map_vaddr[0]);
         }
+        arch_tlb_invalidate_page(vs->vspace_id, handler->map_vaddr[0]);
 
         return root_nonempty ? -E_RENDEZVOS : REND_SUCCESS;
 }

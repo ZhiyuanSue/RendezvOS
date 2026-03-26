@@ -349,7 +349,7 @@ L0_table:
 	*/
 	.quad	L1_table - kernel_virt_offset + ( PML4E_P | PML4E_RW )
 	.zero	8*255
-	.quad	L1_table - kernel_virt_offset + ( PML4E_P | PML4E_RW | PML4E_US)
+	.quad	L1_table - kernel_virt_offset + ( PML4E_P | PML4E_RW )
 	.zero	8*255
 	
 	.global L1_table

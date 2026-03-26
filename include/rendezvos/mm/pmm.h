@@ -177,7 +177,7 @@ static inline i64 ppn_Zone_index(MemZone* zone, ppn_t ppn)
         void (*pmm_init)(struct pmm * pmm,                                    \
                          paddr pmm_phy_start_addr,                            \
                          paddr pmm_phy_end_addr);                             \
-        i64 (*pmm_alloc)(struct pmm * pmm,                                    \
+        ppn_t (*pmm_alloc)(struct pmm * pmm,                                    \
                          size_t page_number,                                  \
                          size_t* alloced_page_number);                        \
         error_t (*pmm_free)(struct pmm * pmm, ppn_t ppn, size_t page_number); \
