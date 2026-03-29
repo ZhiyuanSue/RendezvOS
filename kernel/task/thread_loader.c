@@ -2,7 +2,7 @@
 #include <modules/log/log.h>
 #include <rendezvos/smp/percpu.h>
 
-vaddr generate_user_stack(VS_Common *vs, elf_task_set_user_stack_func func)
+vaddr generate_user_stack(VS_Common *vs)
 {
         if (!vs) {
                 return 0;
@@ -21,21 +21,6 @@ vaddr generate_user_stack(VS_Common *vs, elf_task_set_user_stack_func func)
                 return 0;
         }
         vaddr user_sp = get_free_page_vaddr + page_num * PAGE_SIZE - 8;
-        if (func) {
-                /*the kernel might pass argc and argv to the task,
-                for some system like linux, it might pass the Auxiliary Vector
-                and other things, we use a callback function to deal with it*/
-                func(&user_sp);
-        } else {
-                /*even we put nothing on the stack ,we should put an argc on it
-                 * (typically should be 1, but of course we do not put an argv
-                 * list, so just set 0 as default),otherwise a page fault will
-                 * happen*/
-                user_sp -= 8;
-                pr_error("start write user sp\n");
-                *((u64 *)user_sp) = 0;
-                pr_error("finish write user sp\n");
-        }
         return user_sp;
 }
 error_t elf_Phdr_64_load_handle(vaddr elf_start, Elf64_Phdr *phdr_ptr,
@@ -100,7 +85,8 @@ error_t elf_Phdr_64_dynamic_handle(vaddr elf_start, Elf64_Phdr *phdr_ptr,
         print_elf_ph64(phdr_ptr);
         return REND_SUCCESS;
 }
-error_t run_elf_program(vaddr elf_start, vaddr elf_end, VS_Common *vs)
+error_t run_elf_program(vaddr elf_start, vaddr elf_end, VS_Common *vs,
+                        append_info_handler handler)
 {
         pr_info("start gen task from elf start %x end %x vs %x\n",
                 elf_start,
@@ -109,6 +95,7 @@ error_t run_elf_program(vaddr elf_start, vaddr elf_end, VS_Common *vs)
         if (!elf_start || !elf_end || !vs) {
                 return -E_IN_PARAM;
         }
+        Thread_Base* elf_thread = get_cpu_current_thread();
         error_t e = -E_RENDEZVOS;
         if (!check_elf_header(elf_start)) {
                 pr_error("[ERROR] bad elf file\n");
@@ -142,6 +129,14 @@ error_t run_elf_program(vaddr elf_start, vaddr elf_end, VS_Common *vs)
                         }
                 }
         }
+        vaddr user_sp = arch_get_thread_user_sp(&elf_thread->ctx);
+        user_sp -= 8;
+        *((u64 *)user_sp) = 0;
+        arch_set_thread_user_sp(&elf_thread->ctx, user_sp);
+        if(handler){
+                handler(&elf_thread->ctx);
+        }
+        
 
         Thread_Base *current_thread = percpu(core_tm)->current_thread;
         arch_drop_to_user(current_thread->kstack_bottom, entry_addr);
@@ -151,7 +146,7 @@ error_t run_elf_program(vaddr elf_start, vaddr elf_end, VS_Common *vs)
 error_t gen_task_from_elf(Thread_Base **elf_thread_ptr,
                           size_t append_tcb_info_len,
                           size_t append_thread_info_len, vaddr elf_start,
-                          vaddr elf_end, elf_task_set_user_stack_func func)
+                          vaddr elf_end, append_info_handler handler)
 {
         if (!elf_start || !elf_end) {
                 return -E_IN_PARAM;
@@ -193,15 +188,16 @@ error_t gen_task_from_elf(Thread_Base **elf_thread_ptr,
 
         Thread_Base *elf_thread = create_thread((void *)run_elf_program,
                                                 append_thread_info_len,
-                                                3,
+                                                4,
                                                 elf_start,
                                                 elf_end,
-                                                elf_task->vs);
+                                                elf_task->vs,
+                                                handler);
         if (!elf_thread) {
                 e = -E_RENDEZVOS;
                 goto create_thread_error;
         }
-        vaddr user_sp = generate_user_stack(elf_task->vs, func);
+        vaddr user_sp = generate_user_stack(elf_task->vs);
         if (!user_sp) {
                 e = -E_RENDEZVOS;
                 goto generate_user_stack_error;

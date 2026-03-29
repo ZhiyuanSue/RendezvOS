@@ -49,6 +49,10 @@ static inline void arch_set_new_thread_ctx(Arch_Task_Context* ctx,
         ctx->rsp = (vaddr)stack_bottom - sizeof(u64) * 2;
         ctx->stack_bottom = (vaddr)stack_bottom;
 }
+static inline vaddr arch_get_thread_user_sp(Arch_Task_Context* ctx)
+{
+        return ctx->user_rsp;
+}
 static inline void arch_set_thread_user_sp(Arch_Task_Context* ctx,
                                            vaddr user_sp)
 {
