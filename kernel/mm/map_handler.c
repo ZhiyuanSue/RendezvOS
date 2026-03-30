@@ -553,7 +553,7 @@ ppn_t unmap(VS_Common *vs, vpn_t vpn, u64 new_entry_addr,
                                                                        out the
                                                                        l2 page*/
         {
-                pr_error("[ ERROR ] L2 entry not mapped, unmap error\n");
+                pr_error("[ ERROR ] L2 entry %x not mapped, unmap error\n", L2_E.entry);
                 ppn = -E_RENDEZVOS;
                 goto unmap_l2_fail;
         } else if (is_final_level_pt(1, entry_flags)) {

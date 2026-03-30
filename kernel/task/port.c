@@ -6,7 +6,7 @@
 #include <rendezvos/sync/spin_lock.h>
 #include <common/string.h>
 #include <modules/log/log.h>
-#include "port_table_slots.h"
+#include <rendezvos/task/port_table_slots.h>
 
 DEFINE_PER_CPU(struct spin_lock_t, port_table_spin_lock);
 
