@@ -140,7 +140,7 @@ int arch_vmm_test(void)
                 goto arch_vmm_test_error;
         } else if (ppn_3 & mask_9_bit) {
                 pr_error(
-                        "[ ERROR ] ERROR:get a unaligned 2M page with ppn 0x%x\n",
+                        "[ ERROR ] ERROR:get a unaligned 2M page with ppn 0x%lx\n",
                         ppn_3);
                 goto arch_vmm_test_error;
         }
@@ -169,7 +169,7 @@ int arch_vmm_test(void)
                 goto arch_vmm_test_error;
         } else if (ppn_4 & mask_9_bit) {
                 pr_error(
-                        "[ ERROR ] ERROR:get a unaligned 2M page with ppn 0x%x\n",
+                        "[ ERROR ] ERROR:get a unaligned 2M page with ppn 0x%lx\n",
                         ppn_4);
                 goto arch_vmm_test_error;
         }

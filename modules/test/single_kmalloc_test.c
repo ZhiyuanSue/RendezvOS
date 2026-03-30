@@ -22,7 +22,7 @@ static u64 next = 1;
 static void k_chunk_print(struct mem_chunk* tmp_chunk)
 {
         (void)tmp_chunk;
-        debug("\t\t| chunk 0x%x obj total %d used %d\n",
+        debug("\t\t| chunk 0x%lx obj total %d used %d\n",
               (vaddr)tmp_chunk,
               tmp_chunk->nr_max_objs,
               tmp_chunk->nr_used_objs);

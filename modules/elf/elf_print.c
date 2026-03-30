@@ -55,7 +55,7 @@ void print_ph_type(u32 p_type)
                         debug("p_type\t\t:\tHIPROC\n");
                         break;
                 default:
-                        debug("p_type\t\t:\tUNKNOWN 0x%x\n", p_type);
+                        debug("p_type\t\t:\tUNKNOWN 0x%lx\n", p_type);
                         break;
                 }
         }
@@ -133,7 +133,7 @@ void print_elf_header(vaddr elf_header_ptr)
         debug("e_ident\t\t:\t");
         unsigned char* e_ident_ptr = (unsigned char*)elf_header_ptr;
         for (int i = 0; i < EI_NIDENT; i++) {
-                debug("0x%x ", e_ident_ptr[i]);
+                debug("0x%lx ", e_ident_ptr[i]);
         }
         debug("\n");
         debug("e_class\t\t:\t%s\n",
@@ -149,50 +149,50 @@ void print_elf_header(vaddr elf_header_ptr)
         }
         print_elf_machine(get_elf_machine(elf_header_ptr));
         if (get_elf_class(elf_header_ptr) == ELFCLASS32) {
-                debug("entry\t\t:\t0x%x\n",
+                debug("entry\t\t:\t0x%lx\n",
                       ELF32_HEADER(elf_header_ptr)->e_entry);
-                debug("ehsize\t\t:\t0x%x\n",
+                debug("ehsize\t\t:\t0x%lx\n",
                       ELF32_HEADER(elf_header_ptr)->e_ehsize);
-                debug("flags\t\t:\t0x%x\n",
+                debug("flags\t\t:\t0x%lx\n",
                       ELF32_HEADER(elf_header_ptr)->e_flags);
-                debug("shstrndx\t:\t0x%x\n",
+                debug("shstrndx\t:\t0x%lx\n",
                       ELF32_HEADER(elf_header_ptr)->e_shstrndx);
 
-                debug("phoff\t\t:\t0x%x\n",
+                debug("phoff\t\t:\t0x%lx\n",
                       ELF32_HEADER(elf_header_ptr)->e_phoff);
-                debug("phentsize\t:\t0x%x\n",
+                debug("phentsize\t:\t0x%lx\n",
                       ELF32_HEADER(elf_header_ptr)->e_phentsize);
-                debug("phnum\t\t:\t0x%x\n",
+                debug("phnum\t\t:\t0x%lx\n",
                       ELF32_HEADER(elf_header_ptr)->e_phnum);
 
-                debug("shoff\t\t:\t0x%x\n",
+                debug("shoff\t\t:\t0x%lx\n",
                       ELF32_HEADER(elf_header_ptr)->e_shoff);
-                debug("shentsize\t:\t0x%x\n",
+                debug("shentsize\t:\t0x%lx\n",
                       ELF32_HEADER(elf_header_ptr)->e_shentsize);
-                debug("shnum\t\t:\t0x%x\n",
+                debug("shnum\t\t:\t0x%lx\n",
                       ELF32_HEADER(elf_header_ptr)->e_shnum);
         } else if (get_elf_class(elf_header_ptr) == ELFCLASS64) {
-                debug("entry\t\t:\t0x%x\n",
+                debug("entry\t\t:\t0x%lx\n",
                       ELF64_HEADER(elf_header_ptr)->e_entry);
-                debug("ehsize\t\t:\t0x%x\n",
+                debug("ehsize\t\t:\t0x%lx\n",
                       ELF64_HEADER(elf_header_ptr)->e_ehsize);
-                debug("flags\t\t:\t0x%x\n",
+                debug("flags\t\t:\t0x%lx\n",
                       ELF64_HEADER(elf_header_ptr)->e_flags);
-                debug("shstrndx\t:\t0x%x\n",
+                debug("shstrndx\t:\t0x%lx\n",
                       ELF64_HEADER(elf_header_ptr)->e_shstrndx);
 
-                debug("phoff\t\t:\t0x%x\n",
+                debug("phoff\t\t:\t0x%lx\n",
                       ELF64_HEADER(elf_header_ptr)->e_phoff);
-                debug("phentsize\t:\t0x%x\n",
+                debug("phentsize\t:\t0x%lx\n",
                       ELF64_HEADER(elf_header_ptr)->e_phentsize);
-                debug("phnum\t\t:\t0x%x\n",
+                debug("phnum\t\t:\t0x%lx\n",
                       ELF64_HEADER(elf_header_ptr)->e_phnum);
 
-                debug("shoff\t\t:\t0x%x\n",
+                debug("shoff\t\t:\t0x%lx\n",
                       ELF64_HEADER(elf_header_ptr)->e_shoff);
-                debug("shentsize\t:\t0x%x\n",
+                debug("shentsize\t:\t0x%lx\n",
                       ELF64_HEADER(elf_header_ptr)->e_shentsize);
-                debug("shnum\t\t:\t0x%x\n",
+                debug("shnum\t\t:\t0x%lx\n",
                       ELF64_HEADER(elf_header_ptr)->e_shnum);
         } else {
                 return;
@@ -204,12 +204,12 @@ void print_elf_ph32(Elf32_Phdr* phdr)
         debug("=== === program header start === ===\n");
         print_ph_type(phdr->p_type);
         print_ph_flags(phdr->p_flags);
-        debug("p_off\t\t:\t0x%x\n", phdr->p_offset);
-        debug("p_vaddr\t\t:\t0x%x\n", phdr->p_vaddr);
-        debug("p_paddr\t\t:\t0x%x\n", phdr->p_paddr);
-        debug("p_filesz\t:\t0x%x\n", phdr->p_filesz);
-        debug("p_memsz\t\t:\t0x%x\n", phdr->p_memsz);
-        debug("p_align\t\t:\t0x%x\n", phdr->p_align);
+        debug("p_off\t\t:\t0x%lx\n", phdr->p_offset);
+        debug("p_vaddr\t\t:\t0x%lx\n", phdr->p_vaddr);
+        debug("p_paddr\t\t:\t0x%lx\n", phdr->p_paddr);
+        debug("p_filesz\t:\t0x%lx\n", phdr->p_filesz);
+        debug("p_memsz\t\t:\t0x%lx\n", phdr->p_memsz);
+        debug("p_align\t\t:\t0x%lx\n", phdr->p_align);
         debug("=== === program header end === ===\n");
 }
 void print_elf_ph64(Elf64_Phdr* phdr)
@@ -217,21 +217,21 @@ void print_elf_ph64(Elf64_Phdr* phdr)
         debug("=== === program header start === ===\n");
         print_ph_type(phdr->p_type);
         print_ph_flags(phdr->p_flags);
-        debug("p_off\t\t:\t0x%x\n", phdr->p_offset);
-        debug("p_vaddr\t\t:\t0x%x\n", phdr->p_vaddr);
-        debug("p_paddr\t\t:\t0x%x\n", phdr->p_paddr);
-        debug("p_filesz\t:\t0x%x\n", phdr->p_filesz);
-        debug("p_memsz\t\t:\t0x%x\n", phdr->p_memsz);
-        debug("p_align\t\t:\t0x%x\n", phdr->p_align);
+        debug("p_off\t\t:\t0x%lx\n", phdr->p_offset);
+        debug("p_vaddr\t\t:\t0x%lx\n", phdr->p_vaddr);
+        debug("p_paddr\t\t:\t0x%lx\n", phdr->p_paddr);
+        debug("p_filesz\t:\t0x%lx\n", phdr->p_filesz);
+        debug("p_memsz\t\t:\t0x%lx\n", phdr->p_memsz);
+        debug("p_align\t\t:\t0x%lx\n", phdr->p_align);
         debug("=== === program header end === ===\n");
 }
 void print_elf_sh32(Elf32_Shdr* shdr)
 {
         (void)shdr;
-        debug("shdr addr 0x%x\n", shdr);
+        debug("shdr addr 0x%lx\n", shdr);
 }
 void print_elf_sh64(Elf64_Shdr* shdr)
 {
         (void)shdr;
-        debug("shdr addr 0x%x\n", shdr);
+        debug("shdr addr 0x%lx\n", shdr);
 }

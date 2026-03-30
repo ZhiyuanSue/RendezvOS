@@ -758,7 +758,7 @@ static void* _kernel_get_free_page(size_t page_num,
         unlock_mcs(&pmm_ptr->spin_ptr,
                    &percpu(pmm_spin_lock[pmm_ptr->zone->zone_id]));
         if (invalid_ppn(ppn) || alloced_page_number < page_num) {
-                pr_error("[ NEXUS ] ERROR: init error allocated %x\n",
+                pr_error("[ NEXUS ] ERROR: init error allocated %lx\n",
                          alloced_page_number);
                 goto alloc_ppn_fail;
         } else if (alloced_page_number > page_num) {
@@ -905,7 +905,7 @@ error_t user_fill_range(struct nexus_node* first_entry, int page_num,
                 unlock_mcs(&pmm_ptr->spin_ptr,
                            &percpu(pmm_spin_lock[pmm_ptr->zone->zone_id]));
                 if (invalid_ppn(ppn) || alloced_page_number != 1) {
-                        pr_error("[ NEXUS ] ERROR: init error allocated %x\n",
+                        pr_error("[ NEXUS ] ERROR: init error allocated %lx\n",
                                  alloced_page_number);
                         goto fail;
                 }
@@ -1086,7 +1086,7 @@ static error_t _kernel_free_pages(void* p, int page_num,
                    nexus
                 */
                 pr_error(
-                        "[ NEXUS ] ERROR: search the free page fail 0x%x 0x%x\n",
+                        "[ NEXUS ] ERROR: search the free page fail 0x%lx 0x%lx\n",
                         (vaddr)p,
                         (vaddr)nexus_root);
                 unlock_cas(&heap_ref->nexus_vspace_lock);
@@ -1143,7 +1143,7 @@ error_t user_unfill_range(void* p, int page_num, VS_Common* vs,
                 nexus_rb_tree_search(&vspace_node->_rb_root, (vaddr)p);
         if (!node) {
                 pr_error(
-                        "[ NEXUS ] ERROR: search the free page fail 0x%x 0x%x\n",
+                        "[ NEXUS ] ERROR: search the free page fail 0x%lx 0x%lx\n",
                         (vaddr)p,
                         (vaddr)vspace_node);
                 unlock_cas(&vs->nexus_vspace_lock);
@@ -1164,7 +1164,7 @@ static error_t _user_release_range(void* p, int page_num, VS_Common* vs,
                 nexus_rb_tree_search(&vspace_node->_rb_root, (vaddr)p);
         if (!node) {
                 pr_error(
-                        "[ NEXUS ] ERROR: search the free page fail 0x%x 0x%x\n",
+                        "[ NEXUS ] ERROR: search the free page fail 0x%lx 0x%lx\n",
                         (vaddr)p,
                         (vaddr)vspace_node);
                 unlock_cas(&vs->nexus_vspace_lock);
@@ -1284,7 +1284,7 @@ error_t unfill_phy_page(MemZone* zone, ppn_t ppn, u64 new_entry_addr)
 {
         Page* p_ptr = ppn_Zone_phy_Page(zone, ppn);
         if (!p_ptr) {
-                pr_error("[ NEXUS ] cannot find phy page with ppn %x\n", ppn);
+                pr_error("[ NEXUS ] cannot find phy page with ppn %lx\n", ppn);
                 return -E_RENDEZVOS;
         }
         struct nexus_node* node = NULL;

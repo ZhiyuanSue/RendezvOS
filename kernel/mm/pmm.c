@@ -250,8 +250,8 @@ calculate_avaliable_phy_addr_region(paddr *avaliable_phy_addr_start,
                         continue;
 
                 reg = m_regions.memory_regions[i];
-                // pr_debug("Aviable Mem:base_phy_addr is 0x%x, length = "
-                //         "0x%x\n",
+                // pr_debug("Aviable Mem:base_phy_addr is 0x%lx, length = "
+                //         "0x%lx\n",
                 //         reg.addr,
                 //         reg.len);
                 /* end is not reachable,[ sec_end_addr , sec_end_addr ) */
@@ -415,7 +415,7 @@ error_t phy_mm_init(struct setup_info *arch_setup_info)
         arch_init_pmm(arch_setup_info, &per_cpu_phy_start);
         kernel_phy_start = KERNEL_VIRT_TO_PHY((vaddr)(&_start));
         kernel_phy_end = KERNEL_VIRT_TO_PHY((vaddr)(&_end));
-        print("[ KERNEL_REGION\t@\t< 0x%x , 0x%x >]\n",
+        print("[ KERNEL_REGION\t@\t< 0x%lx , 0x%lx >]\n",
               (vaddr)(&_start),
               (vaddr)(&_end));
         /*
@@ -425,7 +425,7 @@ error_t phy_mm_init(struct setup_info *arch_setup_info)
          */
         per_cpu_phy_end = per_cpu_phy_start;
         reserve_per_cpu_region(&per_cpu_phy_end);
-        print("[ PERCPU_REGION\t@\t< 0x%x , 0x%x >]\n",
+        print("[ PERCPU_REGION\t@\t< 0x%lx , 0x%lx >]\n",
               KERNEL_PHY_TO_VIRT(per_cpu_phy_start),
               KERNEL_PHY_TO_VIRT(per_cpu_phy_end));
 
@@ -485,11 +485,11 @@ error_t phy_mm_init(struct setup_info *arch_setup_info)
                 &pmm_data_phy_start,
                 &pmm_data_phy_end);
 
-        print("[ PMM_L2_TABLE\t@\t< 0x%x , 0x%x >]\n",
+        print("[ PMM_L2_TABLE\t@\t< 0x%lx , 0x%lx >]\n",
               KERNEL_PHY_TO_VIRT(pmm_data_phy_start),
               KERNEL_PHY_TO_VIRT(pmm_data_phy_start
                                  + L2_table_pages * PAGE_SIZE));
-        print("[ PMM_DATA\t@\t< 0x%x , 0x%x >]\n",
+        print("[ PMM_DATA\t@\t< 0x%lx , 0x%lx >]\n",
               KERNEL_PHY_TO_VIRT(pmm_data_phy_start
                                  + L2_table_pages * PAGE_SIZE),
               KERNEL_PHY_TO_VIRT(pmm_data_phy_end));

@@ -165,7 +165,7 @@ static int smp_port_table_test(cpu_id_t cpu_id)
                         state->error_count++;
                         if (state->error_count <= 5) {
                                 pr_error(
-                                        "[smp_port_test] CPU %u: lookup failed at round %u, found=%x, port=%x\n",
+                                        "[smp_port_test] CPU %u: lookup failed at round %u, found=%lx, port=%lx\n",
                                         cpu_id,
                                         round,
                                         (u32)(u64)found,
@@ -221,7 +221,7 @@ static int smp_port_table_test(cpu_id_t cpu_id)
         }
 
         if (cpu_id == BSP_ID) {
-                pr_info("[smp_port_test] CPU %u: Table test done: reg=%x lookup=%x unreg=%x errors=%x\n",
+                pr_info("[smp_port_test] CPU %u: Table test done: reg=%lx lookup=%lx unreg=%lx errors=%lx\n",
                         cpu_id,
                         (u32)(state->register_count & 0xFFFFFFFF),
                         (u32)(state->lookup_count & 0xFFFFFFFF),
@@ -356,7 +356,7 @@ static int smp_port_cache_test(u32 cpu_id)
         }
 
         if (cpu_id == BSP_ID) {
-                pr_info("[smp_port_test] CPU %u: Cache test done: reg=%x lookup=%x unreg=%x errors=%x\n",
+                pr_info("[smp_port_test] CPU %u: Cache test done: reg=%lx lookup=%lx unreg=%lx errors=%lx\n",
                         cpu_id,
                         (u32)(state->register_count & 0xFFFFFFFF),
                         (u32)(state->lookup_count & 0xFFFFFFFF),
@@ -528,7 +528,7 @@ static int smp_port_mixed_test(u32 cpu_id)
         }
 
         if (cpu_id == BSP_ID) {
-                pr_info("[smp_port_test] CPU %u: Mixed test done: reg=%x lookup=%x unreg=%x errors=%x\n",
+                pr_info("[smp_port_test] CPU %u: Mixed test done: reg=%lx lookup=%lx unreg=%lx errors=%lx\n",
                         cpu_id,
                         (u32)(state->register_count & 0xFFFFFFFF),
                         (u32)(state->lookup_count & 0xFFFFFFFF),

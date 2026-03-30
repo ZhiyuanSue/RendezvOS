@@ -52,7 +52,7 @@ void delete_message_port_structure(Message_Port_t* port)
         struct allocator* cpu_kallocator = percpu(kallocator);
         if (cpu_kallocator && !cpu_kallocator->m_free) {
                 pr_error(
-                        "[port] delete_message_port_structure: m_free is NULL cpu=%x port_hi=%x port_lo=%x\n",
+                        "[port] delete_message_port_structure: m_free is NULL cpu=%lx port_hi=%lx port_lo=%lx\n",
                         (u32)percpu(cpu_number),
                         (u32)(((u64)(uintptr_t)port >> 32) & 0xffffffff),
                         (u32)((u64)(uintptr_t)port & 0xffffffff));
@@ -88,7 +88,7 @@ static void free_message_port_ref_real(ref_count_t* ref_count_ptr)
          */
         if (port->registered || port->table) {
                 pr_error(
-                        "[port] free_ref still registered name=%s reg=%x table_hi=%x table_lo=%x\n",
+                        "[port] free_ref still registered name=%s reg=%lx table_hi=%lx table_lo=%lx\n",
                         port->name,
                         (u32)port->registered,
                         (u32)(((u64)(uintptr_t)port->table >> 32) & 0xffffffff),

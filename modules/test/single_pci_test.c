@@ -4,18 +4,18 @@
 error_t simple_print_callback(u8 bus, u8 device, u8 func,
                               const pci_header_t* hdr)
 {
-        pr_info("Found PCI device at %x:%x.%x\n", bus, device, func);
-        pr_info("  Vendor: %x, Device: %x\n",
+        pr_info("Found PCI device at %lx:%lx.%lx\n", bus, device, func);
+        pr_info("  Vendor: %lx, Device: %lx\n",
                 hdr->common.vendor_id,
                 hdr->common.device_id);
-        pr_info("  Class: %x, Subclass: %x, ProgIF: %x\n",
+        pr_info("  Class: %lx, Subclass: %lx, ProgIF: %lx\n",
                 hdr->common.class_code,
                 hdr->common.subclass,
                 hdr->common.prog_if);
         if (hdr->common.vendor_id == 0x1022) { // AMD Vendor ID
                 u16 device_id = hdr->common.device_id;
 
-                pr_info("\nAMD Device at %x:%x.%x\n", bus, device, func);
+                pr_info("\nAMD Device at %lx:%lx.%lx\n", bus, device, func);
 
                 // 显示设备类型
                 const char* type = "Unknown";
@@ -30,15 +30,15 @@ error_t simple_print_callback(u8 bus, u8 device, u8 func,
                 else if (device_id >= 0x7900 && device_id <= 0x79FF)
                         type = "Chipset SATA Controller";
 
-                pr_info("  Device ID: %x - %s\n", device_id, type);
-                pr_info("  Class: %x, Subclass: %x\n",
+                pr_info("  Device ID: %lx - %s\n", device_id, type);
+                pr_info("  Class: %lx, Subclass: %lx\n",
                         hdr->common.class_code,
                         hdr->common.subclass);
         }
         if (hdr->common.vendor_id == 0x1002) { // AMD Vendor ID
                 u16 device_id = hdr->common.device_id;
 
-                pr_info("\nAMD Device at %x:%x.%x\n", bus, device, func);
+                pr_info("\nAMD Device at %lx:%lx.%lx\n", bus, device, func);
                 const char* type = "Unknown";
                 switch (device_id) {
                 case 0x73A1:
@@ -62,8 +62,8 @@ error_t simple_print_callback(u8 bus, u8 device, u8 func,
                 default:
                         type = "AMD Graphics Card";
                 }
-                pr_info("  Device ID: %x - %s\n", device_id, type);
-                pr_info("  Class: %x, Subclass: %x\n",
+                pr_info("  Device ID: %lx - %s\n", device_id, type);
+                pr_info("  Class: %lx, Subclass: %lx\n",
                         hdr->common.class_code,
                         hdr->common.subclass);
         }

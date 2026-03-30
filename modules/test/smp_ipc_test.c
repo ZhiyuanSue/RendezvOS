@@ -40,9 +40,9 @@ static void free_payload_data(ref_count_t* msgdata_refcount)
         delete_msgdata_structure(msg_data);
 }
 
-static void smp_ipc_sender_loop(u32 cpu_id, int count)
+static void smp_ipc_sender_loop(cpu_id_t cpu_id, int count)
 {
-        pr_info("cpu %u sender start, count=%d\n", (unsigned)cpu_id, count);
+        pr_info("cpu %lu sender start, count=%d\n", cpu_id, count);
         for (int i = 0; i < count; i++) {
                 if (i % (count / 10) == 0) {
                         pr_info("cpu %d finish smp ipc send %d/%d\n",
@@ -125,12 +125,12 @@ static void smp_ipc_sender_loop(u32 cpu_id, int count)
                 }
                 smp_ipc_send_ok[cpu_id]++;
         }
-        pr_info("cpu %u sender done, total=%u\n",
+        pr_info("cpu %u sender done, total=%llu\n",
                 (unsigned)cpu_id,
                 (unsigned long long)smp_ipc_send_ok[cpu_id]);
 }
 
-static void smp_ipc_receiver_loop(u32 cpu_id, int count)
+static void smp_ipc_receiver_loop(cpu_id_t cpu_id, int count)
 {
         pr_info("cpu %u receiver start, count=%d\n", (unsigned)cpu_id, count);
         for (int i = 0; i < count; i++) {
@@ -154,7 +154,7 @@ static void smp_ipc_receiver_loop(u32 cpu_id, int count)
                         break;
                 }
                 if (!msg->data) {
-                        pr_info("cpu %u receiver msg->data is NULL at i=%d\n",
+                        pr_info("cpu %lu receiver msg->data is NULL at i=%d\n",
                                 (unsigned)cpu_id,
                                 i);
                         ref_put(&msg->ms_queue_node.refcount, free_message_ref);

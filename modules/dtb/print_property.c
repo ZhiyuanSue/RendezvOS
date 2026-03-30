@@ -24,7 +24,7 @@ void print_property_value_u32(enum property_type_enum p_type, void *data,
         u32_data = (u32 *)data;
         print("<");
         for (u_int32_t index = 0; index < len; index += sizeof(u32)) {
-                print("0x%x", SWAP_ENDIANNESS_32(*u32_data));
+                print("0x%lx", SWAP_ENDIANNESS_32(*u32_data));
                 if (index + sizeof(u32) >= len) {
                         print(">");
                 } else {
@@ -42,7 +42,7 @@ void print_property_value_u64(enum property_type_enum p_type, void *data,
         u64_data = (u64 *)data;
         print("<");
         for (u_int32_t index = 0; index < len; index += sizeof(u64)) {
-                print("0x%x", SWAP_ENDIANNESS_64(*u64_data));
+                print("0x%lx", SWAP_ENDIANNESS_64(*u64_data));
                 if (index + sizeof(u64) >= len) {
                         print(">");
                 } else {
@@ -68,7 +68,7 @@ void print_property_value_prop_encoded_array(enum property_type_enum p_type,
                 u32_data = (u32 *)data;
                 for (u_int32_t index = 0; index < len; index += sizeof(u32)) {
                         print("<");
-                        print("0x%x", SWAP_ENDIANNESS_32(*u32_data));
+                        print("0x%lx", SWAP_ENDIANNESS_32(*u32_data));
                         u32_data++;
                         print(">");
                         if (index + sizeof(u32) < len)

@@ -59,7 +59,7 @@ void print_sche_info(Thread_Base* old, Thread_Base* new)
                                 old->name,
                                 new->name);
                 } else {
-                        pr_info("[CPU %d SCHED INFO] old %s new %x\n",
+                        pr_info("[CPU %d SCHED INFO] old %s new %lx\n",
                                 percpu(cpu_number),
                                 old->name,
                                 new);
@@ -67,12 +67,12 @@ void print_sche_info(Thread_Base* old, Thread_Base* new)
 
         } else {
                 if (new->name) {
-                        pr_info("[CPU %d SCHED INFO] old %x new %s\n",
+                        pr_info("[CPU %d SCHED INFO] old %lx new %s\n",
                                 percpu(cpu_number),
                                 old,
                                 new->name);
                 } else {
-                        pr_info("[CPU %d SCHED INFO] old %x new %x\n",
+                        pr_info("[CPU %d SCHED INFO] old %lx new %lx\n",
                                 percpu(cpu_number),
                                 old,
                                 new);

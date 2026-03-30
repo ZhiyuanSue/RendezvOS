@@ -12,18 +12,18 @@ void print_pci_tree(struct pci_node* pci_parent_node, int level)
                         container_of(t_node, struct pci_node, dev_node);
                 for (int i = 0; i < level; i++)
                         print("  ");
-                print("Found PCI device at %x:%x.%x\n",
+                print("Found PCI device at %lx:%lx.%lx\n",
                       pci_device->bus,
                       pci_device->device,
                       pci_device->func);
                 for (int i = 0; i < level; i++)
                         print("  ");
-                print("  Vendor: %x, Device: %x\n",
+                print("  Vendor: %lx, Device: %lx\n",
                       pci_device->vendor_id,
                       pci_device->device_id);
                 for (int i = 0; i < level; i++)
                         print("  ");
-                print("  Class: %x, Subclass: %x, ProgIF: %x\n",
+                print("  Class: %lx, Subclass: %lx, ProgIF: %lx\n",
                       pci_device->class_code,
                       pci_device->subclass,
                       pci_device->prog_if);
@@ -32,7 +32,7 @@ void print_pci_tree(struct pci_node* pci_parent_node, int level)
                         if (pci_device->bar[i].flags & PCI_RESOURCE_EXIST) {
                                 for (int j = 0; j < level; j++)
                                         print("  ");
-                                print("  BAR%d start: 0x%x, len: 0x%x, flags:0x%x\n",
+                                print("  BAR%d start: 0x%lx, len: 0x%lx, flags:0x%lx\n",
                                       i,
                                       pci_device->bar[i].start_addr,
                                       pci_device->bar[i].len,

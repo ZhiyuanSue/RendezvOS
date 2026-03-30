@@ -170,7 +170,7 @@ static error_t port_slots_maybe_grow_ht(struct Port_Table* t)
         u64 old_cap = t->ht_cap;
         error_t e = port_slots_ht_rehash(t, nc);
         if (e == REND_SUCCESS) {
-                pr_info("[port_slots] ht_cap grow %u -> %u (live=%u)\n",
+                pr_info("[port_slots] ht_cap grow %lu -> %lu (live=%lu)\n",
                         (u64)old_cap,
                         (u64)nc,
                         (u64)t->live_ports);
@@ -213,7 +213,7 @@ static void port_slots_maybe_shrink_ht(struct Port_Table* t)
         u64 old_cap = t->ht_cap;
         error_t e = port_slots_ht_rehash(t, target_cap);
         if (e == REND_SUCCESS) {
-                pr_info("[port_slots] ht_cap shrink %u -> %u (live=%u tombs=%u)\n",
+                pr_info("[port_slots] ht_cap shrink %lu -> %lu (live=%lu tombs=%lu)\n",
                         (u64)old_cap,
                         (u64)target_cap,
                         (u64)t->live_ports,
@@ -350,7 +350,7 @@ void port_slots_table_fini(struct Port_Table* t)
                 }
                 if (!port_to_drop || !name) {
                         pr_error(
-                                "[port_slots] fini: live_ports=%u but no slot (corrupt?)\n",
+                                "[port_slots] fini: live_ports=%lu but no slot (corrupt?)\n",
                                 (u64)t->live_ports);
                         unlock_mcs(&t->lock, my_lock);
                         break;

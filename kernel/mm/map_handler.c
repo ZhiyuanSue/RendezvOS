@@ -256,7 +256,7 @@ error_t map(VS_Common *vs, ppn_t ppn, vpn_t vpn, int level,
                 if (ROUND_DOWN(v, MIDDLE_PAGE_SIZE) != v
                     || ROUND_DOWN(p, MIDDLE_PAGE_SIZE) != p) {
                         pr_error(
-                                "[ ERROR ] the ppn and vpn must be 2M aligned p %x v%x\n",
+                                "[ ERROR ] the ppn and vpn must be 2M aligned p %lx v%lx\n",
                                 p,
                                 v);
                         res = -E_IN_PARAM;
@@ -354,7 +354,7 @@ error_t map(VS_Common *vs, ppn_t ppn, vpn_t vpn, int level,
                                         &percpu(pmm_spin_lock[zone->zone_id]));
                                 if (pmm_res) {
                                         pr_error(
-                                                "[ MAP ] pmm free error with a ppn 0x%x\n",
+                                                "[ MAP ] pmm free error with a ppn 0x%lx\n",
                                                 PPN(next_level_paddr));
                                         res = -E_RENDEZVOS;
                                         goto map_l2_fail;
@@ -371,7 +371,7 @@ error_t map(VS_Common *vs, ppn_t ppn, vpn_t vpn, int level,
                                 pr_error(
                                         "[ MAP ] mapping two different physical pages to a same virtual 2M page\n");
                                 pr_error(
-                                        "[ MAP ] arguments: old 0x%x new 0x%x\n",
+                                        "[ MAP ] arguments: old 0x%lx new 0x%lx\n",
                                         next_level_paddr,
                                         p);
                                 res = -E_RENDEZVOS;
@@ -431,7 +431,7 @@ error_t map(VS_Common *vs, ppn_t ppn, vpn_t vpn, int level,
         if (next_level_paddr != p) {
                 pr_error(
                         "[ MAP ] mapping two different physical pages to a same virtual 4K page\n");
-                pr_error("[ MAP ] arguments: old 0x%x new 0x%x to 0x%x\n",
+                pr_error("[ MAP ] arguments: old 0x%lx new 0x%lx to 0x%lx\n",
                          next_level_paddr,
                          p,
                          v);
@@ -439,7 +439,7 @@ error_t map(VS_Common *vs, ppn_t ppn, vpn_t vpn, int level,
                 goto map_l3_fail;
         }
         pr_error(
-                "[ MAP ] %d remap same physical pages ppn %x to a same virtual 4K page vpn %x\n",
+                "[ MAP ] %d remap same physical pages ppn %lx to a same virtual 4K page vpn %lx\n",
                 handler->cpu_id,
                 ppn,
                 vpn);
@@ -502,7 +502,7 @@ ppn_t unmap(VS_Common *vs, vpn_t vpn, u64 new_entry_addr,
         } else if (ROUND_DOWN(vs->vspace_root_addr, PAGE_SIZE)
                    != vs->vspace_root_addr) {
                 pr_error(
-                        "[ ERROR ] wrong vspace root paddr 0x%x in mapping, please check\n",
+                        "[ ERROR ] wrong vspace root paddr 0x%lx in mapping, please check\n",
                         vs->vspace_root_addr);
                 ppn = -E_IN_PARAM;
                 goto unmap_fail;
@@ -518,7 +518,7 @@ ppn_t unmap(VS_Common *vs, vpn_t vpn, u64 new_entry_addr,
                                                                        l0 page*/
         {
                 pr_error(
-                        "[ ERROR ] L0 entry not mapped, entry is 0x%x, unmap error\n",
+                        "[ ERROR ] L0 entry not mapped, entry is 0x%lx, unmap error\n",
                         L0_E);
                 ppn = -E_RENDEZVOS;
                 goto unmap_l0_fail;
@@ -553,14 +553,14 @@ ppn_t unmap(VS_Common *vs, vpn_t vpn, u64 new_entry_addr,
                                                                        out the
                                                                        l2 page*/
         {
-                pr_error("[ ERROR ] L2 entry %x not mapped, unmap error\n", L2_E.entry);
+                pr_error("[ ERROR ] L2 entry %lx not mapped, unmap error\n", L2_E.entry);
                 ppn = -E_RENDEZVOS;
                 goto unmap_l2_fail;
         } else if (is_final_level_pt(1, entry_flags)) {
                 /*check the vpn 2M aligned*/
                 if (vpn & mask_9_bit) {
                         pr_error(
-                                "[ ERROR ] try to unmap a 2M entry %x %x %x %d, but vpn is not 2M  aligned\n",
+                                "[ ERROR ] try to unmap a 2M entry %lx %lx %lx %d, but vpn is not 2M  aligned\n",
                                 L2_E.entry,
                                 entry_flags,
                                 v,
@@ -629,7 +629,7 @@ ppn_t have_mapped(VS_Common *vs, vpn_t vpn, struct map_handler *handler)
         } else if (ROUND_DOWN(vs->vspace_root_addr, PAGE_SIZE)
                    != vs->vspace_root_addr) {
                 pr_error(
-                        "[ ERROR ] wrong vspace root paddr 0x%x in mapping, please check\n",
+                        "[ ERROR ] wrong vspace root paddr 0x%lx in mapping, please check\n",
                         vs->vspace_root_addr);
                 ppn = -E_RENDEZVOS;
                 goto have_mapped_fail;

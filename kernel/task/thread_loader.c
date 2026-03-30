@@ -88,7 +88,7 @@ error_t elf_Phdr_64_dynamic_handle(vaddr elf_start, Elf64_Phdr *phdr_ptr,
 error_t run_elf_program(vaddr elf_start, vaddr elf_end, VS_Common *vs,
                         append_info_handler handler)
 {
-        pr_info("start gen task from elf start %x end %x vs %x\n",
+        pr_info("start gen task from elf start %lx end %lx vs %lx\n",
                 elf_start,
                 elf_end,
                 vs);

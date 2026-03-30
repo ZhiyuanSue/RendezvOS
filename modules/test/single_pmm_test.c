@@ -17,7 +17,7 @@ int pmm_test(void)
                         pr_error("alloc error\n");
                         goto pmm_test_error;
                 } else
-                        debug("try to get %x pages ,and alloc ppn 0x%x\n",
+                        debug("try to get %lx pages ,and alloc ppn 0x%lx\n",
                               pg_size,
                               alloc_ppn[i]);
         }
@@ -27,7 +27,7 @@ int pmm_test(void)
                         pr_error("free error\n");
                         goto pmm_test_error;
                 } else
-                        debug("free ppn 0x%x success\n", alloc_ppn[i]);
+                        debug("free ppn 0x%lx success\n", alloc_ppn[i]);
         }
         for (int i = 0; i < PPN_TEST_CASE_NUM; ++i) {
                 alloc_ppn[i] = mem_zones[ZONE_NORMAL].pmm->pmm_alloc(
@@ -38,7 +38,7 @@ int pmm_test(void)
                         pr_error("alloc error\n");
                         goto pmm_test_error;
                 } else
-                        debug("try to get %x pages ,and alloc ppn 0x%x\n",
+                        debug("try to get %lx pages ,and alloc ppn 0x%lx\n",
                               i * 2 + 3,
                               alloc_ppn[i]);
         }
@@ -50,7 +50,7 @@ int pmm_test(void)
                         pr_error("free error\n");
                         goto pmm_test_error;
                 } else
-                        debug("free ppn 0x%x success\n", alloc_ppn[i]);
+                        debug("free ppn 0x%lx success\n", alloc_ppn[i]);
         }
         for (int i = 0; i < PPN_TEST_CASE_NUM; ++i) {
                 alloc_ppn[i] = mem_zones[ZONE_NORMAL].pmm->pmm_alloc(
@@ -61,7 +61,7 @@ int pmm_test(void)
                         pr_error("alloc error\n");
                         goto pmm_test_error;
                 } else
-                        debug("try to get %x pages ,and alloc ppn 0x%x\n",
+                        debug("try to get %lx pages ,and alloc ppn 0x%lx\n",
                               i * 2 + 3,
                               alloc_ppn[i]);
                 if (mem_zones[ZONE_NORMAL].pmm->pmm_free(
@@ -71,7 +71,7 @@ int pmm_test(void)
                         pr_error("free error\n");
                         goto pmm_test_error;
                 } else
-                        debug("free ppn 0x%x success\n", alloc_ppn[i]);
+                        debug("free ppn 0x%lx success\n", alloc_ppn[i]);
         }
         // try to alloc all the memory,then try to alloc will lead to an error
         // if no such an error, the boundary conditions is error
@@ -100,7 +100,7 @@ int pmm_test(void)
                         pr_error("free error\n");
                         goto pmm_test_error;
                 } else
-                        debug("free ppn 0x%x success\n", alloc_ppn[i]);
+                        debug("free ppn 0x%lx success\n", alloc_ppn[i]);
         }
         for (int i = 0; i < PPN_TEST_CASE_NUM; ++i) {
                 alloc_ppn[i] = mem_zones[ZONE_NORMAL].pmm->pmm_alloc(
@@ -109,7 +109,7 @@ int pmm_test(void)
                         pr_error("alloc error\n");
                         goto pmm_test_error;
                 } else
-                        debug("try to get %x pages ,and alloc ppn 0x%x\n",
+                        debug("try to get %lx pages ,and alloc ppn 0x%lx\n",
                               1,
                               alloc_ppn[i]);
         }

@@ -127,7 +127,7 @@ i64 pmm_alloc_zone(struct buddy *bp, int alloc_order,
         }
 
         if (del_node->order < 0) {
-                pr_error("[ BUDDY ]try to alloc an allocated page ppn %x\n",
+                pr_error("[ BUDDY ]try to alloc an allocated page ppn %lx\n",
                          del_node->ppn);
                 return (-E_RENDEZVOS);
         }
@@ -163,7 +163,7 @@ i64 pmm_alloc_zone(struct buddy *bp, int alloc_order,
         bp->total_avaliable_pages -= 1ULL << ((u64)alloc_order);
         *alloced_page_number = 1ULL << ((u64)alloc_order);
 
-        // print("alloc ppn %x with number %x\n",
+        // print("alloc ppn %lx with number %lx\n",
         //       del_node->ppn,
         //       *alloced_page_number);
 
@@ -209,7 +209,7 @@ static error_t pmm_free_one(struct pmm *pmm, ppn_t ppn)
         insert_node = &bp->pages[index];
         if (!insert_node || insert_node->order >= 0) {
                 pr_error(
-                        "[ BUDDY ] insert node error! ppn %x node %x order %x\n",
+                        "[ BUDDY ] insert node error! ppn %lx node %lx order %lx\n",
                         ppn,
                         insert_node,
                         insert_node->order);
@@ -270,7 +270,7 @@ error_t pmm_free(struct pmm *pmm, ppn_t ppn, size_t page_number)
 {
         u32 alloc_order;
         int free_one_result;
-        // print("free ppn %x\n",ppn);
+        // print("free ppn %lx\n",ppn);
 
         if (ppn == -E_RENDEZVOS)
                 return (-E_RENDEZVOS);

@@ -23,7 +23,7 @@ void nexus_print(struct nexus_node* nexus_root)
                 manage_page_num++;
                 struct nexus_node* manage_page = container_of(
                         tmp_mp, struct nexus_node, manage_free_list);
-                debug("\t[ NEXUS ] have empty entry manage page %d with addr 0x%x: %d record can use\n",
+                debug("\t[ NEXUS ] have empty entry manage page %d with addr 0x%lx: %d record can use\n",
                       manage_page_num,
                       (vaddr)manage_page,
                       manage_page->page_left_nexus);
@@ -55,7 +55,7 @@ void nexus_print(struct nexus_node* nexus_root)
                 struct nexus_node* tmp_node =
                         container_of(tmp_rb, struct nexus_node, _rb_node);
                 if (tmp_node)
-                        debug("\t[ NEXUS ] Used page: start vaddr 0x%x, size 0x%x\n",
+                        debug("\t[ NEXUS ] Used page: start vaddr 0x%lx, size 0x%lx\n",
                               tmp_node->v_region.addr,
                               tmp_node->v_region.len);
                 tmp_rb = RB_Next(tmp_rb);
@@ -64,7 +64,7 @@ void nexus_print(struct nexus_node* nexus_root)
 }
 int nexus_test(void)
 {
-        debug("sizeof struct nexus_node is 0x%x\n", sizeof(struct nexus_node));
+        debug("sizeof struct nexus_node is 0x%lx\n", sizeof(struct nexus_node));
         /*after the nexus init, we try to print it first*/
         nexus_print(percpu(nexus_root));
         for (u64 i = 0; i < NR_MAX_TEST; i++) {

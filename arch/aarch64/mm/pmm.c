@@ -31,10 +31,10 @@ static void get_mem_prop_and_insert_region(struct fdt_property *fdt_prop)
                 u32_4 = SWAP_ENDIANNESS_32(*u32_data);
                 u32_data++;
                 mem_len = (((u64)u32_3) << 32) + u32_4;
-                print("[ Phy_Mem\t@\t< 0x%x , 0x%x >]\n", addr, addr + mem_len);
+                print("[ Phy_Mem\t@\t< 0x%lx , 0x%lx >]\n", addr, addr + mem_len);
                 if (m_regions.memory_regions_insert(addr, mem_len)
                     != REND_SUCCESS) {
-                        print("insert memory region [%x %x] fail\n",
+                        print("insert memory region [%lx %lx] fail\n",
                               addr,
                               mem_len);
                 }
@@ -71,7 +71,7 @@ void arch_init_pmm(struct setup_info *arch_setup_info,
         if (!m_regions.region_count)
                 goto arch_init_pmm_error;
 
-        print("[ DTB_DATA\t@\t< 0x%x , 0x%x >]\n",
+        print("[ DTB_DATA\t@\t< 0x%lx , 0x%lx >]\n",
               ROUND_DOWN((vaddr)dtb_header_ptr, MIDDLE_PAGE_SIZE),
               ROUND_UP((vaddr)dtb_header_ptr + MIDDLE_PAGE_SIZE,
                        MIDDLE_PAGE_SIZE));
@@ -80,7 +80,7 @@ void arch_init_pmm(struct setup_info *arch_setup_info,
              off += sizeof(struct fdt_reserve_entry)) {
                 entry = (struct fdt_reserve_entry *)((u64)dtb_header_ptr + off);
                 if (entry->size) {
-                        print("reserve_entry: address 0x%x size: 0x%x\n",
+                        print("reserve_entry: address 0x%lx size: 0x%lx\n",
                               entry->address,
                               entry->size);
                 }

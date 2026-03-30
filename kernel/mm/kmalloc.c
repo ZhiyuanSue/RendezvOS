@@ -119,7 +119,7 @@ struct object_header* chunk_get_obj(struct mem_chunk* chunk)
                 return NULL;
         }
         if (chunk->magic != CHUNK_MAGIC) {
-                pr_error("[ERROR]bad chunk magic %x, please check\n",
+                pr_error("[ERROR]bad chunk magic %lx, please check\n",
                          chunk->magic);
                 return NULL;
         }
@@ -145,7 +145,7 @@ error_t chunk_free_obj(struct object_header* obj, struct mem_chunk* chunk)
         /*allocator id must exist*/
         if (!obj || !chunk) {
                 pr_error(
-                        "[ERROR]illegal chunk free obj parameter obj %x chunk %x\n",
+                        "[ERROR]illegal chunk free obj parameter obj %lx chunk %lx\n",
                         obj,
                         chunk);
                 return -E_IN_PARAM;
@@ -424,7 +424,7 @@ static error_t kfree_page_local(struct mem_allocator* k_allocator_p, void* p)
         unlock_cas(&k_allocator_p->lock);
         if (!pcn) {
                 pr_error(
-                        "[ERROR] kfree_page_local: missing page_chunk for %x\n",
+                        "[ERROR] kfree_page_local: missing page_chunk for %lx\n",
                         (vaddr)p);
                 return -E_RENDEZVOS;
         }
@@ -469,7 +469,7 @@ static void free_kpage_msg(ref_count_t* refcount)
                 kfree_page_local(k_allocator_p, (void*)free_info->page_vaddr);
         if (e) {
                 pr_error(
-                        "[kfree_page_msq] free_kpage_msg: kfree_page_local failed e=%d page_vaddr=%x src_cpu=%u\n",
+                        "[kfree_page_msq] free_kpage_msg: kfree_page_local failed e=%d page_vaddr=%lx src_cpu=%u\n",
                         e,
                         (i64)free_info->page_vaddr,
                         (unsigned)free_info->src_cpu);

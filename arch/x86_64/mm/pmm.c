@@ -20,7 +20,7 @@ extern struct memory_regions m_regions;
                         print("we cannot manager toooo many memory regions\n"); \
                         goto arch_init_pmm_error;                               \
                 } else {                                                        \
-                        print("[ Phy_Mem\t@\t< 0x%x , 0x%x >]\n",               \
+                        print("[ Phy_Mem\t@\t< 0x%lx , 0x%lx >]\n",               \
                               mmap->addr,                                       \
                               mmap->len);                                       \
                 }                                                               \
@@ -88,10 +88,10 @@ error_t reserve_arch_region(struct setup_info *arch_setup_info)
                 print("not find any rsdp\n");
                 return REND_SUCCESS;
         }
-        // print("====== rsdp @[0x%x]] ======\n", rsdp_table);
+        // print("====== rsdp @[0x%lx]] ======\n", rsdp_table);
         arch_setup_info->rsdp_addr = (vaddr)rsdp_table;
         if (rsdp_table->revision == 0) {
-                // print("====== rsdt @[0x%x]] ======\n",
+                // print("====== rsdt @[0x%lx]] ======\n",
                 // rsdp_table->rsdt_address);
                 paddr acpi_reserve_phy_start =
                         ROUND_DOWN(rsdp_table->rsdt_address, MIDDLE_PAGE_SIZE);
@@ -99,7 +99,7 @@ error_t reserve_arch_region(struct setup_info *arch_setup_info)
                         acpi_reserve_phy_start + MIDDLE_PAGE_SIZE;
                 int acpi_region = m_regions.memory_regions_reserve_region(
                         acpi_reserve_phy_start, acpi_reserve_phy_end);
-                print("[ ACPI_DATA\t@\t< 0x%x , 0x%x >]\n",
+                print("[ ACPI_DATA\t@\t< 0x%lx , 0x%lx >]\n",
                       KERNEL_PHY_TO_VIRT(acpi_reserve_phy_start),
                       KERNEL_PHY_TO_VIRT(acpi_reserve_phy_end));
                 if (acpi_region == -1) {

@@ -16,9 +16,9 @@ bool smp_check_rb(struct rb_node* node, int* height, int* count, int level)
                 *height = 0;
                 return true;
         }
-        debug("[Node:%x][Color:%d] ", node, RB_COLOR(node));
+        debug("[Node:%lx][Color:%d] ", node, RB_COLOR(node));
         if (RB_PARENT(node)) {
-                debug(" [Parent:%x]\n", RB_PARENT(node));
+                debug(" [Parent:%lx]\n", RB_PARENT(node));
         } else {
                 debug("\n");
         }
@@ -58,7 +58,7 @@ bool smp_check_rb(struct rb_node* node, int* height, int* count, int level)
 }
 int smp_nexus_test(void)
 {
-        debug("sizeof struct nexus_node is 0x%x\n", sizeof(struct nexus_node));
+        debug("sizeof struct nexus_node is 0x%lx\n", sizeof(struct nexus_node));
 
         // if (percpu(cpu_number) == 0) {
         //         int height;

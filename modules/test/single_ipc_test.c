@@ -194,7 +194,7 @@ static void* ipc_multi_round_sender_thread(void* arg)
                                           sizeof(multi_ipc_send_payload));
                 if (!payload) {
                         pr_error(
-                                "[single_ipc_multi_round_test] sender: payload alloc failed at round %u\n",
+                                "[single_ipc_test] sender: payload alloc failed at round %llu\n",
                                 (u64)i);
                         break;
                 }
@@ -227,7 +227,7 @@ static void* ipc_multi_round_sender_thread(void* arg)
                         (i64)i, 16, &payload_ptr, free_msgdata_ref_default);
                 if (!msgdata) {
                         pr_error(
-                                "[single_ipc_multi_round_test] sender: create_message_data failed at round %u\n",
+                                "[single_ipc_multi_round_test] sender: create_message_data failed at round %llu\n",
                                 (u64)i);
                         percpu(kallocator)->m_free(percpu(kallocator), payload);
                         break;
@@ -236,7 +236,7 @@ static void* ipc_multi_round_sender_thread(void* arg)
                 Message_t* msg = create_message_with_msg(msgdata);
                 if (!msg) {
                         pr_error(
-                                "[single_ipc_multi_round_test] sender: create_message_with_msg failed at round %u\n",
+                                "[single_ipc_multi_round_test] sender: create_message_with_msg failed at round %llu\n",
                                 (u64)i);
                         ref_put(&msgdata->refcount, free_msgdata_ref_default);
                         break;
@@ -249,7 +249,7 @@ static void* ipc_multi_round_sender_thread(void* arg)
 
                 if (enqueue_msg_for_send(msg) != REND_SUCCESS) {
                         pr_error(
-                                "[single_ipc_multi_round_test] sender: enqueue_msg_for_send failed at round %u\n",
+                                "[single_ipc_multi_round_test] sender: enqueue_msg_for_send failed at round %llu\n",
                                 (u64)i);
                         ref_put(&msg->ms_queue_node.refcount, free_message_ref);
                         break;
@@ -258,7 +258,7 @@ static void* ipc_multi_round_sender_thread(void* arg)
 
                 if (send_msg(port) != REND_SUCCESS) {
                         pr_error(
-                                "[single_ipc_multi_round_test] sender: send_msg failed at round %u\n",
+                                "[single_ipc_multi_round_test] sender: send_msg failed at round %llu\n",
                                 (u64)i);
                         break;
                 }
@@ -266,14 +266,14 @@ static void* ipc_multi_round_sender_thread(void* arg)
                 multi_round_send_count++;
 
                 if ((i + 1) % (IPC_MULTI_ROUND_COUNT / 5) == 0) {
-                        pr_info("[single_ipc_multi_round_test] sender: sent %u/%u messages\n",
+                        pr_info("[single_ipc_multi_round_test] sender: sent %llu/%u messages\n",
                                 (unsigned long long)(i + 1),
                                 IPC_MULTI_ROUND_COUNT);
                 }
         }
 
         multi_round_sender_done = 1;
-        pr_info("[single_ipc_multi_round_test] sender: completed, total sent=%u\n",
+        pr_info("[single_ipc_multi_round_test] sender: completed, total sent=%llu\n",
                 (unsigned long long)multi_round_send_count);
         return NULL;
 }
@@ -287,7 +287,7 @@ static void* ipc_multi_round_receiver_thread(void* arg)
         for (u64 i = 0; i < IPC_MULTI_ROUND_COUNT; i++) {
                 if (recv_msg(port) != REND_SUCCESS) {
                         pr_error(
-                                "[single_ipc_multi_round_test] receiver: recv_msg failed at round %u\n",
+                                "[single_ipc_multi_round_test] receiver: recv_msg failed at round %llu\n",
                                 (unsigned long long)i);
                         break;
                 }
@@ -295,14 +295,14 @@ static void* ipc_multi_round_receiver_thread(void* arg)
                 Message_t* msg = dequeue_recv_msg();
                 if (!msg) {
                         pr_error(
-                                "[single_ipc_multi_round_test] receiver: recv_queue empty at round %u\n",
+                                "[single_ipc_multi_round_test] receiver: recv_queue empty at round %llu\n",
                                 (unsigned long long)i);
                         break;
                 }
 
                 if (!msg->data) {
                         pr_error(
-                                "[single_ipc_multi_round_test] receiver: msg->data is NULL at round %u\n",
+                                "[single_ipc_multi_round_test] receiver: msg->data is NULL at round %llu\n",
                                 (unsigned long long)i);
                         ref_put(&msg->ms_queue_node.refcount, free_message_ref);
                         break;
@@ -314,14 +314,14 @@ static void* ipc_multi_round_receiver_thread(void* arg)
                 ref_put(&msg->ms_queue_node.refcount, free_message_ref);
 
                 if ((i + 1) % (IPC_MULTI_ROUND_COUNT / 5) == 0) {
-                        pr_info("[single_ipc_multi_round_test] receiver: received %u/%u messages\n",
+                        pr_info("[single_ipc_multi_round_test] receiver: received %llu/%u messages\n",
                                 (unsigned long long)(i + 1),
                                 IPC_MULTI_ROUND_COUNT);
                 }
         }
 
         multi_round_receiver_done = 1;
-        pr_info("[single_ipc_multi_round_test] receiver: completed, total received=%u\n",
+        pr_info("[single_ipc_multi_round_test] receiver: completed, total received=%llu\n",
                 (unsigned long long)multi_round_recv_count);
         return NULL;
 }
@@ -377,13 +377,13 @@ int ipc_multi_round_test(void)
 
         delete_message_port_structure(port);
 
-        pr_info("[single_ipc_multi_round_test] test completed: sent=%u received=%u\n",
+        pr_info("[single_ipc_multi_round_test] test completed: sent=%llu received=%llu\n",
                 (unsigned long long)multi_round_send_count,
                 (unsigned long long)multi_round_recv_count);
 
         if (multi_round_send_count != IPC_MULTI_ROUND_COUNT) {
                 pr_error(
-                        "[single_ipc_multi_round_test] sender count mismatch: got %u, expected %u\n",
+                        "[single_ipc_multi_round_test] sender count mismatch: got %llu, expected %u\n",
                         (unsigned long long)multi_round_send_count,
                         IPC_MULTI_ROUND_COUNT);
                 return -E_REND_TEST;
@@ -391,7 +391,7 @@ int ipc_multi_round_test(void)
 
         if (multi_round_recv_count != IPC_MULTI_ROUND_COUNT) {
                 pr_error(
-                        "[single_ipc_multi_round_test] receiver count mismatch: got %u, expected %u\n",
+                        "[single_ipc_multi_round_test] receiver count mismatch: got %llu, expected %u\n",
                         (unsigned long long)multi_round_recv_count,
                         IPC_MULTI_ROUND_COUNT);
                 return -E_REND_TEST;
@@ -399,7 +399,7 @@ int ipc_multi_round_test(void)
 
         if (multi_round_last_recv_type != (i64)(IPC_MULTI_ROUND_COUNT - 1)) {
                 pr_error(
-                        "[single_ipc_multi_round_test] last received type mismatch: got %d, expected %u\n",
+                        "[single_ipc_multi_round_test] last received type mismatch: got %lld, expected %u\n",
                         (long long)multi_round_last_recv_type,
                         IPC_MULTI_ROUND_COUNT - 1);
                 return -E_REND_TEST;

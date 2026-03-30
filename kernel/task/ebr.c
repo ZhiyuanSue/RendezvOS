@@ -179,7 +179,7 @@ void ebr_try_reclaim(void)
                         if (atomic64_fetch_inc(&ebr_bad_free_func_log_cnt)
                             < 5) {
                                 pr_error(
-                                        "[ebr] bad free_func ptr slot=%x cpu=%x ref_hi=%x ref_lo=%x fn_hi=%x fn_lo=%x\n",
+                                        "[ebr] bad free_func ptr slot=%lx cpu=%lx ref_hi=%lx ref_lo=%lx fn_hi=%lx fn_lo=%lx\n",
                                         i,
                                         (u32)percpu(cpu_number),
                                         (u32)(((u64)(uintptr_t)ref >> 32)
@@ -275,12 +275,12 @@ void ebr_retire_ref(ref_count_t* ref, void (*free_func)(ref_count_t*))
 void ebr_dump_stats(void)
 {
         ebr_ensure_init();
-        int ncpu = NR_CPU;
+        cpu_id_t ncpu = NR_CPU;
         if (ncpu <= 0)
                 ncpu = 1;
         pr_info("[ebr] ===== stats begin ===== slots=%u =====\n",
                 (u32)EBR_RETIRE_SLOTS);
-        for (int i = 0; i < ncpu; i++) {
+        for (cpu_id_t i = 0; i < ncpu; i++) {
                 u64 live = atomic64_load(
                         (volatile const u64*)&per_cpu(ebr_retired_count, i)
                                 .counter);
@@ -296,7 +296,7 @@ void ebr_dump_stats(void)
                 u64 overflow_ops = atomic64_load(
                         (volatile const u64*)&per_cpu(ebr_overflow_ops, i)
                                 .counter);
-                pr_info("[ebr] cpu=%u live=%u peak=%u retire=%u reclaim=%u overflow=%u\n",
+                pr_info("[ebr] cpu=%u live=%lx peak=%lx retire=%lx reclaim=%lx overflow=%lx\n",
                         i,
                         live,
                         peak,
