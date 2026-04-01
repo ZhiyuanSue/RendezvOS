@@ -24,8 +24,15 @@ extern int NR_CPU;
 static Message_Port_t* smp_ipc_port;
 static volatile bool smp_ipc_port_ready;
 static volatile int smp_ipc_active_cpus;
-static volatile u64 smp_ipc_send_ok[RENDEZVOS_MAX_CPU_NUMBER];
-static volatile u64 smp_ipc_recv_ok[RENDEZVOS_MAX_CPU_NUMBER];
+/*
+ * Test robustness: build-time RENDEZVOS_MAX_CPU_NUMBER can become 1 when NR_CPUS
+ * is defined as 1 (e.g. some aarch64 SMP configs), while the runtime may still
+ * bring up cpu_id 1. Use a floor of 2 slots and always bounds-check cpu_id.
+ */
+#define SMP_IPC_CPU_SLOTS \
+        ((RENDEZVOS_MAX_CPU_NUMBER) < 2 ? 2 : (RENDEZVOS_MAX_CPU_NUMBER))
+static volatile u64 smp_ipc_send_ok[SMP_IPC_CPU_SLOTS];
+static volatile u64 smp_ipc_recv_ok[SMP_IPC_CPU_SLOTS];
 
 static void free_payload_data(ref_count_t* msgdata_refcount)
 {
@@ -43,6 +50,12 @@ static void free_payload_data(ref_count_t* msgdata_refcount)
 static void smp_ipc_sender_loop(cpu_id_t cpu_id, int count)
 {
         pr_info("cpu %lu sender start, count=%d\n", cpu_id, count);
+        if ((u64)cpu_id >= (u64)SMP_IPC_CPU_SLOTS) {
+                pr_error("[smp_ipc_test] sender cpu_id %lu out of slots=%u\n",
+                         (unsigned long)cpu_id,
+                         (unsigned)SMP_IPC_CPU_SLOTS);
+                return;
+        }
         for (int i = 0; i < count; i++) {
                 if (i % (count / 10) == 0) {
                         pr_info("cpu %d finish smp ipc send %d/%d\n",
@@ -133,6 +146,12 @@ static void smp_ipc_sender_loop(cpu_id_t cpu_id, int count)
 static void smp_ipc_receiver_loop(cpu_id_t cpu_id, int count)
 {
         pr_info("cpu %u receiver start, count=%d\n", (unsigned)cpu_id, count);
+        if ((u64)cpu_id >= (u64)SMP_IPC_CPU_SLOTS) {
+                pr_error("[smp_ipc_test] receiver cpu_id %u out of slots=%u\n",
+                         (unsigned)cpu_id,
+                         (unsigned)SMP_IPC_CPU_SLOTS);
+                return;
+        }
         for (int i = 0; i < count; i++) {
                 if (i % (count / 10) == 0) {
                         pr_info("cpu %d finish smp ipc recv %d/%d\n",
@@ -180,7 +199,7 @@ int smp_ipc_test(void)
                         pr_error("[smp_ipc_test] create_message_port failed\n");
                         return -E_REND_TEST;
                 }
-                for (int i = 0; i < RENDEZVOS_MAX_CPU_NUMBER; i++) {
+                for (int i = 0; i < SMP_IPC_CPU_SLOTS; i++) {
                         smp_ipc_send_ok[i] = 0;
                         smp_ipc_recv_ok[i] = 0;
                 }
@@ -189,10 +208,13 @@ int smp_ipc_test(void)
                  * exclude the last CPU from participating to keep an even
                  * active CPU count and avoid deadlock.
                  */
-                if (NR_CPU < 2) {
+                int nr_cpu = NR_CPU;
+                if (nr_cpu > SMP_IPC_CPU_SLOTS)
+                        nr_cpu = SMP_IPC_CPU_SLOTS;
+                if (nr_cpu < 2) {
                         smp_ipc_active_cpus = 0;
                 } else {
-                        smp_ipc_active_cpus = NR_CPU - (NR_CPU % 2);
+                        smp_ipc_active_cpus = nr_cpu - (nr_cpu % 2);
                 }
                 smp_ipc_port_ready = true;
                 pr_info("BSP port ready, NR_CPU=%d active=%d\n",

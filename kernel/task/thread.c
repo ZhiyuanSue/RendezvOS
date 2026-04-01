@@ -33,7 +33,7 @@ static void thread_entry(void)
            the trace of the thread_entry and run_thread will be cover
                         */
         pr_info("go back to thread entry and try to clean\n");
-        thread_set_status(current_thread, thread_status_zombie);
+        thread_or_flags(current_thread, THREAD_FLAG_EXIT_REQUESTED);
         schedule(percpu(core_tm));
 }
 

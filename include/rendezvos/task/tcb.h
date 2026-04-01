@@ -6,6 +6,8 @@
 #include <common/dsa/rb_tree.h>
 #include <rendezvos/mm/vmm.h>
 #include <rendezvos/mm/kmalloc.h>
+#include <rendezvos/smp/cpu_id.h>
+#include <rendezvos/sync/cas_lock.h>
 #ifdef _AARCH64_
 #include <arch/aarch64/tcb_arch.h>
 #elif defined _LOONGARCH_
@@ -42,6 +44,7 @@ it is a percpu structure and have a percpu schedule algorithm
 */
 #define TASK_MANAGER_SCHE_COMMON                     \
         struct {                                     \
+                cas_lock_t sched_lock;               \
                 struct list_entry sched_task_list;   \
                 struct list_entry sched_thread_list; \
         };
@@ -56,6 +59,7 @@ extern Task_Manager* core_tm;
 #define TCB_COMMON                          \
         pid_t pid;                          \
         Task_Manager* tm;                   \
+        cas_lock_t thread_list_lock;        \
         i64 thread_number;                  \
         struct list_entry thread_head_node; \
         VS_Common* vs;                      \
@@ -115,6 +119,14 @@ extern u64 thread_kstack_page_num;
 #define THREAD_FLAG_NONE               0
 #define THREAD_FLAG_KERNEL_USER_OFFSET (0)
 #define THREAD_FLAG_USER               (0x1ull)
+/*
+ * Set once when a thread requests exit (syscall or kernel thread_entry path).
+ * Exit intent is expressed only via this flag (not a dedicated thread status)
+ * so IPC paths that set thread_status_block_on_send / block_on_receive cannot
+ * erase it. Owner CPU moves running -> zombie when switching away; clean
+ * server waits on THREAD_FLAG_EXIT_REQUESTED until status is zombie.
+ */
+#define THREAD_FLAG_EXIT_REQUESTED (0x2ull)
 /*let the default is kernel thread*/
 
 struct Thread_Base {
@@ -128,6 +140,7 @@ extern Thread_Base* idle_thread_ptr;
 extern volatile bool is_print_sche_info;
 struct task_manager {
         TASK_MANAGER_SCHE_COMMON
+        cpu_id_t owner_cpu;
         Tcb_Base* current_task;
         Tcb_Base* root_task;
         Thread_Base* current_thread;
@@ -189,6 +202,13 @@ static inline void thread_set_flags(Thread_Base* thread, u64 flags)
         if (!thread)
                 return;
         thread->flags = flags;
+}
+/** OR bits into thread->flags; preserves existing flags (unlike thread_set_flags). */
+static inline void thread_or_flags(Thread_Base* thread, u64 bits)
+{
+        if (!thread)
+                return;
+        thread->flags |= bits;
 }
 static inline u64 thread_get_status(Thread_Base* thread)
 {

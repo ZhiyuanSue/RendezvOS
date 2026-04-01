@@ -1,5 +1,6 @@
 #include <rendezvos/task/ipc.h>
 #include <rendezvos/task/ebr.h>
+#include <modules/log/log.h>
 static void free_ipc_request_real(ref_count_t* refcount)
 {
         if (!refcount)
@@ -15,10 +16,15 @@ Ipc_Request_t* create_ipc_request(Thread_Base* thread)
         struct allocator* cpu_kallocator = percpu(kallocator);
         Ipc_Request_t* req =
                 cpu_kallocator->m_alloc(cpu_kallocator, sizeof(Ipc_Request_t));
-        if (req) {
-                ref_init(&req->ms_queue_node.refcount);
-                req->thread = thread;
+        if (!req || !thread)
+                return NULL;
+        ref_init(&req->ms_queue_node.refcount);
+        /* Pair with delete_ipc_request's ref_put on thread->refcount. */
+        if (!ref_get_not_zero(&thread->refcount)) {
+                cpu_kallocator->m_free(cpu_kallocator, req);
+                return NULL;
         }
+        req->thread = thread;
         return req;
 }
 void delete_ipc_request(Ipc_Request_t* req)

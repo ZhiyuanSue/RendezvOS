@@ -1,6 +1,6 @@
 #include <rendezvos/task/tcb.h>
 #include <rendezvos/smp/percpu.h>
-#include <rendezvos/sync/spin_lock.h>
+#include <rendezvos/sync/cas_lock.h>
 #include <modules/log/log.h>
 #include <rendezvos/mm/allocator.h>
 #include <rendezvos/mm/kmalloc.h>
@@ -27,8 +27,10 @@ Task_Manager* new_task_manager(void)
         Task_Manager* tm = (Task_Manager*)(cpu_kallocator->m_alloc(
                 cpu_kallocator, sizeof(Task_Manager)));
         choose_schedule(tm);
+        lock_init_cas(&tm->sched_lock);
         INIT_LIST_HEAD(&(tm->sched_task_list));
         INIT_LIST_HEAD(&(tm->sched_thread_list));
+        tm->owner_cpu = percpu(cpu_number);
         return tm;
 }
 void del_task_manager_structure(Task_Manager* tm)
@@ -91,11 +93,14 @@ void schedule(Task_Manager* tm)
          */
         kalloc_process_cross_cpu_frees();
         ebr_try_reclaim();
+        lock_cas(&tm->sched_lock);
         Thread_Base* curr = tm->current_thread;
         if (tm->scheduler)
                 tm->current_thread = tm->scheduler(tm);
-        if (!tm->current_thread || curr == tm->current_thread)
+        if (!tm->current_thread || curr == tm->current_thread) {
+                unlock_cas(&tm->sched_lock);
                 return;
+        }
         print_sche_info(curr, tm->current_thread);
 
         if ((tm->current_thread->flags) & THREAD_FLAG_USER) {
@@ -122,8 +127,16 @@ void schedule(Task_Manager* tm)
          * if before the schedule no status is set
          * set it to ready, otherwise using the set status
          */
-        thread_set_status_with_expect(
-                curr, thread_status_running, thread_status_ready);
+        if ((curr->flags & THREAD_FLAG_EXIT_REQUESTED)
+            && thread_get_status(curr) == thread_status_running) {
+                /* Owner CPU proves switch-away; safe to reap. */
+                thread_set_status_with_expect(
+                        curr, thread_status_running, thread_status_zombie);
+        } else {
+                thread_set_status_with_expect(
+                        curr, thread_status_running, thread_status_ready);
+        }
         thread_set_status(tm->current_thread, thread_status_running);
+        unlock_cas(&tm->sched_lock);
         switch_to(&(curr->ctx), &(tm->current_thread->ctx));
 }

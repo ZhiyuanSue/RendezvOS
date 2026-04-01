@@ -7,6 +7,7 @@
 #include <rendezvos/mm/allocator.h>
 #include <rendezvos/task/initcall.h>
 #include <rendezvos/task/thread_loader.h>
+#include <rendezvos/sync/cas_lock.h>
 
 u64 thread_kstack_page_num = 2;
 u64 thread_ustack_page_num = 8;
@@ -56,8 +57,11 @@ error_t create_init_thread(Tcb_Base* root_task)
         thread_set_name(init_thread_name, init_t);
         return REND_SUCCESS;
 add_thread_to_manager_fail:
+        lock_cas(&root_task->thread_list_lock);
         list_del_init(&(init_t->thread_list_node));
-        root_task->thread_number--;
+        if (root_task->thread_number > 0)
+                root_task->thread_number--;
+        unlock_cas(&root_task->thread_list_lock);
 add_thread_to_task_fail:
         del_thread_structure(init_t);
 new_thread_fail:
@@ -123,8 +127,11 @@ Task_Manager* init_proc(void)
         }
         return percpu(core_tm);
 create_idle_thread_fail:
+        lock_cas(&percpu(core_tm)->root_task->thread_list_lock);
         list_del_init(&(percpu(init_thread_ptr)->thread_list_node));
-        percpu(core_tm)->root_task->thread_number--;
+        if (percpu(core_tm)->root_task->thread_number > 0)
+                percpu(core_tm)->root_task->thread_number--;
+        unlock_cas(&percpu(core_tm)->root_task->thread_list_lock);
         del_thread_structure(percpu(init_thread_ptr));
 create_init_thread_fail:
         if (del_task_from_manager(percpu(core_tm)->root_task) != REND_SUCCESS) {
@@ -153,22 +160,28 @@ error_t add_thread_to_task(Tcb_Base* task, Thread_Base* thread)
                         return -E_RENDEZVOS;
                 }
         }
-        /*we do not check the linked list */
+        lock_cas(&task->thread_list_lock);
         list_add_tail(&(thread->thread_list_node), &(task->thread_head_node));
         task->thread_number++;
         thread->belong_tcb = task;
-
+        unlock_cas(&task->thread_list_lock);
         return REND_SUCCESS;
 }
 error_t del_thread_from_task(Thread_Base* thread)
 {
         if (!thread)
                 return -E_IN_PARAM;
-        if (!thread->belong_tcb)
-                return REND_SUCCESS;
-        thread->belong_tcb->thread_number--;
-        thread->belong_tcb = NULL;
+        Tcb_Base* task = thread->belong_tcb;
+        if (!task) {
+                pr_error("[ERROR] thread not attached to any manager\n");
+                return -E_RENDEZVOS;
+        }
+        lock_cas(&task->thread_list_lock);
         list_del_init(&(thread->thread_list_node));
+        if (task->thread_number > 0)
+                task->thread_number--;
+        thread->belong_tcb = NULL;
+        unlock_cas(&task->thread_list_lock);
         return REND_SUCCESS;
 }
 error_t add_task_to_manager(Task_Manager* core_tm, Tcb_Base* task)
@@ -179,7 +192,9 @@ error_t add_task_to_manager(Task_Manager* core_tm, Tcb_Base* task)
                 pr_error("[ERROR] this task have has a manager\n");
                 return -E_RENDEZVOS;
         }
+        lock_cas(&core_tm->sched_lock);
         list_add_tail(&(task->sched_task_list), &(core_tm->sched_task_list));
+        unlock_cas(&core_tm->sched_lock);
         task->tm = core_tm;
         return REND_SUCCESS;
 }
@@ -191,7 +206,9 @@ error_t del_task_from_manager(Tcb_Base* task)
                 pr_error("[ERROR] this task not belong to any manager\n");
                 return -E_RENDEZVOS;
         }
+        lock_cas(&task->tm->sched_lock);
         list_del_init(&task->sched_task_list);
+        unlock_cas(&task->tm->sched_lock);
         task->tm = NULL;
         return REND_SUCCESS;
 }
@@ -203,9 +220,11 @@ error_t add_thread_to_manager(Task_Manager* core_tm, Thread_Base* thread)
                 pr_error("[ERROR] this thread have has a manager\n");
                 return -E_RENDEZVOS;
         }
+        lock_cas(&core_tm->sched_lock);
         list_add_tail(&(thread->sched_thread_list),
                       &(core_tm->sched_thread_list));
         thread->tm = core_tm;
+        unlock_cas(&core_tm->sched_lock);
         return REND_SUCCESS;
 }
 error_t del_thread_from_manager(Thread_Base* thread)
@@ -213,10 +232,13 @@ error_t del_thread_from_manager(Thread_Base* thread)
         if (!thread)
                 return E_IN_PARAM;
         if (!thread->tm) {
-                pr_error("[ERROR] this task not belong to any manager\n");
+                pr_error("[ERROR] thread not attached to any manager\n");
                 return -E_RENDEZVOS;
         }
+        Task_Manager* core_tm = thread->tm;
+        lock_cas(&core_tm->sched_lock);
         list_del_init(&thread->sched_thread_list);
+        unlock_cas(&core_tm->sched_lock);
         thread->tm = NULL;
         return REND_SUCCESS;
 }
@@ -231,6 +253,7 @@ Tcb_Base* new_task_structure(struct allocator* cpu_kallocator,
         if (tcb) {
                 memset((void*)tcb, 0, sizeof(Tcb_Base) + append_tcb_info_len);
                 tcb->pid = INVALID_ID;
+                lock_init_cas(&tcb->thread_list_lock);
                 INIT_LIST_HEAD(&(tcb->sched_task_list));
                 tcb->thread_number = 0;
                 INIT_LIST_HEAD(&(tcb->thread_head_node));
@@ -243,7 +266,10 @@ error_t delete_task(Tcb_Base* tcb)
 {
         if (!tcb)
                 return -E_IN_PARAM;
-        if (tcb->thread_number)
+        lock_cas(&tcb->thread_list_lock);
+        bool has_threads = (tcb->thread_number != 0);
+        unlock_cas(&tcb->thread_list_lock);
+        if (has_threads)
                 return -E_RENDEZVOS;
 
         struct allocator* cpu_kallocator = percpu(kallocator);
