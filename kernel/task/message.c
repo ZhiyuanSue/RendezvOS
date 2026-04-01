@@ -124,25 +124,3 @@ void free_message_ref(ref_count_t* ref_count_ptr)
          */
         ebr_retire_ref(ref_count_ptr, free_message_ref_real);
 }
-
-void clean_message_queue(ms_queue_t* ms_queue, bool delete_dummy)
-{
-        if (!ms_queue)
-                return;
-        tagged_ptr_t dequeued_ptr;
-        while (!tp_is_none(dequeued_ptr =
-                                   msq_dequeue(ms_queue, free_message_ref))) {
-                ref_put(&((ms_queue_node_t*)tp_get_ptr(dequeued_ptr))->refcount,
-                        free_message_ref);
-        }
-        if (delete_dummy) {
-                tagged_ptr_t head_tp =
-                        atomic64_load((volatile u64*)&ms_queue->head);
-                ms_queue_node_t* dummy = (ms_queue_node_t*)tp_get_ptr(head_tp);
-                if (dummy) {
-                        ref_put(&dummy->refcount, free_message_ref);
-                        atomic64_store((volatile u64*)&ms_queue->head, 0);
-                        atomic64_store((volatile u64*)&ms_queue->tail, 0);
-                }
-        }
-}

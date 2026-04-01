@@ -216,6 +216,39 @@ static inline tagged_ptr_t msq_dequeue(ms_queue_t* q,
         ebr_exit();
         return res;
 }
+
+/**
+ * @brief Drain a queue and optionally delete its dummy node.
+ *
+ * This is a generic helper for container-level teardown (e.g. per-thread
+ * message queues, per-port IPC wait queues). It mirrors the "caller must
+ * ref_put(ptr, free_func) when done" contract of msq_dequeue().
+ *
+ * @param q Queue to drain.
+ * @param delete_dummy If true, drop the dummy node ref and clear head/tail.
+ * @param free_func Free function used for both dequeued nodes and dummy.
+ */
+static inline void msq_clean_queue(ms_queue_t* q, bool delete_dummy,
+                                  void (*free_func)(ref_count_t*))
+{
+        if (!q)
+                return;
+        tagged_ptr_t dequeued_ptr;
+        while (!tp_is_none(dequeued_ptr = msq_dequeue(q, free_func))) {
+                ref_put(&((ms_queue_node_t*)tp_get_ptr(dequeued_ptr))->refcount,
+                        free_func);
+        }
+        if (delete_dummy) {
+                tagged_ptr_t head_tp =
+                        atomic64_load((volatile u64*)&q->head);
+                ms_queue_node_t* dummy = (ms_queue_node_t*)tp_get_ptr(head_tp);
+                if (dummy) {
+                        ref_put(&dummy->refcount, free_func);
+                        atomic64_store((volatile u64*)&q->head, 0);
+                        atomic64_store((volatile u64*)&q->tail, 0);
+                }
+        }
+}
 /**
  * @brief this function is used for msq_dequeue_check_head and
  * msq_enqueue_check_tail. Only the checked tp is our expected tp, can we

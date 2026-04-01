@@ -48,6 +48,5 @@ Message_t* create_message_structure(void);
 void delete_message_structure(Message_t* msg);
 error_t fill_message_data(Message_t* msg, Msg_Data_t* msgdata);
 void free_message_ref(ref_count_t* ref_count_ptr);
-void clean_message_queue(ms_queue_t* ms_queue, bool delete_dummy);
 
 #endif

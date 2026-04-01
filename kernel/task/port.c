@@ -48,7 +48,7 @@ void delete_message_port_structure(Message_Port_t* port)
 {
         if (!port)
                 return;
-        /*TODO: clean the queue*/
+        msq_clean_queue(&port->thread_queue, true, free_ipc_request);
         struct allocator* cpu_kallocator = percpu(kallocator);
         if (cpu_kallocator && !cpu_kallocator->m_free) {
                 pr_error(

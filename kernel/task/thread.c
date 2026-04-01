@@ -131,13 +131,62 @@ alloc_init_param_error:
 alloc_thread_error:
         return NULL;
 }
+
+/*
+ * Drain heap resources owned by the thread.
+ *
+ * Call only from del_thread_structure when the last ref on thread->refcount
+ * drops (free_thread_ref), or from synchronous teardown paths that do not go
+ * through delete_thread (e.g. create_thread failure).
+ *
+ * Do not call from delete_thread before ref_put: delete_thread already runs
+ * del_thread_from_* then ref_put, and del_thread_structure runs again on last
+ * ref. A second msq_clean_queue after head/tail were zeroed makes
+ * msq_dequeue spin forever (!head_node branch + continue).
+ *
+ * Teardown contract:
+ * 1) delete_thread: detach from task + Task_Manager sched ring (del_thread_*),
+ *    then ref_put — thread struct may survive if IPC etc. still holds a ref.
+ * 2) Last ref -> free_thread_ref -> del_thread_structure -> here + init + free.
+ */
+static void thread_release_owned_resources(Thread_Base* thread)
+{
+        struct allocator* cpu_kallocator = percpu(kallocator);
+        if (!thread || !cpu_kallocator)
+                return;
+
+        Message_t* pending_msg = (Message_t*)atomic64_exchange(
+                (volatile u64*)(&thread->send_pending_msg), (u64)NULL);
+        if (pending_msg) {
+                ref_put(&pending_msg->ms_queue_node.refcount, free_message_ref);
+        }
+        msq_clean_queue(&thread->send_msg_queue, true, free_message_ref);
+        msq_clean_queue(&thread->recv_msg_queue, true, free_message_ref);
+
+        if (thread->kstack_bottom) {
+                void* thread_stack_start = (void*)thread->kstack_bottom
+                                           - thread->kstack_num * PAGE_SIZE;
+                cpu_kallocator->m_free(cpu_kallocator, thread_stack_start);
+                thread->kstack_bottom = 0;
+        }
+        atomic64_store((volatile u64*)&thread->port_ptr, (u64)NULL);
+        thread_port_cache_clear(&thread->port_cache);
+}
+
 void del_thread_structure(Thread_Base* thread)
 {
         struct allocator* cpu_kallocator = percpu(kallocator);
         if (!thread || !cpu_kallocator)
                 return;
-        thread_port_cache_clear(&thread->port_cache);
+        /*
+         * Last-chance: ensure not still linked on task or scheduler ring before
+         * freeing Thread_Base (refcount path may skip delete_thread).
+         */
+        (void)del_thread_from_task(thread);
+        (void)del_thread_from_manager(thread);
+        thread_release_owned_resources(thread);
         del_init_parameter_structure(thread->init_parameter);
+        thread->init_parameter = NULL;
         cpu_kallocator->m_free(cpu_kallocator, thread);
 }
 void free_thread_ref(ref_count_t* ref_count_ptr)
@@ -220,31 +269,9 @@ void delete_thread(Thread_Base* thread)
         if (!thread || !thread->belong_tcb)
                 return;
         atomic64_store(&thread->status, thread_status_exit);
-        /*free the send pending msg*/
-        Message_t* pending_msg = (Message_t*)atomic64_exchange(
-                (volatile u64*)(&thread->send_pending_msg), (u64)NULL);
-        if (pending_msg) {
-                ref_put(&pending_msg->ms_queue_node.refcount, free_message_ref);
-        }
-        /*clean the send msg queue*/
-        clean_message_queue(&thread->send_msg_queue, true);
-        /*clean the recv msg queue*/
-        clean_message_queue(&thread->recv_msg_queue, true);
+        /* Heap/queues/kstack: released in del_thread_structure on last ref only. */
 
         error_t e = -E_RENDEZVOS;
-        if (thread->kstack_bottom) {
-                /*
-                 * at some time,
-                 * if you using the new_thread_structure and try to use
-                 * delete_thread, the kstack bottom is 0,but not an error
-                 */
-                void* thread_stack_start = (void*)thread->kstack_bottom
-                                           - thread->kstack_num * PAGE_SIZE;
-                struct allocator* cpu_kallocator = percpu(kallocator);
-                if (cpu_kallocator)
-                        cpu_kallocator->m_free(cpu_kallocator,
-                                               thread_stack_start);
-        }
         e = del_thread_from_task(thread);
         if (e) {
                 pr_error(

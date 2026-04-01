@@ -10,9 +10,6 @@ target_config_arch_list=[
 	'riscv64',
 	'x86_64'
 ]
-target_ignore_file_name = ".gitignore"
-module_ignore_str = "*\n!/.gitignore\n"
-module_ignore_env_str = "*.env\n**/Makefile\n!/Makefile\n"
 usable_module_list={}
 module_features=[]
 kernel_features=[]
@@ -182,10 +179,6 @@ def configure_module(module_name,module_config,root_dir):
 		include_dir_path = os.path.join(include_dir_path,module_config['path'])
 		if os.path.isdir(include_dir_path)==False:
 			os.mkdir(include_dir_path)
-		# we also need to add git ignore in include dir
-		repo_git_ignore_file_path=os.path.join(include_dir_path,".gitignore")
-		with open(repo_git_ignore_file_path, "w", encoding="utf-8") as f:
-			f.write("*\n")
 		# create symlink all the include file
 		# delete the exist symlink(if exist)
 		if os.path.lexists(include_dir_path):
@@ -204,12 +197,8 @@ def configure_module(module_name,module_config,root_dir):
 		os.symlink(source_include, include_dir_path, target_is_directory=True)
 		print(f"Created symlink: \n{include_dir_path}\n\t -> {source_include}")
 	else:
-		# append the gitignore rule at modules/.gitignore
-		target_ignore_file_path = os.path.join(root_dir,"modules",target_ignore_file_name)
-		ignore_rule = "!/"+ module_name + "/\n!/" + module_name + "/**\n" 
-		target_ignore_file = open(target_ignore_file_path,'a')
-		target_ignore_file.write(ignore_rule)
-		target_ignore_file.close()
+		# No longer append gitignore rules
+		pass
 
  	# add the module config file
 	target_config_file_path=os.path.join(target_module_dir,target_config_file_name)
@@ -270,11 +259,6 @@ def configure_modules(module_configs,root_dir):
 	target_config_file=open(target_config_file_path,'w')
 	target_config_file.write(kernel_config_str)
 	target_config_file.close()
- 
-	target_ignore_file_path = os.path.join(modules_dir,target_ignore_file_name)
-	target_ignore_file = open(target_ignore_file_path,'w')
-	target_ignore_file.write(module_ignore_str)
-	target_ignore_file.close()
 	
 	modules_header_file_path=os.path.join(root_dir,"include","modules","modules.h")
 	modules_header_file=open(modules_header_file_path,'w')
@@ -285,9 +269,6 @@ def configure_modules(module_configs,root_dir):
 		# print(module_name,module_config)
 		cfg_module_res = configure_module(module_name,module_config,root_dir)
 
-	target_ignore_file = open(target_ignore_file_path,'a')
-	target_ignore_file.write(module_ignore_env_str)
-	target_ignore_file.close()
 	if cfg_module_res!=0:
 		return cfg_module_res
 	return 0

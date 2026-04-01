@@ -172,16 +172,25 @@ error_t del_thread_from_task(Thread_Base* thread)
         if (!thread)
                 return -E_IN_PARAM;
         Tcb_Base* task = thread->belong_tcb;
-        if (!task) {
-                pr_error("[ERROR] thread not attached to any manager\n");
-                return -E_RENDEZVOS;
+        if (task) {
+                lock_cas(&task->thread_list_lock);
+                list_del_init(&(thread->thread_list_node));
+                if (task->thread_number > 0)
+                        task->thread_number--;
+                thread->belong_tcb = NULL;
+                unlock_cas(&task->thread_list_lock);
+                return REND_SUCCESS;
         }
-        lock_cas(&task->thread_list_lock);
-        list_del_init(&(thread->thread_list_node));
-        if (task->thread_number > 0)
-                task->thread_number--;
-        thread->belong_tcb = NULL;
-        unlock_cas(&task->thread_list_lock);
+        /*
+         * Idempotent: already detached from task. If pointers were cleared
+         * without list_del_init (bug), unlink last-chance before Thread_Base
+         * free (e.g. del_thread_structure).
+         */
+        if (!list_node_is_detached(&thread->thread_list_node)) {
+                pr_error(
+                        "[thread] del_thread_from_task: orphan thread_list_node\n");
+                list_del_init(&thread->thread_list_node);
+        }
         return REND_SUCCESS;
 }
 error_t add_task_to_manager(Task_Manager* core_tm, Tcb_Base* task)
@@ -231,15 +240,23 @@ error_t del_thread_from_manager(Thread_Base* thread)
 {
         if (!thread)
                 return E_IN_PARAM;
-        if (!thread->tm) {
-                pr_error("[ERROR] thread not attached to any manager\n");
-                return -E_RENDEZVOS;
+        if (thread->tm) {
+                Task_Manager* core_tm = thread->tm;
+                lock_cas(&core_tm->sched_lock);
+                list_del_init(&thread->sched_thread_list);
+                unlock_cas(&core_tm->sched_lock);
+                thread->tm = NULL;
+                return REND_SUCCESS;
         }
-        Task_Manager* core_tm = thread->tm;
-        lock_cas(&core_tm->sched_lock);
-        list_del_init(&thread->sched_thread_list);
-        unlock_cas(&core_tm->sched_lock);
-        thread->tm = NULL;
+        /*
+         * Idempotent: already detached from Task_Manager. Defensive unlink if
+         * sched_thread_list is still embedded (tm cleared without list_del).
+         */
+        if (!list_node_is_detached(&thread->sched_thread_list)) {
+                pr_error(
+                        "[thread] del_thread_from_manager: orphan sched_thread_list\n");
+                list_del_init(&thread->sched_thread_list);
+        }
         return REND_SUCCESS;
 }
 
