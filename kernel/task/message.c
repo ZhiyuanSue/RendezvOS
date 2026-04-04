@@ -1,7 +1,7 @@
 #include <rendezvos/task/message.h>
 #include <rendezvos/task/ebr.h>
 Msg_Data_t* create_message_data(i64 msg_type, u64 data_len, void** data_ptr,
-                                void (*free_data)(ref_count_t*))
+                                error_t (*free_data)(ref_count_t*))
 {
         struct allocator* cpu_kallocator = percpu(kallocator);
         Msg_Data_t* msg_data =
@@ -33,15 +33,16 @@ void delete_msgdata_structure(Msg_Data_t* msg_data)
         struct allocator* cpu_kallocator = percpu(kallocator);
         cpu_kallocator->m_free(cpu_kallocator, (void*)msg_data);
 }
-void free_msgdata_ref_default(ref_count_t* msgdata_refcount)
+error_t free_msgdata_ref_default(ref_count_t* msgdata_refcount)
 {
         if (!msgdata_refcount)
-                return;
+                return -E_IN_PARAM;
         Msg_Data_t* msg_data =
                 container_of(msgdata_refcount, Msg_Data_t, refcount);
         struct allocator* cpu_kallocator = percpu(kallocator);
         cpu_kallocator->m_free(cpu_kallocator, msg_data->data);
         delete_msgdata_structure(msg_data);
+        return REND_SUCCESS;
 }
 
 Message_t* create_message_with_msg(Msg_Data_t* msgdata)
@@ -100,10 +101,10 @@ void delete_message_structure(Message_t* msg)
         struct allocator* cpu_kallocator = percpu(kallocator);
         cpu_kallocator->m_free(cpu_kallocator, (void*)msg);
 }
-static void free_message_ref_real(ref_count_t* ref_count_ptr)
+static error_t free_message_ref_real(ref_count_t* ref_count_ptr)
 {
         if (!ref_count_ptr)
-                return;
+                return -E_IN_PARAM;
         ms_queue_node_t* node =
                 container_of(ref_count_ptr, ms_queue_node_t, refcount);
         Message_t* dummy_msg = container_of(node, Message_t, ms_queue_node);
@@ -111,16 +112,17 @@ static void free_message_ref_real(ref_count_t* ref_count_ptr)
                 ref_put(&dummy_msg->data->refcount, dummy_msg->data->free_data);
         }
         delete_message_structure(dummy_msg);
+        return REND_SUCCESS;
 }
 
-void free_message_ref(ref_count_t* ref_count_ptr)
+error_t free_message_ref(ref_count_t* ref_count_ptr)
 {
         if (!ref_count_ptr)
-                return;
+                return -E_IN_PARAM;
         /*
          * Do not free queue nodes immediately from a lock-free path.
          * Defer reclaim until EBR says no active reader can still hold
          * transient pointers to this node.
          */
-        ebr_retire_ref(ref_count_ptr, free_message_ref_real);
+        return ebr_retire_ref(ref_count_ptr, free_message_ref_real);
 }

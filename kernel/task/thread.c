@@ -141,8 +141,10 @@ alloc_thread_error:
  *
  * Do not call from delete_thread before ref_put: delete_thread already runs
  * del_thread_from_* then ref_put, and del_thread_structure runs again on last
- * ref. A second msq_clean_queue after head/tail were zeroed makes
- * msq_dequeue spin forever (!head_node branch + continue).
+ * ref. A second drain after head/tail were zeroed makes msq_dequeue spin
+ * forever (!head_node branch + continue). MSQ dummy is ref_put by msq_dequeue
+ * on the empty-queue path; msq_clean_queue only zeroes head/tail—never
+ * ref_put(dummy) twice.
  *
  * Teardown contract:
  * 1) delete_thread: detach from task + Task_Manager sched ring (del_thread_*),
@@ -189,13 +191,14 @@ void del_thread_structure(Thread_Base* thread)
         thread->init_parameter = NULL;
         cpu_kallocator->m_free(cpu_kallocator, thread);
 }
-void free_thread_ref(ref_count_t* ref_count_ptr)
+error_t free_thread_ref(ref_count_t* ref_count_ptr)
 {
         if (!ref_count_ptr)
-                return;
+                return -E_IN_PARAM;
         Thread_Base* thread =
                 container_of(ref_count_ptr, Thread_Base, refcount);
         del_thread_structure(thread);
+        return REND_SUCCESS;
 }
 
 Thread_Init_Para* new_init_parameter_structure(void)

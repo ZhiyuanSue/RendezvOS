@@ -174,9 +174,13 @@ int nexus_test(void)
                         }
                 }
         }
-        e = del_vspace(&vs);
-        if(e)
-                goto nexus_test_fail;
+        if (vs) {
+                if (vs != &root_vspace
+                    && vs->type != (u64)VS_COMMON_KERNEL_HEAP_REF) {
+                        ref_put(&vs->refcount, vs_common_free_ref);
+                }
+                vs = NULL;
+        }
 
         return REND_SUCCESS;
 nexus_test_fail:

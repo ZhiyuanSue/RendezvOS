@@ -112,15 +112,32 @@ void schedule(Task_Manager* tm)
                 Tcb_Base* new = tm->current_thread->belong_tcb;
                 if (!old || !new || !new->vs) {
                         pr_error("[ Error ] unexpect thread config\n");
+                        goto use_old_thread;
                 }
                 if (old != new) {
                         /*
                          * we think every task have a vspace
                          */
                         tm->current_task = new;
-                        percpu(current_vspace) = new->vs;
-                        arch_set_current_user_vspace_root(
-                                new->vs->vspace_root_addr);
+                        VS_Common* old_vs = percpu(current_vspace);
+                        VS_Common* new_vs = new->vs;
+                        if (old_vs != new_vs) {
+                                if (!ref_get_not_zero(&new_vs->refcount)) {
+                                        pr_error(
+                                                "[ Error ] ref_get_not_zero failed: new_vs=%p\n",
+                                                (void*)new_vs);
+                                        goto use_old_thread;
+                                }
+                                arch_set_current_user_vspace_root(
+                                        new_vs->vspace_root_addr);
+                                percpu(current_vspace) = new_vs;
+                                if (old_vs && old_vs != &root_vspace
+                                    && old_vs->type
+                                           != (u64)VS_COMMON_KERNEL_HEAP_REF) {
+                                        ref_put(&old_vs->refcount,
+                                                vs_common_free_ref);
+                                }
+                        }
                 }
         }
         /*
@@ -139,4 +156,9 @@ void schedule(Task_Manager* tm)
         thread_set_status(tm->current_thread, thread_status_running);
         unlock_cas(&tm->sched_lock);
         switch_to(&(curr->ctx), &(tm->current_thread->ctx));
+        return;
+use_old_thread:
+        tm->current_thread = curr;
+        unlock_cas(&tm->sched_lock);
+        return;
 }

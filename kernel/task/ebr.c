@@ -1,13 +1,14 @@
 #include <rendezvos/task/ebr.h>
 #include <rendezvos/smp/percpu.h>
 #include <common/atomic.h>
+#include <rendezvos/error.h>
 #include <modules/log/log.h>
 
 extern int NR_CPU;
 
 typedef struct {
         ref_count_t* ref;
-        void (*free_func)(ref_count_t*);
+        error_t (*free_func)(ref_count_t*);
         u64 retire_epoch;
         bool used;
 } ebr_retired_rec_t;
@@ -173,7 +174,7 @@ void ebr_try_reclaim(void)
                 if (recs[i].retire_epoch >= safe_epoch)
                         continue;
                 ref_count_t* ref = recs[i].ref;
-                void (*free_func)(ref_count_t*) = recs[i].free_func;
+                error_t (*free_func)(ref_count_t*) = recs[i].free_func;
 
                 if (ref && free_func && ((u64)(uintptr_t)free_func) < 0x1000) {
                         if (atomic64_fetch_inc(&ebr_bad_free_func_log_cnt)
@@ -197,15 +198,15 @@ void ebr_try_reclaim(void)
                 recs[i].retire_epoch = 0;
                 atomic64_dec(&percpu(ebr_retired_count));
                 if (ref && free_func)
-                        free_func(ref);
+                        (void)free_func(ref);
                 atomic64_inc(&percpu(ebr_reclaim_ops));
         }
 }
 
-void ebr_retire_ref(ref_count_t* ref, void (*free_func)(ref_count_t*))
+error_t ebr_retire_ref(ref_count_t* ref, error_t (*free_func)(ref_count_t*))
 {
         if (!ref || !free_func)
-                return;
+                return -E_IN_PARAM;
         ebr_ensure_init();
 
         /*
@@ -234,7 +235,7 @@ void ebr_retire_ref(ref_count_t* ref, void (*free_func)(ref_count_t*))
                         (volatile const u64*)&percpu(ebr_retired_count)
                                 .counter));
                 ebr_try_reclaim();
-                return;
+                return REND_SUCCESS;
         }
 
         /* Second chance after a reclaim attempt. */
@@ -252,7 +253,7 @@ void ebr_retire_ref(ref_count_t* ref, void (*free_func)(ref_count_t*))
                         (volatile const u64*)&percpu(ebr_retired_count)
                                 .counter));
                 ebr_try_reclaim();
-                return;
+                return REND_SUCCESS;
         }
 
         /*
@@ -270,6 +271,7 @@ void ebr_retire_ref(ref_count_t* ref, void (*free_func)(ref_count_t*))
                         (u32)(live & 0xffffffff));
         }
         ebr_try_reclaim();
+        return REND_SUCCESS;
 }
 
 void ebr_dump_stats(void)

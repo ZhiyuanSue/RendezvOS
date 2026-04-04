@@ -165,7 +165,7 @@ void del_task_manager_structure(Task_Manager* tm);
 void del_thread_structure(Thread_Base* thread);
 Thread_Base* new_thread_structure(struct allocator* cpu_allocator,
                                   size_t append_thread_info_len);
-void free_thread_ref(ref_count_t* ref_count_ptr);
+error_t free_thread_ref(ref_count_t* ref_count_ptr);
 
 Thread_Init_Para* new_init_parameter_structure();
 void del_init_parameter_structure(Thread_Init_Para* pm);

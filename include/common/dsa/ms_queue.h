@@ -78,7 +78,7 @@ static inline void msq_init(ms_queue_t* q, ms_queue_node_t* new_node,
  * revival)
  */
 static inline void msq_enqueue(ms_queue_t* q, ms_queue_node_t* new_node,
-                               void (*free_func)(ref_count_t*))
+                               error_t (*free_func)(ref_count_t*))
 {
         if (!q || !new_node) {
                 return;
@@ -141,7 +141,7 @@ static inline void msq_enqueue(ms_queue_t* q, ms_queue_node_t* new_node,
  *        queue empty. Caller must ref_put(ptr, free_func) when done.
  */
 static inline tagged_ptr_t msq_dequeue(ms_queue_t* q,
-                                       void (*free_func)(ref_count_t*))
+                                       error_t (*free_func)(ref_count_t*))
 {
         if (!q)
                 return tp_new_none();
@@ -218,18 +218,23 @@ static inline tagged_ptr_t msq_dequeue(ms_queue_t* q,
 }
 
 /**
- * @brief Drain a queue and optionally delete its dummy node.
+ * @brief Drain a queue; optionally clear head/tail after drain.
  *
- * This is a generic helper for container-level teardown (e.g. per-thread
- * message queues, per-port IPC wait queues). It mirrors the "caller must
- * ref_put(ptr, free_func) when done" contract of msq_dequeue().
+ * Semantics of `msq_dequeue`:
+ * - Each returned payload node must be `ref_put(..., free_func)` by the caller
+ *   (handled in the while-loop below).
+ * - When the queue becomes empty (only dummy, `next == NULL`), `msq_dequeue`
+ *   already `ref_put`s the dummy node internally and returns `tp_new_none()`.
+ *   Therefore **do not** `ref_put` the dummy again here — that would double-free.
  *
- * @param q Queue to drain.
- * @param delete_dummy If true, drop the dummy node ref and clear head/tail.
- * @param free_func Free function used for both dequeued nodes and dummy.
+ * After a full drain, `head`/`tail` may still hold stale tagged pointers; if
+ * @p zero_head_tail is true, clear them to NULL for hygiene (no refcount).
+ *
+ * @param zero_head_tail If true, set `q->head` and `q->tail` to 0 after drain.
+ * @param free_func Passed to `msq_dequeue` / per-node `ref_put` in the loop.
  */
-static inline void msq_clean_queue(ms_queue_t* q, bool delete_dummy,
-                                  void (*free_func)(ref_count_t*))
+static inline void msq_clean_queue(ms_queue_t* q, bool zero_head_tail,
+                                  error_t (*free_func)(ref_count_t*))
 {
         if (!q)
                 return;
@@ -238,15 +243,9 @@ static inline void msq_clean_queue(ms_queue_t* q, bool delete_dummy,
                 ref_put(&((ms_queue_node_t*)tp_get_ptr(dequeued_ptr))->refcount,
                         free_func);
         }
-        if (delete_dummy) {
-                tagged_ptr_t head_tp =
-                        atomic64_load((volatile u64*)&q->head);
-                ms_queue_node_t* dummy = (ms_queue_node_t*)tp_get_ptr(head_tp);
-                if (dummy) {
-                        ref_put(&dummy->refcount, free_func);
-                        atomic64_store((volatile u64*)&q->head, 0);
-                        atomic64_store((volatile u64*)&q->tail, 0);
-                }
+        if (zero_head_tail) {
+                atomic64_store((volatile u64*)&q->head, 0);
+                atomic64_store((volatile u64*)&q->tail, 0);
         }
 }
 /**
@@ -295,7 +294,7 @@ static inline error_t msq_enqueue_check_tail(ms_queue_t* q,
                                              ms_queue_node_t* new_node,
                                              u64 append_info,
                                              tagged_ptr_t expect_tp,
-                                             void (*free_func)(ref_count_t*))
+                                             error_t (*free_func)(ref_count_t*))
 {
         if (!q || !new_node) {
                 return -E_IN_PARAM;
@@ -386,7 +385,7 @@ static inline error_t msq_enqueue_check_tail(ms_queue_t* q,
  */
 static inline tagged_ptr_t
 msq_dequeue_check_head(ms_queue_t* q, u64 check_field_mask,
-                       tagged_ptr_t expect_tp, void (*free_func)(ref_count_t*))
+                       tagged_ptr_t expect_tp, error_t (*free_func)(ref_count_t*))
 {
         if (!q)
                 return tp_new_none();

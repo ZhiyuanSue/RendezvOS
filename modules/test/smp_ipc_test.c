@@ -34,10 +34,10 @@ static volatile int smp_ipc_active_cpus;
 static volatile u64 smp_ipc_send_ok[SMP_IPC_CPU_SLOTS];
 static volatile u64 smp_ipc_recv_ok[SMP_IPC_CPU_SLOTS];
 
-static void free_payload_data(ref_count_t* msgdata_refcount)
+static error_t free_payload_data(ref_count_t* msgdata_refcount)
 {
         if (!msgdata_refcount)
-                return;
+                return -E_IN_PARAM;
         Msg_Data_t* msg_data =
                 container_of(msgdata_refcount, Msg_Data_t, refcount);
         if (msg_data->data) {
@@ -45,6 +45,7 @@ static void free_payload_data(ref_count_t* msgdata_refcount)
                 cpu_kallocator->m_free(cpu_kallocator, msg_data->data);
         }
         delete_msgdata_structure(msg_data);
+        return REND_SUCCESS;
 }
 
 static void smp_ipc_sender_loop(cpu_id_t cpu_id, int count)

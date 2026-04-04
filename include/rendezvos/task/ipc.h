@@ -18,7 +18,7 @@ typedef struct {
 
 Ipc_Request_t* create_ipc_request(Thread_Base* thread);
 void delete_ipc_request(Ipc_Request_t* req);
-void free_ipc_request(ref_count_t* refcount);
+error_t free_ipc_request(ref_count_t* refcount);
 
 /**
  * @brief Transfer one message from sender to receiver (caller must hold ref to

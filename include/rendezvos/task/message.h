@@ -13,12 +13,12 @@ struct MsgData {
         i64 msg_type;
         u64 data_len; /*Bytes*/
         void* data;
-        void (*free_data)(ref_count_t*);
+        error_t (*free_data)(ref_count_t*);
 };
 Msg_Data_t* create_message_data(i64 msg_type, u64 data_len, void** data_ptr,
-                                void (*free_data)(ref_count_t*));
+                                error_t (*free_data)(ref_count_t*));
 void delete_msgdata_structure(Msg_Data_t* msg_data);
-void free_msgdata_ref_default(ref_count_t* msgdata_refcount);
+error_t free_msgdata_ref_default(ref_count_t* msgdata_refcount);
 
 /*
 message structure,
@@ -47,6 +47,6 @@ Message_t* create_message_with_msg(Msg_Data_t* msgdata);
 Message_t* create_message_structure(void);
 void delete_message_structure(Message_t* msg);
 error_t fill_message_data(Message_t* msg, Msg_Data_t* msgdata);
-void free_message_ref(ref_count_t* ref_count_ptr);
+error_t free_message_ref(ref_count_t* ref_count_ptr);
 
 #endif

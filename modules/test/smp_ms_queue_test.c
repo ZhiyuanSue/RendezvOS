@@ -10,15 +10,16 @@ struct ms_test_data {
         u64 data;
 };
 
-void free_ms_test_data(ref_count_t* refcount)
+error_t free_ms_test_data(ref_count_t* refcount)
 {
         if (!refcount)
-                return;
+                return -E_IN_PARAM;
         ms_queue_node_t* node =
                 container_of(refcount, ms_queue_node_t, refcount);
         struct ms_test_data* test_data =
                 container_of(node, struct ms_test_data, ms_node);
         percpu(kallocator)->m_free(percpu(kallocator), test_data);
+        return REND_SUCCESS;
 }
 extern cpu_id_t BSP_ID;
 extern int NR_CPU;
@@ -129,7 +130,7 @@ void smp_ms_queue_dyn_alloc_init(void)
         msq_init(&ms_queue, &tmp->ms_node, 0);
         memset(ms_data_test_seq, 0, ms_data_len * sizeof(int));
 }
-static void dyn_alloc_free_node(ref_count_t* refcount)
+static error_t dyn_alloc_free_node(ref_count_t* refcount)
 {
         ms_queue_node_t* node =
                 container_of(refcount, ms_queue_node_t, refcount);
@@ -137,6 +138,7 @@ static void dyn_alloc_free_node(ref_count_t* refcount)
                 container_of(node, struct ms_test_data, ms_node);
         struct allocator* malloc = percpu(kallocator);
         malloc->m_free(malloc, p);
+        return REND_SUCCESS;
 }
 
 void smp_ms_queue_dyn_alloc_put(int offset)

@@ -1,14 +1,15 @@
 #include <rendezvos/task/ipc.h>
 #include <rendezvos/task/ebr.h>
 #include <modules/log/log.h>
-static void free_ipc_request_real(ref_count_t* refcount)
+static error_t free_ipc_request_real(ref_count_t* refcount)
 {
         if (!refcount)
-                return;
+                return -E_IN_PARAM;
         ms_queue_node_t* node =
                 container_of(refcount, ms_queue_node_t, refcount);
         Ipc_Request_t* req = container_of(node, Ipc_Request_t, ms_queue_node);
         delete_ipc_request(req);
+        return REND_SUCCESS;
 }
 
 Ipc_Request_t* create_ipc_request(Thread_Base* thread)
@@ -37,15 +38,15 @@ void delete_ipc_request(Ipc_Request_t* req)
                 ref_put(&req->thread->refcount, free_thread_ref);
         cpu_kallocator->m_free(cpu_kallocator, req);
 }
-void free_ipc_request(ref_count_t* refcount)
+error_t free_ipc_request(ref_count_t* refcount)
 {
         if (!refcount)
-                return;
+                return -E_IN_PARAM;
         /*
          * Same as message nodes: request nodes are retired through EBR so that
          * lock-free queue readers cannot race with immediate free.
          */
-        ebr_retire_ref(refcount, free_ipc_request_real);
+        return ebr_retire_ref(refcount, free_ipc_request_real);
 }
 
 /**

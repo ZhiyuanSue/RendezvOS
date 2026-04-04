@@ -14,6 +14,7 @@
 #include <arch/x86_64/mm/vmm.h>
 #endif
 #include <common/dsa/rb_tree.h>
+#include <common/refcount.h>
 #include <rendezvos/smp/cpu_id.h>
 
 #ifndef PTE_SIZE
@@ -36,6 +37,14 @@ enum vs_common_kind {
 
 typedef struct VS_Common {
         u64 type;
+        /*
+         * Reference count for vspace lifetime.
+         * - Owner (task) holds one reference.
+         * - CPUs hold active references while CR3/TTBR points to this vspace.
+         * - Kernel vspace(root) is always exist during the system running time.
+         * When it reaches 0, we call into del_vspace() to teardown nexus + page tables.
+         */
+        ref_count_t refcount;
         /*
         The nexus_vspace_lock is the lock that protect the nexus nodes under
         this nexus vspace root. for user space , all the nexus node in this
@@ -72,6 +81,8 @@ extern struct spin_lock_t handler_spin_lock; // per cpu pointer
 extern u64 boot_stack_bottom;
 
 VS_Common* new_vspace(void);
+/* Last-ref free callback for VS_Common's refcount. */
+error_t vs_common_free_ref(ref_count_t* refcount);
 static inline void init_vspace(VS_Common* vs, u64 vspace_id, void* vspace_node)
 {
         vs->vspace_lock = NULL;

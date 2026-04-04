@@ -13,6 +13,14 @@ DEFINE_PER_CPU(struct nexus_node*, nexus_root);
 DEFINE_PER_CPU(VS_Common*, current_vspace);
 DEFINE_PER_CPU(VS_Common, nexus_kernel_heap_vs_common);
 VS_Common root_vspace;
+
+error_t vs_common_free_ref(ref_count_t* refcount)
+{
+        VS_Common* vs = container_of(refcount, VS_Common, refcount);
+        VS_Common* tmp = vs;
+        return del_vspace(&tmp);
+}
+
 error_t virt_mm_init(cpu_id_t cpu_id, struct setup_info* arch_setup_info)
 {
         if (cpu_id == BSP_ID) {
@@ -23,6 +31,7 @@ error_t virt_mm_init(cpu_id_t cpu_id, struct setup_info* arch_setup_info)
                 /* nexus_root for this CPU is not allocated yet; _vspace_node
                  * is wired in init_vspace_nexus and later cleared. */
                 init_vspace(&root_vspace, 0, NULL);
+                ref_init(&root_vspace.refcount);
                 per_cpu(boot_stack_bottom, cpu_id) =
                         (vaddr)(&boot_stack) + boot_stack_size;
         } else {
@@ -54,6 +63,7 @@ VS_Common* new_vspace(void)
                 return NULL;
         memset((void*)user_vs, 0, sizeof(*user_vs));
         user_vs->type = (u64)VS_COMMON_USER_VSPACE;
+        ref_init(&user_vs->refcount);
         return user_vs;
 }
 error_t del_vspace(VS_Common** vs)
@@ -62,6 +72,8 @@ error_t del_vspace(VS_Common** vs)
                 return REND_SUCCESS;
         /* Never free the kernel/root vspace page-table frames. */
         if (*vs == &root_vspace)
+                return REND_SUCCESS;
+        if ((*vs)->type == (u64)VS_COMMON_KERNEL_HEAP_REF)
                 return REND_SUCCESS;
 
         error_t ret = REND_SUCCESS;
@@ -87,6 +99,7 @@ error_t del_vspace(VS_Common** vs)
                  * (`handler->map_vaddr[]`), which is tied to the *current
                  * CPU's* map handler virtual slots.
                  */
+                /* Use this CPU's map handler window for teardown. */
                 error_t e = del_vs_root(*vs, &percpu(Map_Handler));
                 /* Still free the VS_Common; caller may decide whether to print.
                  */

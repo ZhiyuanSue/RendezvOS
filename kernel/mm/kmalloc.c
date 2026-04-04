@@ -200,7 +200,7 @@ error_t group_free_obj(struct object_header* header, struct mem_chunk* chunk,
 
 /* Free function for buffer_msq nodes (both dummy and data nodes).
  * Returns the object_header to the memory pool via group_free_obj. */
-static void free_buffer_object(ref_count_t* refcount)
+static error_t free_buffer_object(ref_count_t* refcount)
 {
         ms_queue_node_t* node =
                 container_of(refcount, ms_queue_node_t, refcount);
@@ -213,6 +213,7 @@ static void free_buffer_object(ref_count_t* refcount)
                 (struct mem_allocator*)percpu(kallocator);
         struct mem_group* group = &k_allocator_p->groups[order];
         group_free_obj(header, chunk, group);
+        return REND_SUCCESS;
 }
 static void* collect_chunk_from_other_group(struct mem_allocator* k_allocator_p,
                                             int slot_index)
@@ -443,7 +444,7 @@ static error_t kfree_page_local(struct mem_allocator* k_allocator_p, void* p)
         return REND_SUCCESS;
 }
 
-static void free_kpage_msg(ref_count_t* refcount)
+static error_t free_kpage_msg(ref_count_t* refcount)
 {
         ms_queue_node_t* msq_node =
                 container_of(refcount, ms_queue_node_t, refcount);
@@ -457,7 +458,7 @@ static void free_kpage_msg(ref_count_t* refcount)
          */
         if (free_info->page_vaddr == 0) {
                 free_buffer_object(refcount);
-                return;
+                return REND_SUCCESS;
         }
         struct mem_allocator* k_allocator_p =
                 (struct mem_allocator*)percpu(kallocator);
@@ -480,6 +481,7 @@ free_info:
         if (src_cpu_kallocator)
                 src_cpu_kallocator->m_free(src_cpu_kallocator,
                                            (void*)header->obj);
+        return REND_SUCCESS;
 }
 
 /*

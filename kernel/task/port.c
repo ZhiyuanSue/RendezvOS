@@ -98,11 +98,12 @@ static void free_message_port_ref_real(ref_count_t* ref_count_ptr)
         delete_message_port_structure(port);
 }
 
-void free_message_port_ref(ref_count_t* ref_count_ptr)
+error_t free_message_port_ref(ref_count_t* ref_count_ptr)
 {
         if (!ref_count_ptr)
-                return;
+                return -E_IN_PARAM;
         free_message_port_ref_real(ref_count_ptr);
+        return REND_SUCCESS;
 }
 
 struct Port_Table* port_table_create(void)

@@ -101,7 +101,7 @@ static inline void port_table_slot_token_invalidate(port_table_slot_token_t* t)
 /* Basic port operations */
 Message_Port_t* create_message_port(const char* name);
 void delete_message_port_structure(Message_Port_t* port);
-void free_message_port_ref(ref_count_t* ref_count_ptr);
+error_t free_message_port_ref(ref_count_t* ref_count_ptr);
 
 /* Port table operations */
 struct Port_Table* port_table_create(void);

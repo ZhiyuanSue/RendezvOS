@@ -302,7 +302,12 @@ error_t delete_task(Tcb_Base* tcb)
                 return e;
 
         if (tcb->vs) {
-                e = del_vspace(&tcb->vs);
+                VS_Common* vspace = tcb->vs;
+                tcb->vs = NULL;
+                if (vspace != &root_vspace
+                    && vspace->type != (u64)VS_COMMON_KERNEL_HEAP_REF) {
+                        ref_put(&vspace->refcount, vs_common_free_ref);
+                }
         }
 
         cpu_kallocator->m_free(cpu_kallocator, tcb);
