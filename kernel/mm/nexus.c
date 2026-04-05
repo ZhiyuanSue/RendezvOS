@@ -627,6 +627,7 @@ void nexus_delete_vspace(struct nexus_node* nexus_root, VS_Common* vs)
         /*free the manage page*/
         free_manage_node_with_page(vspace_page_manage_node, nexus_root);
         unlock_cas(&nexus_root->nexus_lock);
+        vs->_vspace_node = NULL;
         return;
 fail:
         return;

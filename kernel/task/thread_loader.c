@@ -2,8 +2,8 @@
 #include <modules/log/log.h>
 #include <rendezvos/smp/percpu.h>
 
-/* Last ref on user vspace: vs_common_free_ref -> del_vspace (nexus + PT + kfree). */
-static void gen_task_from_elf_vspace_put(Tcb_Base *elf_task)
+/* Owner ref drop: may trigger vspace_free_last_ref -> del_vspace. */
+static void elf_task_release_vspace_ref(Tcb_Base *elf_task)
 {
         if (!elf_task || !elf_task->vs)
                 return;
@@ -11,28 +11,38 @@ static void gen_task_from_elf_vspace_put(Tcb_Base *elf_task)
         elf_task->vs = NULL;
         if (vs != &root_vspace
             && vs->type != (u64)VS_COMMON_KERNEL_HEAP_REF)
-                ref_put(&vs->refcount, vs_common_free_ref);
+                ref_put(&vs->refcount, vspace_free_last_ref);
 }
 
 /*
- * new_vs_root succeeded but nexus_create_vspace_root_node failed: no vspace
- * node in the per-CPU nexus tree, so del_vspace would not call
- * nexus_delete_vspace. Free the user root frames first, then drop the vspace ref.
+ * User root paddr allocated but nexus failed to register vspace: del_vspace
+ * cannot nexus_delete. Free user root frames first, then owner ref_put.
  */
-static void gen_task_from_elf_vspace_abort_root(Tcb_Base *elf_task)
+static void elf_task_teardown_user_root_after_nexus_fail(Tcb_Base *elf_task)
 {
         if (!elf_task || !elf_task->vs)
                 return;
-        if (elf_task->vs->vspace_root_addr) {
-                if (del_vs_root(elf_task->vs, &percpu(Map_Handler))
-                    != REND_SUCCESS)
-                        pr_error("[ Error ] del_vs_root cleanup failed\n");
-                unset_vspace_root_addr(elf_task->vs);
+        VS_Common *vs = elf_task->vs;
+        if (vs->vspace_root_addr) {
+                error_t user_err =
+                        vspace_free_user_pt(vs, &percpu(Map_Handler));
+                if (user_err != REND_SUCCESS)
+                        pr_error(
+                                "[ Error ] vspace_free_user_pt cleanup failed e=%d\n",
+                                (int)user_err);
+                if (vs->vspace_root_addr) {
+                        error_t root_err =
+                                vspace_free_root_page(vs, &percpu(Map_Handler));
+                        if (root_err != REND_SUCCESS)
+                                pr_error(
+                                        "[ Error ] vspace_free_root_page cleanup failed e=%d\n",
+                                        (int)root_err);
+                }
         }
-        gen_task_from_elf_vspace_put(elf_task);
+        elf_task_release_vspace_ref(elf_task);
 }
 
-static void gen_task_from_elf_free_task(Tcb_Base *elf_task)
+static void elf_task_delete_tcb(Tcb_Base *elf_task)
 {
         if (!elf_task)
                 return;
@@ -200,14 +210,14 @@ error_t gen_task_from_elf(Thread_Base **elf_thread_ptr,
         elf_task->vs = new_vspace();
         if (!elf_task->vs) {
                 e = -E_RENDEZVOS;
-                gen_task_from_elf_free_task(elf_task);
+                elf_task_delete_tcb(elf_task);
                 return e;
         }
         paddr new_vs_paddr = new_vs_root(0, &percpu(Map_Handler));
         if (!new_vs_paddr) {
                 e = -E_RENDEZVOS;
-                gen_task_from_elf_vspace_put(elf_task);
-                gen_task_from_elf_free_task(elf_task);
+                elf_task_release_vspace_ref(elf_task);
+                elf_task_delete_tcb(elf_task);
                 return e;
         }
         set_vspace_root_addr(elf_task->vs, new_vs_paddr);
@@ -217,16 +227,16 @@ error_t gen_task_from_elf(Thread_Base **elf_thread_ptr,
                 nexus_create_vspace_root_node(percpu(nexus_root), elf_task->vs);
         if (!new_vs_vspace_node) {
                 e = -E_RENDEZVOS;
-                gen_task_from_elf_vspace_abort_root(elf_task);
-                gen_task_from_elf_free_task(elf_task);
+                elf_task_teardown_user_root_after_nexus_fail(elf_task);
+                elf_task_delete_tcb(elf_task);
                 return e;
         }
         init_vspace(elf_task->vs, elf_task->pid, new_vs_vspace_node);
         /*--- end vspace part ---*/
         e = add_task_to_manager(percpu(core_tm), elf_task);
         if (e) {
-                gen_task_from_elf_vspace_put(elf_task);
-                gen_task_from_elf_free_task(elf_task);
+                elf_task_release_vspace_ref(elf_task);
+                elf_task_delete_tcb(elf_task);
                 return e;
         }
 
@@ -270,8 +280,8 @@ create_thread_error:
                 pr_error(
                         "fail to delete task from task manager, please check\n");
         }
-        gen_task_from_elf_vspace_put(elf_task);
-        gen_task_from_elf_free_task(elf_task);
+        elf_task_release_vspace_ref(elf_task);
+        elf_task_delete_tcb(elf_task);
         return e;
 }
 error_t gen_thread_from_func(Thread_Base **func_thread_ptr, kthread_func thread,

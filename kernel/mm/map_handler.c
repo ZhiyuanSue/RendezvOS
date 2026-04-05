@@ -553,7 +553,8 @@ ppn_t unmap(VS_Common *vs, vpn_t vpn, u64 new_entry_addr,
                                                                        out the
                                                                        l2 page*/
         {
-                pr_error("[ ERROR ] L2 entry %lx not mapped, unmap error\n", L2_E.entry);
+                pr_error("[ ERROR ] L2 entry %lx not mapped, unmap error\n",
+                         L2_E.entry);
                 ppn = -E_RENDEZVOS;
                 goto unmap_l2_fail;
         } else if (is_final_level_pt(1, entry_flags)) {
@@ -755,14 +756,13 @@ static void pmm_free_frame(struct map_handler *handler, paddr frame_paddr)
         unlock_mcs(&pmm_ptr->spin_ptr, &percpu(pmm_spin_lock[zone->zone_id]));
 }
 
-error_t del_vs_root(VS_Common *vs, struct map_handler *handler)
+error_t vspace_free_user_pt(VS_Common *vs, struct map_handler *handler)
 {
         if (!handler || !handler->pmm || !vs->vspace_root_addr)
                 return -E_IN_PARAM;
 
         const u32 pt_entries_per_table = (u32)(PAGE_SIZE / PTE_SIZE);
 
-        /* free empty siblings, keep non-empty/unsupported paths. */
         util_map(vs->vspace_root_addr, handler->map_vaddr[0]);
         union L0_entry *l0_table = (union L0_entry *)handler->map_vaddr[0];
 
@@ -881,10 +881,17 @@ error_t del_vs_root(VS_Common *vs, struct map_handler *handler)
                 arch_tlb_invalidate_page(vs->vspace_id, handler->map_vaddr[1]);
         }
 
-        if (!root_nonempty) {
-                pmm_free_frame(handler, vs->vspace_root_addr);
-        }
         arch_tlb_invalidate_page(vs->vspace_id, handler->map_vaddr[0]);
-
         return root_nonempty ? -E_RENDEZVOS : REND_SUCCESS;
 }
+
+error_t vspace_free_root_page(VS_Common *vs, struct map_handler *handler)
+{
+        if (!handler || !handler->pmm || !vs->vspace_root_addr)
+                return -E_IN_PARAM;
+        pmm_free_frame(handler, vs->vspace_root_addr);
+        vs->vspace_root_addr = 0;
+        arch_tlb_invalidate_page(vs->vspace_id, handler->map_vaddr[0]);
+        return REND_SUCCESS;
+}
+

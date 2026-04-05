@@ -42,7 +42,10 @@ typedef struct VS_Common {
          * - Owner (task) holds one reference.
          * - CPUs hold active references while CR3/TTBR points to this vspace.
          * - Kernel vspace(root) is always exist during the system running time.
-         * When it reaches 0, we call into del_vspace() to teardown nexus + page tables.
+         * Last ref_put runs del_vspace(): if _vspace_node is already NULL but
+         * vspace_root_addr is still set, delete_task did nexus + descendant
+         * reclaim and only the top-level user root frame remains; otherwise
+         * del_vspace does full nexus + PT teardown.
          */
         ref_count_t refcount;
         /*
@@ -81,8 +84,7 @@ extern struct spin_lock_t handler_spin_lock; // per cpu pointer
 extern u64 boot_stack_bottom;
 
 VS_Common* new_vspace(void);
-/* Last-ref free callback for VS_Common's refcount. */
-error_t vs_common_free_ref(ref_count_t* refcount);
+error_t vspace_free_last_ref(ref_count_t* refcount);
 static inline void init_vspace(VS_Common* vs, u64 vspace_id, void* vspace_node)
 {
         vs->vspace_lock = NULL;

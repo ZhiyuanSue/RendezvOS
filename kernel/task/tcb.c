@@ -306,7 +306,46 @@ error_t delete_task(Tcb_Base* tcb)
                 tcb->vs = NULL;
                 if (vspace != &root_vspace
                     && vspace->type != (u64)VS_COMMON_KERNEL_HEAP_REF) {
-                        ref_put(&vspace->refcount, vs_common_free_ref);
+                        struct map_handler* map_handler =
+                                &percpu(Map_Handler);
+                        /*
+                         * Nexus + user descendant tables only; top-level user
+                         * root stays until last ref_put -> del_vspace.
+                         */
+                        if (vspace->vspace_root_addr) {
+                                struct nexus_node* vspace_node =
+                                        (struct nexus_node*)(vspace->_vspace_node);
+                                if (vspace_node && vspace_node->handler
+                                    && vspace_node->handler->cpu_id
+                                               < RENDEZVOS_MAX_CPU_NUMBER) {
+                                        nexus_delete_vspace(
+                                                per_cpu(nexus_root,
+                                                        vspace_node->handler
+                                                                ->cpu_id),
+                                                vspace);
+                                        if (vspace->_vspace_node == NULL) {
+                                                e = vspace_free_user_pt(vspace,
+                                                                        map_handler);
+                                                if (e != REND_SUCCESS) {
+                                                        (void)vspace_free_user_pt(
+                                                                vspace,
+                                                                map_handler);
+                                                        if (vspace->vspace_root_addr)
+                                                                (void)vspace_free_root_page(
+                                                                        vspace,
+                                                                        map_handler);
+                                                }
+                                        } else {
+                                                e = -E_RENDEZVOS;
+                                        }
+                                }
+                        }
+                        if (e)
+                                pr_error(
+                                        "[task] user vspace teardown vs=%p e=%d\n",
+                                        (void*)vspace,
+                                        (int)e);
+                        ref_put(&vspace->refcount, vspace_free_last_ref);
                 }
         }
 

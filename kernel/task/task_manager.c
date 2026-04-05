@@ -108,19 +108,19 @@ void schedule(Task_Manager* tm)
                 if target thread is not a kernel thread,
                 try to change the vspace
                 */
-                Tcb_Base* old = curr->belong_tcb;
-                Tcb_Base* new = tm->current_thread->belong_tcb;
-                if (!old || !new || !new->vs) {
+                Tcb_Base* prev_tcb = curr->belong_tcb;
+                Tcb_Base* next_tcb = tm->current_thread->belong_tcb;
+                if (!prev_tcb || !next_tcb || !next_tcb->vs) {
                         pr_error("[ Error ] unexpect thread config\n");
                         goto use_old_thread;
                 }
-                if (old != new) {
+                if (prev_tcb != next_tcb) {
                         /*
                          * we think every task have a vspace
                          */
-                        tm->current_task = new;
+                        tm->current_task = next_tcb;
                         VS_Common* old_vs = percpu(current_vspace);
-                        VS_Common* new_vs = new->vs;
+                        VS_Common* new_vs = next_tcb->vs;
                         if (old_vs != new_vs) {
                                 if (!ref_get_not_zero(&new_vs->refcount)) {
                                         pr_error(
@@ -135,7 +135,7 @@ void schedule(Task_Manager* tm)
                                     && old_vs->type
                                            != (u64)VS_COMMON_KERNEL_HEAP_REF) {
                                         ref_put(&old_vs->refcount,
-                                                vs_common_free_ref);
+                                                vspace_free_last_ref);
                                 }
                         }
                 }

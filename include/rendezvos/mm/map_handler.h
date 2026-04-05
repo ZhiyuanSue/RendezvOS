@@ -73,7 +73,8 @@ ppn_t have_mapped(VS_Common* vs, vpn_t vpn, struct map_handler* handler);
         it's TODO
 */
 paddr new_vs_root(paddr old_vs_root_paddr, struct map_handler* handler);
-error_t del_vs_root(VS_Common* vs, struct map_handler* handler);
+error_t vspace_free_user_pt(VS_Common* vs, struct map_handler* handler);
+error_t vspace_free_root_page(VS_Common* vs, struct map_handler* handler);
 
 /*
         TODO: we need to add a function to change the page entry's attribute
