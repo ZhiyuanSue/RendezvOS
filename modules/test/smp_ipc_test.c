@@ -236,7 +236,7 @@ int smp_ipc_test(void)
                 if (cpu_id == BSP_ID) {
                         delete_message_port_structure(smp_ipc_port);
                         smp_ipc_port_ready = false;
-                        is_print_sche_info = true;
+                        is_print_sche_info = false;
                 }
                 return REND_SUCCESS;
         }
@@ -289,7 +289,7 @@ int smp_ipc_test(void)
                                 (unsigned long long)total_recv);
                         return -E_REND_TEST;
                 }
-                is_print_sche_info = true;
+                is_print_sche_info = false;
         }
         return REND_SUCCESS;
 }

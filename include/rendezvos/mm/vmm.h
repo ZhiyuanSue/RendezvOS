@@ -84,7 +84,7 @@ extern struct spin_lock_t handler_spin_lock; // per cpu pointer
 extern u64 boot_stack_bottom;
 
 VS_Common* new_vspace(void);
-error_t vspace_free_last_ref(ref_count_t* refcount);
+error_t free_vspace_ref(ref_count_t* refcount);
 static inline void init_vspace(VS_Common* vs, u64 vspace_id, void* vspace_node)
 {
         vs->vspace_lock = NULL;

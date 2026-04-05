@@ -11,7 +11,7 @@ DEFINE_PER_CPU(Task_Manager*, core_tm);
 volatile bool is_print_sche_info;
 Thread_Base* round_robin_schedule(Task_Manager* tm)
 {
-        if (!tm || !tm->current_task)
+        if (!tm || !tm->current_thread)
                 return NULL;
         struct list_entry* next = tm->current_thread->sched_thread_list.next;
         while (next == &(tm->sched_thread_list)
@@ -46,7 +46,7 @@ void choose_schedule(Task_Manager* tm)
         if (!tm)
                 return;
         tm->scheduler = round_robin_schedule;
-        is_print_sche_info = true;
+        is_print_sche_info = false;
 }
 void print_sche_info(Thread_Base* old, Thread_Base* new)
 {
@@ -118,7 +118,6 @@ void schedule(Task_Manager* tm)
                         /*
                          * we think every task have a vspace
                          */
-                        tm->current_task = next_tcb;
                         VS_Common* old_vs = percpu(current_vspace);
                         VS_Common* new_vs = next_tcb->vs;
                         if (old_vs != new_vs) {
@@ -135,7 +134,7 @@ void schedule(Task_Manager* tm)
                                     && old_vs->type
                                            != (u64)VS_COMMON_KERNEL_HEAP_REF) {
                                         ref_put(&old_vs->refcount,
-                                                vspace_free_last_ref);
+                                                free_vspace_ref);
                                 }
                         }
                 }

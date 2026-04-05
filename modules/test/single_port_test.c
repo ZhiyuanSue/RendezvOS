@@ -171,24 +171,24 @@ int single_port_test(void)
                 pr_error("[port_test] recv type %d expected %d\n",
                          (int)port_discovery_recv_type,
                          PORT_DISCOVERY_MSG_TYPE);
-                is_print_sche_info = true;
+                is_print_sche_info = false;
                 return -E_REND_TEST;
         }
         if (strcmp(port_discovery_recv_buf, port_discovery_payload) != 0) {
                 pr_error("[port_test] recv payload \"%s\" expected \"%s\"\n",
                          port_discovery_recv_buf,
                          port_discovery_payload);
-                is_print_sche_info = true;
+                is_print_sche_info = false;
                 return -E_REND_TEST;
         }
 
         if (thread_lookup_port(PORT_DISCOVERY_PORT_NAME) != NULL) {
                 pr_error(
                         "[port_test] lookup after unregister should be NULL\n");
-                is_print_sche_info = true;
+                is_print_sche_info = false;
                 return -E_REND_TEST;
         }
 
-        is_print_sche_info = true;
+        is_print_sche_info = false;
         return REND_SUCCESS;
 }

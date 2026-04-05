@@ -1,4 +1,5 @@
 #include <modules/test/test.h>
+#include <rendezvos/task/tcb.h>
 
 extern volatile i64 jeffies;
 static struct single_test_case single_test[MAX_SINGLE_TEST_CASE] = {
@@ -33,6 +34,7 @@ void single_cpu_test(void)
                                           jeffies,
                                           single_test[i].name);
                         }
+                        schedule(percpu(core_tm));
                 }
         }
         if (test_pass)

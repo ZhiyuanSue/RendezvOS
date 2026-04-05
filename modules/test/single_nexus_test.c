@@ -177,7 +177,7 @@ int nexus_test(void)
         if (vs) {
                 if (vs != &root_vspace
                     && vs->type != (u64)VS_COMMON_KERNEL_HEAP_REF) {
-                        ref_put(&vs->refcount, vspace_free_last_ref);
+                        ref_put(&vs->refcount, free_vspace_ref);
                 }
                 vs = NULL;
         }

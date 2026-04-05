@@ -14,7 +14,7 @@ DEFINE_PER_CPU(VS_Common*, current_vspace);
 DEFINE_PER_CPU(VS_Common, nexus_kernel_heap_vs_common);
 VS_Common root_vspace;
 
-error_t vspace_free_last_ref(ref_count_t* refcount)
+error_t free_vspace_ref(ref_count_t* refcount)
 {
         VS_Common* vs = container_of(refcount, VS_Common, refcount);
         VS_Common* tmp = vs;

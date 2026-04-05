@@ -168,7 +168,7 @@ int ipc_test(void)
                         single_ipc_send_payload);
                 return -E_REND_TEST;
         }
-        is_print_sche_info = true;
+        is_print_sche_info = false;
         return REND_SUCCESS;
 }
 
@@ -407,6 +407,6 @@ int ipc_multi_round_test(void)
 
         pr_info("[single_ipc_multi_round_test] PASS: all %u messages sent and received correctly\n",
                 IPC_MULTI_ROUND_COUNT);
-        is_print_sche_info = true;
+        is_print_sche_info = false;
         return REND_SUCCESS;
 }

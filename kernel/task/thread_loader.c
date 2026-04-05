@@ -2,7 +2,7 @@
 #include <modules/log/log.h>
 #include <rendezvos/smp/percpu.h>
 
-/* Owner ref drop: may trigger vspace_free_last_ref -> del_vspace. */
+/* Owner ref drop: may trigger free_vspace_ref -> del_vspace. */
 static void elf_task_release_vspace_ref(Tcb_Base *elf_task)
 {
         if (!elf_task || !elf_task->vs)
@@ -11,7 +11,7 @@ static void elf_task_release_vspace_ref(Tcb_Base *elf_task)
         elf_task->vs = NULL;
         if (vs != &root_vspace
             && vs->type != (u64)VS_COMMON_KERNEL_HEAP_REF)
-                ref_put(&vs->refcount, vspace_free_last_ref);
+                ref_put(&vs->refcount, free_vspace_ref);
 }
 
 /*
@@ -299,6 +299,6 @@ error_t gen_thread_from_func(Thread_Base **func_thread_ptr, kthread_func thread,
         thread_set_name(thread_name, func_t);
         if (func_thread_ptr)
                 *func_thread_ptr = func_t;
-        error_t e = thread_join(tm->current_task, func_t);
+        error_t e = thread_join(tm->root_task, func_t);
         return e;
 }

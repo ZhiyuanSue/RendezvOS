@@ -1,6 +1,6 @@
 #include <modules/test/test.h>
-#include <rendezvos/smp/percpu.h>
 #include <rendezvos/limits.h>
+#include <rendezvos/task/tcb.h>
 
 extern cpu_id_t BSP_ID;
 extern int NR_CPU;
@@ -74,6 +74,7 @@ void multi_cpu_test(void)
                         arch_cpu_relax();
                         if (!have_cpu_not_start)
                                 break;
+                        schedule(percpu(core_tm));
                 }
                 if (!smp_test[i].check_result) {
                         /* if no cpu 0 check function, just run it on every core
@@ -106,6 +107,7 @@ void multi_cpu_test(void)
                                 arch_cpu_relax();
                                 if (!have_cpu_not_finish)
                                         break;
+                                schedule(percpu(core_tm));
                         }
                         if (!smp_test[i].check_result) {
                                 for (int j = 0; j < NR_CPU; j++) {
@@ -137,6 +139,7 @@ void multi_cpu_test(void)
                 } else {
                         while (curr_test == i) {
                                 arch_cpu_relax();
+                                schedule(percpu(core_tm));
                         }
                 }
         }

@@ -101,7 +101,6 @@ Task_Manager* init_proc(void)
                 pr_error("[ Error ] add root task to manager fail\n");
                 goto add_task_to_manager_fail;
         }
-        percpu(core_tm)->current_task = percpu(core_tm)->root_task;
 
         e = create_init_thread(percpu(core_tm)->root_task);
         if (e) {
@@ -345,7 +344,7 @@ error_t delete_task(Tcb_Base* tcb)
                                         "[task] user vspace teardown vs=%p e=%d\n",
                                         (void*)vspace,
                                         (int)e);
-                        ref_put(&vspace->refcount, vspace_free_last_ref);
+                        ref_put(&vspace->refcount, free_vspace_ref);
                 }
         }
 

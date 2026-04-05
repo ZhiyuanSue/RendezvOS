@@ -141,7 +141,6 @@ extern volatile bool is_print_sche_info;
 struct task_manager {
         TASK_MANAGER_SCHE_COMMON
         cpu_id_t owner_cpu;
-        Tcb_Base* current_task;
         Tcb_Base* root_task;
         Thread_Base* current_thread;
         Thread_Base* (*scheduler)(Task_Manager* tm);
@@ -190,11 +189,14 @@ static inline Thread_Base* get_cpu_current_thread()
                 return NULL;
         return percpu(core_tm)->current_thread;
 }
-static inline Tcb_Base* get_cpu_current_task()
+static inline Tcb_Base* get_cpu_current_task(void)
 {
-        if (!percpu(core_tm))
+        Task_Manager* tm = percpu(core_tm);
+        if (!tm || !tm->current_thread)
                 return NULL;
-        return percpu(core_tm)->current_task;
+        if (tm->current_thread->belong_tcb)
+                return tm->current_thread->belong_tcb;
+        return tm->root_task;
 }
 
 static inline void thread_set_flags(Thread_Base* thread, u64 flags)
