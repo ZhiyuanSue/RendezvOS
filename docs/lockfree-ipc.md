@@ -1253,15 +1253,15 @@ include/common/taggedptr.h:包含了tagged ptr的基本操作
 
 include/common/atomic.h:包含了原子操作
 
-include/rendezvos/task/ipc.h:包含了ipc中用到的的一些数据结构和函数定义
+include/rendezvos/ipc/ipc.h:包含了ipc中用到的的一些数据结构和函数定义
 
-include/rendezvos/task/message.h:包含了message相关的定义
+include/rendezvos/ipc/message.h:包含了message相关的定义
 
 include/rendezvos/task/tcb.h:线程控制块相关的接口、实现等
 
-kernel/task/ipc.c:包含了上面说的原语和阻塞式接口
+kernel/ipc/ipc.c:包含了上面说的原语和阻塞式接口
 
-kernel/task/message.c:包含了message相关的操作实现
+kernel/ipc/message.c:包含了message相关的操作实现
 
 kernel/task/ebr.c + include/rendezvos/task/ebr.h:EBR最小实现，用于延迟回收msqueue相关节点
 

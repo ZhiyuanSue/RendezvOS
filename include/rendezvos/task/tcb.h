@@ -21,8 +21,8 @@
 #endif
 
 #include "id.h"
-#include "message.h"
-#include "port.h"
+#include <rendezvos/ipc/message.h>
+#include <rendezvos/ipc/port.h>
 
 enum thread_status_base {
         thread_status_error = -1,
@@ -205,7 +205,8 @@ static inline void thread_set_flags(Thread_Base* thread, u64 flags)
                 return;
         thread->flags = flags;
 }
-/** OR bits into thread->flags; preserves existing flags (unlike thread_set_flags). */
+/** OR bits into thread->flags; preserves existing flags (unlike
+ * thread_set_flags). */
 static inline void thread_or_flags(Thread_Base* thread, u64 bits)
 {
         if (!thread)

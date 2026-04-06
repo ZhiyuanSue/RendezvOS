@@ -91,8 +91,8 @@ error_t del_vspace(VS_Common** vs)
                 struct nexus_node* vspace_node =
                         (struct nexus_node*)vspace->_vspace_node;
                 bool nexus_ready = vspace_node && vspace_node->handler
-                        && vspace_node->handler->cpu_id
-                                   < RENDEZVOS_MAX_CPU_NUMBER;
+                                   && vspace_node->handler->cpu_id
+                                              < RENDEZVOS_MAX_CPU_NUMBER;
 
                 if (!nexus_ready)
                         ret = -E_IN_PARAM;
@@ -110,8 +110,7 @@ error_t del_vspace(VS_Common** vs)
                         if (user_err != REND_SUCCESS && ret == REND_SUCCESS)
                                 ret = user_err;
                 }
-                error_t root_err =
-                        vspace_free_root_page(vspace, map_handler);
+                error_t root_err = vspace_free_root_page(vspace, map_handler);
                 if (root_err != REND_SUCCESS && ret == REND_SUCCESS)
                         ret = root_err;
         }

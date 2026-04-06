@@ -7,8 +7,8 @@
 #include <modules/test/test.h>
 #include <modules/log/log.h>
 #include <rendezvos/task/tcb.h>
-#include <rendezvos/task/ipc.h>
-#include <rendezvos/task/message.h>
+#include <rendezvos/ipc/ipc.h>
+#include <rendezvos/ipc/message.h>
 #include <rendezvos/smp/percpu.h>
 #include <rendezvos/limits.h>
 #include <rendezvos/mm/kmalloc.h>
@@ -25,9 +25,10 @@ static Message_Port_t* smp_ipc_port;
 static volatile bool smp_ipc_port_ready;
 static volatile int smp_ipc_active_cpus;
 /*
- * Test robustness: build-time RENDEZVOS_MAX_CPU_NUMBER can become 1 when NR_CPUS
- * is defined as 1 (e.g. some aarch64 SMP configs), while the runtime may still
- * bring up cpu_id 1. Use a floor of 2 slots and always bounds-check cpu_id.
+ * Test robustness: build-time RENDEZVOS_MAX_CPU_NUMBER can become 1 when
+ * NR_CPUS is defined as 1 (e.g. some aarch64 SMP configs), while the runtime
+ * may still bring up cpu_id 1. Use a floor of 2 slots and always bounds-check
+ * cpu_id.
  */
 #define SMP_IPC_CPU_SLOTS \
         ((RENDEZVOS_MAX_CPU_NUMBER) < 2 ? 2 : (RENDEZVOS_MAX_CPU_NUMBER))

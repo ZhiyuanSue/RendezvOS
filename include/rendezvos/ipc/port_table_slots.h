@@ -1,7 +1,7 @@
 #ifndef _PORT_TABLE_SLOTS_H_
 #define _PORT_TABLE_SLOTS_H_
 
-#include <rendezvos/task/port.h>
+#include <rendezvos/ipc/port.h>
 #include <rendezvos/mm/allocator.h>
 
 #define PORT_HT_EMPTY            ((i64) - 1)

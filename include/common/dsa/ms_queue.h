@@ -225,7 +225,8 @@ static inline tagged_ptr_t msq_dequeue(ms_queue_t* q,
  *   (handled in the while-loop below).
  * - When the queue becomes empty (only dummy, `next == NULL`), `msq_dequeue`
  *   already `ref_put`s the dummy node internally and returns `tp_new_none()`.
- *   Therefore **do not** `ref_put` the dummy again here — that would double-free.
+ *   Therefore **do not** `ref_put` the dummy again here — that would
+ * double-free.
  *
  * After a full drain, `head`/`tail` may still hold stale tagged pointers; if
  * @p zero_head_tail is true, clear them to NULL for hygiene (no refcount).
@@ -234,7 +235,7 @@ static inline tagged_ptr_t msq_dequeue(ms_queue_t* q,
  * @param free_func Passed to `msq_dequeue` / per-node `ref_put` in the loop.
  */
 static inline void msq_clean_queue(ms_queue_t* q, bool zero_head_tail,
-                                  error_t (*free_func)(ref_count_t*))
+                                   error_t (*free_func)(ref_count_t*))
 {
         if (!q)
                 return;
@@ -385,7 +386,8 @@ static inline error_t msq_enqueue_check_tail(ms_queue_t* q,
  */
 static inline tagged_ptr_t
 msq_dequeue_check_head(ms_queue_t* q, u64 check_field_mask,
-                       tagged_ptr_t expect_tp, error_t (*free_func)(ref_count_t*))
+                       tagged_ptr_t expect_tp,
+                       error_t (*free_func)(ref_count_t*))
 {
         if (!q)
                 return tp_new_none();

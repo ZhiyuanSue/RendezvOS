@@ -1,6 +1,6 @@
 #include <modules/log/log.h>
 #include <rendezvos/task/tcb.h>
-#include <rendezvos/task/ipc.h>
+#include <rendezvos/ipc/ipc.h>
 #include <rendezvos/smp/percpu.h>
 #include <rendezvos/error.h>
 #include <common/string.h>
@@ -305,8 +305,7 @@ error_t delete_task(Tcb_Base* tcb)
                 tcb->vs = NULL;
                 if (vspace != &root_vspace
                     && vspace->type != (u64)VS_COMMON_KERNEL_HEAP_REF) {
-                        struct map_handler* map_handler =
-                                &percpu(Map_Handler);
+                        struct map_handler* map_handler = &percpu(Map_Handler);
                         /*
                          * Nexus + user descendant tables only; top-level user
                          * root stays until last ref_put -> del_vspace.
@@ -323,8 +322,8 @@ error_t delete_task(Tcb_Base* tcb)
                                                                 ->cpu_id),
                                                 vspace);
                                         if (vspace->_vspace_node == NULL) {
-                                                e = vspace_free_user_pt(vspace,
-                                                                        map_handler);
+                                                e = vspace_free_user_pt(
+                                                        vspace, map_handler);
                                                 if (e != REND_SUCCESS) {
                                                         (void)vspace_free_user_pt(
                                                                 vspace,

@@ -1,11 +1,11 @@
 #include <common/string.h>
 #include <modules/log/log.h>
 #include <rendezvos/task/tcb.h>
-#include <rendezvos/task/ipc.h>
+#include <rendezvos/ipc/ipc.h>
 #include <rendezvos/smp/percpu.h>
 #include <rendezvos/error.h>
 #include <rendezvos/mm/allocator.h>
-#include <rendezvos/task/port.h>
+#include <rendezvos/ipc/port.h>
 #include <rendezvos/sync/spin_lock.h>
 
 /*
@@ -272,7 +272,8 @@ void delete_thread(Thread_Base* thread)
         if (!thread || !thread->belong_tcb)
                 return;
         atomic64_store(&thread->status, thread_status_exit);
-        /* Heap/queues/kstack: released in del_thread_structure on last ref only. */
+        /* Heap/queues/kstack: released in del_thread_structure on last ref
+         * only. */
 
         error_t e = -E_RENDEZVOS;
         e = del_thread_from_task(thread);

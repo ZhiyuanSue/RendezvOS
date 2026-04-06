@@ -51,7 +51,8 @@ static inline void arch_set_new_thread_ctx(Arch_Task_Context* ctx,
         ctx->regs[aarch64_task_ctx_lr] = (u64)func_ptr;
         /*TODO:should I add spsr el1???*/
 }
-static inline vaddr arch_get_thread_user_sp(Arch_Task_Context* ctx){
+static inline vaddr arch_get_thread_user_sp(Arch_Task_Context* ctx)
+{
         return ctx->sp_el0;
 }
 static inline void arch_set_thread_user_sp(Arch_Task_Context* ctx,

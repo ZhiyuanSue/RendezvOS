@@ -1,12 +1,12 @@
-#include <rendezvos/task/port.h>
-#include <rendezvos/task/ipc.h>
+#include <rendezvos/ipc/port.h>
+#include <rendezvos/ipc/ipc.h>
 #include <rendezvos/task/tcb.h>
 #include <rendezvos/smp/percpu.h>
 #include <rendezvos/mm/allocator.h>
 #include <rendezvos/sync/spin_lock.h>
 #include <common/string.h>
 #include <modules/log/log.h>
-#include <rendezvos/task/port_table_slots.h>
+#include <rendezvos/ipc/port_table_slots.h>
 
 DEFINE_PER_CPU(struct spin_lock_t, port_table_spin_lock);
 

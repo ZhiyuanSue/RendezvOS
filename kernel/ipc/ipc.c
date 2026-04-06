@@ -1,4 +1,4 @@
-#include <rendezvos/task/ipc.h>
+#include <rendezvos/ipc/ipc.h>
 #include <rendezvos/task/ebr.h>
 #include <modules/log/log.h>
 static error_t free_ipc_request_real(ref_count_t* refcount)

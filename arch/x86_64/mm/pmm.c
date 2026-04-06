@@ -20,7 +20,7 @@ extern struct memory_regions m_regions;
                         print("we cannot manager toooo many memory regions\n"); \
                         goto arch_init_pmm_error;                               \
                 } else {                                                        \
-                        print("[ Phy_Mem\t@\t< 0x%lx , 0x%lx >]\n",               \
+                        print("[ Phy_Mem\t@\t< 0x%lx , 0x%lx >]\n",             \
                               mmap->addr,                                       \
                               mmap->len);                                       \
                 }                                                               \

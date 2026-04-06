@@ -6,9 +6,9 @@
 #include <modules/test/test.h>
 #include <modules/log/log.h>
 #include <rendezvos/task/tcb.h>
-#include <rendezvos/task/ipc.h>
-#include <rendezvos/task/message.h>
-#include <rendezvos/task/port.h>
+#include <rendezvos/ipc/ipc.h>
+#include <rendezvos/ipc/message.h>
+#include <rendezvos/ipc/port.h>
 #include <rendezvos/task/thread_loader.h>
 #include <rendezvos/smp/percpu.h>
 #include <common/stddef.h>

@@ -132,7 +132,7 @@ void schedule(Task_Manager* tm)
                                 percpu(current_vspace) = new_vs;
                                 if (old_vs && old_vs != &root_vspace
                                     && old_vs->type
-                                           != (u64)VS_COMMON_KERNEL_HEAP_REF) {
+                                               != (u64)VS_COMMON_KERNEL_HEAP_REF) {
                                         ref_put(&old_vs->refcount,
                                                 free_vspace_ref);
                                 }

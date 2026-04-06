@@ -1,4 +1,4 @@
-#include <rendezvos/task/message.h>
+#include <rendezvos/ipc/message.h>
 #include <rendezvos/task/ebr.h>
 Msg_Data_t* create_message_data(i64 msg_type, u64 data_len, void** data_ptr,
                                 error_t (*free_data)(ref_count_t*))

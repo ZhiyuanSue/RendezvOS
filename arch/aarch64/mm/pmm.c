@@ -31,7 +31,9 @@ static void get_mem_prop_and_insert_region(struct fdt_property *fdt_prop)
                 u32_4 = SWAP_ENDIANNESS_32(*u32_data);
                 u32_data++;
                 mem_len = (((u64)u32_3) << 32) + u32_4;
-                print("[ Phy_Mem\t@\t< 0x%lx , 0x%lx >]\n", addr, addr + mem_len);
+                print("[ Phy_Mem\t@\t< 0x%lx , 0x%lx >]\n",
+                      addr,
+                      addr + mem_len);
                 if (m_regions.memory_regions_insert(addr, mem_len)
                     != REND_SUCCESS) {
                         print("insert memory region [%lx %lx] fail\n",

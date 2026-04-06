@@ -1,13 +1,12 @@
 #ifndef _RENDEZVOS_IPC_H_
 #define _RENDEZVOS_IPC_H_
 
-#include "../error.h"
-#include "message.h"
-#include "port.h"
+#include <rendezvos/error.h>
+#include <rendezvos/ipc/message.h>
+#include <rendezvos/ipc/port.h>
 #include <rendezvos/mm/allocator.h>
 #include <common/string.h>
-
-#include "tcb.h"
+#include <rendezvos/task/tcb.h>
 
 /*ipc request structure*/
 typedef struct {

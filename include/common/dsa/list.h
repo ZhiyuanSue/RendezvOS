@@ -68,7 +68,8 @@ static inline bool list_empty(struct list_entry *head)
 {
         return (head->next == head);
 }
-/** True if node is not linked into any list (INIT_LIST_HEAD / list_del_init). */
+/** True if node is not linked into any list (INIT_LIST_HEAD / list_del_init).
+ */
 static inline bool list_node_is_detached(struct list_entry *n)
 {
         return n && n->next == n && n->prev == n;

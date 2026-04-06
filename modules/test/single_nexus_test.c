@@ -84,8 +84,10 @@ int nexus_test(void)
         nexus_print(percpu(nexus_root));
         for (u64 i = 0; i < NR_MAX_TEST; i++) {
                 if (test_ptrs[i] && i % 2) {
-                        error_t ret = free_pages(
-                                test_ptrs[i], MIDDLE_PAGES, 0, percpu(nexus_root));
+                        error_t ret = free_pages(test_ptrs[i],
+                                                 MIDDLE_PAGES,
+                                                 0,
+                                                 percpu(nexus_root));
                         if (ret != REND_SUCCESS) {
                                 pr_error(
                                         "[TEST] Failed to free pages: ret=%d\n",
@@ -97,8 +99,8 @@ int nexus_test(void)
         nexus_print(percpu(nexus_root));
         for (u64 i = 0; i < NR_MAX_TEST; i++) {
                 if (test_ptrs[i] && !(i % 2)) {
-                        error_t ret =
-                                free_pages(test_ptrs[i], 2, 0, percpu(nexus_root));
+                        error_t ret = free_pages(
+                                test_ptrs[i], 2, 0, percpu(nexus_root));
                         if (ret != REND_SUCCESS) {
                                 pr_error(
                                         "[TEST] Failed to free pages: ret=%d\n",
@@ -151,8 +153,10 @@ int nexus_test(void)
         nexus_print(percpu(nexus_root));
         for (u64 i = 0; i < NR_MAX_TEST; i++) {
                 if (test_ptrs[i] && i % 2) {
-                        error_t ret = free_pages(
-                                test_ptrs[i], MIDDLE_PAGES, vs, percpu(nexus_root));
+                        error_t ret = free_pages(test_ptrs[i],
+                                                 MIDDLE_PAGES,
+                                                 vs,
+                                                 percpu(nexus_root));
                         if (ret != REND_SUCCESS) {
                                 pr_error(
                                         "[TEST] Failed to free pages: ret=%d\n",
@@ -164,8 +168,8 @@ int nexus_test(void)
         nexus_print(percpu(nexus_root));
         for (u64 i = 0; i < NR_MAX_TEST; i++) {
                 if (test_ptrs[i] && !(i % 2)) {
-                        error_t ret =
-                                free_pages(test_ptrs[i], 2, vs, percpu(nexus_root));
+                        error_t ret = free_pages(
+                                test_ptrs[i], 2, vs, percpu(nexus_root));
                         if (ret != REND_SUCCESS) {
                                 pr_error(
                                         "[TEST] Failed to free pages: ret=%d\n",

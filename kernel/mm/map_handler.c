@@ -894,4 +894,3 @@ error_t vspace_free_root_page(VS_Common *vs, struct map_handler *handler)
         arch_tlb_invalidate_page(vs->vspace_id, handler->map_vaddr[0]);
         return REND_SUCCESS;
 }
-

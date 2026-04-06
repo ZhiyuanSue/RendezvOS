@@ -44,23 +44,25 @@ void log_init(void *log_buffer_addr, u64 log_level)
 /* Convert unsigned integer to string with given base (2-36) */
 static void uitostr(char *buf, u64 value, int base, int uppercase)
 {
-        static const char *lower_digits = "0123456789abcdefghijklmnopqrstuvwxyz";
-        static const char *upper_digits = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+        static const char *lower_digits =
+                "0123456789abcdefghijklmnopqrstuvwxyz";
+        static const char *upper_digits =
+                "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
         const char *digits = uppercase ? upper_digits : lower_digits;
         char *p = buf;
-        
+
         if (base < 2 || base > 36) {
                 *p++ = '?';
                 *p = '\0';
                 return;
         }
-        
+
         do {
                 *p++ = digits[value % base];
                 value /= base;
         } while (value != 0);
         *p = '\0';
-        
+
         /* Reverse string */
         char *p1 = buf;
         char *p2 = p - 1;
@@ -74,11 +76,11 @@ static void uitostr(char *buf, u64 value, int base, int uppercase)
 }
 
 /* Format specification flags */
-#define FMT_FLAG_LEFT     (1 << 0) /* '-' left align */
-#define FMT_FLAG_PLUS     (1 << 1) /* '+' show sign */
-#define FMT_FLAG_SPACE    (1 << 2) /* ' ' space before positive */
+#define FMT_FLAG_LEFT      (1 << 0) /* '-' left align */
+#define FMT_FLAG_PLUS      (1 << 1) /* '+' show sign */
+#define FMT_FLAG_SPACE     (1 << 2) /* ' ' space before positive */
 #define FMT_FLAG_ALTERNATE (1 << 3) /* '#' alternate form */
-#define FMT_FLAG_ZEROPAD  (1 << 4) /* '0' pad with zeros */
+#define FMT_FLAG_ZEROPAD   (1 << 4) /* '0' pad with zeros */
 
 /* Length modifiers */
 enum length_mod {
@@ -94,24 +96,41 @@ enum length_mod {
 };
 
 /* Parse a format specifier, advance the format pointer */
-static const char *parse_format_spec(const char **fmt_ptr, int *flags, int *width,
-                                     enum length_mod *len, char *spec)
+static const char *parse_format_spec(const char **fmt_ptr, int *flags,
+                                     int *width, enum length_mod *len,
+                                     char *spec)
 {
         const char *p = *fmt_ptr;
-        
+
         /* Parse flags */
         *flags = 0;
         while (*p) {
                 switch (*p) {
-                case '-': *flags |= FMT_FLAG_LEFT; p++; break;
-                case '+': *flags |= FMT_FLAG_PLUS; p++; break;
-                case ' ': *flags |= FMT_FLAG_SPACE; p++; break;
-                case '#': *flags |= FMT_FLAG_ALTERNATE; p++; break;
-                case '0': *flags |= FMT_FLAG_ZEROPAD; p++; break;
-                default: goto width;
+                case '-':
+                        *flags |= FMT_FLAG_LEFT;
+                        p++;
+                        break;
+                case '+':
+                        *flags |= FMT_FLAG_PLUS;
+                        p++;
+                        break;
+                case ' ':
+                        *flags |= FMT_FLAG_SPACE;
+                        p++;
+                        break;
+                case '#':
+                        *flags |= FMT_FLAG_ALTERNATE;
+                        p++;
+                        break;
+                case '0':
+                        *flags |= FMT_FLAG_ZEROPAD;
+                        p++;
+                        break;
+                default:
+                        goto width;
                 }
         }
-        
+
 width:
         /* Parse width (simple decimal, no '*') */
         *width = 0;
@@ -119,7 +138,7 @@ width:
                 *width = *width * 10 + (*p - '0');
                 p++;
         }
-        
+
         /* Parse length modifier */
         *len = LEN_NONE;
         if (*p == 'h') {
@@ -148,13 +167,13 @@ width:
                 *len = LEN_T;
                 p++;
         }
-        
+
         /* Parse specifier */
         *spec = *p;
         if (*spec) {
                 p++;
         }
-        
+
         *fmt_ptr = p;
         return p;
 }
@@ -183,21 +202,22 @@ static void puts_str(const char *str)
 }
 
 /* Format and output a signed integer */
-static void format_signed(i64 value, int base, int uppercase, int flags, int width)
+static void format_signed(i64 value, int base, int uppercase, int flags,
+                          int width)
 {
         char buf[64];
         int is_negative = 0;
         u64 uvalue;
-        
+
         if (value < 0) {
                 is_negative = 1;
                 uvalue = -value;
         } else {
                 uvalue = (u64)value;
         }
-        
+
         uitostr(buf, uvalue, base, uppercase);
-        
+
         char prefix[4] = {0};
         int prefix_len = 0;
         if (is_negative) {
@@ -210,7 +230,7 @@ static void format_signed(i64 value, int base, int uppercase, int flags, int wid
                 prefix[0] = ' ';
                 prefix_len = 1;
         }
-        
+
         if (flags & FMT_FLAG_ALTERNATE) {
                 if (base == 16) {
                         prefix[prefix_len] = '0';
@@ -221,11 +241,11 @@ static void format_signed(i64 value, int base, int uppercase, int flags, int wid
                         prefix_len += 1;
                 }
         }
-        
+
         int num_len = strlen(buf);
         int total_len = prefix_len + num_len;
         int pad_len = width > total_len ? width - total_len : 0;
-        
+
         if ((flags & FMT_FLAG_ZEROPAD) && !(flags & FMT_FLAG_LEFT)) {
                 if (prefix_len > 0) {
                         puts_len(prefix, prefix_len);
@@ -253,11 +273,12 @@ static void format_signed(i64 value, int base, int uppercase, int flags, int wid
 }
 
 /* Format and output an unsigned integer */
-static void format_unsigned(u64 value, int base, int uppercase, int flags, int width)
+static void format_unsigned(u64 value, int base, int uppercase, int flags,
+                            int width)
 {
         char buf[64];
         uitostr(buf, value, base, uppercase);
-        
+
         char prefix[4] = {0};
         int prefix_len = 0;
         /* For unsigned, plus/space flags are ignored per standard */
@@ -271,11 +292,11 @@ static void format_unsigned(u64 value, int base, int uppercase, int flags, int w
                         prefix_len += 1;
                 }
         }
-        
+
         int num_len = strlen(buf);
         int total_len = prefix_len + num_len;
         int pad_len = width > total_len ? width - total_len : 0;
-        
+
         if ((flags & FMT_FLAG_ZEROPAD) && !(flags & FMT_FLAG_LEFT)) {
                 if (prefix_len > 0) {
                         puts_len(prefix, prefix_len);
@@ -306,36 +327,37 @@ void log_print(char *buffer, const char *format, va_list arg_list)
 {
         (void)buffer;
         const char *p = format;
-        
+
         while (*p) {
                 if (*p != '%') {
                         putc_char(*p++);
                         continue;
                 }
-                
+
                 p++; /* skip '%' */
-                
+
                 /* Check for '%%' */
                 if (*p == '%') {
                         putc_char('%');
                         p++;
                         continue;
                 }
-                
+
                 /* Parse format specifier */
                 int flags = 0;
                 int width = 0;
                 enum length_mod len = LEN_NONE;
                 char spec = 0;
-                
+
                 parse_format_spec(&p, &flags, &width, &len, &spec);
-                
+
                 /* Dispatch based on specifier */
                 switch (spec) {
                 case 'd':
                 case 'i': {
                         i64 value;
-                        if (len == LEN_L || len == LEN_Z || len == LEN_T || len == LEN_J) {
+                        if (len == LEN_L || len == LEN_Z || len == LEN_T
+                            || len == LEN_J) {
                                 value = va_arg(arg_list, long);
                         } else if (len == LEN_LL) {
                                 value = va_arg(arg_list, long long);
@@ -351,14 +373,17 @@ void log_print(char *buffer, const char *format, va_list arg_list)
                 }
                 case 'u': {
                         u64 value;
-                        if (len == LEN_L || len == LEN_Z || len == LEN_T || len == LEN_J) {
+                        if (len == LEN_L || len == LEN_Z || len == LEN_T
+                            || len == LEN_J) {
                                 value = va_arg(arg_list, unsigned long);
                         } else if (len == LEN_LL) {
                                 value = va_arg(arg_list, unsigned long long);
                         } else if (len == LEN_H) {
-                                value = (unsigned short)va_arg(arg_list, unsigned int);
+                                value = (unsigned short)va_arg(arg_list,
+                                                               unsigned int);
                         } else if (len == LEN_HH) {
-                                value = (unsigned char)va_arg(arg_list, unsigned int);
+                                value = (unsigned char)va_arg(arg_list,
+                                                              unsigned int);
                         } else {
                                 value = va_arg(arg_list, unsigned int);
                         }
@@ -368,14 +393,17 @@ void log_print(char *buffer, const char *format, va_list arg_list)
                 case 'x':
                 case 'X': {
                         u64 value;
-                        if (len == LEN_L || len == LEN_Z || len == LEN_T || len == LEN_J) {
+                        if (len == LEN_L || len == LEN_Z || len == LEN_T
+                            || len == LEN_J) {
                                 value = va_arg(arg_list, unsigned long);
                         } else if (len == LEN_LL) {
                                 value = va_arg(arg_list, unsigned long long);
                         } else if (len == LEN_H) {
-                                value = (unsigned short)va_arg(arg_list, unsigned int);
+                                value = (unsigned short)va_arg(arg_list,
+                                                               unsigned int);
                         } else if (len == LEN_HH) {
-                                value = (unsigned char)va_arg(arg_list, unsigned int);
+                                value = (unsigned char)va_arg(arg_list,
+                                                              unsigned int);
                         } else {
                                 value = va_arg(arg_list, unsigned int);
                         }
@@ -384,14 +412,17 @@ void log_print(char *buffer, const char *format, va_list arg_list)
                 }
                 case 'o': {
                         u64 value;
-                        if (len == LEN_L || len == LEN_Z || len == LEN_T || len == LEN_J) {
+                        if (len == LEN_L || len == LEN_Z || len == LEN_T
+                            || len == LEN_J) {
                                 value = va_arg(arg_list, unsigned long);
                         } else if (len == LEN_LL) {
                                 value = va_arg(arg_list, unsigned long long);
                         } else if (len == LEN_H) {
-                                value = (unsigned short)va_arg(arg_list, unsigned int);
+                                value = (unsigned short)va_arg(arg_list,
+                                                               unsigned int);
                         } else if (len == LEN_HH) {
-                                value = (unsigned char)va_arg(arg_list, unsigned int);
+                                value = (unsigned char)va_arg(arg_list,
+                                                              unsigned int);
                         } else {
                                 value = va_arg(arg_list, unsigned int);
                         }
@@ -399,7 +430,8 @@ void log_print(char *buffer, const char *format, va_list arg_list)
                         break;
                 }
                 case 'p': {
-                        /* Pointer: treat as unsigned long with '#' flag to add 0x */
+                        /* Pointer: treat as unsigned long with '#' flag to add
+                         * 0x */
                         void *ptr = va_arg(arg_list, void *);
                         int ptr_flags = flags | FMT_FLAG_ALTERNATE;
                         format_unsigned((u64)ptr, 16, 0, ptr_flags, width);
@@ -417,15 +449,15 @@ void log_print(char *buffer, const char *format, va_list arg_list)
                         }
                         int len = strlen(str);
                         int pad_len = width > len ? width - len : 0;
-                        
+
                         if (!(flags & FMT_FLAG_LEFT) && pad_len > 0) {
                                 for (int i = 0; i < pad_len; i++) {
                                         putc_char(' ');
                                 }
                         }
-                        
+
                         puts_str(str);
-                        
+
                         if (flags & FMT_FLAG_LEFT && pad_len > 0) {
                                 for (int i = 0; i < pad_len; i++) {
                                         putc_char(' ');

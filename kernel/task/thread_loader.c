@@ -9,8 +9,7 @@ static void elf_task_release_vspace_ref(Tcb_Base *elf_task)
                 return;
         VS_Common *vs = elf_task->vs;
         elf_task->vs = NULL;
-        if (vs != &root_vspace
-            && vs->type != (u64)VS_COMMON_KERNEL_HEAP_REF)
+        if (vs != &root_vspace && vs->type != (u64)VS_COMMON_KERNEL_HEAP_REF)
                 ref_put(&vs->refcount, free_vspace_ref);
 }
 
@@ -143,7 +142,7 @@ error_t run_elf_program(vaddr elf_start, vaddr elf_end, VS_Common *vs,
         if (!elf_start || !elf_end || !vs) {
                 return -E_IN_PARAM;
         }
-        Thread_Base* elf_thread = get_cpu_current_thread();
+        Thread_Base *elf_thread = get_cpu_current_thread();
         error_t e = -E_RENDEZVOS;
         if (!check_elf_header(elf_start)) {
                 pr_error("[ERROR] bad elf file\n");
@@ -181,10 +180,9 @@ error_t run_elf_program(vaddr elf_start, vaddr elf_end, VS_Common *vs,
         user_sp -= 8;
         *((u64 *)user_sp) = 0;
         arch_set_thread_user_sp(&elf_thread->ctx, user_sp);
-        if(handler){
+        if (handler) {
                 handler(&elf_thread->ctx);
         }
-        
 
         Thread_Base *current_thread = percpu(core_tm)->current_thread;
         arch_drop_to_user(current_thread->kstack_bottom, entry_addr);
