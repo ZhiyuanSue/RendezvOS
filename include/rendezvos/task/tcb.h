@@ -76,9 +76,9 @@ typedef struct {
 struct thread_port_cache_entry {
         /* Wrap-safe LRU age uses u16 counter. */
         u16 lru_counter;
-        /* (index,gen) cache of port table slot token (narrow types). */
-        u16 slot_gen;
-        u32 slot_index;
+        /* (index,gen) cache of name_index_token (narrow types). */
+        u16 row_gen;
+        u32 row_index;
         u64 name_hash;
 };
 

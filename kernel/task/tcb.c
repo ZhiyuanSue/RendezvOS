@@ -324,15 +324,6 @@ error_t delete_task(Tcb_Base* tcb)
                                         if (vspace->_vspace_node == NULL) {
                                                 e = vspace_free_user_pt(
                                                         vspace, map_handler);
-                                                if (e != REND_SUCCESS) {
-                                                        (void)vspace_free_user_pt(
-                                                                vspace,
-                                                                map_handler);
-                                                        if (vspace->vspace_root_addr)
-                                                                (void)vspace_free_root_page(
-                                                                        vspace,
-                                                                        map_handler);
-                                                }
                                         } else {
                                                 e = -E_RENDEZVOS;
                                         }
