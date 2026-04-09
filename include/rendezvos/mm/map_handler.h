@@ -4,6 +4,7 @@
 #include <common/mm.h>
 #include <rendezvos/mm/vmm.h>
 #include <rendezvos/smp/cpu_id.h>
+#include <rendezvos/sync/spin_lock.h>
 
 #define map_pages 0xFFFFFFFFFFE00000
 /*
@@ -17,6 +18,7 @@ struct map_handler {
         vaddr map_vaddr[4];
         ppn_t handler_ppn[4];
         struct pmm* pmm;
+        spin_lock_t vspace_lock_node;
 };
 extern struct map_handler Map_Handler;
 void sys_init_map(struct pmm* pmm);
@@ -27,7 +29,7 @@ void init_map(struct map_handler* handler, cpu_id_t cpu_id, struct pmm* pmm);
 */
 
 error_t map(VS_Common* vs, ppn_t ppn, vpn_t vpn, int level,
-            ENTRY_FLAGS_t eflags, struct map_handler* handler, spin_lock* lock);
+            ENTRY_FLAGS_t eflags, struct map_handler* handler);
 /*
  * @brief : unmap the vpn with that it mapped ppn
  *
@@ -41,7 +43,7 @@ error_t map(VS_Common* vs, ppn_t ppn, vpn_t vpn, int level,
  * <0 error value
  */
 ppn_t unmap(VS_Common* vs, vpn_t vpn, u64 new_entry_addr,
-            struct map_handler* handler, spin_lock* lock);
+            struct map_handler* handler);
 
 /*
  * @brief judge one vpn have mapped in one vspace or not

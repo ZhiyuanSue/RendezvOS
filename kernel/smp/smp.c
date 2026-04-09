@@ -50,7 +50,7 @@ void start_secondary_cpu(struct setup_info *arch_setup_info)
                 arch_cpu_relax();
         }
         do_init_call();
-#ifdef TEST
+#ifdef RENDEZVOS_TEST
         create_test_thread(false);
         thread_set_status(get_cpu_current_thread(), thread_status_suspend);
         schedule(percpu(core_tm));

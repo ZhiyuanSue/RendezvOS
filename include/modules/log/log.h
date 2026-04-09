@@ -33,6 +33,8 @@ struct log_buffer {
 
 void log_init(void *log_buffer_addr, u64 log_level);
 void printk(const char *format, u64 log_level, ...);
+void log_put_byte(char ch);
+void log_put_locked(const u8 *buf, u64 len);
 
 extern struct spin_lock_t log_spin_lock;
 extern struct spin_lock_t *log_spin_lock_ptr;

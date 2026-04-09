@@ -11,7 +11,7 @@
 #include <rendezvos/sync/cas_lock.h>
 #include <rendezvos/limits.h>
 /*
- * Layout (LP64): `sizeof(struct nexus_node)` is 120 bytes (no padding to 128).
+ * Layout (LP64): keep `struct nexus_node` compact; size depends on pointers.
  * NEXUS_PER_PAGE = PAGE_SIZE / sizeof(struct nexus_node) (integer divide;
  * a page may have trailing slack). Prefix: 3*list_entry + vs_common pointer.
  * vs_common points at VS_Common (see vmm.h): tag + anonymous union (by `type`).
@@ -38,7 +38,6 @@ struct nexus_node {
                         /*common*/
                         struct rb_node _vspace_rb_node;
                         struct rb_root _rb_root;
-                        struct map_handler* handler;
                         /* root node*/
                         struct rb_root _vspace_rb_root;
                         /*The nexus lock is used to protect the vspace's

@@ -1,8 +1,13 @@
 #include <modules/pci/pci.h>
 #include <modules/test/test.h>
 
-error_t simple_print_callback(u8 bus, u8 device, u8 func,
-                              const pci_header_t* hdr)
+#ifdef PCI
+#include <modules/pci/pci_ops.h>
+#include <common/string.h>
+#include <rendezvos/mm/allocator.h>
+
+static struct pci_node *simple_print_callback(u8 bus, u8 device, u8 func,
+                                              const pci_header_t *hdr)
 {
         pr_info("Found PCI device at %lx:%lx.%lx\n", bus, device, func);
         pr_info("  Vendor: %lx, Device: %lx\n",
@@ -18,7 +23,7 @@ error_t simple_print_callback(u8 bus, u8 device, u8 func,
                 pr_info("\nAMD Device at %lx:%lx.%lx\n", bus, device, func);
 
                 // 显示设备类型
-                const char* type = "Unknown";
+                const char *type = "Unknown";
                 if (device_id >= 0x1000 && device_id <= 0x10FF)
                         type = "AMD Processor";
                 else if (device_id >= 0x6700 && device_id <= 0x67FF)
@@ -39,7 +44,7 @@ error_t simple_print_callback(u8 bus, u8 device, u8 func,
                 u16 device_id = hdr->common.device_id;
 
                 pr_info("\nAMD Device at %lx:%lx.%lx\n", bus, device, func);
-                const char* type = "Unknown";
+                const char *type = "Unknown";
                 switch (device_id) {
                 case 0x73A1:
                         type = "Radeon RX 7900 XTX";
@@ -67,13 +72,41 @@ error_t simple_print_callback(u8 bus, u8 device, u8 func,
                         hdr->common.class_code,
                         hdr->common.subclass);
         }
-        return REND_SUCCESS;
+
+        struct allocator *malloc = kallocator;
+        struct pci_node *pci_device_node =
+                malloc->m_alloc(malloc, sizeof(struct pci_node));
+        if (!pci_device_node) {
+                pr_error("pci test: cannot alloc pci_node\n");
+                return NULL;
+        }
+        memset(pci_device_node, '\0', sizeof(struct pci_node));
+        pci_device_node->bus = bus;
+        pci_device_node->device = device;
+        pci_device_node->func = func;
+        pci_device_node->vendor_id = hdr->common.vendor_id;
+        pci_device_node->device_id = hdr->common.device_id;
+        pci_device_node->class_code = hdr->common.class_code;
+        pci_device_node->subclass = hdr->common.subclass;
+        pci_device_node->prog_if = hdr->common.prog_if;
+
+        pci_scan_bar(pci_device_node, hdr);
+        return pci_device_node;
 }
+#endif
 
 int test_pci_scan(void)
 {
 #ifdef PCI
-        return pci_scan_all(simple_print_callback);
+        struct allocator *malloc = kallocator;
+        struct pci_node *root =
+                malloc->m_alloc(malloc, sizeof(struct pci_node));
+        if (!root) {
+                pr_error("pci test: cannot alloc root node\n");
+                return -E_REND_TEST;
+        }
+        memset(root, '\0', sizeof(struct pci_node));
+        return pci_scan_all(simple_print_callback, root);
 #else
         return REND_SUCCESS;
 #endif

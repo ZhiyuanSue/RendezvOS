@@ -342,7 +342,6 @@ VSpace 与 nexus 的关联（`include/rendezvos/mm/vmm.h`）：
 typedef struct {
         paddr vspace_root_addr;   /* 页表根物理地址 */
         u64 vspace_id;
-        spin_lock vspace_lock;         /* 传给 map/unmap，保护页表修改 */
         cas_lock_t nexus_vspace_lock;   /* 保护本 vspace 在 nexus 内的子树操作 */
         void *_vspace_node;             /* 指向该 vspace 在某个 nexus 下的根 nexus_node */
 } VSpace;
@@ -393,11 +392,10 @@ struct nexus_node {
 |----|----------|------|
 | **nexus_lock**（cas_lock） | 单个 nexus_root | 保护该 nexus 的 **vspace 集合**（`_vspace_rb_root`）：创建/删除/迁移 vspace 根节点时短时持有；`get_free_page`/`free_pages` 在用户态路径中仅用于按 `vs->vspace_root_addr` 查找 vspace_node，查完即放。 |
 | **nexus_vspace_lock**（cas_lock） | 单个 VSpace | 保护**该 vspace 在 nexus 内的子树**及与之相关的分配/释放流程：在对应 vspace 的 `_rb_root` 上做插入、删除、查找，以及 `_take_range`、`_unfill_range`、管理页/nexus_node 的分配与归还时持有。内核路径用 `nexus_root->vs->nexus_vspace_lock`（内核 vspace）；用户路径用 `vspace_node->vs->nexus_vspace_lock`。 |
-| **vspace_lock**（spin_lock*） | 单个 VSpace | 传给 `map()`/`unmap()`，在**修改该 vspace 的页表**时由 map_handler 内部使用，保证同一时刻只有一个线程在改该地址空间的页表。 |
 | **pmm 锁**（MCS，per zone per CPU） | 每个 zone | 调用 `pmm_alloc`/`pmm_free` 时，用**当前 handler 的 cpu_id** 取该 zone 的 per-CPU MCS 锁（`per_cpu(pmm_spin_lock[zone_id], handler->cpu_id)`），以减少同一 zone 上的锁竞争形态。 |
 
 **内核路径（`_kernel_get_free_page` / `_kernel_free_pages`）**  
-- 仅使用**本 CPU 的** nexus_root，整段分配/释放过程只持本 vspace 的 `nexus_vspace_lock`（以及 map 时的 `vspace_lock`）；不涉及其他 CPU 的 nexus 树。  
+- 仅使用**本 CPU 的** nexus_root，整段分配/释放过程只持本 vspace 的 `nexus_vspace_lock`；不涉及其他 CPU 的 nexus 树。  
 - 唯一跨 CPU 共享的是 **PMM**：分配/释放物理页时短暂持 zone 的 MCS 锁，持锁时间仅为 pmm_alloc/pmm_free 内的一小段，从而在“多核同时做内核页分配”时，主要竞争点在 PMM，而非 nexus 树。
 
 **用户路径（`get_free_page` / `free_pages`，用户虚址）**  
@@ -414,7 +412,7 @@ struct nexus_node {
 - **页表修改**：`map`/`unmap` 内部使用 **vs->vspace_lock**，同一 vspace 的任意映射变更都会互斥。多线程同时为同一地址空间建映射或拆映射时，同样会在这把锁上排队。
 - **PMM**：即使用 per-CPU 的 MCS 锁，zone 仍是全局的；若多核同时向同一 zone 要页，仍会在 pmm 层产生竞争，只是锁的形态比单一全局自旋锁更利于扩展。
 
-因此，当前设计在“每 CPU 一个 Nexus、按页记录、少用 VMA 式区间锁”上取得了**内核路径与多进程用户路径**的较好隔离，但在**单进程多线程、高并发操作同一地址空间**的场景下，仍存在 **nexus_vspace_lock 与 vspace_lock 的串行化瓶颈**；若需进一步扩展，可考虑按 vspace 内地址区间或按线程/CPU 做更细的划分（例如每 vspace 多棵子树、或更细粒度锁），与 CortenMM 等工作中“可扩展加锁协议”的方向一致。
+因此，当前设计在“每 CPU 一个 Nexus、按页记录、少用 VMA 式区间锁”上取得了**内核路径与多进程用户路径**的较好隔离，但在**单进程多线程、高并发操作同一地址空间**的场景下，仍存在 **nexus_vspace_lock 的串行化瓶颈**；若需进一步扩展，可考虑按 vspace 内地址区间或按线程/CPU 做更细的划分（例如每 vspace 多棵子树、或更细粒度锁），与 CortenMM 等工作中“可扩展加锁协议”的方向一致。
 
 ### 4.6 get_free_page / free_pages 与反向映射
 

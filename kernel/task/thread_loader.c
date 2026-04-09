@@ -132,8 +132,10 @@ error_t elf_Phdr_64_dynamic_handle(vaddr elf_start, Elf64_Phdr *phdr_ptr,
         print_elf_ph64(phdr_ptr);
         return REND_SUCCESS;
 }
-error_t run_elf_program(vaddr elf_start, vaddr elf_end, VS_Common *vs,
-                        append_info_handler handler)
+error_t run_elf_program(vaddr elf_start,
+                        vaddr elf_end,
+                        VS_Common *vs,
+                        elf_init_handler_t elf_init)
 {
         pr_info("start gen task from elf start %lx end %lx vs %lx\n",
                 elf_start,
@@ -154,10 +156,14 @@ error_t run_elf_program(vaddr elf_start, vaddr elf_end, VS_Common *vs,
         }
         Elf64_Ehdr *elf_header = (Elf64_Ehdr *)elf_start;
         vaddr entry_addr = elf_header->e_entry;
+        vaddr max_load_end = 0;
         for_each_program_header_64(elf_start)
         {
                 /*handle LOAD*/
                 if (phdr_ptr->p_type == PT_LOAD) {
+                        vaddr end = (vaddr)phdr_ptr->p_vaddr + (vaddr)phdr_ptr->p_memsz;
+                        if (end > max_load_end)
+                                max_load_end = end;
                         e = elf_Phdr_64_load_handle(elf_start, phdr_ptr, vs);
                         if (e) {
                                 pr_error("[ Error ]elf load handle fail\n");
@@ -180,8 +186,17 @@ error_t run_elf_program(vaddr elf_start, vaddr elf_end, VS_Common *vs,
         user_sp -= 8;
         *((u64 *)user_sp) = 0;
         arch_set_thread_user_sp(&elf_thread->ctx, user_sp);
-        if (handler) {
-                handler(&elf_thread->ctx);
+        if (elf_init) {
+                elf_load_info_t info = {
+                        .elf_start = elf_start,
+                        .elf_end = elf_end,
+                        .entry_addr = entry_addr,
+                        .max_load_end = ROUND_UP(max_load_end, PAGE_SIZE),
+                        .user_sp = user_sp,
+                        .phnum = elf_header->e_phnum,
+                        .phentsize = elf_header->e_phentsize,
+                };
+                elf_init(&elf_thread->ctx, &info);
         }
 
         Thread_Base *current_thread = percpu(core_tm)->current_thread;
@@ -192,7 +207,7 @@ error_t run_elf_program(vaddr elf_start, vaddr elf_end, VS_Common *vs,
 error_t gen_task_from_elf(Thread_Base **elf_thread_ptr,
                           size_t append_tcb_info_len,
                           size_t append_thread_info_len, vaddr elf_start,
-                          vaddr elf_end, append_info_handler handler)
+                          vaddr elf_end, elf_init_handler_t elf_init)
 {
         if (!elf_start || !elf_end) {
                 return -E_IN_PARAM;
@@ -244,7 +259,7 @@ error_t gen_task_from_elf(Thread_Base **elf_thread_ptr,
                                                 elf_start,
                                                 elf_end,
                                                 elf_task->vs,
-                                                handler);
+                                                elf_init);
         if (!elf_thread) {
                 e = -E_RENDEZVOS;
                 goto create_thread_error;

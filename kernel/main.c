@@ -63,7 +63,7 @@ void cmain(struct setup_info *arch_setup_info)
 
         do_init_call();
         start_smp(arch_setup_info);
-#ifdef TEST
+#ifdef RENDEZVOS_TEST
         create_test_thread(true);
         thread_set_status(get_cpu_current_thread(), thread_status_suspend);
 #endif

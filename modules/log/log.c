@@ -2,6 +2,8 @@
 #include <common/string.h>
 #include <common/stdarg.h>
 #include <modules/log/log.h>
+#include <modules/driver/uart/uart.h>
+#include <rendezvos/smp/percpu.h>
 
 struct log_buffer LOG_BUFFER;
 DEFINE_PER_CPU(struct spin_lock_t, log_spin_lock);
@@ -178,11 +180,27 @@ width:
         return p;
 }
 
-/* Output a character to both UART and console */
+void log_put_byte(char ch)
+{
+        uart_putc((u8)ch);
+}
+
+void log_put_locked(const u8 *buf, u64 len)
+{
+#ifdef SMP
+        lock_mcs(&log_spin_lock_ptr, &percpu(log_spin_lock));
+#endif
+        for (u64 i = 0; i < len; i++)
+                log_put_byte((char)buf[i]);
+#ifdef SMP
+        unlock_mcs(&log_spin_lock_ptr, &percpu(log_spin_lock));
+#endif
+}
+
+/* Output a character to log sinks (see `log_put_byte`). */
 static void putc_char(char ch)
 {
-        uart_putc(ch);
-        CONSOLE_PUTC(&X86_CHAR_CONSOLE, ch);
+        log_put_byte(ch);
 }
 
 /* Output a string with given length */

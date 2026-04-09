@@ -279,7 +279,7 @@ error_t pmm_free(struct pmm *pmm, ppn_t ppn, size_t page_number)
         for (i64 page_count = 0; page_count < (1 << alloc_order);
              page_count++) {
                 if (ppn_in_Zone(pmm->zone, ppn + page_count) == false) {
-                        pr_error("[ BUDDY ]this ppn is illegal\n");
+                        pr_error("[ BUDDY ]this ppn %llx is illegal\n",ppn);
                         return (-E_RENDEZVOS);
                 }
 

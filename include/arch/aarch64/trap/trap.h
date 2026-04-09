@@ -31,6 +31,7 @@ struct trap_frame {
         u64 HPFAR;
 };
 #define ARCH_SYSCALL_ID    REGS[8]
+#define ARCH_SYSCALL_RET   REGS[0]
 #define ARCH_SYSCALL_ARG_1 REGS[0]
 #define ARCH_SYSCALL_ARG_2 REGS[1]
 #define ARCH_SYSCALL_ARG_3 REGS[2]

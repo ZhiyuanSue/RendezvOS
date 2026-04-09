@@ -16,6 +16,7 @@
 #include <common/dsa/rb_tree.h>
 #include <common/refcount.h>
 #include <rendezvos/smp/cpu_id.h>
+#include <rendezvos/sync/spin_lock.h>
 
 #ifndef PTE_SIZE
 #define PTE_SIZE 8
@@ -38,6 +39,21 @@ enum vs_common_kind {
 typedef struct VS_Common {
         u64 type;
         /*
+         * Physical memory policy/affinity for this address space.
+         * For now it is a single PMM pointer (typically ZONE_NORMAL).
+         * Future NUMA: this can evolve into a "mem policy" object or per-region
+         * routing, but storing it here keeps nexus decoupled from map_handler.
+         */
+        struct pmm* pmm;
+        /*
+         * CPU affinity / ownership id (meaning depends on `type`):
+         * - VS_COMMON_KERNEL_HEAP_REF: which CPU this per-CPU heap-ref belongs
+         * to
+         * - VS_COMMON_USER_VSPACE: which per-CPU nexus_root currently owns this
+         * vspace
+         */
+        cpu_id_t cpu_id;
+        /*
          * Reference count for vspace lifetime.
          * - Owner (task) holds one reference.
          * - CPUs hold active references while CR3/TTBR points to this vspace.
@@ -49,17 +65,16 @@ typedef struct VS_Common {
          */
         ref_count_t refcount;
         /*
-        The nexus_vspace_lock is the lock that protect the nexus nodes under
-        this nexus vspace root. for user space , all the nexus node in this
-        vspace is under the vspace node. but for kernel space, the nexus node's
-        are split to percpu. So we have to use the heap ref to get percpu's
-        nexus_vspace_lock to protect percpu nexus nodes change
-        */
+         * User vspace: protects that vspace’s nexus subtree and PTE paths that
+         * run under the same lock (single address space).
+         * Kernel: shared `root_vspace` uses this lock for **page-table**
+         * serialization (SMP). Per-CPU `KERNEL_HEAP_REF` has its own
+         * `nexus_vspace_lock` for that CPU’s kernel nexus RB tree only.
+         */
         cas_lock_t nexus_vspace_lock;
         union {
                 struct {
                         struct VS_Common* vs;
-                        cpu_id_t cpu_id;
                 };
                 struct {
                         paddr vspace_root_addr;
@@ -79,7 +94,6 @@ extern VS_Common nexus_kernel_heap_vs_common;
 
 extern VS_Common* current_vspace; // per cpu pointer
 extern VS_Common root_vspace;
-extern struct spin_lock_t handler_spin_lock; // per cpu pointer
 #define boot_stack_size 0x10000
 extern u64 boot_stack_bottom;
 
@@ -87,7 +101,6 @@ VS_Common* new_vspace(void);
 error_t free_vspace_ref(ref_count_t* refcount);
 static inline void init_vspace(VS_Common* vs, u64 vspace_id, void* vspace_node)
 {
-        vs->vspace_lock = NULL;
         vs->vspace_id = vspace_id;
         vs->_vspace_node = vspace_node;
 }
@@ -99,6 +112,10 @@ static inline void set_vspace_root_addr(VS_Common* vs, paddr root_paddr)
 static inline void unset_vspace_root_addr(VS_Common* vs)
 {
         vs->vspace_root_addr = 0;
+}
+static inline bool vs_common_is_table_vspace(const VS_Common* vs)
+{
+        return vs && vs->type != (u64)VS_COMMON_KERNEL_HEAP_REF;
 }
 
 void arch_set_L0_entry(paddr p, vaddr v, union L0_entry* pt_addr,

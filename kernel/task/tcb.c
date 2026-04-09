@@ -313,13 +313,12 @@ error_t delete_task(Tcb_Base* tcb)
                         if (vspace->vspace_root_addr) {
                                 struct nexus_node* vspace_node =
                                         (struct nexus_node*)(vspace->_vspace_node);
-                                if (vspace_node && vspace_node->handler
-                                    && vspace_node->handler->cpu_id
+                                if (vspace_node
+                                    && vspace->cpu_id
                                                < RENDEZVOS_MAX_CPU_NUMBER) {
                                         nexus_delete_vspace(
                                                 per_cpu(nexus_root,
-                                                        vspace_node->handler
-                                                                ->cpu_id),
+                                                        vspace->cpu_id),
                                                 vspace);
                                         if (vspace->_vspace_node == NULL) {
                                                 e = vspace_free_user_pt(

@@ -5,7 +5,7 @@
 void* BSP_test(void* arg)
 {
         (void)arg;
-#ifdef TEST
+#ifdef RENDEZVOS_TEST
         single_cpu_test();
         multi_cpu_test();
 #endif
@@ -16,7 +16,7 @@ void* BSP_test(void* arg)
 void* AP_test(void* arg)
 {
         (void)arg;
-#ifdef TEST
+#ifdef RENDEZVOS_TEST
         multi_cpu_test();
 #endif
         thread_set_status(percpu(init_thread_ptr), thread_status_ready);

@@ -6,7 +6,6 @@
 #include <rendezvos/mm/vmm.h>
 extern u64 L0_table[512];
 extern u64 *MAP_L1_table, *MAP_L2_table, *MAP_L3_table;
-DEFINE_PER_CPU(struct spin_lock_t, handler_spin_lock);
 void sys_init_map(struct pmm *pmm)
 {
         ARCH_PFLAGS_t flags;
@@ -123,7 +122,7 @@ static void util_map(paddr p, vaddr v)
         arch_set_L3_entry(p, v, (union L3_entry *)&MAP_L3_table, flags);
 }
 error_t map(VS_Common *vs, ppn_t ppn, vpn_t vpn, int level,
-            ENTRY_FLAGS_t eflags, struct map_handler *handler, spin_lock *lock)
+            ENTRY_FLAGS_t eflags, struct map_handler *handler)
 {
         ARCH_PFLAGS_t flags = 0;
         ENTRY_FLAGS_t entry_flags = 0;
@@ -139,6 +138,10 @@ error_t map(VS_Common *vs, ppn_t ppn, vpn_t vpn, int level,
          * decide whether memset*/
 
         if (!vs || !handler || !handler->pmm) {
+                return -E_IN_PARAM;
+        }
+        if (!vs_common_is_table_vspace(vs)) {
+                pr_error("[ MAP ] ERROR: map called with KERNEL_HEAP_REF vs\n");
                 return -E_IN_PARAM;
         }
         /*=== === === L0 table === === ===*/
@@ -174,13 +177,9 @@ error_t map(VS_Common *vs, ppn_t ppn, vpn_t vpn, int level,
         }
         /*map the L0 table to one L3 table entry*/
         util_map(vs->vspace_root_addr, handler->map_vaddr[0]);
-        if (new_alloc) {
-                memset((char *)(handler->map_vaddr[0]), 0, PAGE_SIZE);
-                new_alloc = false;
-        }
         /*use map util table to change the L0 table*/
-        if (lock)
-                lock_mcs(lock, &per_cpu(handler_spin_lock, handler->cpu_id));
+
+        lock_mcs(&vs->vspace_lock, &handler->vspace_lock_node);
         /*
                 Do not try to add a small lock between l2 and l3 table
                 for it might memset to clean it
@@ -454,8 +453,7 @@ map_l1_fail:
         arch_tlb_invalidate_page(vs->vspace_id, handler->map_vaddr[1]);
 map_l0_fail:
         arch_tlb_invalidate_page(vs->vspace_id, handler->map_vaddr[0]);
-        if (lock)
-                unlock_mcs(lock, &per_cpu(handler_spin_lock, handler->cpu_id));
+        unlock_mcs(&vs->vspace_lock, &handler->vspace_lock_node);
 map_fail:
         /*
          * Replenish handler_ppn[] slots consumed during this map attempt. We do
@@ -480,13 +478,16 @@ map_fail:
 }
 
 ppn_t unmap(VS_Common *vs, vpn_t vpn, u64 new_entry_addr,
-            struct map_handler *handler, spin_lock *lock)
+            struct map_handler *handler)
 {
         if (!vs || !handler) {
                 return 0;
         }
-        if (lock)
-                lock_mcs(lock, &per_cpu(handler_spin_lock, handler->cpu_id));
+        if (!vs_common_is_table_vspace(vs)) {
+                pr_error("[ MAP ] ERROR: unmap called with KERNEL_HEAP_REF vs\n");
+                return -E_IN_PARAM;
+        }
+        lock_mcs(&vs->vspace_lock, &handler->vspace_lock_node);
         vaddr v = VADDR(vpn);
         paddr next_level_paddr = 0;
         ENTRY_FLAGS_t entry_flags = 0;
@@ -610,8 +611,7 @@ unmap_l1_fail:
 unmap_l0_fail:
         arch_tlb_invalidate_page(vs->vspace_id, handler->map_vaddr[0]);
 unmap_fail:
-        if (lock)
-                unlock_mcs(lock, &per_cpu(handler_spin_lock, handler->cpu_id));
+        unlock_mcs(&vs->vspace_lock, &handler->vspace_lock_node);
         return ppn;
 }
 ppn_t have_mapped(VS_Common *vs, vpn_t vpn, struct map_handler *handler)
@@ -635,6 +635,12 @@ ppn_t have_mapped(VS_Common *vs, vpn_t vpn, struct map_handler *handler)
                 ppn = -E_RENDEZVOS;
                 goto have_mapped_fail;
         }
+        if (!vs_common_is_table_vspace(vs)) {
+                pr_error(
+                        "[ MAP ] ERROR: have_mapped called with KERNEL_HEAP_REF vs\n");
+                return -E_IN_PARAM;
+        }
+        lock_mcs(&vs->vspace_lock, &handler->vspace_lock_node);
         /*=== === === L0 table === === ===*/
         util_map(vs->vspace_root_addr, handler->map_vaddr[0]);
         L0_E = ((union L0_entry *)(handler->map_vaddr[0]))[L0_INDEX(v)];
@@ -688,6 +694,7 @@ have_mapped_l1_fail:
         arch_tlb_invalidate_page(vs->vspace_id, handler->map_vaddr[1]);
 have_mapped_l0_fail:
         arch_tlb_invalidate_page(vs->vspace_id, handler->map_vaddr[0]);
+        unlock_mcs(&vs->vspace_lock, &handler->vspace_lock_node);
 have_mapped_fail:
         return ppn;
 }

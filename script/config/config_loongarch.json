@@ -41,7 +41,7 @@
 		{
 			"use":true ,
 			"features":[
-				"TEST"
+				"RENDEZVOS_TEST"
 			],
 			"depend_module":[
 				"helloworld"

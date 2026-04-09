@@ -48,8 +48,7 @@ error_t acpi_init(vaddr rsdp_addr)
                             2,
                             PAGE_ENTRY_GLOBAL | PAGE_ENTRY_READ
                                     | PAGE_ENTRY_VALID | PAGE_ENTRY_WRITE,
-                            &per_cpu(Map_Handler, BSP_ID),
-                            NULL);
+                            &per_cpu(Map_Handler, BSP_ID));
                 }
                 struct acpi_table_rsdt *rsdt_table =
                         (struct acpi_table_rsdt *)KERNEL_PHY_TO_VIRT(

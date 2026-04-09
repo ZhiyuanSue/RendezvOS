@@ -4,6 +4,7 @@
 #include <rendezvos/mm/kmalloc.h>
 #include <rendezvos/mm/nexus.h>
 #include <rendezvos/smp/percpu.h>
+#include <rendezvos/sync/cas_lock.h>
 #include <rendezvos/error.h>
 extern cpu_id_t BSP_ID;
 extern u64 boot_stack;
@@ -26,11 +27,14 @@ error_t virt_mm_init(cpu_id_t cpu_id, struct setup_info* arch_setup_info)
         if (cpu_id == BSP_ID) {
                 sys_init_map(mem_zones[ZONE_NORMAL].pmm);
                 root_vspace.type = (u64)VS_COMMON_USER_VSPACE;
+                root_vspace.pmm = mem_zones[ZONE_NORMAL].pmm;
                 root_vspace.vspace_root_addr =
                         arch_get_current_kernel_vspace_root();
                 /* nexus_root for this CPU is not allocated yet; _vspace_node
                  * is wired in init_vspace_nexus and later cleared. */
                 init_vspace(&root_vspace, 0, NULL);
+                lock_init_cas(&root_vspace.nexus_vspace_lock);
+                root_vspace.vspace_lock = NULL;
                 ref_init(&root_vspace.refcount);
                 per_cpu(boot_stack_bottom, cpu_id) =
                         (vaddr)(&boot_stack) + boot_stack_size;
@@ -88,19 +92,14 @@ error_t del_vspace(VS_Common** vs)
         bool had_vspace_node = vspace->_vspace_node != NULL;
 
         if (had_vspace_node) {
-                struct nexus_node* vspace_node =
-                        (struct nexus_node*)vspace->_vspace_node;
-                bool nexus_ready = vspace_node && vspace_node->handler
-                                   && vspace_node->handler->cpu_id
-                                              < RENDEZVOS_MAX_CPU_NUMBER;
+                if (vspace->cpu_id < RENDEZVOS_MAX_CPU_NUMBER
+                    && per_cpu(nexus_root, vspace->cpu_id) != NULL) {
+                        nexus_delete_vspace(per_cpu(nexus_root, vspace->cpu_id),
+                                            vspace);
 
-                if (!nexus_ready)
+                } else {
                         ret = -E_IN_PARAM;
-                else
-                        nexus_delete_vspace(
-                                per_cpu(nexus_root,
-                                        vspace_node->handler->cpu_id),
-                                vspace);
+                }
         }
 
         if (vspace->vspace_root_addr) {

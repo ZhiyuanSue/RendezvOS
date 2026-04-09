@@ -78,11 +78,10 @@ int smp_kmalloc_test(void)
         kmalloc_print();
         percpu(smp_next) = 1;
         struct allocator* malloc = percpu(kallocator);
-        pr_info("[CPU:%d]\t[allocator\t@\t%lx]\n\t[nexus_root\t@\t%lx]\n\t[handler\t@\t%lx]\n",
+        pr_info("[CPU:%d]\t[allocator\t@\t%lx]\n\t[nexus_root\t@\t%lx]\n",
                 percpu(cpu_number),
                 malloc,
-                ((struct mem_allocator*)malloc)->nexus_root,
-                ((struct mem_allocator*)malloc)->nexus_root->handler);
+                ((struct mem_allocator*)malloc)->nexus_root);
         void* test_alloc = malloc->m_alloc(malloc, 8);
         *((u64*)test_alloc) = 0;
         malloc->m_free(malloc, test_alloc);
