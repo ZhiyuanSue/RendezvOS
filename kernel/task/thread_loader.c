@@ -9,7 +9,7 @@ static void elf_task_release_vspace_ref(Tcb_Base *elf_task)
                 return;
         VS_Common *vs = elf_task->vs;
         elf_task->vs = NULL;
-        if (vs != &root_vspace && vs->type != (u64)VS_COMMON_KERNEL_HEAP_REF)
+        if (vs_common_is_table_vspace(vs) && vs != &root_vspace)
                 ref_put(&vs->refcount, free_vspace_ref);
 }
 
@@ -132,9 +132,7 @@ error_t elf_Phdr_64_dynamic_handle(vaddr elf_start, Elf64_Phdr *phdr_ptr,
         print_elf_ph64(phdr_ptr);
         return REND_SUCCESS;
 }
-error_t run_elf_program(vaddr elf_start,
-                        vaddr elf_end,
-                        VS_Common *vs,
+error_t run_elf_program(vaddr elf_start, vaddr elf_end, VS_Common *vs,
                         elf_init_handler_t elf_init)
 {
         pr_info("start gen task from elf start %lx end %lx vs %lx\n",
@@ -161,7 +159,8 @@ error_t run_elf_program(vaddr elf_start,
         {
                 /*handle LOAD*/
                 if (phdr_ptr->p_type == PT_LOAD) {
-                        vaddr end = (vaddr)phdr_ptr->p_vaddr + (vaddr)phdr_ptr->p_memsz;
+                        vaddr end = (vaddr)phdr_ptr->p_vaddr
+                                    + (vaddr)phdr_ptr->p_memsz;
                         if (end > max_load_end)
                                 max_load_end = end;
                         e = elf_Phdr_64_load_handle(elf_start, phdr_ptr, vs);

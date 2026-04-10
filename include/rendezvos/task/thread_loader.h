@@ -19,7 +19,7 @@ typedef struct elf_load_info {
         vaddr elf_end;
         vaddr entry_addr;
         vaddr max_load_end; /* max(PT_LOAD.vaddr + memsz), page-aligned */
-        vaddr user_sp;      /* initial user SP after stack setup */
+        vaddr user_sp; /* initial user SP after stack setup */
         u16 phnum;
         u16 phentsize;
 } elf_load_info_t;
@@ -30,10 +30,8 @@ typedef struct elf_load_info {
  * before dropping to userspace.
  */
 typedef void* (*elf_init_handler_t)(Arch_Task_Context* ctx,
-                                   const elf_load_info_t* info);
-error_t run_elf_program(vaddr elf_start,
-                        vaddr elf_end,
-                        VS_Common* vs,
+                                    const elf_load_info_t* info);
+error_t run_elf_program(vaddr elf_start, vaddr elf_end, VS_Common* vs,
                         elf_init_handler_t elf_init);
 error_t gen_task_from_elf(Thread_Base** elf_thread_ptr,
                           size_t append_tcb_info_len,

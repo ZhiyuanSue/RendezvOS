@@ -20,10 +20,23 @@ static inline paddr arch_get_current_user_vspace_root(void)
 static inline void arch_set_current_kernel_vspace_root(paddr k_root)
 {
         msr("TTBR1_EL1", k_root);
+        isb();
 }
+static inline void arch_set_current_user_vspace_root_asid(paddr u_root,
+                                                          asid_t asid)
+{
+        u64 ttbr0 = (u64)u_root | ((u64)asid << 48);
+        msr("TTBR0_EL1", ttbr0);
+        isb();
+}
+/*
+ * Backward-compat wrapper (no ASID tagging). Prefer _asid().
+ * Note: no implicit TLB flush here; callers must manage it.
+ */
 static inline void arch_set_current_user_vspace_root(paddr u_root)
 {
         msr("TTBR0_EL1", u_root);
+        isb();
 }
 
 // here we only consider the 4K paging

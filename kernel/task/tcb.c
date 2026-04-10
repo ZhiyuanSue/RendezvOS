@@ -303,8 +303,8 @@ error_t delete_task(Tcb_Base* tcb)
         if (tcb->vs) {
                 VS_Common* vspace = tcb->vs;
                 tcb->vs = NULL;
-                if (vspace != &root_vspace
-                    && vspace->type != (u64)VS_COMMON_KERNEL_HEAP_REF) {
+                if (vs_common_is_table_vspace(vspace)
+                    && vspace != &root_vspace) {
                         struct map_handler* map_handler = &percpu(Map_Handler);
                         /*
                          * Nexus + user descendant tables only; top-level user

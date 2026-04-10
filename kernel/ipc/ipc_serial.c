@@ -305,4 +305,3 @@ error_t ipc_serial_decode(const void *buf, u32 buf_len, const char *fmt, ...)
                 return -E_IN_PARAM;
         return REND_SUCCESS;
 }
-

@@ -92,7 +92,8 @@ prepare_page_table:
 init_mmu:
 	/*fill in x0 and x1 the page table,fill in the x2 with the target tcr*/
 	mrs	x2,TCR_EL1
-	mrs x4,ID_AA64MMFR0_EL1
+	mrs x6,ID_AA64MMFR0_EL1
+	mov x4,x6
 	and x4,x4,#ID_AA64MMFR0_EL1_PARANGE_MASK	/*support the usable phyaddr*/
 	lsl	x4,x4,#32
 	mov x5,#1
@@ -112,6 +113,12 @@ set_tcr_ips_end:
 	orr x2,x2,#TCR_EL1_IRGN0_WB_RA_WA_CACHE
 	orr x2,x2,#TCR_EL1_HA
 	orr x2,x2,#TCR_EL1_HD
+	/* Enable 16-bit ASID if supported (ID_AA64MMFR0_EL1.ASIDBits). */
+	ubfx x4, x6, #ID_AA64MMFR0_EL1_ASIDBITS_SHIFT, #ID_AA64MMFR0_EL1_ASIDBITS_WIDTH
+	cmp x4, #ID_AA64MMFR0_EL1_ASIDBITS_16BIT
+	b.ne 1f
+	orr x2,x2,#TCR_EL1_AS
+1:
 	mov x4,#0x10
 	orr x2,x2,x4
 

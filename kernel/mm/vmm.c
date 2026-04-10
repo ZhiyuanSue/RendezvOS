@@ -3,6 +3,7 @@
 #include <rendezvos/mm/map_handler.h>
 #include <rendezvos/mm/kmalloc.h>
 #include <rendezvos/mm/nexus.h>
+#include <rendezvos/mm/asid.h>
 #include <rendezvos/smp/percpu.h>
 #include <rendezvos/sync/cas_lock.h>
 #include <rendezvos/error.h>
@@ -26,7 +27,8 @@ error_t virt_mm_init(cpu_id_t cpu_id, struct setup_info* arch_setup_info)
 {
         if (cpu_id == BSP_ID) {
                 sys_init_map(mem_zones[ZONE_NORMAL].pmm);
-                root_vspace.type = (u64)VS_COMMON_USER_VSPACE;
+                asid_init();
+                root_vspace.type = (u64)VS_COMMON_TABLE_VSPACE;
                 root_vspace.pmm = mem_zones[ZONE_NORMAL].pmm;
                 root_vspace.vspace_root_addr =
                         arch_get_current_kernel_vspace_root();
@@ -35,6 +37,9 @@ error_t virt_mm_init(cpu_id_t cpu_id, struct setup_info* arch_setup_info)
                 init_vspace(&root_vspace, 0, NULL);
                 lock_init_cas(&root_vspace.nexus_vspace_lock);
                 root_vspace.vspace_lock = NULL;
+                root_vspace.asid = 0;
+                vs_tlb_cpu_mask_zero(&root_vspace);
+                lock_init_cas(&root_vspace.tlb_cpu_mask_lock);
                 ref_init(&root_vspace.refcount);
                 per_cpu(boot_stack_bottom, cpu_id) =
                         (vaddr)(&boot_stack) + boot_stack_size;
@@ -66,7 +71,14 @@ VS_Common* new_vspace(void)
         if (!user_vs)
                 return NULL;
         memset((void*)user_vs, 0, sizeof(*user_vs));
-        user_vs->type = (u64)VS_COMMON_USER_VSPACE;
+        user_vs->type = (u64)VS_COMMON_TABLE_VSPACE;
+        user_vs->asid = asid_alloc();
+        if (user_vs->asid == 0) {
+                cpu_kallocator->m_free(cpu_kallocator, (void*)user_vs);
+                return NULL;
+        }
+        vs_tlb_cpu_mask_zero(user_vs);
+        lock_init_cas(&user_vs->tlb_cpu_mask_lock);
         ref_init(&user_vs->refcount);
         return user_vs;
 }
@@ -78,7 +90,7 @@ error_t del_vspace(VS_Common** vs)
         /* Never free the kernel/root vspace page-table frames. */
         if (*vs == &root_vspace)
                 return REND_SUCCESS;
-        if ((*vs)->type == (u64)VS_COMMON_KERNEL_HEAP_REF)
+        if (vs_common_is_heap_ref(*vs))
                 return REND_SUCCESS;
 
         VS_Common* vspace = *vs;
@@ -90,6 +102,12 @@ error_t del_vspace(VS_Common** vs)
          * root below, do not walk user PT again.
          */
         bool had_vspace_node = vspace->_vspace_node != NULL;
+
+        lock_cas(&vspace->tlb_cpu_mask_lock);
+        bool empty = vs_tlb_cpu_mask_is_zero(vspace);
+        unlock_cas(&vspace->tlb_cpu_mask_lock);
+        if (!empty)
+                return -E_REND_RC_UNEQUAL;
 
         if (had_vspace_node) {
                 if (vspace->cpu_id < RENDEZVOS_MAX_CPU_NUMBER
@@ -113,6 +131,8 @@ error_t del_vspace(VS_Common** vs)
                 if (root_err != REND_SUCCESS && ret == REND_SUCCESS)
                         ret = root_err;
         }
+
+        asid_free(vspace->asid);
 
         struct allocator* cpu_kallocator = percpu(kallocator);
         if (cpu_kallocator) {

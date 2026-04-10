@@ -47,19 +47,6 @@ struct nexus_node {
         };
 };
 
-/*
- * One type, several logical roles: same layout may be a tree root, a subtree
- * root, a bookkeeping slot, or a leaf record—callers must name pointers by
- * role where it matters. These helpers only read `vs_common` / `VS_Common`
- * (discriminated by `vs_common->type`).
- */
-static inline bool
-nexus_node_vs_is_kernel_kref(const struct nexus_node* nexus_node)
-{
-        return nexus_node->vs_common
-               && nexus_node->vs_common->type == (u64)VS_COMMON_KERNEL_HEAP_REF;
-}
-
 static inline VS_Common* nexus_node_vspace(const struct nexus_node* nexus_node)
 {
         if (!nexus_node || !nexus_node->vs_common)
@@ -67,7 +54,7 @@ static inline VS_Common* nexus_node_vspace(const struct nexus_node* nexus_node)
         switch ((enum vs_common_kind)nexus_node->vs_common->type) {
         case VS_COMMON_KERNEL_HEAP_REF:
                 return nexus_node->vs_common->vs;
-        case VS_COMMON_USER_VSPACE:
+        case VS_COMMON_TABLE_VSPACE:
                 return nexus_node->vs_common;
         default:
                 return NULL;
@@ -76,8 +63,7 @@ static inline VS_Common* nexus_node_vspace(const struct nexus_node* nexus_node)
 static inline VS_Common*
 nexus_root_heap_ref(const struct nexus_node* nexus_root)
 {
-        if (!nexus_root || !nexus_root->vs_common
-            || nexus_root->vs_common->type != VS_COMMON_KERNEL_HEAP_REF)
+        if (!nexus_root || !vs_common_is_heap_ref(nexus_root->vs_common))
                 return NULL;
         return nexus_root->vs_common;
 }

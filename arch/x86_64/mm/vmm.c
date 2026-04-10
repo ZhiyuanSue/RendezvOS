@@ -46,46 +46,47 @@ ARCH_PFLAGS_t arch_decode_flags(int entry_level, ENTRY_FLAGS_t ENTRY_FLAGS)
         if (entry_level < 0 || entry_level > 3)
                 return REND_SUCCESS;
         if (ENTRY_FLAGS & PAGE_ENTRY_VALID) {
-                ARCH_PFLAGS = set_mask(ARCH_PFLAGS,
-                                       arch_entry_flags_valid_bit[entry_level]);
+                ARCH_PFLAGS = set_mask_u64(
+                        ARCH_PFLAGS, arch_entry_flags_valid_bit[entry_level]);
         }
         if (ENTRY_FLAGS & PAGE_ENTRY_WRITE) {
-                ARCH_PFLAGS = set_mask(ARCH_PFLAGS,
-                                       arch_entry_flags_write_bit[entry_level]);
+                ARCH_PFLAGS = set_mask_u64(
+                        ARCH_PFLAGS, arch_entry_flags_write_bit[entry_level]);
         }
         if (!(ENTRY_FLAGS & PAGE_ENTRY_EXEC)) {
                 /*this must ensure that the IA32_EFER.NXE==1, we enabled at boot
                  * stage*/
-                ARCH_PFLAGS = set_mask(
+                ARCH_PFLAGS = set_mask_u64(
                         ARCH_PFLAGS, arch_entry_flags_no_exec_bit[entry_level]);
         }
         if (ENTRY_FLAGS & PAGE_ENTRY_USER) {
-                ARCH_PFLAGS = set_mask(ARCH_PFLAGS,
-                                       arch_entry_flags_user_bit[entry_level]);
+                ARCH_PFLAGS = set_mask_u64(
+                        ARCH_PFLAGS, arch_entry_flags_user_bit[entry_level]);
         }
         if (ENTRY_FLAGS & PAGE_ENTRY_UNCACHED
             || ENTRY_FLAGS & PAGE_ENTRY_DEVICE) {
-                ARCH_PFLAGS = set_mask(
+                ARCH_PFLAGS = set_mask_u64(
                         ARCH_PFLAGS,
                         arch_entry_flags_uncache_device_bit[entry_level]);
         }
         if (ENTRY_FLAGS & PAGE_ENTRY_HUGE) {
-                ARCH_PFLAGS = set_mask(ARCH_PFLAGS,
-                                       arch_entry_flags_huge_bit[entry_level]);
+                ARCH_PFLAGS = set_mask_u64(
+                        ARCH_PFLAGS, arch_entry_flags_huge_bit[entry_level]);
         }
         if (ENTRY_FLAGS & PAGE_ENTRY_GLOBAL) {
                 switch (entry_level) {
                         /*no global in pml4*/
                 case 1:
                         if (ENTRY_FLAGS & PAGE_ENTRY_HUGE)
-                                ARCH_PFLAGS = set_mask(ARCH_PFLAGS, PDPTE_G);
+                                ARCH_PFLAGS =
+                                        set_mask_u64(ARCH_PFLAGS, PDPTE_G);
                         break;
                 case 2:
                         if (ENTRY_FLAGS & PAGE_ENTRY_HUGE)
-                                ARCH_PFLAGS = set_mask(ARCH_PFLAGS, PDE_G);
+                                ARCH_PFLAGS = set_mask_u64(ARCH_PFLAGS, PDE_G);
                         break;
                 case 3:
-                        ARCH_PFLAGS = set_mask(ARCH_PFLAGS, PTE_G);
+                        ARCH_PFLAGS = set_mask_u64(ARCH_PFLAGS, PTE_G);
                         break;
                 default:
                         break;
@@ -98,39 +99,39 @@ ENTRY_FLAGS_t arch_encode_flags(int entry_level, ARCH_PFLAGS_t ARCH_PFLAGS)
         ENTRY_FLAGS_t ENTRY_FLAGS = 0;
         if (ARCH_PFLAGS & PML4E_P || ARCH_PFLAGS & PDPTE_P
             || ARCH_PFLAGS & PDE_P || ARCH_PFLAGS & PTE_P) {
-                ENTRY_FLAGS = set_mask(ENTRY_FLAGS, PAGE_ENTRY_VALID);
+                ENTRY_FLAGS = set_mask_u64(ENTRY_FLAGS, PAGE_ENTRY_VALID);
         }
-        ENTRY_FLAGS = set_mask(ENTRY_FLAGS, PAGE_ENTRY_READ);
+        ENTRY_FLAGS = set_mask_u64(ENTRY_FLAGS, PAGE_ENTRY_READ);
         if (ARCH_PFLAGS & PML4E_RW || ARCH_PFLAGS & PDPTE_RW
             || ARCH_PFLAGS & PDE_RW || ARCH_PFLAGS & PTE_RW) {
-                ENTRY_FLAGS = set_mask(ENTRY_FLAGS, PAGE_ENTRY_WRITE);
+                ENTRY_FLAGS = set_mask_u64(ENTRY_FLAGS, PAGE_ENTRY_WRITE);
         }
         if (ARCH_PFLAGS & PML4E_XD || ARCH_PFLAGS & PDPTE_XD
             || ARCH_PFLAGS & PDE_XD || ARCH_PFLAGS & PTE_XD) {
-                ENTRY_FLAGS = clear_mask(ENTRY_FLAGS, PAGE_ENTRY_EXEC);
+                ENTRY_FLAGS = clear_mask_u64(ENTRY_FLAGS, PAGE_ENTRY_EXEC);
         } else {
-                ENTRY_FLAGS = set_mask(ENTRY_FLAGS, PAGE_ENTRY_EXEC);
+                ENTRY_FLAGS = set_mask_u64(ENTRY_FLAGS, PAGE_ENTRY_EXEC);
         }
         if (ARCH_PFLAGS & PML4E_US || ARCH_PFLAGS & PDPTE_US
             || ARCH_PFLAGS & PDE_US || ARCH_PFLAGS & PDE_US) {
-                ENTRY_FLAGS = set_mask(ENTRY_FLAGS, PAGE_ENTRY_USER);
+                ENTRY_FLAGS = set_mask_u64(ENTRY_FLAGS, PAGE_ENTRY_USER);
         }
         if (ARCH_PFLAGS & (PML4E_PCD | PML4E_PWT)
             || ARCH_PFLAGS & (PDPTE_PCD | PDPTE_PWT)
             || ARCH_PFLAGS & (PDE_PCD | PDE_PWT)
             || ARCH_PFLAGS & (PTE_PCD | PTE_PWT)) {
-                ENTRY_FLAGS = set_mask(ENTRY_FLAGS,
-                                       PAGE_ENTRY_DEVICE | PAGE_ENTRY_UNCACHED);
+                ENTRY_FLAGS = set_mask_u64(
+                        ENTRY_FLAGS, PAGE_ENTRY_DEVICE | PAGE_ENTRY_UNCACHED);
         }
         if ((entry_level == 1 || entry_level == 2)
             && (ARCH_PFLAGS & PDPTE_PS || ARCH_PFLAGS & PDE_PS)) {
-                ENTRY_FLAGS = set_mask(ENTRY_FLAGS, PAGE_ENTRY_HUGE);
+                ENTRY_FLAGS = set_mask_u64(ENTRY_FLAGS, PAGE_ENTRY_HUGE);
         }
         if (((entry_level == 1 || entry_level == 2)
              && (ARCH_PFLAGS & (PDPTE_PS | PDPTE_G)
                  || ARCH_PFLAGS & (PDE_PS | PDE_G)))
             || ((entry_level == 3) && (ARCH_PFLAGS & PTE_G))) {
-                ENTRY_FLAGS = set_mask(ENTRY_FLAGS, PAGE_ENTRY_GLOBAL);
+                ENTRY_FLAGS = set_mask_u64(ENTRY_FLAGS, PAGE_ENTRY_GLOBAL);
         }
 
         return ENTRY_FLAGS;

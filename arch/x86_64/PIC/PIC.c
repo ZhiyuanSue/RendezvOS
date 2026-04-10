@@ -40,7 +40,7 @@ error_t enable_PIC_IRQ(int irq_num)
         if (irq_num >= _8259A_MASTER_IRQ_NUM_
             && irq_num < _8259A_MASTER_IRQ_NUM_ + _8259A_IRQ_NUM_) { /*master
                                                                         irq*/
-                _8259A_IMR_MASTER_ = clear_bit(
+                _8259A_IMR_MASTER_ = clear_bit_u8(
                         _8259A_IMR_MASTER_, (irq_num - _8259A_MASTER_IRQ_NUM_));
                 outb(_X86_8259A_MASTER_1_, _8259A_IMR_MASTER_);
         } else if (irq_num >= _8259A_SLAVE_IRQ_NUM_
@@ -49,7 +49,7 @@ error_t enable_PIC_IRQ(int irq_num)
                                                                 enable the irq
                                                                    2 at master,
                                                                 too*/
-                _8259A_IMR_SLAVE_ = clear_bit(
+                _8259A_IMR_SLAVE_ = clear_bit_u8(
                         _8259A_IMR_SLAVE_, (irq_num - _8259A_SLAVE_IRQ_NUM_));
                 outb(_X86_8259A_SLAVE_1_, _8259A_IMR_SLAVE_);
         } else { /*wrong irq num*/
@@ -62,14 +62,14 @@ error_t disable_PIC_IRQ(int irq_num)
         if (irq_num >= _8259A_MASTER_IRQ_NUM_
             && irq_num < _8259A_MASTER_IRQ_NUM_ + _8259A_IRQ_NUM_) { /*master
                                                                         irq*/
-                _8259A_IMR_MASTER_ = set_bit(
+                _8259A_IMR_MASTER_ = set_bit_u8(
                         _8259A_IMR_MASTER_, (irq_num - _8259A_MASTER_IRQ_NUM_));
                 outb(_X86_8259A_MASTER_1_, _8259A_IMR_MASTER_);
         } else if (irq_num >= _8259A_SLAVE_IRQ_NUM_
                    && irq_num < _8259A_SLAVE_IRQ_NUM_
                                         + _8259A_IRQ_NUM_) { /*slave irq*/
-                _8259A_IMR_SLAVE_ = set_bit(_8259A_IMR_SLAVE_,
-                                            (irq_num - _8259A_SLAVE_IRQ_NUM_));
+                _8259A_IMR_SLAVE_ = set_bit_u8(
+                        _8259A_IMR_SLAVE_, (irq_num - _8259A_SLAVE_IRQ_NUM_));
                 outb(_X86_8259A_SLAVE_1_, _8259A_IMR_SLAVE_);
         } else { /*wrong irq num*/
                 return (-E_RENDEZVOS);

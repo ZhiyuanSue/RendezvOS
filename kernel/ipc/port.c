@@ -209,10 +209,8 @@ error_t register_port(struct Port_Table* table, Message_Port_t* port)
 
         struct spin_lock_t* my_lock = &percpu(port_table_spin_lock);
         lock_mcs(&table->by_name.lock, my_lock);
-        Message_Port_t* existing =
-                (Message_Port_t*)name_index_search(&table->by_name,
-                                                   port->name,
-                                                   NULL);
+        Message_Port_t* existing = (Message_Port_t*)name_index_search(
+                &table->by_name, port->name, NULL);
         if (existing) {
                 if (existing == port) {
                         unlock_mcs(&table->by_name.lock, my_lock);
@@ -230,9 +228,8 @@ error_t register_port(struct Port_Table* table, Message_Port_t* port)
         }
         /* table holds one ref */
         if (!ref_get_not_zero(&port->refcount)) {
-                name_index_register_abort(&table->by_name,
-                                            reg_row_idx,
-                                            (void*)port);
+                name_index_register_abort(
+                        &table->by_name, reg_row_idx, (void*)port);
                 unlock_mcs(&table->by_name.lock, my_lock);
                 return -E_RENDEZVOS;
         }
@@ -248,19 +245,14 @@ error_t unregister_port(struct Port_Table* table, const char* name)
         struct spin_lock_t* my_lock = &percpu(port_table_spin_lock);
         lock_mcs(&table->by_name.lock, my_lock);
         u64 row_idx = 0;
-        Message_Port_t* port =
-                (Message_Port_t*)name_index_search(&table->by_name,
-                                                   name,
-                                                   &row_idx);
+        Message_Port_t* port = (Message_Port_t*)name_index_search(
+                &table->by_name, name, &row_idx);
         if (!port || !port->registered) {
                 unlock_mcs(&table->by_name.lock, my_lock);
                 return REND_SUCCESS;
         }
 
-        name_index_unregister(&table->by_name,
-                              (void*)port,
-                              row_idx,
-                              name);
+        name_index_unregister(&table->by_name, (void*)port, row_idx, name);
         unlock_mcs(&table->by_name.lock, my_lock);
 
         ref_put(&port->refcount, free_message_port_ref);
@@ -280,9 +272,8 @@ Message_Port_t* port_table_lookup_with_token(struct Port_Table* table,
 {
         if (!table || !name)
                 return NULL;
-        return (Message_Port_t*)name_index_lookup(&table->by_name,
-                                                  name,
-                                                  tok_out);
+        return (Message_Port_t*)name_index_lookup(
+                &table->by_name, name, tok_out);
 }
 
 Message_Port_t* port_table_resolve_token(struct Port_Table* table,
@@ -292,9 +283,8 @@ Message_Port_t* port_table_resolve_token(struct Port_Table* table,
         if (!table || !name)
                 return NULL;
         if (!tok)
-                return (Message_Port_t*)name_index_lookup(&table->by_name,
-                                                          name,
-                                                          NULL);
+                return (Message_Port_t*)name_index_lookup(
+                        &table->by_name, name, NULL);
         return (Message_Port_t*)name_index_resolve(&table->by_name, tok, name);
 }
 

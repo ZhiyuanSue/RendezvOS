@@ -65,8 +65,8 @@ static error_t name_index_ht_rehash(name_index_t* idx, u64 new_ht_cap)
         struct allocator* alloc = name_index_allocator(idx);
         if (new_ht_cap > (u64)(SIZE_MAX / sizeof(i64)))
                 return -E_RENDEZVOS;
-        i64* new_ht = (i64*)alloc->m_alloc(alloc,
-                                           (size_t)new_ht_cap * sizeof(i64));
+        i64* new_ht =
+                (i64*)alloc->m_alloc(alloc, (size_t)new_ht_cap * sizeof(i64));
         if (!new_ht)
                 return -E_RENDEZVOS;
         for (u64 i = 0; i < new_ht_cap; i++)
@@ -77,10 +77,11 @@ static error_t name_index_ht_rehash(name_index_t* idx, u64 new_ht_cap)
                 if (idx->rows[row_idx].used != NAME_INDEX_ROW_USED
                     || !idx->rows[row_idx].storage.value)
                         continue;
-                const char* n = idx->get_name ?
-                                        idx->get_name(idx->rows[row_idx]
-                                                              .storage.value) :
-                                        NULL;
+                const char* n =
+                        idx->get_name ?
+                                idx->get_name(
+                                        idx->rows[row_idx].storage.value) :
+                                NULL;
                 u32 h = name_index_hash_name(idx, n);
                 bool placed = false;
                 for (u64 probe = 0; probe < new_ht_cap; probe++) {
@@ -119,8 +120,9 @@ static error_t name_index_grow_row_array(name_index_t* idx)
         if (new_cap > (u64)(SIZE_MAX / sizeof(struct name_index_row)))
                 return -E_RENDEZVOS;
 
-        struct name_index_row* new_rows = (struct name_index_row*)alloc->m_alloc(
-                alloc, (size_t)new_cap * sizeof(struct name_index_row));
+        struct name_index_row* new_rows =
+                (struct name_index_row*)alloc->m_alloc(
+                        alloc, (size_t)new_cap * sizeof(struct name_index_row));
         if (!new_rows)
                 return -E_RENDEZVOS;
 
@@ -177,7 +179,8 @@ static error_t name_index_maybe_grow_ht(name_index_t* idx)
                 return name_index_ht_rehash(idx, NAME_INDEX_HT_INITIAL_CAP);
         if (idx->live == 0u)
                 return REND_SUCCESS;
-        if (idx->live * 100ULL <= idx->ht_cap * (u64)NAME_INDEX_HT_MAX_LOAD_PERCENT)
+        if (idx->live * 100ULL
+            <= idx->ht_cap * (u64)NAME_INDEX_HT_MAX_LOAD_PERCENT)
                 return REND_SUCCESS;
         u64 nc = idx->ht_cap * 2ULL;
         if (nc < idx->ht_cap)
@@ -296,7 +299,8 @@ static i64 name_index_ht_find_bucket(name_index_t* idx, const char* name,
                         continue;
                 const char* row_name =
                         idx->get_name ?
-                                idx->get_name(idx->rows[row_idx].storage.value) :
+                                idx->get_name(
+                                        idx->rows[row_idx].storage.value) :
                                 NULL;
                 if (!row_name)
                         continue;
@@ -375,7 +379,8 @@ void* name_index_search(name_index_t* idx, const char* name, u64* out_row_idx)
         return idx->rows[row_idx].storage.value;
 }
 
-error_t name_index_register(name_index_t* idx, void* value, u64* out_reg_row_idx)
+error_t name_index_register(name_index_t* idx, void* value,
+                            u64* out_reg_row_idx)
 {
         if (!idx || !value || !idx->get_name)
                 return -E_IN_PARAM;
@@ -446,7 +451,7 @@ void name_index_register_abort(name_index_t* idx, u64 row_idx, void* value)
 }
 
 void name_index_unregister(name_index_t* idx, void* value, u64 row_idx,
-                             const char* name)
+                           const char* name)
 {
         if (!idx || row_idx >= idx->row_cap)
                 return;
@@ -496,7 +501,7 @@ void* name_index_lookup(name_index_t* idx, const char* name,
 }
 
 void* name_index_resolve(name_index_t* idx, const name_index_token_t* tok,
-                           const char* name)
+                         const char* name)
 {
         if (!idx || !tok || !name)
                 return NULL;

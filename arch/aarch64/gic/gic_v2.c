@@ -28,8 +28,7 @@ void map_gic_mem(u64 gicd_base_addr, u64 gicd_len, u64 gicc_base_addr,
                     3,
                     PAGE_ENTRY_DEVICE | PAGE_ENTRY_GLOBAL | PAGE_ENTRY_READ
                             | PAGE_ENTRY_VALID | PAGE_ENTRY_WRITE,
-                    &per_cpu(Map_Handler, BSP_ID),
-                    NULL);
+                    &per_cpu(Map_Handler, BSP_ID));
         }
         for (paddr base = gicc_base_addr; base < gicc_base_addr + gicc_len;
              base += PAGE_SIZE) {
@@ -39,8 +38,7 @@ void map_gic_mem(u64 gicd_base_addr, u64 gicd_len, u64 gicc_base_addr,
                     3,
                     PAGE_ENTRY_DEVICE | PAGE_ENTRY_GLOBAL | PAGE_ENTRY_READ
                             | PAGE_ENTRY_VALID | PAGE_ENTRY_WRITE,
-                    &per_cpu(Map_Handler, BSP_ID),
-                    NULL);
+                    &per_cpu(Map_Handler, BSP_ID));
         }
 }
 void gic_v2_probe(void)

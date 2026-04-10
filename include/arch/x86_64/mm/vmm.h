@@ -33,6 +33,12 @@ static inline void arch_set_current_user_vspace_root(paddr u_root)
 {
         __asm__ __volatile__("movq %0, %%cr3" : : "r"(u_root) :);
 }
+static inline void arch_set_current_user_vspace_root_asid(paddr u_root,
+                                                          asid_t asid)
+{
+        (void)asid;
+        arch_set_current_user_vspace_root(u_root);
+}
 
 union L0_entry { // PML4E
         u64 entry;

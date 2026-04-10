@@ -254,9 +254,9 @@ static error_t pci_enable_command(struct pci_node *pci_device)
                                                     pci_device->device,
                                                     pci_device->func,
                                                     cmd_offset);
-        command = set_mask(command, PCI_COMMAND_IO);
-        command = set_mask(command, PCI_COMMAND_MEMORY);
-        command = set_mask(command, PCI_COMMAND_MASTER);
+        command = set_mask_u16(command, PCI_COMMAND_IO);
+        command = set_mask_u16(command, PCI_COMMAND_MEMORY);
+        command = set_mask_u16(command, PCI_COMMAND_MASTER);
         pci_config_write_IO_dword(pci_device->bus,
                                   pci_device->device,
                                   pci_device->func,
@@ -272,9 +272,9 @@ static error_t pci_disable_command(struct pci_node *pci_device)
                                                     pci_device->func,
                                                     cmd_offset);
 
-        command = clear_mask(command, PCI_COMMAND_IO);
-        command = clear_mask(command, PCI_COMMAND_MEMORY);
-        command = clear_mask(command, PCI_COMMAND_MASTER);
+        command = clear_mask_u16(command, PCI_COMMAND_IO);
+        command = clear_mask_u16(command, PCI_COMMAND_MEMORY);
+        command = clear_mask_u16(command, PCI_COMMAND_MASTER);
         pci_config_write_IO_dword(pci_device->bus,
                                   pci_device->device,
                                   pci_device->func,

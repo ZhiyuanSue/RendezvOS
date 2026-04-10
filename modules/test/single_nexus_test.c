@@ -179,8 +179,7 @@ int nexus_test(void)
                 }
         }
         if (vs) {
-                if (vs != &root_vspace
-                    && vs->type != (u64)VS_COMMON_KERNEL_HEAP_REF) {
+                if (vs_common_is_table_vspace(vs) && vs != &root_vspace) {
                         ref_put(&vs->refcount, free_vspace_ref);
                 }
                 vs = NULL;

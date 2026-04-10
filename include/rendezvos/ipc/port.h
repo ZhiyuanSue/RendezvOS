@@ -40,7 +40,8 @@ struct Msg_Port {
         bool registered; /* 是否已注册 */
 };
 
-/* Global port table: string-keyed index over Message_Port_t (see name_index). */
+/* Global port table: string-keyed index over Message_Port_t (see name_index).
+ */
 struct Port_Table {
         name_index_t by_name;
 };

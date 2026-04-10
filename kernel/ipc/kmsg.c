@@ -72,4 +72,3 @@ const kmsg_t* kmsg_from_msg(const Message_t* msg)
                 return NULL;
         return km;
 }
-

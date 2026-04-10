@@ -11,7 +11,8 @@
  * per-row generation for cache tokens).
  *
  * - Register/lookup by NUL-terminated name (length bounded by name_len_max).
- * - Optional refcount hooks (hold/drop) for lookup paths that return a live ref.
+ * - Optional refcount hooks (hold/drop) for lookup paths that return a live
+ * ref.
  * - Optional callbacks when a value is linked/unlinked from the index
  *   (e.g. port->registered / port->table).
  *
@@ -76,9 +77,10 @@ typedef struct name_index {
         u32 name_len_max;
 } name_index_t;
 
-void name_index_init(name_index_t* idx, struct allocator* alloc, u32 name_len_max,
-                     void* owner_context, name_index_get_name_fn get_name,
-                     name_index_hold_fn hold, name_index_drop_fn drop,
+void name_index_init(name_index_t* idx, struct allocator* alloc,
+                     u32 name_len_max, void* owner_context,
+                     name_index_get_name_fn get_name, name_index_hold_fn hold,
+                     name_index_drop_fn drop,
                      name_index_on_register_fn on_register,
                      name_index_on_unregister_fn on_unregister);
 
@@ -86,10 +88,11 @@ void name_index_fini(name_index_t* idx);
 
 void* name_index_search(name_index_t* idx, const char* name, u64* out_row_idx);
 
-error_t name_index_register(name_index_t* idx, void* value, u64* out_reg_row_idx);
+error_t name_index_register(name_index_t* idx, void* value,
+                            u64* out_reg_row_idx);
 void name_index_register_abort(name_index_t* idx, u64 row_idx, void* value);
 void name_index_unregister(name_index_t* idx, void* value, u64 row_idx,
-                             const char* name);
+                           const char* name);
 
 void* name_index_lookup(name_index_t* idx, const char* name,
                         name_index_token_t* tok_out);

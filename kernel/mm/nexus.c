@@ -90,7 +90,7 @@ static inline void nexus_node_set_len(struct nexus_node* nexus_entry,
 static void nexus_rb_tree_insert(struct nexus_node* node,
                                  struct rb_root* vspace_root)
 {
-        struct rb_node **new = &vspace_root->rb_root, *parent = NULL;
+        struct rb_node** new = &vspace_root->rb_root, *parent = NULL;
         u64 key = node->addr;
         while (*new) {
                 parent = *new;
@@ -110,7 +110,7 @@ static void nexus_rb_tree_insert(struct nexus_node* node,
 static void nexus_rb_tree_vspace_insert(struct nexus_node* vspace_node,
                                         struct rb_root* vspace_rb_root)
 {
-        struct rb_node **new = &vspace_rb_root->rb_root, *parent = NULL;
+        struct rb_node** new = &vspace_rb_root->rb_root, *parent = NULL;
         u64 key = vspace_node->vs_common->vspace_root_addr;
         while (*new) {
                 parent = *new;
@@ -1037,7 +1037,7 @@ static struct nexus_node* _user_take_range(int page_num, vaddr target_vaddr,
 
         lock_cas(&vspace_node->vs_common->nexus_vspace_lock);
         /*adjust the flags, the user flags must not include PAGE_ENTRY_GLOBAL*/
-        user_eflags = clear_mask(user_eflags, PAGE_ENTRY_GLOBAL);
+        user_eflags = clear_mask_u64(user_eflags, PAGE_ENTRY_GLOBAL);
 
         page_addr_end = free_page_addr + page_num * PAGE_SIZE;
 
@@ -1432,7 +1432,7 @@ int nexus_kernel_page_owner_cpu(vaddr kva)
                                   PAGE_SIZE;
                 if (kva < node->addr || kva >= node->addr + len)
                         continue;
-                if (!nexus_node_vs_is_kernel_kref(node))
+                if (!vs_common_is_heap_ref(node->vs_common))
                         continue;
                 {
                         int cpu = (int)node->vs_common->cpu_id;

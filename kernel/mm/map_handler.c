@@ -484,7 +484,8 @@ ppn_t unmap(VS_Common *vs, vpn_t vpn, u64 new_entry_addr,
                 return 0;
         }
         if (!vs_common_is_table_vspace(vs)) {
-                pr_error("[ MAP ] ERROR: unmap called with KERNEL_HEAP_REF vs\n");
+                pr_error(
+                        "[ MAP ] ERROR: unmap called with KERNEL_HEAP_REF vs\n");
                 return -E_IN_PARAM;
         }
         lock_mcs(&vs->vspace_lock, &handler->vspace_lock_node);

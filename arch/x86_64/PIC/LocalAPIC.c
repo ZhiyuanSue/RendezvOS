@@ -35,7 +35,7 @@ inline void enable_xAPIC(void)
         u64 APIC_BASE_val;
 
         APIC_BASE_val = rdmsr(IA32_APIC_BASE_addr);
-        APIC_BASE_val = set_mask(APIC_BASE_val, IA32_APIC_BASE_X_ENABLE);
+        APIC_BASE_val = set_mask_u64(APIC_BASE_val, IA32_APIC_BASE_X_ENABLE);
         wrmsr(IA32_APIC_BASE_addr, APIC_BASE_val);
 }
 inline void enable_x2APIC(void)
@@ -43,9 +43,9 @@ inline void enable_x2APIC(void)
         u64 APIC_BASE_val;
 
         APIC_BASE_val = rdmsr(IA32_APIC_BASE_addr);
-        APIC_BASE_val =
-                set_mask(APIC_BASE_val,
-                         IA32_APIC_BASE_X_ENABLE | IA32_APIC_BASE_X2_ENABLE);
+        APIC_BASE_val = set_mask_u64(APIC_BASE_val,
+                                     IA32_APIC_BASE_X_ENABLE
+                                             | IA32_APIC_BASE_X2_ENABLE);
         wrmsr(IA32_APIC_BASE_addr, APIC_BASE_val);
 }
 inline void disable_APIC(void)
@@ -53,9 +53,9 @@ inline void disable_APIC(void)
         u64 APIC_BASE_val;
 
         APIC_BASE_val = rdmsr(IA32_APIC_BASE_addr);
-        APIC_BASE_val = clear_mask(APIC_BASE_val,
-                                   (IA32_APIC_BASE_X_ENABLE
-                                    & IA32_APIC_BASE_X2_ENABLE));
+        APIC_BASE_val = clear_mask_u64(APIC_BASE_val,
+                                       (IA32_APIC_BASE_X_ENABLE
+                                        & IA32_APIC_BASE_X2_ENABLE));
         wrmsr(IA32_APIC_BASE_addr, APIC_BASE_val);
 }
 void reset_xAPIC_LDR(void)
@@ -63,7 +63,7 @@ void reset_xAPIC_LDR(void)
         // DFR is not used in x2APIC mode, and LDR is read only in x2APIC mode
         xAPIC_WR_REG(DFR, KERNEL_VIRT_OFFSET, 0xFFFFFFFF);
         u32 ldr_val = APIC_RD_REG(LDR, KERNEL_VIRT_OFFSET);
-        ldr_val = set_mask(ldr_val, 0xFFFFFF);
+        ldr_val = set_mask_u32(ldr_val, 0xFFFFFF);
         ldr_val = ldr_val | 1;
         xAPIC_WR_REG(LDR, KERNEL_VIRT_OFFSET, ldr_val);
 }
@@ -82,11 +82,11 @@ void software_enable_APIC(void)
         spurious_vec_reg_val = APIC_RD_REG(SVR, KERNEL_VIRT_OFFSET);
 
         spurious_vec_reg_val =
-                set_mask(spurious_vec_reg_val, APIC_SVR_SW_ENABLE);
+                set_mask_u32(spurious_vec_reg_val, APIC_SVR_SW_ENABLE);
         spurious_vec_reg_val =
-                clear_mask(spurious_vec_reg_val, APIC_SVR_VEC_MASK);
+                clear_mask_u32(spurious_vec_reg_val, APIC_SVR_VEC_MASK);
         spurious_vec_reg_val =
-                set_mask(spurious_vec_reg_val, spurious_vec_irq_num);
+                set_mask_u32(spurious_vec_reg_val, spurious_vec_irq_num);
 
         APIC_WR_REG(SVR, KERNEL_VIRT_OFFSET, spurious_vec_reg_val);
 }
@@ -125,9 +125,9 @@ tick_t APIC_timer_calibration(void)
         u32 hz_cnt = 0;
         u64 total_hz_cnt = 0;
 
-        timer_value = set_mask(timer_value, timer_irq_num);
+        timer_value = set_mask_u32(timer_value, timer_irq_num);
         // first set to one shot mode
-        timer_value = set_mask(timer_value, APIC_LVT_TIMER_MODE_ONE_SHOT);
+        timer_value = set_mask_u32(timer_value, APIC_LVT_TIMER_MODE_ONE_SHOT);
         APIC_WR_REG(DCR, KERNEL_VIRT_OFFSET, APIC_DCR_DIV_16);
 
         for (int i = 0; i < APIC_CALIBRATE_TIME; i++) {
@@ -136,7 +136,7 @@ tick_t APIC_timer_calibration(void)
                 PIT_mdelay(APIC_CALIBRATE_MS);
                 APIC_WR_REG(LVT_TIME,
                             KERNEL_VIRT_OFFSET,
-                            set_mask(timer_value, APIC_LVT_MASKED));
+                            set_mask_u32(timer_value, APIC_LVT_MASKED));
                 hz_cnt = APIC_RD_REG(CURR_CNT, KERNEL_VIRT_OFFSET);
                 hz_cnt = -hz_cnt;
                 hz_cnt = hz_cnt << 4;
@@ -154,8 +154,9 @@ void APIC_timer_reset(void)
 {
         u32 init_cnt = (apic_hz_per_second / INT_PER_SECOND) >> 4;
         u32 lvt_timer_val = 0;
-        lvt_timer_val = set_mask(lvt_timer_val, timer_irq_num);
-        lvt_timer_val = set_mask(lvt_timer_val, APIC_LVT_TIMER_MODE_PERIODIC);
+        lvt_timer_val = set_mask_u32(lvt_timer_val, timer_irq_num);
+        lvt_timer_val =
+                set_mask_u32(lvt_timer_val, APIC_LVT_TIMER_MODE_PERIODIC);
 
         APIC_WR_REG(INIT_CNT, KERNEL_VIRT_OFFSET, init_cnt);
         APIC_WR_REG(DCR, KERNEL_VIRT_OFFSET, APIC_DCR_DIV_16);
@@ -231,7 +232,7 @@ bool lapic_get_vec(int bit, enum lapic_vec_type t)
                         return REND_SUCCESS;
                 }
         }
-        return (reg_val & (1 << offset)) != 0;
+        return (reg_val & BIT_U32(offset)) != 0;
 }
 void lapic_set_vec(int bit, enum lapic_vec_type t)
 {
@@ -244,19 +245,19 @@ void lapic_set_vec(int bit, enum lapic_vec_type t)
                 if (t == lapic_isr_type) {
                         reg_val = (*((u32 *)(xAPIC_REG_PHY_ADDR(isr_reg[index])
                                              + KERNEL_VIRT_OFFSET)));
-                        reg_val = set_bit(reg_val, offset);
+                        reg_val = set_bit_u32(reg_val, offset);
                         (*((u32 *)(xAPIC_REG_PHY_ADDR(isr_reg[index])
                                    + KERNEL_VIRT_OFFSET))) = reg_val;
                 } else if (t == lapic_tmr_type) {
                         reg_val = (*((u32 *)(xAPIC_REG_PHY_ADDR(tmr_reg[index])
                                              + KERNEL_VIRT_OFFSET)));
-                        reg_val = set_bit(reg_val, offset);
+                        reg_val = set_bit_u32(reg_val, offset);
                         (*((u32 *)(xAPIC_REG_PHY_ADDR(tmr_reg[index])
                                    + KERNEL_VIRT_OFFSET))) = reg_val;
                 } else if (t == lapic_irr_type) {
                         reg_val = (*((u32 *)(xAPIC_REG_PHY_ADDR(irr_reg[index])
                                              + KERNEL_VIRT_OFFSET)));
-                        reg_val = set_bit(reg_val, offset);
+                        reg_val = set_bit_u32(reg_val, offset);
                         (*((u32 *)(xAPIC_REG_PHY_ADDR(irr_reg[index])
                                    + KERNEL_VIRT_OFFSET))) = reg_val;
                 } else {
@@ -265,15 +266,15 @@ void lapic_set_vec(int bit, enum lapic_vec_type t)
         } else if (arch_irq_type == x2APIC_IRQ) {
                 if (t == lapic_isr_type) {
                         reg_val = rdmsr(x2APIC_REG_ADDR(isr_reg[index]));
-                        reg_val = set_bit(reg_val, offset);
+                        reg_val = set_bit_u32(reg_val, offset);
                         wrmsr(x2APIC_REG_ADDR(isr_reg[index]), reg_val);
                 } else if (t == lapic_tmr_type) {
                         reg_val = rdmsr(x2APIC_REG_ADDR(tmr_reg[index]));
-                        reg_val = set_bit(reg_val, offset);
+                        reg_val = set_bit_u32(reg_val, offset);
                         wrmsr(x2APIC_REG_ADDR(tmr_reg[index]), reg_val);
                 } else if (t == lapic_irr_type) {
                         reg_val = rdmsr(x2APIC_REG_ADDR(irr_reg[index]));
-                        reg_val = set_bit(reg_val, offset);
+                        reg_val = set_bit_u32(reg_val, offset);
                         wrmsr(x2APIC_REG_ADDR(irr_reg[index]), reg_val);
                 } else {
                         return;
@@ -291,19 +292,19 @@ void lapci_clear_vec(int bit, enum lapic_vec_type t)
                 if (t == lapic_isr_type) {
                         reg_val = (*((u32 *)(xAPIC_REG_PHY_ADDR(isr_reg[index])
                                              + KERNEL_VIRT_OFFSET)));
-                        reg_val = clear_bit(reg_val, offset);
+                        reg_val = clear_bit_u32(reg_val, offset);
                         (*((u32 *)(xAPIC_REG_PHY_ADDR(isr_reg[index])
                                    + KERNEL_VIRT_OFFSET))) = reg_val;
                 } else if (t == lapic_tmr_type) {
                         reg_val = (*((u32 *)(xAPIC_REG_PHY_ADDR(tmr_reg[index])
                                              + KERNEL_VIRT_OFFSET)));
-                        reg_val = clear_bit(reg_val, offset);
+                        reg_val = clear_bit_u32(reg_val, offset);
                         (*((u32 *)(xAPIC_REG_PHY_ADDR(tmr_reg[index])
                                    + KERNEL_VIRT_OFFSET))) = reg_val;
                 } else if (t == lapic_irr_type) {
                         reg_val = (*((u32 *)(xAPIC_REG_PHY_ADDR(irr_reg[index])
                                              + KERNEL_VIRT_OFFSET)));
-                        reg_val = clear_bit(reg_val, offset);
+                        reg_val = clear_bit_u32(reg_val, offset);
                         (*((u32 *)(xAPIC_REG_PHY_ADDR(irr_reg[index])
                                    + KERNEL_VIRT_OFFSET))) = reg_val;
                 } else {
@@ -312,15 +313,15 @@ void lapci_clear_vec(int bit, enum lapic_vec_type t)
         } else if (arch_irq_type == x2APIC_IRQ) {
                 if (t == lapic_isr_type) {
                         reg_val = rdmsr(x2APIC_REG_ADDR(isr_reg[index]));
-                        reg_val = clear_bit(reg_val, offset);
+                        reg_val = clear_bit_u32(reg_val, offset);
                         wrmsr(x2APIC_REG_ADDR(isr_reg[index]), reg_val);
                 } else if (t == lapic_tmr_type) {
                         reg_val = rdmsr(x2APIC_REG_ADDR(tmr_reg[index]));
-                        reg_val = clear_bit(reg_val, offset);
+                        reg_val = clear_bit_u32(reg_val, offset);
                         wrmsr(x2APIC_REG_ADDR(tmr_reg[index]), reg_val);
                 } else if (t == lapic_irr_type) {
                         reg_val = rdmsr(x2APIC_REG_ADDR(irr_reg[index]));
-                        reg_val = clear_bit(reg_val, offset);
+                        reg_val = clear_bit_u32(reg_val, offset);
                         wrmsr(x2APIC_REG_ADDR(irr_reg[index]), reg_val);
                 } else {
                         return;
