@@ -72,6 +72,17 @@ arch_exit_kernel:
 	mov		6*8(%rsp),	%rbx
 	mov		7*8(%rsp),	%r11
 
+	/* Restore syscall argument registers for user. */
+	mov		8*8(%rsp),	%r10
+	mov		9*8(%rsp),	%r9
+	mov		10*8(%rsp),	%r8
+	mov		13*8(%rsp),	%rdx
+	mov		14*8(%rsp),	%rsi
+	mov		15*8(%rsp),	%rdi
+
+	/* Syscall return value is in saved rax slot. */
+	mov		11*8(%rsp),	%rax
+
 	mov		12*8(%rsp),	%rcx
 	
     /*set the ds and es segment, the cs and ss is set at IA32_STAR_MSR*/
