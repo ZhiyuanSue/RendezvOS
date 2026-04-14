@@ -243,7 +243,7 @@ error_t map(VS_Common *vs, ppn_t ppn, vpn_t vpn, int level,
                                 p,
                                 v);
                         res = -E_IN_PARAM;
-                        goto map_fail;
+                        goto map_l0_fail;
                 }
                 flags = arch_decode_flags(2, PAGE_ENTRY_HUGE | eflags);
                 next_level_paddr = L2_entry_addr(((
@@ -298,17 +298,13 @@ error_t map(VS_Common *vs, ppn_t ppn, vpn_t vpn, int level,
                         entry_flags = arch_encode_flags(2, pt_entry);
                         if ((entry_flags & PAGE_ENTRY_VALID)
                             && !is_final_level_pt(2, entry_flags)) {
-                                vaddr pre_map_vaddr = ROUND_DOWN(
-                                        ((handler->map_vaddr[2]) + PAGE_SIZE),
-                                        PAGE_SIZE);
-                                util_map(next_level_paddr, pre_map_vaddr);
+                                vaddr l3_scan_vaddr = handler->map_vaddr[3];
+                                util_map(next_level_paddr, l3_scan_vaddr);
                                 bool have_filled_entry = false;
-                                for (; pre_map_vaddr
-                                       < ROUND_UP(((handler->map_vaddr[2])
-                                                   + PAGE_SIZE),
-                                                  PAGE_SIZE);
-                                     pre_map_vaddr += sizeof(union L3_entry)) {
-                                        if (((union L3_entry *)pre_map_vaddr)
+                                for (vaddr vaddr_iter = l3_scan_vaddr;
+                                     vaddr_iter < l3_scan_vaddr + PAGE_SIZE;
+                                     vaddr_iter += sizeof(union L3_entry)) {
+                                        if (((union L3_entry *)vaddr_iter)
                                                     ->entry) {
                                                 have_filled_entry = true;
                                                 break;
@@ -532,7 +528,7 @@ ppn_t unmap(VS_Common *vs, vpn_t vpn, u64 new_entry_addr,
                          L2_E.entry);
                 ppn = -E_RENDEZVOS;
                 goto unmap_l2_fail;
-        } else if (is_final_level_pt(1, entry_flags)) {
+        } else if (is_final_level_pt(2, entry_flags)) {
                 /*check the vpn 2M aligned*/
                 if (vpn & mask_9_bit) {
                         pr_error(
@@ -647,7 +643,7 @@ ppn_t have_mapped(VS_Common *vs, vpn_t vpn, struct map_handler *handler)
         if (!ppn || !(entry_flags & PAGE_ENTRY_VALID)) {
                 ppn = 0;
                 goto have_mapped_l2_fail;
-        } else if (is_final_level_pt(1, entry_flags)) {
+        } else if (is_final_level_pt(2, entry_flags)) {
                 goto have_mapped_succ;
         }
 

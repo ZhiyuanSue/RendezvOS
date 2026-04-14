@@ -131,6 +131,45 @@ i64 pmm_alloc_zone(struct buddy *bp, int alloc_order,
                          del_node->ppn);
                 return (-E_RENDEZVOS);
         }
+
+        /*
+         * Phase 1 (no buddy metadata mutation yet): bump Page refcount for the
+         * allocated range. If this fails, we can safely return without rolling
+         * back buddy buckets/splits because we haven't touched them.
+         */
+        ZonePageCursor cur;
+        if (!zone_page_cursor_init(&cur, bp->zone, del_node->ppn)) {
+                pr_error("[ BUDDY ] alloc: cursor init failed (ppn %lx)\n",
+                         del_node->ppn);
+                *alloced_page_number = 0;
+                return (-E_RENDEZVOS);
+        }
+        u64 remaining = 1ULL << ((u64)alloc_order);
+        u64 done = 0;
+        do {
+                Page *page = zone_page_cursor_page(&cur);
+                if (page)
+                        phy_Page_ref_plus(page);
+                done++;
+        } while (--remaining && zone_page_cursor_next(&cur));
+        if (remaining) {
+                pr_error(
+                        "[ BUDDY ] alloc: cursor traversal failed (ppn %lx remaining %lx)\n",
+                        del_node->ppn,
+                        remaining);
+                if (zone_page_cursor_init(&cur, bp->zone, del_node->ppn)) {
+                        u64 undo = done;
+                        do {
+                                Page *page = zone_page_cursor_page(&cur);
+                                if (page)
+                                        phy_Page_ref_minus(page);
+                        } while (--undo && zone_page_cursor_next(&cur));
+                }
+                *alloced_page_number = 0;
+                return (-E_RENDEZVOS);
+        }
+
+        /* Phase 2: mutate buddy metadata (split + mark allocated). */
         while (tmp_order > alloc_order) {
                 left_child = del_node;
                 right_child = del_node + (1 << (tmp_order - 1));
@@ -150,22 +189,6 @@ i64 pmm_alloc_zone(struct buddy *bp, int alloc_order,
         }
         list_del(&del_node->page_list);
         bp->buckets[tmp_order].aval_pages--;
-        /*
-         we don't check it too much for we trust this page must can find,
-         otherwise the error must exist at the init part
-        */
-        ZonePageCursor cur;
-        if (!zone_page_cursor_init(&cur, bp->zone, del_node->ppn)) {
-                pr_error("[ BUDDY ] alloc: cursor init failed (ppn %lx)\n",
-                         del_node->ppn);
-                return (-E_RENDEZVOS);
-        }
-        u64 remaining = 1ULL << ((u64)alloc_order);
-        do {
-                Page *page = zone_page_cursor_page(&cur);
-                if (page)
-                        phy_Page_ref_plus(page);
-        } while (--remaining && zone_page_cursor_next(&cur));
 
         bp->total_avaliable_pages -= 1ULL << ((u64)alloc_order);
         *alloced_page_number = 1ULL << ((u64)alloc_order);

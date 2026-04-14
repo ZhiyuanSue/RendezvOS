@@ -672,7 +672,8 @@ static struct nexus_node* _take_range(bool allow_2M, ENTRY_FLAGS_t eflags,
                 return NULL;
         }
         struct nexus_node* first_entry = NULL;
-        int inserted_count = 0;
+        struct list_entry inserted_list;
+        INIT_LIST_HEAD(&inserted_list);
         for (; free_page_addr + PAGE_SIZE <= page_addr_end;
              free_page_addr += PAGE_SIZE) {
                 while (allow_2M && ALIGNED(free_page_addr, MIDDLE_PAGE_SIZE)
@@ -690,10 +691,11 @@ static struct nexus_node* _take_range(bool allow_2M, ENTRY_FLAGS_t eflags,
                                            eflags,
                                            vspace_node->vs_common,
                                            vspace_node);
+                        list_add_head(&free_nexus_entry->_free_list,
+                                      &inserted_list);
                         if (!first_entry) {
                                 first_entry = free_nexus_entry;
                         }
-                        inserted_count++;
                         free_page_addr += MIDDLE_PAGE_SIZE;
                 }
                 if (free_page_addr + PAGE_SIZE <= page_addr_end) {
@@ -710,19 +712,26 @@ static struct nexus_node* _take_range(bool allow_2M, ENTRY_FLAGS_t eflags,
                                            eflags,
                                            vspace_node->vs_common,
                                            vspace_node);
+                        list_add_head(&free_nexus_entry->_free_list,
+                                      &inserted_list);
                         if (!first_entry) {
                                 first_entry = free_nexus_entry;
                         }
-                        inserted_count++;
                 }
+        }
+        /* detach temporary rollback links */
+        while (inserted_list.next != &inserted_list) {
+                struct nexus_node* node = container_of(
+                        inserted_list.next, struct nexus_node, _free_list);
+                list_del_init(&node->_free_list);
         }
         return first_entry;
 fail:
-        while (inserted_count > 0 && first_entry) {
-                struct nexus_node* next = nexus_rb_tree_next(first_entry);
-                delete_nexus_entry(first_entry, vspace_node);
-                first_entry = next;
-                inserted_count--;
+        while (inserted_list.next != &inserted_list) {
+            struct nexus_node* node = container_of(
+                    inserted_list.next, struct nexus_node, _free_list);
+            list_del_init(&node->_free_list);
+            delete_nexus_entry(node, vspace_node);
         }
         return NULL;
 }
