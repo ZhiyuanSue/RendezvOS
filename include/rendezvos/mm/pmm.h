@@ -99,7 +99,7 @@ static inline bool ppn_in_Sec(MemSection* sec, ppn_t ppn)
 {
         if (invalid_ppn(ppn))
                 return false;
-        return PADDR(ppn) > sec->lower_addr && PADDR(ppn) < sec->upper_addr;
+        return PADDR(ppn) >= sec->lower_addr && PADDR(ppn) < sec->upper_addr;
 }
 static inline Page* Sec_phy_Page(MemSection* sec, size_t index)
 {
@@ -120,7 +120,7 @@ static inline bool ppn_in_Zone(MemZone* zone, ppn_t ppn)
 {
         if (invalid_ppn(ppn))
                 return false;
-        return PADDR(ppn) > zone->lower_addr && PADDR(ppn) < zone->upper_addr;
+        return PADDR(ppn) >= zone->lower_addr && PADDR(ppn) < zone->upper_addr;
 }
 static inline Page* Zone_phy_Page(MemZone* zone, size_t index)
 {
@@ -167,10 +167,91 @@ static inline i64 ppn_Zone_index(MemZone* zone, ppn_t ppn)
                 if (ppn_in_Sec(sec, ppn)) {
                         return index + ppn - PPN(sec->lower_addr);
                 } else {
-                        index += PPN(sec->page_count - PAGE_SIZE);
+                        index += sec->page_count;
                 }
         }
         return (-1);
+}
+
+/*
+ * Sequential page cursor for iterating a contiguous ppn range in one zone.
+ *
+ * Motivation: avoid restarting the section scan from the zone head for each ppn
+ * in hot paths (e.g. free/scan loops).
+ */
+typedef struct {
+        MemZone* zone;
+        MemSection* sec;
+        size_t sec_index; /* index within current section */
+        i64 sec_base_index; /* zone-global index of sec->pages[0] */
+} ZonePageCursor;
+
+static inline Page* zone_page_cursor_page(ZonePageCursor* cur)
+{
+        if (!cur || !cur->sec)
+                return NULL;
+        if (cur->sec_index >= cur->sec->page_count)
+                return NULL;
+        return &cur->sec->pages[cur->sec_index];
+}
+
+static inline i64 zone_page_cursor_index(const ZonePageCursor* cur)
+{
+        if (!cur || !cur->sec)
+                return -1;
+        return cur->sec_base_index + (i64)cur->sec_index;
+}
+
+static inline bool zone_page_cursor_init(ZonePageCursor* cur, MemZone* zone,
+                                         ppn_t start_ppn)
+{
+        if (!cur)
+                return false;
+        cur->zone = zone;
+        cur->sec = NULL;
+        cur->sec_index = 0;
+        cur->sec_base_index = -1;
+
+        if (!zone || invalid_ppn(start_ppn) || !ppn_in_Zone(zone, start_ppn))
+                return false;
+
+        i64 base_index = 0;
+        for_each_sec_of_zone(zone)
+        {
+                if (!ppn_in_Sec(sec, start_ppn)) {
+                        base_index += (i64)sec->page_count;
+                        continue;
+                }
+                size_t sec_index = (size_t)(start_ppn - PPN(sec->lower_addr));
+                if (sec_index >= sec->page_count)
+                        return false;
+                cur->sec = sec;
+                cur->sec_index = sec_index;
+                cur->sec_base_index = base_index;
+                return true;
+        }
+        return false;
+}
+
+static inline bool zone_page_cursor_next(ZonePageCursor* cur)
+{
+        if (!cur || !cur->zone || !cur->sec)
+                return false;
+
+        cur->sec_index++;
+        if (cur->sec_index < cur->sec->page_count)
+                return true;
+
+        struct list_entry* next_node = cur->sec->section_list.next;
+        if (next_node == &cur->zone->section_list)
+                return false;
+
+        MemSection* next_sec =
+                container_of(next_node, MemSection, section_list);
+        cur->sec_base_index += (i64)cur->sec->page_count;
+        cur->sec = next_sec;
+        cur->sec_index = 0;
+        return true;
 }
 
 #define PMM_COMMON                                                            \
@@ -193,6 +274,33 @@ struct pmm {
 
 extern MemZone mem_zones[ZONE_NR_MAX];
 extern struct spin_lock_t pmm_spin_lock[ZONE_NR_MAX];
+static inline void pmm_lock(struct pmm* pmm)
+{
+        if (!pmm || !pmm->zone)
+                return;
+        lock_mcs(&pmm->spin_ptr, &percpu(pmm_spin_lock[pmm->zone->zone_id]));
+}
+
+static inline void pmm_unlock(struct pmm* pmm)
+{
+        if (!pmm || !pmm->zone)
+                return;
+        unlock_mcs(&pmm->spin_ptr, &percpu(pmm_spin_lock[pmm->zone->zone_id]));
+}
+
+static inline void pmm_zone_lock(MemZone* zone)
+{
+        if (!zone || !zone->pmm)
+                return;
+        lock_mcs(&zone->pmm->spin_ptr, &percpu(pmm_spin_lock[zone->zone_id]));
+}
+
+static inline void pmm_zone_unlock(MemZone* zone)
+{
+        if (!zone || !zone->pmm)
+                return;
+        unlock_mcs(&zone->pmm->spin_ptr, &percpu(pmm_spin_lock[zone->zone_id]));
+}
 
 error_t phy_mm_init(struct setup_info* arch_setup_info);
 

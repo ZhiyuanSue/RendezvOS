@@ -253,15 +253,22 @@ struct buddy {
   - 将当前大块从 `buckets[tmp_order]` 摘下，把 `left_child`、`right_child` 的 `order` 设为 `tmp_order - 1`，并挂回 `buckets[tmp_order - 1]`，然后 `tmp_order--`；若已等于 `alloc_order` 则停止拆分，将整块中所有页的 `order` 置为 -1，从桶中摘下块首，并更新 `Zone_phy_Page` 对应 `Page` 的 `ref_count`。  
 - 返回块首的 `ppn`；调用方得到的是连续物理页的起始 ppn。
 
-#### 2.5.5 释放（`pmm_free` / `pmm_free_one`）
+#### 2.5.5 释放（`pmm_free`）
 
-- `pmm_free` 按请求的 `page_number` 得到 `alloc_order`，对块内每个 ppn 调用 `phy_Page_ref_minus`；若某页 `ref_count` 仍 > 0 则不再归还。否则对每个 ppn 调用 `pmm_free_one`。  
-- `pmm_free_one`：用 `ppn_Zone_index` 得到该 ppn 在 zone 内的下标，从而得到 `insert_node = &bp->pages[index]`。从 order 0 起尝试与伙伴合并：  
+- `pmm_free` 按请求的 `page_number` 得到 `alloc_order`，顺序遍历块内 ppn，先对每页调用 `phy_Page_ref_minus`；若某页 `ref_count` 仍 > 0 则不再归还。否则对该页执行 buddy free/merge（用 zone 内线性下标定位 `bp->pages[index]`，从 order 0 起尝试与伙伴合并）：
   - 用 `(insert_node->ppn >> tmp_order) % 2` 决定伙伴在左还是右，得到 `buddy_index = index ± (1 << tmp_order)`；  
   - 若伙伴在 zone 内、且与当前块在物理上连续、且伙伴块首的 `order == tmp_order`（即伙伴整块空闲），则从两桶摘下这两块，合并为一块，`insert_node` 更新为合并后块首（`MIN(index, buddy_index)` 对应的页），`tmp_order++`，继续尝试与上一阶伙伴合并；  
   - 若无法合并，则将当前块首的 `order` 设为 `tmp_order`，挂到 `buckets[tmp_order].avaliable_frame_list`，并增加 `total_avaliable_pages`。
 
-PMM 层对外接口为 `pmm_alloc` / `pmm_free`，带 zone 的锁（如 `pmm_spin_lock[zone_id]`）由调用方在需要时使用（如 Nexus、arch_map_pmm_data_space 等）。若从 buddy 取不到页，后续应在 Nexus 或上层做 **swap**（置换），以腾出物理页再分配，当前为 TODO。
+PMM 层对外接口为 `pmm_alloc` / `pmm_free`。**自本仓库当前实现起，PMM allocator 的并发互斥由 PMM 自己负责**：buddy 的 `pmm_alloc` / `pmm_free` **内部会获取并释放该 zone 的 PMM MCS 锁**（见 `pmm_lock/pmm_unlock` 或 `pmm_zone_lock/pmm_zone_unlock` 封装）。
+
+与之对应，上层（如 Nexus）仍可能需要在**不进行分配/释放**的情况下保护 PMM 拥有的页元数据（例如 `Page.rmap_list` 的 link/unlink/遍历快照）。这类场景允许上层直接持有 zone 的 PMM 锁，但必须遵守以下契约：
+
+- **允许**：持 `pmm_zone_lock(zone)` 保护 `Page` 元数据（如 `rmap_list`）的链表操作与遍历。
+- **禁止**：在持有 PMM 锁期间调用 `pmm_alloc` / `pmm_free`（否则会因 allocator 内部再次取同一把锁而死锁）。
+- **建议**：调用方不要再直接展开 `lock_mcs(&pmm->spin_ptr, &percpu(pmm_spin_lock[zone_id]))`，而是统一使用 `pmm_lock/pmm_unlock` 或 `pmm_zone_lock/pmm_zone_unlock`，以保证 `me` 节点选择一致（per-zone per-CPU）。
+
+若从 buddy 取不到页，后续应在 Nexus 或上层做 **swap**（置换），以腾出物理页再分配，当前为 TODO。
 
 ---
 
@@ -392,7 +399,7 @@ struct nexus_node {
 |----|----------|------|
 | **nexus_lock**（cas_lock） | 单个 nexus_root | 保护该 nexus 的 **vspace 集合**（`_vspace_rb_root`）：创建/删除/迁移 vspace 根节点时短时持有；`get_free_page`/`free_pages` 在用户态路径中仅用于按 `vs->vspace_root_addr` 查找 vspace_node，查完即放。 |
 | **nexus_vspace_lock**（cas_lock） | 单个 VSpace | 保护**该 vspace 在 nexus 内的子树**及与之相关的分配/释放流程：在对应 vspace 的 `_rb_root` 上做插入、删除、查找，以及 `_take_range`、`_unfill_range`、管理页/nexus_node 的分配与归还时持有。内核路径用 `nexus_root->vs->nexus_vspace_lock`（内核 vspace）；用户路径用 `vspace_node->vs->nexus_vspace_lock`。 |
-| **pmm 锁**（MCS，per zone per CPU） | 每个 zone | 调用 `pmm_alloc`/`pmm_free` 时，用**当前 handler 的 cpu_id** 取该 zone 的 per-CPU MCS 锁（`per_cpu(pmm_spin_lock[zone_id], handler->cpu_id)`），以减少同一 zone 上的锁竞争形态。 |
+| **pmm 锁**（MCS，per zone per CPU） | 每个 zone | 保护 PMM 的共享元数据（buddy 管理结构、`Page` 元数据如 `rmap_list`）。**allocator（`pmm_alloc`/`pmm_free`）内部自锁**；上层若需保护 `Page` 元数据，可用 `pmm_zone_lock/unlock`，但**不得在持锁时调用 `pmm_alloc/free`**。 |
 
 **内核路径（`_kernel_get_free_page` / `_kernel_free_pages`）**  
 - 仅使用**本 CPU 的** nexus_root，整段分配/释放过程只持本 vspace 的 `nexus_vspace_lock`；不涉及其他 CPU 的 nexus 树。  

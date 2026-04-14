@@ -71,37 +71,21 @@ void init_map(struct map_handler *handler, cpu_id_t cpu_id, struct pmm *pmm)
         }
         handler->cpu_id = cpu_id;
         handler->pmm = pmm;
-        MemZone *zone = pmm->zone;
         vaddr map_vaddr = map_pages + (vaddr)cpu_id * PAGE_SIZE * 4;
         size_t alloced_page_number;
         for (int i = 0; i < 4; i++) {
                 handler->map_vaddr[i] = map_vaddr;
-                lock_mcs(&pmm->spin_ptr, &percpu(pmm_spin_lock[zone->zone_id]));
                 handler->handler_ppn[i] =
                         pmm->pmm_alloc(pmm, 1, &alloced_page_number);
-                unlock_mcs(&pmm->spin_ptr,
-                           &percpu(pmm_spin_lock[zone->zone_id]));
                 if (invalid_ppn(handler->handler_ppn[i])
                     || alloced_page_number != 1) {
                         pr_error("[ERROR] init map no ppn can alloc\n");
                         /* Rollback: free already allocated pages */
                         for (int j = 0; j < i; j++) {
                                 if (!invalid_ppn(handler->handler_ppn[j])) {
-                                        lock_mcs(
-                                                &pmm->spin_ptr,
-                                                &per_cpu(
-                                                        pmm_spin_lock
-                                                                [pmm->zone->zone_id],
-                                                        cpu_id));
                                         pmm->pmm_free(pmm,
                                                       handler->handler_ppn[j],
                                                       1);
-                                        unlock_mcs(
-                                                &pmm->spin_ptr,
-                                                &per_cpu(
-                                                        pmm_spin_lock
-                                                                [pmm->zone->zone_id],
-                                                        cpu_id));
                                         handler->handler_ppn[j] = -E_RENDEZVOS;
                                 }
                         }
@@ -343,14 +327,8 @@ error_t map(VS_Common *vs, ppn_t ppn, vpn_t vpn, int level,
                                         goto map_l2_fail;
                                 }
                                 struct pmm *pmm_ptr = handler->pmm;
-                                MemZone *zone = pmm_ptr->zone;
-                                lock_mcs(&pmm_ptr->spin_ptr,
-                                         &percpu(pmm_spin_lock[zone->zone_id]));
                                 pmm_res = pmm_ptr->pmm_free(
                                         pmm_ptr, (i64)PPN(next_level_paddr), 1);
-                                unlock_mcs(
-                                        &pmm_ptr->spin_ptr,
-                                        &percpu(pmm_spin_lock[zone->zone_id]));
                                 if (pmm_res) {
                                         pr_error(
                                                 "[ MAP ] pmm free error with a ppn 0x%lx\n",
@@ -463,15 +441,10 @@ map_fail:
          * leakage or misuse above this layer, not something to fix by rollback.
          */
         struct pmm *pmm_ptr = handler->pmm;
-        MemZone *zone = pmm_ptr->zone;
         for (int i = 0; i < 4; i++) {
                 if (handler->handler_ppn[i] == -E_RENDEZVOS) {
-                        lock_mcs(&pmm_ptr->spin_ptr,
-                                 &percpu(pmm_spin_lock[zone->zone_id]));
                         handler->handler_ppn[i] = pmm_ptr->pmm_alloc(
                                 pmm_ptr, 1, &alloced_page_number);
-                        unlock_mcs(&pmm_ptr->spin_ptr,
-                                   &percpu(pmm_spin_lock[zone->zone_id]));
                 }
         }
         return res;
@@ -738,30 +711,11 @@ paddr new_vs_root(paddr old_vs_root_paddr, struct map_handler *handler)
 
         if (handler->handler_ppn[0] == -E_RENDEZVOS) {
                 struct pmm *pmm_ptr = handler->pmm;
-                MemZone *zone = pmm_ptr->zone;
-                lock_mcs(&pmm_ptr->spin_ptr,
-                         &percpu(pmm_spin_lock[zone->zone_id]));
                 handler->handler_ppn[0] =
                         pmm_ptr->pmm_alloc(pmm_ptr, 1, &alloced_page_number);
-                unlock_mcs(&pmm_ptr->spin_ptr,
-                           &percpu(pmm_spin_lock[zone->zone_id]));
         }
 new_vs_root_fail:
         return vs_root;
-}
-
-static void pmm_free_frame(struct map_handler *handler, paddr frame_paddr)
-{
-        if (!handler || !handler->pmm || !frame_paddr)
-                return;
-        struct pmm *pmm_ptr = handler->pmm;
-        MemZone *zone = pmm_ptr->zone;
-        if (!pmm_ptr || !zone)
-                return;
-
-        lock_mcs(&pmm_ptr->spin_ptr, &percpu(pmm_spin_lock[zone->zone_id]));
-        (void)pmm_ptr->pmm_free(pmm_ptr, PPN(frame_paddr), 1);
-        unlock_mcs(&pmm_ptr->spin_ptr, &percpu(pmm_spin_lock[zone->zone_id]));
 }
 
 error_t vspace_free_user_pt(VS_Common *vs, struct map_handler *handler)
@@ -860,7 +814,10 @@ error_t vspace_free_user_pt(VS_Common *vs, struct map_handler *handler)
                                 } else {
                                         /* Empty L3 => free it, clear parent
                                          * entry. */
-                                        pmm_free_frame(handler, l3_table_paddr);
+                                        (void)handler->pmm->pmm_free(
+                                                handler->pmm,
+                                                PPN(l3_table_paddr),
+                                                1);
                                         l2_table[l2_index].entry = 0;
                                         l2_table[l2_index].paddr = 0;
                                 }
@@ -870,7 +827,9 @@ error_t vspace_free_user_pt(VS_Common *vs, struct map_handler *handler)
 
                         if (!l2_nonempty) {
                                 /* All child L3 were empty => free L2. */
-                                pmm_free_frame(handler, l2_table_paddr);
+                                (void)handler->pmm->pmm_free(handler->pmm,
+                                                             PPN(l2_table_paddr),
+                                                             1);
                                 l1_table[l1_index].entry = 0;
                                 l1_table[l1_index].paddr = 0;
                         } else {
@@ -882,7 +841,9 @@ error_t vspace_free_user_pt(VS_Common *vs, struct map_handler *handler)
 
                 if (!l1_nonempty) {
                         /* All child L2 were empty => free L1. */
-                        pmm_free_frame(handler, l1_table_paddr);
+                        (void)handler->pmm->pmm_free(handler->pmm,
+                                                     PPN(l1_table_paddr),
+                                                     1);
                         l0_table[l0_index].entry = 0;
                         l0_table[l0_index].paddr = 0;
                 }
@@ -897,7 +858,7 @@ error_t vspace_free_root_page(VS_Common *vs, struct map_handler *handler)
 {
         if (!handler || !handler->pmm || !vs->vspace_root_addr)
                 return -E_IN_PARAM;
-        pmm_free_frame(handler, vs->vspace_root_addr);
+        (void)handler->pmm->pmm_free(handler->pmm, PPN(vs->vspace_root_addr), 1);
         vs->vspace_root_addr = 0;
         arch_tlb_invalidate_page(vs->vspace_id, handler->map_vaddr[0]);
         return REND_SUCCESS;
