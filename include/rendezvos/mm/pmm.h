@@ -122,63 +122,7 @@ static inline bool ppn_in_Zone(MemZone* zone, ppn_t ppn)
                 return false;
         return PADDR(ppn) >= zone->lower_addr && PADDR(ppn) < zone->upper_addr;
 }
-static inline Page* Zone_phy_Page(MemZone* zone, size_t index)
-{
-        if (zone && index < zone->zone_total_pages) {
-                struct list_entry* list_node = zone->section_list.next;
-                while (list_node != &zone->section_list) {
-                        MemSection* sec = container_of(
-                                list_node, MemSection, section_list);
-                        if (index < sec->page_count) {
-                                return Sec_phy_Page(sec, index);
-                        } else {
-                                index -= sec->page_count;
-                        }
-                        list_node = list_node->next;
-                }
-        }
-        return NULL;
-}
-static inline Page* ppn_Zone_phy_Page(MemZone* zone, ppn_t ppn)
-{
-        if (invalid_ppn(ppn)) { /*invalid ppn value*/
-                return NULL;
-        }
-        if (!ppn_in_Zone(zone, ppn))
-                return NULL;
-        for_each_sec_of_zone(zone)
-        {
-                if (ppn_in_Sec(sec, ppn)) {
-                        return &(sec->pages[ppn - PPN(sec->lower_addr)]);
-                }
-        }
-        return NULL;
-}
-static inline i64 ppn_Zone_index(MemZone* zone, ppn_t ppn)
-{
-        if (invalid_ppn(ppn)) { /*invalid ppn value*/
-                return -1;
-        }
-        if (!ppn_in_Zone(zone, ppn))
-                return -1;
-        i64 index = 0;
-        for_each_sec_of_zone(zone)
-        {
-                if (ppn_in_Sec(sec, ppn)) {
-                        return index + ppn - PPN(sec->lower_addr);
-                } else {
-                        index += sec->page_count;
-                }
-        }
-        return (-1);
-}
 
-/*
- * Sequential page cursor for iterating a contiguous ppn range in one zone.
- *
- * Motivation: avoid restarting the section scan from the zone head for each ppn
- * in hot paths (e.g. free/scan loops).
- */
 typedef struct {
         MemZone* zone;
         MemSection* sec;
@@ -202,18 +146,18 @@ static inline i64 zone_page_cursor_index(const ZonePageCursor* cur)
         return cur->sec_base_index + (i64)cur->sec_index;
 }
 
-static inline bool zone_page_cursor_init(ZonePageCursor* cur, MemZone* zone,
-                                         ppn_t start_ppn)
+static inline Page* zone_page_cursor_init(ZonePageCursor* cur, MemZone* zone,
+                                          ppn_t start_ppn)
 {
         if (!cur)
-                return false;
+                return NULL;
         cur->zone = zone;
         cur->sec = NULL;
         cur->sec_index = 0;
         cur->sec_base_index = -1;
 
         if (!zone || invalid_ppn(start_ppn) || !ppn_in_Zone(zone, start_ppn))
-                return false;
+                return NULL;
 
         i64 base_index = 0;
         for_each_sec_of_zone(zone)
@@ -224,13 +168,13 @@ static inline bool zone_page_cursor_init(ZonePageCursor* cur, MemZone* zone,
                 }
                 size_t sec_index = (size_t)(start_ppn - PPN(sec->lower_addr));
                 if (sec_index >= sec->page_count)
-                        return false;
+                        return NULL;
                 cur->sec = sec;
                 cur->sec_index = sec_index;
                 cur->sec_base_index = base_index;
-                return true;
+                return &sec->pages[sec_index];
         }
-        return false;
+        return NULL;
 }
 
 static inline bool zone_page_cursor_next(ZonePageCursor* cur)

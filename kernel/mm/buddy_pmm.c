@@ -154,12 +154,18 @@ i64 pmm_alloc_zone(struct buddy *bp, int alloc_order,
          we don't check it too much for we trust this page must can find,
          otherwise the error must exist at the init part
         */
-        size_t start_index = del_node - &bp->pages[0];
-        for (u64 i = 0; i < (1ULL << ((u64)alloc_order)); i++) {
-                Page *page = Zone_phy_Page(bp->zone, start_index + i);
+        ZonePageCursor cur;
+        if (!zone_page_cursor_init(&cur, bp->zone, del_node->ppn)) {
+                pr_error("[ BUDDY ] alloc: cursor init failed (ppn %lx)\n",
+                         del_node->ppn);
+                return (-E_RENDEZVOS);
+        }
+        u64 remaining = 1ULL << ((u64)alloc_order);
+        do {
+                Page *page = zone_page_cursor_page(&cur);
                 if (page)
                         phy_Page_ref_plus(page);
-        }
+        } while (--remaining && zone_page_cursor_next(&cur));
 
         bp->total_avaliable_pages -= 1ULL << ((u64)alloc_order);
         *alloced_page_number = 1ULL << ((u64)alloc_order);

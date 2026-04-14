@@ -25,7 +25,8 @@
 static inline void link_rmap_list(MemZone* zone, ppn_t ppn,
                                   struct nexus_node* node)
 {
-        Page* p_ptr = ppn_Zone_phy_Page(zone, ppn);
+        ZonePageCursor cur;
+        Page* p_ptr = zone_page_cursor_init(&cur, zone, ppn);
         if (!p_ptr) {
                 pr_error("[ NEXUS ] link_rmap_list: invalid ppn\n");
                 return;
@@ -63,7 +64,8 @@ static inline void link_rmap_list(MemZone* zone, ppn_t ppn,
 static inline void unlink_rmap_list(MemZone* zone, ppn_t ppn,
                                     struct nexus_node* node)
 {
-        if (!ppn_Zone_phy_Page(zone, ppn))
+        ZonePageCursor cur;
+        if (!zone_page_cursor_init(&cur, zone, ppn))
                 return;
         pmm_zone_lock(zone);
         list_del_init(&node->rmap_list);
@@ -1252,7 +1254,8 @@ error_t free_pages(void* p, int page_num, VS_Common* vs,
 }
 error_t unfill_phy_page(MemZone* zone, ppn_t ppn, u64 new_entry_addr)
 {
-        Page* p_ptr = ppn_Zone_phy_Page(zone, ppn);
+        ZonePageCursor cur;
+        Page* p_ptr = zone_page_cursor_init(&cur, zone, ppn);
         if (!p_ptr) {
                 pr_error("[ NEXUS ] cannot find phy page with ppn %lx\n", ppn);
                 return -E_RENDEZVOS;
@@ -1266,19 +1269,15 @@ error_t unfill_phy_page(MemZone* zone, ppn_t ppn, u64 new_entry_addr)
          * no fixed snapshot cap.
          */
         for (;;) {
-                struct pmm* pmm_it = zone->pmm;
-                lock_mcs(&pmm_it->spin_ptr,
-                         &percpu(pmm_spin_lock[zone->zone_id]));
+                pmm_zone_lock(zone);
                 if (p_ptr->rmap_list.next == &p_ptr->rmap_list) {
-                        unlock_mcs(&pmm_it->spin_ptr,
-                                   &percpu(pmm_spin_lock[zone->zone_id]));
+                        pmm_zone_unlock(zone);
                         break;
                 }
                 node = container_of(
                         p_ptr->rmap_list.next, struct nexus_node, rmap_list);
                 list_del_init(&node->rmap_list);
-                unlock_mcs(&pmm_it->spin_ptr,
-                           &percpu(pmm_spin_lock[zone->zone_id]));
+                pmm_zone_unlock(zone);
 
                 VS_Common* vs = nexus_node_vspace(node);
                 if (!vs) {
@@ -1333,7 +1332,8 @@ int nexus_kernel_page_owner_cpu(vaddr kva)
         ppn_t ppn = PPN(pa);
         if (invalid_ppn(ppn))
                 return INVALID_CPU_ID;
-        Page* p_ptr = ppn_Zone_phy_Page(&mem_zones[ZONE_NORMAL], ppn);
+        ZonePageCursor cur;
+        Page* p_ptr = zone_page_cursor_init(&cur, &mem_zones[ZONE_NORMAL], ppn);
         if (!p_ptr)
                 return INVALID_CPU_ID;
         /*
