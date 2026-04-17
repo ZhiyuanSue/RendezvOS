@@ -356,12 +356,12 @@ typedef struct {
 
 ### 4.3 数据结构概要
 
-`nexus_node` 用 union 区分三种角色：普通映射节点、vspace 根节点、管理页的 0 号节点。每页可放 `NEXUS_PER_PAGE = PAGE_SIZE / sizeof(nexus_node)` 个节点；**0 号描述本页，1 号常为 vspace 根**（或 per-CPU 的 nexus 树的根，即内核用的 nexus_root）。这种布局使每个管理页**自包含**：同一页内既有描述本页的 0 号、又有挂在该页上的树根或子树根（1 号），其余 slot 通过 `manage_free_list` 与页内 `_free_list` 分配，无需依赖外部元数据即可完成该页上的分配与释放，形成 nexus 节点的自包含机制。（`include/rendezvos/mm/nexus.h`）
+`nexus_node` 用 union 区分三种角色：普通映射节点、vspace 根节点、管理页的 0 号节点。每页可放 `NEXUS_PER_PAGE = PAGE_SIZE / sizeof(nexus_node)` 个节点；**0 号描述本页，1 号常为 vspace 根**（或 per-CPU 的 nexus 树的根，即内核用的 nexus_root）。这种布局使每个管理页**自包含**：同一页内既有描述本页的 0 号、又有挂在该页上的树根或子树根（1 号），其余 slot 通过 `manage_free_list` 与页内 `aux_list` 分配，无需依赖外部元数据即可完成该页上的分配与释放；`aux_list` 也可在局部算法里作为临时辅助链表使用。（`include/rendezvos/mm/nexus.h`）
 
 ```c
 struct nexus_node {
         struct list_entry manage_free_list;  /* 管理页链表：有空闲 slot 的页 */
-        struct list_entry _free_list;        /* 本页内空闲 nexus_node 的链表 */
+        struct list_entry aux_list;          /* 页内空闲链表 / 临时辅助链表 */
         struct list_entry _vspace_list;      /* 挂到 vspace 根下，串起该 vspace 所有映射页 */
         VSpace *vs;
         union {

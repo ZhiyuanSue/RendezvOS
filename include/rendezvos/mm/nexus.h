@@ -17,8 +17,21 @@
  * vs_common points at VS_Common (see vmm.h): tag + anonymous union (by `type`).
  */
 struct nexus_node {
-        struct list_entry manage_free_list;
-        struct list_entry _free_list;
+        /*
+         * manage_free_list vs cache_data union:
+         * - For manager nodes: used as manage_free_list (linked list of manager pages)
+         * - For normal nodes: can be repurposed as cache_data for temporary operations
+         *   IMPORTANT: When using as cache_data, the function must hold vspace lock
+         *   to prevent is_page_manage_node() checks while fields are repurposed.
+         */
+        union {
+                struct list_entry manage_free_list;  // Manager node usage
+                struct {
+                        ppn_t cached_ppn;           // Cached physical page number
+                        ENTRY_FLAGS_t cached_flags;  // Cached original flags for rollback
+                } cache_data;
+        };
+        struct list_entry aux_list;
         struct list_entry _vspace_list;
         VS_Common* vs_common;
         union {
@@ -81,9 +94,37 @@ void nexus_migrate_vspace(struct nexus_node* src_nexus_root,
                           struct nexus_node* dst_nexus_root, VS_Common* vs);
 
 /*page*/
+/*
+ * @brief Allocate and map free pages for kernel or user space
+ *
+ * @param page_num: number of pages to allocate
+ * @param target_vaddr: target virtual address (hint for allocation)
+ * @param nexus_root: per-CPU nexus root
+ * @param vs: vspace for user pages (NULL for kernel space)
+ * @param flags: page table flags for mapped pages
+ *
+ * @return void*: allocated virtual address, or NULL on failure
+ *
+ * @note For kernel space, uses per-CPU nexus_root with KERNEL_HEAP_REF.
+ *       For user space, requires valid vs with TABLE_VSPACE.
+ */
 void* get_free_page(size_t page_num, vaddr target_vaddr,
                     struct nexus_node* nexus_root, VS_Common* vs,
                     ENTRY_FLAGS_t flags);
+
+/*
+ * @brief Free pages and unmap them from vspace
+ *
+ * @param p: starting virtual address to free
+ * @param page_num: number of pages to free
+ * @param vs: vspace containing the pages (NULL for kernel space)
+ * @param nexus_root: per-CPU nexus root
+ *
+ * @return error_t: REND_SUCCESS on success, error code on failure
+ *
+ * @note Cleans up both nexus tree entries and page table mappings.
+ *       For kernel space, uses per-CPU nexus_root with KERNEL_HEAP_REF.
+ */
 error_t free_pages(void* p, int page_num, VS_Common* vs,
                    struct nexus_node* nexus_root);
 
@@ -92,6 +133,36 @@ error_t user_fill_range(struct nexus_node* first_entry, int page_num,
 error_t user_unfill_range(void* p, int page_num, VS_Common* vs,
                           struct nexus_node* vspace_node);
 error_t unfill_phy_page(MemZone* zone, ppn_t ppn, u64 new_entry_addr);
+
+/*
+ * @brief Update mapping flags on a user vspace range with full rollback support
+ *
+ * @param nexus_root: per-CPU nexus root for vspace lookup
+ * @param vs: user vspace to update (must be VS_COMMON_TABLE_VSPACE)
+ * @param start_addr: start of range to update (must be page-aligned)
+ * @param length: length of range in bytes (will be rounded up to page size)
+ * @param new_flags: new page table flags to apply
+ *
+ * @return error_t: REND_SUCCESS on success, error code on failure
+ *
+ * @ Semantics:
+ * - Range is [start_addr, start_addr + length), page-aligned.
+ * - All pages in range must already be mapped in `vs`'s nexus tree.
+ * - Updates both nexus_node::region_flags and page-table entries.
+ * - Either all pages are updated successfully, or all are restored to original state.
+ *
+ * @note This is a generic "nexus as truth source" operation with full rollback.
+ *       Remains Linux-agnostic (used by Linux mprotect, COW bookkeeping, etc.).
+ *
+ * @note This function repurposes manage_free_list as cache_data during execution.
+ *       The vspace lock ensures no concurrent is_page_manage_node() checks will
+ *       misinterpret the cached data. All fields are restored before lock release.
+ */
+error_t nexus_update_range_flags(struct nexus_node* nexus_root,
+                                 VS_Common* vs,
+                                 vaddr start_addr,
+                                 u64 length,
+                                 ENTRY_FLAGS_t new_flags);
 
 /* Kernel VA -> owning CPU for kmem routing: walks rmap under pmm lock; kernel
  * heap uses `cpu_id` on KERNEL_HEAP_REF vs_common (not global root). */

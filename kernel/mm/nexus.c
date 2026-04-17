@@ -90,7 +90,7 @@ static inline void nexus_node_set_len(struct nexus_node* nexus_entry,
 static void nexus_rb_tree_insert(struct nexus_node* node,
                                  struct rb_root* vspace_root)
 {
-        struct rb_node** new = &vspace_root->rb_root, *parent = NULL;
+        struct rb_node **new = &vspace_root->rb_root, *parent = NULL;
         u64 key = node->addr;
         while (*new) {
                 parent = *new;
@@ -110,7 +110,7 @@ static void nexus_rb_tree_insert(struct nexus_node* node,
 static void nexus_rb_tree_vspace_insert(struct nexus_node* vspace_node,
                                         struct rb_root* vspace_rb_root)
 {
-        struct rb_node** new = &vspace_rb_root->rb_root, *parent = NULL;
+        struct rb_node **new = &vspace_rb_root->rb_root, *parent = NULL;
         u64 key = vspace_node->vs_common->vspace_root_addr;
         while (*new) {
                 parent = *new;
@@ -208,9 +208,9 @@ static void nexus_init_manage_page(vaddr vpage_addr,
         nexus_node_set_len(n_node, false);
         n_node->page_left_nexus = NEXUS_PER_PAGE - 1;
         /*init the list*/
-        INIT_LIST_HEAD(&n_node->_free_list);
+        INIT_LIST_HEAD(&n_node->aux_list);
         for (u64 i = 1; i < NEXUS_PER_PAGE; i++) {
-                list_add_head(&n_node[i]._free_list, &n_node->_free_list);
+                list_add_head(&n_node[i].aux_list, &n_node->aux_list);
         }
         /*insert to rb tree*/
         list_add_head(&(n_node->_vspace_list), &(vspace_root->_vspace_list));
@@ -260,7 +260,7 @@ static struct nexus_node* init_vspace_nexus(vaddr nexus_page_addr,
         nexus_init_manage_page(nexus_page_addr, &n_node[1]);
         /*you have to del the root node from the free list,for in init manage
          * page, it have been linked*/
-        list_del_init(&n_node[1]._free_list);
+        list_del_init(&n_node[1].aux_list);
 
         n_node->page_left_nexus -= 1;
         list_add_head(&n_node->manage_free_list, &root_node->manage_free_list);
@@ -352,10 +352,10 @@ nexus_get_free_entry(struct nexus_node* vspace_root_node)
          * mate info*/
         struct nexus_node* usable_manage_page =
                 container_of(lp, struct nexus_node, manage_free_list);
-        /*use the free list to find a new entry*/
-        struct list_entry* usable_entry = usable_manage_page->_free_list.next;
+        /*use the aux_list (free list) to find a new entry*/
+        struct list_entry* usable_entry = usable_manage_page->aux_list.next;
         struct nexus_node* usable_manage_entry =
-                container_of(usable_entry, struct nexus_node, _free_list);
+                container_of(usable_entry, struct nexus_node, aux_list);
         /*clean the entry,remember that we must del it first then clean the
          * entry*/
         list_del_init(usable_entry);
@@ -364,6 +364,14 @@ nexus_get_free_entry(struct nexus_node* vspace_root_node)
                 list_del_init(&usable_manage_page->manage_free_list);
         }
         memset(usable_manage_entry, '\0', sizeof(struct nexus_node));
+        /*
+         * Invariant: allocated/in-use nexus_node must keep aux_list detached
+         * (self-linked) unless a local helper temporarily borrows it.
+         *
+         * We memset() the node before publishing it; re-init aux_list here so
+         * list_node_is_detached() works for later temporary borrows.
+         */
+        INIT_LIST_HEAD(&usable_manage_entry->aux_list);
         return usable_manage_entry;
 }
 static void free_manage_node_with_page(struct nexus_node* page_manage_node,
@@ -402,7 +410,7 @@ static void nexus_free_entry(struct nexus_node* nexus_entry,
                         "[ NEXUS ] unexpect case: a manage page have no entry to free but still try free it\n");
                 return;
         }
-        list_add_head(&nexus_entry->_free_list, &page_manage_node->_free_list);
+        list_add_head(&nexus_entry->aux_list, &page_manage_node->aux_list);
         if (!page_manage_node->page_left_nexus) {
                 list_add_head(&page_manage_node->manage_free_list,
                               &nexus_root->manage_free_list);
@@ -555,18 +563,18 @@ void nexus_delete_vspace(struct nexus_node* nexus_root, VS_Common* vs)
                 pr_error("[nexus_delete_vspace] missing pmm\n");
                 goto fail;
         }
-        /*try to find the vs paddr root ,if not, error*/
-        lock_cas(&nexus_root->nexus_lock);
-        struct nexus_node* vspace_node = nexus_rb_tree_vspace_search(
-                &nexus_root->_vspace_rb_root, vs->vspace_root_addr);
+        /* Get vspace node directly from vs (avoids O(log n) red-black tree
+         * lookup) */
+        struct nexus_node* vspace_node = (struct nexus_node*)vs->_vspace_node;
         struct nexus_node* vspace_page_manage_node =
                 (struct nexus_node*)ROUND_DOWN((vaddr)vspace_node, PAGE_SIZE);
         if (!vspace_node) {
                 pr_error("[Error] no such a vspace in nexus\n");
-                unlock_cas(&nexus_root->nexus_lock);
                 goto fail;
         }
-        /*first we need to unlink the vspace node*/
+        /*first we need to unlink the vspace node (still need lock for tree
+         * removal)*/
+        lock_cas(&nexus_root->nexus_lock);
         nexus_rb_tree_vspace_remove(vspace_node,
                                     &(nexus_root->_vspace_rb_root));
         unlock_cas(&nexus_root->nexus_lock);
@@ -586,8 +594,8 @@ void nexus_delete_vspace(struct nexus_node* nexus_root, VS_Common* vs)
                 next = curr->next;
                 struct nexus_node* node =
                         container_of(curr, struct nexus_node, _vspace_list);
-                ppn_t ppn =
-                        have_mapped(vs, VPN(node->addr), &percpu(Map_Handler));
+                ppn_t ppn = have_mapped(
+                        vs, VPN(node->addr), NULL, NULL, &percpu(Map_Handler));
                 if (ppn < 0) {
                         pr_error("[ NEXUS ] ERROR: have_mapped error!\n");
                         unlock_cas(&vspace_node->vs_common->nexus_vspace_lock);
@@ -664,6 +672,37 @@ static inline void delete_nexus_entry(struct nexus_node* nexus_entry,
         nexus_rb_tree_remove(nexus_entry, &vspace_root->_rb_root);
         nexus_free_entry(nexus_entry, vspace_root);
 }
+
+/*
+ * @brief Clean up aux_list fields for all nodes in a temporary list
+ *
+ * @param temp_list: temporary list containing nodes to clean up
+ * @param vspace_root: if non-NULL, also delete nodes from vspace (used on error
+ * paths)
+ *
+ * @note Also cleans cache_data used for caching ppn/flags.
+ *       Must set to 0 (not INIT_LIST_HEAD) because is_page_manage_node()
+ *       checks for non-NULL pointers in manage_free_list (union alias).
+ *
+ * Used by functions that repurpose aux_list as temporary linkage.
+ */
+static inline void cleanup_aux_list(struct list_entry* temp_list,
+                                    struct nexus_node* vspace_root)
+{
+        while (!list_empty(temp_list)) {
+                struct list_entry* entry = temp_list->next;
+                struct nexus_node* node =
+                        container_of(entry, struct nexus_node, aux_list);
+                list_del_init(&node->aux_list);
+                /* Clean cached ppn/flags (must be 0 for is_page_manage_node
+                 * check) */
+                node->cache_data.cached_ppn = 0;
+                node->cache_data.cached_flags = 0;
+                if (vspace_root) {
+                        delete_nexus_entry(node, vspace_root);
+                }
+        }
+}
 static struct nexus_node* _take_range(bool allow_2M, ENTRY_FLAGS_t eflags,
                                       struct nexus_node* vspace_node,
                                       vaddr free_page_addr, vaddr page_addr_end)
@@ -691,7 +730,7 @@ static struct nexus_node* _take_range(bool allow_2M, ENTRY_FLAGS_t eflags,
                                            eflags,
                                            vspace_node->vs_common,
                                            vspace_node);
-                        list_add_head(&free_nexus_entry->_free_list,
+                        list_add_head(&free_nexus_entry->aux_list,
                                       &inserted_list);
                         if (!first_entry) {
                                 first_entry = free_nexus_entry;
@@ -712,27 +751,20 @@ static struct nexus_node* _take_range(bool allow_2M, ENTRY_FLAGS_t eflags,
                                            eflags,
                                            vspace_node->vs_common,
                                            vspace_node);
-                        list_add_head(&free_nexus_entry->_free_list,
+                        list_add_head(&free_nexus_entry->aux_list,
                                       &inserted_list);
                         if (!first_entry) {
                                 first_entry = free_nexus_entry;
                         }
                 }
         }
-        /* detach temporary rollback links */
-        while (inserted_list.next != &inserted_list) {
-                struct nexus_node* node = container_of(
-                        inserted_list.next, struct nexus_node, _free_list);
-                list_del_init(&node->_free_list);
-        }
+        /* detach temporary rollback links (success path - don't delete nodes)
+         */
+        cleanup_aux_list(&inserted_list, NULL);
         return first_entry;
 fail:
-        while (inserted_list.next != &inserted_list) {
-            struct nexus_node* node = container_of(
-                    inserted_list.next, struct nexus_node, _free_list);
-            list_del_init(&node->_free_list);
-            delete_nexus_entry(node, vspace_node);
-        }
+        /* Clean up aux_list fields and delete nodes (error path) */
+        cleanup_aux_list(&inserted_list, vspace_node);
         return NULL;
 }
 static void* _kernel_get_free_page(size_t page_num,
@@ -901,8 +933,11 @@ error_t user_fill_range(struct nexus_node* first_entry, int page_num,
         VS_Common* vs = vspace_node->vs_common;
         lock_cas(&vs->nexus_vspace_lock);
         while (first_entry) {
-                ppn_t ppn = have_mapped(
-                        vs, VPN(first_entry->addr), &percpu(Map_Handler));
+                ppn_t ppn = have_mapped(vs,
+                                        VPN(first_entry->addr),
+                                        NULL,
+                                        NULL,
+                                        &percpu(Map_Handler));
                 if (!invalid_ppn(ppn)) {
                         goto handle_next_page;
                 }
@@ -1199,17 +1234,15 @@ void* get_free_page(size_t page_num, vaddr target_vaddr,
                         pr_error("[ NEXUS ] we must have a vspace here\n");
                         return NULL;
                 }
-                /*find the vspace root nexus node*/
-                lock_cas(&nexus_root->nexus_lock);
-                struct nexus_node* vspace_node = nexus_rb_tree_vspace_search(
-                        &nexus_root->_vspace_rb_root, vs->vspace_root_addr);
+                /* Get vspace node directly from vs (avoids O(log n) lookup +
+                 * lock) */
+                struct nexus_node* vspace_node =
+                        (struct nexus_node*)vs->_vspace_node;
                 if (!vspace_node || vspace_node->vs_common != vs) {
                         pr_error(
                                 "[Error] no such a vspace in nexus or vs common is not equal\n");
-                        unlock_cas(&nexus_root->nexus_lock);
                         return NULL;
                 }
-                unlock_cas(&nexus_root->nexus_lock);
                 struct nexus_node* first_entry = _user_take_range(
                         page_num, target_vaddr, vspace_node, flags);
                 if (first_entry
@@ -1246,10 +1279,10 @@ error_t free_pages(void* p, int page_num, VS_Common* vs,
                         pr_error("[ NEXUS ] we must have a vspace here\n");
                         return -E_IN_PARAM;
                 }
-                lock_cas(&nexus_root->nexus_lock);
-                struct nexus_node* vspace_node = nexus_rb_tree_vspace_search(
-                        &nexus_root->_vspace_rb_root, vs->vspace_root_addr);
-                unlock_cas(&nexus_root->nexus_lock);
+                /* Get vspace node directly from vs (avoids O(log n) lookup +
+                 * lock) */
+                struct nexus_node* vspace_node =
+                        (struct nexus_node*)vs->_vspace_node;
                 if (!vspace_node || vspace_node->vs_common != vs) {
                         pr_error(
                                 "[ ERROR ] ERROR:no vspace node or vspace's node error!\n");
@@ -1261,6 +1294,168 @@ error_t free_pages(void* p, int page_num, VS_Common* vs,
         }
         return res;
 }
+
+error_t nexus_update_range_flags(struct nexus_node* nexus_root, VS_Common* vs,
+                                 vaddr start_addr, u64 length,
+                                 ENTRY_FLAGS_t new_flags)
+{
+        if (!nexus_root || !vs || length == 0)
+                return -E_IN_PARAM;
+        if ((start_addr & (PAGE_SIZE - 1)) != 0)
+                return -E_IN_PARAM;
+
+        // vs type validation: only support user table vspace
+        if (!vs_common_is_table_vspace(vs))
+                return -E_IN_PARAM;
+
+        // Length and overflow validation
+        u64 len_aligned = ROUND_UP(length, PAGE_SIZE);
+        vaddr end_addr = start_addr + (vaddr)len_aligned;
+        if (end_addr < start_addr)
+                return -E_IN_PARAM;
+
+        // Explicitly reject kernel space - this function is for user space only
+        if (start_addr >= KERNEL_VIRT_OFFSET || end_addr >= KERNEL_VIRT_OFFSET)
+                return -E_IN_PARAM;
+
+        // Get vspace node directly from vs (avoids O(log n) red-black tree
+        // lookup)
+        struct nexus_node* vspace_node = (struct nexus_node*)vs->_vspace_node;
+        if (!vspace_node || vspace_node->vs_common != vs)
+                return -E_RENDEZVOS;
+
+        lock_cas(&vs->nexus_vspace_lock);
+        struct map_handler* handler = &percpu(Map_Handler);
+
+        /*
+         * Two-phase algorithm for atomic batch update with full rollback:
+         * Phase 1: Collection + Validation - collect and validate nodes in one
+         * pass Phase 2: Update with rollback - batch update with full rollback
+         * on failure
+         *
+         * Field repurposing (safe due to vspace lock):
+         * - aux_list: temporary linked list for batch processing
+         * - cache_data.cached_ppn: cached ppn (avoids repeated page table
+         * lookup)
+         * - cache_data.cached_flags: cached original flags (for rollback)
+         *
+         * SAFETY: The vspace lock ensures no concurrent is_page_manage_node()
+         * checks will misinterpret cache_data as manage_free_list. All fields
+         * are restored to NULL before lock release.
+         *
+         * Atomicity guarantee: either all nodes are updated successfully, or
+         * all nodes are restored to their original state.
+         */
+        struct list_entry update_list;
+        struct nexus_node* node;
+        error_t ret = REND_SUCCESS;
+        int updated_count = 0, count = 0; // Track successfully updated nodes
+                                          // for rollback
+        INIT_LIST_HEAD(&update_list);
+
+        // Phase 1: Collect unique nodes and validate immediately on first
+        // encounter
+        for (vaddr cur = start_addr; cur < end_addr;) {
+                node = nexus_rb_tree_search(&vspace_node->_rb_root, cur);
+
+                if (!node || cur < node->addr
+                    || cur >= node->addr + nexus_node_get_len(node)) {
+                        ret = -E_IN_PARAM;
+                        goto cleanup;
+                }
+
+                /* Add to update list if not already present. In-use nodes are
+                 * detached. */
+                if (list_node_is_detached(&node->aux_list)) {
+                        ppn_t ppn = have_mapped(
+                                vs, VPN(node->addr), NULL, NULL, handler);
+                        if (invalid_ppn(ppn)) {
+                                ret = -E_RENDEZVOS;
+                                goto cleanup;
+                        }
+                        /* Cache ppn and original flags for potential rollback
+                         */
+                        node->cache_data.cached_ppn = ppn;
+                        node->cache_data.cached_flags = node->region_flags;
+                        list_add_head(&node->aux_list, &update_list);
+                }
+
+                // Skip to next node boundary (handles large pages efficiently)
+                vaddr node_end = node->addr + nexus_node_get_len(node);
+                cur = (node_end < end_addr) ? node_end : end_addr;
+        }
+
+        // Phase 2: Batch update page tables and nexus flags with full rollback
+        for (struct list_entry* entry = update_list.next; entry != &update_list;
+             entry = entry->next) {
+                node = container_of(entry, struct nexus_node, aux_list);
+
+                bool huge = (node->region_flags & PAGE_ENTRY_HUGE) != 0;
+                int level = huge ? 2 : 3;
+                vaddr node_end = node->addr + nexus_node_get_len(node);
+
+                // Require full coverage (partial update needs page splitting)
+                if (node->addr < start_addr || node_end > end_addr) {
+                        ret = -E_IN_PARAM;
+                        goto rollback;
+                }
+
+                /* CRITICAL: Update page table BEFORE nexus flags for atomicity
+                 */
+                /* Use cached ppn from Phase 1 (stored in cache_data) */
+                ppn_t ppn = node->cache_data.cached_ppn;
+                if (map(vs, ppn, VPN(node->addr), level, new_flags, handler)
+                    != REND_SUCCESS) {
+                        ret = -E_RENDEZVOS;
+                        goto rollback;
+                }
+
+                /* Only update nexus flags after page table update succeeds */
+                node->region_flags = new_flags | (huge ? PAGE_ENTRY_HUGE : 0);
+                updated_count++;
+        }
+
+        // Success path - ret is already REND_SUCCESS
+        goto cleanup;
+
+rollback:
+        /*
+         * Full rollback: restore all successfully updated nodes to original
+         * state. This ensures atomicity - either all nodes are updated or none
+         * are.
+         */
+        for (struct list_entry* entry = update_list.next;
+             entry != &update_list && count < updated_count;
+             entry = entry->next, count++) {
+                struct nexus_node* node =
+                        container_of(entry, struct nexus_node, aux_list);
+
+                /* Restore original flags cached in cache_data */
+                ENTRY_FLAGS_t old_flags = node->cache_data.cached_flags;
+                bool huge = (old_flags & PAGE_ENTRY_HUGE) != 0;
+                int level = huge ? 2 : 3;
+                ppn_t ppn = node->cache_data.cached_ppn;
+
+                /* Rollback page table */
+                error_t e = map(
+                        vs, ppn, VPN(node->addr), level, old_flags, handler);
+                if (e != REND_SUCCESS) {
+                        pr_error(
+                                "[ NEXUS ] FATAL: rollback failed, system state inconsistent!\n");
+                        /* Continue anyway to restore as much as possible */
+                }
+
+                /* Rollback nexus flags */
+                node->region_flags = old_flags;
+        }
+
+cleanup:
+        /* All paths converge here: clean up aux_list fields */
+        cleanup_aux_list(&update_list, NULL);
+        unlock_cas(&vs->nexus_vspace_lock);
+        return ret;
+}
+
 error_t unfill_phy_page(MemZone* zone, ppn_t ppn, u64 new_entry_addr)
 {
         ZonePageCursor cur;

@@ -50,12 +50,15 @@ ppn_t unmap(VS_Common* vs, vpn_t vpn, u64 new_entry_addr,
  *
  * @param vs : The address space need to find
  * @param vpn : the vpn need to query
+ * @param entry_flags_out : optional encoded flags for the final matched entry
+ * @param entry_level_out : optional final matched entry level (2 for huge, 3 for 4K)
  * @param handler : the map handler that used
  *
  * @return i64 : >0, the ppn that vpn mapped, ==0, not mapped, maybe the value
  * is 0 or present flag is cleared,<0,error,remember that its' ppn
  */
-ppn_t have_mapped(VS_Common* vs, vpn_t vpn, struct map_handler* handler);
+ppn_t have_mapped(VS_Common* vs, vpn_t vpn, ENTRY_FLAGS_t* entry_flags_out,
+                  int* entry_level_out, struct map_handler* handler);
 
 /*
         in order to generate a new vspace

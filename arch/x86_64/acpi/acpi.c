@@ -41,6 +41,8 @@ error_t acpi_init(vaddr rsdp_addr)
                                    MIDDLE_PAGE_SIZE);
                 if (!have_mapped(per_cpu(current_vspace, BSP_ID),
                                  VPN(rsdt_map_page),
+                                 NULL,
+                                 NULL,
                                  &per_cpu(Map_Handler, BSP_ID))) {
                         map(per_cpu(current_vspace, BSP_ID),
                             PPN(rsdt_page),

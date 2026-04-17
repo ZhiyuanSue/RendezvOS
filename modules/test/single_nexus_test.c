@@ -27,7 +27,7 @@ void nexus_print(struct nexus_node* nexus_root)
                       manage_page_num,
                       (vaddr)manage_page,
                       manage_page->page_left_nexus);
-                struct list_entry* free_entry = &manage_page->_free_list;
+                struct list_entry* free_entry = &manage_page->aux_list;
                 struct list_entry* tmp_fe = free_entry->next;
                 u64 free_entry_num = 0;
                 while (tmp_fe != free_entry) {
@@ -178,6 +178,40 @@ int nexus_test(void)
                         }
                 }
         }
+
+        /* range flags update sanity (user 4K mappings) */
+        void* p4 = get_free_page(4,
+                                 start_test_addr,
+                                 percpu(nexus_root),
+                                 vs,
+                                 PAGE_ENTRY_READ | PAGE_ENTRY_VALID);
+        if (!p4)
+                return -E_REND_TEST;
+        error_t pe = nexus_update_range_flags(
+                percpu(nexus_root),
+                vs,
+                (vaddr)p4 + PAGE_SIZE,
+                2 * PAGE_SIZE,
+                PAGE_ENTRY_READ | PAGE_ENTRY_VALID | PAGE_ENTRY_WRITE);
+        if (pe != REND_SUCCESS)
+                return -E_REND_TEST;
+        ENTRY_FLAGS_t f1 = 0, f2 = 0;
+        int level1 = 0, level2 = 0;
+        if (have_mapped(vs, VPN((vaddr)p4 + PAGE_SIZE), &f1, &level1, &percpu(Map_Handler))
+                    <= 0
+            || have_mapped(vs,
+                           VPN((vaddr)p4 + 2 * PAGE_SIZE),
+                           &f2,
+                           &level2,
+                           &percpu(Map_Handler))
+                       <= 0)
+                return -E_REND_TEST;
+        if (level1 != 3 || level2 != 3)
+                return -E_REND_TEST;
+        if ((f1 & PAGE_ENTRY_WRITE) == 0 || (f2 & PAGE_ENTRY_WRITE) == 0)
+                return -E_REND_TEST;
+        (void)free_pages(p4, 4, vs, percpu(nexus_root));
+
         if (vs) {
                 if (vs_common_is_table_vspace(vs) && vs != &root_vspace) {
                         ref_put(&vs->refcount, free_vspace_ref);

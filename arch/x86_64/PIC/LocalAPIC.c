@@ -97,7 +97,11 @@ bool map_LAPIC(void)
         VS_Common *vs = percpu(current_vspace);
         paddr lapic_phy_page = xAPIC_MMIO_BASE;
         vaddr lapic_virt_page = KERNEL_PHY_TO_VIRT(xAPIC_MMIO_BASE);
-        if (!have_mapped(vs, VPN(lapic_virt_page), &percpu(Map_Handler))) {
+        if (!have_mapped(vs,
+                         VPN(lapic_virt_page),
+                         NULL,
+                         NULL,
+                         &percpu(Map_Handler))) {
                 if (map(vs,
                         PPN(lapic_phy_page),
                         VPN(lapic_virt_page),

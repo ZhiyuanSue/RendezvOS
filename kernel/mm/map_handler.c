@@ -116,7 +116,7 @@ error_t map(VS_Common *vs, ppn_t ppn, vpn_t vpn, int level,
         paddr next_level_paddr = 0;
         i64 pmm_res = 0;
         bool new_alloc = false;
-        error_t res = 0;
+        error_t res = REND_SUCCESS;
         size_t alloced_page_number;
         /*for a new alloced page, we must memset to all 0, use this flag to
          * decide whether memset*/
@@ -261,7 +261,6 @@ error_t map(VS_Common *vs, ppn_t ppn, vpn_t vpn, int level,
                                 v,
                                 (union L2_entry *)(handler->map_vaddr[2]),
                                 flags);
-                        res = 0;
                         goto map_succ;
                 }
                 if (next_level_paddr != p) {
@@ -296,10 +295,14 @@ error_t map(VS_Common *vs, ppn_t ppn, vpn_t vpn, int level,
                                         *)(handler->map_vaddr[2]))[L2_INDEX(v)]
                                            .entry;
                         entry_flags = arch_encode_flags(2, pt_entry);
+
                         if ((entry_flags & PAGE_ENTRY_VALID)
                             && !is_final_level_pt(2, entry_flags)) {
+                                /* Case 3: Valid L3 page table (4K mappings exist) */
                                 vaddr l3_scan_vaddr = handler->map_vaddr[3];
                                 util_map(next_level_paddr, l3_scan_vaddr);
+
+                                /* Scan L3 table to check if any 4K entries are in use */
                                 bool have_filled_entry = false;
                                 for (vaddr vaddr_iter = l3_scan_vaddr;
                                      vaddr_iter < l3_scan_vaddr + PAGE_SIZE;
@@ -310,9 +313,12 @@ error_t map(VS_Common *vs, ppn_t ppn, vpn_t vpn, int level,
                                                 break;
                                         }
                                 }
+
                                 if (have_filled_entry) {
+                                        /* L3 page table has active 4K mappings - cannot upgrade to 2M */
                                         pr_error(
-                                                "[ MAP ] mapping 2M page have had a mapped level 3 page table and have a existed 4K entry\n");
+                                                "[ MAP ] cannot map 2M page: L3 page table has active 4K entries (old: 0x%lx, new: 0x%lx)\n",
+                                                next_level_paddr, p);
                                         res = -E_RENDEZVOS;
                                         arch_tlb_invalidate_page(
                                                 0,
@@ -322,37 +328,77 @@ error_t map(VS_Common *vs, ppn_t ppn, vpn_t vpn, int level,
                                                         PAGE_SIZE));
                                         goto map_l2_fail;
                                 }
+
+                                /* L3 page table is completely empty - safe to free and upgrade to 2M */
                                 struct pmm *pmm_ptr = handler->pmm;
                                 pmm_res = pmm_ptr->pmm_free(
                                         pmm_ptr, (i64)PPN(next_level_paddr), 1);
                                 if (pmm_res) {
                                         pr_error(
-                                                "[ MAP ] pmm free error with a ppn 0x%lx\n",
+                                                "[ MAP ] failed to free empty L3 page table (ppn: 0x%lx)\n",
                                                 PPN(next_level_paddr));
                                         res = -E_RENDEZVOS;
                                         goto map_l2_fail;
                                 }
+                                pr_debug("[ MAP ] upgraded empty L3 page table to 2M mapping\n");
+
+                                /* Establish the new 2M mapping */
                                 arch_set_L2_entry(
                                         p,
                                         v,
                                         (union L2_entry
                                                  *)(handler->map_vaddr[2]),
                                         flags);
-                                res = 0;
                                 goto map_succ;
+
+                        } else if (entry_flags & PAGE_ENTRY_VALID) {
+                                /* Case 4: Valid L2 entry mapping another 2M page */
+                                pr_error(
+                                        "[ MAP ] cannot map 2M page: different physical page already mapped (old: 0x%lx, new: 0x%lx)\n",
+                                        next_level_paddr, p);
+                                res = -E_RENDEZVOS;
+                                goto map_l2_fail;
+
                         } else {
-                                pr_error(
-                                        "[ MAP ] mapping two different physical pages to a same virtual 2M page\n");
-                                pr_error(
-                                        "[ MAP ] arguments: old 0x%lx new 0x%lx\n",
-                                        next_level_paddr,
-                                        p);
+                                /* Case 1 & 2: Invalid entry with non-zero physical address */
+                                /* This indicates data corruption or an uninitialized page table entry */
+                                if (next_level_paddr != 0) {
+                                        pr_error(
+                                                "[ MAP ] invalid entry with non-zero physical address 0x%lx (possible data corruption)\n",
+                                                next_level_paddr);
+                                        res = -E_RENDEZVOS;
+                                        goto map_l2_fail;
+                                }
+                                /* next_level_paddr == 0: truly empty entry, should not reach here */
+                                pr_error("[ MAP ] unexpected empty entry in != branch\n");
                                 res = -E_RENDEZVOS;
                                 goto map_l2_fail;
                         }
                 }
-                pr_info("[ MAP ] remap same physical pages to a same virtual 2M page\n");
-                res = 0;
+
+                /*
+                 * Remap same physical page: update flags (mprotect scenario).
+                 * First verify that the existing entry is valid.
+                 */
+                pt_entry = ((union L2_entry *)(handler->map_vaddr[2]))[L2_INDEX(v)].entry;
+                entry_flags = arch_encode_flags(2, pt_entry);
+
+                if (!(entry_flags & PAGE_ENTRY_VALID)) {
+                        /* Entry is invalid but points to same physical page - data corruption */
+                        pr_error(
+                                "[ MAP ] cannot update flags: invalid entry with physical address 0x%lx (data corruption?)\n",
+                                next_level_paddr);
+                        res = -E_RENDEZVOS;
+                        goto map_l2_fail;
+                }
+
+                /* Valid entry with same physical page - safe to update flags (mprotect) */
+                pr_debug("[ MAP ] remapping same 2M physical page with updated flags (addr: 0x%lx, old_flags: 0x%lx, new_flags: 0x%lx)\n",
+                         v, entry_flags, flags);
+                arch_set_L2_entry(p,
+                                  v,
+                                  (union L2_entry *)(handler->map_vaddr[2]),
+                                  flags);
                 goto map_succ;
         } else {
                 next_level_paddr = L2_entry_addr(((
@@ -402,21 +448,36 @@ error_t map(VS_Common *vs, ppn_t ppn, vpn_t vpn, int level,
                 goto map_succ;
         }
         if (next_level_paddr != p) {
+                /* Different physical page - not allowed for 4K mappings */
                 pr_error(
-                        "[ MAP ] mapping two different physical pages to a same virtual 4K page\n");
-                pr_error("[ MAP ] arguments: old 0x%lx new 0x%lx to 0x%lx\n",
-                         next_level_paddr,
-                         p,
-                         v);
+                        "[ MAP ] cannot map 4K page: different physical page already mapped (old: 0x%lx, new: 0x%lx, vaddr: 0x%lx)\n",
+                        next_level_paddr, p, v);
                 res = -E_RENDEZVOS;
                 goto map_l3_fail;
         }
-        pr_error(
-                "[ MAP ] %d remap same physical pages ppn %lx to a same virtual 4K page vpn %lx\n",
-                handler->cpu_id,
-                ppn,
-                vpn);
-        res = -E_RENDEZVOS;
+
+        /*
+         * Remap same physical page: verify entry validity before allowing flag updates.
+         * This prevents updating flags on invalid entries (data corruption detection).
+         */
+        pt_entry = ((union L3_entry *)(handler->map_vaddr[3]))[L3_INDEX(v)].entry;
+        entry_flags = arch_encode_flags(3, pt_entry);
+
+        if (!(entry_flags & PAGE_ENTRY_VALID)) {
+                /* Entry is invalid but points to same physical page - data corruption */
+                pr_error(
+                        "[ MAP ] cannot update flags: invalid entry with physical address 0x%lx (data corruption?)\n",
+                        next_level_paddr);
+                res = -E_RENDEZVOS;
+                goto map_l3_fail;
+        }
+
+        /* Valid entry with same physical page - safe to update flags (mprotect) */
+        pr_debug("[ MAP ] remapping same 4K physical page with updated flags (vaddr: 0x%lx, old_flags: 0x%lx, new_flags: 0x%lx)\n",
+                 v, entry_flags, flags);
+        flags = arch_decode_flags(3, eflags);
+        arch_set_L3_entry(
+                p, v, (union L3_entry *)(handler->map_vaddr[3]), flags);
 map_succ:
         arch_tlb_invalidate_page(vs->vspace_id, v);
 map_l3_fail:
@@ -584,15 +645,21 @@ unmap_fail:
         unlock_mcs(&vs->vspace_lock, &handler->vspace_lock_node);
         return ppn;
 }
-ppn_t have_mapped(VS_Common *vs, vpn_t vpn, struct map_handler *handler)
+ppn_t have_mapped(VS_Common *vs, vpn_t vpn, ENTRY_FLAGS_t *entry_flags_out,
+                  int *entry_level_out, struct map_handler *handler)
 {
         vaddr v = VADDR(vpn);
         ppn_t ppn = 0;
         ENTRY_FLAGS_t entry_flags = 0;
+        int entry_level = 0;
         union L0_entry L0_E;
         union L1_entry L1_E;
         union L2_entry L2_E;
         union L3_entry L3_E;
+        if (entry_flags_out)
+                *entry_flags_out = 0;
+        if (entry_level_out)
+                *entry_level_out = 0;
         if (!vs || !vs->vspace_root_addr || !vpn || !handler) {
                 pr_error("[ ERROR ] check input is not right\n");
                 ppn = -E_IN_PARAM;
@@ -644,6 +711,7 @@ ppn_t have_mapped(VS_Common *vs, vpn_t vpn, struct map_handler *handler)
                 ppn = 0;
                 goto have_mapped_l2_fail;
         } else if (is_final_level_pt(2, entry_flags)) {
+                entry_level = 2;
                 goto have_mapped_succ;
         }
 
@@ -651,11 +719,18 @@ ppn_t have_mapped(VS_Common *vs, vpn_t vpn, struct map_handler *handler)
         util_map(PADDR(ppn), handler->map_vaddr[3]);
         L3_E = ((union L3_entry *)(handler->map_vaddr[3]))[L3_INDEX(v)];
         entry_flags = arch_encode_flags(3, (ARCH_PFLAGS_t)L3_E.entry);
+        entry_level = 3;
         ppn = L3_E.paddr;
         if (!ppn || !(entry_flags & PAGE_ENTRY_VALID)) {
                 ppn = 0;
         }
 have_mapped_succ:
+        if (ppn > 0) {
+                if (entry_flags_out)
+                        *entry_flags_out = entry_flags;
+                if (entry_level_out)
+                        *entry_level_out = entry_level;
+        }
         arch_tlb_invalidate_page(vs->vspace_id, v);
         arch_tlb_invalidate_page(vs->vspace_id, handler->map_vaddr[3]);
 have_mapped_l2_fail:
