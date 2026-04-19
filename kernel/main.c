@@ -5,6 +5,7 @@
 #include <rendezvos/task/tcb.h>
 #include <rendezvos/task/initcall.h>
 #include <arch/aarch64/sys_ctrl.h>
+#include <rendezvos/panic.h>
 extern int log_level;
 extern char _bss_start, _bss_end;
 extern char _end;
@@ -68,5 +69,5 @@ void cmain(struct setup_info *arch_setup_info)
         thread_set_status(get_cpu_current_thread(), thread_status_suspend);
 #endif
         schedule(percpu(core_tm));
-        arch_shutdown();
+        kernel_halt();
 }
