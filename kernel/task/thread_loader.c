@@ -143,7 +143,7 @@ error_t run_elf_program(vaddr elf_start, vaddr elf_end, VS_Common *vs,
                 return -E_IN_PARAM;
         }
         Thread_Base *elf_thread = get_cpu_current_thread();
-        error_t e = -E_RENDEZVOS;
+        error_t e = REND_SUCCESS;
         if (!check_elf_header(elf_start)) {
                 pr_error("[ERROR] bad elf file\n");
                 return -E_RENDEZVOS;
@@ -199,8 +199,13 @@ error_t run_elf_program(vaddr elf_start, vaddr elf_end, VS_Common *vs,
         }
 
         Thread_Base *current_thread = percpu(core_tm)->current_thread;
-        arch_drop_to_user(current_thread->kstack_bottom, entry_addr);
-        return REND_SUCCESS;
+        struct trap_frame elf_drop_tf;
+
+        arch_empty_drop_trap_frame(&elf_drop_tf, entry_addr);
+        arch_return_to_user(current_thread->kstack_bottom, &elf_drop_tf, 0);
+        /*unreachable*/
+        pr_error("[run_elf_thread] goto unreachable\n");
+        return -E_RENDEZVOS;
 }
 /*we must load all the elf file into kernel memory before we use this function*/
 error_t gen_task_from_elf(Thread_Base **elf_thread_ptr,
@@ -254,6 +259,7 @@ error_t gen_task_from_elf(Thread_Base **elf_thread_ptr,
 
         Thread_Base *elf_thread = create_thread((void *)run_elf_program,
                                                 append_thread_info_len,
+                                                true,
                                                 4,
                                                 elf_start,
                                                 elf_end,
@@ -303,7 +309,7 @@ error_t gen_thread_from_func(Thread_Base **func_thread_ptr, kthread_func thread,
                 return -E_IN_PARAM;
         }
         Thread_Base *func_t;
-        func_t = create_thread((void *)thread, 0, 1, arg);
+        func_t = create_thread((void *)thread, 0, false, 1, arg);
         if (!func_t) {
                 pr_error("[Error] create kernel thread fail\n");
                 return -E_RENDEZVOS;

@@ -2,6 +2,18 @@
 #define _RENDEZVOS_TCB_ARCH_
 
 #include <common/types.h>
+#include <common/string.h>
+#include <arch/x86_64/trap/trap.h>
+/*
+ * RFLAGS image for arch_x86_sched_switch_pair (POPF then RET in
+ * context_switch).
+ * - Bit 1: Intel SDM documents this reserved bit as 1 in several RFLAGS images.
+ * - Bit 9 (IF): enable interrupts after the new thread starts running.
+ */
+#define X86_RFLAGS_FIXED_RESERVED1 (1ULL << 1)
+#define X86_RFLAGS_IF              (1ULL << 9)
+#define X86_RFLAGS_ENTRY           (X86_RFLAGS_FIXED_RESERVED1 | X86_RFLAGS_IF)
+
 /* This is based on System V AMD64 ABI*/
 /*
 under the System V AMD64 ABI
@@ -28,6 +40,21 @@ typedef struct {
         u64 user_rsp;
 } Arch_Task_Context;
 
+/* Declared in arch-specific task/arch_thread.c (context merge & syscall-trap
+ * return). */
+void arch_ctx_merge_from_src(Arch_Task_Context* dst_ctx,
+                             const Arch_Task_Context* src_ctx);
+void arch_return_to_user(u64 kstack_bottom,
+                         const struct trap_frame* template_tf, u64 syscall_ret);
+
+/* Zeroed syscall-shaped frame for first ELF entry; rcx = user RIP (sysret). */
+static inline void arch_empty_drop_trap_frame(struct trap_frame* tf,
+                                              vaddr entry_addr)
+{
+        memset(tf, 0, sizeof(*tf));
+        tf->rcx = (u64)entry_addr;
+}
+
 typedef struct {
         void* thread_func_ptr;
         u64 int_para[NR_ABI_PARAMETER_INT_REG];
@@ -41,13 +68,24 @@ static inline void arch_task_ctx_init(Arch_Task_Context* ctx)
         ctx->user_gs = ctx->user_fs = 0;
 }
 static inline void arch_set_new_thread_ctx(Arch_Task_Context* ctx,
-                                           void* func_ptr, void* stack_bottom)
+                                           void* func_ptr, void* kstack_bottom,
+                                           bool reserve_trap_frame)
 {
+        vaddr bottom = (vaddr)kstack_bottom;
+        vaddr sp = bottom;
+
+        if (reserve_trap_frame) {
+                sp = (vaddr)(((struct trap_frame*)bottom) - 1);
+        }
+
         /*here the stack_bottom - 16 is rflags, and the stack_bottom - 8 is
          * return address*/
-        *((u64*)(stack_bottom - sizeof(u64))) = (vaddr)func_ptr;
-        ctx->rsp = (vaddr)stack_bottom - sizeof(u64) * 2;
-        ctx->stack_bottom = (vaddr)stack_bottom;
+        *((u64*)(sp - sizeof(u64))) = (vaddr)func_ptr;
+        sp -= 2 * sizeof(u64);
+        *((u64*)sp) = X86_RFLAGS_ENTRY;
+
+        ctx->rsp = sp;
+        ctx->stack_bottom = bottom;
 }
 static inline vaddr arch_get_thread_user_sp(Arch_Task_Context* ctx)
 {
@@ -61,5 +99,5 @@ static inline void arch_set_thread_user_sp(Arch_Task_Context* ctx,
 extern void context_switch(Arch_Task_Context* old_context,
                            Arch_Task_Context* new_context);
 void switch_to(Arch_Task_Context* old_context, Arch_Task_Context* new_context);
-void arch_drop_to_user(vaddr user_kstack_bottom, vaddr entry);
+void arch_drop_to_user(struct trap_frame* tf);
 #endif

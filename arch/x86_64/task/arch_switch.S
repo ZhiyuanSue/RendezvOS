@@ -23,3 +23,10 @@ context_switch:
     popf
     // return
     ret
+
+	.section .text
+	.global arch_drop_to_user
+arch_drop_to_user:
+	cli
+	mov		%rdi,	%rsp
+	jmp arch_exit_kernel

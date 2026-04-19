@@ -25,3 +25,9 @@ context_switch:
 	ldp	x19,		x20,		[x1,#8*2]
     // return
     ret
+
+	.section	.text
+	.global		arch_drop_to_user
+arch_drop_to_user:
+	mov		SP,	X0
+	b		el0_sync_trap_exit

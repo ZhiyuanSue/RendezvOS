@@ -7,6 +7,7 @@
 #include <rendezvos/mm/allocator.h>
 #include <rendezvos/ipc/port.h>
 #include <rendezvos/sync/spin_lock.h>
+#include <rendezvos/panic.h>
 
 /*
 we first generate a context that after the return will goto thread entry（this
@@ -165,6 +166,12 @@ static void thread_release_owned_resources(Thread_Base* thread)
         msq_clean_queue(&thread->send_msg_queue, true, free_message_ref);
         msq_clean_queue(&thread->recv_msg_queue, true, free_message_ref);
 
+        if (thread->name) {
+                void* name_buf = (void*)thread->name;
+                thread->name = NULL;
+                cpu_kallocator->m_free(cpu_kallocator, name_buf);
+        }
+
         if (thread->kstack_bottom) {
                 void* thread_stack_start = (void*)thread->kstack_bottom
                                            - thread->kstack_num * PAGE_SIZE;
@@ -225,7 +232,7 @@ void del_init_parameter_structure(Thread_Init_Para* pm)
 }
 /*general thread create function*/
 Thread_Base* create_thread(void* __func, size_t append_thread_info_len,
-                           int nr_parameter, ...)
+                           bool reserve_trap_frame, int nr_parameter, ...)
 {
         struct allocator* cpu_kallocator = percpu(kallocator);
         Thread_Base* thread =
@@ -248,7 +255,8 @@ Thread_Base* create_thread(void* __func, size_t append_thread_info_len,
         memset(kstack, '\0', thread_kstack_page_num * PAGE_SIZE);
         arch_set_new_thread_ctx(&(thread->ctx),
                                 (void*)(thread_entry),
-                                kstack + thread_kstack_page_num * PAGE_SIZE);
+                                (void*)(thread->kstack_bottom),
+                                reserve_trap_frame);
         /*
         set the init parameter of the thread
         the parameter must no more then the NR_ABI_PARAMETER_INT_REG
@@ -479,4 +487,101 @@ Message_Port_t* thread_lookup_port(const char* name)
         thread_port_cache_record(self, name, &cold_tok);
 
         return port;
+}
+
+/*
+ * Child thread bootstrap: thread_entry → run_thread → here.
+ *
+ * int_para[0] = syscall return value for child.
+ *
+ * Parent's trap_frame was already copied to child's kstack save slot in
+ * copy_thread (by direct struct assignment). This function only sets the syscall
+ * return value in that copied frame and returns to user mode. It does NOT
+ * access parent's kstack.
+ */
+void run_copied_thread(u64 syscall_return_value)
+{
+        Thread_Base* current_thread = get_cpu_current_thread();
+
+        if (!current_thread || !current_thread->kstack_bottom) {
+                pr_error("[run_copied_thread] no current thread or kstack\n");
+                goto run_thread_end;
+        }
+        arch_return_to_user(
+                current_thread->kstack_bottom, NULL, syscall_return_value);
+run_thread_end:
+        pr_info("go back to thread entry and try to clean\n");
+        thread_or_flags(current_thread, THREAD_FLAG_EXIT_REQUESTED);
+        schedule(percpu(core_tm));
+}
+
+Thread_Base* copy_thread(Thread_Base* src_thread, Tcb_Base* target_task,
+                         u64 custom_return_value, size_t append_thread_info_len)
+{
+        struct trap_frame* src_trap_frame;
+        struct trap_frame* dst_trap_frame;
+        struct allocator* cpu_allocator = percpu(kallocator);
+
+        if (!src_thread || !target_task || !cpu_allocator) {
+                return NULL;
+        }
+
+        if (!(src_thread->flags & THREAD_FLAG_USER)) {
+                pr_error("[copy_thread] parent is not a user thread\n");
+                return NULL;
+        }
+
+        /*
+         * Same boot path as create_thread (thread_entry + init_parameter), then
+         * arch_ctx_merge_from_src copies user/callee-visible context from the
+         * source thread while preserving the new thread's kernel bootstrap
+         * fields (e.g. x86 rsp/stack_bottom, aarch64 sp_el1/LR).
+         */
+        Thread_Base* dst_thread = create_thread((void*)run_copied_thread,
+                                                append_thread_info_len,
+                                                true,
+                                                1,
+                                                custom_return_value);
+        if (!dst_thread) {
+                pr_error("[copy_thread] create_thread failed\n");
+                return NULL;
+        }
+
+        src_trap_frame = ((struct trap_frame*)(src_thread->kstack_bottom)) - 1;
+        dst_trap_frame = ((struct trap_frame*)(dst_thread->kstack_bottom)) - 1;
+        *dst_trap_frame = *src_trap_frame;
+
+        arch_ctx_merge_from_src(&dst_thread->ctx, &src_thread->ctx);
+
+        dst_thread->belong_tcb = target_task;
+        dst_thread->flags = src_thread->flags;
+
+        if (src_thread->name) {
+                size_t name_len = strlen(src_thread->name) + 1;
+                char* name_copy =
+                        cpu_allocator->m_alloc(cpu_allocator, name_len);
+
+                if (name_copy) {
+                        memcpy(name_copy, src_thread->name, name_len);
+                        dst_thread->name = name_copy;
+                } else {
+                        pr_error("[copy_thread] name alloc failed\n");
+                        dst_thread->name = NULL;
+                }
+        } else {
+                dst_thread->name = NULL;
+        }
+
+        if (append_thread_info_len > 0) {
+                memcpy(dst_thread->append_thread_info,
+                       src_thread->append_thread_info,
+                       append_thread_info_len);
+        }
+
+        thread_set_status(dst_thread, thread_status_ready);
+
+        pr_debug("[copy_thread] Created dst_thread thread tid=%d\n",
+                 dst_thread->tid);
+
+        return dst_thread;
 }

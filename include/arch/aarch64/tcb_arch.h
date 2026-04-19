@@ -4,6 +4,7 @@
 #include <common/types.h>
 #include <common/string.h>
 #include "sys_ctrl_def.h"
+#include <arch/aarch64/trap/trap.h>
 #define NR_AARCH64_CALLEE_SAVED_REGS 12
 
 /*
@@ -35,6 +36,25 @@ typedef struct {
         u64 tpidr_el0;
         u64 sp_el0;
 } Arch_Task_Context;
+
+/* Declared in arch-specific task/arch_thread.c (context merge & syscall-trap
+ * return). */
+void arch_ctx_merge_from_src(Arch_Task_Context* dst_ctx,
+                             const Arch_Task_Context* src_ctx);
+/*
+ * Return to user from syscall save area below kstack_bottom.
+ */
+void arch_return_to_user(u64 kstack_bottom,
+                         const struct trap_frame* template_tf, u64 syscall_ret);
+
+/* Zeroed EL0-shaped frame for first ELF entry; ELR = user entry. */
+static inline void arch_empty_drop_trap_frame(struct trap_frame* tf,
+                                                 vaddr entry_addr)
+{
+        memset(tf, 0, sizeof(*tf));
+        tf->ELR = (u64)entry_addr;
+}
+
 typedef struct {
         void* thread_func_ptr;
         u64 int_para[NR_ABI_PARAMETER_INT_REG];
@@ -45,9 +65,18 @@ static inline void arch_task_ctx_init(Arch_Task_Context* ctx)
         memset(&(ctx->regs), 0, sizeof(u64) * NR_AARCH64_CALLEE_SAVED_REGS);
 }
 static inline void arch_set_new_thread_ctx(Arch_Task_Context* ctx,
-                                           void* func_ptr, void* stack_bottom)
+                                           void* func_ptr, void* kstack_bottom,
+                                           bool reserve_trap_frame)
 {
-        ctx->sp_el1 = (u64)stack_bottom;
+        vaddr bottom = (vaddr)kstack_bottom;
+        vaddr sp = bottom;
+
+        if (reserve_trap_frame) {
+                sp = (vaddr)(((struct trap_frame*)bottom) - 1);
+                /* AAPCS64 requires SP 16-byte aligned; trap frame size 312 is not. */
+                sp &= ~(vaddr)0xfULL;
+        }
+        ctx->sp_el1 = (u64)sp;
         ctx->regs[aarch64_task_ctx_lr] = (u64)func_ptr;
         /*TODO:should I add spsr el1???*/
 }
@@ -63,5 +92,5 @@ static inline void arch_set_thread_user_sp(Arch_Task_Context* ctx,
 extern void context_switch(Arch_Task_Context* old_context,
                            Arch_Task_Context* new_context);
 void switch_to(Arch_Task_Context* old_context, Arch_Task_Context* new_context);
-void arch_drop_to_user(vaddr user_kstack_bottom, vaddr entry);
+void arch_drop_to_user(struct trap_frame* tf);
 #endif

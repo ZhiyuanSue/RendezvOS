@@ -177,7 +177,7 @@ error_t add_thread_to_manager(Task_Manager* core_tm, Thread_Base* thread);
 error_t del_thread_from_manager(Thread_Base* thread);
 
 Thread_Base* create_thread(void* __func, size_t append_thread_info_len,
-                           int nr_parameter, ...);
+                           bool reserve_trap_frame, int nr_parameter, ...);
 void delete_thread(Thread_Base* thread);
 error_t delete_task(Tcb_Base* tcb);
 
@@ -243,6 +243,11 @@ static inline void thread_set_name(char* name, Thread_Base* thread)
         thread->name = name;
 }
 error_t thread_join(Tcb_Base* task, Thread_Base* thread);
-void list_all_threads(Task_Manager* tm);
+
+void run_copied_thread(u64 syscall_return_value);
+struct Thread_Base* copy_thread(Thread_Base* parent_thread,
+                                Tcb_Base* target_task,
+                                u64 custom_return_value,
+                                size_t append_thread_info_len);
 
 #endif
