@@ -183,10 +183,8 @@ typedef enum {
  * will misinterpret the cached data. All fields are restored before lock
  * release.
  */
-error_t nexus_update_range_flags(struct nexus_node* nexus_root,
-                                 VS_Common* vs,
-                                 vaddr start_addr,
-                                 u64 length,
+error_t nexus_update_range_flags(struct nexus_node* nexus_root, VS_Common* vs,
+                                 vaddr start_addr, u64 length,
                                  nexus_range_flags_mode_t mode,
                                  ENTRY_FLAGS_t set_mask,
                                  ENTRY_FLAGS_t clear_mask);

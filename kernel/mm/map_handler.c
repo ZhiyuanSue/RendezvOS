@@ -137,7 +137,7 @@ void map_handler_unmap_slot(struct map_handler *handler, int slot_id)
 }
 
 error_t map_handler_copy_data_range(struct map_handler *handler,
-                                     paddr dst_paddr, paddr src_paddr, u64 len)
+                                    paddr dst_paddr, paddr src_paddr, u64 len)
 {
         if (!handler || len == 0)
                 return -E_IN_PARAM;

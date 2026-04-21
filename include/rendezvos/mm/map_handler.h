@@ -97,18 +97,13 @@ void map_handler_unmap_slot(struct map_handler* handler, int slot_id);
  * @return REND_SUCCESS on success; negative error code on failure.
  */
 error_t map_handler_copy_data_range(struct map_handler* handler,
-                                     paddr dst_paddr,
-                                     paddr src_paddr,
-                                     u64 len);
+                                    paddr dst_paddr, paddr src_paddr, u64 len);
 
 static inline error_t map_handler_copy_page(struct map_handler* handler,
-                                                ppn_t dst_ppn,
-                                                ppn_t src_ppn)
+                                            ppn_t dst_ppn, ppn_t src_ppn)
 {
-        return map_handler_copy_data_range(handler,
-                                            PADDR(dst_ppn),
-                                            PADDR(src_ppn),
-                                            PAGE_SIZE);
+        return map_handler_copy_data_range(
+                handler, PADDR(dst_ppn), PADDR(src_ppn), PAGE_SIZE);
 }
 
 /*

@@ -144,7 +144,7 @@ static error_t nexus_update_node(VS_Common* vs, struct map_handler* handler,
 static void nexus_rb_tree_insert(struct nexus_node* node,
                                  struct rb_root* vspace_root)
 {
-        struct rb_node **new = &vspace_root->rb_root, *parent = NULL;
+        struct rb_node** new = &vspace_root->rb_root, *parent = NULL;
         u64 key = node->addr;
         while (*new) {
                 parent = *new;
@@ -164,7 +164,7 @@ static void nexus_rb_tree_insert(struct nexus_node* node,
 static void nexus_rb_tree_vspace_insert(struct nexus_node* vspace_node,
                                         struct rb_root* vspace_rb_root)
 {
-        struct rb_node **new = &vspace_rb_root->rb_root, *parent = NULL;
+        struct rb_node** new = &vspace_rb_root->rb_root, *parent = NULL;
         u64 key = vspace_node->vs_common->vspace_root_addr;
         while (*new) {
                 parent = *new;
@@ -897,10 +897,10 @@ cow_error:
         return -E_RENDEZVOS;
 }
 
-static inline ENTRY_FLAGS_t nexus_range_compute_flags(nexus_range_flags_mode_t mode,
-                                                      ENTRY_FLAGS_t old_flags,
-                                                      ENTRY_FLAGS_t set_mask,
-                                                      ENTRY_FLAGS_t clear_mask)
+static inline ENTRY_FLAGS_t
+nexus_range_compute_flags(nexus_range_flags_mode_t mode,
+                          ENTRY_FLAGS_t old_flags, ENTRY_FLAGS_t set_mask,
+                          ENTRY_FLAGS_t clear_mask)
 {
         switch (mode) {
         case NEXUS_RANGE_FLAGS_ABSOLUTE:
@@ -920,18 +920,16 @@ static inline ENTRY_FLAGS_t nexus_range_compute_flags(nexus_range_flags_mode_t m
  * - update_list contains unique nodes to be updated, linked via aux_list.
  * - For each node:
  *   - cache_data.cached_ppn is valid ppn for node->addr in vs page tables.
- *   - cache_data.cached_flags is the original node->region_flags (for rollback).
+ *   - cache_data.cached_flags is the original node->region_flags (for
+ * rollback).
  *
  * On return, always detaches aux_list and clears cache_data for nodes in
  * update_list (via cleanup_aux_list).
  */
-static error_t nexus_update_flags_list_core(VS_Common* vs,
-                                             struct map_handler* handler,
-                                             struct pmm* pmm_ptr,
-                                             struct list_entry* update_list,
-                                             nexus_range_flags_mode_t mode,
-                                             ENTRY_FLAGS_t set_mask,
-                                             ENTRY_FLAGS_t clear_mask)
+static error_t nexus_update_flags_list_core(
+        VS_Common* vs, struct map_handler* handler, struct pmm* pmm_ptr,
+        struct list_entry* update_list, nexus_range_flags_mode_t mode,
+        ENTRY_FLAGS_t set_mask, ENTRY_FLAGS_t clear_mask)
 {
         if (!vs || !handler || !pmm_ptr || !update_list)
                 return -E_IN_PARAM;
@@ -940,16 +938,18 @@ static error_t nexus_update_flags_list_core(VS_Common* vs,
         int updated_count = 0;
 
         /* Batch update page tables and nexus flags with full rollback */
-        for (struct list_entry* entry = update_list->next;
-             entry != update_list;
+        for (struct list_entry* entry = update_list->next; entry != update_list;
              entry = entry->next) {
                 struct nexus_node* node =
                         container_of(entry, struct nexus_node, aux_list);
 
                 /* Cached ppn from Phase 1 (stored in cache_data) */
                 ppn_t ppn = node->cache_data.cached_ppn;
-                ENTRY_FLAGS_t desired = nexus_range_compute_flags(
-                        mode, node->cache_data.cached_flags, set_mask, clear_mask);
+                ENTRY_FLAGS_t desired =
+                        nexus_range_compute_flags(mode,
+                                                  node->cache_data.cached_flags,
+                                                  set_mask,
+                                                  clear_mask);
 
                 bool huge = (node->region_flags & PAGE_ENTRY_HUGE) != 0;
                 if (huge) {
@@ -1006,7 +1006,6 @@ rollback:
         return ret;
 }
 
-
 /*
  * Apply a flags delta to all 4K user leaf mappings recorded in vspace nexus.
  *
@@ -1018,10 +1017,10 @@ rollback:
  * Caller must hold vs->nexus_vspace_lock.
  */
 static error_t _vspace_update_user_leaf_flags(VS_Common* vs,
-                                             struct nexus_node* vspace_node,
-                                             ENTRY_FLAGS_t set_mask,
-                                             ENTRY_FLAGS_t clear_mask,
-                                             struct map_handler* handler)
+                                              struct nexus_node* vspace_node,
+                                              ENTRY_FLAGS_t set_mask,
+                                              ENTRY_FLAGS_t clear_mask,
+                                              struct map_handler* handler)
 {
         if (!vs || !vspace_node || !handler)
                 return -E_IN_PARAM;
@@ -1034,8 +1033,8 @@ static error_t _vspace_update_user_leaf_flags(VS_Common* vs,
         for (struct list_entry* list_node = vspace_node->_vspace_list.next;
              list_node != &vspace_node->_vspace_list;
              list_node = list_node->next) {
-                struct nexus_node* node =
-                        container_of(list_node, struct nexus_node, _vspace_list);
+                struct nexus_node* node = container_of(
+                        list_node, struct nexus_node, _vspace_list);
                 vaddr va = node->addr;
                 if (va >= KERNEL_VIRT_OFFSET)
                         continue;
@@ -1063,12 +1062,12 @@ static error_t _vspace_update_user_leaf_flags(VS_Common* vs,
         }
 
         return nexus_update_flags_list_core(vs,
-                                             handler,
-                                             vs->pmm,
-                                             &update_list,
-                                             NEXUS_RANGE_FLAGS_DELTA,
-                                             set_mask,
-                                             clear_mask);
+                                            handler,
+                                            vs->pmm,
+                                            &update_list,
+                                            NEXUS_RANGE_FLAGS_DELTA,
+                                            set_mask,
+                                            clear_mask);
 
 cleanup_fail:
         cleanup_aux_list(&update_list, NULL);
@@ -1164,7 +1163,7 @@ error_t vspace_clone(VS_Common* src_vs, VS_Common** dst_vs_out,
                                                       src_flags,
                                                       src_ppn,
                                                       handler);
-                        if (ret != REND_SUCCESS){
+                        if (ret != REND_SUCCESS) {
                                 unlock_cas(&src_vs->nexus_vspace_lock);
                                 goto out_free_vspace;
                         }
@@ -1200,7 +1199,7 @@ error_t vspace_clone(VS_Common* src_vs, VS_Common** dst_vs_out,
                                                 src_flags,
                                                 src_ppn,
                                                 handler);
-                        if (ret != REND_SUCCESS){
+                        if (ret != REND_SUCCESS) {
                                 unlock_cas(&src_vs->nexus_vspace_lock);
                                 goto out_free_vspace;
                         }
@@ -1753,10 +1752,8 @@ error_t free_pages(void* p, int page_num, VS_Common* vs,
         return res;
 }
 
-error_t nexus_update_range_flags(struct nexus_node* nexus_root,
-                                 VS_Common* vs,
-                                 vaddr start_addr,
-                                 u64 length,
+error_t nexus_update_range_flags(struct nexus_node* nexus_root, VS_Common* vs,
+                                 vaddr start_addr, u64 length,
                                  nexus_range_flags_mode_t mode,
                                  ENTRY_FLAGS_t set_mask,
                                  ENTRY_FLAGS_t clear_mask)
@@ -1850,13 +1847,8 @@ error_t nexus_update_range_flags(struct nexus_node* nexus_root,
          * Phase 2: update + rollback core. Also cleans aux_list/cache_data for
          * all nodes in update_list on all paths.
          */
-        ret = nexus_update_flags_list_core(vs,
-                                            handler,
-                                            pmm_ptr,
-                                            &update_list,
-                                            mode,
-                                            set_mask,
-                                            clear_mask);
+        ret = nexus_update_flags_list_core(
+                vs, handler, pmm_ptr, &update_list, mode, set_mask, clear_mask);
 
 cleanup:
         /* phase2 core already cleaned update_list; safe to call again. */

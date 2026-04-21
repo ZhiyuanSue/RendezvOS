@@ -11,8 +11,9 @@
 #define _X86_64_TRAP_DEF_H_
 
 /* Page Fault error code bits (Intel SDM Vol. 3A 6.15) */
-#define X86_PF_EC_PRESENT 0x1 /* bit 0: 0=not present, 1=protection violation \
-                               */
+#define X86_PF_EC_PRESENT                                   \
+        0x1 /* bit 0: 0=not present, 1=protection violation \
+             */
 #define X86_PF_EC_WRITE    0x2 /* bit 1: 0=read, 1=write */
 #define X86_PF_EC_USER     0x4 /* bit 2: 0=kernel, 1=user */
 #define X86_PF_EC_RESERVED 0x8 /* bit 3: reserved */
