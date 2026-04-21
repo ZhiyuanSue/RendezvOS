@@ -17,7 +17,7 @@ void kernel_panic(const char* msg)
         arch_shutdown();
 
         pr_error("[kernel panic] goto unreachable place,halt\n");
-        while(1){
+        while (1) {
                 arch_cpu_relax();
         }
 }
@@ -27,7 +27,7 @@ void kernel_halt(void)
         arch_shutdown();
 
         pr_error("[kernel halt] goto unreachable place,halt\n");
-        while(1){
+        while (1) {
                 arch_cpu_relax();
         }
 }

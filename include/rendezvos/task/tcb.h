@@ -246,8 +246,7 @@ error_t thread_join(Tcb_Base* task, Thread_Base* thread);
 
 void run_copied_thread(u64 syscall_return_value);
 struct Thread_Base* copy_thread(Thread_Base* parent_thread,
-                                Tcb_Base* target_task,
-                                u64 custom_return_value,
+                                Tcb_Base* target_task, u64 custom_return_value,
                                 size_t append_thread_info_len);
 
 #endif

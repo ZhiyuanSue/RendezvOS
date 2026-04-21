@@ -49,7 +49,7 @@ void arch_return_to_user(u64 kstack_bottom,
 
 /* Zeroed EL0-shaped frame for first ELF entry; ELR = user entry. */
 static inline void arch_empty_drop_trap_frame(struct trap_frame* tf,
-                                                 vaddr entry_addr)
+                                              vaddr entry_addr)
 {
         memset(tf, 0, sizeof(*tf));
         tf->ELR = (u64)entry_addr;
@@ -73,7 +73,8 @@ static inline void arch_set_new_thread_ctx(Arch_Task_Context* ctx,
 
         if (reserve_trap_frame) {
                 sp = (vaddr)(((struct trap_frame*)bottom) - 1);
-                /* AAPCS64 requires SP 16-byte aligned; trap frame size 312 is not. */
+                /* AAPCS64 requires SP 16-byte aligned; trap frame size 312 is
+                 * not. */
                 sp &= ~(vaddr)0xfULL;
         }
         ctx->sp_el1 = (u64)sp;

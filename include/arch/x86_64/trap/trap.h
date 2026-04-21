@@ -3,45 +3,46 @@
 #include <common/types.h>
 #include <common/stdbool.h>
 #include <arch/x86_64/desc.h>
-#include <rendezvos/trap_common.h>  /* For TRAP_COMMON and enum trap_class */
-#include "trap_def.h"               /* For PF error code bits */
+#include <rendezvos/trap_common.h> /* For TRAP_COMMON and enum trap_class */
+#include "trap_def.h" /* For PF error code bits */
 
 #define NR_IRQ             256
 #define TRAP_ID(trap_info) (trap_info)
 enum TRAP_NUM {
-        TRAP_DE,          /* 0: Divide Error */
-        TRAP_DB,          /* 1: Debug Exception */
-        TRAP_NMI,         /* 2: Non-Maskable Interrupt */
-        TRAP_BP,          /* 3: Breakpoint */
-        TRAP_OF,          /* 4: Overflow */
-        TRAP_BR,          /* 5: BOUND Range Exceeded */
-        TRAP_UD,          /* 6: Invalid Opcode */
-        TRAP_NM,          /* 7: Device Not Available (No Math) */
-        TRAP_DF,          /* 8: Double Fault */
-        TRAP_CSO,         /* 9: Coprocessor Segment Overrun (obsolete) */
-        TRAP_TS,          /* 10: Invalid TSS */
-        TRAP_NP,          /* 11: Segment Not Present */
-        TRAP_SS,          /* 12: Stack-Segment Fault */
-        TRAP_GP,          /* 13: General Protection */
-        TRAP_PF,          /* 14: Page Fault */
-        TRAP_RESERVED,    /* 15: Reserved */
-        TRAP_MF,          /* 16: x87 FPU Floating-Point Error */
-        TRAP_AC,          /* 17: Alignment Check */
-        TRAP_MC,          /* 18: Machine Check */
-        TRAP_XM,          /* 19: SIMD Floating-Point Exception */
-        TRAP_VE,          /* 20: Virtualization Exception */
-        TRAP_21 = 21,     /* Reserved (Intel-defined) */
-        TRAP_22 = 22,     /* Reserved */
-        TRAP_23 = 23,     /* Reserved */
-        TRAP_24 = 24,     /* Reserved */
-        TRAP_25 = 25,     /* Reserved */
-        TRAP_26 = 26,     /* Reserved */
-        TRAP_27 = 27,     /* Reserved */
-        TRAP_28 = 28,     /* Reserved */
-        TRAP_29 = 29,     /* Reserved */
-        TRAP_SE,          /* 30: Security Exception */
-        TRAP_31 = 31,     /* Reserved */
-        TRAP_ARCH_USED,   /* Upper boundary (32): defines array size for x86_trap_class_map[] */
+        TRAP_DE, /* 0: Divide Error */
+        TRAP_DB, /* 1: Debug Exception */
+        TRAP_NMI, /* 2: Non-Maskable Interrupt */
+        TRAP_BP, /* 3: Breakpoint */
+        TRAP_OF, /* 4: Overflow */
+        TRAP_BR, /* 5: BOUND Range Exceeded */
+        TRAP_UD, /* 6: Invalid Opcode */
+        TRAP_NM, /* 7: Device Not Available (No Math) */
+        TRAP_DF, /* 8: Double Fault */
+        TRAP_CSO, /* 9: Coprocessor Segment Overrun (obsolete) */
+        TRAP_TS, /* 10: Invalid TSS */
+        TRAP_NP, /* 11: Segment Not Present */
+        TRAP_SS, /* 12: Stack-Segment Fault */
+        TRAP_GP, /* 13: General Protection */
+        TRAP_PF, /* 14: Page Fault */
+        TRAP_RESERVED, /* 15: Reserved */
+        TRAP_MF, /* 16: x87 FPU Floating-Point Error */
+        TRAP_AC, /* 17: Alignment Check */
+        TRAP_MC, /* 18: Machine Check */
+        TRAP_XM, /* 19: SIMD Floating-Point Exception */
+        TRAP_VE, /* 20: Virtualization Exception */
+        TRAP_21 = 21, /* Reserved (Intel-defined) */
+        TRAP_22 = 22, /* Reserved */
+        TRAP_23 = 23, /* Reserved */
+        TRAP_24 = 24, /* Reserved */
+        TRAP_25 = 25, /* Reserved */
+        TRAP_26 = 26, /* Reserved */
+        TRAP_27 = 27, /* Reserved */
+        TRAP_28 = 28, /* Reserved */
+        TRAP_29 = 29, /* Reserved */
+        TRAP_SE, /* 30: Security Exception */
+        TRAP_31 = 31, /* Reserved */
+        TRAP_ARCH_USED, /* Upper boundary (32): defines array size for
+                           x86_trap_class_map[] */
 };
 
 /*
@@ -72,24 +73,26 @@ struct x86_64_trap_info {
         TRAP_COMMON
 
         /* x86-specific parsed fields */
-        u64 cr2;                    /* Page fault address (from CR2) */
+        u64 cr2; /* Page fault address (from CR2) */
 
         /* Detailed PF error code parsing */
         struct {
-                u8 page_present:1;
-                u8 write_access:1;
-                u8 user_mode:1;
-                u8 reserved_bit:1;
-                u8 instruction_fetch:1;
-                u8 protection_key:1;
-                u8 shadow_stack:1;
-                u8 hv_mmio:1;
-                u32 reserved_bits:24;
+                u8 page_present : 1;
+                u8 write_access : 1;
+                u8 user_mode : 1;
+                u8 reserved_bit : 1;
+                u8 instruction_fetch : 1;
+                u8 protection_key : 1;
+                u8 shadow_stack : 1;
+                u8 hv_mmio : 1;
+                u32 reserved_bits : 24;
         } pf_ec;
 };
 
-/* Parse tf into architecture-specific trap info (used by fixed-trap wrapper). */
-void arch_populate_trap_info(struct trap_frame *tf, struct x86_64_trap_info *info);
+/* Parse tf into architecture-specific trap info (used by fixed-trap wrapper).
+ */
+void arch_populate_trap_info(struct trap_frame *tf,
+                             struct x86_64_trap_info *info);
 
 struct trap_frame {
         u64 trap_info;

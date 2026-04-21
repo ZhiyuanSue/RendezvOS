@@ -41,8 +41,7 @@ void arch_ctx_merge_from_src(Arch_Task_Context* dst_ctx,
 }
 
 void arch_return_to_user(u64 kstack_bottom,
-                         const struct trap_frame* template_tf,
-                         u64 syscall_ret)
+                         const struct trap_frame* template_tf, u64 syscall_ret)
 {
         struct trap_frame* dst_tf;
 

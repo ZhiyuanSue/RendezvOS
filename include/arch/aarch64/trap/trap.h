@@ -28,16 +28,17 @@ struct aarch64_trap_info {
 
         /* ARM-specific parsed fields */
         struct {
-                u32 ec:6;            /* Exception Class [5:0] */
-                u32 iss:25;          /* Instruction Specific Syndrome [24:0] */
-                u8 dfsc:6;           /* Data Fault Status Code */
-                u8 ifsc:6;           /* Instruction Fault Status Code */
-                u8 wnR:1;            /* Write not Read */
-                u8 isv:1;            /* Instruction Syndrome Valid */
+                u32 ec : 6; /* Exception Class [5:0] */
+                u32 iss : 25; /* Instruction Specific Syndrome [24:0] */
+                u8 dfsc : 6; /* Data Fault Status Code */
+                u8 ifsc : 6; /* Instruction Fault Status Code */
+                u8 wnR : 1; /* Write not Read */
+                u8 isv : 1; /* Instruction Syndrome Valid */
         } esr_fields;
 };
 
-void arch_populate_trap_info(struct trap_frame *tf, struct aarch64_trap_info *info);
+void arch_populate_trap_info(struct trap_frame *tf,
+                             struct aarch64_trap_info *info);
 
 struct trap_frame {
 #define AARCH64_TRAP_SRC_EL_SHIFT (56)

@@ -35,16 +35,23 @@ typedef u64 vpn_t;
 #define VADDR(vpn)  ((vaddr)((vpn_t)(vpn) << 12))
 
 enum ENTRY_FLAGS {
-        PAGE_ENTRY_NONE = 1 << 0,
-        PAGE_ENTRY_VALID = 1 << 1,
-        PAGE_ENTRY_WRITE = 1 << 2,
-        PAGE_ENTRY_READ = 1 << 3,
-        PAGE_ENTRY_EXEC = 1 << 4,
-        PAGE_ENTRY_USER = 1 << 5,
-        PAGE_ENTRY_DEVICE = 1 << 6,
-        PAGE_ENTRY_UNCACHED = 1 << 7,
-        PAGE_ENTRY_GLOBAL = 1 << 8,
-        PAGE_ENTRY_HUGE = 1 << 9,
+        PAGE_ENTRY_NONE = (1ULL << 0),
+        PAGE_ENTRY_VALID = (1ULL << 1),
+        PAGE_ENTRY_WRITE = (1ULL << 2),
+        PAGE_ENTRY_READ = (1ULL << 3),
+        PAGE_ENTRY_EXEC = (1ULL << 4),
+        PAGE_ENTRY_USER = (1ULL << 5),
+        PAGE_ENTRY_DEVICE = (1ULL << 6),
+        PAGE_ENTRY_UNCACHED = (1ULL << 7),
+        PAGE_ENTRY_GLOBAL = (1ULL << 8),
+        PAGE_ENTRY_HUGE = (1ULL << 9),
+        /*
+         * Map option (software-only): allow replacing an existing leaf mapping
+         * with a different physical page (remap semantics).
+         *
+         * Must be stripped before arch_decode_flags().
+         */
+        PAGE_ENTRY_REMAP = (1ULL << 63),
 
 };
 typedef u64 ENTRY_FLAGS_t;

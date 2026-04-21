@@ -19,16 +19,19 @@
 struct nexus_node {
         /*
          * manage_free_list vs cache_data union:
-         * - For manager nodes: used as manage_free_list (linked list of manager pages)
-         * - For normal nodes: can be repurposed as cache_data for temporary operations
-         *   IMPORTANT: When using as cache_data, the function must hold vspace lock
-         *   to prevent is_page_manage_node() checks while fields are repurposed.
+         * - For manager nodes: used as manage_free_list (linked list of manager
+         * pages)
+         * - For normal nodes: can be repurposed as cache_data for temporary
+         * operations IMPORTANT: When using as cache_data, the function must
+         * hold vspace lock to prevent is_page_manage_node() checks while fields
+         * are repurposed.
          */
         union {
-                struct list_entry manage_free_list;  // Manager node usage
+                struct list_entry manage_free_list; // Manager node usage
                 struct {
-                        ppn_t cached_ppn;           // Cached physical page number
-                        ENTRY_FLAGS_t cached_flags;  // Cached original flags for rollback
+                        ppn_t cached_ppn; // Cached physical page number
+                        ENTRY_FLAGS_t cached_flags; // Cached original flags for
+                                                    // rollback
                 } cache_data;
         };
         struct list_entry aux_list;
@@ -87,6 +90,12 @@ struct nexus_node* init_nexus(struct map_handler* handler);
 /*vspace*/
 struct nexus_node* nexus_create_vspace_root_node(struct nexus_node* nexus_root,
                                                  VS_Common* vs);
+
+typedef u64 vspace_clone_flags_t;
+
+error_t vspace_clone(VS_Common* src_vs, VS_Common** dst_vs_out,
+                     vspace_clone_flags_t flags, struct nexus_node* nexus_root);
+
 /* nexus_root: per-CPU root from init_nexus (owns _vspace_rb_root). Not the node
  * returned by nexus_create_vspace_root_node (that is the per-vspace root). */
 void nexus_delete_vspace(struct nexus_node* nexus_root, VS_Common* vs);
@@ -135,6 +144,20 @@ error_t user_unfill_range(void* p, int page_num, VS_Common* vs,
 error_t unfill_phy_page(MemZone* zone, ppn_t ppn, u64 new_entry_addr);
 
 /*
+ * @brief Update flags for an already-mapped user range with full rollback.
+ *
+ * mode == NEXUS_RANGE_FLAGS_ABSOLUTE:
+ *   desired = set_mask (new_flags)
+ *
+ * mode == NEXUS_RANGE_FLAGS_DELTA:
+ *   desired = (old | set_mask) & ~clear_mask
+ */
+typedef enum {
+        NEXUS_RANGE_FLAGS_ABSOLUTE = 0,
+        NEXUS_RANGE_FLAGS_DELTA = 1,
+} nexus_range_flags_mode_t;
+
+/*
  * @brief Update mapping flags on a user vspace range with full rollback support
  *
  * @param nexus_root: per-CPU nexus root for vspace lookup
@@ -149,20 +172,30 @@ error_t unfill_phy_page(MemZone* zone, ppn_t ppn, u64 new_entry_addr);
  * - Range is [start_addr, start_addr + length), page-aligned.
  * - All pages in range must already be mapped in `vs`'s nexus tree.
  * - Updates both nexus_node::region_flags and page-table entries.
- * - Either all pages are updated successfully, or all are restored to original state.
+ * - Either all pages are updated successfully, or all are restored to original
+ * state.
  *
  * @note This is a generic "nexus as truth source" operation with full rollback.
  *       Remains Linux-agnostic (used by Linux mprotect, COW bookkeeping, etc.).
  *
- * @note This function repurposes manage_free_list as cache_data during execution.
- *       The vspace lock ensures no concurrent is_page_manage_node() checks will
- *       misinterpret the cached data. All fields are restored before lock release.
+ * @note This function repurposes manage_free_list as cache_data during
+ * execution. The vspace lock ensures no concurrent is_page_manage_node() checks
+ * will misinterpret the cached data. All fields are restored before lock
+ * release.
  */
 error_t nexus_update_range_flags(struct nexus_node* nexus_root,
                                  VS_Common* vs,
                                  vaddr start_addr,
                                  u64 length,
-                                 ENTRY_FLAGS_t new_flags);
+                                 nexus_range_flags_mode_t mode,
+                                 ENTRY_FLAGS_t set_mask,
+                                 ENTRY_FLAGS_t clear_mask);
+
+/*
+ * @brief Remap one existing user 4K leaf: change PTE ppn and/or flags.
+ */
+error_t nexus_remap_user_leaf(VS_Common* vs, vaddr va, ppn_t new_ppn,
+                              ENTRY_FLAGS_t new_flags, ppn_t expect_old_ppn);
 
 /* Kernel VA -> owning CPU for kmem routing: walks rmap under pmm lock; kernel
  * heap uses `cpu_id` on KERNEL_HEAP_REF vs_common (not global root). */

@@ -495,9 +495,9 @@ Message_Port_t* thread_lookup_port(const char* name)
  * int_para[0] = syscall return value for child.
  *
  * Parent's trap_frame was already copied to child's kstack save slot in
- * copy_thread (by direct struct assignment). This function only sets the syscall
- * return value in that copied frame and returns to user mode. It does NOT
- * access parent's kstack.
+ * copy_thread (by direct struct assignment). This function only sets the
+ * syscall return value in that copied frame and returns to user mode. It does
+ * NOT access parent's kstack.
  */
 void run_copied_thread(u64 syscall_return_value)
 {

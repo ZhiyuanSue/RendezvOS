@@ -110,6 +110,16 @@ typedef struct VS_Common {
         };
 } VS_Common;
 
+enum vspace_clone_flag_bits {
+        /*must be set, for the kernel pages allow the 2M，but the user only
+           allow 4K*/
+        VSPACE_CLONE_F_USER_4K_ONLY = (1ULL << 0),
+        /*the whole page table tree is copied,only L3 entry shared*/
+        VSPACE_CLONE_F_COW_PREP = (1ULL << 1),
+        /*the L3 entry point to new pages*/
+        VSPACE_CLONE_F_COPY_PAGES = (1ULL << 2),
+};
+
 static inline bool vs_common_is_heap_ref(const VS_Common* vs)
 {
         return vs && vs->type == (u64)VS_COMMON_KERNEL_HEAP_REF;

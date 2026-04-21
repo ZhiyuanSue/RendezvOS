@@ -187,17 +187,23 @@ int nexus_test(void)
                                  PAGE_ENTRY_READ | PAGE_ENTRY_VALID);
         if (!p4)
                 return -E_REND_TEST;
-        error_t pe = nexus_update_range_flags(
-                percpu(nexus_root),
-                vs,
-                (vaddr)p4 + PAGE_SIZE,
-                2 * PAGE_SIZE,
-                PAGE_ENTRY_READ | PAGE_ENTRY_VALID | PAGE_ENTRY_WRITE);
+        error_t pe = nexus_update_range_flags(percpu(nexus_root),
+                                              vs,
+                                              (vaddr)p4 + PAGE_SIZE,
+                                              2 * PAGE_SIZE,
+                                              NEXUS_RANGE_FLAGS_ABSOLUTE,
+                                              PAGE_ENTRY_READ | PAGE_ENTRY_VALID
+                                                      | PAGE_ENTRY_WRITE,
+                                              0);
         if (pe != REND_SUCCESS)
                 return -E_REND_TEST;
         ENTRY_FLAGS_t f1 = 0, f2 = 0;
         int level1 = 0, level2 = 0;
-        if (have_mapped(vs, VPN((vaddr)p4 + PAGE_SIZE), &f1, &level1, &percpu(Map_Handler))
+        if (have_mapped(vs,
+                        VPN((vaddr)p4 + PAGE_SIZE),
+                        &f1,
+                        &level1,
+                        &percpu(Map_Handler))
                     <= 0
             || have_mapped(vs,
                            VPN((vaddr)p4 + 2 * PAGE_SIZE),

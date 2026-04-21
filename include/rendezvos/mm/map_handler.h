@@ -51,7 +51,8 @@ ppn_t unmap(VS_Common* vs, vpn_t vpn, u64 new_entry_addr,
  * @param vs : The address space need to find
  * @param vpn : the vpn need to query
  * @param entry_flags_out : optional encoded flags for the final matched entry
- * @param entry_level_out : optional final matched entry level (2 for huge, 3 for 4K)
+ * @param entry_level_out : optional final matched entry level (2 for huge, 3
+ * for 4K)
  * @param handler : the map handler that used
  *
  * @return i64 : >0, the ppn that vpn mapped, ==0, not mapped, maybe the value
@@ -61,22 +62,80 @@ ppn_t have_mapped(VS_Common* vs, vpn_t vpn, ENTRY_FLAGS_t* entry_flags_out,
                   int* entry_level_out, struct map_handler* handler);
 
 /*
-        in order to generate a new vspace
-        we should use the following function
-        but, conside that sometimes we just want to copy the kernel part
-        sometimes, we need to copy the kernel and user part
-        so we must add a parameter: old_vs_root_paddr
-        if it's 0, it's seems as it try to only copy the kernel part
-        if it's not 0, we just copy the kernel and user part
+ * @brief Temporarily map a physical page into a per-CPU handler
+ * mapping window.
+ *
+ * @param handler  Per-CPU map handler.
+ * @param slot_id     Window slot index in [0, 4). Caller is responsible for
+ *                 avoiding conflicts with concurrent map/unmap/have_mapped
+ *                 usage on the same handler.
+ * @param ppn
+ *
+ * @return Kernel virtual address for the mapped page, or 0 on error.
+ */
+vaddr map_handler_map_slot(struct map_handler* handler, int slot_id, ppn_t ppn);
 
-        besides,we have to consider that under the aarch64,
-        we have ttbr0 and ttbr1,
-        so copy kernel part is meaningless here,
-        but we also copy it for compatible,
+/*
+ * @brief Invalidate the mapping window slot after use.
+ *
+ * @param handler  Per-CPU map handler.
+ * @param slot_id  Window slot index in [0, 4).
+ */
+void map_handler_unmap_slot(struct map_handler* handler, int slot_id);
 
-        as for there might have COW(copy on write)
-        it's TODO
-*/
+/*
+ * @brief Copy a physical memory range using the per-CPU mapping window.
+ *
+ * This is a low-level helper for COW split / vspace clone / page migration.
+ * It does not assume a permanent phys->kva mapping.
+ *
+ * @param handler   Per-CPU map handler.
+ * @param dst_paddr Destination physical address (may be unaligned).
+ * @param src_paddr Source physical address (may be unaligned).
+ * @param len       Bytes to copy.
+ *
+ * @return REND_SUCCESS on success; negative error code on failure.
+ */
+error_t map_handler_copy_data_range(struct map_handler* handler,
+                                     paddr dst_paddr,
+                                     paddr src_paddr,
+                                     u64 len);
+
+static inline error_t map_handler_copy_page(struct map_handler* handler,
+                                                ppn_t dst_ppn,
+                                                ppn_t src_ppn)
+{
+        return map_handler_copy_data_range(handler,
+                                            PADDR(dst_ppn),
+                                            PADDR(src_ppn),
+                                            PAGE_SIZE);
+}
+
+/*
+ * @brief Allocate a new top-level (L0) page-table root for a table vspace.
+ *
+ * Layering: this is a **low-level** primitive. It always seeds the **kernel
+ * half** of the L0 page from the shared template (`L0_table`). The **user
+ * half** (lower half of that same physical page in this layout) is either
+ * zeroed or **shallow-copied** from another root — see below.
+ *
+ * @param old_vs_root_paddr  Physical address of an **existing** L0 root to
+ *                           copy from, or 0.
+ *   - **0**: `memset` the user half of the new L0 to empty (typical new user
+ *     address space before nexus/map fills it).
+ *   - **Non-0**: `memcpy` the **user half of L0 only** (first-level entries)
+ *     from that root into the new root. This duplicates **pointers** into the
+ *     same lower-level page tables as the source; it is **not** a full
+ *     vspace clone and does **not** by itself establish COW or nexus truth.
+ *     Upper layers (e.g. `vspace_clone` + nexus) own fork/COW semantics.
+ *
+ * @param handler  Per-CPU map handler (must match the CPU doing the alloc).
+ *
+ * @return Physical address of the new L0 root, or 0 on failure.
+ *
+ * AArch64 note: TTBR0/TTBR1 split means “kernel half” here is layout/policy;
+ * we still fill it for a uniform API across architectures.
+ */
 paddr new_vs_root(paddr old_vs_root_paddr, struct map_handler* handler);
 error_t vspace_free_user_pt(VS_Common* vs, struct map_handler* handler);
 error_t vspace_free_root_page(VS_Common* vs, struct map_handler* handler);

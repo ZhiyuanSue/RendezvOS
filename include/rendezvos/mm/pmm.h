@@ -232,6 +232,67 @@ static inline void pmm_unlock(struct pmm* pmm)
         unlock_mcs(&pmm->spin_ptr, &percpu(pmm_spin_lock[pmm->zone->zone_id]));
 }
 
+/*
+ * @brief Increase or decrease reference counts for a range of physical pages
+ * @param pmm: physical memory manager
+ * @param start_ppn: starting physical page number
+ * @param page_number: number of pages to modify
+ * @param increment: true to increase ref_count, false to decrease
+ * @return: REND_SUCCESS on success, error code on failure
+ *
+ * On failure, automatically rolls back any changes made during this call.
+ */
+static inline error_t pmm_change_pages_ref(struct pmm* pmm, ppn_t start_ppn,
+                                           size_t page_number, bool increment)
+{
+        if (!pmm || !pmm->zone || page_number == 0)
+                return -E_IN_PARAM;
+        if (!ppn_in_Zone(pmm->zone, start_ppn))
+                return -E_IN_PARAM;
+
+        ZonePageCursor cur;
+        if (!zone_page_cursor_init(&cur, pmm->zone, start_ppn))
+                return -E_IN_PARAM;
+
+        pmm_lock(pmm);
+        size_t i;
+        for (i = 0; i < page_number; i++) {
+                Page* p = zone_page_cursor_page(&cur);
+                if (!p)
+                        goto fail_unroll;
+
+                if (increment)
+                        phy_Page_ref_plus(p);
+                else
+                        phy_Page_ref_minus(p);
+
+                if (i + 1 < page_number) {
+                        if (!zone_page_cursor_next(&cur))
+                                goto fail_unroll;
+                }
+        }
+        pmm_unlock(pmm);
+        return REND_SUCCESS;
+
+fail_unroll:
+        ZonePageCursor unroll_cur;
+        if (zone_page_cursor_init(&unroll_cur, pmm->zone, start_ppn)) {
+                for (size_t j = 0; j < i; j++) {
+                        Page* p = zone_page_cursor_page(&unroll_cur);
+                        if (p) {
+                                if (increment)
+                                        phy_Page_ref_minus(p);
+                                else
+                                        phy_Page_ref_plus(p);
+                        }
+                        if (j + 1 < i)
+                                zone_page_cursor_next(&unroll_cur);
+                }
+        }
+        pmm_unlock(pmm);
+        return -E_RENDEZVOS;
+}
+
 static inline void pmm_zone_lock(MemZone* zone)
 {
         if (!zone || !zone->pmm)

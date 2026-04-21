@@ -29,9 +29,8 @@ struct irq {
 };
 
 extern struct irq irq_handler[NR_IRQ];
-void register_irq_handler(int irq_num,
-                         void (*handler)(struct trap_frame *tf),
-                         u64 irq_attr);
+void register_irq_handler(int irq_num, void (*handler)(struct trap_frame *tf),
+                          u64 irq_attr);
 void init_interrupt(void);
 void arch_eoi_irq(u64 trap_info);
 
@@ -59,7 +58,6 @@ typedef void (*fixed_trap_handler_t)(struct trap_frame *tf);
  *       Repeated registration overwrites previous handler.
  */
 void register_fixed_trap(enum trap_class trap_class,
-                        fixed_trap_handler_t handler,
-                        u64 irq_attr);
+                         fixed_trap_handler_t handler, u64 irq_attr);
 
 #endif
