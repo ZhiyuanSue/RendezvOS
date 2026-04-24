@@ -40,7 +40,7 @@ static error_t one_measure(char fc, va_list *ap, u32 *out_len)
         case 's':
         case 't': {
                 char *s = va_arg(*ap, char *);
-                *out_len = s ? (u32)strlen(s) : 0u;
+                *out_len = s ? ((u32)strlen(s) + 1u) : 0u;
                 return REND_SUCCESS;
         }
         default:
@@ -69,7 +69,7 @@ static error_t one_write(u8 *base, u32 cap, u32 *off, char fc, va_list *ap)
         case 's':
         case 't':
                 str_s = va_arg(*ap, char *);
-                len = str_s ? (u32)strlen(str_s) : 0u;
+                len = str_s ? ((u32)strlen(str_s) + 1u) : 0u;
                 break;
         default:
                 return -E_IN_PARAM;
@@ -267,7 +267,14 @@ static error_t one_read(const u8 *base, u32 buf_len, u32 *off, char expect,
                 char **out = va_arg(*ap, char **);
                 if (!out)
                         return -E_IN_PARAM;
-                *out = len ? (char *)(base + *off) : NULL;
+                if (len == 0) {
+                        *out = NULL;
+                } else {
+                        /* Ensure wire has at least the trailing NUL byte. */
+                        if (base[*off + len - 1u] != '\0')
+                                return -E_IN_PARAM;
+                        *out = (char *)(base + *off);
+                }
                 *off += len;
                 return REND_SUCCESS;
         }

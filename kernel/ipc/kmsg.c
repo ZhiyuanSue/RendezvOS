@@ -16,6 +16,10 @@ Msg_Data_t* kmsg_create(u16 module, u16 opcode, const char* fmt, ...)
                 va_end(ap);
                 return NULL;
         }
+        if (payload_len > KMSG_MAX_PAYLOAD) {
+                va_end(ap);
+                return NULL;
+        }
 
         const size_t km_hdr_sz = offsetof(kmsg_t, payload);
         if (payload_len > (u32)(SIZE_MAX - km_hdr_sz)) {

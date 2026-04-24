@@ -3,7 +3,7 @@
 #include <common/types.h>
 #include <arch/aarch64/gic/gic_v2.h>
 #include <arch/aarch64/sys_ctrl_def.h>
-#include <rendezvos/trap_common.h>
+#include <rendezvos/trap/trap_common.h>
 #include "trap_def.h"
 
 #define AARCH64_IRQ_TO_TRAP_ID(irq_number) (irq_number + AARCH64_IRQ_OFFSET)

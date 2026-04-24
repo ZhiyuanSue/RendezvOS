@@ -3,7 +3,7 @@
 #include <common/types.h>
 #include <common/stdbool.h>
 #include <arch/x86_64/desc.h>
-#include <rendezvos/trap_common.h> /* For TRAP_COMMON and enum trap_class */
+#include <rendezvos/trap/trap_common.h> /* For TRAP_COMMON and enum trap_class */
 #include "trap_def.h" /* For PF error code bits */
 
 #define NR_IRQ             256

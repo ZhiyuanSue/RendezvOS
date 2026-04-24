@@ -8,6 +8,7 @@
 #include <rendezvos/mm/pmm.h>
 #include <rendezvos/mm/vmm.h>
 #include <rendezvos/smp/percpu.h>
+#include <rendezvos/system/panic.h>
 
 extern char _end; /*the kernel end virt addr*/
 extern u64 L2_table, L1_table;
@@ -136,5 +137,5 @@ void arch_init_pmm(struct setup_info *arch_setup_info,
         *next_region_phy_start = KERNEL_VIRT_TO_PHY((vaddr)(&_end));
         return;
 arch_init_pmm_error:
-        arch_shutdown();
+        kernel_halt();
 }

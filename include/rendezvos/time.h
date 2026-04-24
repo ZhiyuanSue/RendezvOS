@@ -14,7 +14,7 @@
 
 #endif
 
-#include "trap.h"
+#include "rendezvos/trap/trap.h"
 
 extern volatile i64 jeffies;
 extern u32 timer_irq_num;

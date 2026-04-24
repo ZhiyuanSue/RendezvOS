@@ -167,6 +167,7 @@ sudo mkdir -p /opt/musl-cross
 MUSL_COMPILERS=(
     "https://musl.cc/x86_64-linux-musl-cross.tgz"
     "https://musl.cc/aarch64-linux-musl-cross.tgz"
+    "https://musl.cc/riscv64-linux-musl-cross.tgz"
 )
 
 for compiler_url in "${MUSL_COMPILERS[@]}"; do
@@ -217,7 +218,7 @@ echo "extract installation..."
 if [ -d "/opt/musl-cross/bin" ]; then
     echo "✓ musl cross complier has installed to /opt/musl-cross"
     
-    TOOLS=("x86_64-linux-musl-gcc" "aarch64-linux-musl-gcc")
+    TOOLS=("x86_64-linux-musl-gcc" "aarch64-linux-musl-gcc" "riscv64-linux-musl-gcc")
     for tool in "${TOOLS[@]}"; do
         if [ -f "/opt/musl-cross/bin/$tool" ]; then
             echo "✓ $tool is ready"

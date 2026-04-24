@@ -13,6 +13,7 @@ enum Error_t {
         E_REND_NO_MSG,
         /* VSpace teardown violated invariants (e.g. pending TLB mask). */
         E_REND_RC_UNEQUAL,
+        E_REND_NOFOUND,
 };
 
 #endif

@@ -8,7 +8,7 @@
 #elif defined _RISCV64_
 #endif
 
-#include <rendezvos/panic.h>
+#include <rendezvos/system/panic.h>
 
 void kernel_panic(const char* msg)
 {
@@ -31,3 +31,4 @@ void kernel_halt(void)
                 arch_cpu_relax();
         }
 }
+

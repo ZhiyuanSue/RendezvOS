@@ -1,5 +1,6 @@
 #include <common/string.h>
 #include <common/bit.h>
+#include <common/align.h>
 #include <modules/log/log.h>
 #include <rendezvos/error.h>
 #include <rendezvos/limits.h>
@@ -102,7 +103,8 @@ static inline void nexus_node_set_len(struct nexus_node* nexus_entry,
 static error_t nexus_update_node(VS_Common* vs, struct map_handler* handler,
                                  struct pmm* pmm_ptr, struct nexus_node* node,
                                  ppn_t old_ppn, ppn_t new_ppn,
-                                 ENTRY_FLAGS_t desired_flags)
+                                 ENTRY_FLAGS_t desired_flags,
+                                 bool update_region_flags)
 {
         ENTRY_FLAGS_t store_flags =
                 clear_mask_u64(desired_flags, PAGE_ENTRY_REMAP);
@@ -111,7 +113,8 @@ static error_t nexus_update_node(VS_Common* vs, struct map_handler* handler,
                 if (map(vs, old_ppn, VPN(node->addr), 3, desired_flags, handler)
                     != REND_SUCCESS)
                         return -E_RENDEZVOS;
-                node->region_flags = store_flags;
+                if (update_region_flags)
+                        node->region_flags = store_flags;
                 return REND_SUCCESS;
         }
 
@@ -144,7 +147,7 @@ static error_t nexus_update_node(VS_Common* vs, struct map_handler* handler,
 static void nexus_rb_tree_insert(struct nexus_node* node,
                                  struct rb_root* vspace_root)
 {
-        struct rb_node** new = &vspace_root->rb_root, *parent = NULL;
+        struct rb_node **new = &vspace_root->rb_root, *parent = NULL;
         u64 key = node->addr;
         while (*new) {
                 parent = *new;
@@ -164,7 +167,7 @@ static void nexus_rb_tree_insert(struct nexus_node* node,
 static void nexus_rb_tree_vspace_insert(struct nexus_node* vspace_node,
                                         struct rb_root* vspace_rb_root)
 {
-        struct rb_node** new = &vspace_rb_root->rb_root, *parent = NULL;
+        struct rb_node **new = &vspace_rb_root->rb_root, *parent = NULL;
         u64 key = vspace_node->vs_common->vspace_root_addr;
         while (*new) {
                 parent = *new;
@@ -885,7 +888,7 @@ static error_t _vspace_clone_cow(VS_Common* dst_vs,
             != REND_SUCCESS) {
                 goto clean_map;
         }
-        if (!_take_range(false, dst_flags, dst_nexus_node, va, va + PAGE_SIZE)) {
+        if (!_take_range(false, src_flags, dst_nexus_node, va, va + PAGE_SIZE)) {
                 goto clean_ref;
         }
         return REND_SUCCESS;
@@ -906,6 +909,7 @@ nexus_range_compute_flags(nexus_range_flags_mode_t mode,
         case NEXUS_RANGE_FLAGS_ABSOLUTE:
                 return set_mask;
         case NEXUS_RANGE_FLAGS_DELTA:
+        case NEXUS_RANGE_FLAGS_DELTA_PTE_ONLY:
                 /* desired = (old | set_mask) & ~clear_mask */
                 return clear_mask_u64(old_flags | set_mask, clear_mask);
         default:
@@ -925,6 +929,9 @@ nexus_range_compute_flags(nexus_range_flags_mode_t mode,
  *
  * On return, always detaches aux_list and clears cache_data for nodes in
  * update_list (via cleanup_aux_list).
+ *
+ * NEXUS_RANGE_FLAGS_DELTA_PTE_ONLY: updates PTEs only; region_flags are not
+ * written (nexus still holds logical perms, e.g. for COW fault logic).
  */
 static error_t nexus_update_flags_list_core(
         VS_Common* vs, struct map_handler* handler, struct pmm* pmm_ptr,
@@ -937,7 +944,11 @@ static error_t nexus_update_flags_list_core(
         error_t ret = REND_SUCCESS;
         int updated_count = 0;
 
-        /* Batch update page tables and nexus flags with full rollback */
+        const bool update_nexus_flags =
+                (mode != NEXUS_RANGE_FLAGS_DELTA_PTE_ONLY);
+
+        /* Batch update page tables; optionally nexus region_flags with rollback
+         */
         for (struct list_entry* entry = update_list->next; entry != update_list;
              entry = entry->next) {
                 struct nexus_node* node =
@@ -958,10 +969,17 @@ static error_t nexus_update_flags_list_core(
                                 ret = -E_RENDEZVOS;
                                 goto rollback;
                         }
-                        node->region_flags = desired | PAGE_ENTRY_HUGE;
+                        if (update_nexus_flags)
+                                node->region_flags = desired | PAGE_ENTRY_HUGE;
                 } else {
-                        error_t e = nexus_update_node(
-                                vs, handler, pmm_ptr, node, ppn, ppn, desired);
+                        error_t e = nexus_update_node(vs,
+                                                      handler,
+                                                      pmm_ptr,
+                                                      node,
+                                                      ppn,
+                                                      ppn,
+                                                      desired,
+                                                      update_nexus_flags);
                         if (e != REND_SUCCESS) {
                                 ret = e;
                                 goto rollback;
@@ -1007,17 +1025,19 @@ rollback:
 }
 
 /*
- * Apply a flags delta to all 4K user leaf mappings recorded in vspace nexus.
+ * Apply a flags change to all 4K user leaf mappings recorded in vspace nexus.
  *
- * desired = (old | set_mask) & ~clear_mask
+ * Mode semantics follow nexus_range_compute_flags (ABSOLUTE / DELTA /
+ * DELTA_PTE_ONLY).
  *
- * On failure, roll back already-updated nodes' PTE flags + region_flags.
+ * On failure, roll back already-updated PTEs (and nexus if synced).
  * Uses nexus_node::cache_data + aux_list as a temporary rollback chain.
  *
  * Caller must hold vs->nexus_vspace_lock.
  */
 static error_t _vspace_update_user_leaf_flags(VS_Common* vs,
                                               struct nexus_node* vspace_node,
+                                              nexus_range_flags_mode_t mode,
                                               ENTRY_FLAGS_t set_mask,
                                               ENTRY_FLAGS_t clear_mask,
                                               struct map_handler* handler)
@@ -1044,8 +1064,8 @@ static error_t _vspace_update_user_leaf_flags(VS_Common* vs,
                         goto cleanup_fail;
 
                 ENTRY_FLAGS_t old_flags = node->region_flags;
-                ENTRY_FLAGS_t desired =
-                        clear_mask_u64(old_flags | set_mask, clear_mask);
+                ENTRY_FLAGS_t desired = nexus_range_compute_flags(
+                        mode, old_flags, set_mask, clear_mask);
                 if (desired == old_flags)
                         continue;
 
@@ -1061,13 +1081,8 @@ static error_t _vspace_update_user_leaf_flags(VS_Common* vs,
                 /* defer updates to common phase2 core */
         }
 
-        return nexus_update_flags_list_core(vs,
-                                            handler,
-                                            vs->pmm,
-                                            &update_list,
-                                            NEXUS_RANGE_FLAGS_DELTA,
-                                            set_mask,
-                                            clear_mask);
+        return nexus_update_flags_list_core(
+                vs, handler, vs->pmm, &update_list, mode, set_mask, clear_mask);
 
 cleanup_fail:
         cleanup_aux_list(&update_list, NULL);
@@ -1080,7 +1095,8 @@ error_t vspace_clone(VS_Common* src_vs, VS_Common** dst_vs_out,
         /*
          * All-or-nothing. Per-page undo: _vspace_clone_copy_page,
          * _vspace_clone_cow (COW phase 1 only). Earlier completed pages:
-         * del_vspace. COW phase 2 (parent RO): _vspace_adjust_user_leaf_flags.
+         * del_vspace. COW phase 2 (parent RO): _vspace_update_user_leaf_flags
+         *   with NEXUS_RANGE_FLAGS_DELTA_PTE_ONLY (PTE RO, nexus unchanged).
          * Extra PT levels from map(): reclaimed after nexus
          * tear unmaps leaves.
          */
@@ -1205,9 +1221,14 @@ error_t vspace_clone(VS_Common* src_vs, VS_Common** dst_vs_out,
                         }
                 }
 
-                /* Phase 2: parent set read only. */
+                /* Phase 2: parent PTE read-only; nexus keeps logical perms. */
                 ret = _vspace_update_user_leaf_flags(
-                        src_vs, src_vspace_node, 0, PAGE_ENTRY_WRITE, handler);
+                        src_vs,
+                        src_vspace_node,
+                        NEXUS_RANGE_FLAGS_DELTA_PTE_ONLY,
+                        0,
+                        PAGE_ENTRY_WRITE,
+                        handler);
                 if (ret != REND_SUCCESS) {
                         unlock_cas(&src_vs->nexus_vspace_lock);
                         goto out_free_vspace;
@@ -1860,15 +1881,23 @@ cleanup:
 error_t nexus_remap_user_leaf(VS_Common* vs, vaddr va, ppn_t new_ppn,
                               ENTRY_FLAGS_t new_flags, ppn_t expect_old_ppn)
 {
-        if (!vs || (va & (PAGE_SIZE - 1)))
+        if (!vs)
                 return -E_IN_PARAM;
         if (!vs_common_is_table_vspace(vs))
                 return -E_IN_PARAM;
         if (invalid_ppn(new_ppn))
                 return -E_IN_PARAM;
-        if (va >= KERNEL_VIRT_OFFSET)
-                return -E_IN_PARAM;
         if (new_flags & PAGE_ENTRY_HUGE)
+                return -E_IN_PARAM;
+
+        /*
+         * Auto-align va to page boundary.
+         * This allows callers to pass fault addresses directly without manual
+         * alignment. For COW page faults, the fault can occur at any offset
+         * within the page.
+         */
+        vaddr aligned_va = ROUND_DOWN(va, PAGE_SIZE);
+        if (aligned_va >= KERNEL_VIRT_OFFSET)
                 return -E_IN_PARAM;
 
         struct nexus_node* vspace_node = (struct nexus_node*)vs->_vspace_node;
@@ -1882,27 +1911,82 @@ error_t nexus_remap_user_leaf(VS_Common* vs, vaddr va, ppn_t new_ppn,
         lock_cas(&vs->nexus_vspace_lock);
 
         struct nexus_node* node =
-                nexus_rb_tree_search(&vspace_node->_rb_root, va);
-        if (!node || node->addr != va
+                nexus_rb_tree_search(&vspace_node->_rb_root, aligned_va);
+        if (!node || node->addr != aligned_va
             || (node->region_flags & PAGE_ENTRY_HUGE)) {
+                pr_debug(
+                        "[nexus_remap_user_leaf] Node not found or invalid: va=0x%lx, node=%p, node->addr=0x%lx, flags=0x%lx\n",
+                        aligned_va,
+                        node,
+                        node ? node->addr : 0,
+                        node ? node->region_flags : 0);
                 unlock_cas(&vs->nexus_vspace_lock);
                 return -E_IN_PARAM;
         }
 
-        ppn_t old_ppn = have_mapped(vs, VPN(va), NULL, NULL, handler);
+        pr_debug(
+                "[nexus_remap_user_leaf] Found node: addr=0x%lx, flags=0x%lx, old_ppn_check=%lx\n",
+                node->addr,
+                node->region_flags,
+                expect_old_ppn);
+
+        ppn_t old_ppn = have_mapped(vs, VPN(aligned_va), NULL, NULL, handler);
         if (invalid_ppn(old_ppn)) {
+                pr_debug(
+                        "[nexus_remap_user_leaf] have_mapped failed: va=0x%lx\n",
+                        aligned_va);
                 unlock_cas(&vs->nexus_vspace_lock);
                 return -E_RENDEZVOS;
         }
         if (!invalid_ppn(expect_old_ppn) && old_ppn != expect_old_ppn) {
+                pr_debug(
+                        "[nexus_remap_user_leaf] PPN mismatch: expected=%lx, actual=%lx\n",
+                        expect_old_ppn,
+                        old_ppn);
                 unlock_cas(&vs->nexus_vspace_lock);
                 return -E_IN_PARAM;
         }
 
+        pr_debug(
+                "[nexus_remap_user_leaf] All checks passed, calling nexus_update_node\n");
         error_t e = nexus_update_node(
-                vs, handler, pmm_ptr, node, old_ppn, new_ppn, new_flags);
+                vs, handler, pmm_ptr, node, old_ppn, new_ppn, new_flags, true);
+        pr_debug("[nexus_remap_user_leaf] nexus_update_node returned: %d\n", e);
         unlock_cas(&vs->nexus_vspace_lock);
         return e;
+}
+
+error_t nexus_query_vaddr(VS_Common* vs, vaddr va, vaddr* out_start,
+                          ENTRY_FLAGS_t* out_flags)
+{
+        if (!vs || !out_start || !out_flags)
+                return -E_IN_PARAM;
+        if (!vs_common_is_table_vspace(vs))
+                return -E_IN_PARAM;
+
+        *out_start = 0;
+        *out_flags = 0;
+
+        vaddr aligned_va = ROUND_DOWN(va, PAGE_SIZE);
+        if (aligned_va >= KERNEL_VIRT_OFFSET)
+                return -E_IN_PARAM;
+
+        struct nexus_node* vspace_node = (struct nexus_node*)vs->_vspace_node;
+        if (!vspace_node || vspace_node->vs_common != vs)
+                return -E_RENDEZVOS;
+
+        error_t ret = -E_REND_NOFOUND;
+        lock_cas(&vs->nexus_vspace_lock);
+        struct nexus_node* node =
+                nexus_rb_tree_search(&vspace_node->_rb_root, aligned_va);
+        if (node && node->addr <= aligned_va
+            && aligned_va < node->addr + nexus_node_get_len(node)) {
+                *out_start = node->addr;
+                *out_flags = node->region_flags;
+                ret = REND_SUCCESS;
+        }
+        unlock_cas(&vs->nexus_vspace_lock);
+        return ret;
 }
 
 error_t unfill_phy_page(MemZone* zone, ppn_t ppn, u64 new_entry_addr)

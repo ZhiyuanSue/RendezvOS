@@ -7,7 +7,7 @@
 #include <rendezvos/mm/allocator.h>
 #include <rendezvos/ipc/port.h>
 #include <rendezvos/sync/spin_lock.h>
-#include <rendezvos/panic.h>
+#include <rendezvos/system/panic.h>
 
 /*
 we first generate a context that after the return will goto thread entry（this

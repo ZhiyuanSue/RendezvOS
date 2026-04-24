@@ -20,9 +20,18 @@
 /* Little-endian bytes at increasing address: 'L','M','S','G'. */
 #define KMSG_MAGIC 0x47534d4cu
 
+/*
+ * Upper bound for kmsg TLV payload length. This prevents accidental large
+ * allocations from malformed format strings or unexpectedly long strings.
+ */
+#define KMSG_MAX_PAYLOAD PAGE_SIZE
+
 #define KMSG_MOD_CORE 1u
 
 #define KMSG_OP_CORE_THREAD_REAP 1u
+/* Power control (handled by powerd). */
+#define KMSG_OP_CORE_POWER_SHUTDOWN 2u
+#define KMSG_OP_CORE_POWER_REBOOT   3u
 
 typedef struct {
         u32 magic;

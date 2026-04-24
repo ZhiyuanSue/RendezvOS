@@ -1,4 +1,4 @@
-#include <rendezvos/trap.h>
+#include <rendezvos/trap/trap.h>
 #include <arch/aarch64/sys_ctrl.h>
 #include <arch/aarch64/trap/trap.h>
 #include <modules/log/log.h>

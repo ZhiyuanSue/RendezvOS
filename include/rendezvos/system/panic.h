@@ -1,8 +1,8 @@
-#ifndef _RENDEZVOS_PANIC_H_
-#define _RENDEZVOS_PANIC_H_
+#ifndef _RENDEZVOS_SYSTEM_PANIC_H_
+#define _RENDEZVOS_SYSTEM_PANIC_H_
 
 #include <common/types.h>
-#include <rendezvos/trap.h>
+#include <rendezvos/trap/trap.h>
 
 /*
  * Kernel panic - halt the system due to fatal error
@@ -29,3 +29,4 @@ void kernel_panic(const char* msg) __attribute__((noreturn));
 void kernel_halt(void) __attribute__((noreturn));
 
 #endif
+

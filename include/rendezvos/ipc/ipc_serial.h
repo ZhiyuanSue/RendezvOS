@@ -22,7 +22,7 @@
  *   q  i64
  *   i  i32
  *   u  u32
- *   s  char* (C string; length = strlen, no trailing NUL in wire)
+ *   s  char* (C string; wire includes trailing NUL: length = strlen + 1)
  *   t  char* (same wire as s): port name registered in the global port table,
  *      used by convention as the reply endpoint for request–reply.
  *

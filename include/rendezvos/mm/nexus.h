@@ -151,10 +151,19 @@ error_t unfill_phy_page(MemZone* zone, ppn_t ppn, u64 new_entry_addr);
  *
  * mode == NEXUS_RANGE_FLAGS_DELTA:
  *   desired = (old | set_mask) & ~clear_mask
+ *   Update page tables and nexus_node::region_flags (nexus as truth for range).
+ *
+ * mode == NEXUS_RANGE_FLAGS_DELTA_PTE_ONLY:
+ *   desired = (old | set_mask) & ~clear_mask  (same formula as DELTA)
+ *   Update page table entries to `desired` only; leave region_flags unchanged.
+ *   Use for COW prep (fork): PTE reflects RO while nexus still records logical
+ *   perms (e.g. still RW) for fault handling — same invariant as
+ *   _vspace_clone_cow child mapping.
  */
 typedef enum {
         NEXUS_RANGE_FLAGS_ABSOLUTE = 0,
         NEXUS_RANGE_FLAGS_DELTA = 1,
+        NEXUS_RANGE_FLAGS_DELTA_PTE_ONLY = 2,
 } nexus_range_flags_mode_t;
 
 /*
@@ -171,7 +180,9 @@ typedef enum {
  * @ Semantics:
  * - Range is [start_addr, start_addr + length), page-aligned.
  * - All pages in range must already be mapped in `vs`'s nexus tree.
- * - Updates both nexus_node::region_flags and page-table entries.
+ * - Updates page-table entries for the computed `desired` flags.
+ * - nexus_node::region_flags: updated together with PTE for ABSOLUTE/DELTA;
+ *   for NEXUS_RANGE_FLAGS_DELTA_PTE_ONLY, nexus is left unchanged (PTE only).
  * - Either all pages are updated successfully, or all are restored to original
  * state.
  *
@@ -191,9 +202,42 @@ error_t nexus_update_range_flags(struct nexus_node* nexus_root, VS_Common* vs,
 
 /*
  * @brief Remap one existing user 4K leaf: change PTE ppn and/or flags.
+ *
+ * @param vs              User vspace to update (must be VS_COMMON_TABLE_VSPACE)
+ * @param va              Virtual address (auto-aligned to page boundary)
+ * @param new_ppn         New physical page number to map
+ * @param new_flags       New flags for the mapping (PAGE_ENTRY_WRITE, etc.)
+ * @param expect_old_ppn  Expected old PPN (or invalid_ppn to skip check)
+ *
+ * @return REND_SUCCESS on success, error code on failure
+ *
+ * This function handles:
+ * - Auto-alignment: va is automatically aligned to page boundary
+ * - Page table remap with WRITE permission
+ * - Nexus tree update
+ * - Rmap (reverse mapping) maintenance
+ * - Old page reference count decrement (via pmm_free)
+ *
+ * Use case: COW page fault split. The fault address can be any offset
+ * within the page; this function will align it to the page boundary.
+ *
+ * Example:
+ *   fault_addr = 0x401478;  // Any offset within the page
+ *   nexus_remap_user_leaf(vs, fault_addr, new_ppn, new_flags, old_ppn);
+ *   // fault_addr is automatically aligned to 0x401000
  */
 error_t nexus_remap_user_leaf(VS_Common* vs, vaddr va, ppn_t new_ppn,
                               ENTRY_FLAGS_t new_flags, ppn_t expect_old_ppn);
+
+/*
+ * Query nexus node for a VA.
+ *
+ * @return REND_SUCCESS on success (node found),
+ *         -E_REND_NO_MSG if no node covers the address,
+ *         other negative error codes on invalid input / internal errors.
+ */
+error_t nexus_query_vaddr(VS_Common* vs, vaddr va, vaddr* out_start,
+                          ENTRY_FLAGS_t* out_flags);
 
 /* Kernel VA -> owning CPU for kmem routing: walks rmap under pmm lock; kernel
  * heap uses `cpu_id` on KERNEL_HEAP_REF vs_common (not global root). */

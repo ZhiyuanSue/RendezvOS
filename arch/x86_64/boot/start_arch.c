@@ -17,7 +17,7 @@
 #include <rendezvos/error.h>
 #include <rendezvos/mm/vmm.h>
 #include <rendezvos/mm/allocator.h>
-#include <rendezvos/trap.h>
+#include <rendezvos/trap/trap.h>
 
 extern u32 max_phy_addr_width;
 struct cpuinfo cpu_info = {0};

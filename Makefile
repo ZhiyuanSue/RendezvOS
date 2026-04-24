@@ -61,7 +61,7 @@ ARFLAGS	+=	-rcs
 
 MAKEFLAGS += --no-print-directory
 
-export ARCH KERNELVERSION ROOT_DIR BUILD SCRIPT_MAKE_DIR INCLUDE_DIR CC LD AR CFLAGS ARFLAGS LDFLAGS LIBS DBG MEM_SIZE
+export ARCH KERNELVERSION ROOT_DIR BUILD SCRIPT_MAKE_DIR INCLUDE_DIR CC LD AR CFLAGS ARFLAGS LDFLAGS LIBS DBG MEM_SIZE OVERRIDE_CFLAGS
 
 all:  init have_config $(Target_BIN)
 
@@ -106,6 +106,8 @@ show_config:
 	@echo "kernel_version\t=\t"$(KERNELVERSION)
 	@echo "config_file\t=\t"$(CONFIG_FILE)
 	@echo "smp\t=\t"$(SMP)
+	@echo ""
+	@./show_config.sh
 fmt:
 	@git ls-files '*.c' '*.h' | xargs -P 0 clang-format -i -style=file
 

@@ -2,9 +2,9 @@
 #include <common/stddef.h>
 #include <rendezvos/smp/percpu.h>
 #include <rendezvos/task/tcb.h>
-#include <rendezvos/trap.h>
+#include <rendezvos/trap/trap.h>
 #include <rendezvos/common.h>
-#include <rendezvos/panic.h>
+#include <rendezvos/system/panic.h>
 // void (*irq_handler[NR_IRQ])(struct trap_frame *tf);
 extern Task_Manager *core_tm;
 DEFINE_PER_CPU(struct irq, irq_vector[NR_IRQ]);

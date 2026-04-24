@@ -14,7 +14,7 @@
 #include <rendezvos/smp/percpu.h>
 #include <rendezvos/mm/vmm.h>
 #include <rendezvos/mm/allocator.h>
-#include <rendezvos/trap.h>
+#include <rendezvos/trap/trap.h>
 #include <rendezvos/time.h>
 
 extern u64 L2_table;

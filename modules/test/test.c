@@ -1,6 +1,7 @@
 #include <modules/test/test.h>
 #include <rendezvos/task/tcb.h>
 #include <rendezvos/task/thread_loader.h>
+#include <rendezvos/system/powerd.h>
 
 void* BSP_test(void* arg)
 {
@@ -8,6 +9,10 @@ void* BSP_test(void* arg)
 #ifdef RENDEZVOS_TEST
         single_cpu_test();
         multi_cpu_test();
+#ifdef RENDEZVOS_CORE_AUTO_POWEROFF
+        pr_info("[Core test]core test over and shutdown\n");
+        (void)rendezvos_request_poweroff();
+#endif
 #endif
         thread_set_status(percpu(init_thread_ptr), thread_status_ready);
         schedule(percpu(core_tm));

@@ -42,7 +42,8 @@
 		{
 			"use":true ,
 			"features":[
-				"RENDEZVOS_TEST"
+				"RENDEZVOS_TEST",
+				"RENDEZVOS_CORE_AUTO_POWEROFF"
 			],
 			"depend_module":[
 				"helloworld",
