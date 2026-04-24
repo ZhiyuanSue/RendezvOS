@@ -12,6 +12,22 @@
 #define MAX_SINGLE_TEST_CASE 10
 #define MAX_SMP_TEST_CASE    10
 
+/*
+ * Test phase gate (core tests + upper-layer tests orchestration).
+ *
+ * This is part of the test subsystem: if `RENDEZVOS_TEST` is disabled, upper
+ * layers should not wait for this gate.
+ */
+typedef enum core_test_phase {
+        CORE_TEST_PHASE_BOOT = 0,
+        CORE_TEST_PHASE_CORE_TESTS = 1,
+        CORE_TEST_PHASE_UPPER_TESTS = 2,
+        CORE_TEST_PHASE_DONE = 3,
+} core_test_phase_t;
+
+core_test_phase_t core_test_phase_get(void);
+void core_test_phase_set(core_test_phase_t phase);
+
 void* BSP_test(void* arg);
 void* AP_test(void* arg);
 error_t create_test_thread(bool is_bsp_test);
