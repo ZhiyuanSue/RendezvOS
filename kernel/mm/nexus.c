@@ -147,7 +147,7 @@ static error_t nexus_update_node(VS_Common* vs, struct map_handler* handler,
 static void nexus_rb_tree_insert(struct nexus_node* node,
                                  struct rb_root* vspace_root)
 {
-        struct rb_node **new = &vspace_root->rb_root, *parent = NULL;
+        struct rb_node** new = &vspace_root->rb_root, *parent = NULL;
         u64 key = node->addr;
         while (*new) {
                 parent = *new;
@@ -167,7 +167,7 @@ static void nexus_rb_tree_insert(struct nexus_node* node,
 static void nexus_rb_tree_vspace_insert(struct nexus_node* vspace_node,
                                         struct rb_root* vspace_rb_root)
 {
-        struct rb_node **new = &vspace_rb_root->rb_root, *parent = NULL;
+        struct rb_node** new = &vspace_rb_root->rb_root, *parent = NULL;
         u64 key = vspace_node->vs_common->vspace_root_addr;
         while (*new) {
                 parent = *new;
@@ -713,6 +713,8 @@ static inline void insert_nexus_entry(struct nexus_node* free_nexus_entry,
         free_nexus_entry->region_flags = flags;
         nexus_node_set_len(free_nexus_entry, is_2M);
         free_nexus_entry->vs_common = vs;
+        INIT_LIST_HEAD(&free_nexus_entry->aux_list);
+        INIT_LIST_HEAD(&free_nexus_entry->rmap_list);
         list_add_head(&(free_nexus_entry->_vspace_list),
                       &(vspace_root->_vspace_list));
         nexus_rb_tree_insert(free_nexus_entry, &(vspace_root->_rb_root));

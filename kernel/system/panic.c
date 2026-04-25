@@ -31,4 +31,3 @@ void kernel_halt(void)
                 arch_cpu_relax();
         }
 }
-

@@ -65,4 +65,3 @@ void cmain(struct setup_info *arch_setup_info)
                 arch_cpu_relax();
         }
 }
-

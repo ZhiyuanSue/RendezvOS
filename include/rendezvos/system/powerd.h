@@ -12,18 +12,16 @@
 #include <rendezvos/smp/percpu.h>
 #include <rendezvos/task/tcb.h>
 
-#define RENDEZVOS_POWERD_PORT_NAME   "powerd"
+#define RENDEZVOS_POWERD_PORT_NAME "powerd"
 
 static inline error_t rendezvos_request_poweroff(void)
 {
-        Message_Port_t* port =
-                thread_lookup_port(RENDEZVOS_POWERD_PORT_NAME);
+        Message_Port_t* port = thread_lookup_port(RENDEZVOS_POWERD_PORT_NAME);
         if (!port)
                 return -E_RENDEZVOS;
 
-        Msg_Data_t* d = kmsg_create(port->service_id,
-                                    KMSG_OP_CORE_POWER_SHUTDOWN,
-                                    "");
+        Msg_Data_t* d =
+                kmsg_create(port->service_id, KMSG_OP_CORE_POWER_SHUTDOWN, "");
         if (!d) {
                 ref_put(&port->refcount, free_message_port_ref);
                 return -E_RENDEZVOS;
