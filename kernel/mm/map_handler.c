@@ -195,6 +195,9 @@ error_t map(VS_Common *vs, ppn_t ppn, vpn_t vpn, int level,
 {
         ARCH_PFLAGS_t flags = 0;
         ENTRY_FLAGS_t entry_flags = 0;
+        const ENTRY_FLAGS_t nonfinal_must_flags =
+                PAGE_ENTRY_VALID | PAGE_ENTRY_READ | PAGE_ENTRY_WRITE
+                | PAGE_ENTRY_USER | PAGE_ENTRY_EXEC;
         paddr p = PADDR(ppn);
         vaddr v = VADDR(vpn);
         u64 pt_entry = 0;
@@ -281,7 +284,7 @@ error_t map(VS_Common *vs, ppn_t ppn, vpn_t vpn, int level,
                 next_level_paddr = PADDR(handler->handler_ppn[1]);
                 handler->handler_ppn[1] = -E_RENDEZVOS;
                 new_alloc = true;
-                flags = arch_decode_flags(0, eflags);
+                flags = arch_decode_flags(0, nonfinal_must_flags);
                 arch_set_L0_entry(next_level_paddr,
                                   v,
                                   (union L0_entry *)(handler->map_vaddr[0]),
@@ -307,7 +310,7 @@ error_t map(VS_Common *vs, ppn_t ppn, vpn_t vpn, int level,
                 next_level_paddr = PADDR(handler->handler_ppn[2]);
                 handler->handler_ppn[2] = -E_RENDEZVOS;
                 new_alloc = true;
-                flags = arch_decode_flags(1, eflags);
+                flags = arch_decode_flags(1, nonfinal_must_flags);
                 arch_set_L1_entry(next_level_paddr,
                                   v,
                                   (union L1_entry *)(handler->map_vaddr[1]),
@@ -517,7 +520,7 @@ error_t map(VS_Common *vs, ppn_t ppn, vpn_t vpn, int level,
                         next_level_paddr = PADDR(handler->handler_ppn[3]);
                         handler->handler_ppn[3] = -E_RENDEZVOS;
                         new_alloc = true;
-                        flags = arch_decode_flags(2, eflags);
+                        flags = arch_decode_flags(2, nonfinal_must_flags);
                         arch_set_L2_entry(
                                 next_level_paddr,
                                 v,
