@@ -52,6 +52,7 @@ void mair_init(void)
 ARCH_PFLAGS_t arch_decode_flags(int entry_level, ENTRY_FLAGS_t ENTRY_FLAGS)
 {
         ARCH_PFLAGS_t ARCH_PFLAGS = 0;
+        ENTRY_FLAGS = entry_flags_rm_sw_flags(ENTRY_FLAGS);
         static ENTRY_FLAGS_t arch_entry_flags_no_huge_bit[4] = {
                 PT_DESC_BLOCK_OR_TABLE,
                 PT_DESC_BLOCK_OR_TABLE,

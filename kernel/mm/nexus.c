@@ -106,11 +106,10 @@ static error_t nexus_update_node(VS_Common* vs, struct map_handler* handler,
                                  ENTRY_FLAGS_t desired_flags,
                                  bool update_region_flags)
 {
-        ENTRY_FLAGS_t store_flags =
-                clear_mask_u64(desired_flags, PAGE_ENTRY_REMAP);
+        ENTRY_FLAGS_t store_flags = entry_flags_rm_sw_flags(desired_flags);
 
         if (new_ppn == old_ppn) {
-                if (map(vs, old_ppn, VPN(node->addr), 3, desired_flags, handler)
+                if (map(vs, old_ppn, VPN(node->addr), 3, store_flags, handler)
                     != REND_SUCCESS)
                         return -E_RENDEZVOS;
                 if (update_region_flags)
@@ -126,7 +125,7 @@ static error_t nexus_update_node(VS_Common* vs, struct map_handler* handler,
                         new_ppn,
                         VPN(node->addr),
                         3,
-                        desired_flags | PAGE_ENTRY_REMAP,
+                        store_flags | PAGE_ENTRY_REMAP,
                         handler);
         if (e != REND_SUCCESS) {
                 link_rmap_list(pmm_ptr->zone, old_ppn, node);
@@ -710,7 +709,7 @@ static inline void insert_nexus_entry(struct nexus_node* free_nexus_entry,
                 return;
         }
         free_nexus_entry->addr = addr;
-        free_nexus_entry->region_flags = flags;
+        free_nexus_entry->region_flags = entry_flags_rm_sw_flags(flags);
         nexus_node_set_len(free_nexus_entry, is_2M);
         free_nexus_entry->vs_common = vs;
         INIT_LIST_HEAD(&free_nexus_entry->aux_list);
@@ -1018,8 +1017,8 @@ rollback:
                         pr_error(
                                 "[ NEXUS ] FATAL: rollback failed, system state inconsistent!\n");
                 }
-                /* Rollback nexus flags */
-                node->region_flags = old_flags;
+                if (update_nexus_flags)
+                        node->region_flags = old_flags;
         }
 
         cleanup_aux_list(update_list, NULL);

@@ -3,6 +3,7 @@
 #include <common/stdbool.h>
 #include <common/types.h>
 #include <common/align.h>
+#include <common/bit.h>
 #define PAGE_SIZE        0x1000ULL
 #define MIDDLE_PAGE_SIZE 0x200000ULL
 #define MIDDLE_PAGES     0x200ULL
@@ -56,6 +57,10 @@ enum ENTRY_FLAGS {
 };
 typedef u64 ENTRY_FLAGS_t;
 typedef u64 ARCH_PFLAGS_t;
+static inline ENTRY_FLAGS_t entry_flags_rm_sw_flags(ENTRY_FLAGS_t f)
+{
+        return clear_mask_u64(f, PAGE_ENTRY_REMAP);
+}
 struct region {
         u64 addr;
         u64 len;

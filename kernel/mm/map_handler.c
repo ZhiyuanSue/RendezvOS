@@ -204,7 +204,7 @@ error_t map(VS_Common *vs, ppn_t ppn, vpn_t vpn, int level,
         error_t res = REND_SUCCESS;
         size_t alloced_page_number;
         const bool allow_remap = (eflags & PAGE_ENTRY_REMAP) != 0;
-        eflags = clear_mask_u64(eflags, PAGE_ENTRY_REMAP);
+        eflags = entry_flags_rm_sw_flags(eflags);
         /*for a new alloced page, we must memset to all 0, use this flag to
          * decide whether memset*/
 

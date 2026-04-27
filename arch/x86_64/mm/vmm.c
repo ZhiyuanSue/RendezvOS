@@ -28,6 +28,7 @@ inline void arch_set_L3_entry(paddr p, vaddr v, union L3_entry *pt_addr,
 ARCH_PFLAGS_t arch_decode_flags(int entry_level, ENTRY_FLAGS_t ENTRY_FLAGS)
 {
         ENTRY_FLAGS_t ARCH_PFLAGS = 0;
+        ENTRY_FLAGS = entry_flags_rm_sw_flags(ENTRY_FLAGS);
         static ENTRY_FLAGS_t arch_entry_flags_valid_bit[4] = {
                 PML4E_P, PDPTE_P, PDE_P, PTE_P};
         static ENTRY_FLAGS_t arch_entry_flags_write_bit[4] = {
