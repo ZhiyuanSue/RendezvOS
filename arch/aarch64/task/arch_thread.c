@@ -2,6 +2,17 @@
 #include <arch/aarch64/sys_ctrl.h>
 #include <common/string.h>
 
+void arch_ctx_refresh(Arch_Task_Context* ctx)
+{
+        if (!ctx) {
+                return;
+        }
+
+        /* Refresh user-visible state from EL1 system registers. */
+        mrs("SP_EL0", ctx->sp_el0);
+        mrs("TPIDR_EL0", ctx->tpidr_el0);
+}
+
 void switch_to(Arch_Task_Context* old_context, Arch_Task_Context* new_context)
 {
         mrs("TPIDR_EL0", old_context->tpidr_el0);

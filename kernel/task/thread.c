@@ -531,12 +531,7 @@ Thread_Base* copy_thread(Thread_Base* src_thread, Tcb_Base* target_task,
                 return NULL;
         }
 
-        /*
-         * Same boot path as create_thread (thread_entry + init_parameter), then
-         * arch_ctx_merge_from_src copies user/callee-visible context from the
-         * source thread while preserving the new thread's kernel bootstrap
-         * fields (e.g. x86 rsp/stack_bottom, aarch64 sp_el1/LR).
-         */
+        /* Merge user-visible context while preserving kernel bootstrap regs. */
         Thread_Base* dst_thread = create_thread((void*)run_copied_thread,
                                                 append_thread_info_len,
                                                 true,
@@ -551,6 +546,8 @@ Thread_Base* copy_thread(Thread_Base* src_thread, Tcb_Base* target_task,
         dst_trap_frame = ((struct trap_frame*)(dst_thread->kstack_bottom)) - 1;
         *dst_trap_frame = *src_trap_frame;
 
+        /* Fork can run in syscall context; refresh live user SP/TLS first. */
+        arch_ctx_refresh(&src_thread->ctx);
         arch_ctx_merge_from_src(&dst_thread->ctx, &src_thread->ctx);
 
         dst_thread->belong_tcb = target_task;

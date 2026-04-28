@@ -42,6 +42,15 @@ typedef struct {
 void arch_ctx_merge_from_src(Arch_Task_Context* dst_ctx,
                              const Arch_Task_Context* src_ctx);
 /*
+ * Refresh context fields from the live CPU state while running in kernel
+ * during a user->kernel transition (e.g. syscall handling).
+ *
+ * This is the AArch64 analogue of x86_64's refresh-from-scratch/MSR logic.
+ * It is intended for fork/copy performed inside syscall context so that the
+ * child does not inherit stale EL0-visible state.
+ */
+void arch_ctx_refresh(Arch_Task_Context* ctx);
+/*
  * Return to user from syscall save area below kstack_bottom.
  */
 void arch_return_to_user(u64 kstack_bottom,

@@ -40,6 +40,20 @@ void arch_ctx_merge_from_src(Arch_Task_Context* dst_ctx,
         dst_ctx->user_rsp = src_ctx->user_rsp;
 }
 
+void arch_ctx_refresh(Arch_Task_Context* ctx)
+{
+        if (!ctx) {
+                return;
+        }
+
+        /* Live user RSP is saved by entry path into per-CPU scratch. */
+        ctx->user_rsp = percpu(user_rsp_scratch);
+
+        /* Read live TLS bases (GS uses MSR_KERNEL_GS_BASE in this codebase). */
+        ctx->user_fs = rdmsrq(MSR_FS_BASE);
+        ctx->user_gs = rdmsrq(MSR_KERNEL_GS_BASE);
+}
+
 void arch_return_to_user(u64 kstack_bottom,
                          const struct trap_frame* template_tf, u64 syscall_ret)
 {

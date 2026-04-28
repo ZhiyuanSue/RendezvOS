@@ -4,6 +4,7 @@
 #include <common/types.h>
 #include <common/string.h>
 #include <arch/x86_64/trap/trap.h>
+#include <rendezvos/smp/percpu.h>
 /*
  * RFLAGS image for arch_x86_sched_switch_pair (POPF then RET in
  * context_switch).
@@ -40,10 +41,31 @@ typedef struct {
         u64 user_rsp;
 } Arch_Task_Context;
 
+/*
+ * Per-CPU scratch for saving the live user RSP on syscall/trap entry.
+ *
+ * On x86_64, the entry path stores the current user-mode RSP into this
+ * per-CPU slot before switching stacks. This is the authoritative user RSP
+ * while executing in kernel on that CPU.
+ *
+ * Defined in `core/arch/x86_64/task/arch_thread.c`.
+ */
+extern vaddr user_rsp_scratch;
+
 /* Declared in arch-specific task/arch_thread.c (context merge & syscall-trap
  * return). */
 void arch_ctx_merge_from_src(Arch_Task_Context* dst_ctx,
                              const Arch_Task_Context* src_ctx);
+/*
+ * Refresh context fields from the live CPU state while running in kernel
+ * during a user->kernel transition (e.g. syscall handling).
+ *
+ * Motivation: some user-mode visible state is captured by the arch entry path
+ * into per-CPU scratch/MSRs, and `Arch_Task_Context` may only be synchronized
+ * on context switch. Fork/copy performed inside syscall context must use the
+ * live values to avoid returning to user mode with stale state.
+ */
+void arch_ctx_refresh(Arch_Task_Context* ctx);
 void arch_return_to_user(u64 kstack_bottom,
                          const struct trap_frame* template_tf, u64 syscall_ret);
 
