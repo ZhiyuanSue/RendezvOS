@@ -13,6 +13,9 @@
 #define RADIX_TREE_LEVEL2 2
 #define RADIX_TREE_LEVEL3 3
 
+#define RADIX_TREE_DIRECTION_INC 1
+#define RADIX_TREE_DIRECTION_DEC -1
+
 #define RADIX_KERNEL_MAP_FLAGS                                  \
         (PAGE_ENTRY_GLOBAL | PAGE_ENTRY_READ | PAGE_ENTRY_VALID \
          | PAGE_ENTRY_WRITE)
@@ -22,13 +25,13 @@
 static inline u64 get_gran_from_level(int level)
 {
         switch (level) {
-        case 0:
+        case RADIX_TREE_LEVEL0:
                 return HUGE_PAGE_SIZE;
-        case 1:
+        case RADIX_TREE_LEVEL1:
                 return GIGAN_PAGE_SIZE;
-        case 2:
+        case RADIX_TREE_LEVEL2:
                 return MIDDLE_PAGE_SIZE;
-        case 3:
+        case RADIX_TREE_LEVEL3:
                 return PAGE_SIZE;
         default:
                 return 0;
@@ -162,36 +165,29 @@ static error_t radix_entry_update(Radix_entry_t* entry,
 /* === module base2: the level walk structure and algorithms === */
 /* walk base*/
 
-static Radix_entry_t* radix_l0_entry(Radix_entry_t* root, vaddr va)
+static inline Radix_entry_t* radix_l0_entry(Radix_entry_t* root, vaddr va)
 {
         return &root[L0_INDEX(va)];
 }
 
-static Radix_entry_t* radix_l1_entry(Radix_entry_t* root, vaddr va)
+static inline Radix_entry_t* radix_l1_entry(Radix_entry_t* l0_entry, vaddr va)
 {
-        Radix_entry_t* l0_entry = radix_l0_entry(root, va);
         Radix_entry_t* l1_table = (Radix_entry_t*)entry_child(l0_entry);
         if (!l1_table)
                 return NULL;
         return &l1_table[L1_INDEX(va)];
 }
 
-static Radix_entry_t* radix_l2_entry(Radix_entry_t* root, vaddr va)
+static inline Radix_entry_t* radix_l2_entry(Radix_entry_t* l1_entry, vaddr va)
 {
-        Radix_entry_t* l1_entry = radix_l1_entry(root, va);
-        if (!l1_entry)
-                return NULL;
         Radix_entry_t* l2_table = (Radix_entry_t*)entry_child(l1_entry);
         if (!l2_table)
                 return NULL;
         return &l2_table[L2_INDEX(va)];
 }
 
-static Radix_node_t* radix_l3_node(Radix_entry_t* root, vaddr va)
+static inline Radix_node_t* radix_l3_node(Radix_entry_t* l2_entry, vaddr va)
 {
-        Radix_entry_t* l2_entry = radix_l2_entry(root, va);
-        if (!l2_entry)
-                return NULL;
         Radix_node_t* l3_node = (Radix_node_t*)entry_child(l2_entry);
         if (!l3_node)
                 return NULL;
@@ -356,9 +352,9 @@ static void radix_tree_level_walk_init(radix_tree_level_walk_t* walk_iter,
         /*start calculate*/
         /*calculate where to start*/
         vaddr start_addr;
-        if (direction == 1) {
+        if (direction == RADIX_TREE_DIRECTION_INC) {
                 start_addr = range_start_vaddr;
-        } else if (direction == -1) {
+        } else if (direction == RADIX_TREE_DIRECTION_DEC) {
                 u64 step = get_gran_from_level(level);
                 start_addr = ROUND_DOWN(range_end_vaddr - 1, step);
                 if (!(start_addr >= range_start_vaddr
@@ -373,20 +369,20 @@ static void radix_tree_level_walk_init(radix_tree_level_walk_t* walk_iter,
                 radix_l0_entry(root, walk_iter->current_vaddr);
 
         if (level >= 1 && walk_iter->curr_l0_entry)
-                walk_iter->curr_l1_entry =
-                        radix_l1_entry(root, walk_iter->current_vaddr);
+                walk_iter->curr_l1_entry = radix_l1_entry(
+                        walk_iter->curr_l0_entry, walk_iter->current_vaddr);
         else
                 walk_iter->curr_l1_entry = NULL;
 
         if (level >= 2 && walk_iter->curr_l1_entry)
-                walk_iter->curr_l2_entry =
-                        radix_l2_entry(root, walk_iter->current_vaddr);
+                walk_iter->curr_l2_entry = radix_l2_entry(
+                        walk_iter->curr_l1_entry, walk_iter->current_vaddr);
         else
                 walk_iter->curr_l2_entry = NULL;
 
         if (level >= 3 && walk_iter->curr_l2_entry)
-                walk_iter->curr_l3_node =
-                        radix_l3_node(root, walk_iter->current_vaddr);
+                walk_iter->curr_l3_node = radix_l3_node(
+                        walk_iter->curr_l2_entry, walk_iter->current_vaddr);
         else
                 walk_iter->curr_l3_node = NULL;
 }
@@ -398,7 +394,8 @@ radix_tree_level_walk_check(const radix_tree_level_walk_t* walk_iter)
                 return false;
         if (!walk_iter->root)
                 return false;
-        if (walk_iter->direction != 1 && walk_iter->direction != -1)
+        if (walk_iter->direction != RADIX_TREE_DIRECTION_INC
+            && walk_iter->direction != RADIX_TREE_DIRECTION_DEC)
                 return false;
         if (walk_iter->walk_level < 0 || walk_iter->walk_level > 3)
                 return false;
@@ -413,6 +410,7 @@ radix_tree_level_walk_check(const radix_tree_level_walk_t* walk_iter)
 /* for prev/next iter walk, no table will return NULL, but goto the bound also
  * will return NULL, the upper must check the current vaddr reach
  * range_start_vaddr/range_end_vaddr*/
+/* TODO: add more bypass and reduce the l0/l1/l2 calculate*/
 static radix_tree_level_walk_t*
 radix_tree_level_walk(radix_tree_level_walk_t* walk_iter)
 {
@@ -439,13 +437,13 @@ radix_tree_level_walk(radix_tree_level_walk_t* walk_iter)
          * checked by the following check*/
         next_addr = walk_iter->current_vaddr + walk_step;
 
-        if (walk_iter->direction == 1) {
+        if (walk_iter->direction == RADIX_TREE_DIRECTION_INC) {
                 if (next_addr >= walk_iter->range_end_vaddr)
                         return NULL;
                 /*overflow case check*/
                 if (next_addr < walk_iter->current_vaddr)
                         return NULL;
-        } else if (walk_iter->direction == -1) {
+        } else if (walk_iter->direction == RADIX_TREE_DIRECTION_DEC) {
                 if (next_addr < walk_iter->range_start_vaddr)
                         return NULL;
                 /*overflow case check*/
@@ -479,50 +477,58 @@ radix_tree_level_walk(radix_tree_level_walk_t* walk_iter)
 
         if (walk_iter->walk_level == 1 || is_next_1g_bound
             || is_next_512g_bound) {
-                next_l1_entry = radix_l1_entry(walk_iter->root, next_addr);
+                Radix_entry_t* base_l0 =
+                        (is_next_512g_bound || walk_iter->walk_level == 1) ?
+                                next_l0_entry :
+                                walk_iter->curr_l0_entry;
+                if (!base_l0)
+                        return NULL;
+                next_l1_entry = radix_l1_entry(base_l0, next_addr);
                 if (!next_l1_entry)
                         return NULL;
         }
+        if (walk_iter->walk_level == 1)
+                goto l1_bypass;
 
         if (walk_iter->walk_level == 2 || is_next_2m_bound || is_next_1g_bound
             || is_next_512g_bound) {
-                next_l2_entry = radix_l2_entry(walk_iter->root, next_addr);
+                Radix_entry_t* base_l1 = (is_next_1g_bound || is_next_512g_bound
+                                          || walk_iter->walk_level == 2) ?
+                                                 next_l1_entry :
+                                                 walk_iter->curr_l1_entry;
+                if (!base_l1)
+                        return NULL;
+                next_l2_entry = radix_l2_entry(base_l1, next_addr);
                 if (!next_l2_entry)
                         return NULL;
         }
+        if (walk_iter->walk_level == 2)
+                goto l2_bypass;
 
-        if (walk_iter->walk_level == 3) {
-                if (!is_next_2m_bound && !is_next_1g_bound
-                    && !is_next_512g_bound
-                    && walk_iter->curr_l2_entry != NULL) {
-                        i64 delta_idx =
-                                (i64)L3_INDEX(next_addr)
+        if (!is_next_2m_bound && !is_next_1g_bound && !is_next_512g_bound
+            && walk_iter->curr_l2_entry != NULL) {
+                i64 delta_idx = (i64)L3_INDEX(next_addr)
                                 - (i64)L3_INDEX(walk_iter->current_vaddr);
-                        next_l3_node = walk_iter->curr_l3_node + delta_idx;
-                } else {
-                        Radix_entry_t* l2_entry =
-                                (walk_iter->walk_level == 2 || is_next_2m_bound
-                                 || is_next_1g_bound || is_next_512g_bound) ?
-                                        next_l2_entry :
-                                        walk_iter->curr_l2_entry;
-                        if (!l2_entry)
-                                return NULL;
-                        Radix_node_t* l3_base =
-                                (Radix_node_t*)entry_child(l2_entry);
-                        if (!l3_base)
-                                return NULL;
-                        next_l3_node = &l3_base[L3_INDEX(next_addr)];
-                }
+                next_l3_node = walk_iter->curr_l3_node + delta_idx;
+        } else {
+                Radix_entry_t* base_l2 = (is_next_2m_bound || is_next_1g_bound
+                                          || is_next_512g_bound) ?
+                                                 next_l2_entry :
+                                                 walk_iter->curr_l2_entry;
+                if (!base_l2)
+                        return NULL;
+                next_l3_node = radix_l3_node(base_l2, next_addr);
+                if (!next_l3_node)
+                        return NULL;
         }
 
         /*update the current current entry/node/addr, for all the check has
          * passed*/
-        if (walk_iter->walk_level >= 1)
-                walk_iter->curr_l1_entry = next_l1_entry;
-        if (walk_iter->walk_level >= 2)
-                walk_iter->curr_l2_entry = next_l2_entry;
-        if (walk_iter->walk_level >= 3)
-                walk_iter->curr_l3_node = next_l3_node;
+        walk_iter->curr_l3_node = next_l3_node;
+l2_bypass:
+        walk_iter->curr_l2_entry = next_l2_entry;
+l1_bypass:
+        walk_iter->curr_l1_entry = next_l1_entry;
 l0_bypass:
         walk_iter->current_vaddr = next_addr;
         walk_iter->curr_l0_entry = next_l0_entry;
@@ -542,6 +548,139 @@ static error_t radix_range_lock_acquire(VS_Common* vs,
                                         vaddr end,
                                         radix_lock_acquire_kind_t kind)
 {
+        error_t err = REND_SUCCESS;
+        radix_tree_level_walk_t l0_walk_iter, l1_walk_iter, l2_walk_iter,
+                l3_walk_iter;
+        struct pmm* pmm = vs->pmm;
+        /*Phase 1*/
+        radix_tree_level_walk_init(&l0_walk_iter,
+                                   root,
+                                   ROUND_DOWN(start, (vaddr)HUGE_PAGE_SIZE),
+                                   end,
+                                   RADIX_TREE_LEVEL0,
+                                   RADIX_TREE_DIRECTION_INC);
+        if (!radix_tree_level_walk_check(&l0_walk_iter))
+                return -E_IN_PARAM;
+        do {
+                Radix_entry_t* l0_entry = l0_walk_iter.curr_l0_entry;
+                radix_entry_lock(l0_entry);
+                if (kind == RADIX_RL_INSERT) {
+                        if (!entry_valid(l0_entry)
+                            && entry_child(l0_entry) == 0) {
+                                vaddr l1_table_vaddr;
+                                err = radix_alloc_level_table(
+                                        vs,
+                                        pmm,
+                                        handler,
+                                        &l1_table_vaddr,
+                                        RADIX_TREE_LEVEL1);
+                                if (err != REND_SUCCESS) {
+                                        radix_entry_unlock(l0_entry);
+                                        l0_walk_iter.direction =
+                                                RADIX_TREE_DIRECTION_DEC;
+                                        goto phase1_clean_prev;
+                                }
+                                radix_entry_update(
+                                        l0_entry,
+                                        RADIX_ENTRY_UPDATE_FLAG_INHERIT_LOCK
+                                                | RADIX_ENTRY_UPDATE_FLAG_UPDATE_PTR
+                                                | RADIX_ENTRY_UPDATE_FLAG_VALID_CLEAR
+                                                | RADIX_ENTRY_UPDATE_FLAG_COUNT_RESET,
+                                        l1_table_vaddr,
+                                        0);
+                        }
+                } else {
+                        if (!entry_valid(l0_entry)) {
+                                err = -E_REND_NOFOUND;
+                                radix_entry_unlock(l0_entry);
+                                l0_walk_iter.direction =
+                                        RADIX_TREE_DIRECTION_DEC;
+                                goto phase1_clean_prev;
+                        }
+                }
+        } while (radix_tree_level_walk(&l0_walk_iter));
+
+        /*Phase 2*/
+        radix_tree_level_walk_init(&l1_walk_iter,
+                                   root,
+                                   ROUND_DOWN(start, (vaddr)GIGAN_PAGE_SIZE),
+                                   end,
+                                   RADIX_TREE_LEVEL1,
+                                   RADIX_TREE_DIRECTION_INC);
+        if (!radix_tree_level_walk_check(&l1_walk_iter)) {
+                l0_walk_iter.direction = RADIX_TREE_DIRECTION_DEC;
+                goto phase1_clean_all;
+        }
+
+        /*Phase 3*/
+
+        /*Phase 4*/
+
+        /*Phase 5*/
+
+        return err;
+
+phase1_clean_all:
+        Radix_entry_t* l0_entry =
+                radix_l0_entry(root, l0_walk_iter.current_vaddr);
+
+        if (kind != RADIX_RL_INSERT) {
+                radix_entry_unlock(l0_entry);
+                goto phase1_clean_prev;
+        }
+        if (entry_get_count(l0_entry) != 0) {
+                radix_entry_unlock(l0_entry);
+                goto phase1_clean_prev;
+        }
+        if (L0_INDEX(l0_walk_iter.current_vaddr) >= 256) {
+                radix_entry_unlock(l0_entry);
+                goto phase1_clean_prev;
+        }
+        vaddr child_page_addr = entry_child(l0_entry);
+        if (child_page_addr == 0) {
+                radix_entry_unlock(l0_entry);
+                goto phase1_clean_prev;
+        }
+
+        free_radix_table(vs,
+                         pmm,
+                         handler,
+                         child_page_addr,
+                         child_page_addr + PAGE_SIZE,
+                         1);
+        l0_entry->value = 0;
+phase1_clean_prev:
+        while (radix_tree_level_walk(&l0_walk_iter)) {
+                Radix_entry_t* l0_entry =
+                        radix_l0_entry(root, l0_walk_iter.current_vaddr);
+
+                if (kind != RADIX_RL_INSERT) {
+                        radix_entry_unlock(l0_entry);
+                        continue;
+                }
+                if (entry_get_count(l0_entry) != 0) {
+                        radix_entry_unlock(l0_entry);
+                        continue;
+                }
+                if (L0_INDEX(l0_walk_iter.current_vaddr) >= 256) {
+                        radix_entry_unlock(l0_entry);
+                        continue;
+                }
+                vaddr child_page_addr = entry_child(l0_entry);
+                if (child_page_addr == 0) {
+                        radix_entry_unlock(l0_entry);
+                        continue;
+                }
+
+                free_radix_table(vs,
+                                 pmm,
+                                 handler,
+                                 child_page_addr,
+                                 child_page_addr + PAGE_SIZE,
+                                 1);
+                l0_entry->value = 0;
+        }
+        return err;
 }
 
 static error_t radix_range_lock_release()
