@@ -189,7 +189,6 @@ static inline Radix_node_t* radix_l3_node(Radix_entry_t* l2_entry, vaddr va)
                 return NULL;
         return &l3_node[L3_INDEX(va)];
 }
-/*TODO: I'm not too sure about the flags*/
 static bool radix_l3_overlap_insert(const Radix_node_t* node)
 {
         if (node->flags & (PAGE_ENTRY_VALID | PAGE_ENTRY_NEXUS_LAZY))
@@ -198,20 +197,13 @@ static bool radix_l3_overlap_insert(const Radix_node_t* node)
                 return true;
         return false;
 }
-/*TODO: I'm not too sure about the flags*/
-static bool radix_l3_deletable(const Radix_node_t* node, const VS_Common* vs)
+static bool radix_l3_deletable(const Radix_node_t* node)
 {
         if (!(node->flags & (PAGE_ENTRY_VALID | PAGE_ENTRY_NEXUS_LAZY)))
                 return false;
-        if (node->vs_ptr != NULL && node->vs_ptr != vs)
+        if (node->vs_ptr != NULL)
                 return false;
         return true;
-}
-/*TODO: I'm not too sure about the flags*/
-static bool radix_radix_leaf_slot_empty(const Radix_node_t* node)
-{
-        return !(node->flags & (PAGE_ENTRY_VALID | PAGE_ENTRY_NEXUS_LAZY))
-               && node->vs_ptr == NULL;
 }
 
 /*new table's free and alloc logic*/
@@ -846,14 +838,14 @@ static error_t radix_range_lock_acquire(VS_Common* vs,
         if (!radix_tree_level_walk_check(&l3_walk_iter))
                 goto phase3_clean_all;
         do {
-                Radix_entry_t* l3_entry = l3_walk_iter.curr_l3_node;
+                Radix_node_t* l3_node = l3_walk_iter.curr_l3_node;
                 if (kind == RADIX_RL_INSERT) {
-                        if (radix_l3_overlap_insert(l3_entry)) {
+                        if (radix_l3_overlap_insert(l3_node)) {
                                 err = -E_REND_OVERFLOW;
                                 goto phase3_clean_all;
                         }
                 } else {
-                        if (!radix_l3_deletable(l3_entry, vs)) {
+                        if (!radix_l3_deletable(l3_node)) {
                                 err = -E_REND_NOFOUND;
                                 goto phase3_clean_all;
                         }

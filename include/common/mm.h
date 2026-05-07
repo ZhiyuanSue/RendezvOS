@@ -5,6 +5,7 @@
 #include <common/align.h>
 #include <common/bit.h>
 #define PAGE_SIZE        0x1000ULL
+#define PAGE_MASK        (~(PAGE_SIZE - 1))
 #define MIDDLE_PAGE_SIZE 0x200000ULL
 #define MIDDLE_PAGES     0x200ULL
 #define GIGAN_PAGE_SIZE  0x40000000ULL
@@ -47,6 +48,13 @@ enum ENTRY_FLAGS {
         PAGE_ENTRY_GLOBAL = (1ULL << 8),
         PAGE_ENTRY_HUGE = (1ULL << 9),
         /*
+         * Radix / nexus shadow state (software-only): the VA leaf slot exists
+         * in the radix metadata tree (insert_range) but no leaf PTE has been
+         * committed yet; leaf_bind clears this after map(). Must be stripped
+         * before arch_decode_flags().
+         */
+        PAGE_ENTRY_NEXUS_LAZY = (1ULL << 10),
+        /*
          * Map option (software-only): allow replacing an existing leaf mapping
          * with a different physical page (remap semantics).
          *
@@ -59,7 +67,7 @@ typedef u64 ENTRY_FLAGS_t;
 typedef u64 ARCH_PFLAGS_t;
 static inline ENTRY_FLAGS_t entry_flags_rm_sw_flags(ENTRY_FLAGS_t f)
 {
-        return clear_mask_u64(f, PAGE_ENTRY_REMAP);
+        return clear_mask_u64(f, PAGE_ENTRY_REMAP | PAGE_ENTRY_NEXUS_LAZY);
 }
 struct region {
         u64 addr;
