@@ -582,6 +582,126 @@ typedef enum {
         /* No L2 occupancy adjustment (mprotect-style metadata / query). */
         RADIX_RL_QUERY_OR_CHANGE,
 } radix_lock_acquire_kind_t;
+
+static inline int radix_parent_count_delta(radix_lock_acquire_kind_t kind,
+                                           const radix_tree_level_walk_t* walk,
+                                           int partition_level, int head_delta,
+                                           int tail_delta)
+{
+        if (radix_tree_walk_is_level_single(walk, partition_level)
+            || radix_tree_walk_is_level_first(walk, partition_level)) {
+                return head_delta;
+        }
+        if (radix_tree_walk_is_level_last(walk, partition_level)) {
+                return tail_delta;
+        }
+        if (kind == RADIX_RL_INSERT) {
+                return RADIX_COUNT_PER_PAGE;
+        }
+        return -(int)RADIX_COUNT_PER_PAGE;
+}
+static inline void
+radix_count_trans_to_parent(radix_lock_acquire_kind_t kind,
+                            const radix_tree_level_walk_t* walk,
+                            int partition_level, u64 old_count, int delta,
+                            int* parent_head_delta, int* parent_tail_delta)
+{
+        bool insert_should_trans =
+                (kind == RADIX_RL_INSERT && old_count == 0 && delta != 0);
+        bool delete_should_trans = (kind == RADIX_RL_DELETE && old_count != 0
+                                    && (i64)old_count + delta == 0);
+
+        if (radix_tree_walk_is_level_single(walk, partition_level)
+            || radix_tree_walk_is_level_first(walk, partition_level)) {
+                if (insert_should_trans) {
+                        *parent_head_delta += 1;
+                } else if (delete_should_trans) {
+                        *parent_head_delta -= 1;
+                }
+                return;
+        }
+        if (radix_tree_walk_is_level_last(walk, partition_level)) {
+                if (insert_should_trans) {
+                        *parent_tail_delta += 1;
+                } else if (delete_should_trans) {
+                        *parent_tail_delta -= 1;
+                }
+        }
+}
+static void radix_lock_rollback_entry(VS_Common* vs, struct pmm* pmm,
+                                      struct map_handler* handler,
+                                      radix_lock_acquire_kind_t kind,
+                                      radix_tree_level_walk_t* walk)
+{
+        Radix_entry_t* entry;
+        vaddr child_page_addr;
+        size_t free_page_count = 0;
+
+        switch (walk->walk_level) {
+        case RADIX_TREE_LEVEL2:
+                entry = walk->curr_l2_entry;
+                if (kind != RADIX_RL_INSERT) {
+                        radix_entry_unlock(entry);
+                        return;
+                }
+                if (entry_get_count(entry->value) != 0) {
+                        radix_entry_unlock(entry);
+                        return;
+                }
+                child_page_addr = entry_child(entry);
+                if (child_page_addr == 0) {
+                        radix_entry_unlock(entry);
+                        return;
+                }
+                free_page_count = RADIX_NODE_PAGES;
+                break;
+
+        case RADIX_TREE_LEVEL1:
+                entry = walk->curr_l1_entry;
+                if (entry_get_count(entry->value) != 0) {
+                        return;
+                }
+                child_page_addr = entry_child(entry);
+                if (child_page_addr == 0) {
+                        return;
+                }
+                free_page_count = RADIX_ENTRY_PAGES;
+                break;
+
+        case RADIX_TREE_LEVEL0:
+                entry = walk->curr_l0_entry;
+                if (kind != RADIX_RL_INSERT) {
+                        radix_entry_unlock(entry);
+                        return;
+                }
+                if (entry_get_count(entry->value) != 0) {
+                        radix_entry_unlock(entry);
+                        return;
+                }
+                if (L0_INDEX(walk->current_vaddr) >= 256) {
+                        radix_entry_unlock(entry);
+                        return;
+                }
+                child_page_addr = entry_child(entry);
+                if (child_page_addr == 0) {
+                        radix_entry_unlock(entry);
+                        return;
+                }
+                free_page_count = RADIX_ENTRY_PAGES;
+                break;
+
+        default:
+                return;
+        }
+        free_radix_table(vs,
+                         pmm,
+                         handler,
+                         child_page_addr,
+                         child_page_addr + (vaddr)(free_page_count * PAGE_SIZE),
+                         free_page_count);
+        entry->value = 0;
+}
+
 static error_t radix_range_lock_acquire(VS_Common* vs,
                                         struct map_handler* handler,
                                         Radix_entry_t* root, vaddr start,
@@ -780,47 +900,13 @@ static error_t radix_range_lock_acquire(VS_Common* vs,
                         delta = -(int)pages_in_overlap;
                 }
                 radix_entry_update(l2_entry, update_flags, 0, delta);
-                /*finish update l2 entry, start calculate the value trans to
-                 * l1*/
-                if (radix_tree_walk_is_level_single(&l2_walk_iter,
-                                                    RADIX_TREE_LEVEL1)) {
-                        if (kind == RADIX_RL_INSERT) {
-                                if (l2_old_count == 0 && delta != 0) {
-                                        l1_head_delta += 1;
-                                        l1_tail_delta += 1;
-                                }
-                        } else {
-                                if (l2_old_count != 0
-                                    && (i64)l2_old_count + delta == 0) {
-                                        l1_head_delta -= 1;
-                                        l1_tail_delta -= 1;
-                                }
-                        }
-                } else if (radix_tree_walk_is_level_first(&l2_walk_iter,
-                                                          RADIX_TREE_LEVEL1)) {
-                        if (kind == RADIX_RL_INSERT) {
-                                if (l2_old_count == 0 && delta != 0) {
-                                        l1_head_delta += 1;
-                                }
-                        } else {
-                                if (l2_old_count != 0
-                                    && (i64)l2_old_count + delta == 0) {
-                                        l1_head_delta -= 1;
-                                }
-                        }
-                } else if (radix_tree_walk_is_level_last(&l2_walk_iter,
-                                                         RADIX_TREE_LEVEL1)) {
-                        if (kind == RADIX_RL_INSERT) {
-                                if (l2_old_count == 0 && delta != 0) {
-                                        l1_tail_delta += 1;
-                                }
-                        } else {
-                                if (l2_old_count != 0
-                                    && (i64)l2_old_count + delta == 0) {
-                                        l1_tail_delta -= 1;
-                                }
-                        }
-                }
+                radix_count_trans_to_parent(kind,
+                                            &l2_walk_iter,
+                                            RADIX_TREE_LEVEL1,
+                                            l2_old_count,
+                                            delta,
+                                            &l1_head_delta,
+                                            &l1_tail_delta);
         } while (radix_tree_level_walk(&l2_walk_iter));
 
         radix_tree_level_walk_init(&l1_walk_iter,
@@ -836,22 +922,11 @@ static error_t radix_range_lock_acquire(VS_Common* vs,
                 if (kind == RADIX_RL_QUERY_OR_CHANGE) {
                         continue;
                 }
-                int delta;
-                if (radix_tree_walk_is_level_single(&l1_walk_iter,
-                                                    RADIX_TREE_LEVEL1)) {
-                        delta = l1_head_delta;
-                } else if (radix_tree_walk_is_level_first(&l1_walk_iter,
-                                                          RADIX_TREE_LEVEL1)) {
-                        delta = l1_head_delta;
-                } else if (radix_tree_walk_is_level_last(&l1_walk_iter,
-                                                         RADIX_TREE_LEVEL1)) {
-                        delta = l1_tail_delta;
-                } else {
-                        if (kind == RADIX_RL_INSERT)
-                                delta = RADIX_COUNT_PER_PAGE;
-                        else
-                                delta = -(int)RADIX_COUNT_PER_PAGE;
-                }
+                int delta = radix_parent_count_delta(kind,
+                                                     &l1_walk_iter,
+                                                     RADIX_TREE_LEVEL1,
+                                                     l1_head_delta,
+                                                     l1_tail_delta);
                 enum RADIX_ENTRY_UPDATE_FLAGS update_flags =
                         RADIX_ENTRY_UPDATE_FLAG_INHERIT_LOCK
                         | RADIX_ENTRY_UPDATE_FLAG_COUNT_DELTA;
@@ -861,47 +936,13 @@ static error_t radix_range_lock_acquire(VS_Common* vs,
                 }
                 radix_entry_update(l1_entry, update_flags, 0, delta);
 
-                /*finish update l1 entry, start calculate the value trans to
-                 * l0*/
-                if (radix_tree_walk_is_level_single(&l1_walk_iter,
-                                                    RADIX_TREE_LEVEL0)) {
-                        if (kind == RADIX_RL_INSERT) {
-                                if (l1_old_count == 0 && delta != 0) {
-                                        l0_head_delta += 1;
-                                        l0_tail_delta += 1;
-                                }
-                        } else {
-                                if (l1_old_count != 0
-                                    && (i64)l1_old_count + delta == 0) {
-                                        l0_head_delta -= 1;
-                                        l0_tail_delta -= 1;
-                                }
-                        }
-                } else if (radix_tree_walk_is_level_first(&l1_walk_iter,
-                                                          RADIX_TREE_LEVEL0)) {
-                        if (kind == RADIX_RL_INSERT) {
-                                if (l1_old_count == 0 && delta != 0) {
-                                        l0_head_delta += 1;
-                                }
-                        } else {
-                                if (l1_old_count != 0
-                                    && (i64)l1_old_count + delta == 0) {
-                                        l0_head_delta -= 1;
-                                }
-                        }
-                } else if (radix_tree_walk_is_level_last(&l1_walk_iter,
-                                                         RADIX_TREE_LEVEL0)) {
-                        if (kind == RADIX_RL_INSERT) {
-                                if (l1_old_count == 0 && delta != 0) {
-                                        l0_tail_delta += 1;
-                                }
-                        } else {
-                                if (l1_old_count != 0
-                                    && (i64)l1_old_count + delta == 0) {
-                                        l0_tail_delta -= 1;
-                                }
-                        }
-                }
+                radix_count_trans_to_parent(kind,
+                                            &l1_walk_iter,
+                                            RADIX_TREE_LEVEL0,
+                                            l1_old_count,
+                                            delta,
+                                            &l0_head_delta,
+                                            &l0_tail_delta);
         } while (radix_tree_level_walk(&l1_walk_iter));
 
         radix_tree_level_walk_init(&l0_walk_iter,
@@ -916,22 +957,11 @@ static error_t radix_range_lock_acquire(VS_Common* vs,
                 if (kind == RADIX_RL_QUERY_OR_CHANGE) {
                         continue;
                 }
-                int delta;
-                if (radix_tree_walk_is_level_single(&l0_walk_iter,
-                                                    RADIX_TREE_LEVEL0)) {
-                        delta = l0_head_delta;
-                } else if (radix_tree_walk_is_level_first(&l0_walk_iter,
-                                                          RADIX_TREE_LEVEL0)) {
-                        delta = l0_head_delta;
-                } else if (radix_tree_walk_is_level_last(&l0_walk_iter,
-                                                         RADIX_TREE_LEVEL0)) {
-                        delta = l0_tail_delta;
-                } else {
-                        if (kind == RADIX_RL_INSERT)
-                                delta = RADIX_COUNT_PER_PAGE;
-                        else
-                                delta = -(int)RADIX_COUNT_PER_PAGE;
-                }
+                int delta = radix_parent_count_delta(kind,
+                                                     &l0_walk_iter,
+                                                     RADIX_TREE_LEVEL0,
+                                                     l0_head_delta,
+                                                     l0_tail_delta);
                 enum RADIX_ENTRY_UPDATE_FLAGS update_flags =
                         RADIX_ENTRY_UPDATE_FLAG_INHERIT_LOCK
                         | RADIX_ENTRY_UPDATE_FLAG_COUNT_DELTA;
@@ -955,160 +985,52 @@ static error_t radix_range_lock_acquire(VS_Common* vs,
         return err;
 
 phase3_clean_all:
-        Radix_entry_t* l2_entry = l2_walk_iter.curr_l2_entry;
-
-        if (kind != RADIX_RL_INSERT) {
-                radix_entry_unlock(l2_entry);
-                goto phase3_clean_prev;
-        }
-        if (entry_get_count(l2_entry->value) != 0) {
-                radix_entry_unlock(l2_entry);
-                goto phase3_clean_prev;
-        }
-        vaddr child_page_addr = entry_child(l2_entry);
-        if (child_page_addr == 0) {
-                radix_entry_unlock(l2_entry);
-                goto phase3_clean_prev;
-        }
-
-        free_radix_table(vs,
-                         pmm,
-                         handler,
-                         child_page_addr,
-                         child_page_addr + RADIX_NODE_SIZE,
-                         RADIX_NODE_PAGES);
-        l2_entry->value = 0;
+        radix_lock_rollback_entry(vs, pmm, handler, kind, &l2_walk_iter);
 phase3_clean_prev:
         l2_walk_iter.direction = RADIX_TREE_DIRECTION_DEC;
         while (radix_tree_level_walk(&l2_walk_iter)) {
-                Radix_entry_t* l2_entry = l2_walk_iter.curr_l2_entry;
-
-                if (kind != RADIX_RL_INSERT) {
-                        radix_entry_unlock(l2_entry);
-                        continue;
-                }
-                if (entry_get_count(l2_entry->value) != 0) {
-                        radix_entry_unlock(l2_entry);
-                        continue;
-                }
-                vaddr child_page_addr = entry_child(l2_entry);
-                if (child_page_addr == 0) {
-                        radix_entry_unlock(l2_entry);
-                        continue;
-                }
-
-                free_radix_table(vs,
-                                 pmm,
-                                 handler,
-                                 child_page_addr,
-                                 child_page_addr + RADIX_NODE_SIZE,
-                                 RADIX_NODE_PAGES);
-                l2_entry->value = 0;
+                radix_lock_rollback_entry(
+                        vs, pmm, handler, kind, &l2_walk_iter);
         }
 phase2_clean_all:
-        Radix_entry_t* l1_entry = l1_walk_iter.curr_l1_entry;
-
-        if (entry_get_count(l1_entry->value) != 0) {
-                goto phase2_clean_prev;
-        }
-
-        vaddr child_page_addr = entry_child(l1_entry);
-        if (child_page_addr == 0) {
-                goto phase2_clean_prev;
-        }
-        free_radix_table(vs,
-                         pmm,
-                         handler,
-                         child_page_addr,
-                         child_page_addr + RADIX_ENTRY_SIZE,
-                         RADIX_ENTRY_PAGES);
-        l1_entry->value = 0;
+        radix_lock_rollback_entry(vs, pmm, handler, kind, &l1_walk_iter);
 phase2_clean_prev:
-
         l1_walk_iter.direction = RADIX_TREE_DIRECTION_DEC;
         while (radix_tree_level_walk(&l1_walk_iter)) {
-                Radix_entry_t* l1_entry = l1_walk_iter.curr_l1_entry;
-
-                if (entry_get_count(l1_entry->value) != 0) {
-                        continue;
-                }
-
-                vaddr child_page_addr = entry_child(l1_entry);
-                if (child_page_addr == 0) {
-                        continue;
-                }
-                free_radix_table(vs,
-                                 pmm,
-                                 handler,
-                                 child_page_addr,
-                                 child_page_addr + RADIX_ENTRY_SIZE,
-                                 RADIX_ENTRY_PAGES);
-                l1_entry->value = 0;
+                radix_lock_rollback_entry(
+                        vs, pmm, handler, kind, &l1_walk_iter);
         }
 phase1_clean_all:
-        Radix_entry_t* l0_entry = l0_walk_iter.curr_l0_entry;
-
-        if (kind != RADIX_RL_INSERT) {
-                radix_entry_unlock(l0_entry);
-                goto phase1_clean_prev;
-        }
-        if (entry_get_count(l0_entry->value) != 0) {
-                radix_entry_unlock(l0_entry);
-                goto phase1_clean_prev;
-        }
-        if (L0_INDEX(l0_walk_iter.current_vaddr) >= 256) {
-                radix_entry_unlock(l0_entry);
-                goto phase1_clean_prev;
-        }
-        vaddr child_page_addr = entry_child(l0_entry);
-        if (child_page_addr == 0) {
-                radix_entry_unlock(l0_entry);
-                goto phase1_clean_prev;
-        }
-
-        free_radix_table(vs,
-                         pmm,
-                         handler,
-                         child_page_addr,
-                         child_page_addr + RADIX_ENTRY_SIZE,
-                         RADIX_ENTRY_PAGES);
-        l0_entry->value = 0;
+        radix_lock_rollback_entry(vs, pmm, handler, kind, &l0_walk_iter);
 phase1_clean_prev:
         l0_walk_iter.direction = RADIX_TREE_DIRECTION_DEC;
         while (radix_tree_level_walk(&l0_walk_iter)) {
-                Radix_entry_t* l0_entry = l0_walk_iter.curr_l0_entry;
-
-                if (kind != RADIX_RL_INSERT) {
-                        radix_entry_unlock(l0_entry);
-                        continue;
-                }
-                if (entry_get_count(l0_entry->value) != 0) {
-                        radix_entry_unlock(l0_entry);
-                        continue;
-                }
-                if (L0_INDEX(l0_walk_iter.current_vaddr) >= 256) {
-                        radix_entry_unlock(l0_entry);
-                        continue;
-                }
-                vaddr child_page_addr = entry_child(l0_entry);
-                if (child_page_addr == 0) {
-                        radix_entry_unlock(l0_entry);
-                        continue;
-                }
-
-                free_radix_table(vs,
-                                 pmm,
-                                 handler,
-                                 child_page_addr,
-                                 child_page_addr + RADIX_ENTRY_SIZE,
-                                 RADIX_ENTRY_PAGES);
-                l0_entry->value = 0;
+                radix_lock_rollback_entry(
+                        vs, pmm, handler, kind, &l0_walk_iter);
         }
         return err;
 }
 
-static error_t radix_range_lock_release()
+static error_t radix_range_lock_release(Radix_entry_t* root, vaddr start,
+                                        vaddr end)
 {
+        radix_tree_level_walk_t l2_walk_iter;
+        radix_tree_level_walk_init(&l2_walk_iter,
+                                   root,
+                                   ROUND_DOWN(start, (vaddr)MIDDLE_PAGE_SIZE),
+                                   end,
+                                   RADIX_TREE_LEVEL2,
+                                   RADIX_TREE_DIRECTION_DEC);
+        if (radix_tree_level_walk_check(&l2_walk_iter)) {
+                do {
+                        Radix_entry_t* l2_entry = l2_walk_iter.curr_l2_entry;
+                        radix_entry_unlock(l2_entry);
+                } while (radix_tree_level_walk(&l2_walk_iter));
+        } else {
+                /*Impossible, if fail , we should return error*/
+                return -E_RENDEZVOS;
+        }
+        return REND_SUCCESS;
 }
 
 /*module apis: the range ops of*/
