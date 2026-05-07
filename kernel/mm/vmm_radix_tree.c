@@ -455,12 +455,6 @@ radix_tree_level_walk(radix_tree_level_walk_t* walk_iter)
          * 2m/1g/512g*/
         if (L0_INDEX(walk_iter->current_vaddr) != L0_INDEX(next_addr))
                 is_next_512g_bound = true;
-        if (walk_iter->walk_level >= 1
-            && L1_INDEX(walk_iter->current_vaddr) != L1_INDEX(next_addr))
-                is_next_1g_bound = true;
-        if (walk_iter->walk_level >= 2
-            && L2_INDEX(walk_iter->current_vaddr) != L2_INDEX(next_addr))
-                is_next_2m_bound = true;
 
         /*update the next_l0/l1/l2_entry/curr_l3_node according to the is
          * 2m/1g/512g bound, it might fail because of the uncle table is not
@@ -474,6 +468,10 @@ radix_tree_level_walk(radix_tree_level_walk_t* walk_iter)
         /*for level0 ,it's just an array, and no more calculate is need*/
         if (walk_iter->walk_level == 0)
                 goto l0_bypass;
+        /*this calculate was before the update the
+         * next_l0/l1/l2_entry/curr_l3_node, but move to here for l0 bypass*/
+        if (L1_INDEX(walk_iter->current_vaddr) != L1_INDEX(next_addr))
+                is_next_1g_bound = true;
 
         if (walk_iter->walk_level == 1 || is_next_1g_bound
             || is_next_512g_bound) {
@@ -489,6 +487,11 @@ radix_tree_level_walk(radix_tree_level_walk_t* walk_iter)
         }
         if (walk_iter->walk_level == 1)
                 goto l1_bypass;
+
+        /*this calculate was before the update the
+         * next_l0/l1/l2_entry/curr_l3_node, but move to here for l0/l1 bypass*/
+        if (L2_INDEX(walk_iter->current_vaddr) != L2_INDEX(next_addr))
+                is_next_2m_bound = true;
 
         if (walk_iter->walk_level == 2 || is_next_2m_bound || is_next_1g_bound
             || is_next_512g_bound) {
