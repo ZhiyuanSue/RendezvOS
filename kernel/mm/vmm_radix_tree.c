@@ -857,7 +857,7 @@ static error_t radix_range_lock_acquire(VS_Common* vs,
                                 err = -E_REND_OVERFLOW;
                                 goto phase3_clean_all;
                         }
-                } else {
+                } else if (kind == RADIX_RL_DELETE) {
                         if (!radix_l3_deletable(l3_node)) {
                                 err = -E_REND_NOFOUND;
                                 goto phase3_clean_all;
@@ -1155,7 +1155,9 @@ error_t vmm_radix_tree_insert_range(struct map_handler* handler, VS_Common* vs,
         do {
                 Radix_node_t* leaf = l3_walk.curr_l3_node;
                 leaf->flags = lazy_leaf_flags;
-                leaf->vs_ptr = vs;
+                leaf->vs_ptr = (L0_INDEX(l3_walk.current_vaddr) >= 256) ?
+                                       &root_vspace :
+                                       vs;
         } while (radix_tree_level_walk(&l3_walk));
 
 insert_range_out:
@@ -1193,16 +1195,23 @@ static void radix_leaf_unlink_rmap(struct pmm* pmm, ppn_t ppn,
         pmm_zone_unlock(pmm->zone);
 }
 
-error_t vmm_radix_tree_leaf_bind(struct map_handler* handler, VS_Common* vs,
-                                 vaddr page_vaddr, ppn_t ppn,
-                                 ENTRY_FLAGS_t leaf_flags)
+error_t vmm_radix_tree_leaf_bind_range(struct map_handler* handler,
+                                       VS_Common* vs, vaddr page_vaddr,
+                                       ppn_t ppn_first, size_t page_number,
+                                       ENTRY_FLAGS_t leaf_flags)
 {
         Radix_entry_t* root = radix_root_from_vs(vs);
         vaddr end;
-        if (!root || !vs || !vs->pmm || !vs->pmm->zone || !handler
-            || invalid_ppn(ppn))
+        if (!root || !vs || !vs->pmm || !vs->pmm->zone || !handler)
                 return -E_IN_PARAM;
-        if (!radix_calculate_end_check(page_vaddr, 1, &end))
+        if (page_number == 0 || invalid_ppn(ppn_first))
+                return -E_IN_PARAM;
+        {
+                ppn_t ppn_last = ppn_first + (ppn_t)page_number - 1;
+                if (ppn_last < ppn_first || invalid_ppn(ppn_last))
+                        return -E_IN_PARAM;
+        }
+        if (!radix_calculate_end_check(page_vaddr, page_number, &end))
                 return -E_IN_PARAM;
 
         error_t err = REND_SUCCESS;
@@ -1221,74 +1230,132 @@ error_t vmm_radix_tree_leaf_bind(struct map_handler* handler, VS_Common* vs,
                                    RADIX_TREE_DIRECTION_INC);
         if (!radix_tree_level_walk_check(&l3_walk)) {
                 err = -E_IN_PARAM;
-                goto leaf_bind_out;
+                goto leaf_bind_range_out;
         }
 
-        Radix_node_t* leaf = l3_walk.curr_l3_node;
-        if (!leaf || !(leaf->flags & PAGE_ENTRY_NEXUS_LAZY)
-            || leaf->vs_ptr != vs) {
+        size_t page_index = 0;
+        do {
+                Radix_node_t* leaf = l3_walk.curr_l3_node;
+                if (!leaf || !(leaf->flags & PAGE_ENTRY_NEXUS_LAZY)
+                    || (leaf->flags & (ENTRY_FLAGS_t)PAGE_ENTRY_VALID)) {
+                        err = -E_IN_PARAM;
+                        goto leaf_bind_range_rollback;
+                }
+
+                ppn_t cur_ppn = ppn_first + (ppn_t)page_index;
+                err = radix_leaf_link_rmap(vs->pmm, cur_ppn, leaf);
+                if (err != REND_SUCCESS)
+                        goto leaf_bind_range_rollback;
+
+                leaf->flags = entry_flags_rm_sw_flags(leaf_flags)
+                              | (ENTRY_FLAGS_t)PAGE_ENTRY_VALID;
+                page_index++;
+        } while (radix_tree_level_walk(&l3_walk));
+
+        if (page_index != page_number) {
                 err = -E_IN_PARAM;
-                goto leaf_bind_out;
+                goto leaf_bind_range_rollback;
         }
 
-        err = radix_leaf_link_rmap(vs->pmm, ppn, leaf);
-        if (err != REND_SUCCESS)
-                goto leaf_bind_out;
+        goto leaf_bind_range_out;
 
-        leaf->flags = entry_flags_rm_sw_flags(leaf_flags)
-                      | (ENTRY_FLAGS_t)PAGE_ENTRY_VALID;
-        leaf->vs_ptr = vs;
+leaf_bind_range_rollback:
+        l3_walk.direction = RADIX_TREE_DIRECTION_DEC;
+        while (page_index > 0 && radix_tree_level_walk(&l3_walk)) {
+                page_index--;
+                Radix_node_t* leaf = l3_walk.curr_l3_node;
+                ppn_t cur_ppn = ppn_first + (ppn_t)page_index;
+                radix_leaf_unlink_rmap(vs->pmm, cur_ppn, leaf);
+                leaf->flags = entry_flags_rm_sw_flags(leaf_flags)
+                              | (ENTRY_FLAGS_t)PAGE_ENTRY_NEXUS_LAZY;
+        }
 
-leaf_bind_out:
+leaf_bind_range_out:
         (void)radix_range_lock_release(root, page_vaddr, end);
         return err;
+}
+
+error_t vmm_radix_tree_leaf_unbind_range(struct map_handler* handler,
+                                         VS_Common* vs, vaddr page_vaddr,
+                                         ppn_t ppn_first, size_t page_number)
+{
+        Radix_entry_t* root = radix_root_from_vs(vs);
+        vaddr end;
+        if (!root || !vs || !vs->pmm || !vs->pmm->zone || !handler)
+                return -E_IN_PARAM;
+        if (page_number == 0 || invalid_ppn(ppn_first))
+                return -E_IN_PARAM;
+        {
+                ppn_t ppn_last = ppn_first + (ppn_t)page_number - 1;
+                if (ppn_last < ppn_first || invalid_ppn(ppn_last))
+                        return -E_IN_PARAM;
+        }
+        if (!radix_calculate_end_check(page_vaddr, page_number, &end))
+                return -E_IN_PARAM;
+
+        error_t err = REND_SUCCESS;
+        err = radix_range_lock_acquire(
+                vs, handler, root, page_vaddr, end, RADIX_RL_QUERY_OR_CHANGE);
+        if (err != REND_SUCCESS)
+                return err;
+
+        radix_tree_level_walk_t l3_walk;
+
+        radix_tree_level_walk_init(&l3_walk,
+                                   root,
+                                   page_vaddr,
+                                   end,
+                                   RADIX_TREE_LEVEL3,
+                                   RADIX_TREE_DIRECTION_INC);
+        if (!radix_tree_level_walk_check(&l3_walk)) {
+                err = -E_IN_PARAM;
+                goto leaf_unbind_range_out;
+        }
+        size_t validated = 0;
+        do {
+                Radix_node_t* leaf = l3_walk.curr_l3_node;
+                if (!leaf || !(leaf->flags & PAGE_ENTRY_VALID)) {
+                        err = -E_IN_PARAM;
+                        goto leaf_unbind_range_out;
+                }
+                validated++;
+        } while (radix_tree_level_walk(&l3_walk));
+        if (validated != page_number) {
+                err = -E_IN_PARAM;
+                goto leaf_unbind_range_out;
+        }
+
+        /* Pass 1 ended on the last page; flip to DEC and unbind high PPN first. */
+        l3_walk.direction = RADIX_TREE_DIRECTION_DEC;
+        size_t remain = page_number;
+        do {
+                Radix_node_t* leaf = l3_walk.curr_l3_node;
+                ppn_t cur_ppn = ppn_first + (ppn_t)(remain - 1);
+                radix_leaf_unlink_rmap(vs->pmm, cur_ppn, leaf);
+                leaf->flags = entry_flags_rm_sw_flags(leaf->flags)
+                              & ~(ENTRY_FLAGS_t)PAGE_ENTRY_VALID;
+                leaf->flags |= (ENTRY_FLAGS_t)PAGE_ENTRY_NEXUS_LAZY;
+                remain--;
+        } while (remain != 0 && radix_tree_level_walk(&l3_walk));
+
+leaf_unbind_range_out:
+        (void)radix_range_lock_release(root, page_vaddr, end);
+        return err;
+}
+
+error_t vmm_radix_tree_leaf_bind(struct map_handler* handler, VS_Common* vs,
+                                 vaddr page_vaddr, ppn_t ppn,
+                                 ENTRY_FLAGS_t leaf_flags)
+{
+        return vmm_radix_tree_leaf_bind_range(
+                handler, vs, page_vaddr, ppn, 1, leaf_flags);
 }
 
 error_t vmm_radix_tree_leaf_unbind(struct map_handler* handler, VS_Common* vs,
                                    vaddr page_vaddr, ppn_t ppn)
 {
-        Radix_entry_t* root = radix_root_from_vs(vs);
-        vaddr end;
-        if (!root || !vs || !vs->pmm || !vs->pmm->zone || !handler
-            || invalid_ppn(ppn))
-                return -E_IN_PARAM;
-        if (!radix_calculate_end_check(page_vaddr, 1, &end))
-                return -E_IN_PARAM;
-
-        error_t err = REND_SUCCESS;
-        err = radix_range_lock_acquire(
-                vs, handler, root, page_vaddr, end, RADIX_RL_QUERY_OR_CHANGE);
-        if (err != REND_SUCCESS)
-                return err;
-
-        radix_tree_level_walk_t l3_walk;
-
-        radix_tree_level_walk_init(&l3_walk,
-                                   root,
-                                   page_vaddr,
-                                   end,
-                                   RADIX_TREE_LEVEL3,
-                                   RADIX_TREE_DIRECTION_INC);
-        if (!radix_tree_level_walk_check(&l3_walk)) {
-                err = -E_IN_PARAM;
-                goto leaf_unbind_out;
-        }
-
-        Radix_node_t* leaf = l3_walk.curr_l3_node;
-        if (!leaf || !(leaf->flags & PAGE_ENTRY_VALID) || leaf->vs_ptr != vs) {
-                err = -E_IN_PARAM;
-                goto leaf_unbind_out;
-        }
-
-        radix_leaf_unlink_rmap(vs->pmm, ppn, leaf);
-        leaf->flags = entry_flags_rm_sw_flags(leaf->flags)
-                      & ~(ENTRY_FLAGS_t)PAGE_ENTRY_VALID;
-        leaf->flags |= (ENTRY_FLAGS_t)PAGE_ENTRY_NEXUS_LAZY;
-        leaf->vs_ptr = vs;
-
-leaf_unbind_out:
-        (void)radix_range_lock_release(root, page_vaddr, end);
-        return err;
+        return vmm_radix_tree_leaf_unbind_range(
+                handler, vs, page_vaddr, ppn, 1);
 }
 
 error_t vmm_radix_tree_delete_range(struct map_handler* handler, VS_Common* vs,
@@ -1355,7 +1422,8 @@ error_t vmm_radix_tree_change_leaf_ppn(struct map_handler* handler,
         if (old_ppn != new_ppn) {
                 ZonePageCursor cur_old, cur_new;
                 if (!zone_page_cursor_init(&cur_old, vs->pmm->zone, old_ppn)
-                    || !zone_page_cursor_init(&cur_new, vs->pmm->zone, new_ppn)) {
+                    || !zone_page_cursor_init(
+                            &cur_new, vs->pmm->zone, new_ppn)) {
                         err = -E_IN_PARAM;
                         goto change_leaf_ppn_out;
                 }
