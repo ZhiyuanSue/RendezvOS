@@ -5,6 +5,7 @@
 #include <common/align.h>
 #include <common/string.h>
 #include <rendezvos/sync/cas_lock.h>
+#include <modules/log/log.h>
 
 #define RADIX_ENTRY_PAGES    1
 #define RADIX_ENTRY_SIZE     (RADIX_ENTRY_PAGES * PAGE_SIZE)
@@ -110,8 +111,7 @@ enum RADIX_ENTRY_UPDATE_FLAGS {
         RADIX_ENTRY_UPDATE_FLAG_CLEAR_PTR = (1U << 6)
 };
 
-static error_t radix_entry_update(Radix_entry_t* entry,
-                                  enum RADIX_ENTRY_UPDATE_FLAGS update_flags,
+static error_t radix_entry_update(Radix_entry_t* entry, u64 update_flags,
                                   vaddr update_page_addr, int count_delta)
 {
         u64 value = entry->value;
@@ -138,6 +138,10 @@ static error_t radix_entry_update(Radix_entry_t* entry,
         }
         if (update_flags & RADIX_ENTRY_UPDATE_FLAG_CLEAR_PTR) {
                 value = clear_mask_u64(value, VMM_RADIX_PTR_MASK);
+                /*if clear ptr , the count must be set to 0*/
+                update_flags = clear_mask_u64(
+                        update_flags, RADIX_ENTRY_UPDATE_FLAG_COUNT_DELTA);
+                update_flags |= RADIX_ENTRY_UPDATE_FLAG_COUNT_RESET;
         }
         if (update_flags & RADIX_ENTRY_UPDATE_FLAG_VALID_SET) {
                 value |= VMM_RADIX_ENTRY_VALID_MASK;
@@ -169,6 +173,12 @@ static error_t radix_entry_update(Radix_entry_t* entry,
 
         entry->value = value;
         return REND_SUCCESS;
+}
+static inline void radix_node_clear(Radix_node_t* node)
+{
+        node->flags = 0;
+        node->vs_ptr = 0;
+        INIT_LIST_HEAD(&node->rmap_list);
 }
 
 /*radix tree node*/
@@ -223,15 +233,21 @@ static error_t free_radix_table(VS_Common* vs, struct pmm* pmm,
                                 vaddr page_vaddr_start, vaddr page_vaddr_end,
                                 size_t free_page_number)
 {
+        error_t res = REND_SUCCESS;
+        error_t tmpres;
         for (vaddr page_vaddr_back_iter = page_vaddr_start;
              page_vaddr_back_iter < page_vaddr_end;
              page_vaddr_back_iter += PAGE_SIZE) {
-                (void)unmap(vs, VPN(page_vaddr_back_iter), 0, handler);
+                tmpres = unmap(vs, VPN(page_vaddr_back_iter), 0, handler);
+                if (tmpres != REND_SUCCESS)
+                        res = tmpres;
         }
-        (void)pmm->pmm_free(pmm,
-                            PPN(KERNEL_VIRT_TO_PHY(page_vaddr_start)),
-                            free_page_number);
-        return REND_SUCCESS;
+        tmpres = pmm->pmm_free(pmm,
+                               PPN(KERNEL_VIRT_TO_PHY(page_vaddr_start)),
+                               free_page_number);
+        if (tmpres != REND_SUCCESS)
+                res = tmpres;
+        return res;
 }
 static error_t radix_alloc_level_table(VS_Common* vs, struct pmm* pmm,
                                        struct map_handler* handler,
@@ -283,6 +299,8 @@ static error_t radix_alloc_level_table(VS_Common* vs, struct pmm* pmm,
         *out_page_vaddr = page_vaddr_start;
         return REND_SUCCESS;
 map_fail:
+        /* it might fail, but fail path have another fail should not report, it
+         * must be a serious problem,for example,OOM without any handler*/
         (void)free_radix_table(vs,
                                pmm,
                                handler,
@@ -307,13 +325,12 @@ static error_t free_level_table(VS_Common* vs, struct pmm* pmm,
         } else {
                 return -E_IN_PARAM;
         }
-        (void)free_radix_table(vs,
-                               pmm,
-                               handler,
-                               page_vaddr,
-                               page_vaddr + need_alloc_pages * PAGE_SIZE,
-                               need_alloc_pages);
-        return REND_SUCCESS;
+        return free_radix_table(vs,
+                                pmm,
+                                handler,
+                                page_vaddr,
+                                page_vaddr + need_alloc_pages * PAGE_SIZE,
+                                need_alloc_pages);
 }
 
 /*walk radix tree*/
@@ -693,9 +710,49 @@ static void radix_lock_rollback_entry(VS_Common* vs, struct pmm* pmm,
         default:
                 return;
         }
-        free_level_table(
-                vs, pmm, handler, child_page_addr, walk->walk_level + 1);
+        /*if rollback fail, no ptr points to it , it might leakage, but we just
+         * print it*/
+        if (free_level_table(
+                    vs, pmm, handler, child_page_addr, walk->walk_level + 1)
+            != REND_SUCCESS) {
+                pr_error("[ Error ] free level table fail\n");
+        }
         entry->value = 0;
+}
+
+static error_t radix_lock_ensure_path(Radix_entry_t* entry,
+                                     radix_tree_level_walk_t* walk_iter,
+                                     VS_Common* vs, struct map_handler* handler,
+                                     struct pmm* pmm,
+                                     radix_lock_acquire_kind_t kind, int level,
+                                     u64 update_flags)
+{
+        error_t err;
+        if (kind == RADIX_RL_INSERT) {
+                if (level == RADIX_TREE_LEVEL0
+                    && L0_INDEX(walk_iter->current_vaddr) >= 256)
+                        return REND_SUCCESS;
+                if (!entry_valid(entry) && entry_child(entry) == 0) {
+                        vaddr next_table_vaddr;
+                        err = radix_alloc_level_table(
+                                vs, pmm, handler, &next_table_vaddr, level + 1);
+                        if (err != REND_SUCCESS) {
+                                if (level != RADIX_TREE_LEVEL1)
+                                        radix_entry_unlock(entry);
+                                return err;
+                        }
+                        radix_entry_update(
+                                entry, update_flags, next_table_vaddr, 0);
+                }
+        } else {
+                if (!entry_valid(entry)) {
+                        err = -E_REND_NOFOUND;
+                        if (level != RADIX_TREE_LEVEL1)
+                                radix_entry_unlock(entry);
+                        return err;
+                }
+        }
+        return REND_SUCCESS;
 }
 
 static error_t radix_range_lock_acquire(VS_Common* vs,
@@ -708,11 +765,10 @@ static error_t radix_range_lock_acquire(VS_Common* vs,
         radix_tree_level_walk_t l0_walk_iter, l1_walk_iter, l2_walk_iter,
                 l3_walk_iter;
         struct pmm* pmm = vs->pmm;
-        enum RADIX_ENTRY_UPDATE_FLAGS update_flags =
-                RADIX_ENTRY_UPDATE_FLAG_INHERIT_LOCK
-                | RADIX_ENTRY_UPDATE_FLAG_UPDATE_PTR
-                | RADIX_ENTRY_UPDATE_FLAG_VALID_CLEAR
-                | RADIX_ENTRY_UPDATE_FLAG_COUNT_RESET;
+        u64 update_flags = RADIX_ENTRY_UPDATE_FLAG_INHERIT_LOCK
+                           | RADIX_ENTRY_UPDATE_FLAG_UPDATE_PTR
+                           | RADIX_ENTRY_UPDATE_FLAG_VALID_CLEAR
+                           | RADIX_ENTRY_UPDATE_FLAG_COUNT_RESET;
         /*Phase 1, try hold L0 lock and alloc l1 table if need*/
         radix_tree_level_walk_init(&l0_walk_iter,
                                    root,
@@ -725,35 +781,19 @@ static error_t radix_range_lock_acquire(VS_Common* vs,
         do {
                 Radix_entry_t* l0_entry = l0_walk_iter.curr_l0_entry;
                 radix_entry_lock(l0_entry);
-                if (kind == RADIX_RL_INSERT) {
-                        if (!entry_valid(l0_entry)
-                            && entry_child(l0_entry) == 0) {
-                                vaddr l1_table_vaddr;
-                                err = radix_alloc_level_table(
-                                        vs,
-                                        pmm,
-                                        handler,
-                                        &l1_table_vaddr,
-                                        RADIX_TREE_LEVEL1);
-                                if (err != REND_SUCCESS) {
-                                        radix_entry_unlock(l0_entry);
-                                        goto phase1_clean_prev;
-                                }
-                                radix_entry_update(l0_entry,
-                                                   update_flags,
-                                                   l1_table_vaddr,
-                                                   0);
-                        }
-                } else {
-                        if (!entry_valid(l0_entry)) {
-                                err = -E_REND_NOFOUND;
-                                radix_entry_unlock(l0_entry);
-                                goto phase1_clean_prev;
-                        }
-                }
+                err = radix_lock_ensure_path(l0_entry,
+                                            &l0_walk_iter,
+                                            vs,
+                                            handler,
+                                            pmm,
+                                            kind,
+                                            RADIX_TREE_LEVEL0,
+                                            update_flags);
+                if (err != REND_SUCCESS)
+                        goto phase1_clean_prev;
         } while (radix_tree_level_walk(&l0_walk_iter));
 
-        /*Phase 2, alloc l2 table if need*/
+        /*Phase 2, alloc l2 table if need, we do not lock the L1 nodes*/
         radix_tree_level_walk_init(&l1_walk_iter,
                                    root,
                                    ROUND_DOWN(start, (vaddr)GIGAN_PAGE_SIZE),
@@ -766,30 +806,16 @@ static error_t radix_range_lock_acquire(VS_Common* vs,
         }
         do {
                 Radix_entry_t* l1_entry = l1_walk_iter.curr_l1_entry;
-                if (kind == RADIX_RL_INSERT) {
-                        if (!entry_valid(l1_entry)
-                            && entry_child(l1_entry) == 0) {
-                                vaddr l2_table_vaddr;
-                                err = radix_alloc_level_table(
-                                        vs,
-                                        pmm,
-                                        handler,
-                                        &l2_table_vaddr,
-                                        RADIX_TREE_LEVEL2);
-                                if (err != REND_SUCCESS) {
-                                        goto phase2_clean_prev;
-                                }
-                                radix_entry_update(l1_entry,
-                                                   update_flags,
-                                                   l2_table_vaddr,
-                                                   0);
-                        }
-                } else {
-                        if (!entry_valid(l1_entry)) {
-                                err = -E_REND_NOFOUND;
-                                goto phase2_clean_prev;
-                        }
-                }
+                err = radix_lock_ensure_path(l1_entry,
+                                            &l1_walk_iter,
+                                            vs,
+                                            handler,
+                                            pmm,
+                                            kind,
+                                            RADIX_TREE_LEVEL1,
+                                            update_flags);
+                if (err != REND_SUCCESS)
+                        goto phase2_clean_prev;
         } while (radix_tree_level_walk(&l1_walk_iter));
 
         /*Phase 3, try hold l2 lock and alloc l3 table if need*/
@@ -804,32 +830,16 @@ static error_t radix_range_lock_acquire(VS_Common* vs,
         do {
                 Radix_entry_t* l2_entry = l2_walk_iter.curr_l2_entry;
                 radix_entry_lock(l2_entry);
-                if (kind == RADIX_RL_INSERT) {
-                        if (!entry_valid(l2_entry)
-                            && entry_child(l2_entry) == 0) {
-                                vaddr l3_table_vaddr;
-                                err = radix_alloc_level_table(
-                                        vs,
-                                        pmm,
-                                        handler,
-                                        &l3_table_vaddr,
-                                        RADIX_TREE_LEVEL3);
-                                if (err != REND_SUCCESS) {
-                                        radix_entry_unlock(l2_entry);
-                                        goto phase3_clean_prev;
-                                }
-                                radix_entry_update(l2_entry,
-                                                   update_flags,
-                                                   l3_table_vaddr,
-                                                   0);
-                        }
-                } else {
-                        if (!entry_valid(l2_entry)) {
-                                err = -E_REND_NOFOUND;
-                                radix_entry_unlock(l2_entry);
-                                goto phase3_clean_prev;
-                        }
-                }
+                err = radix_lock_ensure_path(l2_entry,
+                                            &l2_walk_iter,
+                                            vs,
+                                            handler,
+                                            pmm,
+                                            kind,
+                                            RADIX_TREE_LEVEL2,
+                                            update_flags);
+                if (err != REND_SUCCESS)
+                        goto phase3_clean_prev;
         } while (radix_tree_level_walk(&l2_walk_iter));
 
         /*Phase 4, try see whether the l3 node is overlap or not exist*/
@@ -853,9 +863,7 @@ static error_t radix_range_lock_acquire(VS_Common* vs,
                                 err = -E_REND_NOFOUND;
                                 goto phase3_clean_all;
                         }
-                        l3_node->flags = 0;
-                        l3_node->vs_ptr = NULL;
-                        INIT_LIST_HEAD(&l3_node->rmap_list);
+                        radix_node_clear(l3_node);
                 }
         } while (radix_tree_level_walk(&l3_walk_iter));
 
@@ -898,11 +906,15 @@ static error_t radix_range_lock_acquire(VS_Common* vs,
                         delta = -(int)pages_in_overlap;
                         if (l2_old_count != 0
                             && (i64)l2_old_count + delta == 0) {
-                                (void)free_level_table(vs,
-                                                       pmm,
-                                                       handler,
-                                                       entry_child(l2_entry),
-                                                       RADIX_TREE_LEVEL3);
+                                if (free_level_table(vs,
+                                                     pmm,
+                                                     handler,
+                                                     entry_child(l2_entry),
+                                                     RADIX_TREE_LEVEL3)
+                                    != REND_SUCCESS) {
+                                        pr_error(
+                                                "[ Error ] free level table fail at phase 5 level 2\n");
+                                }
                                 update_flags =
                                         RADIX_ENTRY_UPDATE_FLAG_INHERIT_LOCK
                                         | RADIX_ENTRY_UPDATE_FLAG_VALID_CLEAR
@@ -947,11 +959,15 @@ static error_t radix_range_lock_acquire(VS_Common* vs,
                 } else {
                         if (l1_old_count != 0
                             && (i64)l1_old_count + delta == 0) {
-                                (void)free_level_table(vs,
-                                                       pmm,
-                                                       handler,
-                                                       entry_child(l1_entry),
-                                                       RADIX_TREE_LEVEL2);
+                                if (free_level_table(vs,
+                                                     pmm,
+                                                     handler,
+                                                     entry_child(l1_entry),
+                                                     RADIX_TREE_LEVEL2)
+                                    != REND_SUCCESS) {
+                                        pr_error(
+                                                "[ Error ] free level table fail at phase 5 level 1\n");
+                                }
                                 update_flags =
                                         RADIX_ENTRY_UPDATE_FLAG_INHERIT_LOCK
                                         | RADIX_ENTRY_UPDATE_FLAG_VALID_CLEAR
@@ -997,11 +1013,15 @@ static error_t radix_range_lock_acquire(VS_Common* vs,
                 } else {
                         if (l0_old_count != 0 && (i64)l0_old_count + delta == 0
                             && L0_INDEX(l0_walk_iter.current_vaddr) < 256) {
-                                (void)free_level_table(vs,
-                                                       pmm,
-                                                       handler,
-                                                       entry_child(l0_entry),
-                                                       RADIX_TREE_LEVEL1);
+                                if (free_level_table(vs,
+                                                     pmm,
+                                                     handler,
+                                                     entry_child(l0_entry),
+                                                     RADIX_TREE_LEVEL1)
+                                    != REND_SUCCESS) {
+                                        pr_error(
+                                                "[ Error ] free level table fail at phase 5 level 0\n");
+                                }
                                 update_flags =
                                         RADIX_ENTRY_UPDATE_FLAG_INHERIT_LOCK
                                         | RADIX_ENTRY_UPDATE_FLAG_VALID_CLEAR
@@ -1026,6 +1046,7 @@ static error_t radix_range_lock_acquire(VS_Common* vs,
 
 phase3_clean_all:
         radix_lock_rollback_entry(vs, pmm, handler, kind, &l2_walk_iter);
+        goto phase3_clean_prev;
 phase3_clean_prev:
         l2_walk_iter.direction = RADIX_TREE_DIRECTION_DEC;
         while (radix_tree_level_walk(&l2_walk_iter)) {
@@ -1034,6 +1055,7 @@ phase3_clean_prev:
         }
 phase2_clean_all:
         radix_lock_rollback_entry(vs, pmm, handler, kind, &l1_walk_iter);
+        goto phase2_clean_prev;
 phase2_clean_prev:
         l1_walk_iter.direction = RADIX_TREE_DIRECTION_DEC;
         while (radix_tree_level_walk(&l1_walk_iter)) {
@@ -1042,6 +1064,7 @@ phase2_clean_prev:
         }
 phase1_clean_all:
         radix_lock_rollback_entry(vs, pmm, handler, kind, &l0_walk_iter);
+        goto phase1_clean_prev;
 phase1_clean_prev:
         l0_walk_iter.direction = RADIX_TREE_DIRECTION_DEC;
         while (radix_tree_level_walk(&l0_walk_iter)) {
