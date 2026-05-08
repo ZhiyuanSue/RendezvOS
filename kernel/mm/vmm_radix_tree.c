@@ -1,7 +1,9 @@
 
 #include <rendezvos/mm/vmm_radix_tree.h>
+#include <rendezvos/mm/nexus_base.h>
 #include <common/bit.h>
 #include <common/align.h>
+#include <common/string.h>
 #include <rendezvos/sync/cas_lock.h>
 
 #define RADIX_ENTRY_PAGES    1
@@ -104,7 +106,8 @@ enum RADIX_ENTRY_UPDATE_FLAGS {
         RADIX_ENTRY_UPDATE_FLAG_VALID_CLEAR = (1U << 2),
         RADIX_ENTRY_UPDATE_FLAG_COUNT_DELTA = (1U << 3),
         RADIX_ENTRY_UPDATE_FLAG_COUNT_RESET = (1U << 4),
-        RADIX_ENTRY_UPDATE_FLAG_UPDATE_PTR = (1U << 5)
+        RADIX_ENTRY_UPDATE_FLAG_UPDATE_PTR = (1U << 5),
+        RADIX_ENTRY_UPDATE_FLAG_CLEAR_PTR = (1U << 6)
 };
 
 static error_t radix_entry_update(Radix_entry_t* entry,
@@ -120,9 +123,21 @@ static error_t radix_entry_update(Radix_entry_t* entry,
             && update_page_addr == 0) {
                 return -E_IN_PARAM;
         }
+        if ((update_flags & RADIX_ENTRY_UPDATE_FLAG_CLEAR_PTR)
+            && update_page_addr != 0) {
+                return -E_IN_PARAM;
+        }
+
+        if ((update_flags & RADIX_ENTRY_UPDATE_FLAG_CLEAR_PTR)
+            && (update_flags & RADIX_ENTRY_UPDATE_FLAG_UPDATE_PTR)) {
+                return -E_IN_PARAM;
+        }
         if (update_flags & RADIX_ENTRY_UPDATE_FLAG_UPDATE_PTR) {
                 value = clear_mask_u64(value, VMM_RADIX_PTR_MASK);
                 value |= (update_page_addr & VMM_RADIX_PTR_MASK);
+        }
+        if (update_flags & RADIX_ENTRY_UPDATE_FLAG_CLEAR_PTR) {
+                value = clear_mask_u64(value, VMM_RADIX_PTR_MASK);
         }
         if (update_flags & RADIX_ENTRY_UPDATE_FLAG_VALID_SET) {
                 value |= VMM_RADIX_ENTRY_VALID_MASK;
@@ -199,11 +214,7 @@ static bool radix_l3_overlap_insert(const Radix_node_t* node)
 }
 static bool radix_l3_deletable(const Radix_node_t* node)
 {
-        if (!(node->flags & (PAGE_ENTRY_VALID | PAGE_ENTRY_NEXUS_LAZY)))
-                return false;
-        if (node->vs_ptr != NULL)
-                return false;
-        return true;
+        return (node->flags & (PAGE_ENTRY_VALID | PAGE_ENTRY_NEXUS_LAZY)) != 0;
 }
 
 /*new table's free and alloc logic*/
@@ -332,7 +343,8 @@ static void radix_tree_level_walk_init(radix_tree_level_walk_t* walk_iter,
         if (!walk_iter || !root
             || !radix_check_range(range_start_vaddr, range_end_vaddr, level))
                 return;
-        if (direction != 1 && direction != -1)
+        if (direction != RADIX_TREE_DIRECTION_INC
+            && direction != RADIX_TREE_DIRECTION_DEC)
                 return;
         walk_iter->root = root;
         walk_iter->direction = direction;
@@ -344,7 +356,7 @@ static void radix_tree_level_walk_init(radix_tree_level_walk_t* walk_iter,
         vaddr start_addr;
         if (direction == RADIX_TREE_DIRECTION_INC) {
                 start_addr = range_start_vaddr;
-        } else if (direction == RADIX_TREE_DIRECTION_DEC) {
+        } else {
                 u64 step = get_gran_from_level(level);
                 start_addr = ROUND_DOWN(range_end_vaddr - 1, step);
                 if (!(start_addr >= range_start_vaddr
@@ -627,7 +639,6 @@ static void radix_lock_rollback_entry(VS_Common* vs, struct pmm* pmm,
 {
         Radix_entry_t* entry;
         vaddr child_page_addr;
-        size_t free_page_count = 0;
 
         switch (walk->walk_level) {
         case RADIX_TREE_LEVEL2:
@@ -645,7 +656,6 @@ static void radix_lock_rollback_entry(VS_Common* vs, struct pmm* pmm,
                         radix_entry_unlock(entry);
                         return;
                 }
-                free_page_count = RADIX_NODE_PAGES;
                 break;
 
         case RADIX_TREE_LEVEL1:
@@ -657,7 +667,6 @@ static void radix_lock_rollback_entry(VS_Common* vs, struct pmm* pmm,
                 if (child_page_addr == 0) {
                         return;
                 }
-                free_page_count = RADIX_ENTRY_PAGES;
                 break;
 
         case RADIX_TREE_LEVEL0:
@@ -679,18 +688,13 @@ static void radix_lock_rollback_entry(VS_Common* vs, struct pmm* pmm,
                         radix_entry_unlock(entry);
                         return;
                 }
-                free_page_count = RADIX_ENTRY_PAGES;
                 break;
 
         default:
                 return;
         }
-        free_radix_table(vs,
-                         pmm,
-                         handler,
-                         child_page_addr,
-                         child_page_addr + (vaddr)(free_page_count * PAGE_SIZE),
-                         free_page_count);
+        free_level_table(
+                vs, pmm, handler, child_page_addr, walk->walk_level + 1);
         entry->value = 0;
 }
 
@@ -849,6 +853,9 @@ static error_t radix_range_lock_acquire(VS_Common* vs,
                                 err = -E_REND_NOFOUND;
                                 goto phase3_clean_all;
                         }
+                        l3_node->flags = 0;
+                        l3_node->vs_ptr = NULL;
+                        INIT_LIST_HEAD(&l3_node->rmap_list);
                 }
         } while (radix_tree_level_walk(&l3_walk_iter));
 
@@ -877,9 +884,8 @@ static error_t radix_range_lock_acquire(VS_Common* vs,
                 /*the walk promise that there must have an overlap range*/
                 u64 pages_in_overlap =
                         (VPN(overlap_end - 1) - VPN(overlap_start) + 1);
-                enum RADIX_ENTRY_UPDATE_FLAGS update_flags =
-                        RADIX_ENTRY_UPDATE_FLAG_INHERIT_LOCK
-                        | RADIX_ENTRY_UPDATE_FLAG_COUNT_DELTA;
+                update_flags = RADIX_ENTRY_UPDATE_FLAG_INHERIT_LOCK
+                               | RADIX_ENTRY_UPDATE_FLAG_COUNT_DELTA;
                 int delta;
                 if (kind == RADIX_RL_INSERT) {
                         if (entry_child(l2_entry) != 0
@@ -890,6 +896,19 @@ static error_t radix_range_lock_acquire(VS_Common* vs,
                         delta = (int)pages_in_overlap;
                 } else {
                         delta = -(int)pages_in_overlap;
+                        if (l2_old_count != 0
+                            && (i64)l2_old_count + delta == 0) {
+                                (void)free_level_table(vs,
+                                                       pmm,
+                                                       handler,
+                                                       entry_child(l2_entry),
+                                                       RADIX_TREE_LEVEL3);
+                                update_flags =
+                                        RADIX_ENTRY_UPDATE_FLAG_INHERIT_LOCK
+                                        | RADIX_ENTRY_UPDATE_FLAG_VALID_CLEAR
+                                        | RADIX_ENTRY_UPDATE_FLAG_COUNT_RESET
+                                        | RADIX_ENTRY_UPDATE_FLAG_CLEAR_PTR;
+                        }
                 }
                 radix_entry_update(l2_entry, update_flags, 0, delta);
                 radix_count_trans_to_parent(kind,
@@ -925,6 +944,20 @@ static error_t radix_range_lock_acquire(VS_Common* vs,
                 if (kind == RADIX_RL_INSERT && entry_child(l1_entry) != 0
                     && !entry_valid(l1_entry)) {
                         update_flags |= RADIX_ENTRY_UPDATE_FLAG_VALID_SET;
+                } else {
+                        if (l1_old_count != 0
+                            && (i64)l1_old_count + delta == 0) {
+                                (void)free_level_table(vs,
+                                                       pmm,
+                                                       handler,
+                                                       entry_child(l1_entry),
+                                                       RADIX_TREE_LEVEL2);
+                                update_flags =
+                                        RADIX_ENTRY_UPDATE_FLAG_INHERIT_LOCK
+                                        | RADIX_ENTRY_UPDATE_FLAG_VALID_CLEAR
+                                        | RADIX_ENTRY_UPDATE_FLAG_COUNT_RESET
+                                        | RADIX_ENTRY_UPDATE_FLAG_CLEAR_PTR;
+                        }
                 }
                 radix_entry_update(l1_entry, update_flags, 0, delta);
 
@@ -945,6 +978,7 @@ static error_t radix_range_lock_acquire(VS_Common* vs,
                                    RADIX_TREE_DIRECTION_INC);
         do {
                 Radix_entry_t* l0_entry = l0_walk_iter.curr_l0_entry;
+                u64 l0_old_count = entry_get_count(l0_entry->value);
 
                 if (kind == RADIX_RL_QUERY_OR_CHANGE) {
                         continue;
@@ -960,6 +994,20 @@ static error_t radix_range_lock_acquire(VS_Common* vs,
                 if (kind == RADIX_RL_INSERT && entry_child(l0_entry) != 0
                     && !entry_valid(l0_entry)) {
                         update_flags |= RADIX_ENTRY_UPDATE_FLAG_VALID_SET;
+                } else {
+                        if (l0_old_count != 0 && (i64)l0_old_count + delta == 0
+                            && L0_INDEX(l0_walk_iter.current_vaddr) < 256) {
+                                (void)free_level_table(vs,
+                                                       pmm,
+                                                       handler,
+                                                       entry_child(l0_entry),
+                                                       RADIX_TREE_LEVEL1);
+                                update_flags =
+                                        RADIX_ENTRY_UPDATE_FLAG_INHERIT_LOCK
+                                        | RADIX_ENTRY_UPDATE_FLAG_VALID_CLEAR
+                                        | RADIX_ENTRY_UPDATE_FLAG_COUNT_RESET
+                                        | RADIX_ENTRY_UPDATE_FLAG_CLEAR_PTR;
+                        }
                 }
                 radix_entry_update(l0_entry, update_flags, 0, delta);
         } while (radix_tree_level_walk(&l0_walk_iter));
@@ -1025,4 +1073,4 @@ static error_t radix_range_lock_release(Radix_entry_t* root, vaddr start,
         return REND_SUCCESS;
 }
 
-/*module apis: the range ops of*/
+/* === module apis === */
