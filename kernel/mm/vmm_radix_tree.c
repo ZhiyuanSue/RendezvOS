@@ -237,9 +237,10 @@ static error_t free_radix_table(VSpace* vs, struct pmm* pmm,
         for (vaddr page_vaddr_back_iter = page_vaddr_start;
              page_vaddr_back_iter < page_vaddr_end;
              page_vaddr_back_iter += PAGE_SIZE) {
-                tmpres = unmap(vs, VPN(page_vaddr_back_iter), 0, handler);
-                if (tmpres != REND_SUCCESS)
-                        res = tmpres;
+                ppn_t ppn = unmap(vs, VPN(page_vaddr_back_iter), 0, handler);
+                if (invalid_ppn(ppn)){
+                        res = -E_RENDEZVOS;
+                }
         }
         tmpres = pmm->pmm_free(pmm,
                                PPN(KERNEL_VIRT_TO_PHY(page_vaddr_start)),
@@ -1136,8 +1137,15 @@ error_t vmm_radix_tree_insert_range(struct map_handler* handler, VSpace* vs,
         if (err != REND_SUCCESS)
                 return err;
 
+        /*
+         * LAZY shadow records intent before PTE commit; it must not set
+         * PAGE_ENTRY_VALID — leaf_bind_range rejects VALID|LAZY and then sets
+         * VALID after rmap + caller's map().
+         */
         ENTRY_FLAGS_t lazy_leaf_flags = entry_flags_rm_sw_flags(flags)
                                         | (ENTRY_FLAGS_t)PAGE_ENTRY_NEXUS_LAZY;
+        lazy_leaf_flags = (ENTRY_FLAGS_t)clear_mask_u64(
+                (u64)lazy_leaf_flags, (u64)PAGE_ENTRY_VALID);
         radix_tree_level_walk_t l3_walk;
 
         radix_tree_level_walk_init(&l3_walk,

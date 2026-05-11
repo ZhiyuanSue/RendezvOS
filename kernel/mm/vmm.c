@@ -127,6 +127,13 @@ error_t init_root_vspace(VSpace* root_vs, cpu_id_t cpu_id)
                 (void)vmm_radix_tree_destroy(h, root_vs);
                 return -E_RENDEZVOS;
         }
+        if (vmm_radix_tree_install_shared_kernel_high_half(h, root_vs)
+            != REND_SUCCESS) {
+                pr_error(
+                        "[VMM] init_root_vspace: install_shared_kernel_high_half failed\n");
+                (void)vmm_radix_tree_destroy(h, root_vs);
+                return -E_RENDEZVOS;
+        }
 
         INIT_LIST_HEAD(&root_vs->root_manage_list_head);
         lock_init_cas(&root_vs->vspace_register_lock);
@@ -186,7 +193,7 @@ error_t del_vspace(VSpace** vs)
         if (!(*vs))
                 return REND_SUCCESS;
         /* Never free the kernel/root vspace page-table frames. */
-        if (*vs == &root_vspace)
+        if (*vs == (*vs)->root_vs)
                 return REND_SUCCESS;
 
         VSpace* vspace = *vs;
