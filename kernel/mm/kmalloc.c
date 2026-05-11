@@ -20,7 +20,7 @@
  */
 
 /* Radix owner tag = allocating CPU index (see core_get_free_pages). */
-static int kmem_radix_kernel_heap_owner_cpu(VSpace * root_vs,vaddr kva)
+static int kmem_radix_kernel_heap_owner_cpu(VSpace* root_vs, vaddr kva)
 {
         if (kva < KERNEL_VIRT_OFFSET)
                 return INVALID_CPU_ID;
@@ -76,14 +76,22 @@ static void* core_get_free_pages(size_t page_num, VSpace* vs,
         }
         free_page_addr = KERNEL_PHY_TO_VIRT(PADDR(ppn));
 
-        if (vmm_radix_tree_insert_range(handler,
-                                        vs,
-                                        owner_tp,
-                                        free_page_addr,
-                                        leaf_eflags,
-                                        (*alloced_page_number))
-            != REND_SUCCESS) {
-                pr_error("[ KALLOC ] ERROR: insert range fail\n");
+        error_t insert_range_res;
+        for (u64 try = 0; try < RADIX_ENTRY_LOCK_RETRY_MAX; try++) {
+                insert_range_res =
+                        vmm_radix_tree_insert_range(handler,
+                                                    vs,
+                                                    owner_tp,
+                                                    free_page_addr,
+                                                    leaf_eflags,
+                                                    (*alloced_page_number));
+                if (insert_range_res == REND_SUCCESS
+                    || insert_range_res != -E_REND_AGAIN)
+                        break;
+        }
+        if (insert_range_res != REND_SUCCESS) {
+                pr_error("[ KALLOC ] ERROR: insert range fail e=%d\n",
+                         (int)insert_range_res);
                 goto fail_pmm_only;
         }
 
@@ -105,14 +113,22 @@ static void* core_get_free_pages(size_t page_num, VSpace* vs,
                 mapped_count++;
         }
 
-        if (vmm_radix_tree_leaf_bind_range(handler,
-                                           vs,
-                                           free_page_addr,
-                                           ppn,
-                                           (*alloced_page_number),
-                                           leaf_eflags)
-            != REND_SUCCESS) {
-                pr_error("[ KALLOC ] ERROR: bind fail\n");
+        error_t bind_range_res;
+        for (u64 try = 0; try < RADIX_ENTRY_LOCK_RETRY_MAX; try++) {
+                bind_range_res =
+                        vmm_radix_tree_leaf_bind_range(handler,
+                                                       vs,
+                                                       free_page_addr,
+                                                       ppn,
+                                                       (*alloced_page_number),
+                                                       leaf_eflags);
+                if (bind_range_res == REND_SUCCESS
+                    || bind_range_res != -E_REND_AGAIN)
+                        break;
+        }
+        if (bind_range_res != REND_SUCCESS) {
+                pr_error("[ KALLOC ] ERROR: bind fail e=%d\n",
+                         (int)bind_range_res);
                 goto fail_unmap_radix_pmm;
         }
 
@@ -176,7 +192,6 @@ static error_t core_free_pages(void* p, int page_num, VSpace* vs)
         return vs->pmm->pmm_free(vs->pmm, ppn_first, np);
 }
 
-
 /* Payload after object_header.obj for cross-CPU page-free MSQ nodes. */
 struct kfree_page_free_info {
         vaddr page_vaddr;
@@ -207,7 +222,7 @@ static int bytes_to_pages(size_t Bytes)
 static void page_chunk_rb_tree_insert(struct page_chunk_node* node,
                                       struct rb_root* page_chunk_root)
 {
-        struct rb_node **new = &page_chunk_root->rb_root, *parent = NULL;
+        struct rb_node** new = &page_chunk_root->rb_root, *parent = NULL;
         u64 key = node->page_addr;
         while (*new) {
                 parent = *new;
@@ -440,17 +455,16 @@ static void* _k_alloc(struct mem_allocator* k_allocator_p, size_t Bytes)
                         /* here we will change the group linked list, we
                          * also need to think the lock*/
                         size_t ap = 0;
-                        void* page_ptr = core_get_free_pages(
-                                (size_t)PAGE_PER_CHUNK,
-                                &root_vspace,
-                                PAGE_ENTRY_NONE,
-                                &ap);
+                        void* page_ptr =
+                                core_get_free_pages((size_t)PAGE_PER_CHUNK,
+                                                    &root_vspace,
+                                                    PAGE_ENTRY_NONE,
+                                                    &ap);
                         if (!page_ptr || ap != (size_t)PAGE_PER_CHUNK) {
                                 if (page_ptr)
-                                        (void)core_free_pages(
-                                                page_ptr,
-                                                (int)ap,
-                                                &root_vspace);
+                                        (void)core_free_pages(page_ptr,
+                                                              (int)ap,
+                                                              &root_vspace);
                                 pr_error("[ERROR] get free page fail\n");
                                 return NULL;
                         }
@@ -463,9 +477,8 @@ static void* _k_alloc(struct mem_allocator* k_allocator_p, size_t Bytes)
                                         e);
                                 /*just clean this time
                                  * allocated*/
-                                e = core_free_pages(page_ptr,
-                                                    PAGE_PER_CHUNK,
-                                                    &root_vspace);
+                                e = core_free_pages(
+                                        page_ptr, PAGE_PER_CHUNK, &root_vspace);
                                 if (e) {
                                         pr_error(
                                                 "[Error] fail to free pages e code %d\n",
@@ -775,7 +788,8 @@ static void kfree(struct allocator* allocator_p, void* p)
                 e = _k_free(p);
         } else {
                 u32 cur_cpu = percpu(cpu_number);
-                int owner_cpu = kmem_radix_kernel_heap_owner_cpu(&root_vspace,(vaddr)p);
+                int owner_cpu = kmem_radix_kernel_heap_owner_cpu(&root_vspace,
+                                                                 (vaddr)p);
                 if (owner_cpu == INVALID_CPU_ID) {
                         e = _k_free(p);
                 } else if ((int)cur_cpu != owner_cpu) {

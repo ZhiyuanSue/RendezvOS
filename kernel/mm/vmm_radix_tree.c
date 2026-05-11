@@ -90,6 +90,32 @@ static void radix_entry_lock(Radix_entry_t* entry)
                         return;
         }
 }
+
+static bool radix_entry_trylock_once(Radix_entry_t* entry)
+{
+        u64 loaded = atomic64_load((volatile u64*)&entry->value);
+        if (loaded & VMM_RADIX_ENTRY_LOCK_MASK)
+                return false;
+        u64 desired = loaded | VMM_RADIX_ENTRY_LOCK_MASK;
+        return atomic64_cas((volatile u64*)&entry->value, loaded, desired)
+               == loaded;
+}
+
+static bool radix_entry_try_lock(Radix_entry_t* entry)
+{
+        for (u32 attempt = 0; attempt < RADIX_ENTRY_LOCK_RETRY_ATTEMPTS;
+             attempt++) {
+                if (radix_entry_trylock_once(entry))
+                        return true;
+                u32 shift = (attempt < RADIX_ENTRY_LOCK_RETRY_EXP) ?
+                                    attempt :
+                                    RADIX_ENTRY_LOCK_RETRY_EXP;
+                u32 spins = 1U << shift;
+                for (u32 i = 0; i < spins; i++)
+                        arch_cpu_relax();
+        }
+        return false;
+}
 static void radix_entry_unlock(Radix_entry_t* entry)
 {
         while (1) {
@@ -238,7 +264,7 @@ static error_t free_radix_table(VSpace* vs, struct pmm* pmm,
              page_vaddr_back_iter < page_vaddr_end;
              page_vaddr_back_iter += PAGE_SIZE) {
                 ppn_t ppn = unmap(vs, VPN(page_vaddr_back_iter), 0, handler);
-                if (invalid_ppn(ppn)){
+                if (invalid_ppn(ppn)) {
                         res = -E_RENDEZVOS;
                 }
         }
@@ -779,7 +805,10 @@ static error_t radix_range_lock_acquire(VSpace* vs, struct map_handler* handler,
                 return -E_IN_PARAM;
         do {
                 Radix_entry_t* l0_entry = l0_walk_iter.curr_l0_entry;
-                radix_entry_lock(l0_entry);
+                if (!radix_entry_try_lock(l0_entry)) {
+                        err = -E_REND_AGAIN;
+                        goto phase1_clean_prev;
+                }
                 err = radix_lock_ensure_path(l0_entry,
                                              &l0_walk_iter,
                                              vs,
@@ -828,7 +857,10 @@ static error_t radix_range_lock_acquire(VSpace* vs, struct map_handler* handler,
                 goto phase2_clean_all;
         do {
                 Radix_entry_t* l2_entry = l2_walk_iter.curr_l2_entry;
-                radix_entry_lock(l2_entry);
+                if (!radix_entry_try_lock(l2_entry)) {
+                        err = -E_REND_AGAIN;
+                        goto phase3_clean_prev;
+                }
                 err = radix_lock_ensure_path(l2_entry,
                                              &l2_walk_iter,
                                              vs,
@@ -1144,8 +1176,8 @@ error_t vmm_radix_tree_insert_range(struct map_handler* handler, VSpace* vs,
          */
         ENTRY_FLAGS_t lazy_leaf_flags = entry_flags_rm_sw_flags(flags)
                                         | (ENTRY_FLAGS_t)PAGE_ENTRY_NEXUS_LAZY;
-        lazy_leaf_flags = (ENTRY_FLAGS_t)clear_mask_u64(
-                (u64)lazy_leaf_flags, (u64)PAGE_ENTRY_VALID);
+        lazy_leaf_flags = (ENTRY_FLAGS_t)clear_mask_u64((u64)lazy_leaf_flags,
+                                                        (u64)PAGE_ENTRY_VALID);
         radix_tree_level_walk_t l3_walk;
 
         radix_tree_level_walk_init(&l3_walk,

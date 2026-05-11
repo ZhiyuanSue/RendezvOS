@@ -190,8 +190,8 @@ error_t map_handler_copy_data_range(struct map_handler *handler,
 
         return REND_SUCCESS;
 }
-error_t map(VSpace *vs, ppn_t ppn, vpn_t vpn, int level,
-            ENTRY_FLAGS_t eflags, struct map_handler *handler)
+error_t map(VSpace *vs, ppn_t ppn, vpn_t vpn, int level, ENTRY_FLAGS_t eflags,
+            struct map_handler *handler)
 {
         ARCH_PFLAGS_t flags = 0;
         ENTRY_FLAGS_t entry_flags = 0;

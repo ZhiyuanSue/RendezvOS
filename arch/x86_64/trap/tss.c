@@ -7,7 +7,8 @@ DEFINE_PER_CPU(struct TSS, cpu_tss);
 extern u64 boot_stack_bottom;
 void prepare_per_cpu_tss(cpu_id_t cpu_id)
 {
-        set_rsp(&per_cpu(cpu_tss, cpu_id), 0,
+        set_rsp(&per_cpu(cpu_tss, cpu_id),
+                0,
                 per_cpu(boot_stack_bottom, cpu_id));
         union desc_selector tmp_sel = {
                 .rpl = 0,

@@ -8,14 +8,16 @@
 #include <rendezvos/smp/percpu.h>
 
 // /*
-//  * Page.rmap_list is part of PMM-owned metadata: link/unlink must run under the
+//  * Page.rmap_list is part of PMM-owned metadata: link/unlink must run under
+//  the
 //  * same zone pmm MCS lock as readers (nexus_kernel_page_owner_cpu,
 //  * unfill_phy_page snapshot). Mapping paths hold the page-table vspace lock
 //  * (see below) before calling link_rmap_list, so lock order is always
 //  * that lock -> pmm (no pmm while holding only nexus in the inverse order for
 //  * the same page).
 //  *
-//  * Kernel kmem: all CPUs share root_vspace page tables. Per-CPU nexus_root uses
+//  * Kernel kmem: all CPUs share root_vspace page tables. Per-CPU nexus_root
+//  uses
 //  * KERNEL_HEAP_REF whose nexus_vspace_lock protects only that CPU's RB tree.
 //  * Any map/unmap/have_mapped on root_vspace is serialized by
 //  * root_vspace.vspace_lock (taken inside map/unmap/have_mapped via per-CPU
@@ -37,7 +39,8 @@
 //                 actually, which should not be alloced successfully before,
 //                 but we still need to check here.
 //                 if rmap_list have no nexus node linked, just link,
-//                 otherwise we need to check, is the ppn 2M aligned? if not, just
+//                 otherwise we need to check, is the ppn 2M aligned? if not,
+//                 just
 //            link, if so, check the head nexus 2M or not?
 //         */
 //         if (!ALIGNED(ppn, MIDDLE_PAGES)) {
@@ -55,7 +58,8 @@
 //                                               &p_ptr->rmap_list);
 //                         } else {
 //                                 pr_error(
-//                                         "[ NEXUS ] try to map a 2M and a 4K page on a 2M aligned phy page\n");
+//                                         "[ NEXUS ] try to map a 2M and a 4K
+//                                         page on a 2M aligned phy page\n");
 //                         }
 //                 }
 //         }
@@ -79,7 +83,8 @@
 // }
 // static inline u64 nexus_node_get_pages(struct nexus_node* nexus_entry)
 // {
-//         return (nexus_entry->region_flags & PAGE_ENTRY_HUGE) ? MIDDLE_PAGES : 1;
+//         return (nexus_entry->region_flags & PAGE_ENTRY_HUGE) ? MIDDLE_PAGES :
+//         1;
 // }
 // static inline void nexus_node_set_len(struct nexus_node* nexus_entry,
 //                                       bool is_2M)
@@ -100,15 +105,16 @@
 //  * - `node` is non-huge and node->addr is page-aligned
 //  */
 // static error_t nexus_update_node(VSpace* vs, struct map_handler* handler,
-//                                  struct pmm* pmm_ptr, struct nexus_node* node,
-//                                  ppn_t old_ppn, ppn_t new_ppn,
+//                                  struct pmm* pmm_ptr, struct nexus_node*
+//                                  node, ppn_t old_ppn, ppn_t new_ppn,
 //                                  ENTRY_FLAGS_t desired_flags,
 //                                  bool update_region_flags)
 // {
 //         ENTRY_FLAGS_t store_flags = entry_flags_rm_sw_flags(desired_flags);
 
 //         if (new_ppn == old_ppn) {
-//                 if (map(vs, old_ppn, VPN(node->addr), 3, store_flags, handler)
+//                 if (map(vs, old_ppn, VPN(node->addr), 3, store_flags,
+//                 handler)
 //                     != REND_SUCCESS)
 //                         return -E_RENDEZVOS;
 //                 if (update_region_flags)
@@ -204,7 +210,8 @@
 //         struct rb_node* node = root->rb_root;
 //         while (node) {
 //                 struct nexus_node* tmp_node =
-//                         container_of(node, struct nexus_node, _vspace_rb_node);
+//                         container_of(node, struct nexus_node,
+//                         _vspace_rb_node);
 //                 if (vspace_root_addr < tmp_node->vs_common->vspace_root_addr)
 //                         node = node->left_child;
 //                 else if (vspace_root_addr
@@ -288,7 +295,8 @@
 //         struct nexus_node* root_node = &n_node[1];
 //         if (vs == &root_vspace) {
 //                 VSpace* heap_ref =
-//                         &per_cpu(nexus_kernel_heap_vs_common, handler->cpu_id);
+//                         &per_cpu(nexus_kernel_heap_vs_common,
+//                         handler->cpu_id);
 //                 heap_ref->type = (u64)VS_COMMON_KERNEL_HEAP_REF;
 //                 heap_ref->vs = vs;
 //                 heap_ref->cpu_id = (u32)handler->cpu_id;
@@ -318,8 +326,8 @@
 //         list_del_init(&n_node[1].aux_list);
 
 //         n_node->page_left_nexus -= 1;
-//         list_add_head(&n_node->manage_free_list, &root_node->manage_free_list);
-//         return &n_node[1];
+//         list_add_head(&n_node->manage_free_list,
+//         &root_node->manage_free_list); return &n_node[1];
 // }
 // /*return a nexus root node*/
 // struct nexus_node* init_nexus(struct map_handler* handler)
@@ -375,7 +383,8 @@
 //                 struct pmm* pmm_ptr = vspace_root_node->vs_common->pmm;
 //                 ppn_t nexus_new_page =
 //                         pmm_ptr->pmm_alloc(pmm_ptr, 1, &alloced_page_number);
-//                 if (invalid_ppn(nexus_new_page) || alloced_page_number != 1) {
+//                 if (invalid_ppn(nexus_new_page) || alloced_page_number != 1)
+//                 {
 //                         pr_error("[ NEXUS ] ERROR: init error\n");
 //                         return NULL;
 //                 }
@@ -389,9 +398,9 @@
 //                                     | PAGE_ENTRY_VALID | PAGE_ENTRY_WRITE,
 //                             &percpu(Map_Handler));
 //                 if (map_res) {
-//                         pr_error("[ NEXUS ] ERROR: get free entry map error\n");
-//                         pmm_ptr->pmm_free(pmm_ptr, nexus_new_page, 1);
-//                         return NULL;
+//                         pr_error("[ NEXUS ] ERROR: get free entry map
+//                         error\n"); pmm_ptr->pmm_free(pmm_ptr, nexus_new_page,
+//                         1); return NULL;
 //                 }
 //                 memset((void*)vpage_addr, '\0', PAGE_SIZE);
 //                 nexus_init_manage_page(vpage_addr, vspace_root_node);
@@ -403,7 +412,8 @@
 //                 pr_error("[ ERROR ]find an free manage page fail\n");
 //                 return NULL;
 //         }
-//         /*here we promise we have a usable lp, then from lp get the manage page
+//         /*here we promise we have a usable lp, then from lp get the manage
+//         page
 //          * mate info*/
 //         struct nexus_node* usable_manage_page =
 //                 container_of(lp, struct nexus_node, manage_free_list);
@@ -423,7 +433,8 @@
 //          * Invariant: allocated/in-use nexus_node must keep aux_list detached
 //          * (self-linked) unless a local helper temporarily borrows it.
 //          *
-//          * We memset() the node before publishing it; re-init aux_list here so
+//          * We memset() the node before publishing it; re-init aux_list here
+//          so
 //          * list_node_is_detached() works for later temporary borrows.
 //          */
 //         INIT_LIST_HEAD(&usable_manage_entry->aux_list);
@@ -450,19 +461,20 @@
 //         error_t e = pmm_ptr->pmm_free(pmm_ptr, ppn, 1);
 //         if (e) {
 //                 pr_error(
-//                         "[ Error ] pmm free error %d in free manage node with page %d\n",
-//                         e,
-//                         ppn);
+//                         "[ Error ] pmm free error %d in free manage node with
+//                         page %d\n", e, ppn);
 //         }
 // }
 // static void nexus_free_entry(struct nexus_node* nexus_entry,
 //                              struct nexus_node* nexus_root)
 // {
 //         struct nexus_node* page_manage_node =
-//                 (struct nexus_node*)ROUND_DOWN((vaddr)nexus_entry, PAGE_SIZE);
+//                 (struct nexus_node*)ROUND_DOWN((vaddr)nexus_entry,
+//                 PAGE_SIZE);
 //         if (page_manage_node->page_left_nexus >= NEXUS_PER_PAGE) {
 //                 pr_error(
-//                         "[ NEXUS ] unexpect case: a manage page have no entry to free but still try free it\n");
+//                         "[ NEXUS ] unexpect case: a manage page have no entry
+//                         to free but still try free it\n");
 //                 return;
 //         }
 //         list_add_head(&nexus_entry->aux_list, &page_manage_node->aux_list);
@@ -477,11 +489,13 @@
 //                  * first*/
 //                 list_del_init(&page_manage_node->manage_free_list);
 //                 list_del_init(&page_manage_node->_vspace_list);
-//                 nexus_rb_tree_remove(page_manage_node, &nexus_root->_rb_root);
+//                 nexus_rb_tree_remove(page_manage_node,
+//                 &nexus_root->_rb_root);
 //                 free_manage_node_with_page(page_manage_node, nexus_root);
 //         }
 // }
-// struct nexus_node* nexus_create_vspace_root_node(struct nexus_node* nexus_root,
+// struct nexus_node* nexus_create_vspace_root_node(struct nexus_node*
+// nexus_root,
 //                                                  VSpace* vs)
 // {
 //         struct nexus_node* res = NULL;
@@ -556,7 +570,8 @@
 //         }
 //         if (!vs->vspace_root_addr) {
 //                 pr_error(
-//                         "[Error] we should not delete the kernel nexus vspace\n");
+//                         "[Error] we should not delete the kernel nexus
+//                         vspace\n");
 //                 goto fail;
 //         }
 //         /*try to find the vs paddr root ,if not, error*/
@@ -579,7 +594,8 @@
 //                          * In a multi-zone/NUMA design, vs->pmm denotes the
 //                          * default allocation policy for this address space.
 //                          * If we do not migrate existing pages, changing pmm
-//                          * would make later unmap/free paths use the wrong PMM
+//                          * would make later unmap/free paths use the wrong
+//                          PMM
 //                          * metadata/locks for already-allocated pages.
 //                          *
 //                          * pmm switching must be paired with actual page
@@ -609,7 +625,8 @@
 //         }
 //         if (!vs->vspace_root_addr) {
 //                 pr_error(
-//                         "[Error] we should not delete the kernel nexus vspace\n");
+//                         "[Error] we should not delete the kernel nexus
+//                         vspace\n");
 //                 goto fail;
 //         }
 //         struct pmm* pmm_ptr =
@@ -620,9 +637,11 @@
 //         }
 //         /* Get vspace node directly from vs (avoids O(log n) red-black tree
 //          * lookup) */
-//         struct nexus_node* vspace_node = (struct nexus_node*)vs->_vspace_node;
-//         struct nexus_node* vspace_page_manage_node =
-//                 (struct nexus_node*)ROUND_DOWN((vaddr)vspace_node, PAGE_SIZE);
+//         struct nexus_node* vspace_node = (struct
+//         nexus_node*)vs->_vspace_node; struct nexus_node*
+//         vspace_page_manage_node =
+//                 (struct nexus_node*)ROUND_DOWN((vaddr)vspace_node,
+//                 PAGE_SIZE);
 //         if (!vspace_node) {
 //                 pr_error("[Error] no such a vspace in nexus\n");
 //                 goto fail;
@@ -639,7 +658,8 @@
 //                 for release the vspace
 //                 there's no need to use a tree to record one nexus node for
 //            release, which might lead to the stack overflow for a recursive
-//            algorithm so we must use a list entry to maintain the relationship,
+//            algorithm so we must use a list entry to maintain the
+//            relationship,
 //                 and the release the vspace is always using the
 //         */
 //         struct list_entry* curr = vspace_node->_vspace_list.next;
@@ -650,7 +670,8 @@
 //                 struct nexus_node* node =
 //                         container_of(curr, struct nexus_node, _vspace_list);
 //                 ppn_t ppn = have_mapped(
-//                         vs, VPN(node->addr), NULL, NULL, &percpu(Map_Handler));
+//                         vs, VPN(node->addr), NULL, NULL,
+//                         &percpu(Map_Handler));
 //                 if (ppn < 0) {
 //                         pr_error("[ NEXUS ] ERROR: have_mapped error!\n");
 //                         unlock_cas(&vspace_node->vs_common->nexus_vspace_lock);
@@ -665,8 +686,10 @@
 //                         /*
 //                          * Unmap failure means bad parameters or broken
 //                          * page-table structure (e.g. missing entry). Fix the
-//                          * bug in the caller or page-table maintenance; we are
-//                          * on an error path and cannot roll back already-freed
+//                          * bug in the caller or page-table maintenance; we
+//                          are
+//                          * on an error path and cannot roll back
+//                          already-freed
 //                          * entries.
 //                          */
 //                         pr_error("[ NEXUS ] ERROR: unmap error!\n");
@@ -679,9 +702,8 @@
 //                         pmm_ptr, ppn, nexus_node_get_pages(node));
 //                 if (e) {
 //                         pr_error(
-//                                 "[ Error ] pmm free error %d in free manage node with page %d\n",
-//                                 e,
-//                                 ppn);
+//                                 "[ Error ] pmm free error %d in free manage
+//                                 node with page %d\n", e, ppn);
 //                 }
 //                 list_del_init(curr);
 //                 /*no need to maintain the rb tree*/
@@ -734,7 +756,8 @@
 //  * @brief Clean up aux_list fields for all nodes in a temporary list
 //  *
 //  * @param temp_list: temporary list containing nodes to clean up
-//  * @param vspace_root: if non-NULL, also delete nodes from vspace (used on error
+//  * @param vspace_root: if non-NULL, also delete nodes from vspace (used on
+//  error
 //  * paths)
 //  *
 //  * @note Also cleans cache_data used for caching ppn/flags.
@@ -762,7 +785,8 @@
 // }
 // static struct nexus_node* _take_range(bool allow_2M, ENTRY_FLAGS_t eflags,
 //                                       struct nexus_node* vspace_node,
-//                                       vaddr free_page_addr, vaddr page_addr_end)
+//                                       vaddr free_page_addr, vaddr
+//                                       page_addr_end)
 // {
 //         if (!vspace_node) {
 //                 return NULL;
@@ -787,12 +811,14 @@
 //         for (; free_page_addr + PAGE_SIZE <= page_addr_end;
 //              free_page_addr += PAGE_SIZE) {
 //                 while (allow_2M && ALIGNED(free_page_addr, MIDDLE_PAGE_SIZE)
-//                        && free_page_addr + MIDDLE_PAGE_SIZE <= page_addr_end) {
+//                        && free_page_addr + MIDDLE_PAGE_SIZE <= page_addr_end)
+//                        {
 //                         struct nexus_node* free_nexus_entry =
 //                                 nexus_get_free_entry(vspace_node);
 //                         if (!free_nexus_entry) {
 //                                 pr_error(
-//                                         "[ NEXUS ] cannot find a new free nexus entry\n");
+//                                         "[ NEXUS ] cannot find a new free
+//                                         nexus entry\n");
 //                                 goto fail;
 //                         }
 //                         insert_nexus_entry(free_nexus_entry,
@@ -813,7 +839,8 @@
 //                                 nexus_get_free_entry(vspace_node);
 //                         if (!free_nexus_entry) {
 //                                 pr_error(
-//                                         "[ NEXUS ] cannot find a new free nexus entry\n");
+//                                         "[ NEXUS ] cannot find a new free
+//                                         nexus entry\n");
 //                                 goto fail;
 //                         }
 //                         insert_nexus_entry(free_nexus_entry,
@@ -829,7 +856,8 @@
 //                         }
 //                 }
 //         }
-//         /* detach temporary rollback links (success path - don't delete nodes)
+//         /* detach temporary rollback links (success path - don't delete
+//         nodes)
 //          */
 //         cleanup_aux_list(&inserted_list, NULL);
 //         return first_entry;
@@ -843,21 +871,23 @@
 // static error_t _vspace_clone_copy_page(VSpace* dst_vs,
 //                                        struct nexus_node* dst_nexus_node,
 //                                        VSpace* src_vs, vaddr va,
-//                                        ENTRY_FLAGS_t src_flags, ppn_t src_ppn,
-//                                        struct map_handler* handler)
+//                                        ENTRY_FLAGS_t src_flags, ppn_t
+//                                        src_ppn, struct map_handler* handler)
 // {
 //         size_t alloced = 0;
 //         ppn_t new_ppn = src_vs->pmm->pmm_alloc(src_vs->pmm, 1, &alloced);
 //         if (invalid_ppn(new_ppn) || alloced != 1)
 //                 goto copy_error;
-//         if (map_handler_copy_page(handler, new_ppn, src_ppn) != REND_SUCCESS) {
+//         if (map_handler_copy_page(handler, new_ppn, src_ppn) != REND_SUCCESS)
+//         {
 //                 goto clean_page;
 //         }
 //         if (map(dst_vs, new_ppn, VPN(va), 3, src_flags, handler)
 //             != REND_SUCCESS) {
 //                 goto clean_page;
 //         }
-//         if (!_take_range(false, src_flags, dst_nexus_node, va, va + PAGE_SIZE)) {
+//         if (!_take_range(false, src_flags, dst_nexus_node, va, va +
+//         PAGE_SIZE)) {
 //                 goto clean_map;
 //         }
 //         return REND_SUCCESS;
@@ -888,7 +918,8 @@
 //             != REND_SUCCESS) {
 //                 goto clean_map;
 //         }
-//         if (!_take_range(false, src_flags, dst_nexus_node, va, va + PAGE_SIZE)) {
+//         if (!_take_range(false, src_flags, dst_nexus_node, va, va +
+//         PAGE_SIZE)) {
 //                 goto clean_ref;
 //         }
 //         return REND_SUCCESS;
@@ -947,9 +978,11 @@
 //         const bool update_nexus_flags =
 //                 (mode != NEXUS_RANGE_FLAGS_DELTA_PTE_ONLY);
 
-//         /* Batch update page tables; optionally nexus region_flags with rollback
+//         /* Batch update page tables; optionally nexus region_flags with
+//         rollback
 //          */
-//         for (struct list_entry* entry = update_list->next; entry != update_list;
+//         for (struct list_entry* entry = update_list->next; entry !=
+//         update_list;
 //              entry = entry->next) {
 //                 struct nexus_node* node =
 //                         container_of(entry, struct nexus_node, aux_list);
@@ -964,13 +997,15 @@
 
 //                 bool huge = (node->region_flags & PAGE_ENTRY_HUGE) != 0;
 //                 if (huge) {
-//                         if (map(vs, ppn, VPN(node->addr), 2, desired, handler)
+//                         if (map(vs, ppn, VPN(node->addr), 2, desired,
+//                         handler)
 //                             != REND_SUCCESS) {
 //                                 ret = -E_RENDEZVOS;
 //                                 goto rollback;
 //                         }
 //                         if (update_nexus_flags)
-//                                 node->region_flags = desired | PAGE_ENTRY_HUGE;
+//                                 node->region_flags = desired |
+//                                 PAGE_ENTRY_HUGE;
 //                 } else {
 //                         error_t e = nexus_update_node(vs,
 //                                                       handler,
@@ -994,7 +1029,8 @@
 // rollback:
 //         /*
 //          * Full rollback: restore all successfully updated nodes to original
-//          * state. This ensures atomicity - either all nodes are updated or none
+//          * state. This ensures atomicity - either all nodes are updated or
+//          none
 //          * are.
 //          */
 //         int count = 0;
@@ -1014,7 +1050,8 @@
 //                         vs, ppn, VPN(node->addr), level, old_flags, handler);
 //                 if (e != REND_SUCCESS) {
 //                         pr_error(
-//                                 "[ NEXUS ] FATAL: rollback failed, system state inconsistent!\n");
+//                                 "[ NEXUS ] FATAL: rollback failed, system
+//                                 state inconsistent!\n");
 //                 }
 //                 if (update_nexus_flags)
 //                         node->region_flags = old_flags;
@@ -1025,7 +1062,8 @@
 // }
 
 // /*
-//  * Apply a flags change to all 4K user leaf mappings recorded in vspace nexus.
+//  * Apply a flags change to all 4K user leaf mappings recorded in vspace
+//  nexus.
 //  *
 //  * Mode semantics follow nexus_range_compute_flags (ABSOLUTE / DELTA /
 //  * DELTA_PTE_ONLY).
@@ -1082,7 +1120,8 @@
 //         }
 
 //         return nexus_update_flags_list_core(
-//                 vs, handler, vs->pmm, &update_list, mode, set_mask, clear_mask);
+//                 vs, handler, vs->pmm, &update_list, mode, set_mask,
+//                 clear_mask);
 
 // cleanup_fail:
 //         cleanup_aux_list(&update_list, NULL);
@@ -1090,12 +1129,14 @@
 // }
 
 // error_t vspace_clone(VSpace* src_vs, VSpace** dst_vs_out,
-//                      vspace_clone_flags_t flags, struct nexus_node* nexus_root)
+//                      vspace_clone_flags_t flags, struct nexus_node*
+//                      nexus_root)
 // {
 //         /*
 //          * All-or-nothing. Per-page undo: _vspace_clone_copy_page,
 //          * _vspace_clone_cow (COW phase 1 only). Earlier completed pages:
-//          * del_vspace. COW phase 2 (parent RO): _vspace_update_user_leaf_flags
+//          * del_vspace. COW phase 2 (parent RO):
+//          _vspace_update_user_leaf_flags
 //          *   with NEXUS_RANGE_FLAGS_DELTA_PTE_ONLY (PTE RO, nexus unchanged).
 //          * Extra PT levels from map(): reclaimed after nexus
 //          * tear unmaps leaves.
@@ -1122,9 +1163,8 @@
 //         if (!dst_vs)
 //                 return -E_RENDEZVOS;
 
-//         /* Start from kernel mappings only; user part is rebuilt from nexus. */
-//         dst_root = new_vs_root(0, handler);
-//         if (!dst_root) {
+//         /* Start from kernel mappings only; user part is rebuilt from nexus.
+//         */ dst_root = new_vs_root(0, handler); if (!dst_root) {
 //                 ret = -E_RENDEZVOS;
 //                 goto out_free_vspace;
 //         }
@@ -1159,8 +1199,8 @@
 //                         if (va >= KERNEL_VIRT_OFFSET)
 //                                 continue;
 //                         if (node->region_flags & PAGE_ENTRY_HUGE) {
-//                                 /*we only clone user part, no huge support now*/
-//                                 ret = -E_IN_PARAM;
+//                                 /*we only clone user part, no huge support
+//                                 now*/ ret = -E_IN_PARAM;
 //                                 unlock_cas(&src_vs->nexus_vspace_lock);
 //                                 goto out_free_vspace;
 //                         }
@@ -1221,8 +1261,8 @@
 //                         }
 //                 }
 
-//                 /* Phase 2: parent PTE read-only; nexus keeps logical perms. */
-//                 ret = _vspace_update_user_leaf_flags(
+//                 /* Phase 2: parent PTE read-only; nexus keeps logical perms.
+//                 */ ret = _vspace_update_user_leaf_flags(
 //                         src_vs,
 //                         src_vspace_node,
 //                         NEXUS_RANGE_FLAGS_DELTA_PTE_ONLY,
@@ -1249,12 +1289,13 @@
 //                                    struct nexus_node* nexus_root)
 // {
 //         if (!nexus_root) {
-//                 pr_error("[ NEXUS ] _kernel_get_free_page: nexus_root NULL\n");
-//                 return NULL;
+//                 pr_error("[ NEXUS ] _kernel_get_free_page: nexus_root
+//                 NULL\n"); return NULL;
 //         }
 //         if (!nexus_root->vs_common) {
 //                 pr_error(
-//                         "[ NEXUS ] _kernel_get_free_page: no VSpace (vs union)\n");
+//                         "[ NEXUS ] _kernel_get_free_page: no VSpace (vs
+//                         union)\n");
 //                 return NULL;
 //         }
 //         VSpace* heap_ref = nexus_root_heap_ref(nexus_root);
@@ -1277,31 +1318,34 @@
 //                 pr_error("[ NEXUS ] _kernel_get_free_page: missing pmm\n");
 //                 goto alloc_ppn_fail;
 //         }
-//         ppn_t ppn = pmm_ptr->pmm_alloc(pmm_ptr, page_num, &alloced_page_number);
-//         if (invalid_ppn(ppn) || alloced_page_number < page_num) {
+//         ppn_t ppn = pmm_ptr->pmm_alloc(pmm_ptr, page_num,
+//         &alloced_page_number); if (invalid_ppn(ppn) || alloced_page_number <
+//         page_num) {
 //                 pr_error("[ NEXUS ] ERROR: init error allocated %lx\n",
 //                          alloced_page_number);
 //                 goto alloc_ppn_fail;
 //         } else if (alloced_page_number > page_num) {
 //                 /*
-//                         if allocated page number is unequal to the page number
-//                         then the upper level cannot get the allocated page
-//                    number info and it will not try to free the last pages then
-//                    those pages will not usable forever
+//                         if allocated page number is unequal to the page
+//                         number then the upper level cannot get the allocated
+//                         page
+//                    number info and it will not try to free the last pages
+//                    then those pages will not usable forever
 //                 */
 //                 pr_error(
-//                         "[ NEXUS ] ERROR: allocated pages is larger then needed pages\n");
+//                         "[ NEXUS ] ERROR: allocated pages is larger then
+//                         needed pages\n");
 //                 pr_error(
-//                         "[ NEXUS ] HINT: try to alloc %d pages, allocated %d pages\n",
-//                         page_num,
-//                         alloced_page_number);
+//                         "[ NEXUS ] HINT: try to alloc %d pages, allocated %d
+//                         pages\n", page_num, alloced_page_number);
 //                 goto take_range_fail;
 //         }
 //         free_page_addr = KERNEL_PHY_TO_VIRT(PADDR(ppn));
 //         page_addr_end = free_page_addr + page_num * PAGE_SIZE;
 
 //         first_entry = _take_range(
-//                 true, kernel_eflags, nexus_root, free_page_addr, page_addr_end);
+//                 true, kernel_eflags, nexus_root, free_page_addr,
+//                 page_addr_end);
 //         if (!first_entry) {
 //                 goto take_range_fail;
 //         }
@@ -1318,7 +1362,8 @@
 //                                     &percpu(Map_Handler));
 //                         if (map_res) {
 //                                 pr_error(
-//                                         "[ NEXUS ] ERROR: kernel get free page map error 2M\n");
+//                                         "[ NEXUS ] ERROR: kernel get free
+//                                         page map error 2M\n");
 //                                 goto map_fail;
 //                         }
 //                         page_num -= MIDDLE_PAGES;
@@ -1332,7 +1377,8 @@
 //                                     &percpu(Map_Handler));
 //                         if (map_res) {
 //                                 pr_error(
-//                                         "[ NEXUS ] ERROR: kernel get free page map error\n");
+//                                         "[ NEXUS ] ERROR: kernel get free
+//                                         page map error\n");
 //                                 goto map_fail;
 //                         }
 //                         page_num--;
@@ -1350,8 +1396,10 @@
 //         return (void*)free_page_addr;
 // map_fail:
 //         /*
-//          * Full rollback: unmap any already-mapped entries (only unmap, do not
-//          * delete yet), then delete all entries in our range. The tree is keyed
+//          * Full rollback: unmap any already-mapped entries (only unmap, do
+//          not
+//          * delete yet), then delete all entries in our range. The tree is
+//          keyed
 //          * by addr; nexus_rb_tree_next gives in-order successor in the whole
 //          * tree, so we must identify our entries by [free_page_addr,
 //          * page_addr_end).
@@ -1388,7 +1436,8 @@
 //         return NULL;
 // }
 // /*
-//         we try to get the user physical pages and map the physical pages to the
+//         we try to get the user physical pages and map the physical pages to
+//         the
 //    virtual pages which only based on the 4K pages in user space
 // */
 // error_t user_fill_range(struct nexus_node* first_entry, int page_num,
@@ -1421,7 +1470,8 @@
 //                 }
 //                 ppn = pmm_ptr->pmm_alloc(pmm_ptr, 1, &alloced_page_number);
 //                 if (invalid_ppn(ppn) || alloced_page_number != 1) {
-//                         pr_error("[ NEXUS ] ERROR: init error allocated %lx\n",
+//                         pr_error("[ NEXUS ] ERROR: init error allocated
+//                         %lx\n",
 //                                  alloced_page_number);
 //                         goto fail;
 //                 }
@@ -1434,7 +1484,8 @@
 //                                       &percpu(Map_Handler));
 //                 if (map_res) {
 //                         pr_error(
-//                                 "[ NEXUS ] ERROR: user get free page map error\n");
+//                                 "[ NEXUS ] ERROR: user get free page map
+//                                 error\n");
 //                         goto fail;
 //                 }
 //                 current_ppn = -E_RENDEZVOS; /* committed */
@@ -1458,8 +1509,8 @@
 //         while (node && node->addr >= free_page_addr
 //                && node->addr < page_addr_end
 //                && node->addr < first_entry->addr) {
-//                 ppn_t up = unmap(vs, VPN(node->addr), 0, &percpu(Map_Handler));
-//                 if (!invalid_ppn(up)) {
+//                 ppn_t up = unmap(vs, VPN(node->addr), 0,
+//                 &percpu(Map_Handler)); if (!invalid_ppn(up)) {
 //                         list_del_init(&node->rmap_list);
 //                         pmm_ptr->pmm_free(pmm_ptr, up, 1);
 //                 }
@@ -1475,7 +1526,8 @@
 //                 delete_nexus_entry(node, vspace_node);
 //                 node = next;
 //         }
-//         /* We only hold the lock when we entered the while (goto fail from loop)
+//         /* We only hold the lock when we entered the while (goto fail from
+//         loop)
 //          */
 //         unlock_cas(&vs->nexus_vspace_lock);
 //         return -E_RENDEZVOS;
@@ -1494,13 +1546,15 @@
 //         }
 
 //         lock_cas(&vspace_node->vs_common->nexus_vspace_lock);
-//         /*adjust the flags, the user flags must not include PAGE_ENTRY_GLOBAL*/
-//         user_eflags = clear_mask_u64(user_eflags, PAGE_ENTRY_GLOBAL);
+//         /*adjust the flags, the user flags must not include
+//         PAGE_ENTRY_GLOBAL*/ user_eflags = clear_mask_u64(user_eflags,
+//         PAGE_ENTRY_GLOBAL);
 
 //         page_addr_end = free_page_addr + page_num * PAGE_SIZE;
 
 //         first_entry = _take_range(
-//                 false, user_eflags, vspace_node, free_page_addr, page_addr_end);
+//                 false, user_eflags, vspace_node, free_page_addr,
+//                 page_addr_end);
 
 //         unlock_cas(&vspace_node->vs_common->nexus_vspace_lock);
 //         return first_entry;
@@ -1523,16 +1577,20 @@
 //                     && node->addr < free_end
 //                     && node->addr + nexus_node_get_len(node) > free_end) {
 //                         pr_error(
-//                                 "[ NEXUS ] ERROR: split 2M page and we truncate it");
+//                                 "[ NEXUS ] ERROR: split 2M page and we
+//                                 truncate it");
 //                         break;
 //                 }
-//                 ppn_t ppn = unmap(vs, VPN(node->addr), 0, &percpu(Map_Handler));
-//                 if (ppn < 0) {
+//                 ppn_t ppn = unmap(vs, VPN(node->addr), 0,
+//                 &percpu(Map_Handler)); if (ppn < 0) {
 //                         /*
 //                          * Unmap failure here means bad parameters or broken
-//                          * page-table structure (e.g. missing entry). That is a
-//                          * bug to fix in the caller or page-table maintenance,
-//                          * not a rollback scenario: we are already on an error
+//                          * page-table structure (e.g. missing entry). That is
+//                          a
+//                          * bug to fix in the caller or page-table
+//                          maintenance,
+//                          * not a rollback scenario: we are already on an
+//                          error
 //                          * path and cannot meaningfully "roll back" unfill.
 //                          */
 //                         pr_error("[ NEXUS ] ERROR: unmap error!\n");
@@ -1540,12 +1598,11 @@
 //                 }
 //                 struct pmm* pmm_ptr = vspace_node->vs_common->pmm;
 //                 list_del_init(&node->rmap_list);
-//                 e = pmm_ptr->pmm_free(pmm_ptr, ppn, nexus_node_get_pages(node));
-//                 if (e) {
+//                 e = pmm_ptr->pmm_free(pmm_ptr, ppn,
+//                 nexus_node_get_pages(node)); if (e) {
 //                         pr_error(
-//                                 "[ Error ] unfill range pmm free error %d in free manage node with page %d\n",
-//                                 e,
-//                                 ppn);
+//                                 "[ Error ] unfill range pmm free error %d in
+//                                 free manage node with page %d\n", e, ppn);
 //                 }
 //                 node = nexus_rb_tree_next(node);
 //                 if (!node || is_page_manage_node(node)) {
@@ -1576,13 +1633,13 @@
 //         if (!node) {
 //                 /*
 //                         TODO: if cannot find the nexus node
-//                         which might caused by this page is under another core's
+//                         which might caused by this page is under another
+//                         core's
 //                    nexus
 //                 */
 //                 pr_error(
-//                         "[ NEXUS ] ERROR: search the free page fail 0x%lx 0x%lx\n",
-//                         (vaddr)p,
-//                         (vaddr)nexus_root);
+//                         "[ NEXUS ] ERROR: search the free page fail 0x%lx
+//                         0x%lx\n", (vaddr)p, (vaddr)nexus_root);
 //                 unlock_cas(&heap_ref->nexus_vspace_lock);
 //                 return -E_IN_PARAM;
 //         }
@@ -1603,7 +1660,8 @@
 //                     && node->addr < free_end
 //                     && node->addr + nexus_node_get_len(node) > free_end) {
 //                         pr_error(
-//                                 "[ NEXUS ] ERROR: split 2M page and we truncate it");
+//                                 "[ NEXUS ] ERROR: split 2M page and we
+//                                 truncate it");
 //                         break;
 //                 }
 //                 struct nexus_node* old_node = node;
@@ -1625,9 +1683,10 @@
 //         return REND_SUCCESS;
 // }
 // /*
-//         we try to unmap and free the physical pages but do not free the virtual
-//    ranges which only based on the 4K pages in user space remember that it must
-//    unmap first and then free it
+//         we try to unmap and free the physical pages but do not free the
+//         virtual
+//    ranges which only based on the 4K pages in user space remember that it
+//    must unmap first and then free it
 // */
 // error_t user_unfill_range(void* p, int page_num, VSpace* vs,
 //                           struct nexus_node* vspace_node)
@@ -1637,9 +1696,8 @@
 //                 nexus_rb_tree_search(&vspace_node->_rb_root, (vaddr)p);
 //         if (!node) {
 //                 pr_error(
-//                         "[ NEXUS ] ERROR: search the free page fail 0x%lx 0x%lx\n",
-//                         (vaddr)p,
-//                         (vaddr)vspace_node);
+//                         "[ NEXUS ] ERROR: search the free page fail 0x%lx
+//                         0x%lx\n", (vaddr)p, (vaddr)vspace_node);
 //                 unlock_cas(&vs->nexus_vspace_lock);
 //                 return -E_IN_PARAM;
 //         }
@@ -1658,9 +1716,8 @@
 //                 nexus_rb_tree_search(&vspace_node->_rb_root, (vaddr)p);
 //         if (!node) {
 //                 pr_error(
-//                         "[ NEXUS ] ERROR: search the free page fail 0x%lx 0x%lx\n",
-//                         (vaddr)p,
-//                         (vaddr)vspace_node);
+//                         "[ NEXUS ] ERROR: search the free page fail 0x%lx
+//                         0x%lx\n", (vaddr)p, (vaddr)vspace_node);
 //                 unlock_cas(&vs->nexus_vspace_lock);
 //                 return -E_IN_PARAM;
 //         }
@@ -1673,7 +1730,8 @@
 //                     && node->addr < free_end
 //                     && node->addr + nexus_node_get_len(node) > free_end) {
 //                         pr_error(
-//                                 "[ NEXUS ] ERROR: split 2M page and we truncate it");
+//                                 "[ NEXUS ] ERROR: split 2M page and we
+//                                 truncate it");
 //                         break;
 //                 }
 //                 struct nexus_node* old_node = node;
@@ -1718,13 +1776,15 @@
 //                         (struct nexus_node*)vs->_vspace_node;
 //                 if (!vspace_node || vspace_node->vs_common != vs) {
 //                         pr_error(
-//                                 "[Error] no such a vspace in nexus or vs common is not equal\n");
+//                                 "[Error] no such a vspace in nexus or vs
+//                                 common is not equal\n");
 //                         return NULL;
 //                 }
 //                 struct nexus_node* first_entry = _user_take_range(
 //                         page_num, target_vaddr, vspace_node, flags);
 //                 if (first_entry
-//                     && !user_fill_range(first_entry, page_num, vspace_node)) {
+//                     && !user_fill_range(first_entry, page_num, vspace_node))
+//                     {
 //                         res = (void*)(first_entry->addr);
 //                 }
 //         }
@@ -1763,12 +1823,14 @@
 //                         (struct nexus_node*)vs->_vspace_node;
 //                 if (!vspace_node || vspace_node->vs_common != vs) {
 //                         pr_error(
-//                                 "[ ERROR ] ERROR:no vspace node or vspace's node error!\n");
+//                                 "[ ERROR ] ERROR:no vspace node or vspace's
+//                                 node error!\n");
 //                         return -E_RENDEZVOS;
 //                 }
 //                 res = user_unfill_range(p, page_num, vs, vspace_node);
 //                 if (!res)
-//                         res = _user_release_range(p, page_num, vs, vspace_node);
+//                         res = _user_release_range(p, page_num, vs,
+//                         vspace_node);
 //         }
 //         return res;
 // }
@@ -1794,14 +1856,16 @@
 //         if (end_addr < start_addr)
 //                 return -E_IN_PARAM;
 
-//         // Explicitly reject kernel space - this function is for user space only
-//         if (start_addr >= KERNEL_VIRT_OFFSET || end_addr >= KERNEL_VIRT_OFFSET)
+//         // Explicitly reject kernel space - this function is for user space
+//         only if (start_addr >= KERNEL_VIRT_OFFSET || end_addr >=
+//         KERNEL_VIRT_OFFSET)
 //                 return -E_IN_PARAM;
 
 //         // Get vspace node directly from vs (avoids O(log n) red-black tree
 //         // lookup)
-//         struct nexus_node* vspace_node = (struct nexus_node*)vs->_vspace_node;
-//         if (!vspace_node || vspace_node->vs_common != vs)
+//         struct nexus_node* vspace_node = (struct
+//         nexus_node*)vs->_vspace_node; if (!vspace_node ||
+//         vspace_node->vs_common != vs)
 //                 return -E_RENDEZVOS;
 
 //         lock_cas(&vs->nexus_vspace_lock);
@@ -1810,8 +1874,10 @@
 
 //         /*
 //          * Two-phase algorithm for atomic batch update with full rollback:
-//          * Phase 1: Collection + Validation - collect and validate nodes in one
-//          * pass Phase 2: Update with rollback - batch update with full rollback
+//          * Phase 1: Collection + Validation - collect and validate nodes in
+//          one
+//          * pass Phase 2: Update with rollback - batch update with full
+//          rollback
 //          * on failure
 //          *
 //          * Field repurposing (safe due to vspace lock):
@@ -1820,8 +1886,10 @@
 //          * lookup)
 //          * - cache_data.cached_flags: cached original flags (for rollback)
 //          *
-//          * SAFETY: The vspace lock ensures no concurrent is_page_manage_node()
-//          * checks will misinterpret cache_data as manage_free_list. All fields
+//          * SAFETY: The vspace lock ensures no concurrent
+//          is_page_manage_node()
+//          * checks will misinterpret cache_data as manage_free_list. All
+//          fields
 //          * are restored to NULL before lock release.
 //          *
 //          * Atomicity guarantee: either all nodes are updated successfully, or
@@ -1843,7 +1911,8 @@
 //                         goto cleanup;
 //                 }
 
-//                 /* Add to update list if not already present. In-use nodes are
+//                 /* Add to update list if not already present. In-use nodes
+//                 are
 //                  * detached. */
 //                 if (list_node_is_detached(&node->aux_list)) {
 //                         ppn_t ppn = have_mapped(
@@ -1852,24 +1921,28 @@
 //                                 ret = -E_RENDEZVOS;
 //                                 goto cleanup;
 //                         }
-//                         /* Cache ppn and original flags for potential rollback
+//                         /* Cache ppn and original flags for potential
+//                         rollback
 //                          */
 //                         node->cache_data.cached_ppn = ppn;
 //                         node->cache_data.cached_flags = node->region_flags;
 //                         list_add_head(&node->aux_list, &update_list);
 //                 }
 
-//                 // Skip to next node boundary (handles large pages efficiently)
-//                 vaddr node_end = node->addr + nexus_node_get_len(node);
-//                 cur = (node_end < end_addr) ? node_end : end_addr;
+//                 // Skip to next node boundary (handles large pages
+//                 efficiently) vaddr node_end = node->addr +
+//                 nexus_node_get_len(node); cur = (node_end < end_addr) ?
+//                 node_end : end_addr;
 //         }
 
 //         /*
-//          * Phase 2: update + rollback core. Also cleans aux_list/cache_data for
+//          * Phase 2: update + rollback core. Also cleans aux_list/cache_data
+//          for
 //          * all nodes in update_list on all paths.
 //          */
 //         ret = nexus_update_flags_list_core(
-//                 vs, handler, pmm_ptr, &update_list, mode, set_mask, clear_mask);
+//                 vs, handler, pmm_ptr, &update_list, mode, set_mask,
+//                 clear_mask);
 
 // cleanup:
 //         /* phase2 core already cleaned update_list; safe to call again. */
@@ -1892,7 +1965,8 @@
 
 //         /*
 //          * Auto-align va to page boundary.
-//          * This allows callers to pass fault addresses directly without manual
+//          * This allows callers to pass fault addresses directly without
+//          manual
 //          * alignment. For COW page faults, the fault can occur at any offset
 //          * within the page.
 //          */
@@ -1900,8 +1974,9 @@
 //         if (aligned_va >= KERNEL_VIRT_OFFSET)
 //                 return -E_IN_PARAM;
 
-//         struct nexus_node* vspace_node = (struct nexus_node*)vs->_vspace_node;
-//         if (!vspace_node || vspace_node->vs_common != vs)
+//         struct nexus_node* vspace_node = (struct
+//         nexus_node*)vs->_vspace_node; if (!vspace_node ||
+//         vspace_node->vs_common != vs)
 //                 return -E_RENDEZVOS;
 //         struct pmm* pmm_ptr = vs->pmm;
 //         if (!pmm_ptr)
@@ -1915,7 +1990,8 @@
 //         if (!node || node->addr != aligned_va
 //             || (node->region_flags & PAGE_ENTRY_HUGE)) {
 //                 pr_debug(
-//                         "[nexus_remap_user_leaf] Node not found or invalid: va=0x%lx, node=%p, node->addr=0x%lx, flags=0x%lx\n",
+//                         "[nexus_remap_user_leaf] Node not found or invalid:
+//                         va=0x%lx, node=%p, node->addr=0x%lx, flags=0x%lx\n",
 //                         aligned_va,
 //                         node,
 //                         node ? node->addr : 0,
@@ -1925,35 +2001,34 @@
 //         }
 
 //         pr_debug(
-//                 "[nexus_remap_user_leaf] Found node: addr=0x%lx, flags=0x%lx, old_ppn_check=%lx\n",
-//                 node->addr,
-//                 node->region_flags,
+//                 "[nexus_remap_user_leaf] Found node: addr=0x%lx, flags=0x%lx,
+//                 old_ppn_check=%lx\n", node->addr, node->region_flags,
 //                 expect_old_ppn);
 
-//         ppn_t old_ppn = have_mapped(vs, VPN(aligned_va), NULL, NULL, handler);
-//         if (invalid_ppn(old_ppn)) {
+//         ppn_t old_ppn = have_mapped(vs, VPN(aligned_va), NULL, NULL,
+//         handler); if (invalid_ppn(old_ppn)) {
 //                 pr_debug(
-//                         "[nexus_remap_user_leaf] have_mapped failed: va=0x%lx\n",
-//                         aligned_va);
+//                         "[nexus_remap_user_leaf] have_mapped failed:
+//                         va=0x%lx\n", aligned_va);
 //                 unlock_cas(&vs->nexus_vspace_lock);
 //                 return -E_RENDEZVOS;
 //         }
 //         if (!invalid_ppn(expect_old_ppn) && old_ppn != expect_old_ppn) {
 //                 pr_debug(
-//                         "[nexus_remap_user_leaf] PPN mismatch: expected=%lx, actual=%lx\n",
-//                         expect_old_ppn,
-//                         old_ppn);
+//                         "[nexus_remap_user_leaf] PPN mismatch: expected=%lx,
+//                         actual=%lx\n", expect_old_ppn, old_ppn);
 //                 unlock_cas(&vs->nexus_vspace_lock);
 //                 return -E_IN_PARAM;
 //         }
 
 //         pr_debug(
-//                 "[nexus_remap_user_leaf] All checks passed, calling nexus_update_node\n");
+//                 "[nexus_remap_user_leaf] All checks passed, calling
+//                 nexus_update_node\n");
 //         error_t e = nexus_update_node(
-//                 vs, handler, pmm_ptr, node, old_ppn, new_ppn, new_flags, true);
-//         pr_debug("[nexus_remap_user_leaf] nexus_update_node returned: %d\n", e);
-//         unlock_cas(&vs->nexus_vspace_lock);
-//         return e;
+//                 vs, handler, pmm_ptr, node, old_ppn, new_ppn, new_flags,
+//                 true);
+//         pr_debug("[nexus_remap_user_leaf] nexus_update_node returned: %d\n",
+//         e); unlock_cas(&vs->nexus_vspace_lock); return e;
 // }
 
 // error_t nexus_query_vaddr(VSpace* vs, vaddr va, vaddr* out_start,
@@ -1971,8 +2046,9 @@
 //         if (aligned_va >= KERNEL_VIRT_OFFSET)
 //                 return -E_IN_PARAM;
 
-//         struct nexus_node* vspace_node = (struct nexus_node*)vs->_vspace_node;
-//         if (!vspace_node || vspace_node->vs_common != vs)
+//         struct nexus_node* vspace_node = (struct
+//         nexus_node*)vs->_vspace_node; if (!vspace_node ||
+//         vspace_node->vs_common != vs)
 //                 return -E_RENDEZVOS;
 
 //         error_t ret = -E_REND_NOFOUND;
@@ -1994,14 +2070,15 @@
 //         ZonePageCursor cur;
 //         Page* p_ptr = zone_page_cursor_init(&cur, zone, ppn);
 //         if (!p_ptr) {
-//                 pr_error("[ NEXUS ] cannot find phy page with ppn %lx\n", ppn);
-//                 return -E_RENDEZVOS;
+//                 pr_error("[ NEXUS ] cannot find phy page with ppn %lx\n",
+//                 ppn); return -E_RENDEZVOS;
 //         }
 //         struct nexus_node* node = NULL;
 //         const char* relink_err = NULL;
 //         /*
 //          * One rmap node at a time: under pmm lock, detach one entry from
-//          * Page.rmap_list, then drop pmm before unmap (which takes nexus/vspace
+//          * Page.rmap_list, then drop pmm before unmap (which takes
+//          nexus/vspace
 //          * locks). Avoids nexus<->pmm lock order inversion vs link_rmap_list;
 //          * no fixed snapshot cap.
 //          */
@@ -2019,7 +2096,8 @@
 //                 VSpace* vs = nexus_node_vspace(node);
 //                 if (!vs) {
 //                         relink_err =
-//                                 "[ NEXUS ] unfill_phy_page: nexus_node_vspace NULL\n";
+//                                 "[ NEXUS ] unfill_phy_page: nexus_node_vspace
+//                                 NULL\n";
 //                         goto relink_rmap_fail;
 //                 }
 //                 struct nexus_node* vspace_node =
@@ -2027,7 +2105,8 @@
 //                 if (!vspace_node || !vspace_node->vs_common
 //                     || !vspace_node->vs_common->pmm) {
 //                         relink_err =
-//                                 "[ NEXUS ] unfill_phy_page: missing vspace_node/pmm\n";
+//                                 "[ NEXUS ] unfill_phy_page: missing
+//                                 vspace_node/pmm\n";
 //                         goto relink_rmap_fail;
 //                 }
 //                 ppn_t unmap_ppn = unmap(vs,
@@ -2036,7 +2115,8 @@
 //                                         &percpu(Map_Handler));
 //                 if (ppn != unmap_ppn) {
 //                         pr_error(
-//                                 "[ NEXUS ] try to unmap shared page but return ppn is not equal\n");
+//                                 "[ NEXUS ] try to unmap shared page but
+//                                 return ppn is not equal\n");
 //                         return -E_RENDEZVOS;
 //                 }
 //         }
@@ -2046,9 +2126,8 @@
 //         error_t e = pmm_ptr->pmm_free(pmm_ptr, ppn, 1);
 //         if (e) {
 //                 pr_error(
-//                         "[ Error ] unfill phy page pmm free error %d in free manage node with page %d\n",
-//                         e,
-//                         ppn);
+//                         "[ Error ] unfill phy page pmm free error %d in free
+//                         manage node with page %d\n", e, ppn);
 //                 return -E_RENDEZVOS;
 //         }
 //         return REND_SUCCESS;
@@ -2070,14 +2149,17 @@
 //         if (invalid_ppn(ppn))
 //                 return INVALID_CPU_ID;
 //         ZonePageCursor cur;
-//         Page* p_ptr = zone_page_cursor_init(&cur, &mem_zones[ZONE_NORMAL], ppn);
-//         if (!p_ptr)
+//         Page* p_ptr = zone_page_cursor_init(&cur, &mem_zones[ZONE_NORMAL],
+//         ppn); if (!p_ptr)
 //                 return INVALID_CPU_ID;
 //         /*
-//          * Whole-page kmem routing uses only kernel-heap nexus nodes: `cpu_id`
+//          * Whole-page kmem routing uses only kernel-heap nexus nodes:
+//          `cpu_id`
 //          * on KERNEL_HEAP_REF (per-CPU nexus_kernel_heap_vs_common). The same
-//          * PPN may also appear on rmap via user mappings; those must not define
-//          * the kmem owner (not 1:1 with kmem, list order is not authoritative).
+//          * PPN may also appear on rmap via user mappings; those must not
+//          define
+//          * the kmem owner (not 1:1 with kmem, list order is not
+//          authoritative).
 //          */
 //         MemZone* zone = p_ptr->sec->zone;
 //         int out = INVALID_CPU_ID;

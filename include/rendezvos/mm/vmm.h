@@ -66,7 +66,8 @@ struct VSpace {
         */
         spin_lock vspace_lock;
 
-        /* L0 radix metadata page (Radix_entry_t*); void* avoids vmm.h ↔ radix hdr. */
+        /* L0 radix metadata page (Radix_entry_t*); void* avoids vmm.h ↔ radix
+         * hdr. */
         void* root_radix;
         paddr vspace_root_addr;
         union {

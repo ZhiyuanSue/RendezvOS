@@ -23,8 +23,8 @@ vaddr mm_user_anon_map_pages(struct VSpace* vs, vaddr uva, size_t page_num,
 
         struct map_handler* handler = &percpu(Map_Handler);
         VSpace* insert_root_vs = vs->root_vs ? vs->root_vs : vs;
-        tagged_ptr_t owner_tp = tp_new((void*)insert_root_vs,
-                                         (u16)percpu(cpu_number));
+        tagged_ptr_t owner_tp =
+                tp_new((void*)insert_root_vs, (u16)percpu(cpu_number));
 
         ENTRY_FLAGS_t extra = flags;
         if (extra == PAGE_ENTRY_NONE)
@@ -39,19 +39,28 @@ vaddr mm_user_anon_map_pages(struct VSpace* vs, vaddr uva, size_t page_num,
         if (invalid_ppn(ppn) || alloced_page_number != page_num) {
                 if (!invalid_ppn(ppn) && alloced_page_number > page_num)
                         pmm_ptr->pmm_free(pmm_ptr, ppn, alloced_page_number);
-                pr_error("[MM_ANON] mm_user_anon_map_pages: pmm_alloc failed\n");
+                pr_error(
+                        "[MM_ANON] mm_user_anon_map_pages: pmm_alloc failed\n");
                 return 0;
         }
 
-        if (vmm_radix_tree_insert_range(handler,
-                                        vs,
-                                        owner_tp,
-                                        uva,
-                                        leaf_eflags,
-                                        alloced_page_number)
-            != REND_SUCCESS) {
+        error_t insert_range_res;
+        for (u64 try = 0; try < RADIX_ENTRY_LOCK_RETRY_MAX; try++) {
+                insert_range_res =
+                        vmm_radix_tree_insert_range(handler,
+                                                    vs,
+                                                    owner_tp,
+                                                    uva,
+                                                    leaf_eflags,
+                                                    alloced_page_number);
+                if (insert_range_res == REND_SUCCESS
+                    || insert_range_res != -E_REND_AGAIN)
+                        break;
+        }
+        if (insert_range_res != REND_SUCCESS) {
                 pr_error(
-                        "[MM_ANON] mm_user_anon_map_pages: insert_range failed\n");
+                        "[MM_ANON] mm_user_anon_map_pages: insert_range failed e=%d\n",
+                        (int)insert_range_res);
                 goto fail_pmm_only;
         }
 
@@ -73,14 +82,17 @@ vaddr mm_user_anon_map_pages(struct VSpace* vs, vaddr uva, size_t page_num,
                 mapped_count++;
         }
 
-        if (vmm_radix_tree_leaf_bind_range(handler,
-                                           vs,
-                                           uva,
-                                           ppn,
-                                           alloced_page_number,
-                                           leaf_eflags)
-            != REND_SUCCESS) {
-                pr_error("[MM_ANON] mm_user_anon_map_pages: bind failed\n");
+        error_t bind_range_res;
+        for (u64 try = 0; try < RADIX_ENTRY_LOCK_RETRY_MAX; try++) {
+                bind_range_res = vmm_radix_tree_leaf_bind_range(
+                        handler, vs, uva, ppn, alloced_page_number, leaf_eflags);
+                if (bind_range_res == REND_SUCCESS
+                    || bind_range_res != -E_REND_AGAIN)
+                        break;
+        }
+        if (bind_range_res != REND_SUCCESS) {
+                pr_error("[MM_ANON] mm_user_anon_map_pages: bind failed e=%d\n",
+                         (int)bind_range_res);
                 goto fail_unmap_radix_pmm;
         }
 
@@ -92,7 +104,8 @@ fail_unmap_radix_pmm:
                 vaddr va = uva + mapped_count * PAGE_SIZE;
                 (void)unmap(vs, VPN(va), 0, handler);
         }
-        (void)vmm_radix_tree_delete_range(handler, vs, uva, alloced_page_number);
+        (void)vmm_radix_tree_delete_range(
+                handler, vs, uva, alloced_page_number);
 fail_pmm_only:
         pmm_ptr->pmm_free(pmm_ptr, ppn, alloced_page_number);
         return 0;

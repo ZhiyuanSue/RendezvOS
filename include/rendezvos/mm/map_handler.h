@@ -28,8 +28,8 @@ void init_map(struct map_handler* handler, cpu_id_t cpu_id, struct pmm* pmm);
         and if the vspace is not exist, it should try to alloc a new one
 */
 
-error_t map(VSpace* vs, ppn_t ppn, vpn_t vpn, int level,
-            ENTRY_FLAGS_t eflags, struct map_handler* handler);
+error_t map(VSpace* vs, ppn_t ppn, vpn_t vpn, int level, ENTRY_FLAGS_t eflags,
+            struct map_handler* handler);
 /*
  * @brief : unmap the vpn with that it mapped ppn
  *

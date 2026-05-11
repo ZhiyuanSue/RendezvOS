@@ -18,8 +18,8 @@ VSpace root_vspace;
 
 static void vspace_rb_tree_insert(VSpace* vs, VSpace* root_vs)
 {
-        struct rb_node **new = &root_vs->_vspace_rb_root.rb_root,
-                       *parent = NULL;
+        struct rb_node** new = &root_vs->_vspace_rb_root.rb_root,
+                         *parent = NULL;
         u64 key = vs->vspace_root_addr;
         while (*new) {
                 parent = *new;
@@ -114,10 +114,11 @@ error_t init_root_vspace(VSpace* root_vs, cpu_id_t cpu_id)
         root_vs->vspace_lock = NULL;
         root_vs->asid = 0;
         root_vs->vspace_root_addr = arch_get_current_kernel_vspace_root();
-        root_vs->root_vs=root_vs;
+        root_vs->root_vs = root_vs;
 
         if (!vmm_radix_tree_init(h, root_vs)) {
-                pr_error("[VMM] init_root_vspace: vmm_radix_tree_init failed\n");
+                pr_error(
+                        "[VMM] init_root_vspace: vmm_radix_tree_init failed\n");
                 return -E_RENDEZVOS;
         }
         if (vmm_radix_tree_bootstrap_shared_kernel_high_half(h, root_vs)
@@ -229,8 +230,7 @@ error_t del_vspace(VSpace** vs)
                         if (user_err != REND_SUCCESS && ret == REND_SUCCESS)
                                 ret = user_err;
                 }
-                error_t root_err =
-                        vspace_free_root_page(vspace, map_handler);
+                error_t root_err = vspace_free_root_page(vspace, map_handler);
                 if (root_err != REND_SUCCESS && ret == REND_SUCCESS)
                         ret = root_err;
         }

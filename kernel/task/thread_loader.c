@@ -77,10 +77,8 @@ error_t elf_Phdr_64_load_handle(vaddr elf_start, Elf64_Phdr *phdr_ptr,
                 page_flags |= PAGE_ENTRY_READ;
         }
 
-        if (!mm_user_anon_map_pages(vs,
-                                     aligned_start,
-                                     (size_t)page_num,
-                                     page_flags))
+        if (!mm_user_anon_map_pages(
+                    vs, aligned_start, (size_t)page_num, page_flags))
                 return -E_RENDEZVOS;
 
         memcpy((void *)(ph_start),

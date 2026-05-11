@@ -19,18 +19,21 @@
 // struct nexus_node {
 //         /*
 //          * manage_free_list vs cache_data union:
-//          * - For manager nodes: used as manage_free_list (linked list of manager
+//          * - For manager nodes: used as manage_free_list (linked list of
+//          manager
 //          * pages)
 //          * - For normal nodes: can be repurposed as cache_data for temporary
 //          * operations IMPORTANT: When using as cache_data, the function must
-//          * hold vspace lock to prevent is_page_manage_node() checks while fields
+//          * hold vspace lock to prevent is_page_manage_node() checks while
+//          fields
 //          * are repurposed.
 //          */
 //         union {
 //                 struct list_entry manage_free_list; // Manager node usage
 //                 struct {
 //                         ppn_t cached_ppn; // Cached physical page number
-//                         ENTRY_FLAGS_t cached_flags; // Cached original flags for
+//                         ENTRY_FLAGS_t cached_flags; // Cached original flags
+//                         for
 //                                                     // rollback
 //                 } cache_data;
 //         };
@@ -63,7 +66,8 @@
 //         };
 // };
 
-// static inline VS_Common* nexus_node_vspace(const struct nexus_node* nexus_node)
+// static inline VS_Common* nexus_node_vspace(const struct nexus_node*
+// nexus_node)
 // {
 //         if (!nexus_node || !nexus_node->vs_common)
 //                 return NULL;
@@ -88,16 +92,20 @@
 // #define NEXUS_PER_PAGE (PAGE_SIZE / (sizeof(struct nexus_node)))
 // struct nexus_node* init_nexus(struct map_handler* handler);
 // /*vspace*/
-// struct nexus_node* nexus_create_vspace_root_node(struct nexus_node* nexus_root,
+// struct nexus_node* nexus_create_vspace_root_node(struct nexus_node*
+// nexus_root,
 //                                                  VS_Common* vs);
 
 // typedef u64 vspace_clone_flags_t;
 
 // error_t vspace_clone(VS_Common* src_vs, VS_Common** dst_vs_out,
-//                      vspace_clone_flags_t flags, struct nexus_node* nexus_root);
+//                      vspace_clone_flags_t flags, struct nexus_node*
+//                      nexus_root);
 
-// /* nexus_root: per-CPU root from init_nexus (owns _vspace_rb_root). Not the node
-//  * returned by nexus_create_vspace_root_node (that is the per-vspace root). */
+// /* nexus_root: per-CPU root from init_nexus (owns _vspace_rb_root). Not the
+// node
+//  * returned by nexus_create_vspace_root_node (that is the per-vspace root).
+//  */
 // void nexus_delete_vspace(struct nexus_node* nexus_root, VS_Common* vs);
 // void nexus_migrate_vspace(struct nexus_node* src_nexus_root,
 //                           struct nexus_node* dst_nexus_root, VS_Common* vs);
@@ -194,7 +202,8 @@
  * will misinterpret the cached data. All fields are restored before lock
  * release.
  */
-// error_t nexus_update_range_flags(struct nexus_node* nexus_root, VS_Common* vs,
+// error_t nexus_update_range_flags(struct nexus_node* nexus_root, VS_Common*
+// vs,
 //                                  vaddr start_addr, u64 length,
 //                                  nexus_range_flags_mode_t mode,
 //                                  ENTRY_FLAGS_t set_mask,
