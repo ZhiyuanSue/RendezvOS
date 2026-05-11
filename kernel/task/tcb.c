@@ -301,39 +301,23 @@ error_t delete_task(Tcb_Base* tcb)
                 return e;
 
         if (tcb->vs) {
-                VS_Common* vspace = tcb->vs;
+                VSpace* vspace = tcb->vs;
                 tcb->vs = NULL;
-                if (vs_common_is_table_vspace(vspace)
-                    && vspace != &root_vspace) {
-                        struct map_handler* map_handler = &percpu(Map_Handler);
+                if (vspace != &root_vspace) {
                         /*
-                         * Nexus + user descendant tables only; top-level user
-                         * root stays until last ref_put -> del_vspace.
+                         * User address spaces: radix metadata + PTE teardown
+                         * run in del_vspace() when the last refcount drops
+                         * (free_vspace_ref). Do not duplicate unmap/nexus work here.
                          */
-                        if (vspace->vspace_root_addr) {
-                                struct nexus_node* vspace_node =
-                                        (struct nexus_node*)(vspace->_vspace_node);
-                                if (vspace_node
-                                    && vspace->cpu_id
-                                               < RENDEZVOS_MAX_CPU_NUMBER) {
-                                        nexus_delete_vspace(
-                                                per_cpu(nexus_root,
-                                                        vspace->cpu_id),
-                                                vspace);
-                                        if (vspace->_vspace_node == NULL) {
-                                                e = vspace_free_user_pt(
-                                                        vspace, map_handler);
-                                        } else {
-                                                e = -E_RENDEZVOS;
-                                        }
-                                }
-                        }
-                        if (e)
+                        error_t put_e =
+                                ref_put(&vspace->refcount, free_vspace_ref);
+                        if (put_e != REND_SUCCESS) {
+                                e = put_e;
                                 pr_error(
-                                        "[task] user vspace teardown vs=%p e=%d\n",
+                                        "[task] user vspace ref_put vs=%p e=%d\n",
                                         (void*)vspace,
                                         (int)e);
-                        ref_put(&vspace->refcount, free_vspace_ref);
+                        }
                 }
         }
 

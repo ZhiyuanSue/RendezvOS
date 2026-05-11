@@ -3,12 +3,12 @@
 
 #include "pmm.h"
 #include "vmm.h"
-#include "nexus.h"
 #include <common/types.h>
 #include <common/dsa/list.h>
 #include <common/dsa/rb_tree.h>
 #include <common/dsa/ms_queue.h>
 #include <rendezvos/mm/allocator.h>
+#include <rendezvos/mm/vmm_radix_tree.h>
 #include <rendezvos/sync/cas_lock.h>
 #define MAX_GROUP_SLOTS 12
 #define PAGE_PER_CHUNK  4
@@ -99,7 +99,6 @@ struct mem_group {
 } __attribute__((aligned(sizeof(u64))));
 struct mem_allocator {
         MM_COMMON;
-        struct nexus_node* nexus_root;
         struct mem_group groups[MAX_GROUP_SLOTS];
         struct rb_root page_chunk_root;
         ms_queue_t* buffer_msq;
@@ -110,7 +109,7 @@ struct mem_allocator {
         cas_lock_t lock;
 } __attribute__((aligned(sizeof(u64))));
 /*chunk*/
-struct allocator* kinit(struct nexus_node* nexus_root, int allocator_id);
+struct allocator* kinit(int allocator_id);
 
 /* Drain cross-CPU kfree work (page MSQ + buffer MSQ) on this CPU. */
 void kalloc_process_cross_cpu_frees(void);

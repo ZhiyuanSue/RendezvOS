@@ -5,6 +5,7 @@
 #include <common/types.h>
 #include <common/stddef.h>
 #include <rendezvos/ipc/message.h>
+#include <common/mm.h>
 
 /*
  * Msg_Data.msg_type value when Msg_Data.data points to a kmsg_t buffer.

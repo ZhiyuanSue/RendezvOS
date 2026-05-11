@@ -2,7 +2,7 @@
 #include <arch/aarch64/mm/pmm.h>
 #include <arch/aarch64/cpuinfo.h>
 #include <rendezvos/smp/smp.h>
-#include <rendezvos/mm/nexus.h>
+#include <rendezvos/mm/kmalloc.h>
 #include <rendezvos/mm/vmm.h>
 #include <rendezvos/smp/percpu.h>
 extern char ap_entry;
@@ -48,14 +48,19 @@ void arch_start_smp(struct setup_info* arch_setup_info)
                 if (!err) {
                         if (reg_val == (u32)BSP_ID)
                                 goto next_cpu_node;
-                        vaddr stack_bottom =
-                                (vaddr)get_free_page(2,
-                                                     KERNEL_VIRT_OFFSET,
-                                                     per_cpu(nexus_root,
-                                                             BSP_ID),
-                                                     0,
-                                                     PAGE_ENTRY_NONE)
-                                + 2 * PAGE_SIZE;
+                        struct allocator* cpu_kallocator =
+                                per_cpu(kallocator, BSP_ID);
+                        void* ap_stack = NULL;
+                        if (cpu_kallocator)
+                                ap_stack = cpu_kallocator->m_alloc(
+                                        cpu_kallocator, (size_t)16 * PAGE_SIZE);
+                        if (!ap_stack) {
+                                pr_error(
+                                        "[ SMP ] AP stack kalloc fail reg %u\n",
+                                        reg_val);
+                                goto next_cpu_node;
+                        }
+                        vaddr stack_bottom = (vaddr)ap_stack + 16 * PAGE_SIZE;
                         arch_setup_info->ap_boot_stack_ptr = stack_bottom;
                         per_cpu(CPU_STATE, NR_CPU) = cpu_disable;
                         i32 res = psci_func.cpu_on(

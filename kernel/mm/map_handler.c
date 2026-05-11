@@ -190,7 +190,7 @@ error_t map_handler_copy_data_range(struct map_handler *handler,
 
         return REND_SUCCESS;
 }
-error_t map(VS_Common *vs, ppn_t ppn, vpn_t vpn, int level,
+error_t map(VSpace *vs, ppn_t ppn, vpn_t vpn, int level,
             ENTRY_FLAGS_t eflags, struct map_handler *handler)
 {
         ARCH_PFLAGS_t flags = 0;
@@ -212,10 +212,6 @@ error_t map(VS_Common *vs, ppn_t ppn, vpn_t vpn, int level,
          * decide whether memset*/
 
         if (!vs || !handler || !handler->pmm) {
-                return -E_IN_PARAM;
-        }
-        if (!vs_common_is_table_vspace(vs)) {
-                pr_error("[ MAP ] ERROR: map called with KERNEL_HEAP_REF vs\n");
                 return -E_IN_PARAM;
         }
         /*=== === === L0 table === === ===*/
@@ -614,16 +610,11 @@ map_fail:
         return res;
 }
 
-ppn_t unmap(VS_Common *vs, vpn_t vpn, u64 new_entry_addr,
+ppn_t unmap(VSpace *vs, vpn_t vpn, u64 new_entry_addr,
             struct map_handler *handler)
 {
         if (!vs || !handler) {
                 return 0;
-        }
-        if (!vs_common_is_table_vspace(vs)) {
-                pr_error(
-                        "[ MAP ] ERROR: unmap called with KERNEL_HEAP_REF vs\n");
-                return -E_IN_PARAM;
         }
         lock_mcs(&vs->vspace_lock, &handler->vspace_lock_node);
         vaddr v = VADDR(vpn);
@@ -752,7 +743,7 @@ unmap_fail:
         unlock_mcs(&vs->vspace_lock, &handler->vspace_lock_node);
         return ppn;
 }
-ppn_t have_mapped(VS_Common *vs, vpn_t vpn, ENTRY_FLAGS_t *entry_flags_out,
+ppn_t have_mapped(VSpace *vs, vpn_t vpn, ENTRY_FLAGS_t *entry_flags_out,
                   int *entry_level_out, struct map_handler *handler)
 {
         vaddr v = VADDR(vpn);
@@ -778,11 +769,6 @@ ppn_t have_mapped(VS_Common *vs, vpn_t vpn, ENTRY_FLAGS_t *entry_flags_out,
                         vs->vspace_root_addr);
                 ppn = -E_RENDEZVOS;
                 goto have_mapped_fail;
-        }
-        if (!vs_common_is_table_vspace(vs)) {
-                pr_error(
-                        "[ MAP ] ERROR: have_mapped called with KERNEL_HEAP_REF vs\n");
-                return -E_IN_PARAM;
         }
         lock_mcs(&vs->vspace_lock, &handler->vspace_lock_node);
         /*=== === === L0 table === === ===*/
@@ -898,7 +884,7 @@ new_vs_root_fail:
         return vs_root;
 }
 
-error_t vspace_free_user_pt(VS_Common *vs, struct map_handler *handler)
+error_t vspace_free_user_pt(VSpace *vs, struct map_handler *handler)
 {
         if (!handler || !handler->pmm || !vs->vspace_root_addr)
                 return -E_IN_PARAM;
@@ -1032,7 +1018,7 @@ error_t vspace_free_user_pt(VS_Common *vs, struct map_handler *handler)
         return root_nonempty ? -E_RENDEZVOS : REND_SUCCESS;
 }
 
-error_t vspace_free_root_page(VS_Common *vs, struct map_handler *handler)
+error_t vspace_free_root_page(VSpace *vs, struct map_handler *handler)
 {
         if (!handler || !handler->pmm || !vs->vspace_root_addr)
                 return -E_IN_PARAM;

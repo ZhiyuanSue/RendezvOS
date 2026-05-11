@@ -38,7 +38,6 @@ void multi_cpu_test(void);
 int pmm_test(void);
 int arch_vmm_test(void);
 int rb_tree_test(void);
-int nexus_test(void);
 int kmalloc_test(void);
 int test_pci_scan(void);
 int ipc_test(void);
@@ -54,7 +53,6 @@ we use that check the result at cpu 0
 */
 int smp_lock_test(void);
 bool smp_lock_check(void);
-int smp_nexus_test(void);
 int smp_kmalloc_test(void);
 int smp_ms_queue_test(void);
 bool smp_ms_queue_check(void);

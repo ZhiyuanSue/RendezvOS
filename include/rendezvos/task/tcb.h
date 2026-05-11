@@ -62,7 +62,7 @@ extern Task_Manager* core_tm;
         cas_lock_t thread_list_lock;        \
         i64 thread_number;                  \
         struct list_entry thread_head_node; \
-        VS_Common* vs;                      \
+        VSpace* vs;                      \
         TASK_SCHE_COMMON
 /* as the base class of tcb */
 typedef struct {

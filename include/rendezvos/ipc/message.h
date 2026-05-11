@@ -4,6 +4,8 @@
 #include <common/types.h>
 #include <common/stdbool.h>
 #include <common/dsa/ms_queue.h>
+#include <common/string.h>
+#include <rendezvos/smp/percpu.h>
 #include <rendezvos/mm/allocator.h>
 
 /*message data structure, which is uniquely hold the data*/

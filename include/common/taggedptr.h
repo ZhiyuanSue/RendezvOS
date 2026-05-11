@@ -2,6 +2,7 @@
 #define _RENDEZVOS_TAGGEDPTR_H_
 
 #include <common/types.h>
+#include <common/stdbool.h>
 #define TAG_BITS       16
 #define ADDR_BITS      48
 #define TAG_SHIFT      ADDR_BITS

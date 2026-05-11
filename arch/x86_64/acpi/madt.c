@@ -3,6 +3,7 @@
 #include <modules/log/log.h>
 #include <rendezvos/smp/smp.h>
 #include <rendezvos/smp/percpu.h>
+#include <rendezvos/error.h>
 struct acpi_table_madt *madt_table;
 extern int NR_CPU;
 extern enum cpu_status CPU_STATE;

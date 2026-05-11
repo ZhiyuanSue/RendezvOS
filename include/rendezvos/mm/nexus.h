@@ -3,104 +3,104 @@
 /* This is a simple virture page allocator,  and the designation is in the
  * docs/mm.md */
 
-#include <common/types.h>
-#include <common/dsa/list.h>
-#include <common/dsa/rb_tree.h>
-#include <rendezvos/mm/pmm.h>
-#include <rendezvos/mm/map_handler.h>
-#include <rendezvos/sync/cas_lock.h>
-#include <rendezvos/limits.h>
+// #include <common/types.h>
+// #include <common/dsa/list.h>
+// #include <common/dsa/rb_tree.h>
+// #include <rendezvos/mm/pmm.h>
+// #include <rendezvos/mm/map_handler.h>
+// #include <rendezvos/sync/cas_lock.h>
+// #include <rendezvos/limits.h>
 /*
  * Layout (LP64): keep `struct nexus_node` compact; size depends on pointers.
  * NEXUS_PER_PAGE = PAGE_SIZE / sizeof(struct nexus_node) (integer divide;
  * a page may have trailing slack). Prefix: 3*list_entry + vs_common pointer.
  * vs_common points at VS_Common (see vmm.h): tag + anonymous union (by `type`).
  */
-struct nexus_node {
-        /*
-         * manage_free_list vs cache_data union:
-         * - For manager nodes: used as manage_free_list (linked list of manager
-         * pages)
-         * - For normal nodes: can be repurposed as cache_data for temporary
-         * operations IMPORTANT: When using as cache_data, the function must
-         * hold vspace lock to prevent is_page_manage_node() checks while fields
-         * are repurposed.
-         */
-        union {
-                struct list_entry manage_free_list; // Manager node usage
-                struct {
-                        ppn_t cached_ppn; // Cached physical page number
-                        ENTRY_FLAGS_t cached_flags; // Cached original flags for
-                                                    // rollback
-                } cache_data;
-        };
-        struct list_entry aux_list;
-        struct list_entry _vspace_list;
-        VS_Common* vs_common;
-        union {
-                struct {
-                        struct rb_node _rb_node;
-                        ENTRY_FLAGS_t region_flags;
-                        vaddr addr;
-                        union {
-                                /* manager node */
-                                u64 page_left_nexus;
-                                /* normal node */
-                                struct list_entry rmap_list;
-                        };
-                };
-                /*the vspace root and all nexus root node*/
-                struct {
-                        /*common*/
-                        struct rb_node _vspace_rb_node;
-                        struct rb_root _rb_root;
-                        /* root node*/
-                        struct rb_root _vspace_rb_root;
-                        /*The nexus lock is used to protect the vspace's
-                         * register*/
-                        cas_lock_t nexus_lock;
-                };
-        };
-};
+// struct nexus_node {
+//         /*
+//          * manage_free_list vs cache_data union:
+//          * - For manager nodes: used as manage_free_list (linked list of manager
+//          * pages)
+//          * - For normal nodes: can be repurposed as cache_data for temporary
+//          * operations IMPORTANT: When using as cache_data, the function must
+//          * hold vspace lock to prevent is_page_manage_node() checks while fields
+//          * are repurposed.
+//          */
+//         union {
+//                 struct list_entry manage_free_list; // Manager node usage
+//                 struct {
+//                         ppn_t cached_ppn; // Cached physical page number
+//                         ENTRY_FLAGS_t cached_flags; // Cached original flags for
+//                                                     // rollback
+//                 } cache_data;
+//         };
+//         struct list_entry aux_list;
+//         struct list_entry _vspace_list;
+//         VS_Common* vs_common;
+//         union {
+//                 struct {
+//                         struct rb_node _rb_node;
+//                         ENTRY_FLAGS_t region_flags;
+//                         vaddr addr;
+//                         union {
+//                                 /* manager node */
+//                                 u64 page_left_nexus;
+//                                 /* normal node */
+//                                 struct list_entry rmap_list;
+//                         };
+//                 };
+//                 /*the vspace root and all nexus root node*/
+//                 struct {
+//                         /*common*/
+//                         struct rb_node _vspace_rb_node;
+//                         struct rb_root _rb_root;
+//                         /* root node*/
+//                         struct rb_root _vspace_rb_root;
+//                         /*The nexus lock is used to protect the vspace's
+//                          * register*/
+//                         cas_lock_t nexus_lock;
+//                 };
+//         };
+// };
 
-static inline VS_Common* nexus_node_vspace(const struct nexus_node* nexus_node)
-{
-        if (!nexus_node || !nexus_node->vs_common)
-                return NULL;
-        switch ((enum vs_common_kind)nexus_node->vs_common->type) {
-        case VS_COMMON_KERNEL_HEAP_REF:
-                return nexus_node->vs_common->vs;
-        case VS_COMMON_TABLE_VSPACE:
-                return nexus_node->vs_common;
-        default:
-                return NULL;
-        }
-}
-static inline VS_Common*
-nexus_root_heap_ref(const struct nexus_node* nexus_root)
-{
-        if (!nexus_root || !vs_common_is_heap_ref(nexus_root->vs_common))
-                return NULL;
-        return nexus_root->vs_common;
-}
+// static inline VS_Common* nexus_node_vspace(const struct nexus_node* nexus_node)
+// {
+//         if (!nexus_node || !nexus_node->vs_common)
+//                 return NULL;
+//         switch ((enum vs_common_kind)nexus_node->vs_common->type) {
+//         case VS_COMMON_KERNEL_HEAP_REF:
+//                 return nexus_node->vs_common->vs;
+//         case VS_COMMON_TABLE_VSPACE:
+//                 return nexus_node->vs_common;
+//         default:
+//                 return NULL;
+//         }
+// }
+// static inline VS_Common*
+// nexus_root_heap_ref(const struct nexus_node* nexus_root)
+// {
+//         if (!nexus_root || !vs_common_is_heap_ref(nexus_root->vs_common))
+//                 return NULL;
+//         return nexus_root->vs_common;
+// }
 
-extern struct nexus_node* nexus_root;
-#define NEXUS_PER_PAGE (PAGE_SIZE / (sizeof(struct nexus_node)))
-struct nexus_node* init_nexus(struct map_handler* handler);
-/*vspace*/
-struct nexus_node* nexus_create_vspace_root_node(struct nexus_node* nexus_root,
-                                                 VS_Common* vs);
+// extern struct nexus_node* nexus_root;
+// #define NEXUS_PER_PAGE (PAGE_SIZE / (sizeof(struct nexus_node)))
+// struct nexus_node* init_nexus(struct map_handler* handler);
+// /*vspace*/
+// struct nexus_node* nexus_create_vspace_root_node(struct nexus_node* nexus_root,
+//                                                  VS_Common* vs);
 
-typedef u64 vspace_clone_flags_t;
+// typedef u64 vspace_clone_flags_t;
 
-error_t vspace_clone(VS_Common* src_vs, VS_Common** dst_vs_out,
-                     vspace_clone_flags_t flags, struct nexus_node* nexus_root);
+// error_t vspace_clone(VS_Common* src_vs, VS_Common** dst_vs_out,
+//                      vspace_clone_flags_t flags, struct nexus_node* nexus_root);
 
-/* nexus_root: per-CPU root from init_nexus (owns _vspace_rb_root). Not the node
- * returned by nexus_create_vspace_root_node (that is the per-vspace root). */
-void nexus_delete_vspace(struct nexus_node* nexus_root, VS_Common* vs);
-void nexus_migrate_vspace(struct nexus_node* src_nexus_root,
-                          struct nexus_node* dst_nexus_root, VS_Common* vs);
+// /* nexus_root: per-CPU root from init_nexus (owns _vspace_rb_root). Not the node
+//  * returned by nexus_create_vspace_root_node (that is the per-vspace root). */
+// void nexus_delete_vspace(struct nexus_node* nexus_root, VS_Common* vs);
+// void nexus_migrate_vspace(struct nexus_node* src_nexus_root,
+//                           struct nexus_node* dst_nexus_root, VS_Common* vs);
 
 /*page*/
 /*
@@ -117,9 +117,9 @@ void nexus_migrate_vspace(struct nexus_node* src_nexus_root,
  * @note For kernel space, uses per-CPU nexus_root with KERNEL_HEAP_REF.
  *       For user space, requires valid vs with TABLE_VSPACE.
  */
-void* get_free_page(size_t page_num, vaddr target_vaddr,
-                    struct nexus_node* nexus_root, VS_Common* vs,
-                    ENTRY_FLAGS_t flags);
+// void* get_free_page(size_t page_num, vaddr target_vaddr,
+//                     struct nexus_node* nexus_root, VS_Common* vs,
+//                     ENTRY_FLAGS_t flags);
 
 /*
  * @brief Free pages and unmap them from vspace
@@ -134,14 +134,14 @@ void* get_free_page(size_t page_num, vaddr target_vaddr,
  * @note Cleans up both nexus tree entries and page table mappings.
  *       For kernel space, uses per-CPU nexus_root with KERNEL_HEAP_REF.
  */
-error_t free_pages(void* p, int page_num, VS_Common* vs,
-                   struct nexus_node* nexus_root);
+// error_t free_pages(void* p, int page_num, VS_Common* vs,
+//                    struct nexus_node* nexus_root);
 
-error_t user_fill_range(struct nexus_node* first_entry, int page_num,
-                        struct nexus_node* vspace_node);
-error_t user_unfill_range(void* p, int page_num, VS_Common* vs,
-                          struct nexus_node* vspace_node);
-error_t unfill_phy_page(MemZone* zone, ppn_t ppn, u64 new_entry_addr);
+// error_t user_fill_range(struct nexus_node* first_entry, int page_num,
+//                         struct nexus_node* vspace_node);
+// error_t user_unfill_range(void* p, int page_num, VS_Common* vs,
+//                           struct nexus_node* vspace_node);
+// error_t unfill_phy_page(MemZone* zone, ppn_t ppn, u64 new_entry_addr);
 
 /*
  * @brief Update flags for an already-mapped user range with full rollback.
@@ -160,11 +160,11 @@ error_t unfill_phy_page(MemZone* zone, ppn_t ppn, u64 new_entry_addr);
  *   perms (e.g. still RW) for fault handling — same invariant as
  *   _vspace_clone_cow child mapping.
  */
-typedef enum {
-        NEXUS_RANGE_FLAGS_ABSOLUTE = 0,
-        NEXUS_RANGE_FLAGS_DELTA = 1,
-        NEXUS_RANGE_FLAGS_DELTA_PTE_ONLY = 2,
-} nexus_range_flags_mode_t;
+// typedef enum {
+//         NEXUS_RANGE_FLAGS_ABSOLUTE = 0,
+//         NEXUS_RANGE_FLAGS_DELTA = 1,
+//         NEXUS_RANGE_FLAGS_DELTA_PTE_ONLY = 2,
+// } nexus_range_flags_mode_t;
 
 /*
  * @brief Update mapping flags on a user vspace range with full rollback support
@@ -194,11 +194,11 @@ typedef enum {
  * will misinterpret the cached data. All fields are restored before lock
  * release.
  */
-error_t nexus_update_range_flags(struct nexus_node* nexus_root, VS_Common* vs,
-                                 vaddr start_addr, u64 length,
-                                 nexus_range_flags_mode_t mode,
-                                 ENTRY_FLAGS_t set_mask,
-                                 ENTRY_FLAGS_t clear_mask);
+// error_t nexus_update_range_flags(struct nexus_node* nexus_root, VS_Common* vs,
+//                                  vaddr start_addr, u64 length,
+//                                  nexus_range_flags_mode_t mode,
+//                                  ENTRY_FLAGS_t set_mask,
+//                                  ENTRY_FLAGS_t clear_mask);
 
 /*
  * @brief Remap one existing user 4K leaf: change PTE ppn and/or flags.
@@ -225,9 +225,9 @@ error_t nexus_update_range_flags(struct nexus_node* nexus_root, VS_Common* vs,
  *   fault_addr = 0x401478;  // Any offset within the page
  *   nexus_remap_user_leaf(vs, fault_addr, new_ppn, new_flags, old_ppn);
  *   // fault_addr is automatically aligned to 0x401000
- */
-error_t nexus_remap_user_leaf(VS_Common* vs, vaddr va, ppn_t new_ppn,
-                              ENTRY_FLAGS_t new_flags, ppn_t expect_old_ppn);
+//  */
+// error_t nexus_remap_user_leaf(VS_Common* vs, vaddr va, ppn_t new_ppn,
+//                               ENTRY_FLAGS_t new_flags, ppn_t expect_old_ppn);
 
 /*
  * Query nexus node for a VA.
@@ -236,10 +236,10 @@ error_t nexus_remap_user_leaf(VS_Common* vs, vaddr va, ppn_t new_ppn,
  *         -E_REND_NO_MSG if no node covers the address,
  *         other negative error codes on invalid input / internal errors.
  */
-error_t nexus_query_vaddr(VS_Common* vs, vaddr va, vaddr* out_start,
-                          ENTRY_FLAGS_t* out_flags);
+// error_t nexus_query_vaddr(VS_Common* vs, vaddr va, vaddr* out_start,
+//                           ENTRY_FLAGS_t* out_flags);
 
 /* Kernel VA -> owning CPU for kmem routing: walks rmap under pmm lock; kernel
  * heap uses `cpu_id` on KERNEL_HEAP_REF vs_common (not global root). */
-int nexus_kernel_page_owner_cpu(vaddr kva);
+// int nexus_kernel_page_owner_cpu(vaddr kva);
 #endif

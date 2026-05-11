@@ -220,7 +220,7 @@ error_t arch_start_core(cpu_id_t cpu_id)
         wrmsr(MSR_KERNEL_GS_BASE, 0);
         per_cpu(cpu_number, cpu_id) = cpu_id;
         /*table_indicator = 1  will cause #GP*/
-        prepare_per_cpu_tss(per_cpu(nexus_root, cpu_id));
+        prepare_per_cpu_tss(cpu_id);
 
         init_interrupt();
         init_irq();

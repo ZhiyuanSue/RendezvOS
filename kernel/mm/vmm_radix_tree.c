@@ -1,6 +1,5 @@
 
 #include <rendezvos/mm/vmm_radix_tree.h>
-#include <rendezvos/mm/nexus_base.h>
 #include <common/bit.h>
 #include <common/align.h>
 #include <common/string.h>
@@ -177,7 +176,7 @@ static error_t radix_entry_update(Radix_entry_t* entry, u64 update_flags,
 static inline void radix_node_clear(Radix_node_t* node)
 {
         node->flags = 0;
-        node->vs_ptr = 0;
+        node->owner = tp_new_none();
         INIT_LIST_HEAD(&node->rmap_list);
 }
 
@@ -218,7 +217,7 @@ static bool radix_l3_overlap_insert(const Radix_node_t* node)
 {
         if (node->flags & (PAGE_ENTRY_VALID | PAGE_ENTRY_NEXUS_LAZY))
                 return true;
-        if (node->vs_ptr != NULL)
+        if (!tp_is_none(node->owner))
                 return true;
         return false;
 }
@@ -228,7 +227,7 @@ static bool radix_l3_deletable(const Radix_node_t* node)
 }
 
 /*new table's free and alloc logic*/
-static error_t free_radix_table(VS_Common* vs, struct pmm* pmm,
+static error_t free_radix_table(VSpace* vs, struct pmm* pmm,
                                 struct map_handler* handler,
                                 vaddr page_vaddr_start, vaddr page_vaddr_end,
                                 size_t free_page_number)
@@ -249,7 +248,7 @@ static error_t free_radix_table(VS_Common* vs, struct pmm* pmm,
                 res = tmpres;
         return res;
 }
-static error_t radix_alloc_level_table(VS_Common* vs, struct pmm* pmm,
+static error_t radix_alloc_level_table(VSpace* vs, struct pmm* pmm,
                                        struct map_handler* handler,
                                        vaddr* out_page_vaddr, int level)
 {
@@ -309,7 +308,7 @@ map_fail:
                                need_alloc_pages);
         return -E_RENDEZVOS;
 }
-static error_t free_level_table(VS_Common* vs, struct pmm* pmm,
+static error_t free_level_table(VSpace* vs, struct pmm* pmm,
                                 struct map_handler* handler, vaddr page_vaddr,
                                 int level)
 {
@@ -375,7 +374,7 @@ static void radix_tree_level_walk_init(radix_tree_level_walk_t* walk_iter,
                 start_addr = range_start_vaddr;
         } else {
                 u64 step = get_gran_from_level(level);
-                start_addr = ROUND_DOWN(range_end_vaddr - 1, step);
+                start_addr = ROUND_DOWN((range_end_vaddr - 1), step);
                 if (!(start_addr >= range_start_vaddr
                       && start_addr < range_end_vaddr))
                         return;
@@ -577,7 +576,7 @@ radix_tree_walk_is_level_last(const radix_tree_level_walk_t* walk, int level)
         u64 step = get_gran_from_level(level);
         if (step == 0)
                 return false;
-        vaddr last = ROUND_DOWN(walk->range_end_vaddr - 1, step);
+        vaddr last = ROUND_DOWN((walk->range_end_vaddr - 1), step);
         vaddr cur = ROUND_DOWN(walk->current_vaddr, step);
         return cur == last;
 }
@@ -592,7 +591,7 @@ radix_tree_walk_is_level_single(const radix_tree_level_walk_t* walk_iter,
         if (step == 0)
                 return false;
         vaddr first = ROUND_DOWN(walk_iter->range_start_vaddr, step);
-        vaddr last = ROUND_DOWN(walk_iter->range_end_vaddr - 1, step);
+        vaddr last = ROUND_DOWN((walk_iter->range_end_vaddr - 1), step);
         return first == last;
 }
 
@@ -649,7 +648,7 @@ radix_count_trans_to_parent(radix_lock_acquire_kind_t kind,
                 }
         }
 }
-static void radix_lock_rollback_entry(VS_Common* vs, struct pmm* pmm,
+static void radix_lock_rollback_entry(VSpace* vs, struct pmm* pmm,
                                       struct map_handler* handler,
                                       radix_lock_acquire_kind_t kind,
                                       radix_tree_level_walk_t* walk)
@@ -720,11 +719,12 @@ static void radix_lock_rollback_entry(VS_Common* vs, struct pmm* pmm,
         entry->value = 0;
 }
 
-static error_t
-radix_lock_ensure_path(Radix_entry_t* entry, radix_tree_level_walk_t* walk_iter,
-                       VS_Common* vs, struct map_handler* handler,
-                       struct pmm* pmm, radix_lock_acquire_kind_t kind,
-                       int level, u64 update_flags)
+static error_t radix_lock_ensure_path(Radix_entry_t* entry,
+                                      radix_tree_level_walk_t* walk_iter,
+                                      VSpace* vs, struct map_handler* handler,
+                                      struct pmm* pmm,
+                                      radix_lock_acquire_kind_t kind, int level,
+                                      u64 update_flags)
 {
         error_t err;
         if (kind == RADIX_RL_INSERT) {
@@ -754,8 +754,7 @@ radix_lock_ensure_path(Radix_entry_t* entry, radix_tree_level_walk_t* walk_iter,
         return REND_SUCCESS;
 }
 
-static error_t radix_range_lock_acquire(VS_Common* vs,
-                                        struct map_handler* handler,
+static error_t radix_range_lock_acquire(VSpace* vs, struct map_handler* handler,
                                         Radix_entry_t* root, vaddr start,
                                         vaddr end,
                                         radix_lock_acquire_kind_t kind)
@@ -1111,19 +1110,18 @@ static inline bool radix_calculate_end_check(vaddr start, size_t page_number,
         return radix_check_range(start, *end_out, RADIX_TREE_LEVEL3);
 }
 
-static Radix_entry_t* radix_root_from_vs(VS_Common* vs)
+static Radix_entry_t* radix_root_from_vs(VSpace* vs)
 {
-        if (!vs || !vs->_vspace_node)
+        if (!vs)
                 return NULL;
-        struct nexus_node* vspace_nexus = (struct nexus_node*)vs->_vspace_node;
-        return vspace_nexus->root_radix;
+        return (Radix_entry_t*)vs->root_radix;
 }
 
 /* === Public API === */
 
-error_t vmm_radix_tree_insert_range(struct map_handler* handler, VS_Common* vs,
-                                    vaddr page_vaddr, ENTRY_FLAGS_t flags,
-                                    size_t page_number)
+error_t vmm_radix_tree_insert_range(struct map_handler* handler, VSpace* vs,
+                                    tagged_ptr_t owner_info, vaddr page_vaddr,
+                                    ENTRY_FLAGS_t flags, size_t page_number)
 {
         Radix_entry_t* root = radix_root_from_vs(vs);
         vaddr end;
@@ -1155,9 +1153,7 @@ error_t vmm_radix_tree_insert_range(struct map_handler* handler, VS_Common* vs,
         do {
                 Radix_node_t* leaf = l3_walk.curr_l3_node;
                 leaf->flags = lazy_leaf_flags;
-                leaf->vs_ptr = (L0_INDEX(l3_walk.current_vaddr) >= 256) ?
-                                       &root_vspace :
-                                       vs;
+                leaf->owner = owner_info;
         } while (radix_tree_level_walk(&l3_walk));
 
 insert_range_out:
@@ -1195,9 +1191,9 @@ static void radix_leaf_unlink_rmap(struct pmm* pmm, ppn_t ppn,
         pmm_zone_unlock(pmm->zone);
 }
 
-error_t vmm_radix_tree_leaf_bind_range(struct map_handler* handler,
-                                       VS_Common* vs, vaddr page_vaddr,
-                                       ppn_t ppn_first, size_t page_number,
+error_t vmm_radix_tree_leaf_bind_range(struct map_handler* handler, VSpace* vs,
+                                       vaddr page_vaddr, ppn_t ppn_first,
+                                       size_t page_number,
                                        ENTRY_FLAGS_t leaf_flags)
 {
         Radix_entry_t* root = radix_root_from_vs(vs);
@@ -1276,7 +1272,7 @@ leaf_bind_range_out:
 }
 
 error_t vmm_radix_tree_leaf_unbind_range(struct map_handler* handler,
-                                         VS_Common* vs, vaddr page_vaddr,
+                                         VSpace* vs, vaddr page_vaddr,
                                          ppn_t ppn_first, size_t page_number)
 {
         Radix_entry_t* root = radix_root_from_vs(vs);
@@ -1325,7 +1321,8 @@ error_t vmm_radix_tree_leaf_unbind_range(struct map_handler* handler,
                 goto leaf_unbind_range_out;
         }
 
-        /* Pass 1 ended on the last page; flip to DEC and unbind high PPN first. */
+        /* Pass 1 ended on the last page; flip to DEC and unbind high PPN first.
+         */
         l3_walk.direction = RADIX_TREE_DIRECTION_DEC;
         size_t remain = page_number;
         do {
@@ -1343,7 +1340,7 @@ leaf_unbind_range_out:
         return err;
 }
 
-error_t vmm_radix_tree_leaf_bind(struct map_handler* handler, VS_Common* vs,
+error_t vmm_radix_tree_leaf_bind(struct map_handler* handler, VSpace* vs,
                                  vaddr page_vaddr, ppn_t ppn,
                                  ENTRY_FLAGS_t leaf_flags)
 {
@@ -1351,14 +1348,14 @@ error_t vmm_radix_tree_leaf_bind(struct map_handler* handler, VS_Common* vs,
                 handler, vs, page_vaddr, ppn, 1, leaf_flags);
 }
 
-error_t vmm_radix_tree_leaf_unbind(struct map_handler* handler, VS_Common* vs,
+error_t vmm_radix_tree_leaf_unbind(struct map_handler* handler, VSpace* vs,
                                    vaddr page_vaddr, ppn_t ppn)
 {
         return vmm_radix_tree_leaf_unbind_range(
                 handler, vs, page_vaddr, ppn, 1);
 }
 
-error_t vmm_radix_tree_delete_range(struct map_handler* handler, VS_Common* vs,
+error_t vmm_radix_tree_delete_range(struct map_handler* handler, VSpace* vs,
                                     vaddr page_vaddr, size_t page_number)
 {
         Radix_entry_t* root = radix_root_from_vs(vs);
@@ -1374,15 +1371,13 @@ error_t vmm_radix_tree_delete_range(struct map_handler* handler, VS_Common* vs,
         if (err != REND_SUCCESS)
                 return err;
 
-delete_range_out:
         (void)radix_range_lock_release(root, page_vaddr, end);
         return err;
 }
 
-error_t vmm_radix_tree_change_leaf_ppn(struct map_handler* handler,
-                                       VS_Common* vs, vaddr page_vaddr,
-                                       ppn_t old_ppn, ppn_t new_ppn,
-                                       ENTRY_FLAGS_t leaf_flags)
+error_t vmm_radix_tree_change_leaf_ppn(struct map_handler* handler, VSpace* vs,
+                                       vaddr page_vaddr, ppn_t old_ppn,
+                                       ppn_t new_ppn, ENTRY_FLAGS_t leaf_flags)
 {
         Radix_entry_t* root = radix_root_from_vs(vs);
         vaddr end;
@@ -1412,7 +1407,7 @@ error_t vmm_radix_tree_change_leaf_ppn(struct map_handler* handler,
         }
 
         Radix_node_t* leaf = l3_walk.curr_l3_node;
-        if (!leaf || !(leaf->flags & PAGE_ENTRY_VALID) || leaf->vs_ptr != vs) {
+        if (!leaf || !(leaf->flags & PAGE_ENTRY_VALID)) {
                 err = -E_IN_PARAM;
                 goto change_leaf_ppn_out;
         }
@@ -1437,7 +1432,6 @@ error_t vmm_radix_tree_change_leaf_ppn(struct map_handler* handler,
         }
 
         leaf->flags = pte_flags | (ENTRY_FLAGS_t)PAGE_ENTRY_VALID;
-        leaf->vs_ptr = vs;
 
 change_leaf_ppn_out:
         (void)radix_range_lock_release(root, page_vaddr, end);
@@ -1445,7 +1439,7 @@ change_leaf_ppn_out:
 }
 
 error_t vmm_radix_tree_change_leaf_ppn_flag(struct map_handler* handler,
-                                            VS_Common* vs, vaddr page_vaddr,
+                                            VSpace* vs, vaddr page_vaddr,
                                             ppn_t old_ppn, ppn_t new_ppn,
                                             ENTRY_FLAGS_t new_flag)
 {
@@ -1453,7 +1447,7 @@ error_t vmm_radix_tree_change_leaf_ppn_flag(struct map_handler* handler,
                 handler, vs, page_vaddr, old_ppn, new_ppn, new_flag);
 }
 
-error_t vmm_radix_tree_change_range_flag(VS_Common* vs, vaddr page_vaddr,
+error_t vmm_radix_tree_change_range_flag(VSpace* vs, vaddr page_vaddr,
                                          ENTRY_FLAGS_t new_flags,
                                          size_t page_number)
 {
@@ -1491,21 +1485,32 @@ change_range_flag_out:
         return err;
 }
 
-error_t vmm_radix_tree_query_leaf(VS_Common* vs, vaddr page_vaddr,
-                                  ENTRY_FLAGS_t* out_flags)
+error_t vmm_radix_tree_query_leaf(VSpace* vs, vaddr page_vaddr,
+                                  ENTRY_FLAGS_t* out_flags,
+                                  tagged_ptr_t* out_owner)
 {
         Radix_entry_t* root = radix_root_from_vs(vs);
         vaddr end;
-        if (!root || !vs || !vs->pmm || !out_flags)
+        if (!root || !vs || !vs->pmm || (!out_flags && !out_owner))
                 return -E_IN_PARAM;
-        if (!radix_calculate_end_check(page_vaddr, 1, &end))
+        if (!radix_calculate_end_check(page_vaddr, 1, &end)) {
+                if (out_flags)
+                        *out_flags = (ENTRY_FLAGS_t)0;
+                if (out_owner)
+                        *out_owner = tp_new_none();
                 return -E_IN_PARAM;
+        }
 
         error_t err = REND_SUCCESS;
         err = radix_range_lock_acquire(
                 vs, NULL, root, page_vaddr, end, RADIX_RL_QUERY_OR_CHANGE);
-        if (err != REND_SUCCESS)
+        if (err != REND_SUCCESS) {
+                if (out_flags)
+                        *out_flags = (ENTRY_FLAGS_t)0;
+                if (out_owner)
+                        *out_owner = tp_new_none();
                 return err;
+        }
 
         radix_tree_level_walk_t l3_walk;
 
@@ -1516,43 +1521,46 @@ error_t vmm_radix_tree_query_leaf(VS_Common* vs, vaddr page_vaddr,
                                    RADIX_TREE_LEVEL3,
                                    RADIX_TREE_DIRECTION_INC);
         if (!radix_tree_level_walk_check(&l3_walk)) {
-                *out_flags = (ENTRY_FLAGS_t)0;
+                if (out_flags)
+                        *out_flags = (ENTRY_FLAGS_t)0;
+                if (out_owner)
+                        *out_owner = tp_new_none();
                 err = -E_IN_PARAM;
                 goto query_leaf_out;
         }
-        *out_flags = l3_walk.curr_l3_node->flags;
+        if (out_flags)
+                *out_flags = l3_walk.curr_l3_node->flags;
+        if (out_owner)
+                *out_owner = l3_walk.curr_l3_node->owner;
 
 query_leaf_out:
         (void)radix_range_lock_release(root, page_vaddr, end);
         return err;
 }
 
-Radix_entry_t* vmm_radix_tree_init(struct map_handler* handler, VS_Common* vs)
+Radix_entry_t* vmm_radix_tree_init(struct map_handler* handler, VSpace* vs)
 {
-        if (!vs || !vs->pmm || !vs->_vspace_node || !handler)
+        if (!vs || !vs->pmm || !handler)
                 return NULL;
-        struct nexus_node* vspace_nexus = (struct nexus_node*)vs->_vspace_node;
-        if (vspace_nexus->root_radix)
-                return vspace_nexus->root_radix;
+        if (vs->root_radix)
+                return (Radix_entry_t*)vs->root_radix;
 
         vaddr table_vaddr;
         if (radix_alloc_level_table(
                     vs, vs->pmm, handler, &table_vaddr, RADIX_TREE_LEVEL0)
             != REND_SUCCESS)
                 return NULL;
-        vspace_nexus->root_radix = (Radix_entry_t*)table_vaddr;
-        return vspace_nexus->root_radix;
+        vs->root_radix = (void*)table_vaddr;
+        return (Radix_entry_t*)vs->root_radix;
 }
 
-error_t vmm_radix_tree_destroy(struct map_handler* handler, VS_Common* vs)
+error_t vmm_radix_tree_destroy(struct map_handler* handler, VSpace* vs)
 {
-        if (!vs || !vs->pmm || !vs->_vspace_node || !handler)
+        if (!vs || !vs->pmm || !handler)
                 return -E_IN_PARAM;
         Radix_entry_t* root = radix_root_from_vs(vs);
         if (!root)
                 return REND_SUCCESS;
-        struct nexus_node* vspace_nexus = (struct nexus_node*)vs->_vspace_node;
-
         struct pmm* pmm = vs->pmm;
         /*only destroy the low half tree */
         const vaddr low_half_end = (vaddr)256 * radix_level_step[0];
@@ -1584,8 +1592,6 @@ error_t vmm_radix_tree_destroy(struct map_handler* handler, VS_Common* vs)
                                                                       va3);
                                                 if (!leaf)
                                                         continue;
-                                                if (leaf->vs_ptr != vs)
-                                                        continue;
                                                 if (!list_node_is_detached(
                                                             &leaf->rmap_list))
                                                         list_del_init(
@@ -1613,7 +1619,7 @@ error_t vmm_radix_tree_destroy(struct map_handler* handler, VS_Common* vs)
         }
         vaddr root_vaddr = (vaddr)root;
         (void)free_level_table(vs, pmm, handler, root_vaddr, RADIX_TREE_LEVEL0);
-        vspace_nexus->root_radix = NULL;
+        vs->root_radix = (void*)NULL;
         return REND_SUCCESS;
 }
 /* shared high half l1 pages */
@@ -1621,7 +1627,7 @@ static ppn_t kernel_radix_l1_table_base_ppn;
 
 error_t
 vmm_radix_tree_bootstrap_shared_kernel_high_half(struct map_handler* handler,
-                                                 VS_Common* vs)
+                                                 VSpace* vs)
 {
         if (!invalid_ppn(kernel_radix_l1_table_base_ppn))
                 return REND_SUCCESS;
@@ -1667,7 +1673,7 @@ vmm_radix_tree_bootstrap_shared_kernel_high_half(struct map_handler* handler,
 
 error_t
 vmm_radix_tree_install_shared_kernel_high_half(struct map_handler* handler,
-                                               VS_Common* vs)
+                                               VSpace* vs)
 {
         (void)handler;
         Radix_entry_t* root = radix_root_from_vs(vs);

@@ -4,10 +4,11 @@
 #include <common/mm.h>
 
 DEFINE_PER_CPU(struct TSS, cpu_tss);
-void prepare_per_cpu_tss(struct nexus_node* nexus_root)
+extern u64 boot_stack_bottom;
+void prepare_per_cpu_tss(cpu_id_t cpu_id)
 {
-        cpu_id_t cpu_id = nexus_root->vs_common->cpu_id;
-        set_rsp(&per_cpu(cpu_tss, cpu_id), 0, boot_stack_bottom);
+        set_rsp(&per_cpu(cpu_tss, cpu_id), 0,
+                per_cpu(boot_stack_bottom, cpu_id));
         union desc_selector tmp_sel = {
                 .rpl = 0,
                 .index = GDT_TSS_LOWER_INDEX,

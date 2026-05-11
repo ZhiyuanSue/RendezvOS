@@ -2,6 +2,7 @@
 #define _RENDEZVOS_NAME_INDEX_H_
 
 #include <common/types.h>
+#include <common/stdbool.h>
 #include <rendezvos/error.h>
 #include <rendezvos/mm/allocator.h>
 #include <rendezvos/sync/spin_lock.h>

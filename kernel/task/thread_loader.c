@@ -1,5 +1,7 @@
 #include <rendezvos/task/thread_loader.h>
 #include <modules/log/log.h>
+#include <rendezvos/mm/mm_anon_backend.h>
+#include <rendezvos/mm/vmm.h>
 #include <rendezvos/smp/percpu.h>
 
 /* Owner ref drop: may trigger free_vspace_ref -> del_vspace. */
@@ -7,38 +9,10 @@ static void elf_task_release_vspace_ref(Tcb_Base *elf_task)
 {
         if (!elf_task || !elf_task->vs)
                 return;
-        VS_Common *vs = elf_task->vs;
+        VSpace *vs = elf_task->vs;
         elf_task->vs = NULL;
-        if (vs_common_is_table_vspace(vs) && vs != &root_vspace)
+        if (vs != vs->root_vs)
                 ref_put(&vs->refcount, free_vspace_ref);
-}
-
-/*
- * User root paddr allocated but nexus failed to register vspace: del_vspace
- * cannot nexus_delete. Free user root frames first, then owner ref_put.
- */
-static void elf_task_teardown_user_root_after_nexus_fail(Tcb_Base *elf_task)
-{
-        if (!elf_task || !elf_task->vs)
-                return;
-        VS_Common *vs = elf_task->vs;
-        if (vs->vspace_root_addr) {
-                error_t user_err =
-                        vspace_free_user_pt(vs, &percpu(Map_Handler));
-                if (user_err != REND_SUCCESS)
-                        pr_error(
-                                "[ Error ] vspace_free_user_pt cleanup failed e=%d\n",
-                                (int)user_err);
-                if (vs->vspace_root_addr) {
-                        error_t root_err =
-                                vspace_free_root_page(vs, &percpu(Map_Handler));
-                        if (root_err != REND_SUCCESS)
-                                pr_error(
-                                        "[ Error ] vspace_free_root_page cleanup failed e=%d\n",
-                                        (int)root_err);
-                }
-        }
-        elf_task_release_vspace_ref(elf_task);
 }
 
 static void elf_task_delete_tcb(Tcb_Base *elf_task)
@@ -49,7 +23,7 @@ static void elf_task_delete_tcb(Tcb_Base *elf_task)
                 pr_error("[ Error ] delete_task cleanup failed\n");
 }
 
-vaddr generate_user_stack(VS_Common *vs)
+vaddr generate_user_stack(VSpace *vs)
 {
         if (!vs) {
                 return 0;
@@ -58,20 +32,19 @@ vaddr generate_user_stack(VS_Common *vs)
         int page_num = thread_ustack_page_num;
         ENTRY_FLAGS_t page_flags = PAGE_ENTRY_USER | PAGE_ENTRY_VALID
                                    | PAGE_ENTRY_WRITE | PAGE_ENTRY_READ;
-        vaddr get_free_page_vaddr =
-                (vaddr)get_free_page(page_num,
-                                     USER_SPACE_TOP - page_num * PAGE_SIZE,
-                                     percpu(nexus_root),
-                                     vs,
-                                     page_flags);
-        if (!get_free_page_vaddr) {
+        vaddr stack_base = mm_user_anon_map_pages(
+                vs,
+                USER_SPACE_TOP - (vaddr)page_num * PAGE_SIZE,
+                (size_t)page_num,
+                page_flags);
+        if (!stack_base) {
                 return 0;
         }
-        vaddr user_sp = get_free_page_vaddr + page_num * PAGE_SIZE - 8;
+        vaddr user_sp = stack_base + (vaddr)page_num * PAGE_SIZE - 8;
         return user_sp;
 }
 error_t elf_Phdr_64_load_handle(vaddr elf_start, Elf64_Phdr *phdr_ptr,
-                                VS_Common *vs)
+                                VSpace *vs)
 {
         if (!vs || !phdr_ptr || !elf_start) {
                 return -E_IN_PARAM;
@@ -104,10 +77,10 @@ error_t elf_Phdr_64_load_handle(vaddr elf_start, Elf64_Phdr *phdr_ptr,
                 page_flags |= PAGE_ENTRY_READ;
         }
 
-        /*using the nexus to map*/
-        void *page_ptr = get_free_page(
-                page_num, aligned_start, percpu(nexus_root), vs, page_flags);
-        if (!page_ptr)
+        if (!mm_user_anon_map_pages(vs,
+                                     aligned_start,
+                                     (size_t)page_num,
+                                     page_flags))
                 return -E_RENDEZVOS;
 
         memcpy((void *)(ph_start),
@@ -124,7 +97,7 @@ error_t elf_Phdr_64_load_handle(vaddr elf_start, Elf64_Phdr *phdr_ptr,
         return REND_SUCCESS;
 }
 error_t elf_Phdr_64_dynamic_handle(vaddr elf_start, Elf64_Phdr *phdr_ptr,
-                                   VS_Common *vs)
+                                   VSpace *vs)
 {
         if (!vs || !elf_start || !phdr_ptr) {
                 return -E_IN_PARAM;
@@ -132,7 +105,7 @@ error_t elf_Phdr_64_dynamic_handle(vaddr elf_start, Elf64_Phdr *phdr_ptr,
         print_elf_ph64(phdr_ptr);
         return REND_SUCCESS;
 }
-error_t run_elf_program(vaddr elf_start, vaddr elf_end, VS_Common *vs,
+error_t run_elf_program(vaddr elf_start, vaddr elf_end, VSpace *vs,
                         elf_init_handler_t elf_init)
 {
         pr_info("start gen task from elf start %lx end %lx vs %lx\n",
@@ -224,31 +197,13 @@ error_t gen_task_from_elf(Thread_Base **elf_thread_ptr,
 
         elf_task->pid = get_new_id(&pid_manager);
         /*--- vspace part ---*/
-        elf_task->vs = new_vspace();
+        elf_task->vs = create_user_vspace(&root_vspace);
         if (!elf_task->vs) {
                 e = -E_RENDEZVOS;
                 elf_task_delete_tcb(elf_task);
                 return e;
         }
-        paddr new_vs_paddr = new_vs_root(0, &percpu(Map_Handler));
-        if (!new_vs_paddr) {
-                e = -E_RENDEZVOS;
-                elf_task_release_vspace_ref(elf_task);
-                elf_task_delete_tcb(elf_task);
-                return e;
-        }
-        set_vspace_root_addr(elf_task->vs, new_vs_paddr);
-        /* Per-vspace nexus root node (one page); not the same as per-CPU
-         * nexus_root. */
-        struct nexus_node *new_vs_vspace_node =
-                nexus_create_vspace_root_node(percpu(nexus_root), elf_task->vs);
-        if (!new_vs_vspace_node) {
-                e = -E_RENDEZVOS;
-                elf_task_teardown_user_root_after_nexus_fail(elf_task);
-                elf_task_delete_tcb(elf_task);
-                return e;
-        }
-        init_vspace(elf_task->vs, elf_task->pid, new_vs_vspace_node);
+        elf_task->vs->vspace_id = elf_task->pid;
         /*--- end vspace part ---*/
         e = add_task_to_manager(percpu(core_tm), elf_task);
         if (e) {

@@ -6,7 +6,7 @@
 #include <modules/elf/elf_print.h>
 #include <rendezvos/task/tcb.h>
 #include <rendezvos/mm/allocator.h>
-error_t load_elf_Phdr_64(vaddr elf_start, Elf64_Phdr* phdr_ptr, VS_Common* vs);
+error_t load_elf_Phdr_64(vaddr elf_start, Elf64_Phdr* phdr_ptr, VSpace* vs);
 /*
  * ELF load result information (core-defined, Linux-agnostic).
  *
@@ -31,7 +31,7 @@ typedef struct elf_load_info {
  */
 typedef void* (*elf_init_handler_t)(Arch_Task_Context* ctx,
                                     const elf_load_info_t* info);
-error_t run_elf_program(vaddr elf_start, vaddr elf_end, VS_Common* vs,
+error_t run_elf_program(vaddr elf_start, vaddr elf_end, VSpace* vs,
                         elf_init_handler_t elf_init);
 error_t gen_task_from_elf(Thread_Base** elf_thread_ptr,
                           size_t append_tcb_info_len,

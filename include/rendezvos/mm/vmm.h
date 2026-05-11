@@ -27,25 +27,9 @@
 /* One bit per logical CPU in [0, RENDEZVOS_MAX_CPU_NUMBER). */
 #define VS_TLB_CPU_MASK_BITS (RENDEZVOS_MAX_CPU_NUMBER)
 BITMAP_DEFINE_TYPE(vs_tlb_cpu_bitmap_t, VS_TLB_CPU_MASK_BITS)
-
-/*
- * One type for nexus vs_common + page-table identity (anonymous union: members
- * are as if on VS_Common; interpret only per `type`):
- * - KERNEL_HEAP_REF: per-CPU kmem indirection; `vs` -> shared root (table
- *   vspace); `cpu_id` is allocating CPU for kmem routing.
- * - TABLE_VSPACE: owns page tables / nexus table branch (`vspace_root_addr`,
- *   locks, `_vspace_node`). Used for the global kernel root (`root_vspace`) and
- *   for each per-task address space from `new_vspace()` (user TTBR0 root).
- * Per-CPU heap-ref object: `nexus_kernel_heap_vs_common`.
- */
-enum vs_common_kind {
-        VS_COMMON_NONE = 0,
-        VS_COMMON_KERNEL_HEAP_REF,
-        VS_COMMON_TABLE_VSPACE,
-};
-
-typedef struct VS_Common {
-        u64 type;
+typedef struct VSpace VSpace;
+struct VSpace {
+        struct list_entry free_vs_entry_list_node;
         /*
          * Physical memory policy/affinity for this address space.
          * For now it is a single PMM pointer (typically ZONE_NORMAL).
@@ -54,61 +38,49 @@ typedef struct VS_Common {
          */
         struct pmm* pmm;
         /*
-         * CPU affinity / ownership id (meaning depends on `type`):
-         * - VS_COMMON_KERNEL_HEAP_REF: which CPU this per-CPU heap-ref belongs
-         * to
-         * - VS_COMMON_TABLE_VSPACE: which per-CPU nexus_root currently owns
-         * this vspace (when it is a table vspace)
-         */
-        cpu_id_t cpu_id;
-        /*
          * Reference count for vspace lifetime.
          * - Owner (task) holds one reference.
          * - CPUs hold active references while CR3/TTBR points to this vspace.
          * - Kernel vspace(root) is always exist during the system running time.
-         * Last ref_put runs del_vspace(): if _vspace_node is already NULL but
-         * vspace_root_addr is still set, delete_task did nexus + descendant
-         * reclaim and only the top-level user root frame remains; otherwise
-         * del_vspace does full nexus + PT teardown.
+         * Last ref_put runs del_vspace(): radix destroy, user PT reclaim, root
+         * frame free, RB unregister, and VSpace struct free.
          */
         ref_count_t refcount;
+        u64 vspace_id;
+        /* AArch64: Address Space Identifier for TTBR0. */
+        asid_t asid;
+        u16 _asid_pad;
         /*
-         * Table vspace: protects that vspace’s nexus subtree and PTE paths
-         * under one lock (per address space). Shared `root_vspace` uses this
-         * for kernel page-table serialization (SMP). Per-CPU `KERNEL_HEAP_REF`
-         * has its own `nexus_vspace_lock` for that CPU’s kernel nexus RB tree
-         * only.
+         * CPUs that may have live TLB entries for this ASID.
+         * With the "no-IPI" scheme we clear a CPU's bit when it
+         * switches away from this vspace after doing a local
+         * TLBI ASIDE1(asid). Teardown waits for this mask to
+         * become 0 before freeing PT frames and recycling ASID.
          */
-        cas_lock_t nexus_vspace_lock;
+        vs_tlb_cpu_bitmap_t tlb_cpu_mask;
+        cas_lock_t tlb_cpu_mask_lock;
+        /*
+        The vspace lock is the lock that protect the real page
+        table. Which will be transfer to the map/unmap to
+        protect the page table change.
+        */
+        spin_lock vspace_lock;
+
+        /* L0 radix metadata page (Radix_entry_t*); void* avoids vmm.h ↔ radix hdr. */
+        void* root_radix;
+        paddr vspace_root_addr;
         union {
                 struct {
-                        struct VS_Common* vs;
-                };
+                        struct list_entry root_manage_list_head;
+                        struct rb_root _vspace_rb_root;
+                        cas_lock_t vspace_register_lock;
+                }; /*root vspace node*/
                 struct {
-                        paddr vspace_root_addr;
-                        u64 vspace_id;
-                        /* AArch64: Address Space Identifier for TTBR0. */
-                        asid_t asid;
-                        u16 _asid_pad;
-                        /*
-                         * CPUs that may have live TLB entries for this ASID.
-                         * With the "no-IPI" scheme we clear a CPU's bit when it
-                         * switches away from this vspace after doing a local
-                         * TLBI ASIDE1(asid). Teardown waits for this mask to
-                         * become 0 before freeing PT frames and recycling ASID.
-                         */
-                        vs_tlb_cpu_bitmap_t tlb_cpu_mask;
-                        cas_lock_t tlb_cpu_mask_lock;
-                        /*
-                        The vspace lock is the lock that protect the real page
-                        table. Which will be transfer to the map/unmap to
-                        protect the page table change.
-                        */
-                        spin_lock vspace_lock;
-                        void* _vspace_node;
-                };
+                        struct rb_node _vspace_rb_node;
+                        VSpace* root_vs;
+                }; /*normal vspace node*/
         };
-} VS_Common;
+};
 
 enum vspace_clone_flag_bits {
         /*must be set, for the kernel pages allow the 2M，but the user only
@@ -120,63 +92,43 @@ enum vspace_clone_flag_bits {
         VSPACE_CLONE_F_COPY_PAGES = (1ULL << 2),
 };
 
-static inline bool vs_common_is_heap_ref(const VS_Common* vs)
+static inline void vs_tlb_cpu_mask_zero(VSpace* vs)
 {
-        return vs && vs->type == (u64)VS_COMMON_KERNEL_HEAP_REF;
-}
-
-static inline bool vs_common_is_table_vspace(const VS_Common* vs)
-{
-        return vs && vs->type == (u64)VS_COMMON_TABLE_VSPACE;
-}
-
-static inline void vs_tlb_cpu_mask_zero(VS_Common* vs)
-{
-        if (!vs_common_is_table_vspace(vs))
-                return;
         BITMAP_OPS(vs_tlb_cpu_bitmap, zero)(&vs->tlb_cpu_mask);
 }
-static inline void vs_tlb_cpu_mask_set(VS_Common* vs, u64 cpu)
+static inline void vs_tlb_cpu_mask_set(VSpace* vs, cpu_id_t cpu_id)
 {
-        if (!vs_common_is_table_vspace(vs)
-            || cpu >= (u64)RENDEZVOS_MAX_CPU_NUMBER)
+        if (cpu_id >= (u64)RENDEZVOS_MAX_CPU_NUMBER)
                 return;
-        BITMAP_OPS(vs_tlb_cpu_bitmap, set)(&vs->tlb_cpu_mask, (u32)cpu);
+        BITMAP_OPS(vs_tlb_cpu_bitmap, set)(&vs->tlb_cpu_mask, (u32)cpu_id);
 }
-static inline void vs_tlb_cpu_mask_clear(VS_Common* vs, u64 cpu)
+static inline void vs_tlb_cpu_mask_clear(VSpace* vs, cpu_id_t cpu_id)
 {
-        if (!vs_common_is_table_vspace(vs)
-            || cpu >= (u64)RENDEZVOS_MAX_CPU_NUMBER)
+        if (cpu_id >= (u64)RENDEZVOS_MAX_CPU_NUMBER)
                 return;
-        BITMAP_OPS(vs_tlb_cpu_bitmap, clear)(&vs->tlb_cpu_mask, (u32)cpu);
+        BITMAP_OPS(vs_tlb_cpu_bitmap, clear)(&vs->tlb_cpu_mask, (u32)cpu_id);
 }
-static inline bool vs_tlb_cpu_mask_is_zero(const VS_Common* vs)
+static inline bool vs_tlb_cpu_mask_is_zero(const VSpace* vs)
 {
-        if (!vs_common_is_table_vspace(vs))
-                return true;
         return BITMAP_OPS(vs_tlb_cpu_bitmap, is_zero)(&vs->tlb_cpu_mask);
 }
 
-extern VS_Common nexus_kernel_heap_vs_common;
+extern VSpace nexus_kernel_heap_vs_common;
 
-extern VS_Common* current_vspace; // per cpu pointer
-extern VS_Common root_vspace;
+extern VSpace* current_vspace; // per cpu pointer
+extern VSpace root_vspace;
 #define boot_stack_size 0x10000
 extern u64 boot_stack_bottom;
 
-VS_Common* new_vspace(void);
+error_t init_root_vspace(VSpace* root_vs, cpu_id_t cpu_id);
+VSpace* create_user_vspace(VSpace* root_vspace);
 error_t free_vspace_ref(ref_count_t* refcount);
-static inline void init_vspace(VS_Common* vs, u64 vspace_id, void* vspace_node)
-{
-        vs->vspace_id = vspace_id;
-        vs->_vspace_node = vspace_node;
-}
-error_t del_vspace(VS_Common** vs);
-static inline void set_vspace_root_addr(VS_Common* vs, paddr root_paddr)
+error_t del_vspace(VSpace** vs);
+static inline void set_vspace_root_addr(VSpace* vs, paddr root_paddr)
 {
         vs->vspace_root_addr = root_paddr;
 }
-static inline void unset_vspace_root_addr(VS_Common* vs)
+static inline void unset_vspace_root_addr(VSpace* vs)
 {
         vs->vspace_root_addr = 0;
 }

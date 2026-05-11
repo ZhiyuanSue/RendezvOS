@@ -17,7 +17,6 @@ static struct smp_test_case smp_test[MAX_SMP_TEST_CASE] = {
         {smp_lock_test, "smp spin_lock", smp_lock_check},
         // {smp_log_test, "smp log test", smp_log_check}, // just see the output
         /* scalable */
-        {smp_nexus_test, "smp nexus test", NULL},
         /* scalable */
         {smp_kmalloc_test, "smp spmalloc", NULL},
         /* even-only (skips CPUs >= active-even) */

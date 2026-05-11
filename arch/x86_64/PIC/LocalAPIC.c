@@ -94,7 +94,7 @@ bool map_LAPIC(void)
 {
         if (arch_irq_type != xAPIC_IRQ)
                 return false; /*only xAPIC need mmio*/
-        VS_Common *vs = percpu(current_vspace);
+        VSpace *vs = percpu(current_vspace);
         paddr lapic_phy_page = xAPIC_MMIO_BASE;
         vaddr lapic_virt_page = KERNEL_PHY_TO_VIRT(xAPIC_MMIO_BASE);
         if (!have_mapped(vs,

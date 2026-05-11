@@ -8,6 +8,7 @@
 #include <rendezvos/mm/map_handler.h>
 #include <rendezvos/mm/vmm.h>
 #include <rendezvos/error.h>
+#include <common/taggedptr.h>
 
 /*
  * Per-vspace radix metadata (4-level, 512 fanout; L0..L3 indices = common/mm.h).
@@ -97,7 +98,7 @@
  * ---------------
  * Only 4KiB-aligned ranges and finite [base,end) are validated; canonical-address
  * policy is the caller’s. Any API taking both `struct map_handler*` and
- * `VS_Common*` uses **handler first, then vs**; `change_range_flag` and `query_leaf`
+ * `VSpace*` uses **handler first, then vs**; `change_range_flag` and `query_leaf`
  * use **vs** first (no handler).
  *
  * Invariants (index I0–I7 unchanged in meaning)
@@ -152,7 +153,7 @@ typedef struct {
 typedef struct {
         ENTRY_FLAGS_t flags;
         struct list_entry rmap_list;
-        VS_Common* vs_ptr;
+        tagged_ptr_t owner;
 } Radix_node_t;
 
 /*
@@ -161,10 +162,12 @@ typedef struct {
  * `root_vspace` for the shared kernel high half (L0 index >= 256).
  * `handler` is required: each PMM-backed radix page is installed with map()
  * at KERNEL_PHY_TO_VIRT(ppn) (same as nexus); grow uses that linear KVA.
+ * `root_vs` is used for shared high-half leaves (L0 index >= 256); typically
+ * `&root_vspace` when `vs` is a kernel or user table vspace using that slab.
  */
-error_t vmm_radix_tree_insert_range(struct map_handler* handler, VS_Common* vs,
-                                    vaddr page_vaddr, ENTRY_FLAGS_t flags,
-                                    size_t page_number);
+error_t vmm_radix_tree_insert_range(struct map_handler* handler, VSpace* vs,
+                                    tagged_ptr_t owner_info, vaddr page_vaddr,
+                                    ENTRY_FLAGS_t flags, size_t page_number);
 
 /*
  * Mark a contiguous VA range as committed (sets VALID + rmap; leaves `vs_ptr`
@@ -181,7 +184,7 @@ error_t vmm_radix_tree_insert_range(struct map_handler* handler, VS_Common* vs,
  * No map()/unmap() here.
  */
 error_t vmm_radix_tree_leaf_bind_range(struct map_handler* handler,
-                                       VS_Common* vs, vaddr page_vaddr,
+                                       VSpace* vs, vaddr page_vaddr,
                                        ppn_t ppn_first, size_t page_number,
                                        ENTRY_FLAGS_t leaf_flags);
 
@@ -192,14 +195,14 @@ error_t vmm_radix_tree_leaf_bind_range(struct map_handler* handler,
  * reservation entirely.
  */
 error_t vmm_radix_tree_leaf_unbind_range(struct map_handler* handler,
-                                         VS_Common* vs, vaddr page_vaddr,
+                                         VSpace* vs, vaddr page_vaddr,
                                          ppn_t ppn_first, size_t page_number);
 
 /* Single 4KiB page; implemented as leaf_*_range(..., 1). */
-error_t vmm_radix_tree_leaf_bind(struct map_handler* handler, VS_Common* vs,
+error_t vmm_radix_tree_leaf_bind(struct map_handler* handler, VSpace* vs,
                                  vaddr page_vaddr, ppn_t ppn,
                                  ENTRY_FLAGS_t leaf_flags);
-error_t vmm_radix_tree_leaf_unbind(struct map_handler* handler, VS_Common* vs,
+error_t vmm_radix_tree_leaf_unbind(struct map_handler* handler, VSpace* vs,
                                    vaddr page_vaddr, ppn_t ppn);
 
 /*
@@ -207,7 +210,7 @@ error_t vmm_radix_tree_leaf_unbind(struct map_handler* handler, VS_Common* vs,
  * Caller tears down PTEs for that VA range. `handler` is for radix metadata
  * map/free inside radix_range_lock_acquire (not leaf PTEs).
  */
-error_t vmm_radix_tree_delete_range(struct map_handler* handler, VS_Common* vs,
+error_t vmm_radix_tree_delete_range(struct map_handler* handler, VSpace* vs,
                                     vaddr page_vaddr, size_t page_number);
 
 /*
@@ -217,29 +220,36 @@ error_t vmm_radix_tree_delete_range(struct map_handler* handler, VS_Common* vs,
  * `vs->pmm->zone`). No map()/unmap() here.
  */
 error_t vmm_radix_tree_change_leaf_ppn(struct map_handler* handler,
-                                       VS_Common* vs, vaddr page_vaddr,
+                                       VSpace* vs, vaddr page_vaddr,
                                        ppn_t old_ppn, ppn_t new_ppn,
                                        ENTRY_FLAGS_t leaf_flags);
 
 error_t vmm_radix_tree_change_leaf_ppn_flag(struct map_handler* handler,
-                                            VS_Common* vs, vaddr page_vaddr,
+                                            VSpace* vs, vaddr page_vaddr,
                                             ppn_t old_ppn, ppn_t new_ppn,
                                             ENTRY_FLAGS_t new_flag);
 
 /* Metadata-only: no map_handler; does not grow tables (skips missing path). */
-error_t vmm_radix_tree_change_range_flag(VS_Common* vs, vaddr page_vaddr,
+error_t vmm_radix_tree_change_range_flag(VSpace* vs, vaddr page_vaddr,
                                          ENTRY_FLAGS_t new_flags,
                                          size_t page_number);
 
-/* Read shadow flags for one 4KiB slot; no map_handler; does not allocate. */
-error_t vmm_radix_tree_query_leaf(VS_Common* vs, vaddr page_vaddr,
-                                  ENTRY_FLAGS_t* out_flags);
+/*
+ * Read shadow metadata for one 4KiB slot; no map_handler; does not allocate.
+ * `out_flags` and/or `out_owner` may be NULL; at least one must be non-NULL.
+ * On success, fills requested outputs from the L3 leaf. On -E_IN_PARAM (no leaf
+ * / bad range), clears `*out_flags` to 0 and `*out_owner` to tp_new_none() when
+ * the corresponding pointer is non-NULL.
+ */
+error_t vmm_radix_tree_query_leaf(VSpace* vs, vaddr page_vaddr,
+                                  ENTRY_FLAGS_t* out_flags,
+                                  tagged_ptr_t* out_owner);
 
 /*
  * Allocate the L0 table page; stores pointer in vs nexus root node.
  * Requires `handler`: map() wires the page at KERNEL_PHY_TO_VIRT then zeros it.
  */
-Radix_entry_t* vmm_radix_tree_init(struct map_handler* handler, VS_Common* vs);
+Radix_entry_t* vmm_radix_tree_init(struct map_handler* handler, VSpace* vs);
 
 /*
  * Requires `handler` to unmap KERNEL_PHY_TO_VIRT metadata before pmm_free.
@@ -247,7 +257,7 @@ Radix_entry_t* vmm_radix_tree_init(struct map_handler* handler, VS_Common* vs);
  * `Radix_node_t::rmap_list` for leaves with `vs_ptr == vs` under the PMM zone
  * lock. L0[256..511] shared slab is not freed here.
  */
-error_t vmm_radix_tree_destroy(struct map_handler* handler, VS_Common* vs);
+error_t vmm_radix_tree_destroy(struct map_handler* handler, VSpace* vs);
 
 /*
  * Shared kernel high-half L1 backing (boot vs every other vspace)
@@ -271,9 +281,9 @@ error_t vmm_radix_tree_destroy(struct map_handler* handler, VS_Common* vs);
  */
 error_t
 vmm_radix_tree_bootstrap_shared_kernel_high_half(struct map_handler* handler,
-                                                 VS_Common* vs);
+                                                 VSpace* vs);
 error_t
 vmm_radix_tree_install_shared_kernel_high_half(struct map_handler* handler,
-                                               VS_Common* vs);
+                                               VSpace* vs);
 
 #endif

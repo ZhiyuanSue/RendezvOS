@@ -110,8 +110,7 @@ void schedule(Task_Manager* tm)
                 */
                 Tcb_Base* prev_tcb = curr->belong_tcb;
                 Tcb_Base* next_tcb = tm->current_thread->belong_tcb;
-                if (!prev_tcb || !next_tcb || !next_tcb->vs
-                    || !vs_common_is_table_vspace(next_tcb->vs)) {
+                if (!prev_tcb || !next_tcb || !next_tcb->vs) {
                         pr_error("[ Error ] unexpect thread config\n");
                         goto use_old_thread;
                 }
@@ -119,8 +118,8 @@ void schedule(Task_Manager* tm)
                         /*
                          * we think every task have a vspace
                          */
-                        VS_Common* old_vs = percpu(current_vspace);
-                        VS_Common* new_vs = next_tcb->vs;
+                        VSpace* old_vs = percpu(current_vspace);
+                        VSpace* new_vs = next_tcb->vs;
                         if (old_vs != new_vs) {
                                 if (!ref_get_not_zero(&new_vs->refcount)) {
                                         pr_error(
@@ -139,8 +138,7 @@ void schedule(Task_Manager* tm)
                                         new_vs->vspace_root_addr, new_vs->asid);
                                 percpu(current_vspace) = new_vs;
                                 /*If necessary, clean the old vs*/
-                                if (vs_common_is_table_vspace(old_vs)
-                                    && old_vs != &root_vspace) {
+                                if (old_vs != &root_vspace) {
                                         arch_tlb_invalidate_vspace_page(
                                                 old_vs->asid, 0);
 

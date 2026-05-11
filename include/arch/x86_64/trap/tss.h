@@ -1,7 +1,6 @@
 #ifndef _X86_TSS_H_
 #define _X86_TSS_H_
 #include <common/types.h>
-#include <rendezvos/mm/nexus.h>
 #include <rendezvos/smp/cpu_id.h>
 #include <arch/x86_64/desc.h>
 /*
@@ -59,7 +58,7 @@ struct TSS {
 #define RSP0_INT_NUM 0
 #define IST1_INT_NUM 1
 
-void prepare_per_cpu_tss(struct nexus_node* nexus_root);
+void prepare_per_cpu_tss(cpu_id_t cpu_id);
 void prepare_per_cpu_tss_desc(union desc* desc_lower, union desc* desc_upper,
                               cpu_id_t cpu_id);
 #endif
