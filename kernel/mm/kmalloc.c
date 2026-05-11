@@ -15,26 +15,65 @@
  * `tp_new(insert_root_vs, alloc_cpu)` on each L3 leaf (insert_root_vs =
  * vs->root_vs ?: vs) so kmem_radix_kernel_heap_owner_cpu can route kfree.
  *
+ * Owner lookup: under `pmm_zone_lock` (same as radix_leaf_link_rmap), if
+ * `list_only_one_entry(&Page::rmap_list)` then exactly one `Radix_node_t` is
+ * linked and `owner` is read without radix range locks. Otherwise fall back to
+ * `vmm_radix_tree_query_leaf` (shared PPN / multiple rmaps).
+ *
  * `flags`: OR'd onto GLOBAL|READ|VALID|WRITE after stripping software-only
  * bits so callers can add e.g. UNCACHED without carrying REMAP/LAZY into PTE.
  */
 
 /* Radix owner tag = allocating CPU index (see core_get_free_pages). */
+static cpu_id_t kmem_radix_owner_cpu_from_tagged(tagged_ptr_t owner)
+{
+        if (tp_is_none(owner))
+                return INVALID_CPU_ID;
+        cpu_id_t cpu = tp_get_tag(owner);
+        if (cpu >= RENDEZVOS_MAX_CPU_NUMBER)
+                return INVALID_CPU_ID;
+        return cpu;
+}
+
 static int kmem_radix_kernel_heap_owner_cpu(VSpace* root_vs, vaddr kva)
 {
         if (kva < KERNEL_VIRT_OFFSET)
                 return INVALID_CPU_ID;
-        vaddr pg = ROUND_DOWN(kva, PAGE_SIZE);
-        tagged_ptr_t owner;
-        if (vmm_radix_tree_query_leaf(root_vs, pg, NULL, &owner)
+        if (!root_vs || !root_vs->pmm || !root_vs->pmm->zone)
+                return INVALID_CPU_ID;
+
+        tagged_ptr_t owner = tp_new_none();
+        ;
+        vaddr page_vaddr = ROUND_DOWN(kva, PAGE_SIZE);
+        ppn_t ppn = PPN(KERNEL_VIRT_TO_PHY(page_vaddr));
+        if (invalid_ppn(ppn))
+                return INVALID_CPU_ID;
+
+        MemZone* zone = root_vs->pmm->zone;
+        ZonePageCursor cur;
+        Page* p_ptr = zone_page_cursor_init(&cur, zone, ppn);
+        if (p_ptr) {
+                bool singular;
+                pmm_zone_lock(zone);
+                singular = list_only_one_entry(&p_ptr->rmap_list);
+                if (singular) {
+                        Radix_node_t* l3_node = container_of(
+                                p_ptr->rmap_list.next, Radix_node_t, rmap_list);
+                        owner = l3_node->owner;
+                }
+                pmm_zone_unlock(zone);
+                if (singular) {
+                        cpu_id_t target_cpu =
+                                kmem_radix_owner_cpu_from_tagged(owner);
+                        if (target_cpu != (cpu_id_t)INVALID_CPU_ID)
+                                return target_cpu;
+                }
+        }
+
+        if (vmm_radix_tree_query_leaf(root_vs, page_vaddr, NULL, &owner)
             != REND_SUCCESS)
                 return INVALID_CPU_ID;
-        if (tp_is_none(owner))
-                return INVALID_CPU_ID;
-        unsigned cpu = (unsigned)tp_get_tag(owner);
-        if (cpu >= (unsigned)RENDEZVOS_MAX_CPU_NUMBER)
-                return INVALID_CPU_ID;
-        return (int)cpu;
+        return kmem_radix_owner_cpu_from_tagged(owner);
 }
 
 static void* core_get_free_pages(size_t page_num, VSpace* vs,
@@ -206,7 +245,7 @@ static int bytes_to_pages(size_t Bytes)
 static void page_chunk_rb_tree_insert(struct page_chunk_node* node,
                                       struct rb_root* page_chunk_root)
 {
-        struct rb_node** new = &page_chunk_root->rb_root, *parent = NULL;
+        struct rb_node **new = &page_chunk_root->rb_root, *parent = NULL;
         u64 key = node->page_addr;
         while (*new) {
                 parent = *new;
