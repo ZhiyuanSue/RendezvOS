@@ -201,10 +201,10 @@ error_t vmm_radix_tree_leaf_bind_range(struct map_handler* handler, VSpace* vs,
  * Caller must have `map()`'d PTEs before calling. For user VA, avoid executing
  * this range until the call returns (SMP vs PTE/radix ordering).
  */
-error_t vmm_radix_tree_insert_bind_range(struct map_handler* handler, VSpace* vs,
-                                         tagged_ptr_t owner_info, vaddr page_vaddr,
-                                         ENTRY_FLAGS_t flags, size_t page_number,
-                                         ppn_t ppn_first);
+error_t vmm_radix_tree_insert_bind_range(struct map_handler* handler,
+                                         VSpace* vs, tagged_ptr_t owner_info,
+                                         vaddr page_vaddr, ENTRY_FLAGS_t flags,
+                                         size_t page_number, ppn_t ppn_first);
 
 /*
  * Restore radix shadow to LAZY for each page in the range (does not change

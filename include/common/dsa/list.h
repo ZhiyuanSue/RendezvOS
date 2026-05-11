@@ -69,7 +69,7 @@ static inline bool list_empty(struct list_entry *head)
 {
         return (head->next == head);
 }
-static inline bool list_only_one_entry(struct list_entry* head)
+static inline bool list_only_one_entry(struct list_entry *head)
 {
         return !list_empty(head) && (head->next == head->prev);
 }

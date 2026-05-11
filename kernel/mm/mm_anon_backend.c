@@ -44,7 +44,6 @@ vaddr mm_user_anon_map_pages(struct VSpace* vs, vaddr uva, size_t page_num,
                 return 0;
         }
 
-
         size_t mapped_count = 0;
         while (mapped_count < alloced_page_number) {
                 vaddr va = uva + mapped_count * PAGE_SIZE;

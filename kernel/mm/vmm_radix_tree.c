@@ -621,33 +621,40 @@ static inline int radix_parent_count_delta(radix_lock_acquire_kind_t kind,
         }
         return -(int)RADIX_COUNT_PER_PAGE;
 }
-static inline void
+static inline bool
 radix_count_trans_to_parent(radix_lock_acquire_kind_t kind,
                             const radix_tree_level_walk_t* walk,
                             int partition_level, u64 old_count, int delta,
                             int* parent_head_delta, int* parent_tail_delta)
 {
+        bool single_bypass = false;
         bool insert_should_trans =
                 (kind == RADIX_RL_INSERT && old_count == 0 && delta != 0);
         bool delete_should_trans = (kind == RADIX_RL_DELETE && old_count != 0
                                     && (i64)old_count + delta == 0);
 
-        if (radix_tree_walk_is_level_single(walk, partition_level)
-            || radix_tree_walk_is_level_first(walk, partition_level)) {
+        if (radix_tree_walk_is_level_single(walk, partition_level)) {
+                if (insert_should_trans) {
+                        *parent_head_delta += 1;
+                } else if (delete_should_trans) {
+                        *parent_head_delta -= 1;
+                } else {
+                        single_bypass = true;
+                }
+        } else if (radix_tree_walk_is_level_first(walk, partition_level)) {
                 if (insert_should_trans) {
                         *parent_head_delta += 1;
                 } else if (delete_should_trans) {
                         *parent_head_delta -= 1;
                 }
-                return;
-        }
-        if (radix_tree_walk_is_level_last(walk, partition_level)) {
+        } else if (radix_tree_walk_is_level_last(walk, partition_level)) {
                 if (insert_should_trans) {
                         *parent_tail_delta += 1;
                 } else if (delete_should_trans) {
                         *parent_tail_delta -= 1;
                 }
         }
+        return single_bypass;
 }
 static void radix_lock_rollback_entry(VSpace* vs, struct pmm* pmm,
                                       struct map_handler* handler,
@@ -868,8 +875,13 @@ static error_t radix_range_lock_acquire(VSpace* vs, struct map_handler* handler,
 
         /*Phase 5, update the valid and count for level 0/1/2, no fail possible
          * at this phase begin, so we can reuse the level 0/1/2 walk iters*/
+        if (kind == RADIX_RL_QUERY_OR_CHANGE) {
+                goto phase6;
+        }
+
         int l1_head_delta = 0, l1_tail_delta = 0;
         int l0_head_delta = 0, l0_tail_delta = 0;
+        bool single_bypass = false;
 
         radix_tree_level_walk_init(&l2_walk_iter,
                                    root,
@@ -880,9 +892,6 @@ static error_t radix_range_lock_acquire(VSpace* vs, struct map_handler* handler,
         do {
                 Radix_entry_t* l2_entry = l2_walk_iter.curr_l2_entry;
                 u64 l2_old_count = entry_get_count(l2_entry->value);
-                if (kind == RADIX_RL_QUERY_OR_CHANGE) {
-                        continue;
-                }
 
                 vaddr overlap_start = MAX(start, l2_walk_iter.current_vaddr);
                 vaddr overlap_end = MIN(
@@ -922,14 +931,17 @@ static error_t radix_range_lock_acquire(VSpace* vs, struct map_handler* handler,
                         }
                 }
                 radix_entry_update(l2_entry, update_flags, 0, delta);
-                radix_count_trans_to_parent(kind,
-                                            &l2_walk_iter,
-                                            RADIX_TREE_LEVEL1,
-                                            l2_old_count,
-                                            delta,
-                                            &l1_head_delta,
-                                            &l1_tail_delta);
+                single_bypass = radix_count_trans_to_parent(kind,
+                                                            &l2_walk_iter,
+                                                            RADIX_TREE_LEVEL1,
+                                                            l2_old_count,
+                                                            delta,
+                                                            &l1_head_delta,
+                                                            &l1_tail_delta);
         } while (radix_tree_level_walk(&l2_walk_iter));
+
+        if (single_bypass)
+                goto phase6;
 
         radix_tree_level_walk_init(&l1_walk_iter,
                                    root,
@@ -941,9 +953,6 @@ static error_t radix_range_lock_acquire(VSpace* vs, struct map_handler* handler,
                 Radix_entry_t* l1_entry = l1_walk_iter.curr_l1_entry;
                 u64 l1_old_count = entry_get_count(l1_entry->value);
 
-                if (kind == RADIX_RL_QUERY_OR_CHANGE) {
-                        continue;
-                }
                 int delta = radix_parent_count_delta(kind,
                                                      &l1_walk_iter,
                                                      RADIX_TREE_LEVEL1,
@@ -976,14 +985,17 @@ static error_t radix_range_lock_acquire(VSpace* vs, struct map_handler* handler,
                 }
                 radix_entry_update(l1_entry, update_flags, 0, delta);
 
-                radix_count_trans_to_parent(kind,
-                                            &l1_walk_iter,
-                                            RADIX_TREE_LEVEL0,
-                                            l1_old_count,
-                                            delta,
-                                            &l0_head_delta,
-                                            &l0_tail_delta);
+                single_bypass = radix_count_trans_to_parent(kind,
+                                                            &l1_walk_iter,
+                                                            RADIX_TREE_LEVEL0,
+                                                            l1_old_count,
+                                                            delta,
+                                                            &l0_head_delta,
+                                                            &l0_tail_delta);
         } while (radix_tree_level_walk(&l1_walk_iter));
+
+        if (single_bypass)
+                goto phase6;
 
         radix_tree_level_walk_init(&l0_walk_iter,
                                    root,
@@ -995,9 +1007,6 @@ static error_t radix_range_lock_acquire(VSpace* vs, struct map_handler* handler,
                 Radix_entry_t* l0_entry = l0_walk_iter.curr_l0_entry;
                 u64 l0_old_count = entry_get_count(l0_entry->value);
 
-                if (kind == RADIX_RL_QUERY_OR_CHANGE) {
-                        continue;
-                }
                 int delta = radix_parent_count_delta(kind,
                                                      &l0_walk_iter,
                                                      RADIX_TREE_LEVEL0,
@@ -1030,6 +1039,7 @@ static error_t radix_range_lock_acquire(VSpace* vs, struct map_handler* handler,
                 }
                 radix_entry_update(l0_entry, update_flags, 0, delta);
         } while (radix_tree_level_walk(&l0_walk_iter));
+phase6:
         /*Phase 6, unlock the l0, and now only level 2 lock is hold*/
         radix_tree_level_walk_init(&l0_walk_iter,
                                    root,
