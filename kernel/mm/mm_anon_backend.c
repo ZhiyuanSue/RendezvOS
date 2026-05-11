@@ -44,13 +44,6 @@ vaddr mm_user_anon_map_pages(struct VSpace* vs, vaddr uva, size_t page_num,
                 return 0;
         }
 
-        if (vmm_radix_tree_insert_range(
-                    handler, vs, owner_tp, uva, leaf_eflags, alloced_page_number)
-            != REND_SUCCESS) {
-                pr_error(
-                        "[MM_ANON] mm_user_anon_map_pages: insert_range failed\n");
-                goto fail_pmm_only;
-        }
 
         size_t mapped_count = 0;
         while (mapped_count < alloced_page_number) {
@@ -69,11 +62,16 @@ vaddr mm_user_anon_map_pages(struct VSpace* vs, vaddr uva, size_t page_num,
                 }
                 mapped_count++;
         }
-
-        if (vmm_radix_tree_leaf_bind_range(
-                    handler, vs, uva, ppn, alloced_page_number, leaf_eflags)
+        if (vmm_radix_tree_insert_bind_range(handler,
+                                             vs,
+                                             owner_tp,
+                                             uva,
+                                             leaf_eflags,
+                                             alloced_page_number,
+                                             ppn)
             != REND_SUCCESS) {
-                pr_error("[MM_ANON] mm_user_anon_map_pages: bind failed\n");
+                pr_error(
+                        "[MM_ANON] mm_user_anon_map_pages: insert_bind_range failed\n");
                 goto fail_unmap_radix_pmm;
         }
 
@@ -87,7 +85,6 @@ fail_unmap_radix_pmm:
         }
         (void)vmm_radix_tree_delete_range(
                 handler, vs, uva, alloced_page_number);
-fail_pmm_only:
         pmm_ptr->pmm_free(pmm_ptr, ppn, alloced_page_number);
         return 0;
 }

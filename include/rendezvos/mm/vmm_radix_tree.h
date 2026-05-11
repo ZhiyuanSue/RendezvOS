@@ -193,6 +193,20 @@ error_t vmm_radix_tree_leaf_bind_range(struct map_handler* handler, VSpace* vs,
                                        ENTRY_FLAGS_t leaf_flags);
 
 /*
+ * Single `radix_range_lock_acquire`/`release` over [page_vaddr, end): one L3
+ * walk that lazy-reserves then binds each page (same outcome as insert_range +
+ * leaf_bind_range). On bind failure: one INC rollback walk — unlink rmap on
+ * VALID leaves, then set every leaf lazy+owner so caller `delete_range` can
+ * drop the full extent.
+ * Caller must have `map()`'d PTEs before calling. For user VA, avoid executing
+ * this range until the call returns (SMP vs PTE/radix ordering).
+ */
+error_t vmm_radix_tree_insert_bind_range(struct map_handler* handler, VSpace* vs,
+                                         tagged_ptr_t owner_info, vaddr page_vaddr,
+                                         ENTRY_FLAGS_t flags, size_t page_number,
+                                         ppn_t ppn_first);
+
+/*
  * Restore radix shadow to LAZY for each page in the range (does not change
  * `vs_ptr`). `ppn_first` is the PPN of the first page; physical pages must be
  * contiguous. `page_number >= 1`. Does not adjust L2 occupancy; delete_range

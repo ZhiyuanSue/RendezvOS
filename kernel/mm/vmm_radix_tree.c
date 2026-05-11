@@ -1279,6 +1279,110 @@ leaf_bind_range_out:
         return err;
 }
 
+error_t vmm_radix_tree_insert_bind_range(struct map_handler* handler,
+                                         VSpace* vs, tagged_ptr_t owner_info,
+                                         vaddr page_vaddr, ENTRY_FLAGS_t flags,
+                                         size_t page_number, ppn_t ppn_first)
+{
+        Radix_entry_t* root = radix_root_from_vs(vs);
+        vaddr end;
+        if (!root || !vs || !vs->pmm || !vs->pmm->zone || !handler)
+                return -E_IN_PARAM;
+        if (page_number == 0 || invalid_ppn(ppn_first))
+                return -E_IN_PARAM;
+        {
+                ppn_t ppn_last = ppn_first + (ppn_t)page_number - 1;
+                if (ppn_last < ppn_first || invalid_ppn(ppn_last))
+                        return -E_IN_PARAM;
+        }
+        if (!radix_calculate_end_check(page_vaddr, page_number, &end))
+                return -E_IN_PARAM;
+
+        error_t err = radix_range_lock_acquire(
+                vs, handler, root, page_vaddr, end, RADIX_RL_INSERT);
+        if (err != REND_SUCCESS)
+                return err;
+
+        ENTRY_FLAGS_t lazy_leaf_flags = entry_flags_rm_sw_flags(flags)
+                                        | (ENTRY_FLAGS_t)PAGE_ENTRY_NEXUS_LAZY;
+        lazy_leaf_flags = (ENTRY_FLAGS_t)clear_mask_u64((u64)lazy_leaf_flags,
+                                                        (u64)PAGE_ENTRY_VALID);
+
+        radix_tree_level_walk_t l3_walk;
+        radix_tree_level_walk_init(&l3_walk,
+                                   root,
+                                   page_vaddr,
+                                   end,
+                                   RADIX_TREE_LEVEL3,
+                                   RADIX_TREE_DIRECTION_INC);
+        if (!radix_tree_level_walk_check(&l3_walk)) {
+                err = -E_IN_PARAM;
+                goto insert_bind_out;
+        }
+
+        size_t page_index = 0;
+        do {
+                /* L3 table exists: radix_range_lock_acquire + INSERT
+                 * ensure_path. */
+                Radix_node_t* leaf = l3_walk.curr_l3_node;
+
+                leaf->flags = lazy_leaf_flags;
+                leaf->owner = owner_info;
+
+                if (!(leaf->flags & PAGE_ENTRY_NEXUS_LAZY)
+                    || (leaf->flags & (ENTRY_FLAGS_t)PAGE_ENTRY_VALID)) {
+                        err = -E_IN_PARAM;
+                        goto insert_bind_bind_rollback;
+                }
+
+                ppn_t cur_ppn = ppn_first + (ppn_t)page_index;
+                err = radix_leaf_link_rmap(vs->pmm, cur_ppn, leaf);
+                if (err != REND_SUCCESS)
+                        goto insert_bind_bind_rollback;
+
+                leaf->flags = entry_flags_rm_sw_flags(flags)
+                              | (ENTRY_FLAGS_t)PAGE_ENTRY_VALID;
+                page_index++;
+        } while (radix_tree_level_walk(&l3_walk));
+
+        if (page_index != page_number) {
+                err = -E_IN_PARAM;
+                goto insert_bind_bind_rollback;
+        }
+
+        goto insert_bind_out;
+
+insert_bind_bind_rollback:
+        /*
+         * One INC pass: VALID leaves get rmap unlinked then lazy+owner; others
+         * (partial lazy or untouched suffix) get lazy+owner so delete_range can
+         * clear the full extent.
+         */
+        page_index = 0;
+        radix_tree_level_walk_init(&l3_walk,
+                                   root,
+                                   page_vaddr,
+                                   end,
+                                   RADIX_TREE_LEVEL3,
+                                   RADIX_TREE_DIRECTION_INC);
+        if (radix_tree_level_walk_check(&l3_walk)) {
+                do {
+                        Radix_node_t* leaf = l3_walk.curr_l3_node;
+                        if (leaf->flags & (ENTRY_FLAGS_t)PAGE_ENTRY_VALID) {
+                                ppn_t cur_ppn = ppn_first + (ppn_t)page_index;
+                                radix_leaf_unlink_rmap(vs->pmm, cur_ppn, leaf);
+                        }
+                        leaf->flags = lazy_leaf_flags;
+                        leaf->owner = owner_info;
+                        page_index++;
+                } while (radix_tree_level_walk(&l3_walk));
+        }
+
+insert_bind_out:
+        (void)radix_range_lock_release(root, page_vaddr, end);
+        return err;
+}
+
 error_t vmm_radix_tree_leaf_unbind_range(struct map_handler* handler,
                                          VSpace* vs, vaddr page_vaddr,
                                          ppn_t ppn_first, size_t page_number)

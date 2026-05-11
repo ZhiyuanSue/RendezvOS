@@ -43,7 +43,6 @@ static int kmem_radix_kernel_heap_owner_cpu(VSpace* root_vs, vaddr kva)
                 return INVALID_CPU_ID;
 
         tagged_ptr_t owner = tp_new_none();
-        ;
         vaddr page_vaddr = ROUND_DOWN(kva, PAGE_SIZE);
         ppn_t ppn = PPN(KERNEL_VIRT_TO_PHY(page_vaddr));
         if (invalid_ppn(ppn))
@@ -115,17 +114,6 @@ static void* core_get_free_pages(size_t page_num, VSpace* vs,
         }
         free_page_addr = KERNEL_PHY_TO_VIRT(PADDR(ppn));
 
-        if (vmm_radix_tree_insert_range(handler,
-                                        vs,
-                                        owner_tp,
-                                        free_page_addr,
-                                        leaf_eflags,
-                                        (*alloced_page_number))
-            != REND_SUCCESS) {
-                pr_error("[ KALLOC ] ERROR: insert range fail\n");
-                goto fail_pmm_only;
-        }
-
         while (mapped_count < (*alloced_page_number)) {
                 vaddr va = free_page_addr + mapped_count * PAGE_SIZE;
                 error_t me = map(vs,
@@ -143,15 +131,15 @@ static void* core_get_free_pages(size_t page_num, VSpace* vs,
                 }
                 mapped_count++;
         }
-
-        if (vmm_radix_tree_leaf_bind_range(handler,
-                                           vs,
-                                           free_page_addr,
-                                           ppn,
-                                           (*alloced_page_number),
-                                           leaf_eflags)
+        if (vmm_radix_tree_insert_bind_range(handler,
+                                             vs,
+                                             owner_tp,
+                                             free_page_addr,
+                                             leaf_eflags,
+                                             (*alloced_page_number),
+                                             ppn)
             != REND_SUCCESS) {
-                pr_error("[ KALLOC ] ERROR: bind fail\n");
+                pr_error("[ KALLOC ] ERROR: insert_bind_range fail\n");
                 goto fail_unmap_radix_pmm;
         }
 
@@ -165,7 +153,6 @@ fail_unmap_radix_pmm:
         }
         (void)vmm_radix_tree_delete_range(
                 handler, vs, free_page_addr, (*alloced_page_number));
-fail_pmm_only:
         pmm_ptr->pmm_free(pmm_ptr, ppn, (*alloced_page_number));
 alloc_ppn_fail:
         return NULL;
