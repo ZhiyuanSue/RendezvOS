@@ -44,23 +44,11 @@ vaddr mm_user_anon_map_pages(struct VSpace* vs, vaddr uva, size_t page_num,
                 return 0;
         }
 
-        error_t insert_range_res;
-        for (u64 try = 0; try < RADIX_ENTRY_LOCK_RETRY_MAX; try++) {
-                insert_range_res =
-                        vmm_radix_tree_insert_range(handler,
-                                                    vs,
-                                                    owner_tp,
-                                                    uva,
-                                                    leaf_eflags,
-                                                    alloced_page_number);
-                if (insert_range_res == REND_SUCCESS
-                    || insert_range_res != -E_REND_AGAIN)
-                        break;
-        }
-        if (insert_range_res != REND_SUCCESS) {
+        if (vmm_radix_tree_insert_range(
+                    handler, vs, owner_tp, uva, leaf_eflags, alloced_page_number)
+            != REND_SUCCESS) {
                 pr_error(
-                        "[MM_ANON] mm_user_anon_map_pages: insert_range failed e=%d\n",
-                        (int)insert_range_res);
+                        "[MM_ANON] mm_user_anon_map_pages: insert_range failed\n");
                 goto fail_pmm_only;
         }
 
@@ -82,17 +70,10 @@ vaddr mm_user_anon_map_pages(struct VSpace* vs, vaddr uva, size_t page_num,
                 mapped_count++;
         }
 
-        error_t bind_range_res;
-        for (u64 try = 0; try < RADIX_ENTRY_LOCK_RETRY_MAX; try++) {
-                bind_range_res = vmm_radix_tree_leaf_bind_range(
-                        handler, vs, uva, ppn, alloced_page_number, leaf_eflags);
-                if (bind_range_res == REND_SUCCESS
-                    || bind_range_res != -E_REND_AGAIN)
-                        break;
-        }
-        if (bind_range_res != REND_SUCCESS) {
-                pr_error("[MM_ANON] mm_user_anon_map_pages: bind failed e=%d\n",
-                         (int)bind_range_res);
+        if (vmm_radix_tree_leaf_bind_range(
+                    handler, vs, uva, ppn, alloced_page_number, leaf_eflags)
+            != REND_SUCCESS) {
+                pr_error("[MM_ANON] mm_user_anon_map_pages: bind failed\n");
                 goto fail_unmap_radix_pmm;
         }
 

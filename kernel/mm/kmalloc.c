@@ -76,22 +76,14 @@ static void* core_get_free_pages(size_t page_num, VSpace* vs,
         }
         free_page_addr = KERNEL_PHY_TO_VIRT(PADDR(ppn));
 
-        error_t insert_range_res;
-        for (u64 try = 0; try < RADIX_ENTRY_LOCK_RETRY_MAX; try++) {
-                insert_range_res =
-                        vmm_radix_tree_insert_range(handler,
-                                                    vs,
-                                                    owner_tp,
-                                                    free_page_addr,
-                                                    leaf_eflags,
-                                                    (*alloced_page_number));
-                if (insert_range_res == REND_SUCCESS
-                    || insert_range_res != -E_REND_AGAIN)
-                        break;
-        }
-        if (insert_range_res != REND_SUCCESS) {
-                pr_error("[ KALLOC ] ERROR: insert range fail e=%d\n",
-                         (int)insert_range_res);
+        if (vmm_radix_tree_insert_range(handler,
+                                        vs,
+                                        owner_tp,
+                                        free_page_addr,
+                                        leaf_eflags,
+                                        (*alloced_page_number))
+            != REND_SUCCESS) {
+                pr_error("[ KALLOC ] ERROR: insert range fail\n");
                 goto fail_pmm_only;
         }
 
@@ -113,22 +105,14 @@ static void* core_get_free_pages(size_t page_num, VSpace* vs,
                 mapped_count++;
         }
 
-        error_t bind_range_res;
-        for (u64 try = 0; try < RADIX_ENTRY_LOCK_RETRY_MAX; try++) {
-                bind_range_res =
-                        vmm_radix_tree_leaf_bind_range(handler,
-                                                       vs,
-                                                       free_page_addr,
-                                                       ppn,
-                                                       (*alloced_page_number),
-                                                       leaf_eflags);
-                if (bind_range_res == REND_SUCCESS
-                    || bind_range_res != -E_REND_AGAIN)
-                        break;
-        }
-        if (bind_range_res != REND_SUCCESS) {
-                pr_error("[ KALLOC ] ERROR: bind fail e=%d\n",
-                         (int)bind_range_res);
+        if (vmm_radix_tree_leaf_bind_range(handler,
+                                           vs,
+                                           free_page_addr,
+                                           ppn,
+                                           (*alloced_page_number),
+                                           leaf_eflags)
+            != REND_SUCCESS) {
+                pr_error("[ KALLOC ] ERROR: bind fail\n");
                 goto fail_unmap_radix_pmm;
         }
 
@@ -619,7 +603,8 @@ static error_t kfree_page_local(struct mem_allocator* k_allocator_p, void* p)
         }
         e = core_free_pages(p, (int)pcn->page_num, &root_vspace);
         if (e) {
-                pr_error("[ ERROR ] kfree_page_local free_pages failed\n");
+                pr_error("[ ERROR ] kfree_page_local free_pages failed %d\n",
+                         e);
                 return e;
         }
         lock_cas(&k_allocator_p->lock);

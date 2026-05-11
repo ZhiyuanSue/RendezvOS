@@ -135,11 +135,6 @@
 
 #define VMM_RADIX_PTR_MASK (0xfffffffffffff000ULL)
 
-#define RADIX_ENTRY_LOCK_RETRY_ATTEMPTS 48u
-#define RADIX_ENTRY_LOCK_RETRY_EXP      10u
-
-#define RADIX_ENTRY_LOCK_RETRY_MAX 16u
-
 typedef struct {
         u64 value;
 } Radix_entry_t;
@@ -174,9 +169,6 @@ typedef struct {
  * at KERNEL_PHY_TO_VIRT(ppn) (same as nexus); grow uses that linear KVA.
  * `root_vs` is used for shared high-half leaves (L0 index >= 256); typically
  * `&root_vspace` when `vs` is a kernel or user table vspace using that slab.
- *
- * May return `-E_REND_AGAIN` when radix entry locks are contended; callers
- * should retry the whole insert (no leaves committed yet on that path).
  */
 error_t vmm_radix_tree_insert_range(struct map_handler* handler, VSpace* vs,
                                     tagged_ptr_t owner_info, vaddr page_vaddr,
@@ -194,9 +186,6 @@ error_t vmm_radix_tree_insert_range(struct map_handler* handler, VSpace* vs,
  * Remap/overwrite uses `change_*`. Rollback on partial rmap failure restores
  * lazy shadow from `leaf_flags` — use the same `flags` vocabulary as the prior
  * `insert_range` for this VA band. No map()/unmap() here.
- *
- * May return `-E_REND_AGAIN` on radix lock contention; callers with PTEs
- * already mapped may retry bind alone.
  */
 error_t vmm_radix_tree_leaf_bind_range(struct map_handler* handler, VSpace* vs,
                                        vaddr page_vaddr, ppn_t ppn_first,
