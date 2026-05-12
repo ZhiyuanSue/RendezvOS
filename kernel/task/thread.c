@@ -285,13 +285,13 @@ void delete_thread(Thread_Base* thread)
 
         error_t e = -E_RENDEZVOS;
         e = del_thread_from_task(thread);
-        if (e) {
+        if (e != REND_SUCCESS) {
                 pr_error(
                         "[ Error ] delete thread from task fail, please check\n");
         }
         if (thread->tm) {
                 e = del_thread_from_manager(thread);
-                if (e) {
+                if (e != REND_SUCCESS) {
                         pr_error(
                                 "[ Error ] delete thread from manager fail,please check\n");
                 }

@@ -153,13 +153,13 @@ int single_port_test(void)
                                  "port_disc_rcv",
                                  tm,
                                  NULL);
-        if (e) {
+        if (e != REND_SUCCESS) {
                 pr_error("[port_test] create receiver failed\n");
                 return -E_REND_TEST;
         }
         e = gen_thread_from_func(
                 NULL, port_discovery_sender_thread, "port_disc_snd", tm, NULL);
-        if (e) {
+        if (e != REND_SUCCESS) {
                 pr_error("[port_test] create sender failed\n");
                 return -E_REND_TEST;
         }

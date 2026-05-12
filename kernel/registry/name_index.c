@@ -168,7 +168,7 @@ static error_t name_index_bootstrap(name_index_t* idx)
         if (idx->row_cap != 0u)
                 return REND_SUCCESS;
         error_t e = name_index_grow_row_array(idx);
-        if (e)
+        if (e != REND_SUCCESS)
                 return e;
         return name_index_ht_rehash(idx, NAME_INDEX_HT_INITIAL_CAP);
 }
@@ -240,7 +240,7 @@ static error_t name_index_ht_insert(name_index_t* idx, u64 row_idx,
                                     const char* name)
 {
         error_t e = name_index_maybe_grow_ht(idx);
-        if (e)
+        if (e != REND_SUCCESS)
                 return e;
         u32 h = name_index_hash_name(idx, name);
         for (u64 probe = 0; probe < idx->ht_cap; probe++) {
@@ -254,7 +254,7 @@ static error_t name_index_ht_insert(name_index_t* idx, u64 row_idx,
                 }
         }
         e = name_index_ht_rehash(idx, idx->ht_cap * 2ULL);
-        if (e)
+        if (e != REND_SUCCESS)
                 return e;
         return name_index_ht_insert(idx, row_idx, name);
 }
@@ -389,12 +389,12 @@ error_t name_index_register(name_index_t* idx, void* value,
                 return -E_IN_PARAM;
 
         error_t e = name_index_bootstrap(idx);
-        if (e)
+        if (e != REND_SUCCESS)
                 return e;
 
         if (idx->free_head == NAME_INDEX_FREE_HEAD_INVALID) {
                 e = name_index_grow_row_array(idx);
-                if (e)
+                if (e != REND_SUCCESS)
                         return e;
         }
         u64 row_idx = idx->free_head;
@@ -409,7 +409,7 @@ error_t name_index_register(name_index_t* idx, void* value,
         idx->live++;
 
         e = name_index_ht_insert(idx, row_idx, name);
-        if (e) {
+        if (e != REND_SUCCESS) {
                 idx->rows[row_idx].storage.value = NULL;
                 idx->rows[row_idx].used = NAME_INDEX_ROW_FREE;
                 idx->rows[row_idx].storage.next_free = idx->free_head;

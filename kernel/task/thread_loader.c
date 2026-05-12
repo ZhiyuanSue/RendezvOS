@@ -1,6 +1,6 @@
 #include <rendezvos/task/thread_loader.h>
 #include <modules/log/log.h>
-#include <rendezvos/mm/mm_anon_backend.h>
+#include <rendezvos/mm/vmm_anon_backend.h>
 #include <rendezvos/mm/vmm.h>
 #include <rendezvos/smp/percpu.h>
 
@@ -135,7 +135,7 @@ error_t run_elf_program(vaddr elf_start, vaddr elf_end, VSpace *vs,
                         if (end > max_load_end)
                                 max_load_end = end;
                         e = elf_Phdr_64_load_handle(elf_start, phdr_ptr, vs);
-                        if (e) {
+                        if (e != REND_SUCCESS) {
                                 pr_error("[ Error ]elf load handle fail\n");
                                 return e;
                         }
@@ -146,7 +146,7 @@ error_t run_elf_program(vaddr elf_start, vaddr elf_end, VSpace *vs,
                 /*handle DYNAMIC*/
                 if (phdr_ptr->p_type == PT_DYNAMIC) {
                         e = elf_Phdr_64_dynamic_handle(elf_start, phdr_ptr, vs);
-                        if (e) {
+                        if (e != REND_SUCCESS) {
                                 pr_error("[ Error ] elf dynamic handle fail\n");
                                 return e;
                         }
@@ -195,19 +195,22 @@ error_t gen_task_from_elf(Thread_Base **elf_thread_ptr,
 
         elf_task->pid = get_new_id(&pid_manager);
         /*--- vspace part ---*/
-        elf_task->vs = create_user_vspace(&root_vspace);
+        elf_task->vs = create_vspace(root_vspace.pmm);
         if (!elf_task->vs) {
                 e = -E_RENDEZVOS;
                 elf_task_delete_tcb(elf_task);
                 return e;
         }
-        elf_task->vs->vspace_id = elf_task->pid;
+        e = register_vspace(elf_task->vs, &root_vspace, elf_task->pid);
+        if (e != REND_SUCCESS) {
+                pr_error("[Error] register vspace fail\n");
+                goto clean_vs_and_tcb;
+        }
         /*--- end vspace part ---*/
         e = add_task_to_manager(percpu(core_tm), elf_task);
-        if (e) {
-                elf_task_release_vspace_ref(elf_task);
-                elf_task_delete_tcb(elf_task);
-                return e;
+        if (e != REND_SUCCESS) {
+                pr_error("[Error] register task fail\n");
+                goto clean_vs_and_tcb;
         }
 
         Thread_Base *elf_thread = create_thread((void *)run_elf_program,
@@ -230,14 +233,10 @@ error_t gen_task_from_elf(Thread_Base **elf_thread_ptr,
         arch_set_thread_user_sp(&elf_thread->ctx, user_sp);
 
         thread_set_flags(elf_thread, THREAD_FLAG_USER);
-        if (!elf_thread) {
-                pr_error("[Error] create elf_thread fail\n");
-                return -E_RENDEZVOS;
-        }
         if (elf_thread_ptr)
                 *elf_thread_ptr = elf_thread;
         e = thread_join(elf_task, elf_thread);
-        if (e) {
+        if (e != REND_SUCCESS) {
                 goto thread_join_error;
         }
         return REND_SUCCESS;
@@ -251,6 +250,7 @@ create_thread_error:
                 pr_error(
                         "fail to delete task from task manager, please check\n");
         }
+clean_vs_and_tcb:
         elf_task_release_vspace_ref(elf_task);
         elf_task_delete_tcb(elf_task);
         return e;

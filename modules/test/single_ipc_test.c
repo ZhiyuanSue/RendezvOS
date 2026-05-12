@@ -138,13 +138,13 @@ int ipc_test(void)
 
         e = gen_thread_from_func(
                 NULL, ipc_sender_thread, "ipc_sender", tm, port);
-        if (e) {
+        if (e != REND_SUCCESS) {
                 delete_message_port_structure(port);
                 return -E_REND_TEST;
         }
         e = gen_thread_from_func(
                 NULL, ipc_receiver_thread, "ipc_receiver", tm, port);
-        if (e) {
+        if (e != REND_SUCCESS) {
                 delete_message_port_structure(port);
                 return -E_REND_TEST;
         }
@@ -353,7 +353,7 @@ int ipc_multi_round_test(void)
                                  "ipc_multi_sender",
                                  tm,
                                  port);
-        if (e) {
+        if (e != REND_SUCCESS) {
                 pr_error(
                         "[single_ipc_multi_round_test] failed to create sender thread\n");
                 delete_message_port_structure(port);
@@ -365,7 +365,7 @@ int ipc_multi_round_test(void)
                                  "ipc_multi_receiver",
                                  tm,
                                  port);
-        if (e) {
+        if (e != REND_SUCCESS) {
                 pr_error(
                         "[single_ipc_multi_round_test] failed to create receiver thread\n");
                 delete_message_port_structure(port);

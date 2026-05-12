@@ -215,7 +215,7 @@ static inline Radix_node_t* radix_l3_node(Radix_entry_t* l2_entry, vaddr va)
 }
 static bool radix_l3_overlap_insert(const Radix_node_t* node)
 {
-        if (node->flags & (PAGE_ENTRY_VALID | PAGE_ENTRY_NEXUS_LAZY))
+        if (node->flags & (PAGE_ENTRY_VALID | PAGE_ENTRY_LAZY))
                 return true;
         if (!tp_is_none(node->owner))
                 return true;
@@ -223,7 +223,7 @@ static bool radix_l3_overlap_insert(const Radix_node_t* node)
 }
 static bool radix_l3_deletable(const Radix_node_t* node)
 {
-        return (node->flags & (PAGE_ENTRY_VALID | PAGE_ENTRY_NEXUS_LAZY)) != 0;
+        return (node->flags & (PAGE_ENTRY_VALID | PAGE_ENTRY_LAZY)) != 0;
 }
 
 /*new table's free and alloc logic*/
@@ -1147,7 +1147,7 @@ error_t vmm_radix_tree_insert_range(struct map_handler* handler, VSpace* vs,
          * VALID after rmap + caller's map().
          */
         ENTRY_FLAGS_t lazy_leaf_flags = entry_flags_rm_sw_flags(flags)
-                                        | (ENTRY_FLAGS_t)PAGE_ENTRY_NEXUS_LAZY;
+                                        | (ENTRY_FLAGS_t)PAGE_ENTRY_LAZY;
         lazy_leaf_flags = (ENTRY_FLAGS_t)clear_mask_u64((u64)lazy_leaf_flags,
                                                         (u64)PAGE_ENTRY_VALID);
         radix_tree_level_walk_t l3_walk;
@@ -1244,7 +1244,7 @@ error_t vmm_radix_tree_leaf_bind_range(struct map_handler* handler, VSpace* vs,
         size_t page_index = 0;
         do {
                 Radix_node_t* leaf = l3_walk.curr_l3_node;
-                if (!leaf || !(leaf->flags & PAGE_ENTRY_NEXUS_LAZY)
+                if (!leaf || !(leaf->flags & PAGE_ENTRY_LAZY)
                     || (leaf->flags & (ENTRY_FLAGS_t)PAGE_ENTRY_VALID)) {
                         err = -E_IN_PARAM;
                         goto leaf_bind_range_rollback;
@@ -1275,7 +1275,7 @@ leaf_bind_range_rollback:
                 ppn_t cur_ppn = ppn_first + (ppn_t)page_index;
                 radix_leaf_unlink_rmap(vs->pmm, cur_ppn, leaf);
                 leaf->flags = entry_flags_rm_sw_flags(leaf_flags)
-                              | (ENTRY_FLAGS_t)PAGE_ENTRY_NEXUS_LAZY;
+                              | (ENTRY_FLAGS_t)PAGE_ENTRY_LAZY;
         }
 
 leaf_bind_range_out:
@@ -1308,7 +1308,7 @@ error_t vmm_radix_tree_insert_bind_range(struct map_handler* handler,
                 return err;
 
         ENTRY_FLAGS_t lazy_leaf_flags = entry_flags_rm_sw_flags(flags)
-                                        | (ENTRY_FLAGS_t)PAGE_ENTRY_NEXUS_LAZY;
+                                        | (ENTRY_FLAGS_t)PAGE_ENTRY_LAZY;
         lazy_leaf_flags = (ENTRY_FLAGS_t)clear_mask_u64((u64)lazy_leaf_flags,
                                                         (u64)PAGE_ENTRY_VALID);
 
@@ -1333,7 +1333,7 @@ error_t vmm_radix_tree_insert_bind_range(struct map_handler* handler,
                 leaf->flags = lazy_leaf_flags;
                 leaf->owner = owner_info;
 
-                if (!(leaf->flags & PAGE_ENTRY_NEXUS_LAZY)
+                if (!(leaf->flags & PAGE_ENTRY_LAZY)
                     || (leaf->flags & (ENTRY_FLAGS_t)PAGE_ENTRY_VALID)) {
                         err = -E_IN_PARAM;
                         goto insert_bind_bind_rollback;
@@ -1447,7 +1447,7 @@ error_t vmm_radix_tree_leaf_unbind_range(struct map_handler* handler,
                 radix_leaf_unlink_rmap(vs->pmm, cur_ppn, leaf);
                 leaf->flags = entry_flags_rm_sw_flags(leaf->flags)
                               & ~(ENTRY_FLAGS_t)PAGE_ENTRY_VALID;
-                leaf->flags |= (ENTRY_FLAGS_t)PAGE_ENTRY_NEXUS_LAZY;
+                leaf->flags |= (ENTRY_FLAGS_t)PAGE_ENTRY_LAZY;
                 remain--;
         } while (remain != 0 && radix_tree_level_walk(&l3_walk));
 

@@ -16,7 +16,7 @@ DEFINE_PER_CPU(struct map_handler, Map_Handler);
 DEFINE_PER_CPU(VSpace*, current_vspace);
 VSpace root_vspace;
 
-static void vspace_rb_tree_insert(VSpace* vs, VSpace* root_vs)
+static error_t vspace_rb_tree_insert(VSpace* vs, VSpace* root_vs)
 {
         struct rb_node** new = &root_vs->_vspace_rb_root.rb_root,
                          *parent = NULL;
@@ -30,11 +30,12 @@ static void vspace_rb_tree_insert(VSpace* vs, VSpace* root_vs)
                 else if (key > (u64)tmp_node->vspace_root_addr)
                         new = &parent->right_child;
                 else {
-                        return;
+                        return -E_IN_PARAM;
                 }
         }
         RB_Link_Node(&vs->_vspace_rb_node, parent, new);
         RB_SolveDoubleRed(&vs->_vspace_rb_node, &root_vs->_vspace_rb_root);
+        return REND_SUCCESS;
 }
 static void vspace_rb_tree_remove(VSpace* vs, VSpace* root_vs)
 {
@@ -63,26 +64,27 @@ static __attribute__((unused)) VSpace* vspace_rb_tree_next(VSpace* vs)
 error_t free_vspace_ref(ref_count_t* refcount)
 {
         VSpace* vs = container_of(refcount, VSpace, refcount);
-        VSpace* tmp = vs;
-        return del_vspace(&tmp);
+        unregister_vspace(vs);
+        return del_vspace(&vs);
 }
 
 /*
  * Kernel object for a user table VSpace (kallocator). Caller supplies
  * root_vs for RB registry parent and PMM policy.
  */
-static VSpace* alloc_user_vs_structure(VSpace* root_vs)
+static VSpace* alloc_user_vs_structure(struct pmm* pmm)
 {
         struct allocator* cpu_kallocator = percpu(kallocator);
-        if (!cpu_kallocator || !root_vs)
+        if (!cpu_kallocator || !pmm)
                 return NULL;
         VSpace* user_vs = (VSpace*)cpu_kallocator->m_alloc(cpu_kallocator,
                                                            sizeof(VSpace));
         if (!user_vs)
                 return NULL;
         memset((void*)user_vs, 0, sizeof(*user_vs));
-        user_vs->pmm = root_vs->pmm;
         user_vs->asid = asid_alloc();
+        user_vs->registered = false;
+        user_vs->pmm = pmm;
         if (user_vs->asid == 0) {
                 cpu_kallocator->m_free(cpu_kallocator, (void*)user_vs);
                 return NULL;
@@ -90,7 +92,6 @@ static VSpace* alloc_user_vs_structure(VSpace* root_vs)
         vs_tlb_cpu_mask_zero(user_vs);
         lock_init_cas(&user_vs->tlb_cpu_mask_lock);
         ref_init(&user_vs->refcount);
-        user_vs->root_vs = root_vs;
         return user_vs;
 }
 
@@ -146,60 +147,121 @@ error_t init_root_vspace(VSpace* root_vs, cpu_id_t cpu_id)
         return REND_SUCCESS;
 }
 
-VSpace* create_user_vspace(VSpace* root_vs)
+VSpace* create_vspace(struct pmm* pmm)
 {
-        struct map_handler* handler;
+        struct map_handler* handler = &percpu(Map_Handler);
         VSpace* vs;
         paddr new_root_paddr;
 
-        if (!root_vs || !root_vs->pmm)
+        if (!pmm)
                 return NULL;
 
-        vs = alloc_user_vs_structure(root_vs);
+        vs = alloc_user_vs_structure(pmm);
         if (!vs)
                 return NULL;
 
-        handler = &percpu(Map_Handler);
         new_root_paddr = new_vs_root(0, handler);
         if (!new_root_paddr)
-                goto fail_asid_and_vs;
+                goto vs_structure_fail;
 
-        set_vspace_root_addr(vs, new_root_paddr);
+        vs->vspace_root_addr = new_root_paddr;
 
         if (!vmm_radix_tree_init(handler, vs))
-                goto fail_user_root_phys;
+                goto radix_root_fail;
 
         if (vmm_radix_tree_install_shared_kernel_high_half(handler, vs)
             != REND_SUCCESS)
-                goto fail_radix_installed;
-
-        lock_cas(&root_vs->vspace_register_lock);
-        vspace_rb_tree_insert(vs, root_vs);
-        unlock_cas(&root_vs->vspace_register_lock);
+                goto radix_install_fail;
 
         return vs;
 
-fail_radix_installed:
+radix_install_fail:
         (void)vmm_radix_tree_destroy(handler, vs);
-fail_user_root_phys:
+radix_root_fail:
         (void)vspace_free_root_page(vs, handler);
-fail_asid_and_vs:
+vs_structure_fail:
         asid_free(vs->asid);
         free_user_vs_structure(vs);
         return NULL;
+}
+error_t clone_vspace(VSpace* src_vs, VSpace** dst_vs_out,
+                     enum vspace_clone_flags flags)
+{
+        if(!src_vs || !dst_vs_out)
+        return -E_IN_PARAM;
+        if (!(flags & VSPACE_CLONE_F_USER_4K_ONLY))
+                return -E_IN_PARAM;
+        if (!!(flags & VSPACE_CLONE_F_COW_PREP)
+            == !!(flags & VSPACE_CLONE_F_COPY_PAGES)) {
+                /* must select exactly one strategy */
+                return -E_IN_PARAM;
+        }
+        error_t e=REND_SUCCESS;
+        struct map_handler* handler = &percpu(Map_Handler);
+        VSpace* dst_vs = create_vspace(root_vspace.pmm);
+        if(!dst_vs){
+                pr_error("[Error] clone vspace cannot create vspace\n");
+                return -E_RENDEZVOS;
+        }
+
+        (void)handler;
+        (void)dst_vs;
+        if (flags & VSPACE_CLONE_F_COPY_PAGES) {
+
+        }else{
+
+        }
+        *dst_vs_out=dst_vs;
+        return REND_SUCCESS;
+// free_vspace:
+        del_vspace(&dst_vs);
+        return e;
+}
+
+error_t register_vspace(VSpace* vs, VSpace* root_vs, u64 vspace_id)
+{
+        if (!vs || !root_vs || vs->registered)
+                return -E_IN_PARAM;
+        error_t e = REND_SUCCESS;
+        lock_cas(&root_vs->vspace_register_lock);
+        e = vspace_rb_tree_insert(vs, root_vs);
+        unlock_cas(&root_vs->vspace_register_lock);
+        if (e == REND_SUCCESS) {
+                vs->registered = true;
+                vs->root_vs = root_vs;
+                vs->vspace_id = vspace_id;
+        }
+        return e;
+}
+error_t unregister_vspace(VSpace* vs)
+{
+        if (!vs)
+                return -E_IN_PARAM;
+        /*if vs is unregistered, no need to unlink*/
+        if (!vs->registered)
+                return REND_SUCCESS;
+
+        if (!vs->root_vs)
+                return -E_IN_PARAM;
+
+        lock_cas(&vs->root_vs->vspace_register_lock);
+        vspace_rb_tree_remove(vs, vs->root_vs);
+        unlock_cas(&vs->root_vs->vspace_register_lock);
+        vs->registered = false;
+        vs->root_vs = NULL;
+        return REND_SUCCESS;
 }
 
 error_t del_vspace(VSpace** vs)
 {
         if (!(*vs))
                 return REND_SUCCESS;
-        /* Never free the kernel/root vspace page-table frames. */
-        if (*vs == (*vs)->root_vs)
+        if ((*vs) == (*vs)->root_vs)
                 return REND_SUCCESS;
 
         VSpace* vspace = *vs;
 
-        if (!vspace->root_vs)
+        if (vspace->registered)
                 return -E_IN_PARAM;
 
         struct map_handler* map_handler = &percpu(Map_Handler);
@@ -237,17 +299,11 @@ error_t del_vspace(VSpace** vs)
 
         asid_free(vspace->asid);
 
-        lock_cas(&vspace->root_vs->vspace_register_lock);
-        vspace_rb_tree_remove(vspace, vspace->root_vs);
-        unlock_cas(&vspace->root_vs->vspace_register_lock);
-
-        {
-                struct allocator* cpu_kallocator = percpu(kallocator);
-                if (cpu_kallocator)
-                        cpu_kallocator->m_free(cpu_kallocator, (void*)vspace);
-                else if (ret == REND_SUCCESS)
-                        ret = -E_RENDEZVOS;
-        }
+        struct allocator* cpu_kallocator = percpu(kallocator);
+        if (cpu_kallocator)
+                cpu_kallocator->m_free(cpu_kallocator, (void*)vspace);
+        else if (ret == REND_SUCCESS)
+                ret = -E_RENDEZVOS;
         *vs = NULL;
         return ret;
 }

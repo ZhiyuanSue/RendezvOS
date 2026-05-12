@@ -29,7 +29,10 @@
 BITMAP_DEFINE_TYPE(vs_tlb_cpu_bitmap_t, VS_TLB_CPU_MASK_BITS)
 typedef struct VSpace VSpace;
 struct VSpace {
-        struct list_entry free_vs_entry_list_node;
+        /* AArch64: Address Space Identifier for TTBR0. */
+        asid_t asid;
+        u16 asid_padding;
+        bool registered;
         /*
          * Physical memory policy/affinity for this address space.
          * For now it is a single PMM pointer (typically ZONE_NORMAL).
@@ -47,9 +50,6 @@ struct VSpace {
          */
         ref_count_t refcount;
         u64 vspace_id;
-        /* AArch64: Address Space Identifier for TTBR0. */
-        asid_t asid;
-        u16 _asid_pad;
         /*
          * CPUs that may have live TLB entries for this ASID.
          * With the "no-IPI" scheme we clear a CPU's bit when it
@@ -83,7 +83,7 @@ struct VSpace {
         };
 };
 
-enum vspace_clone_flag_bits {
+enum vspace_clone_flags {
         /*must be set, for the kernel pages allow the 2M，but the user only
            allow 4K*/
         VSPACE_CLONE_F_USER_4K_ONLY = (1ULL << 0),
@@ -122,17 +122,15 @@ extern VSpace root_vspace;
 extern u64 boot_stack_bottom;
 
 error_t init_root_vspace(VSpace* root_vs, cpu_id_t cpu_id);
-VSpace* create_user_vspace(VSpace* root_vspace);
+VSpace* create_vspace(struct pmm* pmm);
+error_t clone_vspace(VSpace* src_vs, VSpace** dst_vs_out,
+                     enum vspace_clone_flags flags);
+/*remember register the vspace after create/clone user vspace*/
+error_t register_vspace(VSpace* vs, VSpace* root_vs, u64 vspace_id);
 error_t free_vspace_ref(ref_count_t* refcount);
+error_t unregister_vspace(VSpace* vs);
+/*remember unregister the vs before del vspace*/
 error_t del_vspace(VSpace** vs);
-static inline void set_vspace_root_addr(VSpace* vs, paddr root_paddr)
-{
-        vs->vspace_root_addr = root_paddr;
-}
-static inline void unset_vspace_root_addr(VSpace* vs)
-{
-        vs->vspace_root_addr = 0;
-}
 
 void arch_set_L0_entry(paddr p, vaddr v, union L0_entry* pt_addr,
                        ARCH_PFLAGS_t flags);

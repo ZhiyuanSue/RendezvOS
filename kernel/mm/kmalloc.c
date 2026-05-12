@@ -481,7 +481,7 @@ static void* _k_alloc(struct mem_allocator* k_allocator_p, size_t Bytes)
                         error_t e = chunk_init((struct mem_chunk*)page_ptr,
                                                group->chunk_order,
                                                group->allocator_id);
-                        if (e) {
+                        if (e != REND_SUCCESS) {
                                 pr_error(
                                         "[ERROR]unknown reason lead to the chunk init fail e code %d\n",
                                         e);
@@ -489,7 +489,7 @@ static void* _k_alloc(struct mem_allocator* k_allocator_p, size_t Bytes)
                                  * allocated*/
                                 e = core_free_pages(
                                         page_ptr, PAGE_PER_CHUNK, &root_vspace);
-                                if (e) {
+                                if (e != REND_SUCCESS) {
                                         pr_error(
                                                 "[Error] fail to free pages e code %d\n",
                                                 e);
@@ -508,7 +508,7 @@ static void* _k_alloc(struct mem_allocator* k_allocator_p, size_t Bytes)
                         error_t e = chunk_init(alloc_chunk,
                                                group->chunk_order,
                                                group->allocator_id);
-                        if (e) {
+                        if (e != REND_SUCCESS) {
                                 pr_error("[ERROR]re init the chunk fail\n");
                                 return NULL;
                         }
@@ -628,7 +628,7 @@ static error_t kfree_page_local(struct mem_allocator* k_allocator_p, void* p)
                 return -E_RENDEZVOS;
         }
         e = core_free_pages(p, (int)pcn->page_num, &root_vspace);
-        if (e) {
+        if (e != REND_SUCCESS) {
                 pr_error("[ ERROR ] kfree_page_local free_pages failed %d\n",
                          e);
                 return e;
@@ -667,7 +667,7 @@ static error_t free_kpage_msg(ref_count_t* refcount)
         }
         error_t e =
                 kfree_page_local(k_allocator_p, (void*)free_info->page_vaddr);
-        if (e) {
+        if (e != REND_SUCCESS) {
                 pr_error(
                         "[kfree_page_msq] free_kpage_msg: kfree_page_local failed e=%d page_vaddr=%lx src_cpu=%u\n",
                         e,
@@ -846,7 +846,7 @@ static void kfree(struct allocator* allocator_p, void* p)
                         e = _k_free(p);
                 }
         }
-        if (e) {
+        if (e != REND_SUCCESS) {
                 pr_error(
                         "[ ERROR ]kfree have generated an error but no error handle\n");
         }

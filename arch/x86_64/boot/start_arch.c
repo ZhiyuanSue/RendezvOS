@@ -200,7 +200,7 @@ error_t arch_start_platform(struct setup_info *arch_setup_info)
 {
         struct allocator *malloc = per_cpu(kallocator, BSP_ID);
         error_t e = acpi_init(arch_setup_info->rsdp_addr);
-        if (e)
+        if (e != REND_SUCCESS)
                 goto arch_start_platform_error;
         /*alloc a pci root node without any info*/
         pci_root = malloc->m_alloc(malloc, sizeof(struct pci_node));

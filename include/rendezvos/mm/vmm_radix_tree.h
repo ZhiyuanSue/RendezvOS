@@ -145,7 +145,7 @@ typedef struct {
  * `flags` — shadow leaf state (same ENTRY_FLAGS_t vocabulary as map()/PTE):
  *   - Bits such as PAGE_ENTRY_{READ,WRITE,USER,...} describe the mapping the
  *     range APIs intend for this VA once committed (see insert_range).
- *   - PAGE_ENTRY_NEXUS_LAZY means "metadata reserved, no leaf PTE yet";
+ *   - PAGE_ENTRY_LAZY means "metadata reserved, no leaf PTE yet";
  *     leaf_bind / leaf_bind_range clear LAZY after a successful map().
  *   This is not a second page table; it is nexus-side bookkeeping so fault /
  *   query paths can consult the radix without parsing the HW walk every time.

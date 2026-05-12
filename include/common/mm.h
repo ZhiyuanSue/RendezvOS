@@ -47,18 +47,18 @@ enum ENTRY_FLAGS {
         PAGE_ENTRY_UNCACHED = (1ULL << 7),
         PAGE_ENTRY_GLOBAL = (1ULL << 8),
         PAGE_ENTRY_HUGE = (1ULL << 9),
-        /*
-         * Radix / nexus shadow state (software-only): the VA leaf slot exists
-         * in the radix metadata tree (insert_range) but no leaf PTE has been
-         * committed yet; leaf_bind clears this after map(). Must be stripped
-         * before arch_decode_flags().
+        /* The followings are software flags.
+         * Must be cleared before arch_decode_flags().
          */
-        PAGE_ENTRY_NEXUS_LAZY = (1ULL << 10),
+        /*
+         * Radix shadow state (software-only): the VA leaf slot exists
+         * in the radix metadata tree (insert_range) but no leaf PTE has been
+         * committed yet; leaf_bind clears this after map().
+         */
+        PAGE_ENTRY_LAZY = (1ULL << 62),
         /*
          * Map option (software-only): allow replacing an existing leaf mapping
          * with a different physical page (remap semantics).
-         *
-         * Must be stripped before arch_decode_flags().
          */
         PAGE_ENTRY_REMAP = (1ULL << 63),
 
@@ -67,7 +67,7 @@ typedef u64 ENTRY_FLAGS_t;
 typedef u64 ARCH_PFLAGS_t;
 static inline ENTRY_FLAGS_t entry_flags_rm_sw_flags(ENTRY_FLAGS_t f)
 {
-        return clear_mask_u64(f, PAGE_ENTRY_REMAP | PAGE_ENTRY_NEXUS_LAZY);
+        return clear_mask_u64(f, PAGE_ENTRY_REMAP | PAGE_ENTRY_LAZY);
 }
 struct region {
         u64 addr;

@@ -41,12 +41,12 @@ error_t create_init_thread(Tcb_Base* root_task)
         }
         init_t->tid = get_new_id(&tid_manager);
         e = add_thread_to_task(root_task, init_t);
-        if (e) {
+        if (e != REND_SUCCESS) {
                 pr_error("[ Error ] add thread to task fail\n");
                 goto add_thread_to_task_fail;
         }
         e = add_thread_to_manager(percpu(core_tm), init_t);
-        if (e) {
+        if (e != REND_SUCCESS) {
                 pr_error("[ Error ] add thread to manager fail\n");
                 goto add_thread_to_manager_fail;
         }
@@ -74,7 +74,7 @@ error_t create_idle_thread(void)
                                          idle_thread_name,
                                          percpu(core_tm),
                                          NULL);
-        if (e) {
+        if (e != REND_SUCCESS) {
                 pr_error("[ Error ]idle thread init fail\n");
                 return e;
         }
@@ -97,18 +97,18 @@ Task_Manager* init_proc(void)
         percpu(core_tm)->root_task->pid = get_new_id(&pid_manager);
         percpu(core_tm)->root_task->vs = percpu(current_vspace);
         e = add_task_to_manager(percpu(core_tm), percpu(core_tm)->root_task);
-        if (e) {
+        if (e != REND_SUCCESS) {
                 pr_error("[ Error ] add root task to manager fail\n");
                 goto add_task_to_manager_fail;
         }
 
         e = create_init_thread(percpu(core_tm)->root_task);
-        if (e) {
+        if (e != REND_SUCCESS) {
                 pr_error("[ Error ] create init thread fail %d\n", e);
                 goto create_init_thread_fail;
         }
         e = create_idle_thread();
-        if (e) {
+        if (e != REND_SUCCESS) {
                 pr_error("[ Error ] create idle thread fail %d\n", e);
                 goto create_idle_thread_fail;
         }
@@ -297,7 +297,7 @@ error_t delete_task(Tcb_Base* tcb)
         /* First detach from manager so we don't risk freeing a node still
          * linked. */
         e = del_task_from_manager(tcb);
-        if (e)
+        if (e != REND_SUCCESS)
                 return e;
 
         if (tcb->vs) {
