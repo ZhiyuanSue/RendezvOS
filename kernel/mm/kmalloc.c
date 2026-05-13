@@ -143,6 +143,19 @@ static void* core_get_free_pages(size_t page_num, VSpace* vs,
                 pr_error("[ KALLOC ] ERROR: radix lock fail\n");
                 goto before_lock_fail;
         }
+        if (vmm_radix_tree_insert_range(handler,
+                                        vs,
+                                        owner_tp,
+                                        free_page_addr,
+                                        leaf_eflags,
+                                        vaddr_end)
+            != REND_SUCCESS) {
+                (void)vmm_radix_tree_unlock_range_small(
+                                vs, free_page_addr, vaddr_end);
+                pr_error(
+                        "[ KALLOC ] ERROR: insert_range fail (after INSERT lock)\n");
+                goto before_lock_fail;
+        }
         while (mapped_count < (*alloced_page_number)) {
                 vaddr va = free_page_addr + mapped_count * PAGE_SIZE;
                 error_t map_error = map(vs,
@@ -162,15 +175,10 @@ static void* core_get_free_pages(size_t page_num, VSpace* vs,
                 }
                 mapped_count++;
         }
-        if (vmm_radix_tree_insert_bind_range(handler,
-                                             vs,
-                                             owner_tp,
-                                             free_page_addr,
-                                             leaf_eflags,
-                                             vaddr_end,
-                                             ppn)
+        if (vmm_radix_tree_leaf_bind_range(
+                    handler, vs, free_page_addr, ppn, vaddr_end, leaf_eflags)
             != REND_SUCCESS) {
-                pr_error("[ KALLOC ] ERROR: insert_bind_range fail\n");
+                pr_error("[ KALLOC ] ERROR: leaf_bind_range fail\n");
                 (void)vmm_radix_tree_unlock_range_small(
                         vs, free_page_addr, vaddr_end);
                 goto fail_unmap_rollback;
@@ -188,9 +196,9 @@ fail_unmap_rollback:
 before_lock_fail:
         /*
          * Shrink radix reservation after INSERT partial progress (phase 5 may
-         * have run) or insert_bind rollback (LAZY leaves). Recompute the band
-         * end here so paths that never passed the first calculate_end_check do
-         * not use an uninitialized vaddr_end.
+         * have run), insert_range/map/leaf_bind rollback (LAZY leaves). Recompute
+         * the band end here so paths that never passed the first
+         * calculate_end_check do not use an uninitialized vaddr_end.
          */
         if (vmm_radix_tree_calculate_end_check(
                     free_page_addr, *alloced_page_number, &vaddr_end)

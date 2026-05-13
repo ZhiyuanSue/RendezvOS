@@ -59,7 +59,7 @@
  * - @ref RADIX_RL_INSERT: reject overlap on reserved slots (@c radix_l3_overlap_insert).
  * - @ref RADIX_RL_DELETE: each crossed L3 leaf: @c radix_node_clear if not
  *   @c radix_l3_undeletable (no @c PAGE_ENTRY_VALID — VALID leaves require prior
- *   @ref vmm_radix_tree_leaf_unbind_range or insert_bind rollback). On first
+ *   @ref vmm_radix_tree_leaf_unbind_range or prior rollback to LAZY). On first
  *   undeletable leaf the acquire fails and rolls back per internal cleanup.
  * - @ref RADIX_RL_QUERY_OR_CHANGE: does not bulk-clear L3 nodes; bind/unbind and
  *   flag/query mutate leaves after acquire under the same held L2 set.
@@ -331,8 +331,12 @@ error_t vmm_radix_tree_insert_range(struct map_handler* handler, VSpace* vs,
  * @return @c REND_SUCCESS or an error code; partial failure rolls back bound
  *         leaves per implementation.
  *
- * @note Caller must hold @ref vmm_radix_tree_lock_range_small on the same band
- *       with @ref RADIX_RL_QUERY_OR_CHANGE, then @ref vmm_radix_tree_unlock_range_small.
+ * @note Typical callers hold @ref vmm_radix_tree_lock_range_small with @ref
+ *       RADIX_RL_QUERY_OR_CHANGE on the band, then @ref vmm_radix_tree_unlock_range_small.
+ *       The same L2 exclusion is satisfied if the band is already covered by an
+ *       earlier @ref RADIX_RL_INSERT lock in the same critical section (e.g. kernel
+ *       heap or @c mm_anon_map_pages_eager: @ref vmm_radix_tree_insert_range then
+ *       @c map() then this function); this routine does not re-acquire range locks.
  *
  * @note Caller must have wired PTEs for [ @p vaddr_start , @p vaddr_end ). Every
  *       leaf must be LAZY and not VALID beforehand. No map()/unmap() here.
@@ -340,36 +344,6 @@ error_t vmm_radix_tree_insert_range(struct map_handler* handler, VSpace* vs,
 error_t vmm_radix_tree_leaf_bind_range(struct map_handler* handler, VSpace* vs,
                                        vaddr vaddr_start, ppn_t ppn_first,
                                        vaddr vaddr_end, ENTRY_FLAGS_t leaf_flags);
-
-/**
- * @brief Fused insert + bind: one internal range lock and one L3 walk that
- *        lazy-reserves then binds each page (same outcome as @ref
- *        vmm_radix_tree_insert_range + @ref vmm_radix_tree_leaf_bind_range).
- *
- * @param handler      Map handler.
- * @param vs           Target vspace.
- * @param owner_info   Owner tag for insert semantics.
- * @param vaddr_start  Start of range.
- * @param flags        Insert-time shadow flags.
- * @param vaddr_end    Interval end for @c [ @p vaddr_start , @p vaddr_end ); from
- *                     @ref vmm_radix_tree_calculate_end_check.
- * @param ppn_first    First contiguous PPN for bind.
- *
- * @return @c REND_SUCCESS or an error code.
- *
- * @note Caller must hold @ref vmm_radix_tree_lock_range_small with
- *       @ref RADIX_RL_INSERT on the band, then @ref vmm_radix_tree_unlock_range_small.
- *
- * @note Caller must have map()'d PTEs before calling. On bind failure, radix
- *       shadow is restored so a subsequent @ref vmm_radix_tree_lock_range_small
- *       with @ref RADIX_RL_DELETE plus @ref vmm_radix_tree_unlock_range_small
- *       can drop the full extent. For user VA, avoid executing this range until
- *       the call returns (ordering vs SMP).
- */
-error_t vmm_radix_tree_insert_bind_range(struct map_handler* handler,
-                                         VSpace* vs, tagged_ptr_t owner_info,
-                                         vaddr vaddr_start, ENTRY_FLAGS_t flags,
-                                         vaddr vaddr_end, ppn_t ppn_first);
 
 /**
  * @brief Clear VALID and unlink rmap for each page in range; restore LAZY shadow;

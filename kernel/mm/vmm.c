@@ -187,6 +187,23 @@ vs_structure_fail:
 error_t clone_vspace(VSpace* src_vs, VSpace** dst_vs_out,
                      enum vspace_clone_flags flags)
 {
+        /* Do not change this comment!!!
+         * clone vspace will first try to lock all the l0 entry, which is ok,
+         * but lock all the l0 only means no more core will go into this radix tree
+         * it cannot promis there have some exist core is hold the lock of l2 entry
+         * for lock acquire, it first hold the l0 lock ,and change the structure and count of tree,
+         * then it hold the l2 lock, then release l0 lock, 
+         * the lock of l2 will be hold until using release
+         * so there has a window, that the l0 lock is released but the l2 lock is hold
+         * but only lock all the l0 cannot promise there have no l2 is locked. 
+         * That is the problem
+         * we must do it in the period of find the first usable range
+         * it will try to hold the l2 lock, and clone will wait until other have release l2 lock.
+         * will anyone behind clone to try to get the l2 lock?
+         * No! l0 lock have promise it.
+         * that is the key of this part lock model.
+         * Please do not change this comment
+         */
         if(!src_vs || !dst_vs_out)
         return -E_IN_PARAM;
         if (!(flags & VSPACE_CLONE_F_USER_4K_ONLY))

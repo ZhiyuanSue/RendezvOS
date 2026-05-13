@@ -3,8 +3,9 @@
  * Orchestrates radix + map + bind; does not own vspace lifecycle (vmm).
  *
  * Radix band protocol matches core/kernel/mm/kmalloc.c eager paths:
- * core_get_free_pages (INSERT → map → insert_bind) and core_free_pages
- * (QUERY_OR_CHANGE → leaf_unbind_range → unlock → unmap → DELETE → pmm_free).
+ * core_get_free_pages (INSERT → insert_range → map → leaf_bind_range) and
+ * core_free_pages (QUERY_OR_CHANGE → leaf_unbind_range → unlock → unmap →
+ * DELETE → pmm_free).
  */
 #include <common/align.h>
 #include <common/taggedptr.h>
@@ -65,6 +66,19 @@ vaddr mm_anon_map_pages_eager(struct map_handler* handler, struct VSpace* vs,
                         err_lock);
                 goto before_lock_fail;
         }
+        if (vmm_radix_tree_insert_range(handler,
+                                        vs,
+                                        owner_tp,
+                                        uva,
+                                        leaf_eflags,
+                                        vaddr_end)
+            != REND_SUCCESS) {
+                (void)vmm_radix_tree_unlock_range_small(
+                        (VSpace*)vs, uva, vaddr_end);
+                pr_error(
+                        "[MM_ANON] mm_anon_map_pages_eager: insert_range failed\n");
+                goto before_lock_fail;
+        }
         while (mapped_count < alloced_page_number) {
                 vaddr va = uva + mapped_count * PAGE_SIZE;
                 error_t map_err = map(vs,
@@ -84,11 +98,11 @@ vaddr mm_anon_map_pages_eager(struct map_handler* handler, struct VSpace* vs,
                 }
                 mapped_count++;
         }
-        if (vmm_radix_tree_insert_bind_range(
-                    handler, vs, owner_tp, uva, leaf_eflags, vaddr_end, ppn)
+        if (vmm_radix_tree_leaf_bind_range(
+                    handler, vs, uva, ppn, vaddr_end, leaf_eflags)
             != REND_SUCCESS) {
                 pr_error(
-                        "[MM_ANON] mm_anon_map_pages_eager: insert_bind_range failed\n");
+                        "[MM_ANON] mm_anon_map_pages_eager: leaf_bind_range failed\n");
                 (void)vmm_radix_tree_unlock_range_small(
                         (VSpace*)vs, uva, vaddr_end);
                 goto fail_unmap_rollback;

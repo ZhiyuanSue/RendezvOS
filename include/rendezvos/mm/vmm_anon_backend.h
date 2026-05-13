@@ -36,13 +36,14 @@ struct VSpace;
  */
 
 /**
- * @brief Allocate contiguous physical pages, install PTEs, then radix bind.
+ * @brief Allocate contiguous physical pages, radix LAZY reserve, PTEs, then bind.
  *
- * Allocates @p page_num contiguous physical pages, maps each PTE in
- * @c [uva, end), then calls vmm_radix_tree_insert_bind_range (LAZY shadow +
- * bind + VALID). On failure: unmaps the mapped prefix, takes
- * vmm_radix_tree_lock_range_small(RADIX_RL_DELETE) plus unlock on the VA band,
- * then pmm_free.
+ * Allocates @p page_num contiguous physical pages, then under
+ * @c RADIX_RL_INSERT: @ref vmm_radix_tree_insert_range (LAZY shadow + owner),
+ * maps each PTE in @c [uva, end), then @ref vmm_radix_tree_leaf_bind_range
+ * (VALID + rmap). On failure: unmaps any mapped prefix, then
+ * @c vmm_radix_tree_lock_range_small(RADIX_RL_DELETE) on the band plus unlock,
+ * then @c pmm_free.
  *
  * @param handler   Per-CPU map handler (page-table walk context).
  * @param vs        Target user address space (not root_vspace).
@@ -118,7 +119,7 @@ error_t mm_anon_reserve_lazy_range(struct map_handler* handler,
  * @brief Placeholder for lazy anonymous zero-fill on fault.
  *
  * For a single PAGE_SIZE-aligned faulting VA: would ensure radix reservation,
- * pmm_alloc one page, map(), then leaf_bind_range or insert_bind_range so radix
+ * pmm_alloc one page, map(), then leaf_bind_range so radix
  * VALID and rmap match the PTE. Not wired until lazy radix policy is finalized.
  *
  * @param handler        Per-CPU map handler.

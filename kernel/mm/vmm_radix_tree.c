@@ -549,6 +549,158 @@ l0_bypass:
         walk_iter->curr_l0_entry = next_l0_entry;
         return walk_iter;
 }
+/*
+ * First 4Ki leaf in [start,end) with radix_l3_overlap_insert.
+ *
+ * @pre Caller **must** already hold @ref vmm_radix_tree_lock_range_big on the
+ * L0 shards covering this walk. Search-shaped helpers cannot use
+ * @ref vmm_radix_tree_lock_range_small (that contract assumes a uniformly
+ * present/absent band). Without big, L0 table stability is not guaranteed.
+ *
+ * L2 lines are updated under @c radix_entry_lock(l2e). Big lock alone does not
+ * exclude concurrent L2 holders (see long comment in @c clone_vspace); this
+ * helper locks the chosen L2 before reading @c l2e->value and L3 leaves, then
+ * unlocks. **Do not delete or shorten the clone_vspace radix lock rationale
+ * without maintainer review** — it documents the same L0 vs L2 window.
+ *
+ * @par Predicate
+ * First qualifying L0/L1/L2 in VA order (VALID + child + non-zero Phase 5
+ * count); first overlapping L3 under that locked L2 band.
+ *
+ * @note Planned full-interval enumeration (e.g. clone): same **big** + **per
+ * 2Mi band** pattern (lock L2, scan that band's L3 slots, unlock); walk L2
+ * bands in VA order rather than a standalone L3-only walker. Re-locking a
+ * band touched earlier by find-first is expected and correct.
+ */
+static __attribute__((unused)) bool vmm_radix_tree_find_first_occupied_leaf(VSpace* vs, vaddr start,
+                                                    vaddr end, int direction,
+                                                    vaddr* out_va)
+{
+        if (!vs || !vs->root_radix || !out_va)
+                return false;
+        if (end <= start)
+                return false;
+        if (direction != RADIX_TREE_DIRECTION_INC
+            && direction != RADIX_TREE_DIRECTION_DEC)
+                return false;
+
+        Radix_entry_t* root = (Radix_entry_t*)vs->root_radix;
+
+        const vaddr l0_step = (vaddr)radix_level_step[RADIX_TREE_LEVEL0];
+        const vaddr l1_step = (vaddr)radix_level_step[RADIX_TREE_LEVEL1];
+        const vaddr l2_step = (vaddr)radix_level_step[RADIX_TREE_LEVEL2];
+        const vaddr l3_step = (vaddr)radix_level_step[RADIX_TREE_LEVEL3];
+
+        vaddr first_page = ROUND_DOWN(start, l3_step);
+        vaddr last_page = ROUND_DOWN((end - 1), l3_step);
+        if (last_page < first_page)
+                return false;
+
+        vaddr l0_start = ROUND_DOWN(first_page, l0_step);
+        vaddr l0_end = ROUND_DOWN(last_page, l0_step);
+
+        Radix_entry_t* l0e = NULL;
+        vaddr huge_start = 0;
+        vaddr huge_end = 0;
+        vaddr l0_iter;
+
+        for (l0_iter = (direction > 0 ? l0_start : l0_end);;
+             l0_iter = (vaddr)((i64)l0_iter + direction * (i64)l0_step)) {
+                if (direction > 0) {
+                        if (l0_iter > l0_end)
+                                return false;
+                } else {
+                        if (l0_iter < l0_start)
+                                return false;
+                }
+                huge_start = MAX(first_page, l0_iter);
+                huge_end = MIN(last_page, l0_iter + l0_step - l3_step);
+                l0e = radix_l0_entry(root, l0_iter);
+                if (l0e && entry_valid(l0e) && entry_child(l0e)
+                    && entry_get_count(l0e->value) != 0)
+                        break;
+        }
+
+        Radix_entry_t* l1e = NULL;
+        vaddr giga_start = 0;
+        vaddr giga_end = 0;
+        vaddr l1_start = ROUND_DOWN(huge_start, l1_step);
+        vaddr l1_end = ROUND_DOWN(huge_end, l1_step);
+        vaddr l1_iter;
+
+        for (l1_iter = (direction > 0 ? l1_start : l1_end);;
+             l1_iter = (vaddr)((i64)l1_iter + direction * (i64)l1_step)) {
+                if (direction > 0) {
+                        if (l1_iter > l1_end)
+                                return false;
+                } else {
+                        if (l1_iter < l1_start)
+                                return false;
+                }
+                giga_start = MAX(huge_start, l1_iter);
+                giga_end = MIN(huge_end, l1_iter + l1_step - l3_step);
+                l1e = radix_l1_entry(l0e, l1_iter);
+                if (l1e && entry_valid(l1e) && entry_child(l1e)
+                    && entry_get_count(l1e->value) != 0)
+                        break;
+        }
+
+        Radix_entry_t* l2e = NULL;
+        vaddr mid_start = 0;
+        vaddr mid_end = 0;
+        vaddr l2_start = ROUND_DOWN(giga_start, l2_step);
+        vaddr l2_end = ROUND_DOWN(giga_end, l2_step);
+        vaddr l2_iter;
+
+        for (l2_iter = (direction > 0 ? l2_start : l2_end);;
+             l2_iter = (vaddr)((i64)l2_iter + direction * (i64)l2_step)) {
+                if (direction > 0) {
+                        if (l2_iter > l2_end)
+                                return false;
+                } else {
+                        if (l2_iter < l2_start)
+                                return false;
+                }
+                mid_start = MAX(giga_start, l2_iter);
+                mid_end = MIN(giga_end, l2_iter + l2_step - l3_step);
+                Radix_entry_t* cand = radix_l2_entry(l1e, l2_iter);
+                if (!cand)
+                        continue;
+                radix_entry_lock(cand);
+                if (entry_valid(cand) && entry_child(cand)
+                    && entry_get_count(cand->value) != 0) {
+                        l2e = cand;
+                        break;
+                }
+                radix_entry_unlock(cand);
+        }
+
+        if (!l2e)
+                return false;
+
+        for (vaddr l3_iter = (direction > 0 ? mid_start : mid_end);;
+             l3_iter = (vaddr)((i64)l3_iter + direction * (i64)l3_step)) {
+                if (direction > 0) {
+                        if (l3_iter > mid_end) {
+                                radix_entry_unlock(l2e);
+                                return false;
+                        }
+                } else {
+                        if (l3_iter < mid_start) {
+                                radix_entry_unlock(l2e);
+                                return false;
+                        }
+                }
+                Radix_node_t* leaf = radix_l3_node(l2e, l3_iter);
+                if (leaf && radix_l3_overlap_insert(leaf)) {
+                        *out_va = l3_iter;
+                        radix_entry_unlock(l2e);
+                        return true;
+                }
+        }
+        radix_entry_unlock(l2e);
+        return false;
+}
 
 static inline bool
 radix_tree_walk_is_level_first(const radix_tree_level_walk_t* walk, int level)
@@ -1333,102 +1485,6 @@ leaf_bind_range_rollback:
         }
 
 leaf_bind_range_out:
-        return err;
-}
-
-error_t vmm_radix_tree_insert_bind_range(struct map_handler* handler,
-                                         VSpace* vs, tagged_ptr_t owner_info,
-                                         vaddr vaddr_start, ENTRY_FLAGS_t flags,
-                                         vaddr vaddr_end, ppn_t ppn_first)
-{
-        Radix_entry_t* root = radix_root_from_vs(vs);
-        size_t page_number;
-        if (!root || !vs || !vs->pmm || !vs->pmm->zone || !handler)
-                return -E_IN_PARAM;
-        if (invalid_ppn(ppn_first))
-                return -E_IN_PARAM;
-        page_number = (size_t)((vaddr_end - vaddr_start) / PAGE_SIZE);
-        ppn_t ppn_last = ppn_first + (ppn_t)page_number - 1;
-        if (ppn_last < ppn_first || invalid_ppn(ppn_last))
-                return -E_IN_PARAM;
-
-        error_t err = REND_SUCCESS;
-
-        ENTRY_FLAGS_t lazy_leaf_flags = entry_flags_rm_sw_flags(flags)
-                                        | (ENTRY_FLAGS_t)PAGE_ENTRY_LAZY;
-        lazy_leaf_flags = (ENTRY_FLAGS_t)clear_mask_u64((u64)lazy_leaf_flags,
-                                                        (u64)PAGE_ENTRY_VALID);
-
-        radix_tree_level_walk_t l3_walk;
-        radix_tree_level_walk_init(&l3_walk,
-                                   root,
-                                   vaddr_start,
-                                   vaddr_end,
-                                   RADIX_TREE_LEVEL3,
-                                   RADIX_TREE_DIRECTION_INC);
-        if (!radix_tree_level_walk_check(&l3_walk)) {
-                err = -E_IN_PARAM;
-                goto insert_bind_out;
-        }
-
-        size_t page_index = 0;
-        do {
-                /* L3 table exists after caller-held INSERT range lock
-                 * (ensure_path). */
-                Radix_node_t* leaf = l3_walk.curr_l3_node;
-
-                leaf->flags = lazy_leaf_flags;
-                leaf->owner = owner_info;
-
-                if (!(leaf->flags & PAGE_ENTRY_LAZY)
-                    || (leaf->flags & (ENTRY_FLAGS_t)PAGE_ENTRY_VALID)) {
-                        err = -E_IN_PARAM;
-                        goto insert_bind_bind_rollback;
-                }
-
-                ppn_t cur_ppn = ppn_first + (ppn_t)page_index;
-                err = radix_leaf_link_rmap(vs->pmm, cur_ppn, leaf);
-                if (err != REND_SUCCESS)
-                        goto insert_bind_bind_rollback;
-
-                leaf->flags = entry_flags_rm_sw_flags(flags)
-                              | (ENTRY_FLAGS_t)PAGE_ENTRY_VALID;
-                page_index++;
-        } while (radix_tree_level_walk(&l3_walk));
-
-        if (page_index != page_number) {
-                err = -E_IN_PARAM;
-                goto insert_bind_bind_rollback;
-        }
-
-        goto insert_bind_out;
-
-insert_bind_bind_rollback:
-        /*
-         * One INC pass: VALID leaves get rmap unlinked then lazy+owner; others
-         * (partial lazy or untouched suffix) get lazy+owner so the caller can
-         * drop the full extent with @ref vmm_radix_tree_lock_range_small using
-         * @ref RADIX_RL_DELETE plus @ref vmm_radix_tree_unlock_range_small.
-         */
-        page_index = 0;
-        radix_tree_level_walk_init(&l3_walk,
-                                   root,
-                                   vaddr_start,
-                                   vaddr_end,
-                                   RADIX_TREE_LEVEL3,
-                                   RADIX_TREE_DIRECTION_INC);
-        do {
-                Radix_node_t* leaf = l3_walk.curr_l3_node;
-                if (leaf->flags & (ENTRY_FLAGS_t)PAGE_ENTRY_VALID) {
-                        ppn_t cur_ppn = ppn_first + (ppn_t)page_index;
-                        radix_leaf_unlink_rmap(vs->pmm, cur_ppn, leaf);
-                }
-                leaf->flags = lazy_leaf_flags;
-                leaf->owner = owner_info;
-                page_index++;
-        } while (radix_tree_level_walk(&l3_walk));
-
-insert_bind_out:
         return err;
 }
 
