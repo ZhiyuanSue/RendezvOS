@@ -10,115 +10,124 @@
 #include <rendezvos/error.h>
 #include <common/taggedptr.h>
 
-/*
- * Per-vspace radix metadata (4-level, 512 fanout; L0..L3 indices =
- * common/mm.h).
+/**
+ * @file vmm_radix_tree.h
+ * @brief Per-vspace radix tree metadata for virtual memory (4 levels, 512-way;
+ *        L0..L3 indices are defined in common/mm.h).
  *
- * Data layout (short)
- * -------------------
- * L0/L1/L2: each a 4KiB page of 512 x Radix_entry_t. Bit0 CAS lock, bit1 VALID,
- * bits2..11 child occupancy count, bits12..63 child KVA (low 12 clear).
- * L3: 512 x Radix_node_t (32B) per L2 row — shadow per 4KiB slot: `flags`
- * (ENTRY_FLAGS_t), `rmap_list` (Page rmap), `vs_ptr` (reservation owner).
+ * @par Table layout
+ * - L0, L1, L2: each level is one 4KiB page holding 512 @ref Radix_entry_t.
+ *   Bit0 = CAS lock, bit1 = VALID, bits 2..11 = child occupancy count,
+ *   bits 12..63 = child kernel virtual address (low 12 bits clear).
+ * - L3: 512 @ref Radix_node_t per L2 row (32 bytes per node): shadow state per
+ *   4KiB user slot (`flags`, `rmap_list`, `owner`).
  *
- * ---------------------------------------------------------------------------
- * Caller contract — recommended order (end-to-end)
- * ---------------------------------------------------------------------------
- * 1) `vmm_radix_tree_init` (+ optional `bootstrap` /
- * `install_shared_kernel_high_half` for shared high-half L1). `handler` wires
- * radix table pages at KERNEL linear. 2) `insert_range` on [page_vaddr,
- * page_vaddr + n*PAGE_SIZE): grows path if needed (RADIX_RL_INSERT), reserves
- * every crossed leaf as LAZY and sets `vs_ptr` to `vs` for L0 index < 256, else
- * to `root_vspace` for the shared high half (L0 index >= 256). Caller does not
- * need PTEs yet. 3) `leaf_bind_range` (or `leaf_bind` for one page): one
- * `radix_range_lock_acquire` over the same VA span (RADIX_RL_QUERY_OR_CHANGE).
- * Caller must have mapped PTEs; PPNs must be **contiguous** (`ppn_first`,
- * `ppn_first+1`, …). Each leaf must be LAZY and **not** VALID; **do not**
- * require `vs_ptr == vs` (shared L3 may differ). Bind sets VALID + rmap only —
- * **does not** rewrite `vs_ptr` (insert already fixed ownership).
- * Overwrite/remap is `change_*`, not bind. Same `leaf_flags` apply to all
- * pages; rollback restores lazy shadow from `leaf_flags` — match the prior
- * `insert_range` flags on that band. 4) `change_leaf_ppn` / `change_range_flag`
- * / `query_leaf` as needed (still under range lock rules where applicable). 5)
- * `leaf_unbind_range` (or `leaf_unbind`): same range lock; INC walk validates
- *    every leaf is VALID, then the same walker flips to DEC (no second init)
- * and unlinks rmap + clears VALID to LAZY without rewriting `vs_ptr`. 6)
- * `delete_range` when dropping reservation entirely (caller removes PTEs first
- *    per policy); then `destroy` for full radix teardown (low half + root only;
- *    shared high-half L1 slab is immortal).
+ * @par Recommended call order
+ * -# @ref vmm_radix_tree_init (and optionally @ref
+ *    vmm_radix_tree_bootstrap_shared_kernel_high_half /
+ *    @ref vmm_radix_tree_install_shared_kernel_high_half for shared high-half
+ *    L1). `handler` maps radix table pages at KERNEL linear addresses.
+ * -# @ref vmm_radix_tree_calculate_end_check for each VA band, then @ref
+ *    vmm_radix_tree_insert_range on @c [ @p vaddr_start , @p vaddr_end ):
+ *    grows path as needed (@ref RADIX_RL_INSERT), reserves each crossed leaf as
+ *    LAZY, sets `owner` to the caller vspace for L0 index &lt; 256, else to
+ *    `root_vspace` for the shared high half (L0 index &gt;= 256). Callers do
+ *    not need PTEs yet.
+ * -# @ref vmm_radix_tree_leaf_bind_range (or @ref vmm_radix_tree_leaf_bind for
+ *    one page): one internal range lock over the same VA span
+ *    (@ref RADIX_RL_QUERY_OR_CHANGE). Caller must have mapped PTEs; PPNs must
+ *    be contiguous (`ppn_first`, `ppn_first+1`, …). Each leaf must be LAZY and
+ *    not VALID; do not require `owner` to match `vs` (shared L3 may differ).
+ *    Bind sets VALID + rmap only; it does not rewrite `owner`. Remap/overwrite
+ *    uses @c change_* APIs, not bind. Use the same `leaf_flags` vocabulary as
+ *    the prior @ref vmm_radix_tree_insert_range on that band for rollback.
+ * -# @ref vmm_radix_tree_change_leaf_ppn / @ref vmm_radix_tree_change_range_flag
+ *    / @ref vmm_radix_tree_query_leaf as needed (caller holds @ref
+ *    vmm_radix_tree_lock_range_small with @ref RADIX_RL_QUERY_OR_CHANGE on the
+ *    VA band, then @ref vmm_radix_tree_unlock_range_small).
+ * -# @ref vmm_radix_tree_leaf_unbind_range (or @ref vmm_radix_tree_leaf_unbind):
+ *    same range lock; INC walk validates each leaf VALID, then flip walker to
+ *    DEC (no second init), unlink rmap and clear VALID to LAZY without changing
+ *    `owner`.
+ * -# To drop radix reservation for a VA band: @ref vmm_radix_tree_lock_range_small
+ *    with @ref RADIX_RL_DELETE on that band, then @ref vmm_radix_tree_unlock_range_small
+ *    (DELETE work runs inside the internal acquire). Caller removes PTEs first
+ *    per policy; then @ref vmm_radix_tree_destroy for full radix teardown (low
+ *    half + root only; shared high-half L1 slab is not freed here).
  *
- * `radix_range_lock_acquire` Phase 4 (L3) by kind
- * -----------------------------------------------
- * - INSERT: reject overlap (lazy/valid/vs on reserved slots).
- * - DELETE: require deletable leaf, then `radix_node_clear` each crossed L3
- * slot.
- * - QUERY_OR_CHANGE: **does not** clear or overwrite L3 nodes — bind/unbind and
- *   flag/query mutate leaves only after acquire, under the same held L2 set.
+ * @par Internal acquire Phase 4 (L3) by @ref radix_lock_acquire_kind_t
+ * - @ref RADIX_RL_INSERT: reject overlap on reserved slots (@c radix_l3_overlap_insert).
+ * - @ref RADIX_RL_DELETE: each crossed L3 leaf: @c radix_node_clear if not
+ *   @c radix_l3_undeletable (no @c PAGE_ENTRY_VALID — VALID leaves require prior
+ *   @ref vmm_radix_tree_leaf_unbind_range or insert_bind rollback). On first
+ *   undeletable leaf the acquire fails and rolls back per internal cleanup.
+ * - @ref RADIX_RL_QUERY_OR_CHANGE: does not bulk-clear L3 nodes; bind/unbind and
+ *   flag/query mutate leaves after acquire under the same held L2 set.
  *
- * `leaf_bind_range` implementation notes (current .c)
- * ----------------------------------------------------
- * Single L3 walk with RADIX_TREE_DIRECTION_INC: per page validate LAZY +
- * !VALID, then `radix_leaf_link_rmap` + set VALID (no `vs_ptr` write). Any
- * failure (validation, `link_rmap`, or short walk vs `page_number`) jumps to
- * rollback: `while (page_index > 0 && walk)` is a no-op when nothing was bound.
- * Rollback: flip only `walk.direction` to DEC (same pattern as
- * `radix_range_lock_acquire` clean_prev), unlink + restore LAZY — no extra
- * `radix_tree_level_walk_init`.
+ * @par leaf_bind_range / leaf_unbind_range (implementation summary)
+ * - leaf_bind_range: single L3 INC walk; per page validate LAZY and not VALID,
+ *   then link rmap and set VALID (no `owner` write). On failure, flip walker
+ *   to DEC and rollback without re-init (same pattern as internal range-lock
+ *   cleanup).
+ * - leaf_unbind_range: INC validate to range end, then DEC walk so PPN order
+ *   matches VA descending.
  *
- * `leaf_unbind_range`: validate with INC to the range end, then `direction =
- * DEC` and `do { … } while (remain && walk)` so PPN order matches VA order
- * backward.
+ * @par Locking (invariant I6)
+ * Multi–2 MiB-band operations take each crossed L2 row bit-lock in ascending
+ * 2 MiB base order, then release descending. Do not nest @ref
+ * @ref vmm_radix_tree_lock_range_small while holding those locks. Grow path uses nested
+ * L0 then L1 then L2 bit-locks (I3); stores to a held row use
+ * `radix_entry_update` with lock semantics (I4).
  *
- * Locking & SMP (I6)
- * ------------------
- * Any operation crossing multiple 2Mi bands takes each crossed L2 row’s
- * bit-lock in **ascending** 2MiB base order, then releases **descending**. Do
- * not nest `delete_range` while holding those locks. Single-path grow: L0 then
- * L1 then L2 nested bit-locks (I3); updates to a row’s `value` use
- * `radix_entry_update` with the lock bit semantics (I4).
+ * @par Shared high-half (I5)
+ * L0[256..511] may alias shared L1/L3. A @ref vmm_radix_tree_lock_range_small
+ * with @ref RADIX_RL_DELETE clears only leaves whose `owner` matches the
+ * caller; @ref vmm_radix_tree_leaf_bind_range
+ * and @ref vmm_radix_tree_leaf_unbind_range do not compare `owner` to `vs`.
+ * @c change_* APIs follow their documented `owner` rules.
  *
- * Shared high-half (I5)
- * ---------------------
- * L0[256..511] may alias shared L1/L3. `delete_range` still clears only leaves
- * whose `vs_ptr` matches the caller; `leaf_bind_range` / `leaf_unbind_range` do
- * not compare `vs_ptr` to `vs` (insert already chose ownership). `change_*`
- * follow their per-API `vs_ptr` rules.
+ * @par Child occupancy and reclaim
+ * L0/L1/L2 counts count used slots in the next level, not cross-vspace refcounts.
+ * Internal Phase 5 adjusts counts when ranges cross 2 MiB bands. Reclaim uses
+ * counts as guards when dropping whole L3/L2/L1 pages (I7: structural pages from
+ * failed insert are not freed until @ref vmm_radix_tree_destroy, except shared
+ * L1 slab).
  *
- * Child occupancy & reclaim
- * -------------------------
- * Counts in L0/L1/L2 entries are **not** cross-vspace refcounts; they count
- * used slots in the next level. Phase 5 adjusts them with `radix_entry_update`
- * + COUNT delta when ranges cross 2Mi bands. Reclaim uses counts as guard for
- * dropping whole L3/L2/L1 pages (I7: structural pages grown on insert failure
- * are not freed until `destroy`, except shared L1 slab).
- *
- * rmap & PMM zone
- * ---------------
+ * @par Rmap and PMM zone
  * `radix_leaf_link_rmap` / `radix_leaf_unlink_rmap` run under `vs->pmm->zone`
- * lock. Typical lock order: vspace / radix band work first, then zone (see
- * project INVARIANTS / AI_CHECKLIST); do not invert while holding the same page
- * in doubt.
+ * lock. Typical order: vspace / radix band work first, then zone (see project
+ * INVARIANTS / AI_CHECKLIST); do not invert while the same page is in doubt.
  *
- * VA / parameters
- * ---------------
- * Only 4KiB-aligned ranges and finite [base,end) are validated;
- * canonical-address policy is the caller’s. Any API taking both `struct
- * map_handler*` and `VSpace*` uses **handler first, then vs**;
- * `change_range_flag` and `query_leaf` use **vs** first (no handler).
+ * @par VA and parameters
+ * Half-open intervals use @c [base, end) with @p end as the first byte after the
+ * covered pages. Canonical-address policy is the caller's responsibility. APIs
+ * that take both `struct map_handler*` and `VSpace*` use handler first, then
+ * `vs`.
+ * Only @ref vmm_radix_tree_calculate_end_check applies radix VA-band policy to a
+ * page count; call it **before** @ref vmm_radix_tree_lock_range_big / @ref
+ * vmm_radix_tree_lock_range_small (and matching unlocks) and before mutators that
+ * take @c vaddr_end, then pass that same @c vaddr_end for the whole critical
+ * section. @ref vmm_radix_tree_lock_range_big, @ref vmm_radix_tree_lock_range_small,
+ * @ref vmm_radix_tree_unlock_range_big, @ref vmm_radix_tree_unlock_range_small, and
+ * the range mutators do **not** repeat that radix policy check.
+ * Mutating range APIs expect the caller to bracket them with @ref
+ * vmm_radix_tree_lock_range_small and @ref vmm_radix_tree_unlock_range_small on
+ * the same VA interval with the matching @ref radix_lock_acquire_kind_t (see
+ * each function's @note).
  *
- * Invariants (index I0–I7 unchanged in meaning)
- * ----------------------------------------------
- * I0  Published child KVA in Radix_entry_t is not repointed until `destroy`.
- * I1  Bit0 on each Radix_entry_t (L0/L1/L2) protects that word’s `value`.
- * I2  One L2 bit-lock covers that row’s entry word, L3 array, leaf flags/bind,
- *     and occupancy updates for that 2Mi band.
- * I3  Nested grow: L0→L1→L2 bit-lock order; no lock-order inversion vs other
- * radix. I4  Writes to a held row’s `value` go through `radix_entry_update`
- * (+INHERIT_LOCK when the CAS lock must survive the store). I5  Shared
- * high-half: respect `vs_ptr` on leaves (see above). I6  Multi-band: acquire
- * all crossed L2 locks ascending 2Mi base, unlock descending. I7  Table pages
- * grown on failed insert are not freed until `destroy` (shared L1 slab
- * excepted).
+ * @par Invariants I0–I7 (summary)
+ * - I0: Published child KVA in @ref Radix_entry_t is not repointed until
+ *   destroy.
+ * - I1: Bit0 on each @ref Radix_entry_t (L0/L1/L2) protects that word's value.
+ * - I2: One L2 bit-lock covers that row's entry word, L3 array, leaf flags/bind,
+ *   and occupancy updates for that 2 MiB band.
+ * - I3: Nested grow L0→L1→L2; no lock-order inversion vs other radix locks.
+ * - I4: Writes to a held row's value go through `radix_entry_update` (with
+ *   INHERIT_LOCK when the CAS lock must survive the store).
+ * - I5: Shared high-half: respect `owner` on leaves (see above).
+ * - I6: Multi-band: acquire all crossed L2 locks ascending, unlock descending.
+ * - I7: Table pages grown on failed insert are not freed until destroy (shared
+ *   L1 slab excepted).
  */
 
 #define VMM_RADIX_ENTRY_LOCK_OFF  (0)
@@ -135,25 +144,33 @@
 
 #define VMM_RADIX_PTR_MASK (0xfffffffffffff000ULL)
 
+/**
+ * @brief One radix table entry word at L0, L1, or L2 (512 entries per 4KiB page).
+ */
 typedef struct {
-        u64 value;
+        u64 value; /*!< Packed lock, valid, count, and child pointer (see @file). */
 } Radix_entry_t;
 
-/*
- * L3: one node per 4KiB user page slot under an L2 entry (512 nodes / 16KiB).
+/**
+ * @brief L3 shadow node: one per 4KiB slot under an L2 entry (512 nodes / 16 KiB
+ *        of L3 storage per L2 row).
  *
- * `flags` — shadow leaf state (same ENTRY_FLAGS_t vocabulary as map()/PTE):
- *   - Bits such as PAGE_ENTRY_{READ,WRITE,USER,...} describe the mapping the
- *     range APIs intend for this VA once committed (see insert_range).
- *   - PAGE_ENTRY_LAZY means "metadata reserved, no leaf PTE yet";
- *     leaf_bind / leaf_bind_range clear LAZY after a successful map().
- *   This is not a second page table; it is nexus-side bookkeeping so fault /
- *   query paths can consult the radix without parsing the HW walk every time.
+ * @par flags
+ * Same @c ENTRY_FLAGS_t vocabulary as map()/PTE: PAGE_ENTRY_READ/WRITE/USER/…
+ * describe intended mapping after commit (@ref vmm_radix_tree_insert_range).
+ * PAGE_ENTRY_LAZY means metadata reserved without leaf PTE yet;
+ * @ref vmm_radix_tree_leaf_bind_range clears LAZY after a successful map().
+ * This is not a second page table; it is bookkeeping so fault/query paths can
+ * read radix state without walking hardware page tables every time.
  *
- * `rmap_list` — links this leaf into Page reverse-map lists when wired to PMM.
- * `vs_ptr` — reservation owner set by `insert_range` (`vs` for L0 index < 256,
- *   `root_vspace` for L0 index >= 256 / shared high-half). `leaf_bind_range` /
- *   `leaf_unbind_range` do not change it.
+ * @par rmap_list
+ * Links this leaf into @c Page reverse-map lists when wired to PMM.
+ *
+ * @par owner
+ * Reservation owner from @ref vmm_radix_tree_insert_range (`vs` for L0 index
+ * &lt; 256, `root_vspace` for L0 index &gt;= 256 / shared high-half).
+ * @ref vmm_radix_tree_leaf_bind_range and @ref vmm_radix_tree_leaf_unbind_range
+ * do not change `owner`.
  */
 typedef struct {
         ENTRY_FLAGS_t flags;
@@ -161,144 +178,378 @@ typedef struct {
         tagged_ptr_t owner;
 } Radix_node_t;
 
-/*
- * Range insert: grow metadata + reserve leaf nodes (lazy via LAZY flag).
- * Per leaf, `vs_ptr` is `vs` for VA in the low half (L0 index < 256), and
- * `root_vspace` for the shared kernel high half (L0 index >= 256).
- * `handler` is required: each PMM-backed radix page is installed with map()
- * at KERNEL_PHY_TO_VIRT(ppn) (same as nexus); grow uses that linear KVA.
- * `root_vs` is used for shared high-half leaves (L0 index >= 256); typically
- * `&root_vspace` when `vs` is a kernel or user table vspace using that slab.
+/**
+ * @brief Kind argument for @ref vmm_radix_tree_lock_range_small and internal
+ *        @c radix_range_lock_acquire (numeric values must stay stable).
+ */
+typedef enum {
+        RADIX_RL_INSERT = 0, /*!< Insert / grow-path semantics at L3. */
+        RADIX_RL_DELETE, /*!< Delete-path semantics at L3. */
+        /** No L2 occupancy adjustment (mprotect-style metadata / query paths). */
+        RADIX_RL_QUERY_OR_CHANGE,
+} radix_lock_acquire_kind_t;
+
+/**
+ * @brief Compute @p *vaddr_end_out = @p vaddr_start + @p page_number * @c PAGE_SIZE
+ *        and run the **only** radix VA-band policy check for that half-open interval.
+ *
+ * Call this once per VA band before locking, then pass the same @p *vaddr_end_out to
+ * @ref vmm_radix_tree_lock_range_big, @ref vmm_radix_tree_lock_range_small,
+ * matching unlocks, and to @c vaddr_end on range mutators (insert/bind/unbind,
+ * @ref vmm_radix_tree_query_leaf, etc.). Lock/unlock and mutators do not repeat
+ * this check.
+ *
+ * @param vaddr_start   Interval start (inclusive).
+ * @param page_number   Number of 4KiB pages (must be >= 1).
+ * @param vaddr_end_out Non-NULL; on success, first byte past the band.
+ *
+ * @return true on success, false if @p page_number is zero, @p vaddr_end_out is NULL,
+ *         the span overflows @c vaddr, or @c radix_check_range rejects the band.
+ */
+bool vmm_radix_tree_calculate_end_check(vaddr vaddr_start, size_t page_number,
+                                        vaddr* vaddr_end_out);
+
+/**
+ * @brief Acquire coarse L0 bit-locks only for a VA band (512 GiB buckets).
+ *
+ * @param handler  Map handler; must be non-NULL (same contract as other radix
+ *                 entry points that take handler + vs).
+ * @param vs       Target vspace whose @c root_radix is initialized.
+ * @param vaddr_start  Interval start (page-aligned; interval is [vaddr_start, vaddr_end)).
+ * @param vaddr_end    Interval end (first byte not in the interval; same convention
+ *                     as internal @c radix_range_lock_acquire). Must match @p *vaddr_end_out
+ *                     from a successful @ref vmm_radix_tree_calculate_end_check on the
+ *                     same @p vaddr_start and page count (do not hand-roll @c vaddr_start + n *
+ *                     @c PAGE_SIZE unless it equals that result).
+ *
+ * @retval REND_SUCCESS        All crossed L0 entries locked in ascending order.
+ * @retval -E_IN_PARAM        Bad pointers or walk setup failed (caller must
+ *                            supply @p vaddr_end from @ref vmm_radix_tree_calculate_end_check;
+ *                            this function does not re-check radix VA-band policy).
+ *
+ * @note The vspace radix root already references a full L0 table page; L0 slots
+ *       exist. This does not grow L1/L2/L3 and does not imply any L3 leaf path
+ *       exists below.
+ *
+ * @note Must be paired with @ref vmm_radix_tree_unlock_range_big over the same
+ *       [vaddr_start, vaddr_end) before leaving the critical section.
+ */
+error_t vmm_radix_tree_lock_range_big(struct map_handler* handler, VSpace* vs,
+                                      vaddr vaddr_start, vaddr vaddr_end);
+
+/**
+ * @brief Release L0 bit-locks acquired by @ref vmm_radix_tree_lock_range_big.
+ *
+ * @param vs    Target vspace.
+ * @param vaddr_start Same @p vaddr_start passed to @ref vmm_radix_tree_lock_range_big.
+ * @param vaddr_end   Same @p vaddr_end passed to @ref vmm_radix_tree_lock_range_big.
+ *
+ * @retval REND_SUCCESS     Unlocked all crossed L0 entries (descending walk).
+ * @retval -E_IN_PARAM     Bad root or invalid range for the walk.
+ */
+error_t vmm_radix_tree_unlock_range_big(VSpace* vs, vaddr vaddr_start, vaddr vaddr_end);
+
+/**
+ * @brief Acquire full radix range lock (L2 rows + internal path rules) for a VA
+ *        band.
+ *
+ * @param handler Map handler (radix metadata mapping).
+ * @param vs      Target vspace.
+ * @param vaddr_start Interval [vaddr_start, vaddr_end) start (page-aligned).
+ * @param vaddr_end   Interval end (first byte not covered); same @p vaddr_end as from
+ *                   @ref vmm_radix_tree_calculate_end_check for this band.
+ * @param kind    Acquire semantics (@ref RADIX_RL_INSERT, @ref RADIX_RL_DELETE,
+ *                or @ref RADIX_RL_QUERY_OR_CHANGE).
+ *
+ * @return Same as internal @c radix_range_lock_acquire (e.g. @c REND_SUCCESS or
+ *         an error code).
+ *
+ * @note On success, only L2 locks remain held until @ref
+ *       vmm_radix_tree_unlock_range_small (internal acquire releases L0 after
+ *       its phases).
+ */
+error_t vmm_radix_tree_lock_range_small(struct map_handler* handler, VSpace* vs,
+                                        vaddr vaddr_start, vaddr vaddr_end,
+                                        radix_lock_acquire_kind_t kind);
+
+/**
+ * @brief Release L2 locks held after @ref vmm_radix_tree_lock_range_small.
+ *
+ * @param vs    Target vspace.
+ * @param vaddr_start Same @p vaddr_start as the matching small lock call.
+ * @param vaddr_end   Same @p vaddr_end as the matching small lock call.
+ *
+ * @retval REND_SUCCESS     Released all crossed L2 entries.
+ * @retval -E_RENDEZVOS     Walk check failed (should not happen for valid prior
+ *                          lock).
+ * @retval -E_IN_PARAM      Bad root or invalid range.
+ */
+error_t vmm_radix_tree_unlock_range_small(VSpace* vs, vaddr vaddr_start, vaddr vaddr_end);
+
+/**
+ * @brief Grow radix metadata and lazy-reserve leaf nodes for a contiguous VA
+ *        range.
+ *
+ * @param handler    Map handler; required to map each PMM-backed radix page at
+ *                   KERNEL_PHY_TO_VIRT(ppn) (same pattern as nexus).
+ * @param vs         Target vspace.
+ * @param owner_info Owner tag written into each reserved leaf (`owner` field).
+ * @param vaddr_start Start of range (page-aligned).
+ * @param flags       Initial shadow flags for each leaf (typically include LAZY).
+ * @param vaddr_end   Interval end for @c [ @p vaddr_start , @p vaddr_end ); from
+ *                   @ref vmm_radix_tree_calculate_end_check(@p vaddr_start, n_pages,
+ *                   &vaddr_end).
+ *
+ * @return @c REND_SUCCESS on success, or an error code on failure (partial state
+ *         is rolled back per implementation).
+ *
+ * @note Caller must hold @ref vmm_radix_tree_lock_range_small on
+ *       [ @p vaddr_start , @p vaddr_end ) with @ref RADIX_RL_INSERT, then @ref
+ *       vmm_radix_tree_unlock_range_small after this call returns.
+ *
+ * @note Per leaf, `owner` is the caller vspace for low-half VA (L0 index &lt;
+ *       256) and `root_vspace` for shared kernel high half (L0 index &gt;= 256).
  */
 error_t vmm_radix_tree_insert_range(struct map_handler* handler, VSpace* vs,
-                                    tagged_ptr_t owner_info, vaddr page_vaddr,
-                                    ENTRY_FLAGS_t flags, size_t page_number);
+                                    tagged_ptr_t owner_info, vaddr vaddr_start,
+                                    ENTRY_FLAGS_t flags, vaddr vaddr_end);
 
-/*
- * Mark a contiguous VA range as committed (sets VALID + rmap; leaves `vs_ptr`
- * as set by `insert_range`), one 4KiB leaf at a
- * time under a single range lock (fewer L2 acquire/release cycles than per-page
- * calls). Caller must have wired PTEs for each page in
- * [page_vaddr, page_vaddr + page_number*PAGE_SIZE) with **contiguous** PPNs
- * `ppn_first, ppn_first+1, ...`. `page_number >= 1`. Same `leaf_flags` apply to
- * every leaf. Every leaf must already be **lazy-reserved** (LAZY, not VALID);
- * `vs_ptr` is whatever `insert_range` set (need not equal `vs`).
- * Remap/overwrite uses `change_*`. Rollback on partial rmap failure restores
- * lazy shadow from `leaf_flags` — use the same `flags` vocabulary as the prior
- * `insert_range` for this VA band. No map()/unmap() here.
+/**
+ * @brief Under one range lock, set VALID + rmap for each lazy-reserved leaf in
+ *        a contiguous VA range.
+ *
+ * @param handler      Map handler.
+ * @param vs           Target vspace.
+ * @param vaddr_start  Start of range (page-aligned).
+ * @param ppn_first    Physical page number of the first page; PPNs must be
+ *                     contiguous for the whole range.
+ * @param vaddr_end    Interval end for @c [ @p vaddr_start , @p vaddr_end ); from
+ *                     @ref vmm_radix_tree_calculate_end_check.
+ * @param leaf_flags   Flags applied to every leaf (same vocabulary as @ref
+ *                     vmm_radix_tree_insert_range on that band).
+ *
+ * @return @c REND_SUCCESS or an error code; partial failure rolls back bound
+ *         leaves per implementation.
+ *
+ * @note Caller must hold @ref vmm_radix_tree_lock_range_small on the same band
+ *       with @ref RADIX_RL_QUERY_OR_CHANGE, then @ref vmm_radix_tree_unlock_range_small.
+ *
+ * @note Caller must have wired PTEs for [ @p vaddr_start , @p vaddr_end ). Every
+ *       leaf must be LAZY and not VALID beforehand. No map()/unmap() here.
  */
 error_t vmm_radix_tree_leaf_bind_range(struct map_handler* handler, VSpace* vs,
-                                       vaddr page_vaddr, ppn_t ppn_first,
-                                       size_t page_number,
-                                       ENTRY_FLAGS_t leaf_flags);
+                                       vaddr vaddr_start, ppn_t ppn_first,
+                                       vaddr vaddr_end, ENTRY_FLAGS_t leaf_flags);
 
-/*
- * Single `radix_range_lock_acquire`/`release` over [page_vaddr, end): one L3
- * walk that lazy-reserves then binds each page (same outcome as insert_range +
- * leaf_bind_range). On bind failure: one INC rollback walk — unlink rmap on
- * VALID leaves, then set every leaf lazy+owner so caller `delete_range` can
- * drop the full extent.
- * Caller must have `map()`'d PTEs before calling. For user VA, avoid executing
- * this range until the call returns (SMP vs PTE/radix ordering).
+/**
+ * @brief Fused insert + bind: one internal range lock and one L3 walk that
+ *        lazy-reserves then binds each page (same outcome as @ref
+ *        vmm_radix_tree_insert_range + @ref vmm_radix_tree_leaf_bind_range).
+ *
+ * @param handler      Map handler.
+ * @param vs           Target vspace.
+ * @param owner_info   Owner tag for insert semantics.
+ * @param vaddr_start  Start of range.
+ * @param flags        Insert-time shadow flags.
+ * @param vaddr_end    Interval end for @c [ @p vaddr_start , @p vaddr_end ); from
+ *                     @ref vmm_radix_tree_calculate_end_check.
+ * @param ppn_first    First contiguous PPN for bind.
+ *
+ * @return @c REND_SUCCESS or an error code.
+ *
+ * @note Caller must hold @ref vmm_radix_tree_lock_range_small with
+ *       @ref RADIX_RL_INSERT on the band, then @ref vmm_radix_tree_unlock_range_small.
+ *
+ * @note Caller must have map()'d PTEs before calling. On bind failure, radix
+ *       shadow is restored so a subsequent @ref vmm_radix_tree_lock_range_small
+ *       with @ref RADIX_RL_DELETE plus @ref vmm_radix_tree_unlock_range_small
+ *       can drop the full extent. For user VA, avoid executing this range until
+ *       the call returns (ordering vs SMP).
  */
 error_t vmm_radix_tree_insert_bind_range(struct map_handler* handler,
                                          VSpace* vs, tagged_ptr_t owner_info,
-                                         vaddr page_vaddr, ENTRY_FLAGS_t flags,
-                                         size_t page_number, ppn_t ppn_first);
+                                         vaddr vaddr_start, ENTRY_FLAGS_t flags,
+                                         vaddr vaddr_end, ppn_t ppn_first);
 
-/*
- * Restore radix shadow to LAZY for each page in the range (does not change
- * `vs_ptr`). `ppn_first` is the PPN of the first page; physical pages must be
- * contiguous. `page_number >= 1`. Does not adjust L2 occupancy; delete_range
- * removes reservation entirely.
+/**
+ * @brief Clear VALID and unlink rmap for each page in range; restore LAZY shadow;
+ *        does not change `owner`.
+ *
+ * @param handler      Map handler.
+ * @param vs           Target vspace.
+ * @param vaddr_start  Start of range.
+ * @param ppn_first    PPN of first page (contiguous physical run).
+ * @param vaddr_end    Interval end for @c [ @p vaddr_start , @p vaddr_end ); from
+ *                     @ref vmm_radix_tree_calculate_end_check.
+ *
+ * @return @c REND_SUCCESS or an error code.
+ *
+ * @note Caller must hold @ref vmm_radix_tree_lock_range_small with
+ *       @ref RADIX_RL_QUERY_OR_CHANGE on the band, then @ref vmm_radix_tree_unlock_range_small.
+ *
+ * @note Does not adjust L2 occupancy counts; drop reservation with
+ *       @ref vmm_radix_tree_lock_range_small (@ref RADIX_RL_DELETE) and
+ *       @ref vmm_radix_tree_unlock_range_small after caller policy (e.g. after unmap).
  */
 error_t vmm_radix_tree_leaf_unbind_range(struct map_handler* handler,
-                                         VSpace* vs, vaddr page_vaddr,
-                                         ppn_t ppn_first, size_t page_number);
+                                         VSpace* vs, vaddr vaddr_start,
+                                         ppn_t ppn_first, vaddr vaddr_end);
 
-/* Single 4KiB page; implemented as leaf_*_range(..., 1). */
-error_t vmm_radix_tree_leaf_bind(struct map_handler* handler, VSpace* vs,
-                                 vaddr page_vaddr, ppn_t ppn,
-                                 ENTRY_FLAGS_t leaf_flags);
-error_t vmm_radix_tree_leaf_unbind(struct map_handler* handler, VSpace* vs,
-                                   vaddr page_vaddr, ppn_t ppn);
-
-/*
- * Delete radix reservation for [page_vaddr, page_vaddr+page_number*PAGE_SIZE).
- * Caller tears down PTEs for that VA range. `handler` is for radix metadata
- * map/free inside radix_range_lock_acquire (not leaf PTEs).
+/**
+ * @brief Bind a single 4KiB leaf (implemented as @ref vmm_radix_tree_leaf_bind_range
+ *        on @c [ @p vaddr_start , @p vaddr_start + PAGE_SIZE )).
  */
-error_t vmm_radix_tree_delete_range(struct map_handler* handler, VSpace* vs,
-                                    vaddr page_vaddr, size_t page_number);
+error_t vmm_radix_tree_leaf_bind(struct map_handler* handler, VSpace* vs,
+                                 vaddr vaddr_start, ppn_t ppn,
+                                 ENTRY_FLAGS_t leaf_flags);
 
-/*
- * Update radix leaf flags after caller remaps PTE at `page_vaddr` from
- * `old_ppn` to `new_ppn`. When `old_ppn != new_ppn`, unlinks `rmap_list` from
- * the old `Page` and links into the new (same as leaf_unbind / leaf_bind under
- * `vs->pmm->zone`). No map()/unmap() here.
+/**
+ * @brief Unbind a single 4KiB leaf (implemented as @ref
+ *        vmm_radix_tree_leaf_unbind_range on @c [ @p vaddr_start , @p vaddr_start + PAGE_SIZE )).
+ */
+error_t vmm_radix_tree_leaf_unbind(struct map_handler* handler, VSpace* vs,
+                                   vaddr vaddr_start, ppn_t ppn);
+
+/**
+ * @brief After caller remaps PTE at @p vaddr_start from @p old_ppn to @p new_ppn,
+ *        update radix leaf wiring (rmap unlink/link under @c vs->pmm->zone
+ *        when PPN changes).
+ *
+ * @param handler      Map handler.
+ * @param vs           Target vspace.
+ * @param vaddr_start  User VA of the leaf.
+ * @param vaddr_end    One-page band end from @ref vmm_radix_tree_calculate_end_check(
+ *                     @p vaddr_start, 1, &vaddr_end).
+ * @param old_ppn      Previous PPN.
+ * @param new_ppn      New PPN.
+ * @param leaf_flags   Shadow flags to record for the leaf.
+ *
+ * @return @c REND_SUCCESS or an error code.
+ *
+ * @note Caller must hold @ref vmm_radix_tree_lock_range_small with
+ *       @ref RADIX_RL_QUERY_OR_CHANGE on [ @p vaddr_start , @p vaddr_end ), then
+ *       @ref vmm_radix_tree_unlock_range_small. No map()/unmap() here.
  */
 error_t vmm_radix_tree_change_leaf_ppn(struct map_handler* handler, VSpace* vs,
-                                       vaddr page_vaddr, ppn_t old_ppn,
-                                       ppn_t new_ppn, ENTRY_FLAGS_t leaf_flags);
+                                       vaddr vaddr_start, vaddr vaddr_end,
+                                       ppn_t old_ppn, ppn_t new_ppn,
+                                       ENTRY_FLAGS_t leaf_flags);
 
-error_t vmm_radix_tree_change_leaf_ppn_flag(struct map_handler* handler,
-                                            VSpace* vs, vaddr page_vaddr,
-                                            ppn_t old_ppn, ppn_t new_ppn,
-                                            ENTRY_FLAGS_t new_flag);
-
-/* Metadata-only: no map_handler; does not grow tables (skips missing path). */
-error_t vmm_radix_tree_change_range_flag(VSpace* vs, vaddr page_vaddr,
-                                         ENTRY_FLAGS_t new_flags,
-                                         size_t page_number);
-
-/*
- * Read shadow metadata for one 4KiB slot; no map_handler; does not allocate.
- * `out_flags` and/or `out_owner` may be NULL; at least one must be non-NULL.
- * On success, fills requested outputs from the L3 leaf. On -E_IN_PARAM (no leaf
- * / bad range), clears `*out_flags` to 0 and `*out_owner` to tp_new_none() when
- * the corresponding pointer is non-NULL.
+/**
+ * @brief Like @ref vmm_radix_tree_change_leaf_ppn but also applies @p new_flag
+ *        to the leaf flag word (combined remap + flag tweak).
  */
-error_t vmm_radix_tree_query_leaf(VSpace* vs, vaddr page_vaddr,
+error_t vmm_radix_tree_change_leaf_ppn_flag(struct map_handler* handler,
+                                            VSpace* vs, vaddr vaddr_start,
+                                            vaddr vaddr_end, ppn_t old_ppn,
+                                            ppn_t new_ppn, ENTRY_FLAGS_t new_flag);
+
+/**
+ * @brief Metadata-only flag update on a contiguous leaf range (does not grow
+ *        tables; skips missing path).
+ *
+ * @param handler      Map handler (required for @ref vmm_radix_tree_lock_range_small).
+ * @param vs           Target vspace.
+ * @param vaddr_start  Start of range.
+ * @param vaddr_end    Interval end for @c [ @p vaddr_start , @p vaddr_end ); from
+ *                     @ref vmm_radix_tree_calculate_end_check.
+ * @param new_flags    New flags applied to each existing leaf in range.
+ *
+ * @return @c REND_SUCCESS or an error code.
+ *
+ * @note Caller must hold @ref vmm_radix_tree_lock_range_small with
+ *       @ref RADIX_RL_QUERY_OR_CHANGE on the band, then @ref vmm_radix_tree_unlock_range_small.
+ */
+error_t vmm_radix_tree_change_range_flag(struct map_handler* handler, VSpace* vs,
+                                         vaddr vaddr_start, vaddr vaddr_end,
+                                         ENTRY_FLAGS_t new_flags);
+
+/**
+ * @brief Read shadow metadata for one 4KiB slot (does not allocate).
+ *
+ * @param handler      Map handler (required for @ref vmm_radix_tree_lock_range_small).
+ * @param vs           Target vspace.
+ * @param vaddr_start  User VA of the slot.
+ * @param vaddr_end    One-page band end from @ref vmm_radix_tree_calculate_end_check(
+ *                     @p vaddr_start, 1, &vaddr_end).
+ * @param out_flags    Optional output for leaf flags (may be NULL).
+ * @param out_owner    Optional output for `owner` (may be NULL).
+ *
+ * @return @c REND_SUCCESS when the L3 leaf was read. Returns @c -E_IN_PARAM
+ *         on failure; on failure, non-NULL @p out_flags is cleared to 0 and
+ *         non-NULL @p out_owner to tp_new_none() where the implementation applies
+ *         that rule.
+ *
+ * @note Caller must hold @ref vmm_radix_tree_lock_range_small with
+ *       @ref RADIX_RL_QUERY_OR_CHANGE on [ @p vaddr_start , @p vaddr_end ), then
+ *       @ref vmm_radix_tree_unlock_range_small.
+ *
+ * @note At least one of @p out_flags and @p out_owner must be non-NULL.
+ */
+error_t vmm_radix_tree_query_leaf(struct map_handler* handler, VSpace* vs,
+                                  vaddr vaddr_start, vaddr vaddr_end,
                                   ENTRY_FLAGS_t* out_flags,
                                   tagged_ptr_t* out_owner);
 
-/*
- * Allocate the L0 table page; stores pointer in vs nexus root node.
- * Requires `handler`: map() wires the page at KERNEL_PHY_TO_VIRT then zeros it.
+/**
+ * @brief Allocate the L0 radix table page and store its pointer in the vspace
+ *        root radix field.
+ *
+ * @param handler  Map handler: map() wires the page at KERNEL_PHY_TO_VIRT then
+ *                 zeroes it.
+ * @param vs       Target vspace.
+ *
+ * @return Pointer to the L0 @ref Radix_entry_t array (root), or NULL on failure.
  */
 Radix_entry_t* vmm_radix_tree_init(struct map_handler* handler, VSpace* vs);
 
-/*
- * Requires `handler` to unmap KERNEL_PHY_TO_VIRT metadata before pmm_free.
- * In the same teardown walk, before each low-half L3 table is freed, detaches
- * `Radix_node_t::rmap_list` for leaves with `vs_ptr == vs` under the PMM zone
- * lock. L0[256..511] shared slab is not freed here.
+/**
+ * @brief Tear down radix metadata for @p vs (unmap KERNEL_PHY_TO_VIRT metadata,
+ *        free radix pages per policy).
+ *
+ * @param handler  Map handler (unmap before pmm_free).
+ * @param vs       Target vspace.
+ *
+ * @return @c REND_SUCCESS or an error code.
+ *
+ * @note Before freeing each low-half L3 table, detaches @ref Radix_node_t::rmap_list
+ *       for leaves whose `owner` matches @p vs under the PMM zone lock.
+ *       L0[256..511] shared slab is not freed here.
  */
 error_t vmm_radix_tree_destroy(struct map_handler* handler, VSpace* vs);
 
-/*
- * Shared kernel high-half L1 backing (boot vs every other vspace)
- * ---------------------------------------------------------------
- * - vmm_radix_tree_bootstrap_shared_kernel_high_half: run once (e.g. BSP early
- *   boot). Allocates contiguous pages and map()s each at KERNEL_PHY_TO_VIRT.
- *   Requires non-NULL `vs` and `handler`. Idempotent.
- * - vmm_radix_tree_install_shared_kernel_high_half: for one vspace after
- *   vmm_radix_tree_init, publishes L0[256..511] to the per-index L1 table KVAs
- *   derived from the bootstrapped slab (`radix_entry_lock` /
- * `radix_entry_update` per slot; never memcpy of another vspace’s entry words).
- * Idempotent if already correct; -E_IN_PARAM if a slot already points
- * elsewhere. Install requires bootstrap to have completed. After install,
- * delete_range / leaf_bind / leaf_unbind / change_* on VAs in that band use
- * Radix_node_t::vs_ptr (set by insert_range) so shared L3 is not corrupted by
- * another vspace (see I5 and Range APIs above). vmm_radix_tree_destroy does not
- * free the shared high-half L1 band (L0[256..511]); it only tears down
- * L0[0..255] subtrees and the root page. Do not destroy radix for one vspace
- * while others still depend on the same shared L1 subtree unless policy
- * guarantees disjoint use (e.g. only root_vspace installs).
+/**
+ * @brief One-time bootstrap of shared kernel high-half L1 backing (e.g. BSP
+ *        early boot).
+ *
+ * @param handler  Map handler.
+ * @param vs       Non-NULL vspace used for allocation context (see implementation).
+ *
+ * @return @c REND_SUCCESS or an error code.
+ *
+ * @note Allocates contiguous pages and map()s each at KERNEL_PHY_TO_VIRT.
+ *       Idempotent.
  */
 error_t
 vmm_radix_tree_bootstrap_shared_kernel_high_half(struct map_handler* handler,
                                                  VSpace* vs);
+
+/**
+ * @brief For one vspace after @ref vmm_radix_tree_init, publish L0[256..511] to
+ *        the per-index L1 table KVAs from the bootstrapped slab.
+ *
+ * @param handler  Map handler.
+ * @param vs       Target vspace.
+ *
+ * @return @c REND_SUCCESS, @c -E_IN_PARAM if a slot already points elsewhere,
+ *         or another error code.
+ *
+ * @note Uses per-slot `radix_entry_lock` / `radix_entry_update`; never memcpy
+ *       from another vspace's entry words. Requires bootstrap completed first.
+ *       Idempotent if already correct. @ref vmm_radix_tree_destroy does not free
+ *       this shared band; do not destroy one vspace while others still depend on
+ *       the same shared L1 subtree unless policy guarantees disjoint use.
+ */
 error_t
 vmm_radix_tree_install_shared_kernel_high_half(struct map_handler* handler,
                                                VSpace* vs);

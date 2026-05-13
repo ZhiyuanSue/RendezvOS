@@ -1,6 +1,10 @@
 /*
  * Default user anonymous page backend (see mm_anon_backend.h).
  * Orchestrates radix + map + bind; does not own vspace lifecycle (vmm).
+ *
+ * Radix band protocol matches core/kernel/mm/kmalloc.c eager paths:
+ * core_get_free_pages (INSERT → map → insert_bind) and core_free_pages
+ * (QUERY_OR_CHANGE → leaf_unbind_range → unlock → unmap → DELETE → pmm_free).
  */
 #include <common/align.h>
 #include <common/taggedptr.h>
@@ -38,50 +42,75 @@ vaddr mm_anon_map_pages_eager(struct map_handler* handler, struct VSpace* vs,
         if (invalid_ppn(ppn) || alloced_page_number != page_num) {
                 if (!invalid_ppn(ppn) && alloced_page_number > page_num)
                         pmm_ptr->pmm_free(pmm_ptr, ppn, alloced_page_number);
-                pr_error("[MM_ANON] mm_anon_map_pages_eager: pmm_alloc failed\n");
+                pr_error(
+                        "[MM_ANON] mm_anon_map_pages_eager: pmm_alloc failed\n");
                 return 0;
         }
 
+        vaddr vaddr_end;
+        error_t err_lock;
         size_t mapped_count = 0;
+
+        if (!vmm_radix_tree_calculate_end_check(
+                    uva, alloced_page_number, &vaddr_end)) {
+                pr_error(
+                        "[MM_ANON] mm_anon_map_pages_eager: radix end check failed\n");
+                goto before_lock_fail;
+        }
+        err_lock = vmm_radix_tree_lock_range_small(
+                handler, (VSpace*)vs, uva, vaddr_end, RADIX_RL_INSERT);
+        if (err_lock != REND_SUCCESS) {
+                pr_error(
+                        "[MM_ANON] mm_anon_map_pages_eager: radix lock fail e=%d\n",
+                        err_lock);
+                goto before_lock_fail;
+        }
         while (mapped_count < alloced_page_number) {
                 vaddr va = uva + mapped_count * PAGE_SIZE;
-                error_t me = map(vs,
-                                 ppn + (ppn_t)mapped_count,
-                                 VPN(va),
-                                 3,
-                                 leaf_eflags,
-                                 handler);
-                if (me != REND_SUCCESS) {
+                error_t map_err = map(vs,
+                                      ppn + (ppn_t)mapped_count,
+                                      VPN(va),
+                                      3,
+                                      leaf_eflags,
+                                      handler);
+                if (map_err != REND_SUCCESS) {
                         pr_error(
-                                "[MM_ANON] mm_anon_map_pages_eager: map fail page %lu\n",
-                                (unsigned long)mapped_count);
-                        goto fail_unmap_radix_pmm;
+                                "[MM_ANON] mm_anon_map_pages_eager: map fail page %lu e=%d\n",
+                                mapped_count,
+                                map_err);
+                        (void)vmm_radix_tree_unlock_range_small(
+                                (VSpace*)vs, uva, vaddr_end);
+                        goto fail_unmap_rollback;
                 }
                 mapped_count++;
         }
-        if (vmm_radix_tree_insert_bind_range(handler,
-                                             vs,
-                                             owner_tp,
-                                             uva,
-                                             leaf_eflags,
-                                             alloced_page_number,
-                                             ppn)
+        if (vmm_radix_tree_insert_bind_range(
+                    handler, vs, owner_tp, uva, leaf_eflags, vaddr_end, ppn)
             != REND_SUCCESS) {
                 pr_error(
                         "[MM_ANON] mm_anon_map_pages_eager: insert_bind_range failed\n");
-                goto fail_unmap_radix_pmm;
+                (void)vmm_radix_tree_unlock_range_small(
+                        (VSpace*)vs, uva, vaddr_end);
+                goto fail_unmap_rollback;
         }
+        (void)vmm_radix_tree_unlock_range_small((VSpace*)vs, uva, vaddr_end);
 
         return uva;
 
-fail_unmap_radix_pmm:
+fail_unmap_rollback:
         while (mapped_count > 0) {
                 mapped_count--;
                 vaddr va = uva + mapped_count * PAGE_SIZE;
                 (void)unmap(vs, VPN(va), 0, handler);
         }
-        (void)vmm_radix_tree_delete_range(
-                handler, vs, uva, alloced_page_number);
+before_lock_fail:
+        if (vmm_radix_tree_calculate_end_check(uva, alloced_page_number,
+                                               &vaddr_end)
+            && vmm_radix_tree_lock_range_small(
+                       handler, (VSpace*)vs, uva, vaddr_end, RADIX_RL_DELETE)
+                       == REND_SUCCESS)
+                (void)vmm_radix_tree_unlock_range_small(
+                        (VSpace*)vs, uva, vaddr_end);
         pmm_ptr->pmm_free(pmm_ptr, ppn, alloced_page_number);
         return 0;
 }
@@ -89,18 +118,32 @@ fail_unmap_radix_pmm:
 vaddr mm_user_anon_map_pages(struct VSpace* vs, vaddr uva, size_t page_num,
                              ENTRY_FLAGS_t flags)
 {
-        return mm_anon_map_pages_eager(&percpu(Map_Handler), vs, uva, page_num,
-                                       flags);
+        return mm_anon_map_pages_eager(
+                &percpu(Map_Handler), vs, uva, page_num, flags);
 }
 
-error_t mm_anon_reserve_lazy_range(struct map_handler* handler, struct VSpace* vs,
-                                   tagged_ptr_t owner, vaddr page_vaddr,
-                                   size_t page_number, ENTRY_FLAGS_t lazy_flags)
+error_t mm_anon_reserve_lazy_range(struct map_handler* handler,
+                                   struct VSpace* vs, tagged_ptr_t owner,
+                                   vaddr page_vaddr, size_t page_number,
+                                   ENTRY_FLAGS_t lazy_flags)
 {
         if (!handler || !vs || !vs->root_radix)
                 return -E_IN_PARAM;
-        return vmm_radix_tree_insert_range(
-                handler, vs, owner, page_vaddr, lazy_flags, page_number);
+        vaddr vaddr_end;
+        if (!vmm_radix_tree_calculate_end_check(
+                    page_vaddr, page_number, &vaddr_end))
+                return -E_IN_PARAM;
+        error_t err_lock = vmm_radix_tree_lock_range_small(
+                handler, (VSpace*)vs, page_vaddr, vaddr_end, RADIX_RL_INSERT);
+        if (err_lock != REND_SUCCESS)
+                return err_lock;
+        error_t err_insert = vmm_radix_tree_insert_range(
+                handler, vs, owner, page_vaddr, lazy_flags, vaddr_end);
+        error_t err_unlock = vmm_radix_tree_unlock_range_small(
+                (VSpace*)vs, page_vaddr, vaddr_end);
+        if (err_insert != REND_SUCCESS)
+                return err_insert;
+        return err_unlock;
 }
 
 error_t mm_anon_zero_fill_fault_page(struct map_handler* handler,
@@ -111,7 +154,8 @@ error_t mm_anon_zero_fill_fault_page(struct map_handler* handler,
         (void)vs;
         (void)fault_page_va;
         (void)leaf_flags;
-        /* Wired in linux_layer fault path after lazy radix policy is finalized */
+        /* Wired in linux_layer fault path after lazy radix policy is finalized
+         */
         return -E_RENDEZVOS;
 }
 
@@ -125,29 +169,108 @@ error_t mm_anon_unmap_release_range(struct map_handler* handler,
                 return -E_IN_PARAM;
         }
 
-        size_t i = page_number;
-        while (i > 0) {
-                i--;
-                vaddr va = page_vaddr + i * PAGE_SIZE;
-                (void)unmap(vs, VPN(va), 0, handler);
+        vaddr vaddr_end;
+        if (!vmm_radix_tree_calculate_end_check(
+                    page_vaddr, page_number, &vaddr_end)) {
+                pr_error(
+                        "[MM_ANON] mm_anon_unmap_release_range: radix end check fail\n");
+                return -E_IN_PARAM;
         }
-        error_t u = vmm_radix_tree_leaf_unbind_range(
-                handler, vs, page_vaddr, ppn_first, page_number);
-        if (u != REND_SUCCESS)
-                return u;
-        error_t d = vmm_radix_tree_delete_range(handler, vs, page_vaddr,
-                                                page_number);
-        if (d != REND_SUCCESS)
-                return d;
-        vs->pmm->pmm_free(vs->pmm, ppn_first, page_number);
-        return REND_SUCCESS;
+        error_t err_lock =
+                vmm_radix_tree_lock_range_small(handler,
+                                                (VSpace*)vs,
+                                                page_vaddr,
+                                                vaddr_end,
+                                                RADIX_RL_QUERY_OR_CHANGE);
+        if (err_lock != REND_SUCCESS) {
+                pr_error(
+                        "[MM_ANON] mm_anon_unmap_release_range: QUERY_OR_CHANGE lock fail va=%lx e=%d\n",
+                        (unsigned long)page_vaddr,
+                        (int)err_lock);
+                return err_lock;
+        }
+        error_t err_unbind = vmm_radix_tree_leaf_unbind_range(
+                handler, vs, page_vaddr, ppn_first, vaddr_end);
+        error_t err_unlock = vmm_radix_tree_unlock_range_small(
+                (VSpace*)vs, page_vaddr, vaddr_end);
+        if (err_unbind != REND_SUCCESS) {
+                pr_error(
+                        "[MM_ANON] mm_anon_unmap_release_range: leaf_unbind_range fail va=%lx e=%d\n",
+                        (unsigned long)page_vaddr,
+                        (int)err_unbind);
+                return err_unbind;
+        }
+        if (err_unlock != REND_SUCCESS) {
+                pr_error(
+                        "[MM_ANON] mm_anon_unmap_release_range: unlock after unbind fail va=%lx e=%d\n",
+                        (unsigned long)page_vaddr,
+                        (int)err_unlock);
+                return err_unlock;
+        }
+
+        for (size_t pg = 0; pg < page_number; pg++) {
+                vaddr va = page_vaddr + pg * PAGE_SIZE;
+                ppn_t u = unmap(vs, VPN(va), 0, handler);
+                if (invalid_ppn(u)) {
+                        pr_error(
+                                "[MM_ANON] mm_anon_unmap_release_range: unmap fail page %lu ppn=%ld\n",
+                                (unsigned long)pg,
+                                (long)u);
+                        if (u < 0)
+                                return (error_t)u;
+                        return -E_RENDEZVOS;
+                }
+        }
+
+        err_lock = vmm_radix_tree_lock_range_small(
+                handler, (VSpace*)vs, page_vaddr, vaddr_end, RADIX_RL_DELETE);
+        if (err_lock != REND_SUCCESS) {
+                pr_error(
+                        "[MM_ANON] mm_anon_unmap_release_range: DELETE lock fail va=%lx e=%d\n",
+                        (unsigned long)page_vaddr,
+                        (int)err_lock);
+                return err_lock;
+        }
+        err_unlock = vmm_radix_tree_unlock_range_small(
+                (VSpace*)vs, page_vaddr, vaddr_end);
+        if (err_unlock != REND_SUCCESS) {
+                pr_error(
+                        "[MM_ANON] mm_anon_unmap_release_range: unlock after DELETE fail va=%lx e=%d\n",
+                        (unsigned long)page_vaddr,
+                        (int)err_unlock);
+                return err_unlock;
+        }
+
+        error_t err_free =
+                vs->pmm->pmm_free(vs->pmm, ppn_first, page_number);
+        if (err_free != REND_SUCCESS) {
+                pr_error(
+                        "[MM_ANON] mm_anon_unmap_release_range: pmm_free fail va=%lx ppn=%ld np=%lu e=%d\n",
+                        (unsigned long)page_vaddr,
+                        (long)ppn_first,
+                        (unsigned long)page_number,
+                        (int)err_free);
+        }
+        return err_free;
 }
 
 error_t mm_anon_query_radix_leaf(struct VSpace* vs, vaddr page_va,
                                  ENTRY_FLAGS_t* out_flags,
                                  tagged_ptr_t* out_owner)
 {
-        return vmm_radix_tree_query_leaf(vs, page_va, out_flags, out_owner);
+        struct map_handler* h = &percpu(Map_Handler);
+        vaddr vaddr_end;
+        if (!vmm_radix_tree_calculate_end_check(page_va, 1, &vaddr_end))
+                return -E_IN_PARAM;
+        error_t err_lock = vmm_radix_tree_lock_range_small(
+                h, (VSpace*)vs, page_va, vaddr_end, RADIX_RL_QUERY_OR_CHANGE);
+        if (err_lock != REND_SUCCESS)
+                return err_lock;
+        error_t err_query = vmm_radix_tree_query_leaf(
+                h, (VSpace*)vs, page_va, vaddr_end, out_flags, out_owner);
+        (void)vmm_radix_tree_unlock_range_small(
+                (VSpace*)vs, page_va, vaddr_end);
+        return err_query;
 }
 
 error_t mm_anon_cow_replace_leaf(struct map_handler* handler, struct VSpace* vs,
@@ -156,6 +279,22 @@ error_t mm_anon_cow_replace_leaf(struct map_handler* handler, struct VSpace* vs,
 {
         if (!handler || !vs)
                 return -E_IN_PARAM;
-        return vmm_radix_tree_change_leaf_ppn(
-                handler, vs, page_va, old_ppn, new_ppn, new_flags);
+        vaddr vaddr_end;
+        if (!vmm_radix_tree_calculate_end_check(page_va, 1, &vaddr_end))
+                return -E_IN_PARAM;
+        error_t err_lock =
+                vmm_radix_tree_lock_range_small(handler,
+                                                (VSpace*)vs,
+                                                page_va,
+                                                vaddr_end,
+                                                RADIX_RL_QUERY_OR_CHANGE);
+        if (err_lock != REND_SUCCESS)
+                return err_lock;
+        error_t err_change = vmm_radix_tree_change_leaf_ppn(
+                handler, vs, page_va, vaddr_end, old_ppn, new_ppn, new_flags);
+        error_t err_unlock = vmm_radix_tree_unlock_range_small(
+                (VSpace*)vs, page_va, vaddr_end);
+        if (err_change != REND_SUCCESS)
+                return err_change;
+        return err_unlock;
 }
