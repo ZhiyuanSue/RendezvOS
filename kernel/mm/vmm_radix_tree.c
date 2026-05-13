@@ -571,18 +571,22 @@ l0_bypass:
  * 2Mi band** pattern (lock L2, scan that band's L3 slots, unlock); walk L2
  * bands in VA order rather than a standalone L3-only walker. Re-locking a
  * band touched earlier by find-first is expected and correct.
+ *
+ * @return First qualifying @c Radix_node_t*, or NULL. On success @p *out_va is
+ *         set and L2 is unlocked; see @ref vmm_radix_tree_find_first_occupied_leaf
+ *         in the header for big-lock / clone_vspace lifetime of the pointer.
  */
-static __attribute__((unused)) bool vmm_radix_tree_find_first_occupied_leaf(VSpace* vs, vaddr start,
-                                                    vaddr end, int direction,
-                                                    vaddr* out_va)
+Radix_node_t* vmm_radix_tree_find_first_occupied_leaf(VSpace* vs, vaddr start,
+                                                      vaddr end, int direction,
+                                                      vaddr* out_va)
 {
         if (!vs || !vs->root_radix || !out_va)
-                return false;
+                return NULL;
         if (end <= start)
-                return false;
+                return NULL;
         if (direction != RADIX_TREE_DIRECTION_INC
             && direction != RADIX_TREE_DIRECTION_DEC)
-                return false;
+                return NULL;
 
         Radix_entry_t* root = (Radix_entry_t*)vs->root_radix;
 
@@ -594,7 +598,7 @@ static __attribute__((unused)) bool vmm_radix_tree_find_first_occupied_leaf(VSpa
         vaddr first_page = ROUND_DOWN(start, l3_step);
         vaddr last_page = ROUND_DOWN((end - 1), l3_step);
         if (last_page < first_page)
-                return false;
+                return NULL;
 
         vaddr l0_start = ROUND_DOWN(first_page, l0_step);
         vaddr l0_end = ROUND_DOWN(last_page, l0_step);
@@ -608,10 +612,10 @@ static __attribute__((unused)) bool vmm_radix_tree_find_first_occupied_leaf(VSpa
              l0_iter = (vaddr)((i64)l0_iter + direction * (i64)l0_step)) {
                 if (direction > 0) {
                         if (l0_iter > l0_end)
-                                return false;
+                                return NULL;
                 } else {
                         if (l0_iter < l0_start)
-                                return false;
+                                return NULL;
                 }
                 huge_start = MAX(first_page, l0_iter);
                 huge_end = MIN(last_page, l0_iter + l0_step - l3_step);
@@ -632,10 +636,10 @@ static __attribute__((unused)) bool vmm_radix_tree_find_first_occupied_leaf(VSpa
              l1_iter = (vaddr)((i64)l1_iter + direction * (i64)l1_step)) {
                 if (direction > 0) {
                         if (l1_iter > l1_end)
-                                return false;
+                                return NULL;
                 } else {
                         if (l1_iter < l1_start)
-                                return false;
+                                return NULL;
                 }
                 giga_start = MAX(huge_start, l1_iter);
                 giga_end = MIN(huge_end, l1_iter + l1_step - l3_step);
@@ -656,10 +660,10 @@ static __attribute__((unused)) bool vmm_radix_tree_find_first_occupied_leaf(VSpa
              l2_iter = (vaddr)((i64)l2_iter + direction * (i64)l2_step)) {
                 if (direction > 0) {
                         if (l2_iter > l2_end)
-                                return false;
+                                return NULL;
                 } else {
                         if (l2_iter < l2_start)
-                                return false;
+                                return NULL;
                 }
                 mid_start = MAX(giga_start, l2_iter);
                 mid_end = MIN(giga_end, l2_iter + l2_step - l3_step);
@@ -676,30 +680,100 @@ static __attribute__((unused)) bool vmm_radix_tree_find_first_occupied_leaf(VSpa
         }
 
         if (!l2e)
-                return false;
+                return NULL;
 
         for (vaddr l3_iter = (direction > 0 ? mid_start : mid_end);;
              l3_iter = (vaddr)((i64)l3_iter + direction * (i64)l3_step)) {
                 if (direction > 0) {
                         if (l3_iter > mid_end) {
                                 radix_entry_unlock(l2e);
-                                return false;
+                                return NULL;
                         }
                 } else {
                         if (l3_iter < mid_start) {
                                 radix_entry_unlock(l2e);
-                                return false;
+                                return NULL;
                         }
                 }
                 Radix_node_t* leaf = radix_l3_node(l2e, l3_iter);
                 if (leaf && radix_l3_overlap_insert(leaf)) {
                         *out_va = l3_iter;
                         radix_entry_unlock(l2e);
-                        return true;
+                        return leaf;
                 }
         }
         radix_entry_unlock(l2e);
-        return false;
+        return NULL;
+}
+bool vmm_radix_tree_find_first_occupied_interval(VSpace* vs, vaddr search_start,
+                                                 vaddr search_end,
+                                                 vaddr* interval_start_out,
+                                                 vaddr* interval_end_out)
+{
+        if (!vs || !vs->root_radix || !interval_start_out || !interval_end_out)
+                return false;
+        if (search_end <= search_start)
+                return false;
+
+        vaddr first_vaddr;
+        Radix_node_t* first_leaf = vmm_radix_tree_find_first_occupied_leaf(
+                vs,
+                search_start,
+                search_end,
+                RADIX_TREE_DIRECTION_INC,
+                &first_vaddr);
+        if (!first_leaf)
+                return false;
+
+        const ENTRY_FLAGS_t run_flags = first_leaf->flags;
+
+        Radix_entry_t* root = (Radix_entry_t*)vs->root_radix;
+        vaddr vaddr_iter = first_vaddr + PAGE_SIZE;
+
+        if (vaddr_iter >= search_end)
+                goto out;
+        const vaddr l2_step = (vaddr)radix_level_step[RADIX_TREE_LEVEL2];
+        vaddr l2_range_last = ROUND_DOWN(vaddr_iter, l2_step);
+
+        radix_tree_level_walk_t l2_walk;
+        radix_tree_level_walk_init(&l2_walk,
+                                   root,
+                                   l2_range_last,
+                                   search_end,
+                                   RADIX_TREE_LEVEL2,
+                                   RADIX_TREE_DIRECTION_INC);
+        if (!radix_tree_level_walk_check(&l2_walk))
+                goto out;
+        do {
+                Radix_entry_t* l2_entry = l2_walk.curr_l2_entry;
+                vaddr l2_range_start =
+                        ROUND_DOWN(l2_walk.current_vaddr, l2_step);
+                vaddr l2_range_end = MIN(search_end, l2_range_start + l2_step);
+
+                if (vaddr_iter >= l2_range_end || !l2_entry)
+                        break;
+
+                vaddr before_band = vaddr_iter;
+                radix_entry_lock(l2_entry);
+                for (vaddr l3_iter = vaddr_iter;
+                     l3_iter < l2_range_end
+                     && ROUND_DOWN(l3_iter, l2_step) == l2_range_start;
+                     l3_iter += PAGE_SIZE) {
+                        Radix_node_t* leaf = radix_l3_node(l2_entry, l3_iter);
+                        if (!leaf || !radix_l3_overlap_insert(leaf)
+                            || leaf->flags != run_flags)
+                                break;
+                        vaddr_iter = l3_iter + (vaddr)PAGE_SIZE;
+                }
+                radix_entry_unlock(l2_entry);
+
+                if (vaddr_iter == before_band)
+                        break;
+        } while (radix_tree_level_walk(&l2_walk));
+out:
+        *interval_start_out = first_vaddr;
+        *interval_end_out = vaddr_iter;
+        return true;
 }
 
 static inline bool
@@ -1727,32 +1801,37 @@ error_t vmm_radix_tree_destroy(struct map_handler* handler, VSpace* vs)
         struct pmm* pmm = vs->pmm;
         /*only destroy the low half tree */
         const vaddr low_half_end = (vaddr)256 * radix_level_step[0];
-        for (vaddr va0 = 0; va0 < low_half_end; va0 += radix_level_step[0]) {
-                Radix_entry_t* l0_entry = radix_l0_entry(root, va0);
+        for (vaddr l0_iter = 0; l0_iter < low_half_end;
+             l0_iter += radix_level_step[0]) {
+                Radix_entry_t* l0_entry = radix_l0_entry(root, l0_iter);
                 if (!entry_valid(l0_entry))
                         continue;
                 vaddr l1_table_vaddr = entry_child(l0_entry);
-                for (vaddr va1 = va0; va1 < va0 + radix_level_step[0];
-                     va1 += radix_level_step[1]) {
-                        Radix_entry_t* l1_entry = radix_l1_entry(l0_entry, va1);
+                for (vaddr l1_iter = l0_iter;
+                     l1_iter < l0_iter + radix_level_step[0];
+                     l1_iter += radix_level_step[1]) {
+                        Radix_entry_t* l1_entry =
+                                radix_l1_entry(l0_entry, l1_iter);
                         if (!l1_entry || !entry_valid(l1_entry))
                                 continue;
                         vaddr l2_table_vaddr = entry_child(l1_entry);
-                        for (vaddr va2 = va1; va2 < va1 + radix_level_step[1];
-                             va2 += radix_level_step[2]) {
+                        for (vaddr l2_iter = l1_iter;
+                             l2_iter < l1_iter + radix_level_step[1];
+                             l2_iter += radix_level_step[2]) {
                                 Radix_entry_t* l2_entry =
-                                        radix_l2_entry(l1_entry, va2);
+                                        radix_l2_entry(l1_entry, l2_iter);
                                 if (!l2_entry || !entry_valid(l2_entry))
                                         continue;
                                 vaddr l3_table_vaddr = entry_child(l2_entry);
                                 if (pmm->zone) {
                                         pmm_zone_lock(pmm->zone);
-                                        for (vaddr va3 = va2;
-                                             va3 < va2 + radix_level_step[2];
-                                             va3 += radix_level_step[3]) {
+                                        for (vaddr l3_iter = l2_iter;
+                                             l3_iter
+                                             < l2_iter + radix_level_step[2];
+                                             l3_iter += radix_level_step[3]) {
                                                 Radix_node_t* leaf =
                                                         radix_l3_node(l2_entry,
-                                                                      va3);
+                                                                      l3_iter);
                                                 if (!leaf)
                                                         continue;
                                                 if (!list_node_is_detached(
@@ -1846,11 +1925,12 @@ vmm_radix_tree_install_shared_kernel_high_half(struct map_handler* handler,
         /* L0 slots [256,512): 512*HUGE == 2^48 (vaddr is u64, no wrap). */
         const vaddr high_half_begin = (vaddr)256 * radix_level_step[0];
         const vaddr high_half_end = (vaddr)512 * radix_level_step[0];
-        for (vaddr va0 = high_half_begin; va0 < high_half_end;
-             va0 += radix_level_step[0]) {
-                Radix_entry_t* l0_entry = radix_l0_entry(root, va0);
-                ppn_t l1_table_ppn = (ppn_t)((i64)kernel_radix_l1_table_base_ppn
-                                             + (i64)(L0_INDEX(va0) - 256u));
+        for (vaddr vaddr_iter = high_half_begin; vaddr_iter < high_half_end;
+             vaddr_iter += radix_level_step[0]) {
+                Radix_entry_t* l0_entry = radix_l0_entry(root, vaddr_iter);
+                ppn_t l1_table_ppn =
+                        (ppn_t)((i64)kernel_radix_l1_table_base_ppn
+                                + (i64)(L0_INDEX(vaddr_iter) - 256u));
                 vaddr expected_l1_table_vaddr =
                         KERNEL_PHY_TO_VIRT(PADDR(l1_table_ppn));
 

@@ -250,6 +250,61 @@ error_t vmm_radix_tree_lock_range_big(struct map_handler* handler, VSpace* vs,
 error_t vmm_radix_tree_unlock_range_big(VSpace* vs, vaddr vaddr_start, vaddr vaddr_end);
 
 /**
+ * @brief Find the first 4Ki page in @c [search_start, search_end) whose L3 leaf
+ *        satisfies @c radix_l3_overlap_insert (VA order per @p direction).
+ *
+ * @pre Caller holds @ref vmm_radix_tree_lock_range_big on crossed L0 shards.
+ *      Takes @c radix_entry_lock on the chosen L2 row while reading that row and
+ *      scanning its L3 slots (see @c clone_vspace radix comment: L0 alone does
+ *      not exclude concurrent L2 holders).
+ *
+ * @param direction @ref RADIX_TREE_DIRECTION_INC or @ref RADIX_TREE_DIRECTION_DEC.
+ *
+ * @return Non-NULL: first qualifying leaf; @p *out_page_va is that page's VA.
+ *         NULL: not found or bad parameters. On success the implementation
+ *         releases @c radix_entry_lock on the L2 row before returning; while
+ *         the caller still holds @ref vmm_radix_tree_lock_range_big on all L0
+ *         shards covering that L2 row (see long comment in @c clone_vspace),
+ *         no other core can take that L2 to mutate those L3 nodes, so the
+ *         returned pointer and @c Radix_node_t::flags remain usable until big
+ *         unlock for that span.
+ */
+Radix_node_t* vmm_radix_tree_find_first_occupied_leaf(VSpace* vs,
+                                                      vaddr search_start,
+                                                      vaddr search_end,
+                                                      int direction,
+                                                      vaddr* out_page_va);
+
+/**
+ * @brief Find the first contiguous occupied VA sub-interval inside
+ *        @c [search_start, search_end) (half-open, page-aligned).
+ *
+ * Uses @ref vmm_radix_tree_find_first_occupied_leaf (INC) for the first page,
+ * then extends forward in VA under per–2 Mi @c radix_entry_lock / unlock
+ * (pattern A: lock one L2 band, scan its L3 leaves, release; next band if the
+ * run continues) while each page's leaf still satisfies
+ * @c radix_l3_overlap_insert and @c Radix_node_t::flags matches the first
+ * page's flags (bitwise @c ENTRY_FLAGS_t equality). **INC-only** extension; DEC
+ * is not implemented for runs.
+ *
+ * @pre Same as @ref vmm_radix_tree_find_first_occupied_leaf (@ref
+ *      vmm_radix_tree_lock_range_big held for the search span).
+ *
+ * @param interval_start_out First page VA of the run (written on success).
+ * @param interval_end_out One-past-last page VA of the run (written on
+ *                         success); always @c *interval_start_out + N*PAGE_SIZE
+ *                         with @c N >= 1.
+ *
+ * @return @c true on success; @c false if no overlapping leaf exists in range
+ *         or parameters are invalid. The maximal run stops where overlap fails
+ *         or a leaf's @c flags differ from the first page's (bitwise).
+ */
+bool vmm_radix_tree_find_first_occupied_interval(VSpace* vs, vaddr search_start,
+                                                 vaddr search_end,
+                                                 vaddr* interval_start_out,
+                                                 vaddr* interval_end_out);
+
+/**
  * @brief Acquire full radix range lock (L2 rows + internal path rules) for a VA
  *        band.
  *
