@@ -183,6 +183,36 @@ vs_structure_fail:
         free_user_vs_structure(vs);
         return NULL;
 }
+static void clone_rollback_src_write_pte_pages(VSpace* src_vs,
+                                               vaddr va_start,
+                                               vaddr va_end,
+                                               struct map_handler* handler)
+{
+        for (vaddr va = va_start; va < va_end; va += PAGE_SIZE) {
+                ENTRY_FLAGS_t src_map_flag;
+                ppn_t src_ppn = have_mapped(src_vs,
+                                            VPN(va),
+                                            &src_map_flag,
+                                            NULL,
+                                            handler);
+                if (invalid_ppn(src_ppn)) {
+                        pr_error(
+                                "[Error] vspace clone rollback src have_mapped\n");
+                        continue;
+                }
+                if (map(src_vs,
+                        src_ppn,
+                        VPN(va),
+                        3,
+                        set_mask_u64(src_map_flag, PAGE_ENTRY_WRITE),
+                        handler)
+                    != REND_SUCCESS) {
+                        pr_error(
+                                "[Error] vspace clone rollback src map write\n");
+                }
+        }
+}
+
 error_t clone_vspace(VSpace* src_vs, VSpace** dst_vs_out,
                      enum vspace_clone_flags flags)
 {
@@ -463,32 +493,9 @@ error_t clone_vspace(VSpace* src_vs, VSpace** dst_vs_out,
         *dst_vs_out = dst_vs;
         return e;
 rollback_pte_flags_prev:
-        for (vaddr rollback_iter = page_iter - PAGE_SIZE;
-             rollback_iter >= searched_start;
-             rollback_iter -= PAGE_SIZE) {
-                /*we do not do any rollback_prev_interval for error handler*/
-                ENTRY_FLAGS_t src_map_flag;
-                ppn_t src_ppn = have_mapped(src_vs,
-                                            VPN(rollback_iter),
-                                            &src_map_flag,
-                                            NULL,
-                                            handler);
-                if (invalid_ppn(src_ppn)) {
-                        pr_error(
-                                "[Error] vspace clone roll back pte have mapped error\n");
-                        continue;
-                }
-                if (map(src_vs,
-                        src_ppn,
-                        VPN(rollback_iter),
-                        3,
-                        set_mask_u64(src_map_flag, PAGE_ENTRY_WRITE),
-                        handler)
-                    != REND_SUCCESS) {
-                        pr_error(
-                                "[Error] vspace clone roll back pte map error\n");
-                }
-        }
+        /* Same half-open range as the descending loop: [searched_start, page_iter). */
+        clone_rollback_src_write_pte_pages(
+                src_vs, searched_start, page_iter, handler);
         goto rollback_prev_interval;
 rollback_prev_interval:
         if (flags & VSPACE_CLONE_F_COW_PREP) {
@@ -507,34 +514,10 @@ rollback_prev_interval:
                         bool need_bind = rollback_range_flags
                                          & PAGE_ENTRY_VALID;
                         if (need_bind) {
-                                for (vaddr rollback_page_iter =
-                                             rollback_searched_start;
-                                     rollback_page_iter < rollback_searched_end;
-                                     rollback_page_iter += PAGE_SIZE) {
-                                        ENTRY_FLAGS_t src_map_flag;
-                                        ppn_t src_ppn = have_mapped(
-                                                src_vs,
-                                                VPN(rollback_page_iter),
-                                                &src_map_flag,
-                                                NULL,
-                                                handler);
-                                        if (invalid_ppn(src_ppn)) {
-                                                pr_error(
-                                                        "[Error] vspace clone roll back prev interval have mapped error\n");
-                                                continue;
-                                        }
-                                        if (map(src_vs,
-                                                src_ppn,
-                                                VPN(rollback_page_iter),
-                                                3,
-                                                set_mask_u64(src_map_flag,
-                                                             PAGE_ENTRY_WRITE),
-                                                handler)
-                                            != REND_SUCCESS) {
-                                                pr_error(
-                                                        "[Error] vspace clone roll back prev interval map error\n");
-                                        }
-                                }
+                                clone_rollback_src_write_pte_pages(src_vs,
+                                                                   rollback_searched_start,
+                                                                   rollback_searched_end,
+                                                                   handler);
                                 if (vmm_radix_tree_change_range_flag(
                                             src_vs,
                                             rollback_searched_start,
