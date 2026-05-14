@@ -573,8 +573,9 @@ l0_bypass:
  * band touched earlier by find-first is expected and correct.
  *
  * @return First qualifying @c Radix_node_t*, or NULL. On success @p *out_va is
- *         set and L2 is unlocked; see @ref vmm_radix_tree_find_first_occupied_leaf
- *         in the header for big-lock / clone_vspace lifetime of the pointer.
+ *         set and L2 is unlocked; see @ref
+ * vmm_radix_tree_find_first_occupied_leaf in the header for big-lock /
+ * clone_vspace lifetime of the pointer.
  */
 Radix_node_t* vmm_radix_tree_find_first_occupied_leaf(VSpace* vs, vaddr start,
                                                       vaddr end, int direction,
@@ -708,7 +709,8 @@ Radix_node_t* vmm_radix_tree_find_first_occupied_leaf(VSpace* vs, vaddr start,
 bool vmm_radix_tree_find_first_occupied_interval(VSpace* vs, vaddr search_start,
                                                  vaddr search_end,
                                                  vaddr* interval_start_out,
-                                                 vaddr* interval_end_out)
+                                                 vaddr* interval_end_out,
+                                                 ENTRY_FLAGS_t* flags_out)
 {
         if (!vs || !vs->root_radix || !interval_start_out || !interval_end_out)
                 return false;
@@ -725,7 +727,7 @@ bool vmm_radix_tree_find_first_occupied_interval(VSpace* vs, vaddr search_start,
         if (!first_leaf)
                 return false;
 
-        const ENTRY_FLAGS_t run_flags = first_leaf->flags;
+        const ENTRY_FLAGS_t range_flags = first_leaf->flags;
 
         Radix_entry_t* root = (Radix_entry_t*)vs->root_radix;
         vaddr vaddr_iter = first_vaddr + PAGE_SIZE;
@@ -761,7 +763,7 @@ bool vmm_radix_tree_find_first_occupied_interval(VSpace* vs, vaddr search_start,
                      l3_iter += PAGE_SIZE) {
                         Radix_node_t* leaf = radix_l3_node(l2_entry, l3_iter);
                         if (!leaf || !radix_l3_overlap_insert(leaf)
-                            || leaf->flags != run_flags)
+                            || leaf->flags != range_flags)
                                 break;
                         vaddr_iter = l3_iter + (vaddr)PAGE_SIZE;
                 }
@@ -773,6 +775,8 @@ bool vmm_radix_tree_find_first_occupied_interval(VSpace* vs, vaddr search_start,
 out:
         *interval_start_out = first_vaddr;
         *interval_end_out = vaddr_iter;
+        if (flags_out)
+                *flags_out = range_flags;
         return true;
 }
 
@@ -1346,13 +1350,13 @@ static Radix_entry_t* radix_root_from_vs(VSpace* vs)
 /* === Public API === */
 /* === range lock and unlock === */
 
-error_t vmm_radix_tree_lock_range_big(struct map_handler* handler, VSpace* vs,
-                                      vaddr vaddr_start, vaddr vaddr_end)
+error_t vmm_radix_tree_lock_range_big(VSpace* vs, vaddr vaddr_start,
+                                      vaddr vaddr_end)
 {
         Radix_entry_t* root = radix_root_from_vs(vs);
         radix_tree_level_walk_t l0_walk_iter;
 
-        if (!root || !vs || !vs->pmm || !handler)
+        if (!root || !vs || !vs->pmm)
                 return -E_IN_PARAM;
 
         radix_tree_level_walk_init(&l0_walk_iter,
@@ -1419,12 +1423,12 @@ error_t vmm_radix_tree_unlock_range_small(VSpace* vs, vaddr vaddr_start,
 
 /* === range ops apis === */
 
-error_t vmm_radix_tree_insert_range(struct map_handler* handler, VSpace* vs,
-                                    tagged_ptr_t owner_info, vaddr vaddr_start,
-                                    ENTRY_FLAGS_t flags, vaddr vaddr_end)
+error_t vmm_radix_tree_insert_range(VSpace* vs, tagged_ptr_t owner_info,
+                                    vaddr vaddr_start, ENTRY_FLAGS_t flags,
+                                    vaddr vaddr_end)
 {
         Radix_entry_t* root = radix_root_from_vs(vs);
-        if (!root || !vs || !vs->pmm || !handler)
+        if (!root || !vs || !vs->pmm)
                 return -E_IN_PARAM;
 
         error_t err = REND_SUCCESS;
@@ -1490,14 +1494,13 @@ static void radix_leaf_unlink_rmap(struct pmm* pmm, ppn_t ppn,
         pmm_zone_unlock(pmm->zone);
 }
 
-error_t vmm_radix_tree_leaf_bind_range(struct map_handler* handler, VSpace* vs,
-                                       vaddr vaddr_start, ppn_t ppn_first,
-                                       vaddr vaddr_end,
+error_t vmm_radix_tree_leaf_bind_range(VSpace* vs, vaddr vaddr_start,
+                                       ppn_t ppn_first, vaddr vaddr_end,
                                        ENTRY_FLAGS_t leaf_flags)
 {
         Radix_entry_t* root = radix_root_from_vs(vs);
         size_t page_number;
-        if (!root || !vs || !vs->pmm || !vs->pmm->zone || !handler)
+        if (!root || !vs || !vs->pmm || !vs->pmm->zone)
                 return -E_IN_PARAM;
         if (invalid_ppn(ppn_first))
                 return -E_IN_PARAM;
@@ -1562,13 +1565,12 @@ leaf_bind_range_out:
         return err;
 }
 
-error_t vmm_radix_tree_leaf_unbind_range(struct map_handler* handler,
-                                         VSpace* vs, vaddr vaddr_start,
+error_t vmm_radix_tree_leaf_unbind_range(VSpace* vs, vaddr vaddr_start,
                                          ppn_t ppn_first, vaddr vaddr_end)
 {
         Radix_entry_t* root = radix_root_from_vs(vs);
         size_t page_number;
-        if (!root || !vs || !vs->pmm || !vs->pmm->zone || !handler)
+        if (!root || !vs || !vs->pmm || !vs->pmm->zone)
                 return -E_IN_PARAM;
         if (invalid_ppn(ppn_first))
                 return -E_IN_PARAM;
@@ -1623,33 +1625,29 @@ leaf_unbind_range_out:
         return err;
 }
 
-error_t vmm_radix_tree_leaf_bind(struct map_handler* handler, VSpace* vs,
-                                 vaddr vaddr_start, ppn_t ppn,
+error_t vmm_radix_tree_leaf_bind(VSpace* vs, vaddr vaddr_start, ppn_t ppn,
                                  ENTRY_FLAGS_t leaf_flags)
 {
-        return vmm_radix_tree_leaf_bind_range(handler,
-                                              vs,
+        return vmm_radix_tree_leaf_bind_range(vs,
                                               vaddr_start,
                                               ppn,
                                               vaddr_start + (vaddr)PAGE_SIZE,
                                               leaf_flags);
 }
 
-error_t vmm_radix_tree_leaf_unbind(struct map_handler* handler, VSpace* vs,
-                                   vaddr vaddr_start, ppn_t ppn)
+error_t vmm_radix_tree_leaf_unbind(VSpace* vs, vaddr vaddr_start, ppn_t ppn)
 {
         return vmm_radix_tree_leaf_unbind_range(
-                handler, vs, vaddr_start, ppn, vaddr_start + (vaddr)PAGE_SIZE);
+                vs, vaddr_start, ppn, vaddr_start + (vaddr)PAGE_SIZE);
 }
 
-error_t vmm_radix_tree_change_leaf_ppn(struct map_handler* handler, VSpace* vs,
-                                       vaddr vaddr_start, vaddr vaddr_end,
-                                       ppn_t old_ppn, ppn_t new_ppn,
-                                       ENTRY_FLAGS_t leaf_flags)
+error_t vmm_radix_tree_change_leaf_ppn(VSpace* vs, vaddr vaddr_start,
+                                       vaddr vaddr_end, ppn_t old_ppn,
+                                       ppn_t new_ppn, ENTRY_FLAGS_t leaf_flags)
 {
         Radix_entry_t* root = radix_root_from_vs(vs);
-        if (!root || !vs || !vs->pmm || !vs->pmm->zone || !handler
-            || invalid_ppn(old_ppn) || invalid_ppn(new_ppn))
+        if (!root || !vs || !vs->pmm || !vs->pmm->zone || invalid_ppn(old_ppn)
+            || invalid_ppn(new_ppn))
                 return -E_IN_PARAM;
 
         error_t err = REND_SUCCESS;
@@ -1698,23 +1696,21 @@ change_leaf_ppn_out:
         return err;
 }
 
-error_t vmm_radix_tree_change_leaf_ppn_flag(struct map_handler* handler,
-                                            VSpace* vs, vaddr vaddr_start,
+error_t vmm_radix_tree_change_leaf_ppn_flag(VSpace* vs, vaddr vaddr_start,
                                             vaddr vaddr_end, ppn_t old_ppn,
                                             ppn_t new_ppn,
                                             ENTRY_FLAGS_t new_flag)
 {
         return vmm_radix_tree_change_leaf_ppn(
-                handler, vs, vaddr_start, vaddr_end, old_ppn, new_ppn, new_flag);
+                vs, vaddr_start, vaddr_end, old_ppn, new_ppn, new_flag);
 }
 
-error_t vmm_radix_tree_change_range_flag(struct map_handler* handler,
-                                         VSpace* vs, vaddr vaddr_start,
+error_t vmm_radix_tree_change_range_flag(VSpace* vs, vaddr vaddr_start,
                                          vaddr vaddr_end,
                                          ENTRY_FLAGS_t new_flags)
 {
         Radix_entry_t* root = radix_root_from_vs(vs);
-        if (!root || !vs || !vs->pmm || !handler)
+        if (!root || !vs || !vs->pmm)
                 return -E_IN_PARAM;
 
         error_t err = REND_SUCCESS;
@@ -1739,13 +1735,12 @@ change_range_flag_out:
         return err;
 }
 
-error_t vmm_radix_tree_query_leaf(struct map_handler* handler, VSpace* vs,
-                                  vaddr vaddr_start, vaddr vaddr_end,
-                                  ENTRY_FLAGS_t* out_flags,
+error_t vmm_radix_tree_query_leaf(VSpace* vs, vaddr vaddr_start,
+                                  vaddr vaddr_end, ENTRY_FLAGS_t* out_flags,
                                   tagged_ptr_t* out_owner)
 {
         Radix_entry_t* root = radix_root_from_vs(vs);
-        if (!root || !vs || !vs->pmm || !handler || (!out_flags && !out_owner))
+        if (!root || !vs || !vs->pmm || (!out_flags && !out_owner))
                 return -E_IN_PARAM;
 
         error_t err = REND_SUCCESS;
@@ -1824,7 +1819,6 @@ error_t vmm_radix_tree_destroy(struct map_handler* handler, VSpace* vs)
                                         continue;
                                 vaddr l3_table_vaddr = entry_child(l2_entry);
                                 if (pmm->zone) {
-                                        pmm_zone_lock(pmm->zone);
                                         for (vaddr l3_iter = l2_iter;
                                              l3_iter
                                              < l2_iter + radix_level_step[2];
@@ -1835,11 +1829,38 @@ error_t vmm_radix_tree_destroy(struct map_handler* handler, VSpace* vs)
                                                 if (!leaf)
                                                         continue;
                                                 if (!list_node_is_detached(
-                                                            &leaf->rmap_list))
+                                                            &leaf->rmap_list)) {
+                                                        pmm_zone_lock(
+                                                                pmm->zone);
                                                         list_del_init(
                                                                 &leaf->rmap_list);
+
+                                                        pmm_zone_unlock(
+                                                                pmm->zone);
+                                                }
+                                                if (!(leaf->flags
+                                                    & PAGE_ENTRY_VALID))
+                                                        continue;
+                                                /*for normal radix tree,
+                                                 * the handler should
+                                                 * not used for any pte
+                                                 * leaf page, but here
+                                                 * is an exception*/
+                                                ppn_t ppn = have_mapped(
+                                                        vs,
+                                                        VPN(l3_iter),
+                                                        NULL,
+                                                        NULL,
+                                                        handler);
+                                                if (invalid_ppn(ppn))
+                                                        continue;
+                                                (void)unmap(vs,
+                                                            VPN(l3_iter),
+                                                            0,
+                                                            handler);
+                                                (void)pmm->pmm_free(
+                                                        pmm, ppn, 1);
                                         }
-                                        pmm_zone_unlock(pmm->zone);
                                 }
                                 (void)free_level_table(vs,
                                                        pmm,
@@ -1913,11 +1934,8 @@ vmm_radix_tree_bootstrap_shared_kernel_high_half(struct map_handler* handler,
         return REND_SUCCESS;
 }
 
-error_t
-vmm_radix_tree_install_shared_kernel_high_half(struct map_handler* handler,
-                                               VSpace* vs)
+error_t vmm_radix_tree_install_shared_kernel_high_half(VSpace* vs)
 {
-        (void)handler;
         Radix_entry_t* root = radix_root_from_vs(vs);
         if (!root || invalid_ppn(kernel_radix_l1_table_base_ppn))
                 return -E_IN_PARAM;

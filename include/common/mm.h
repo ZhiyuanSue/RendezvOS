@@ -55,7 +55,8 @@ enum ENTRY_FLAGS {
          * in the radix metadata tree (insert_range) but no leaf PTE has been
          * committed yet; leaf_bind clears this after map().
          */
-        PAGE_ENTRY_LAZY = (1ULL << 62),
+        PAGE_ENTRY_LAZY = (1ULL << 61),
+        PAGE_ENTRY_COW = (1ULL << 62),
         /*
          * Map option (software-only): allow replacing an existing leaf mapping
          * with a different physical page (remap semantics).
@@ -67,7 +68,8 @@ typedef u64 ENTRY_FLAGS_t;
 typedef u64 ARCH_PFLAGS_t;
 static inline ENTRY_FLAGS_t entry_flags_rm_sw_flags(ENTRY_FLAGS_t f)
 {
-        return clear_mask_u64(f, PAGE_ENTRY_REMAP | PAGE_ENTRY_LAZY);
+        return clear_mask_u64(
+                f, PAGE_ENTRY_REMAP | PAGE_ENTRY_LAZY | PAGE_ENTRY_COW);
 }
 struct region {
         u64 addr;

@@ -66,8 +66,7 @@ vaddr mm_anon_map_pages_eager(struct map_handler* handler, struct VSpace* vs,
                         err_lock);
                 goto before_lock_fail;
         }
-        if (vmm_radix_tree_insert_range(handler,
-                                        vs,
+        if (vmm_radix_tree_insert_range((VSpace*)vs,
                                         owner_tp,
                                         uva,
                                         leaf_eflags,
@@ -99,7 +98,7 @@ vaddr mm_anon_map_pages_eager(struct map_handler* handler, struct VSpace* vs,
                 mapped_count++;
         }
         if (vmm_radix_tree_leaf_bind_range(
-                    handler, vs, uva, ppn, vaddr_end, leaf_eflags)
+                    (VSpace*)vs, uva, ppn, vaddr_end, leaf_eflags)
             != REND_SUCCESS) {
                 pr_error(
                         "[MM_ANON] mm_anon_map_pages_eager: leaf_bind_range failed\n");
@@ -152,7 +151,7 @@ error_t mm_anon_reserve_lazy_range(struct map_handler* handler,
         if (err_lock != REND_SUCCESS)
                 return err_lock;
         error_t err_insert = vmm_radix_tree_insert_range(
-                handler, vs, owner, page_vaddr, lazy_flags, vaddr_end);
+                (VSpace*)vs, owner, page_vaddr, lazy_flags, vaddr_end);
         error_t err_unlock = vmm_radix_tree_unlock_range_small(
                 (VSpace*)vs, page_vaddr, vaddr_end);
         if (err_insert != REND_SUCCESS)
@@ -204,7 +203,7 @@ error_t mm_anon_unmap_release_range(struct map_handler* handler,
                 return err_lock;
         }
         error_t err_unbind = vmm_radix_tree_leaf_unbind_range(
-                handler, vs, page_vaddr, ppn_first, vaddr_end);
+                (VSpace*)vs, page_vaddr, ppn_first, vaddr_end);
         error_t err_unlock = vmm_radix_tree_unlock_range_small(
                 (VSpace*)vs, page_vaddr, vaddr_end);
         if (err_unbind != REND_SUCCESS) {
@@ -281,7 +280,7 @@ error_t mm_anon_query_radix_leaf(struct VSpace* vs, vaddr page_va,
         if (err_lock != REND_SUCCESS)
                 return err_lock;
         error_t err_query = vmm_radix_tree_query_leaf(
-                h, (VSpace*)vs, page_va, vaddr_end, out_flags, out_owner);
+                (VSpace*)vs, page_va, vaddr_end, out_flags, out_owner);
         (void)vmm_radix_tree_unlock_range_small(
                 (VSpace*)vs, page_va, vaddr_end);
         return err_query;
@@ -305,7 +304,7 @@ error_t mm_anon_cow_replace_leaf(struct map_handler* handler, struct VSpace* vs,
         if (err_lock != REND_SUCCESS)
                 return err_lock;
         error_t err_change = vmm_radix_tree_change_leaf_ppn(
-                handler, vs, page_va, vaddr_end, old_ppn, new_ppn, new_flags);
+                (VSpace*)vs, page_va, vaddr_end, old_ppn, new_ppn, new_flags);
         error_t err_unlock = vmm_radix_tree_unlock_range_small(
                 (VSpace*)vs, page_va, vaddr_end);
         if (err_change != REND_SUCCESS)

@@ -79,8 +79,7 @@ static int kmem_radix_kernel_heap_owner_cpu(VSpace* root_vs, vaddr kva)
                                             RADIX_RL_QUERY_OR_CHANGE)
             != REND_SUCCESS)
                 return INVALID_CPU_ID;
-        error_t err_query = vmm_radix_tree_query_leaf(&percpu(Map_Handler),
-                                                      root_vs,
+        error_t err_query = vmm_radix_tree_query_leaf(root_vs,
                                                       vaddr_start,
                                                       vaddr_end,
                                                       NULL,
@@ -143,8 +142,7 @@ static void* core_get_free_pages(size_t page_num, VSpace* vs,
                 pr_error("[ KALLOC ] ERROR: radix lock fail\n");
                 goto before_lock_fail;
         }
-        if (vmm_radix_tree_insert_range(handler,
-                                        vs,
+        if (vmm_radix_tree_insert_range(vs,
                                         owner_tp,
                                         free_page_addr,
                                         leaf_eflags,
@@ -176,7 +174,7 @@ static void* core_get_free_pages(size_t page_num, VSpace* vs,
                 mapped_count++;
         }
         if (vmm_radix_tree_leaf_bind_range(
-                    handler, vs, free_page_addr, ppn, vaddr_end, leaf_eflags)
+                    vs, free_page_addr, ppn, vaddr_end, leaf_eflags)
             != REND_SUCCESS) {
                 pr_error("[ KALLOC ] ERROR: leaf_bind_range fail\n");
                 (void)vmm_radix_tree_unlock_range_small(
@@ -247,7 +245,7 @@ static error_t core_free_pages(void* p, int page_num, VSpace* vs)
                 return err;
         }
         err = vmm_radix_tree_leaf_unbind_range(
-                handler, vs, base, ppn_first, vaddr_end);
+                vs, base, ppn_first, vaddr_end);
         error_t err_unlock =
                 vmm_radix_tree_unlock_range_small(vs, base, vaddr_end);
         if (err != REND_SUCCESS) {

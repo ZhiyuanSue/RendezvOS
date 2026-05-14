@@ -18,8 +18,8 @@ VSpace root_vspace;
 
 static error_t vspace_rb_tree_insert(VSpace* vs, VSpace* root_vs)
 {
-        struct rb_node** new = &root_vs->_vspace_rb_root.rb_root,
-                         *parent = NULL;
+        struct rb_node **new = &root_vs->_vspace_rb_root.rb_root,
+                       *parent = NULL;
         u64 key = vs->vspace_root_addr;
         while (*new) {
                 parent = *new;
@@ -129,7 +129,7 @@ error_t init_root_vspace(VSpace* root_vs, cpu_id_t cpu_id)
                 (void)vmm_radix_tree_destroy(h, root_vs);
                 return -E_RENDEZVOS;
         }
-        if (vmm_radix_tree_install_shared_kernel_high_half(h, root_vs)
+        if (vmm_radix_tree_install_shared_kernel_high_half(root_vs)
             != REND_SUCCESS) {
                 pr_error(
                         "[VMM] init_root_vspace: install_shared_kernel_high_half failed\n");
@@ -169,8 +169,7 @@ VSpace* create_vspace(struct pmm* pmm)
         if (!vmm_radix_tree_init(handler, vs))
                 goto radix_root_fail;
 
-        if (vmm_radix_tree_install_shared_kernel_high_half(handler, vs)
-            != REND_SUCCESS)
+        if (vmm_radix_tree_install_shared_kernel_high_half(vs) != REND_SUCCESS)
                 goto radix_install_fail;
 
         return vs;
@@ -189,23 +188,21 @@ error_t clone_vspace(VSpace* src_vs, VSpace** dst_vs_out,
 {
         /* Do not change this comment!!!
          * clone vspace will first try to lock all the l0 entry, which is ok,
-         * but lock all the l0 only means no more core will go into this radix tree
-         * it cannot promis there have some exist core is hold the lock of l2 entry
-         * for lock acquire, it first hold the l0 lock ,and change the structure and count of tree,
-         * then it hold the l2 lock, then release l0 lock, 
-         * the lock of l2 will be hold until using release
-         * so there has a window, that the l0 lock is released but the l2 lock is hold
-         * but only lock all the l0 cannot promise there have no l2 is locked. 
-         * That is the problem
-         * we must do it in the period of find the first usable range
-         * it will try to hold the l2 lock, and clone will wait until other have release l2 lock.
-         * will anyone behind clone to try to get the l2 lock?
-         * No! l0 lock have promise it.
-         * that is the key of this part lock model.
-         * Please do not change this comment
+         * but lock all the l0 only means no more core will go into this radix
+         * tree it cannot promis there have some exist core is hold the lock of
+         * l2 entry for lock acquire, it first hold the l0 lock ,and change the
+         * structure and count of tree, then it hold the l2 lock, then release
+         * l0 lock, the lock of l2 will be hold until using release so there has
+         * a window, that the l0 lock is released but the l2 lock is hold but
+         * only lock all the l0 cannot promise there have no l2 is locked. That
+         * is the problem we must do it in the period of find the first usable
+         * range it will try to hold the l2 lock, and clone will wait until
+         * other have release l2 lock. will anyone behind clone to try to get
+         * the l2 lock? No! l0 lock have promise it. that is the key of this
+         * part lock model. Please do not change this comment
          */
-        if(!src_vs || !dst_vs_out)
-        return -E_IN_PARAM;
+        if (!src_vs || !dst_vs_out)
+                return -E_IN_PARAM;
         if (!(flags & VSPACE_CLONE_F_USER_4K_ONLY))
                 return -E_IN_PARAM;
         if (!!(flags & VSPACE_CLONE_F_COW_PREP)
@@ -213,24 +210,350 @@ error_t clone_vspace(VSpace* src_vs, VSpace** dst_vs_out,
                 /* must select exactly one strategy */
                 return -E_IN_PARAM;
         }
-        error_t e=REND_SUCCESS;
+        error_t e = REND_SUCCESS;
         struct map_handler* handler = &percpu(Map_Handler);
         VSpace* dst_vs = create_vspace(root_vspace.pmm);
-        if(!dst_vs){
+        if (!dst_vs) {
                 pr_error("[Error] clone vspace cannot create vspace\n");
                 return -E_RENDEZVOS;
         }
 
-        (void)handler;
-        (void)dst_vs;
-        if (flags & VSPACE_CLONE_F_COPY_PAGES) {
-
-        }else{
-
+        if (vmm_radix_tree_lock_range_big(src_vs, PAGE_SIZE, USER_SPACE_TOP + 1)
+            != REND_SUCCESS) {
+                goto free_vspace_no_unlock;
         }
-        *dst_vs_out=dst_vs;
-        return REND_SUCCESS;
-// free_vspace:
+
+        vaddr iter_start = PAGE_SIZE; /*we don't allow the 0 page*/
+        vaddr iter_end = USER_SPACE_TOP + 1;
+
+        vaddr searched_start;
+        vaddr searched_end;
+        ENTRY_FLAGS_t range_flags;
+        vaddr page_iter = USER_SPACE_TOP + 1;
+
+        while (vmm_radix_tree_find_first_occupied_interval(src_vs,
+                                                           iter_start,
+                                                           iter_end,
+                                                           &searched_start,
+                                                           &searched_end,
+                                                           &range_flags)) {
+                /*try to insert the range first, we have to handle the flags,
+                 * the valid flag must set to the lazy for later bind*/
+
+                ENTRY_FLAGS_t insert_flags =
+                        clear_mask_u64(range_flags, PAGE_ENTRY_VALID);
+                bool need_bind = range_flags & PAGE_ENTRY_VALID;
+
+                if (vmm_radix_tree_lock_range_small(handler,
+                                                    dst_vs,
+                                                    searched_start,
+                                                    searched_end,
+                                                    RADIX_RL_INSERT)
+                    != REND_SUCCESS) {
+                        pr_error(
+                                "[Error] clone vspace lock range small fail\n");
+                        e = -E_RENDEZVOS;
+                        goto rollback_prev_interval;
+                }
+                tagged_ptr_t dst_owner =
+                        tp_new((void*)dst_vs, (u16)percpu(cpu_number));
+                if (vmm_radix_tree_insert_range(dst_vs,
+                                                dst_owner,
+                                                searched_start,
+                                                insert_flags,
+                                                searched_end)
+                    != REND_SUCCESS) {
+                        pr_error("[Error] clone vspace insert_range fail\n");
+                        (void)vmm_radix_tree_unlock_range_small(
+                                dst_vs, searched_start, searched_end);
+                        e = -E_RENDEZVOS;
+                        goto rollback_prev_interval;
+                }
+                /*if no need to bind the page, it only need to insert the
+                 * range*/
+                if (need_bind) {
+                        /*if need , bind the dst pages*/
+                        for (page_iter = searched_start;
+                             page_iter < searched_end;
+                             page_iter += PAGE_SIZE) {
+                                /*need to find the src's page*/
+                                ENTRY_FLAGS_t src_map_flag;
+                                ppn_t src_ppn = have_mapped(src_vs,
+                                                            VPN(page_iter),
+                                                            &src_map_flag,
+                                                            NULL,
+                                                            handler);
+                                if (invalid_ppn(src_ppn)) {
+                                        e = -E_RENDEZVOS;
+                                        (void)vmm_radix_tree_unlock_range_small(
+                                                dst_vs,
+                                                searched_start,
+                                                searched_end);
+                                        goto rollback_prev_interval;
+                                }
+                                if (flags & VSPACE_CLONE_F_COPY_PAGES) {
+                                        size_t alloced_page_number;
+                                        ppn_t dst_ppn = dst_vs->pmm->pmm_alloc(
+                                                dst_vs->pmm,
+                                                1,
+                                                &alloced_page_number);
+                                        if (invalid_ppn(dst_ppn)
+                                            || alloced_page_number != 1) {
+                                                e = -E_RENDEZVOS;
+                                                (void)vmm_radix_tree_unlock_range_small(
+                                                        dst_vs,
+                                                        searched_start,
+                                                        searched_end);
+                                                goto rollback_prev_interval;
+                                        }
+                                        /*copy the data*/
+                                        if (map_handler_copy_page(
+                                                    handler, dst_ppn, src_ppn)
+                                            != REND_SUCCESS) {
+                                                e = -E_RENDEZVOS;
+                                                dst_vs->pmm->pmm_free(
+                                                        dst_vs->pmm,
+                                                        dst_ppn,
+                                                        1);
+                                                (void)vmm_radix_tree_unlock_range_small(
+                                                        dst_vs,
+                                                        searched_start,
+                                                        searched_end);
+                                                goto free_vspace;
+                                        }
+                                        /*bind*/
+                                        if (vmm_radix_tree_leaf_bind(dst_vs,
+                                                                     page_iter,
+                                                                     dst_ppn,
+                                                                     range_flags)
+                                            != REND_SUCCESS) {
+                                                e = -E_RENDEZVOS;
+                                                dst_vs->pmm->pmm_free(
+                                                        dst_vs->pmm,
+                                                        dst_ppn,
+                                                        1);
+                                                (void)vmm_radix_tree_unlock_range_small(
+                                                        dst_vs,
+                                                        searched_start,
+                                                        searched_end);
+                                                goto free_vspace;
+                                        }
+                                        /*map*/
+                                        if (map(dst_vs,
+                                                dst_ppn,
+                                                VPN(page_iter),
+                                                3,
+                                                range_flags,
+                                                handler)
+                                            != REND_SUCCESS) {
+                                                e = -E_RENDEZVOS;
+                                                dst_vs->pmm->pmm_free(
+                                                        dst_vs->pmm,
+                                                        dst_ppn,
+                                                        1);
+                                                (void)vmm_radix_tree_unlock_range_small(
+                                                        dst_vs,
+                                                        searched_start,
+                                                        searched_end);
+                                                goto free_vspace;
+                                        }
+                                } else {
+                                        /* link the src page*/
+                                        if (vmm_radix_tree_leaf_bind(
+                                                    dst_vs,
+                                                    page_iter,
+                                                    src_ppn,
+                                                    src_map_flag)
+                                            != REND_SUCCESS) {
+                                                e = -E_RENDEZVOS;
+                                                (void)vmm_radix_tree_unlock_range_small(
+                                                        dst_vs,
+                                                        searched_start,
+                                                        searched_end);
+                                                goto rollback_prev_interval;
+                                        }
+                                        /*map the dst*/
+                                        pmm_change_pages_ref(
+                                                dst_vs->pmm, src_ppn, 1, true);
+                                        if (map(dst_vs,
+                                                src_ppn,
+                                                VPN(page_iter),
+                                                3,
+                                                range_flags,
+                                                handler)
+                                            != REND_SUCCESS) {
+                                                e = -E_RENDEZVOS;
+                                                pmm_change_pages_ref(
+                                                        dst_vs->pmm,
+                                                        src_ppn,
+                                                        1,
+                                                        false);
+                                                (void)vmm_radix_tree_unlock_range_small(
+                                                        dst_vs,
+                                                        searched_start,
+                                                        searched_end);
+                                                goto rollback_prev_interval;
+                                        }
+                                        /*change the src pte flags*/
+                                        if (map(src_vs,
+                                                src_ppn,
+                                                VPN(page_iter),
+                                                3,
+                                                clear_mask_u64(src_map_flag,
+                                                               PAGE_ENTRY_WRITE),
+                                                handler)
+                                            != REND_SUCCESS) {
+                                                e = -E_RENDEZVOS;
+                                                (void)vmm_radix_tree_unlock_range_small(
+                                                        dst_vs,
+                                                        searched_start,
+                                                        searched_end);
+                                                goto rollback_pte_flags_prev;
+                                        }
+                                }
+                        }
+                        if (flags & VSPACE_CLONE_F_COW_PREP) {
+                                /*change the src vs range flags*/
+                                if (vmm_radix_tree_change_range_flag(
+                                            dst_vs,
+                                            searched_start,
+                                            searched_end,
+                                            range_flags | PAGE_ENTRY_COW)
+                                    != REND_SUCCESS) {
+                                        e = -E_RENDEZVOS;
+                                        (void)vmm_radix_tree_unlock_range_small(
+                                                dst_vs,
+                                                searched_start,
+                                                searched_end);
+                                        goto rollback_pte_flags_prev;
+                                }
+                                if (vmm_radix_tree_change_range_flag(
+                                            src_vs,
+                                            searched_start,
+                                            searched_end,
+                                            range_flags | PAGE_ENTRY_COW)
+                                    != REND_SUCCESS) {
+                                        e = -E_RENDEZVOS;
+                                        (void)vmm_radix_tree_unlock_range_small(
+                                                dst_vs,
+                                                searched_start,
+                                                searched_end);
+                                        goto rollback_pte_flags_prev;
+                                }
+                        }
+                }
+
+                if (vmm_radix_tree_unlock_range_small(
+                            dst_vs, searched_start, searched_end)
+                    != REND_SUCCESS) {
+                        pr_error(
+                                "[Error] clone vspace unlock range small fail\n");
+                        e = -E_RENDEZVOS;
+                        goto rollback_prev_interval;
+                }
+
+                iter_start = searched_end;
+        }
+
+        if (vmm_radix_tree_unlock_range_big(
+                    src_vs, PAGE_SIZE, USER_SPACE_TOP + 1)
+            != REND_SUCCESS) {
+                pr_error("[Erorr] unlock the range big lock fail\n");
+        }
+        *dst_vs_out = dst_vs;
+        return e;
+rollback_pte_flags_prev:
+        for (vaddr rollback_iter = page_iter - PAGE_SIZE;
+             rollback_iter >= searched_start;
+             rollback_iter -= PAGE_SIZE) {
+                /*we do not do any rollback_prev_interval for error handler*/
+                ENTRY_FLAGS_t src_map_flag;
+                ppn_t src_ppn = have_mapped(src_vs,
+                                            VPN(rollback_iter),
+                                            &src_map_flag,
+                                            NULL,
+                                            handler);
+                if (invalid_ppn(src_ppn)) {
+                        pr_error(
+                                "[Error] vspace clone roll back pte have mapped error\n");
+                        continue;
+                }
+                if (map(src_vs,
+                        src_ppn,
+                        VPN(rollback_iter),
+                        3,
+                        set_mask_u64(src_map_flag, PAGE_ENTRY_WRITE),
+                        handler)
+                    != REND_SUCCESS) {
+                        pr_error(
+                                "[Error] vspace clone roll back pte map error\n");
+                }
+        }
+        goto rollback_prev_interval;
+rollback_prev_interval:
+        if (flags & VSPACE_CLONE_F_COW_PREP) {
+                /*roll back the changed src vs*/
+                vaddr rollback_searched_start;
+                vaddr rollback_searched_end;
+                ENTRY_FLAGS_t rollback_range_flags;
+                vaddr rollback_iter = PAGE_SIZE;
+                while (vmm_radix_tree_find_first_occupied_interval(
+                        src_vs,
+                        rollback_iter,
+                        searched_start,
+                        &rollback_searched_start,
+                        &rollback_searched_end,
+                        &rollback_range_flags)) {
+                        bool need_bind = rollback_range_flags
+                                         & PAGE_ENTRY_VALID;
+                        if (need_bind) {
+                                for (vaddr rollback_page_iter =
+                                             rollback_searched_start;
+                                     rollback_page_iter < rollback_searched_end;
+                                     rollback_page_iter += PAGE_SIZE) {
+                                        ENTRY_FLAGS_t src_map_flag;
+                                        ppn_t src_ppn = have_mapped(
+                                                src_vs,
+                                                VPN(rollback_page_iter),
+                                                &src_map_flag,
+                                                NULL,
+                                                handler);
+                                        if (invalid_ppn(src_ppn)) {
+                                                pr_error(
+                                                        "[Error] vspace clone roll back prev interval have mapped error\n");
+                                                continue;
+                                        }
+                                        if (map(src_vs,
+                                                src_ppn,
+                                                VPN(rollback_page_iter),
+                                                3,
+                                                set_mask_u64(src_map_flag,
+                                                             PAGE_ENTRY_WRITE),
+                                                handler)
+                                            != REND_SUCCESS) {
+                                                pr_error(
+                                                        "[Error] vspace clone roll back prev interval map error\n");
+                                        }
+                                }
+                                if (vmm_radix_tree_change_range_flag(
+                                            src_vs,
+                                            rollback_searched_start,
+                                            rollback_searched_end,
+                                            clear_mask_u64(rollback_range_flags,
+                                                           PAGE_ENTRY_COW))
+                                    != REND_SUCCESS) {
+                                        pr_error(
+                                                "[Error] vspace clone roll back change range flags error\n");
+                                }
+                        }
+                        rollback_iter = rollback_searched_end;
+                }
+        }
+        goto free_vspace;
+free_vspace:
+        (void)vmm_radix_tree_unlock_range_big(
+                src_vs, PAGE_SIZE, USER_SPACE_TOP + 1);
+free_vspace_no_unlock:
         del_vspace(&dst_vs);
         return e;
 }
