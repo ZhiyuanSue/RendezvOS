@@ -479,18 +479,15 @@ error_t chunk_free_obj(struct object_header* obj, struct mem_chunk* chunk)
                 return -E_IN_PARAM;
         }
         /*
-        the legal obj must not be 4K aligned, but we do not check here
-        if it's a 4K aligned, which means it is a page alloc, and should use the
-        free pages
-        but there's a problem that how can we know the pages we need to free?
-        let's check the nexus realization.
-        in nexus, for kernel space, one nexus entry record the page num.
-        because it's ppn is continuous.
-        but for user space, the ppn might not.
-        so we have to let every entry record 4K or 2M.
-        and here we must need the page_num to decide how much to return
-
-        let's remember one thing: kmalloc is only used for kernel!!!!!!
+        The legal obj must not be 4K aligned, but we do not check here.
+        If it's 4K aligned, it means it's a page alloc, and should use free_pages.
+        But there's a problem: how can we know the pages we need to free?
+        Let's check the radix tree realization.
+        In the radix tree, for kernel space, we query the page metadata to
+        determine the page count for a contiguous allocation.
+        The page_chunk_root red-black tree records (page_addr, page_num) for
+        page_chunk_node entries, allowing us to find the page count by vaddr lookup.
+        Let's remember one thing: kmalloc is only used for kernel!!!!!!
         */
         if (chunk->magic != CHUNK_MAGIC) {
                 pr_error("[ERROR]illegal chunk magic\n");

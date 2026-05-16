@@ -323,117 +323,157 @@ struct map_handler {
 
 ---
 
-## 4. Nexus：每 CPU 虚拟页分配器
+## 4. Radix Tree：虚拟地址空间元数据
 
-### 4.1 设计动机：为何按“页”记录而非传统 VMA 区间
+### 4.1 设计动机：硬件对齐的基数树架构
 
-主流 ISA 的 MMU 均采用**基于基数树（多级页表）的硬件结构**，软件侧若再维护一套与页表并行的“区间”抽象（如 Linux 的 VMA 树），会带来双重抽象与复杂的同步需求。SOSP 2025 的 **CortenMM**（*Efficient Memory Management with Strong Correctness Guarantees*）[^1] 指出：传统做法在软件层维护 VMA 等区间结构，并与硬件页表保持一致，往往需要**细粒度、多层次的锁**，在多核下容易成为扩展瓶颈；而直接围绕页表设计、采用可扩展的加锁协议，能同时获得性能与可验证性。
+主流 ISA 的 MMU 均采用**基于基数树（多级页表）的硬件结构**，软件侧若再维护一套与页表并行的区间抽象（如 Linux 的 VMA 树），会带来双重抽象与复杂的同步需求。SOSP 2025 的 **CortenMM**（*Efficient Memory Management with Strong Correctness Guarantees*）[^1] 指出：传统做法在软件层维护 VMA 等区间结构，并与硬件页表保持一致，往往需要**细粒度、多层次的锁**，在多核下容易成为扩展瓶颈；而直接围绕页表设计、采用可扩展的加锁协议，能同时获得性能与可验证性。
 
-[^1]: CortenMM: Efficient Memory Management with Strong Correctness Guarantees. SOSP 2025. 采用单一页表层级、事务式接口与可扩展加锁，避免 VMA 与页表双抽象带来的锁竞争。RendezvOS 的设计与之呼应：**不采用 Linux 式的 VMA 区间 + 复杂 mm 锁**，而是用 **Nexus** 按**页/大页**粒度记录“虚拟页 ↔ 物理页”的映射，并配合**每 CPU 一个 Nexus** 与分层锁，尽量把竞争限制在单核或单 vspace 内。
+[^1]: CortenMM: Efficient Memory Management with Strong Correctness Guarantees. SOSP 2025. 采用单一页表层级、事务式接口与可扩展加锁，避免 VMA 与页表双抽象带来的锁竞争。RendezvOS 的设计与之呼应：**采用 4 级 radix tree**，**按页/大页**粒度记录“虚拟页 ↔ 物理页”的映射，并配合**两层锁机制**，尽量把竞争限制在单核或单 vspace 内。
 
-- **按页而非按区间**：Nexus 中每条记录对应一段**固定大小**的映射（4K 或 2M），用红黑树按虚地址组织，便于查找与释放，但**不做区间的合并/分裂**（如 Linux 的 vma 合并）。这样与硬件页表“按页/大页映射”的粒度一致，无需在软件层维护区间代数，也避免为区间操作引入细粒度锁。
-- **每 CPU 一个 Nexus**：内核态分配时，每个 CPU 使用本 CPU 的 `nexus_root` 与 `map_handler`，分配出的虚拟页记录在本 CPU 的树中，**同核上的分配/释放不与其他核争用同一棵 nexus 树**；只有访问共享的 PMM 或同一 vspace 时才会碰到跨核锁。
+- **硬件对齐的 radix tree**：采用 4 级 512 路基数树，与 x86-64 页表结构（L0/L1/L2/L3）直接对应，每级索引分别为 9 位，覆盖 48 位虚拟地址空间。L0/L1/L2 每个表项为 `Radix_entry_t`（8 字节），L3 叶子为 `Radix_node_t`（32 字节，含 flags、rmap_list、owner）。
+- **两层锁机制**：L0 "big lock" 覆盖 512 GiB 粒度（ coarse-grained 互斥），L2 per-band lock 覆盖 2 MiB 粒度（fine-grained 并发）。相比单一 vspace-wide 锁，多核扩展性显著提升。
+- **Range-based APIs**：INSERT/DELETE/QUERY_OR_CHANGE 三种语义，支持 **lazy allocation**（PAGE_ENTRY_LAZY）、**COW**（fork 后共享只读页）、**部分区间操作**（munmap/mprotect）等。
 
-以下先说明 Nexus 的角色与数据结构，再详述**锁的使用**与**多核下同一 vspace 仍存在的性能瓶颈**。
+以下先说明 Radix Tree 的角色与数据结构，再详述**两层锁的使用**与**多核下的扩展性**。
 
 ### 4.2 角色与绑定
 
-- **内核**：每个 CPU 有一个 `nexus_root`（`per_cpu(nexus_root, cpu_id)`），对应一个 `map_handler` 和共享的 `root_vspace`。内核的 `get_free_page`/`free_pages` 使用本 CPU 的 nexus_root。
-- **用户**：每个 VSpace（进程地址空间）在**某一个** Nexus 下拥有一个“vspace 根节点”；该进程的用户态虚拟页分配记录在该 vspace 的子树中，管理页放在内核空间，数据页映射在用户空间。
+- **内核**：每个 CPU 有一个 `map_handler`（`percpu(Map_Handler)`），对应共享的 `root_vspace`。内核的虚拟页分配通过 `mm_user_utils_set_range_and_fill` 等接口，在 `root_vspace` 的 radix tree 上记录。
+- **用户**：每个 VSpace（进程地址空间）拥有独立的 radix tree（挂在 `vs->root_radix`），通过 **L0 big lock + L2 per-band lock** 保护。用户态虚拟页的分配/释放记录在该 radix tree 的 L3 叶子中。
 
-地址判断：若虚拟地址 `>= KERNEL_VIRT_OFFSET` 则走内核 Nexus；否则按当前 vspace 找到其所属 nexus 的 vspace 根节点再操作。
+地址判断：若虚拟地址 `>= KERNEL_VIRT_OFFSET` 则走内核路径；否则按当前 vspace 的 `root_radix` 操作。
 
-VSpace 与 nexus 的关联（`include/rendezvos/mm/vmm.h`）：
+VSpace 与 radix tree 的关联（`include/rendezvos/mm/vmm.h`）：
 
 ```c
 typedef struct {
         paddr vspace_root_addr;   /* 页表根物理地址 */
         u64 vspace_id;
-        cas_lock_t nexus_vspace_lock;   /* 保护本 vspace 在 nexus 内的子树操作 */
-        void *_vspace_node;             /* 指向该 vspace 在某个 nexus 下的根 nexus_node */
+        void *root_radix;         /* 指向 Radix_entry_t* L0 表 */
+        struct pmm *pmm;          /* 物理内存管理器 */
+        spin_lock_t vspace_lock;  /* 保护页表修改（map/unmap） */
 } VSpace;
 ```
 
+**共享内核高半**：L0[256..511] 可在多个 vspace 间共享 L1/L3，通过 `tagged_ptr owner` 字段追踪所有者，实现安全的跨地址空间内核映射共享。
+
 ### 4.3 数据结构概要
 
-`nexus_node` 用 union 区分三种角色：普通映射节点、vspace 根节点、管理页的 0 号节点。每页可放 `NEXUS_PER_PAGE = PAGE_SIZE / sizeof(nexus_node)` 个节点；**0 号描述本页，1 号常为 vspace 根**（或 per-CPU 的 nexus 树的根，即内核用的 nexus_root）。这种布局使每个管理页**自包含**：同一页内既有描述本页的 0 号、又有挂在该页上的树根或子树根（1 号），其余 slot 通过 `manage_free_list` 与页内 `aux_list` 分配，无需依赖外部元数据即可完成该页上的分配与释放；`aux_list` 也可在局部算法里作为临时辅助链表使用。（`include/rendezvos/mm/nexus.h`）
+Radix tree 采用 4 级 512 路结构，与 x86-64 页表层级对应。每级表页大小为 4KiB，通过 CAS bitlock 保护并发访问。（`include/rendezvos/mm/vmm_radix_tree.h`）
+
+**L0/L1/L2 表项**：每个 `Radix_entry_t` 为 8 字节，包含锁、有效位、占用计数和子表指针：
 
 ```c
-struct nexus_node {
-        struct list_entry manage_free_list;  /* 管理页链表：有空闲 slot 的页 */
-        struct list_entry aux_list;          /* 页内空闲链表 / 临时辅助链表 */
-        struct list_entry _vspace_list;      /* 挂到 vspace 根下，串起该 vspace 所有映射页 */
-        VSpace *vs;
-        union {
-                /* 普通映射节点 或 管理页 0 号 */
-                struct {
-                        struct rb_node _rb_node;
-                        ENTRY_FLAGS_t region_flags;   /* 含 PAGE_ENTRY_HUGE(2M) 等 */
-                        vaddr addr;
-                        union {
-                                u64 page_left_nexus;     /* 管理页 0 号：本页剩余空闲 slot 数 */
-                                struct list_entry rmap_list;  /* 普通节点：挂到 Page.rmap_list */
-                        };
-                };
-                /* vspace 根节点 或 nexus 根节点 */
-                struct {
-                        struct rb_node _vspace_rb_node;
-                        struct rb_root _rb_root;        /* 本 vspace 内按 addr 的映射树 */
-                        struct map_handler *handler;
-                        struct rb_root _vspace_rb_root;  /* 仅根：按 vspace_root_addr 的 vspace 树 */
-                        cas_lock_t nexus_lock;
-                };
-        };
-};
-#define NEXUS_PER_PAGE (PAGE_SIZE / (sizeof(struct nexus_node)))
+typedef struct {
+        u64 value;  /* packed: bit0=lock, bit1=VALID, bits2..11=count, bits12..63=child_ptr */
+} Radix_entry_t;
+
+/* 字段解析（位域） */
+#define VMM_RADIX_ENTRY_LOCK_OFF     0   /* CAS bitlock */
+#define VMM_RADIX_ENTRY_VALID_OFF    1   /* 子表已发布 */
+#define VMM_RADIX_CNT_SHIFT          2   /* 子占用计数（bits 2..11，支持 0..511） */
+#define VMM_RADIX_PTR_MASK           0xfffffffffffff000ULL  /* 子表 KVA（低 12 位清零） */
 ```
 
-- 普通节点：`addr` + `region_flags` 表示一段 4K 或 2M 映射，`rmap_list` 链到物理页做反向映射。  
-- vspace 根：`_rb_root` 为该 vspace 的映射红黑树，`handler` 指向本 CPU 的 map_handler；全局 nexus 根的 `_vspace_rb_root` 串起所有 vspace 根。
+- **bit0**：CAS bitlock，保护该表项的原子修改。
+- **bit1**：VALID，表示子表指针已对其他 CPU 可见（pending 状态仅在 INSERT 事务内部可见）。
+- **bits 2..11**：子级占用计数，用于判断何时可以释放整张子表（I7：只有计数为 0 才能释放）。
+- **bits 12..63**：子表内核虚拟地址，低 12 位为 0（4K 对齐）。
 
-### 4.4 锁策略与“尽量每 CPU”的实现
+**L3 叶子节点**：每个 `Radix_node_t` 为 32 字节，记录单个 4KiB 页的元数据：
 
-为实现“尽量每 CPU、少争用”的 Nexus，代码中使用了多类锁，并尽量缩短持锁范围、区分“全局 nexus 元数据”与“单 vspace 树”的锁。
+```c
+typedef struct {
+        ENTRY_FLAGS_t flags;        /* 影子标志（与 PTE 同步） */
+        struct list_entry rmap_list; /* 反向映射：链到 Page::rmap_list */
+        tagged_ptr_t owner;         /* 所有者：低半=vs，高半=&root_vspace */
+} Radix_node_t;
+```
 
-| 锁 | 作用范围 | 用途 |
-|----|----------|------|
-| **nexus_lock**（cas_lock） | 单个 nexus_root | 保护该 nexus 的 **vspace 集合**（`_vspace_rb_root`）：创建/删除/迁移 vspace 根节点时短时持有；`get_free_page`/`free_pages` 在用户态路径中仅用于按 `vs->vspace_root_addr` 查找 vspace_node，查完即放。 |
-| **nexus_vspace_lock**（cas_lock） | 单个 VSpace | 保护**该 vspace 在 nexus 内的子树**及与之相关的分配/释放流程：在对应 vspace 的 `_rb_root` 上做插入、删除、查找，以及 `_take_range`、`_unfill_range`、管理页/nexus_node 的分配与归还时持有。内核路径用 `nexus_root->vs->nexus_vspace_lock`（内核 vspace）；用户路径用 `vspace_node->vs->nexus_vspace_lock`。 |
-| **pmm 锁**（MCS，per zone per CPU） | 每个 zone | 保护 PMM 的共享元数据（buddy 管理结构、`Page` 元数据如 `rmap_list`）。**allocator（`pmm_alloc`/`pmm_free`）内部自锁**；上层若需保护 `Page` 元数据，可用 `pmm_zone_lock/unlock`，但**不得在持锁时调用 `pmm_alloc/free`**。 |
+- **flags**：`PAGE_ENTRY_LAZY`（已预留但无物理页）、`PAGE_ENTRY_VALID`（已绑定物理页）、读写权限等。与 PTE flags 词汇对齐，但仅作为影子元数据。
+- **rmap_list**：链到物理页的 `Page::rmap_list`，用于反向查找（swap、COW 分裂等）。
+- **owner**：`tagged_ptr` 存储 `VSpace*` + CPU ID，用于共享高半的权限检查（I5）。
 
-**内核路径（`_kernel_get_free_page` / `_kernel_free_pages`）**  
-- 仅使用**本 CPU 的** nexus_root，整段分配/释放过程只持本 vspace 的 `nexus_vspace_lock`；不涉及其他 CPU 的 nexus 树。  
-- 唯一跨 CPU 共享的是 **PMM**：分配/释放物理页时短暂持 zone 的 MCS 锁，持锁时间仅为 pmm_alloc/pmm_free 内的一小段，从而在“多核同时做内核页分配”时，主要竞争点在 PMM，而非 nexus 树。
+**表页布局**：
+- L0 表：512 个 `Radix_entry_t`，覆盖 256 TiB（索引 L0[0]..L0[511]）。
+- L1 表：每个 L0 项指向一张 L1 表（512 项），覆盖 512 GiB。
+- L2 表：每个 L1 项指向一张 L2 表（512 项），覆盖 1 GiB。
+- L3 数组：每个 L2 项指向 512 个 `Radix_node_t`（16 KiB），覆盖 2 MiB（每个 Radix_node_t 对应 4 KiB）。
 
-**用户路径（`get_free_page` / `free_pages`，用户虚址）**  
-- 先用 `nexus_lock` 在 `_vspace_rb_root` 上按 `vs->vspace_root_addr` 找到 vspace_node，找到后立即释放 `nexus_lock`，再在**该 vspace 节点**上做 `_user_take_range` / `user_fill_range` / `user_unfill_range` / `_user_release_range`。  
-- 上述对“单 vspace 树”的操作全程持 **nexus_vspace_lock**（该 vspace 的），因此**同一 vspace 上的并发分配/释放会串行化**；但不同 vspace（不同进程）之间仅在使用 nexus_lock 查找时可能短暂交错，不会长时间共持一把锁。
+### 4.4 两层锁机制与可扩展性
 
-**设计意图小结**：通过“每 CPU 一个 nexus_root + 每 vspace 一把 nexus_vspace_lock”，使得**不同 CPU 上的内核分配互不争用 nexus 树**，**不同进程的用户分配也只在查找 vspace 时共用 nexus_lock**；代价是同一进程（同一 vspace）内多线程会争用该 vspace 的 nexus_vspace_lock 与 vspace_lock。
+为实现**高并发、低争用**的虚拟地址空间操作，radix tree 采用**两层锁**：**L0 big lock**（coarse-grained）+ **L2 per-band lock**（fine-grained），相比单一 vspace-wide 锁，多核扩展性显著提升。
 
-### 4.5 多核下同一 vspace 的性能局限
+| 锁类型 | 作用范围 | 保护内容 | 持锁时长 |
+|--------|----------|----------|----------|
+| **L0 big lock**（`Radix_entry_t::bit0`） | 512 GiB shards（L0 表项） | 保护该 L0 项下的 L1 表分配、L1→L2 grow 路径、多 band 操作的原子性。区间操作前 `vmm_radix_tree_lock_range_big`，结束后 `vmm_radix_tree_unlock_range_big`。 | 整个 VA 区间操作期间 |
+| **L2 per-band lock**（`Radix_entry_t::bit0`） | 2 MiB bands（L2 表项） | 保护该 2 MiB band 内的 L3 数组、叶子的 bind/unbind、flags 更新、占用计数调整。通过 `vmm_radix_tree_lock_range_small_with_big_locked` 或 `vmm_radix_tree_lock_range_big_and_small` 获取。 | 单个 band 操作期间 |
+| **PMM zone lock**（MCS，per zone） | 每个 zone | 保护 PMM 的 `Page` 元数据（如 `rmap_list`）。`pmm_alloc`/`pmm_free` **内部自锁**；上层若需保护 `Page` 元数据，可用 `pmm_zone_lock`，但**不得在持锁时调用 `pmm_alloc/free`**。 | rmap 链表操作期间 |
+| **vspace_lock**（MCS） | 单个 VSpace | 保护页表修改（`map`/`unmap`）。由 `map_handler` 内部管理，调用方通过 `handler->vspace_lock_node` 传入。 | 单次 `map`/`unmap` 调用 |
 
-当**多个线程分属不同 CPU、但共享同一 VSpace**（同一进程的地址空间）时，会出现以下情况：
+**内核路径**：
+- 使用 `root_vspace`，通过 `mm_user_utils_set_range_and_fill` 分配连续物理页并映射。
+- 持锁顺序：**L0 big lock → L2 band lock → PMM zone lock**（rmap 操作）。
+- 多核分配主要竞争点在 **L2 band lock** 和 **PMM zone lock**，L0 big lock 仅在跨 512 GiB 区间时才可能争用。
 
-- **用户态 get_free_page / free_pages**：所有操作都要先找到该 vspace 对应的 vspace_node，再持 **vs->nexus_vspace_lock** 进行红黑树操作、PMM 分配/释放以及 `map`/`unmap`。因此，同一进程内多线程并发做虚拟页分配/释放时，会**串行化在这把 nexus_vspace_lock 上**，无法随 CPU 数扩展。
-- **页表修改**：`map`/`unmap` 内部使用 **vs->vspace_lock**，同一 vspace 的任意映射变更都会互斥。多线程同时为同一地址空间建映射或拆映射时，同样会在这把锁上排队。
-- **PMM**：即使用 per-CPU 的 MCS 锁，zone 仍是全局的；若多核同时向同一 zone 要页，仍会在 pmm 层产生竞争，只是锁的形态比单一全局自旋锁更利于扩展。
+**用户路径**：
+- 每个进程（VSpace）有独立的 radix tree，通过 `vs->root_radix` 访问。
+- **同一 vspace 内多线程**：在 L2 band 粒度上并发，不同 2 MiB band 可同时操作，**多核扩展性显著优于单一 vspace-wide 锁**。
+- **跨 vspace**：不同进程的 radix tree 完全独立，无锁争用。
 
-因此，当前设计在“每 CPU 一个 Nexus、按页记录、少用 VMA 式区间锁”上取得了**内核路径与多进程用户路径**的较好隔离，但在**单进程多线程、高并发操作同一地址空间**的场景下，仍存在 **nexus_vspace_lock 的串行化瓶颈**；若需进一步扩展，可考虑按 vspace 内地址区间或按线程/CPU 做更细的划分（例如每 vspace 多棵子树、或更细粒度锁），与 CortenMM 等工作中“可扩展加锁协议”的方向一致。
+**设计意图小结**：通过”两层锁 + per-band 并发”，使得**内核分配与多进程用户路径几乎无锁争用**；**单进程多线程**的竞争点在 L2 band lock，粒度为 2 MiB，远优于单一 vspace-wide 锁。
 
-### 4.6 get_free_page / free_pages 与反向映射
+### 4.5 Range API 与编排层次
 
-- **内核**：`_kernel_get_free_page` 持 `nexus_vspace_lock` 后向 PMM 要页、`_take_range` 分配 nexus_node、对每节点 `map()`（内部用 `vspace_lock`）、`link_rmap_list`；`_kernel_free_pages` 持同一把 `nexus_vspace_lock` 后查树、`_unfill_range`（unmap + pmm_free）、删除节点并 `nexus_free_entry`。  
-- **用户**：`get_free_page` 先短持 `nexus_lock` 查 vspace_node，再在 vspace_node 上做 `_user_take_range`（持 `nexus_vspace_lock`）与 `user_fill_range`（持锁下逐页 pmm_alloc + map）；`free_pages` 先查 vspace_node，再 `user_unfill_range` 与 `_user_release_range`，均持该 vspace 的 `nexus_vspace_lock`。  
-- **反向映射（rmap）**：每个 `Page` 的 `rmap_list` 链起所有映射到该页的 nexus_node；`unfill_phy_page` 等会遍历 rmap 并逐项 unmap。同一 2M 对齐物理范围内不允许 2M 与 4K 混用（会报错）。**Shared memory**（多地址空间共享同一物理页、引用计数与 rmap 协同）是后续必须支持的能力，用于 swap/COW 等，当前为 TODO。
+Radix tree 提供**range-based APIs**，支持 INSERT/DELETE/QUERY_OR_CHANGE 三种语义，由 `mm_user_utils` 层编排为完整的”分配→映射→绑定”或”解绑→解映射→释放”流程。
 
-**用户态多 vspace 与迁移**：**每个 vspace 单独占一页**作为其 nexus 根所在的管理页；新 VSpace 通过 `nexus_create_vspace_root_node` 在某个 nexus_root 的 `_vspace_rb_root` 上挂一个 vspace 根节点（持 `nexus_lock`），该节点位于新分配的这一页内（1 号 slot 为 vspace 根）。这样不同 vspace 的 nexus entry 分配互不干扰，避免多 vspace 共用一棵树时 entry 争用。删除进程时 `nexus_delete_vspace` 持同一把锁摘下该节点，并持该 vspace 的 `nexus_vspace_lock` 释放其下所有映射与 nexus 节点。线程迁移时可通过 `nexus_migrate_vspace` 将某 vspace 从源 nexus 移到目标 nexus（先持源 nexus_lock 摘下，再持目标 nexus_lock 挂上），保证释放时仍能找到对应的 handler/allocator。
+**Range 锁获取五阶段**（`radix_range_lock_acquire`）：
+1. **Phase 1**：锁 L0 片，保证 L1 表页存在（INSERT 可 grow）。
+2. **Phase 2**：铺 L1 槽到 L2 表（INSERT 可 grow；不对 l1e 单独长期持锁）。
+3. **Phase 3**：真实”区间锁”：按 VA 升序锁每条 2 MiB 行（L2 entry）、挂 L3、做叶级校验。
+4. **Phase 4**：INSERT 提交 VALID + 结构计数；DELETE 仅 L1 带级结构减量。
+5. **Phase 5**：释放全部 L0 锁；在仅持 L2 行锁下调整”页数”占用。
 
-**用户态相关设计意图与 TODO（须保留）**：  
-- **Lazy alloc**：用户态虚拟页可先占区间、后补物理映射；分配时需能指明是否立即分配物理页，释放时若无物理页则只收虚拟区间。  
-- **Map override**：页表项已存在时，若允许 override 则覆盖并返回原 ppn，否则报错，以便上层决定是否 unmap 再 map 或复用。  
-- **区间合并/分裂**：当前按 4K/2M 单页记录、不做区间合并与分裂；若将来在用户态维护连续区间（例如配合 page fault 的区间信息），需要定义合并/分裂语义及与现有 nexus 记录的配合方式。  
-以上均为设计意图或待实现（TODO），实现时需与现有 get_free_page / free_pages / user_fill_range / user_unfill_range 接口一致。
+**核心 API 语义**：
+
+| API | kind | 语义 | 调用时机 |
+|-----|------|------|----------|
+| `vmm_radix_tree_insert_range` | INSERT | Grow 路径，预留 LAZY 叶子，设置 `owner` | `mmap` reserve、lazy alloc |
+| `vmm_radix_tree_leaf_bind_range` | QUERY_OR_CHANGE | LAZY → VALID，link rmap | `map` 之后，提交物理页 |
+| `vmm_radix_tree_leaf_unbind_range` | QUERY_OR_CHANGE | VALID → LAZY，unlink rmap | `unmap` 之前，解除物理页绑定 |
+| `vmm_radix_tree_delete_range` | DELETE | 清除 LAZY reservation，回收 radix 结构 | `munmap` 最后一步 |
+| `vmm_radix_tree_change_leaf_ppn` | QUERY_OR_CHANGE | COW 分裂、remap | fork page fault、`mremap` |
+| `vmm_radix_tree_change_range_flag` | QUERY_OR_CHANGE | `mprotect` 批量 flag 更新 | `mprotect` |
+| `vmm_radix_tree_query_range` | QUERY_OR_CHANGE | 读叶子元数据 | page fault 快速路径 |
+
+**编排层次**（L5：`mm_user_utils`）：
+- **分配路径**：`pmm_alloc` → `insert_range`（LAZY）→ `map` → `leaf_bind_range`（VALID + rmap）
+- **释放路径**：`leaf_unbind_range`（VALID → LAZY）→ `unmap` → `delete_range` → `pmm_free`
+- **COW 分裂**：`pmm_alloc` 新页 → `map_handler_copy_page` → `change_leaf_ppn`
+
+### 4.6 用户编排层与反向映射
+
+**内核路径**：
+- `mm_user_utils_set_range_and_fill`：分配连续物理页（`pmm_alloc`），预留 radix 区间（`insert_range`），映射页表（`map`），绑定叶子（`leaf_bind_range`），清零页（`map_handler_zero_page`）。
+- 失败回滚：按相反顺序释放已绑定叶子（`leaf_unbind_range`），解映射页表（`unmap`），释放 radix 区间（`delete_range`），释放物理页（`pmm_free`）。
+
+**用户路径**：
+- **分配**：`mm_user_utils_set_range_and_fill`（同内核路径，但作用于用户 vspace）。
+- **lazy 分配**：`mm_user_utils_fill_page_with_exist_range`：page fault 时将 LAZY 叶子物化为 VALID，分配物理页并映射。
+- **释放**：`mm_user_utils_clean_range_and_unfill`：`leaf_unbind_range` → `unmap` → `delete_range` → `pmm_free`。
+- **remap**：`mm_user_utils_remap_page`：COW 分裂或 `mremap`，更新 PPN 和 flags。
+- **flag 更新**：`mm_user_utils_set_range_flags`：`mprotect` 批量更新 PTE 和 radix flags，支持 ABSOLUTE/DELTA/DELTA_PTE_ONLY 三种模式。
+
+**反向映射（rmap）**：
+- 每个 `Page` 的 `rmap_list` 链起所有映射到该页的 `Radix_node_t`（通过 `radix_leaf_link_rmap` / `radix_leaf_unlink_rmap` 操作）。
+- **共享内存**：多地址空间共享同一物理页时，每个 vspace 的 radix 叶子独立 rmap 链接到同一个 `Page`。
+- **COW 分裂**：fork 后共享只读页，写故障时通过 rmap 找到所有共享者，分配新页并更新受害者的 `Radix_node_t`（`change_leaf_ppn`）。
+
+**共享内核高半**：
+- L0[256..511] 可在多个 vspace 间共享 L1/L3，通过 `vmm_radix_tree_bootstrap_shared_kernel_high_half`（BSP 一次性）+ `vmm_radix_tree_install_shared_kernel_high_half`（每个 vspace）建立。
+- **owner 字段**：低半地址（L0[0..255]）为 `vs`；高半地址（L0[256..511]）为 `&root_vspace`。
+- **安全保证**：DELETE 操作只清除 `owner` 匹配的叶子；bind/unbind 不检查 `owner`，允许跨 vspace 共享。
 
 ---
 
@@ -502,7 +542,7 @@ struct mem_allocator {
 
 - 每个 CPU 一个 `kallocator`（mem_allocator），`allocator_id` 一般为 cpu_id；**allocator（与 map_handler）数量受 128 上限约束**，与 3.2 节中“每 CPU 占 4 页、2MiB 最多 128 CPU”一致。  
 - 释放时若发现 `object_header.allocator_id != 当前 allocator_id`，则不直接在本 allocator 释放，而是把该 object 挂到目标 allocator 的 `buffer_msq` 无锁队列。目标 CPU 在每次执行 free 时会顺带消费该队列，把对象还到正确的 chunk/group，避免跨 CPU 锁 chunk。  
-- 整页分配通过 `page_chunk_root` 红黑树按虚地址查找，得到页数后调用 `free_pages`；该树与 nexus 的映射关系一致，由 allocator 自己维护，不依赖 Nexus 记录“上层要了多少页”。
+- 整页分配通过 `page_chunk_root` 红黑树按虚地址查找，得到页数后调用 `free_pages`；该树与 radix tree 的映射关系一致，由 allocator 自己维护，不依赖 radix tree 记录”上层要了多少页”。
 
 ---
 
@@ -517,9 +557,10 @@ struct mem_allocator {
 | Zone / Section / Page | `include/rendezvos/mm/pmm.h` |
 | Buddy | `kernel/mm/buddy_pmm.c`，`include/rendezvos/mm/buddy_pmm.h` |
 | 页表自映射与 map | `kernel/mm/map_handler.c`，`include/rendezvos/mm/map_handler.h`，`kernel/mm/map_util_page.S` |
-| Nexus 与锁（nexus_lock, nexus_vspace_lock, vspace_lock） | `kernel/mm/nexus.c`，`include/rendezvos/mm/nexus.h` |
+| Radix Tree 与两层锁 | `kernel/mm/vmm_radix_tree.c`，`include/rendezvos/mm/vmm_radix_tree.h` |
+| 用户编排层（mm_user_utils） | `kernel/mm/mm_user_utils.c`，`include/rendezvos/mm/mm_user_utils.h` |
 | kmalloc | `kernel/mm/kmalloc.c`，`include/rendezvos/mm/kmalloc.h` |
-| 虚拟 MM 与 per-CPU 初始化 | `kernel/mm/vmm.c`（virt_mm_init, init_map, init_nexus, kinit） |
+| 虚拟 MM 与 per-CPU 初始化 | `kernel/mm/vmm.c`（virt_mm_init, init_map, init_radix, kinit） |
 
 ---
 

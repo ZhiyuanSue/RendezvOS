@@ -654,7 +654,7 @@ error_t virt_mm_init(cpu_id_t cpu_id, struct setup_info* arch_setup_info)
         per_cpu(current_vspace, cpu_id) = &root_vspace;
         if (!kinit((int)cpu_id))
                 return -E_RENDEZVOS;
-        /* init_vspace_nexus wires per-CPU nexus_kernel_heap_vs_common; drop
-         * back-pointer. */
+        /* kinit initializes per-CPU radix tree and kernel heap allocator.
+         * VSpace registration is handled separately. */
         return REND_SUCCESS;
 }
