@@ -158,6 +158,9 @@ static void* core_get_free_pages(size_t page_num, VSpace* vs,
                         "[ KALLOC ] ERROR: insert_range fail (after INSERT lock)\n");
                 goto before_lock_fail;
         }
+        (void)vmm_radix_tree_unlock_range_big_and_small(
+                vs, free_page_addr, vaddr_end);
+
         while (mapped_count < page_num) {
                 vaddr va = free_page_addr + mapped_count * PAGE_SIZE;
                 error_t map_error = map(vs,
@@ -171,11 +174,20 @@ static void* core_get_free_pages(size_t page_num, VSpace* vs,
                                 "[ KALLOC ] ERROR: map fail at page %lu e=%d\n",
                                 mapped_count,
                                 map_error);
-                        (void)vmm_radix_tree_unlock_range_big_and_small(
-                                vs, free_page_addr, vaddr_end);
                         goto fail_unmap_rollback;
                 }
                 mapped_count++;
+        }
+
+        if (vmm_radix_tree_lock_range_big_and_small(
+                    handler,
+                    vs,
+                    free_page_addr,
+                    vaddr_end,
+                    RADIX_RL_QUERY_OR_CHANGE)
+            != REND_SUCCESS) {
+                pr_error("[ KALLOC ] ERROR: radix bind-phase lock fail\n");
+                goto fail_unmap_rollback;
         }
         if (vmm_radix_tree_leaf_bind_range(
                     vs, free_page_addr, ppn, vaddr_end, leaf_eflags)
@@ -198,9 +210,9 @@ fail_unmap_rollback:
         }
 before_lock_fail:
         /*
-         * Partial INSERT / failed map or bind: radix may still reserve leaves.
-         * DELETE acquire uses the same kmem big-and-small model (L0 only inside
-         * acquire). vaddr_end is valid from calculate_end_check above.
+         * Only reached after INSERT acquire succeeded (insert_range fail or
+         * post-insert map/bind rollback). Shrink radix reservation; failures
+         * before INSERT lock go to after_check_succ instead.
          */
         if (vmm_radix_tree_lock_range_big_and_small(
                     handler, vs, free_page_addr, vaddr_end, RADIX_RL_DELETE)
@@ -208,7 +220,7 @@ before_lock_fail:
                 (void)vmm_radix_tree_unlock_range_big_and_small(
                         vs, free_page_addr, vaddr_end);
 after_check_succ:
-        /* calculate_end_check or radix lock failed; no radix locks held. */
+        /* calculate_end_check or INSERT lock failed; no radix shrink. */
         pmm_ptr->pmm_free(pmm_ptr, ppn, page_num);
         return NULL;
 after_alloc_fail:
