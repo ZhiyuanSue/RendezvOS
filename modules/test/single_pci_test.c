@@ -80,7 +80,6 @@ static struct pci_node *simple_print_callback(u8 bus, u8 device, u8 func,
                 pr_error("pci test: cannot alloc pci_node\n");
                 return NULL;
         }
-        memset(pci_device_node, '\0', sizeof(struct pci_node));
         pci_device_node->bus = bus;
         pci_device_node->device = device;
         pci_device_node->func = func;
@@ -105,7 +104,6 @@ int test_pci_scan(void)
                 pr_error("pci test: cannot alloc root node\n");
                 return -E_REND_TEST;
         }
-        memset(root, '\0', sizeof(struct pci_node));
         return pci_scan_all(simple_print_callback, root);
 #else
         return REND_SUCCESS;

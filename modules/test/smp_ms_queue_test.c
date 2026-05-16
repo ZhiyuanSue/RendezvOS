@@ -128,7 +128,6 @@ void smp_ms_queue_dyn_alloc_init(void)
                 malloc->m_alloc(malloc, sizeof(struct ms_test_data));
         tmp->data = -1;
         msq_init(&ms_queue, &tmp->ms_node, 0);
-        memset(ms_data_test_seq, 0, ms_data_len * sizeof(int));
 }
 static error_t dyn_alloc_free_node(ref_count_t* refcount)
 {
@@ -148,7 +147,6 @@ void smp_ms_queue_dyn_alloc_put(int offset)
                 struct ms_test_data* tmp_ms_data =
                         malloc->m_alloc(malloc, sizeof(struct ms_test_data));
                 if (tmp_ms_data) {
-                        memset(tmp_ms_data, 0, sizeof(struct ms_test_data));
                         ref_init(&tmp_ms_data->ms_node.refcount);
                         tmp_ms_data->data = i;
                         msq_enqueue(&ms_queue,

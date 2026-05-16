@@ -76,7 +76,6 @@ Thread_Base* new_thread_structure(struct allocator* cpu_kallocator,
         if (!thread) {
                 goto alloc_thread_error;
         }
-        memset((void*)thread, 0, sizeof(Thread_Base) + append_thread_info_len);
 
         /*first do alloc*/
         thread->init_parameter = new_init_parameter_structure();
@@ -108,12 +107,10 @@ Thread_Base* new_thread_structure(struct allocator* cpu_kallocator,
         thread->flags = THREAD_FLAG_NONE;
 
         /*ipc part*/
-        memset(dummy_recv_msg_node, 0, sizeof(Message_t));
         msq_init(&thread->recv_msg_queue,
                  &dummy_recv_msg_node->ms_queue_node,
                  0);
 
-        memset(dummy_send_msg_node, 0, sizeof(Message_t));
         msq_init(&thread->send_msg_queue,
                  &dummy_send_msg_node->ms_queue_node,
                  0);
@@ -215,12 +212,8 @@ Thread_Init_Para* new_init_parameter_structure(void)
                 return NULL;
         Thread_Init_Para* new_pm = (Thread_Init_Para*)(cpu_kallocator->m_alloc(
                 cpu_kallocator, sizeof(Thread_Init_Para)));
-        if (new_pm) {
+        if (new_pm)
                 new_pm->thread_func_ptr = NULL;
-                memset(new_pm->int_para,
-                       '\0',
-                       (NR_ABI_PARAMETER_INT_REG) * sizeof(u64));
-        }
         return new_pm;
 }
 void del_init_parameter_structure(Thread_Init_Para* pm)

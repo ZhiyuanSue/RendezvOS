@@ -96,7 +96,6 @@ int kmalloc_test(void)
                          sizeof(struct bin) * MAX_BIN);
                 return -E_REND_TEST;
         }
-        memset(b_array, 0, sizeof(struct bin) * MAX_BIN);
         kmalloc_print();
         /*the main loop*/
         for (int iter = 0; iter < ITER_COUNT; iter++) {

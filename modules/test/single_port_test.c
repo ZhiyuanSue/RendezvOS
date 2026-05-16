@@ -144,7 +144,6 @@ int single_port_test(void)
         port_discovery_receiver_done = 0;
         port_discovery_sender_done = 0;
         port_discovery_recv_type = -1;
-        memset(port_discovery_recv_buf, 0, sizeof(port_discovery_recv_buf));
 
         is_print_sche_info = false;
 

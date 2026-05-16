@@ -23,7 +23,8 @@
  * bits so callers can add e.g. UNCACHED without carrying REMAP/LAZY into PTE.
  *
  * Only @p page_num pages are mapped. Chunk paths zero each object in
- * @c chunk_get_obj; large @c kalloc page allocations zero the mapping in @c kalloc.
+ * @c chunk_get_obj; large @c kalloc page allocations zero the mapping in @c
+ * kalloc.
  */
 
 /* Radix owner tag = allocating CPU index (see core_get_free_pages). */
@@ -243,7 +244,8 @@ static error_t core_free_pages(void* p, size_t page_num, VSpace* vs)
 
         error_t err;
         vaddr vaddr_end;
-        if (!vmm_radix_tree_calculate_end_check((vaddr)p, page_num, &vaddr_end)) {
+        if (!vmm_radix_tree_calculate_end_check(
+                    (vaddr)p, page_num, &vaddr_end)) {
                 pr_error("[ KALLOC ] core_free_pages: radix end check fail\n");
                 return -E_IN_PARAM;
         }
@@ -369,7 +371,7 @@ static int bytes_to_pages(size_t Bytes)
 static void page_chunk_rb_tree_insert(struct page_chunk_node* node,
                                       struct rb_root* page_chunk_root)
 {
-        struct rb_node **new = &page_chunk_root->rb_root, *parent = NULL;
+        struct rb_node** new = &page_chunk_root->rb_root, *parent = NULL;
         u64 key = node->page_addr;
         while (*new) {
                 parent = *new;
@@ -895,10 +897,8 @@ static void* kalloc(struct allocator* allocator_p, size_t Bytes)
                         pr_error("[ERROR]cannot allocate a page chunk node\n");
                         return res_ptr;
                 }
-                memset(pcn, 0, sizeof(struct page_chunk_node));
-                res_ptr = core_get_free_pages((size_t)page_num,
-                                              &root_vspace,
-                                              PAGE_ENTRY_NONE);
+                res_ptr = core_get_free_pages(
+                        (size_t)page_num, &root_vspace, PAGE_ENTRY_NONE);
                 if (!res_ptr) {
                         pr_error("[ERROR] core_get_free_pages fail\n");
                         (void)_k_free((void*)pcn);
@@ -955,9 +955,6 @@ static void kfree(struct allocator* allocator_p, void* p)
                                         "[ERROR] kfree page: cannot alloc cross-cpu msg\n");
                                 return;
                         }
-                        memset(free_info,
-                               0,
-                               sizeof(struct kfree_page_free_info));
                         struct kfree_page_free_info* info =
                                 (struct kfree_page_free_info*)free_info;
                         info->page_vaddr = (vaddr)p;
@@ -1052,9 +1049,6 @@ struct allocator* kinit(int allocator_id)
                         pr_error("[ERROR] kfree_page_msq idle alloc fail\n");
                         return NULL;
                 }
-                memset(kernel_free_page_info_idle_node,
-                       0,
-                       sizeof(struct kfree_page_free_info));
                 struct object_header* kernel_free_page_idle_header =
                         container_of(kernel_free_page_info_idle_node,
                                      struct object_header,

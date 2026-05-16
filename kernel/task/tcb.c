@@ -267,7 +267,6 @@ Tcb_Base* new_task_structure(struct allocator* cpu_kallocator,
         Tcb_Base* tcb = (Tcb_Base*)(cpu_kallocator->m_alloc(
                 cpu_kallocator, sizeof(Tcb_Base) + append_tcb_info_len));
         if (tcb) {
-                memset((void*)tcb, 0, sizeof(Tcb_Base) + append_tcb_info_len);
                 tcb->pid = INVALID_ID;
                 lock_init_cas(&tcb->thread_list_lock);
                 INIT_LIST_HEAD(&(tcb->sched_task_list));

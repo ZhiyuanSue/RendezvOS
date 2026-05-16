@@ -126,9 +126,6 @@ int ipc_test(void)
         single_ipc_sender_done = 0;
         single_ipc_receiver_done = 0;
         single_ipc_received_type = -1;
-        memset(single_ipc_received_payload,
-               0,
-               sizeof(single_ipc_received_payload));
         is_print_sche_info = false;
         port = create_message_port("test_port");
         if (!port) {

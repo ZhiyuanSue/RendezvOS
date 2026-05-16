@@ -114,7 +114,8 @@
  * APIs that take `struct map_handler*` need it for radix table page grow/unmap
  * via @c map(); leaf-only mutators take only @c VSpace*. Only @ref
  * vmm_radix_tree_calculate_end_check applies radix VA-band
- * policy to a page count; call it **before** @ref vmm_radix_tree_lock_range_big,
+ * policy to a page count; call it **before** @ref
+ * vmm_radix_tree_lock_range_big,
  * @ref vmm_radix_tree_lock_range_big_and_small, or @ref
  * vmm_radix_tree_lock_range_small_with_big_locked (and matching unlocks) and
  * before
@@ -201,8 +202,8 @@ typedef struct {
 /**
  * @brief Kind argument for L2 radix range acquire APIs (@ref
  * vmm_radix_tree_lock_range_small_with_big_locked, @ref
- * vmm_radix_tree_lock_range_big_and_small) and internal @c radix_range_lock_acquire
- * (numeric values must stay stable).
+ * vmm_radix_tree_lock_range_big_and_small) and internal @c
+ * radix_range_lock_acquire (numeric values must stay stable).
  */
 typedef enum {
         RADIX_RL_INSERT = 0, /*!< Insert / grow-path semantics at L3. */
@@ -223,8 +224,8 @@ typedef enum {
  * vmm_radix_tree_lock_range_big_and_small, or @ref
  * vmm_radix_tree_lock_range_small_with_big_locked,
  * matching unlocks, and to @c vaddr_end on range mutators (insert/bind/unbind,
- * @ref vmm_radix_tree_query_range, etc.). Lock/unlock and mutators do not repeat
- * this check.
+ * @ref vmm_radix_tree_query_range, etc.). Lock/unlock and mutators do not
+ * repeat this check.
  *
  * @param vaddr_start   Interval start (inclusive).
  * @param page_number   Number of 4KiB pages (must be >= 1).
@@ -346,7 +347,8 @@ bool vmm_radix_tree_find_first_occupied_interval(VSpace* vs, vaddr search_start,
  * @param handler Map handler (radix metadata mapping / grow path).
  * @param vs      Target vspace.
  * @param vaddr_start Interval [vaddr_start, vaddr_end) start (page-aligned).
- * @param vaddr_end   Same @p vaddr_end from @ref vmm_radix_tree_calculate_end_check.
+ * @param vaddr_end   Same @p vaddr_end from @ref
+ * vmm_radix_tree_calculate_end_check.
  * @param kind    Acquire semantics (@ref RADIX_RL_INSERT, @ref RADIX_RL_DELETE,
  *                or @ref RADIX_RL_QUERY_OR_CHANGE).
  *
@@ -436,9 +438,9 @@ error_t vmm_radix_tree_unlock_range_small(VSpace* vs, vaddr vaddr_start,
  *       256) and `root_vspace` for shared kernel high half (L0 index &gt;=
  * 256).
  */
-error_t vmm_radix_tree_insert_range(VSpace* vs,
-                                    tagged_ptr_t owner_info, vaddr vaddr_start,
-                                    ENTRY_FLAGS_t flags, vaddr vaddr_end);
+error_t vmm_radix_tree_insert_range(VSpace* vs, tagged_ptr_t owner_info,
+                                    vaddr vaddr_start, ENTRY_FLAGS_t flags,
+                                    vaddr vaddr_end);
 
 /**
  * @brief Under one range lock, set VALID + rmap for each lazy-reserved leaf in
@@ -471,9 +473,8 @@ error_t vmm_radix_tree_insert_range(VSpace* vs,
  * @note Caller must have wired PTEs for [ @p vaddr_start , @p vaddr_end ).
  * Every leaf must be LAZY and not VALID beforehand. No map()/unmap() here.
  */
-error_t vmm_radix_tree_leaf_bind_range(VSpace* vs,
-                                       vaddr vaddr_start, ppn_t ppn_first,
-                                       vaddr vaddr_end,
+error_t vmm_radix_tree_leaf_bind_range(VSpace* vs, vaddr vaddr_start,
+                                       ppn_t ppn_first, vaddr vaddr_end,
                                        ENTRY_FLAGS_t leaf_flags);
 
 /**
@@ -501,8 +502,7 @@ error_t vmm_radix_tree_leaf_bind_range(VSpace* vs,
  *       @ref vmm_radix_tree_unlock_range_small after caller policy (e.g. after
  * unmap).
  */
-error_t vmm_radix_tree_leaf_unbind_range(
-                                         VSpace* vs, vaddr vaddr_start,
+error_t vmm_radix_tree_leaf_unbind_range(VSpace* vs, vaddr vaddr_start,
                                          ppn_t ppn_first, vaddr vaddr_end);
 
 /**
@@ -599,8 +599,8 @@ error_t vmm_radix_tree_change_range_flag(VSpace* vs, vaddr vaddr_start,
  * @note At least one of @p out_flags and @p out_owner must be non-NULL.
  */
 error_t vmm_radix_tree_query_range(VSpace* vs, vaddr vaddr_start,
-                                  vaddr vaddr_end, ENTRY_FLAGS_t* out_flags,
-                                  tagged_ptr_t* out_owner);
+                                   vaddr vaddr_end, ENTRY_FLAGS_t* out_flags,
+                                   tagged_ptr_t* out_owner);
 
 /**
  * @brief Allocate the L0 radix table page and store its pointer in the vspace

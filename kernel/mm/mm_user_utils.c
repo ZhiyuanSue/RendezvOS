@@ -25,7 +25,8 @@ static ENTRY_FLAGS_t mm_user_canonical_pte_flags(ENTRY_FLAGS_t in)
 
 /**
  * @p for_pte_table true: L3 PTE flags; false: radix leaf shadow.
- * @c MM_USER_RANGE_FLAGS_DELTA_PTE_ONLY with radix: returns @p old_flags unchanged.
+ * @c MM_USER_RANGE_FLAGS_DELTA_PTE_ONLY with radix: returns @p old_flags
+ * unchanged.
  */
 static ENTRY_FLAGS_t
 mm_user_updated_entry_flags(mm_user_range_flags_mode_t mode, bool for_pte_table,
@@ -47,13 +48,16 @@ mm_user_updated_entry_flags(mm_user_range_flags_mode_t mode, bool for_pte_table,
         return out;
 }
 
-/** Re-@c map prefix pages after a failed @ref mm_user_utils_set_range_flags PTE pass. */
-static void mm_user_restore_range_pte_prefix(struct VSpace* vs, vaddr range_start,
+/** Re-@c map prefix pages after a failed @ref mm_user_utils_set_range_flags PTE
+ * pass. */
+static void mm_user_restore_range_pte_prefix(struct VSpace* vs,
+                                             vaddr range_start,
                                              size_t pages_mapped,
                                              ENTRY_FLAGS_t canonical_pte_flags,
                                              struct map_handler* handler)
 {
-        ENTRY_FLAGS_t map_pte = mm_user_canonical_pte_flags(canonical_pte_flags);
+        ENTRY_FLAGS_t map_pte =
+                mm_user_canonical_pte_flags(canonical_pte_flags);
 
         for (size_t page_index = 0; page_index < pages_mapped; page_index++) {
                 vaddr page_va =
@@ -104,7 +108,8 @@ vaddr mm_user_utils_set_range_and_fill(struct VSpace* vs, vaddr range_start,
         } else if (pages_allocated < page_count) {
                 if (pages_allocated > 0)
                         pmm->pmm_free(pmm, ppn_first, pages_allocated);
-                pr_error("[MM_USER] set_range_and_fill: pmm_alloc short alloc\n");
+                pr_error(
+                        "[MM_USER] set_range_and_fill: pmm_alloc short alloc\n");
                 return 0;
         } else if (pages_allocated > page_count) {
                 pmm->pmm_free(pmm,
@@ -230,11 +235,8 @@ error_t mm_user_utils_fill_page_with_exist_range(struct VSpace* vs,
         }
 
         ENTRY_FLAGS_t radix_flags = 0;
-        err = vmm_radix_tree_query_range((VSpace*)vs,
-                                        page_va,
-                                        page_range_end,
-                                        &radix_flags,
-                                        NULL);
+        err = vmm_radix_tree_query_range(
+                (VSpace*)vs, page_va, page_range_end, &radix_flags, NULL);
         if (err != REND_SUCCESS) {
                 pr_error(
                         "[MM_USER] fill_page_with_exist_range: query_range fail e=%d\n",
@@ -267,9 +269,8 @@ error_t mm_user_utils_fill_page_with_exist_range(struct VSpace* vs,
                         "[MM_USER] fill_page_with_exist_range: pmm_alloc short alloc\n");
                 goto out_unlock_l2;
         } else if (pages_allocated > 1) {
-                (void)vs->pmm->pmm_free(vs->pmm,
-                                        new_ppn + 1,
-                                        pages_allocated - 1);
+                (void)vs->pmm->pmm_free(
+                        vs->pmm, new_ppn + 1, pages_allocated - 1);
         }
 
         err = map(vs, new_ppn, VPN(page_va), 3, bind_flags, handler);
@@ -436,11 +437,8 @@ error_t mm_user_utils_remap_page(struct VSpace* vs, vaddr page_va,
                 return err;
 
         ENTRY_FLAGS_t radix_flags = 0;
-        err = vmm_radix_tree_query_range((VSpace*)vs,
-                                        page_va,
-                                        page_range_end,
-                                        &radix_flags,
-                                        NULL);
+        err = vmm_radix_tree_query_range(
+                (VSpace*)vs, page_va, page_range_end, &radix_flags, NULL);
         if (err != REND_SUCCESS) {
                 (void)vmm_radix_tree_unlock_range_small(
                         (VSpace*)vs, page_va, page_range_end);
@@ -490,12 +488,7 @@ error_t mm_user_utils_remap_page(struct VSpace* vs, vaddr page_va,
         if (old_ppn != new_ppn)
                 map_flags |= (ENTRY_FLAGS_t)PAGE_ENTRY_REMAP;
 
-        err = map(vs,
-                  new_ppn,
-                  VPN(page_va),
-                  pte_level,
-                  map_flags,
-                  handler);
+        err = map(vs, new_ppn, VPN(page_va), pte_level, map_flags, handler);
         if (err != REND_SUCCESS) {
                 (void)vmm_radix_tree_change_leaf_ppn((VSpace*)vs,
                                                      page_va,
@@ -511,9 +504,10 @@ error_t mm_user_utils_remap_page(struct VSpace* vs, vaddr page_va,
         if (old_ppn != new_ppn) {
                 err = vs->pmm->pmm_free(vs->pmm, old_ppn, 1);
                 if (err != REND_SUCCESS) {
-                        pr_error("[MM_USER] remap_page: pmm_free old ppn=%ld e=%d\n",
-                                 (long)old_ppn,
-                                 (int)err);
+                        pr_error(
+                                "[MM_USER] remap_page: pmm_free old ppn=%ld e=%d\n",
+                                (long)old_ppn,
+                                (int)err);
                 }
         }
 
@@ -575,10 +569,10 @@ error_t mm_user_utils_set_range_flags(struct VSpace* vs, vaddr range_start,
                 }
                 ENTRY_FLAGS_t radix_flags = 0;
                 err = vmm_radix_tree_query_range((VSpace*)vs,
-                                                page_va,
-                                                page_range_end,
-                                                &radix_flags,
-                                                NULL);
+                                                 page_va,
+                                                 page_range_end,
+                                                 &radix_flags,
+                                                 NULL);
                 if (err != REND_SUCCESS)
                         goto out_unlock_l2;
                 if (!(radix_flags & (ENTRY_FLAGS_t)PAGE_ENTRY_VALID)) {
@@ -662,11 +656,8 @@ error_t mm_user_utils_set_range_flags(struct VSpace* vs, vaddr range_start,
         return err;
 
 out_rollback_pte:
-        mm_user_restore_range_pte_prefix(vs,
-                                       range_start,
-                                       pages_pte_updated,
-                                       uniform_pte_flags,
-                                       handler);
+        mm_user_restore_range_pte_prefix(
+                vs, range_start, pages_pte_updated, uniform_pte_flags, handler);
 out_unlock_l2:
         (void)vmm_radix_tree_unlock_range_small(
                 (VSpace*)vs, range_start, range_end);

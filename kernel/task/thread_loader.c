@@ -35,8 +35,7 @@ vaddr generate_user_stack(VSpace *vs)
         int page_num = thread_ustack_page_num;
         ENTRY_FLAGS_t page_flags = PAGE_ENTRY_USER | PAGE_ENTRY_VALID
                                    | PAGE_ENTRY_WRITE | PAGE_ENTRY_READ;
-        vaddr stack_lo =
-                USER_SPACE_TOP - (vaddr)page_num * PAGE_SIZE;
+        vaddr stack_lo = USER_SPACE_TOP - (vaddr)page_num * PAGE_SIZE;
         vaddr vaddr_end;
         if (!vmm_radix_tree_calculate_end_check(
                     stack_lo, (size_t)page_num, &vaddr_end)) {

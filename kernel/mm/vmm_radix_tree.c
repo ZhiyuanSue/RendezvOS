@@ -1769,8 +1769,8 @@ change_range_flag_out:
 }
 
 error_t vmm_radix_tree_query_range(VSpace* vs, vaddr vaddr_start,
-                                  vaddr vaddr_end, ENTRY_FLAGS_t* out_flags,
-                                  tagged_ptr_t* out_owner)
+                                   vaddr vaddr_end, ENTRY_FLAGS_t* out_flags,
+                                   tagged_ptr_t* out_owner)
 {
         Radix_entry_t* root = radix_root_from_vs(vs);
         if (!root || !vs || !vs->pmm || (!out_flags && !out_owner))

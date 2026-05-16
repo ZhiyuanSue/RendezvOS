@@ -18,8 +18,8 @@ VSpace root_vspace;
 
 static error_t vspace_rb_tree_insert(VSpace* vs, VSpace* root_vs)
 {
-        struct rb_node **new = &root_vs->_vspace_rb_root.rb_root,
-                       *parent = NULL;
+        struct rb_node** new = &root_vs->_vspace_rb_root.rb_root,
+                         *parent = NULL;
         u64 key = vs->vspace_root_addr;
         while (*new) {
                 parent = *new;
@@ -81,7 +81,6 @@ static VSpace* alloc_user_vs_structure(struct pmm* pmm)
                                                            sizeof(VSpace));
         if (!user_vs)
                 return NULL;
-        memset((void*)user_vs, 0, sizeof(*user_vs));
         user_vs->asid = asid_alloc();
         user_vs->registered = false;
         user_vs->pmm = pmm;
