@@ -84,6 +84,14 @@ vaddr map_handler_map_slot(struct map_handler* handler, int slot_id, ppn_t ppn);
 void map_handler_unmap_slot(struct map_handler* handler, int slot_id);
 
 /*
+ * @brief Zero one physical page via mapping-window slot 0.
+ *
+ * Same idea as @ref map_handler_copy_page / @ref map_handler_copy_data_range:
+ * only @p ppn matters; active CR3 / which @c VSpace is loaded is irrelevant.
+ */
+error_t map_handler_zero_page(struct map_handler* handler, ppn_t ppn);
+
+/*
  * @brief Copy a physical memory range using the per-CPU mapping window.
  *
  * This is a low-level helper for COW split / vspace clone / page migration.

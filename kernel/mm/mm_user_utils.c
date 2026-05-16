@@ -175,7 +175,15 @@ vaddr mm_user_utils_set_range_and_fill(struct VSpace* vs, vaddr range_start,
         (void)vmm_radix_tree_unlock_range_small(
                 (VSpace*)vs, range_start, range_end);
 
-        memset((void*)range_start, 0, page_count * PAGE_SIZE);
+        for (size_t zi = 0; zi < page_count; zi++) {
+                err = map_handler_zero_page(handler, ppn_first + (ppn_t)zi);
+                if (err != REND_SUCCESS) {
+                        pr_error(
+                                "[MM_USER] set_range_and_fill: zero page %lu failed\n",
+                                (unsigned long)zi);
+                        goto out_unmap_pte_prefix;
+                }
+        }
 
         return range_start;
 
@@ -294,7 +302,14 @@ error_t mm_user_utils_fill_page_with_exist_range(struct VSpace* vs,
                 (VSpace*)vs, page_va, page_range_end);
         if (err != REND_SUCCESS)
                 return err;
-        memset((void*)page_va, 0, PAGE_SIZE);
+        err = map_handler_zero_page(handler, new_ppn);
+        if (err != REND_SUCCESS) {
+                pr_error(
+                        "[MM_USER] fill_page_with_exist_range: zero via map_handler failed\n");
+                (void)unmap(vs, VPN(page_va), 0, handler);
+                (void)vs->pmm->pmm_free(vs->pmm, new_ppn, 1);
+                return err;
+        }
         return REND_SUCCESS;
 
 out_unmap_user_pte:

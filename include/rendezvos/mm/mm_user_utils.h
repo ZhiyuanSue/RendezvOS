@@ -49,6 +49,10 @@ struct VSpace;
  * the tree and supports interval discovery; L2 covers radix+map work on one
  * range.
  *
+ * @par Zero-fill while CR3 is kernel
+ * @ref mm_user_utils_set_range_and_fill zeroes via @ref map_handler_zero_page
+ * (not @c memset on user VA); see @ref map_handler_copy_page for the copy side.
+ *
  * Every @c mm_user_utils_* entry point assumes L0 is already held on @c [
  * ROUND_DOWN(first_page_va, HUGE_PAGE_SIZE) , vaddr_end ) for the util's page
  * count (@ref vmm_radix_tree_calculate_end_check). The caller may release L0
@@ -57,7 +61,8 @@ struct VSpace;
  *
  * @par Contracts (what these primitives guarantee — not Linux policy)
  * - @ref mm_user_utils_set_range_and_fill: one **contiguous** VA range; only
- *   @p page_count pages are mapped; zero-fill runs after L2 unlock. If the
+ *   @p page_count pages are mapped; zero-fill (via map_handler window) runs
+ * after L2 unlock. If the
  * radix INSERT lock sees **any** already-insertable overlap in that range, the
  * whole call **fails** (no overwrite, no partial range). PMM alloc before lock
  *   failure is rolled back.

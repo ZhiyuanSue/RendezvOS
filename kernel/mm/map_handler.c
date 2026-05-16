@@ -136,6 +136,23 @@ void map_handler_unmap_slot(struct map_handler *handler, int slot_id)
         arch_tlb_invalidate_page(0, v);
 }
 
+error_t map_handler_zero_page(struct map_handler *handler, ppn_t ppn)
+{
+        vaddr kva;
+
+        if (!handler || invalid_ppn(ppn))
+                return -E_IN_PARAM;
+        if ((PADDR(ppn) & (PAGE_SIZE - 1)) != 0)
+                return -E_IN_PARAM;
+
+        kva = map_handler_map_slot(handler, 0, ppn);
+        if (!kva)
+                return -E_RENDEZVOS;
+        memset((void *)kva, 0, PAGE_SIZE);
+        map_handler_unmap_slot(handler, 0);
+        return REND_SUCCESS;
+}
+
 error_t map_handler_copy_data_range(struct map_handler *handler,
                                     paddr dst_paddr, paddr src_paddr, u64 len)
 {
