@@ -1787,19 +1787,24 @@ error_t vmm_radix_tree_query_range(VSpace* vs, vaddr vaddr_start,
                                    RADIX_TREE_LEVEL3,
                                    RADIX_TREE_DIRECTION_INC);
         if (!radix_tree_level_walk_check(&l3_walk)) {
-                if (out_flags)
-                        *out_flags = (ENTRY_FLAGS_t)0;
-                if (out_owner)
-                        *out_owner = tp_new_none();
                 err = -E_IN_PARAM;
-                goto query_range_out;
+                goto query_miss;
+        }
+        if (!l3_walk.curr_l3_node) {
+                err = -E_REND_NOFOUND;
+                goto query_miss;
         }
         if (out_flags)
                 *out_flags = l3_walk.curr_l3_node->flags;
         if (out_owner)
                 *out_owner = l3_walk.curr_l3_node->owner;
+        return err;
 
-query_range_out:
+query_miss:
+        if (out_flags)
+                *out_flags = (ENTRY_FLAGS_t)0;
+        if (out_owner)
+                *out_owner = tp_new_none();
         return err;
 }
 
