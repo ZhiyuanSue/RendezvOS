@@ -42,17 +42,21 @@
  *    uses @c change_* APIs, not bind. Use the same `leaf_flags` vocabulary as
  *    the prior @ref vmm_radix_tree_insert_range on that band for rollback.
  * -# @ref vmm_radix_tree_change_leaf_ppn / @ref
- * vmm_radix_tree_change_range_flag / @ref vmm_radix_tree_query_leaf as needed
- * (caller holds @ref vmm_radix_tree_lock_range_small with @ref
- * RADIX_RL_QUERY_OR_CHANGE on the VA band, then @ref
+ * vmm_radix_tree_change_range_flag / @ref vmm_radix_tree_query_range as needed
+ * (caller holds the L2 band lock: @ref vmm_radix_tree_lock_range_big_and_small
+ * or @ref vmm_radix_tree_lock_range_big + @ref
+ * vmm_radix_tree_lock_range_small_with_big_locked; pair with @ref
+ * vmm_radix_tree_unlock_range_small and @ref vmm_radix_tree_unlock_range_big
+ * when L0 was taken separately), then @ref
  * vmm_radix_tree_unlock_range_small).
  * -# @ref vmm_radix_tree_leaf_unbind_range (or @ref
  * vmm_radix_tree_leaf_unbind): same range lock; INC walk validates each leaf
  * VALID, then flip walker to DEC (no second init), unlink rmap and clear VALID
  * to LAZY without changing `owner`.
  * -# To drop radix reservation for a VA band: @ref
- * vmm_radix_tree_lock_range_small with @ref RADIX_RL_DELETE on that band, then
- * @ref vmm_radix_tree_unlock_range_small (DELETE work runs inside the internal
+ * vmm_radix_tree_lock_range_big_and_small with @ref RADIX_RL_DELETE on that
+ * band, then @ref vmm_radix_tree_unlock_range_big_and_small (equivalently
+ * @ref vmm_radix_tree_unlock_range_small) (DELETE work runs inside the internal
  * acquire). Caller removes PTEs first per policy; then @ref
  * vmm_radix_tree_destroy for full radix teardown (low half + root only; shared
  * high-half L1 slab is not freed here).
@@ -78,14 +82,16 @@
  *
  * @par Locking (invariant I6)
  * Multi–2 MiB-band operations take each crossed L2 row bit-lock in ascending
- * 2 MiB base order, then release descending. Do not nest @ref
- * @ref vmm_radix_tree_lock_range_small while holding those locks. Grow path
+ * 2 MiB base order, then release descending. Do not nest a second L2 range
+ * acquire (@ref vmm_radix_tree_lock_range_small_with_big_locked /
+ * @ref vmm_radix_tree_lock_range_big_and_small) while already holding L2 locks
+ * on an overlapping band. Grow path
  * uses nested L0 then L1 then L2 bit-locks (I3); stores to a held row use
  * `radix_entry_update` with lock semantics (I4).
  *
  * @par Shared high-half (I5)
- * L0[256..511] may alias shared L1/L3. A @ref vmm_radix_tree_lock_range_small
- * with @ref RADIX_RL_DELETE clears only leaves whose `owner` matches the
+ * L0[256..511] may alias shared L1/L3. An L2 band lock with @ref
+ * RADIX_RL_DELETE clears only leaves whose `owner` matches the
  * caller; @ref vmm_radix_tree_leaf_bind_range
  * and @ref vmm_radix_tree_leaf_unbind_range do not compare `owner` to `vs`.
  * @c change_* APIs follow their documented `owner` rules.
@@ -108,17 +114,24 @@
  * APIs that take `struct map_handler*` need it for radix table page grow/unmap
  * via @c map(); leaf-only mutators take only @c VSpace*. Only @ref
  * vmm_radix_tree_calculate_end_check applies radix VA-band
- * policy to a page count; call it **before** @ref vmm_radix_tree_lock_range_big
- * / @ref vmm_radix_tree_lock_range_small (and matching unlocks) and before
+ * policy to a page count; call it **before** @ref vmm_radix_tree_lock_range_big,
+ * @ref vmm_radix_tree_lock_range_big_and_small, or @ref
+ * vmm_radix_tree_lock_range_small_with_big_locked (and matching unlocks) and
+ * before
  * mutators that take @c vaddr_end, then pass that same @c vaddr_end for the
  * whole critical section. @ref vmm_radix_tree_lock_range_big, @ref
- * vmm_radix_tree_lock_range_small,
+ * vmm_radix_tree_lock_range_big_and_small,
+ * @ref vmm_radix_tree_lock_range_small_with_big_locked,
  * @ref vmm_radix_tree_unlock_range_big, @ref vmm_radix_tree_unlock_range_small,
+ * @ref vmm_radix_tree_unlock_range_big_and_small,
  * and the range mutators do **not** repeat that radix policy check. Mutating
- * range APIs expect the caller to bracket them with @ref
- * vmm_radix_tree_lock_range_small and @ref vmm_radix_tree_unlock_range_small on
+ * range APIs expect the caller to bracket them with an L2 band lock on
  * the same VA interval with the matching @ref radix_lock_acquire_kind_t (see
- * each function's @note).
+ * each function's @note): either @ref vmm_radix_tree_lock_range_big_and_small
+ * then @ref vmm_radix_tree_unlock_range_big_and_small, or @ref
+ * vmm_radix_tree_lock_range_big then @ref
+ * vmm_radix_tree_lock_range_small_with_big_locked then @ref
+ * vmm_radix_tree_unlock_range_small and @ref vmm_radix_tree_unlock_range_big.
  *
  * @par Invariants I0–I7 (summary)
  * - I0: Published child KVA in @ref Radix_entry_t is not repointed until
@@ -186,8 +199,10 @@ typedef struct {
 } Radix_node_t;
 
 /**
- * @brief Kind argument for @ref vmm_radix_tree_lock_range_small and internal
- *        @c radix_range_lock_acquire (numeric values must stay stable).
+ * @brief Kind argument for L2 radix range acquire APIs (@ref
+ * vmm_radix_tree_lock_range_small_with_big_locked, @ref
+ * vmm_radix_tree_lock_range_big_and_small) and internal @c radix_range_lock_acquire
+ * (numeric values must stay stable).
  */
 typedef enum {
         RADIX_RL_INSERT = 0, /*!< Insert / grow-path semantics at L3. */
@@ -204,9 +219,11 @@ typedef enum {
  *
  * Call this once per VA band before locking, then pass the same @p
  * *vaddr_end_out to
- * @ref vmm_radix_tree_lock_range_big, @ref vmm_radix_tree_lock_range_small,
+ * @ref vmm_radix_tree_lock_range_big, @ref
+ * vmm_radix_tree_lock_range_big_and_small, or @ref
+ * vmm_radix_tree_lock_range_small_with_big_locked,
  * matching unlocks, and to @c vaddr_end on range mutators (insert/bind/unbind,
- * @ref vmm_radix_tree_query_leaf, etc.). Lock/unlock and mutators do not repeat
+ * @ref vmm_radix_tree_query_range, etc.). Lock/unlock and mutators do not repeat
  * this check.
  *
  * @param vaddr_start   Interval start (inclusive).
@@ -323,35 +340,64 @@ bool vmm_radix_tree_find_first_occupied_interval(VSpace* vs, vaddr search_start,
                                                  ENTRY_FLAGS_t* flags_out);
 
 /**
- * @brief Acquire full radix range lock (L2 rows + internal path rules) for a VA
- *        band.
+ * @brief Acquire L2 radix range locks for a VA band while caller already holds
+ *        matching L0 locks on that band.
  *
- * @param handler Map handler (radix metadata mapping).
+ * @param handler Map handler (radix metadata mapping / grow path).
  * @param vs      Target vspace.
  * @param vaddr_start Interval [vaddr_start, vaddr_end) start (page-aligned).
- * @param vaddr_end   Interval end (first byte not covered); same @p vaddr_end
- * as from
- *                   @ref vmm_radix_tree_calculate_end_check for this band.
+ * @param vaddr_end   Same @p vaddr_end from @ref vmm_radix_tree_calculate_end_check.
  * @param kind    Acquire semantics (@ref RADIX_RL_INSERT, @ref RADIX_RL_DELETE,
  *                or @ref RADIX_RL_QUERY_OR_CHANGE).
  *
- * @return Same as internal @c radix_range_lock_acquire (e.g. @c REND_SUCCESS or
- *         an error code).
+ * @pre Successful @ref vmm_radix_tree_lock_range_big on the same half-open
+ *      interval. Do not call without L0 held for the crossed 512 GiB shards.
+ *
+ * @return Same as internal @c radix_range_lock_acquire.
  *
  * @note On success, only L2 locks remain held until @ref
- *       vmm_radix_tree_unlock_range_small (internal acquire releases L0 after
- *       its phases).
+ *       vmm_radix_tree_unlock_range_small (L0 remains caller-owned).
  */
-error_t vmm_radix_tree_lock_range_small(struct map_handler* handler, VSpace* vs,
-                                        vaddr vaddr_start, vaddr vaddr_end,
-                                        radix_lock_acquire_kind_t kind);
+error_t vmm_radix_tree_lock_range_small_with_big_locked(
+        struct map_handler* handler, VSpace* vs, vaddr vaddr_start,
+        vaddr vaddr_end, radix_lock_acquire_kind_t kind);
 
 /**
- * @brief Release L2 locks held after @ref vmm_radix_tree_lock_range_small.
+ * @brief One-step L2 band acquire: take L0, run internal L2 acquire, drop L0
+ *        before returning.
+ *
+ * Same @p handler / @p vs / @p vaddr_* / @p kind as @ref
+ * vmm_radix_tree_lock_range_small_with_big_locked. Used when no prior L0 lock
+ * is held (e.g. kernel heap @c kmalloc, @c clone_vspace destination inserts).
+ *
+ * @return Same as internal @c radix_range_lock_acquire.
+ *
+ * @note On success, only L2 locks remain held; pair with @ref
+ *       vmm_radix_tree_unlock_range_big_and_small (currently an alias of @ref
+ *       vmm_radix_tree_unlock_range_small).
+ */
+error_t vmm_radix_tree_lock_range_big_and_small(struct map_handler* handler,
+                                                VSpace* vs, vaddr vaddr_start,
+                                                vaddr vaddr_end,
+                                                radix_lock_acquire_kind_t kind);
+
+/**
+ * @brief Release L2 locks from @ref vmm_radix_tree_lock_range_big_and_small.
+ *
+ * Implemented as @ref vmm_radix_tree_unlock_range_small; name documents the
+ * pairing with @ref vmm_radix_tree_lock_range_big_and_small at call sites.
+ */
+error_t vmm_radix_tree_unlock_range_big_and_small(VSpace* vs, vaddr vaddr_start,
+                                                  vaddr vaddr_end);
+
+/**
+ * @brief Release L2 locks held after @ref
+ * vmm_radix_tree_lock_range_small_with_big_locked or @ref
+ * vmm_radix_tree_lock_range_big_and_small.
  *
  * @param vs    Target vspace.
- * @param vaddr_start Same @p vaddr_start as the matching small lock call.
- * @param vaddr_end   Same @p vaddr_end as the matching small lock call.
+ * @param vaddr_start Same @p vaddr_start as the matching L2 acquire call.
+ * @param vaddr_end   Same @p vaddr_end as the matching L2 acquire call.
  *
  * @retval REND_SUCCESS     Released all crossed L2 entries.
  * @retval -E_RENDEZVOS     Walk check failed (should not happen for valid prior
@@ -378,9 +424,13 @@ error_t vmm_radix_tree_unlock_range_small(VSpace* vs, vaddr vaddr_start,
  * @return @c REND_SUCCESS on success, or an error code on failure (partial
  * state is rolled back per implementation).
  *
- * @note Caller must hold @ref vmm_radix_tree_lock_range_small on
+ * @note Caller must hold an L2 band lock on
  *       [ @p vaddr_start , @p vaddr_end ) with @ref RADIX_RL_INSERT, then @ref
- *       vmm_radix_tree_unlock_range_small after this call returns.
+ *       vmm_radix_tree_unlock_range_small after this call returns (and @ref
+ *       vmm_radix_tree_unlock_range_big if L0 was acquired separately). Acquire
+ *       the lock via @ref vmm_radix_tree_lock_range_big_and_small or @ref
+ *       vmm_radix_tree_lock_range_big + @ref
+ *       vmm_radix_tree_lock_range_small_with_big_locked.
  *
  * @note Per leaf, `owner` is the caller vspace for low-half VA (L0 index &lt;
  *       256) and `root_vspace` for shared kernel high half (L0 index &gt;=
@@ -407,11 +457,13 @@ error_t vmm_radix_tree_insert_range(VSpace* vs,
  * @return @c REND_SUCCESS or an error code; partial failure rolls back bound
  *         leaves per implementation.
  *
- * @note Typical callers hold @ref vmm_radix_tree_lock_range_small with @ref
+ * @note Typical callers hold an L2 band lock with @ref
  *       RADIX_RL_QUERY_OR_CHANGE on the band, then @ref
  * vmm_radix_tree_unlock_range_small. The same L2 exclusion is satisfied if the
  * band is already covered by an earlier @ref RADIX_RL_INSERT lock in the same
- * critical section (e.g. kernel heap or @c mm_anon_map_pages_eager: @ref
+ * critical section (e.g. kernel heap, or @c mm_user_utils_set_range_and_fill
+ * after the caller held @ref vmm_radix_tree_lock_range_big and acquired L2 with
+ * @ref RADIX_RL_INSERT): @ref
  * vmm_radix_tree_insert_range then
  *       @c map() then this function); this routine does not re-acquire range
  * locks.
@@ -437,12 +489,15 @@ error_t vmm_radix_tree_leaf_bind_range(VSpace* vs,
  *
  * @return @c REND_SUCCESS or an error code.
  *
- * @note Caller must hold @ref vmm_radix_tree_lock_range_small with
+ * @note Caller must hold an L2 band lock with
  *       @ref RADIX_RL_QUERY_OR_CHANGE on the band, then @ref
  * vmm_radix_tree_unlock_range_small.
  *
- * @note Does not adjust L2 occupancy counts; drop reservation with
- *       @ref vmm_radix_tree_lock_range_small (@ref RADIX_RL_DELETE) and
+ * @note Does not adjust L2 occupancy counts; drop reservation with an L2
+ *       @ref RADIX_RL_DELETE band acquire (@ref
+ *       vmm_radix_tree_lock_range_big_and_small or @ref
+ *       vmm_radix_tree_lock_range_big + @ref
+ *       vmm_radix_tree_lock_range_small_with_big_locked) and
  *       @ref vmm_radix_tree_unlock_range_small after caller policy (e.g. after
  * unmap).
  */
@@ -481,7 +536,7 @@ error_t vmm_radix_tree_leaf_unbind(VSpace* vs, vaddr vaddr_start, ppn_t ppn);
  *
  * @return @c REND_SUCCESS or an error code.
  *
- * @note Caller must hold @ref vmm_radix_tree_lock_range_small with
+ * @note Caller must hold an L2 band lock with
  *       @ref RADIX_RL_QUERY_OR_CHANGE on [ @p vaddr_start , @p vaddr_end ),
  * then
  *       @ref vmm_radix_tree_unlock_range_small. No map()/unmap() here.
@@ -512,7 +567,7 @@ error_t vmm_radix_tree_change_leaf_ppn_flag(VSpace* vs, vaddr vaddr_start,
  *
  * @return @c REND_SUCCESS or an error code.
  *
- * @note Caller must hold @ref vmm_radix_tree_lock_range_small with
+ * @note Caller must hold an L2 band lock with
  *       @ref RADIX_RL_QUERY_OR_CHANGE on the band, then @ref
  * vmm_radix_tree_unlock_range_small.
  */
@@ -536,14 +591,14 @@ error_t vmm_radix_tree_change_range_flag(VSpace* vs, vaddr vaddr_start,
  *         non-NULL @p out_owner to tp_new_none() where the implementation
  * applies that rule.
  *
- * @note Caller must hold @ref vmm_radix_tree_lock_range_small with
+ * @note Caller must hold an L2 band lock with
  *       @ref RADIX_RL_QUERY_OR_CHANGE on [ @p vaddr_start , @p vaddr_end ),
  * then
  *       @ref vmm_radix_tree_unlock_range_small.
  *
  * @note At least one of @p out_flags and @p out_owner must be non-NULL.
  */
-error_t vmm_radix_tree_query_leaf(VSpace* vs, vaddr vaddr_start,
+error_t vmm_radix_tree_query_range(VSpace* vs, vaddr vaddr_start,
                                   vaddr vaddr_end, ENTRY_FLAGS_t* out_flags,
                                   tagged_ptr_t* out_owner);
 

@@ -7,9 +7,8 @@
 #include <rendezvos/error.h>
 
 /*
- * Kernel whole pages for kallocator. Buddy may satisfy with more than
- * `page_num` pages; `*alloced_page_number` is the actual count (radix/map/bind
- * cover the full extent).
+ * Kernel whole pages for kallocator. Buddy may return more than `page_num`
+ * pages; excess physical pages are freed immediately after alloc.
  *
  * `vs` owns page tables + radix (typically &root_vspace). insert_range stores
  * `tp_new(insert_root_vs, alloc_cpu)` on each L3 leaf (insert_root_vs =
@@ -18,10 +17,13 @@
  * Owner lookup: under `pmm_zone_lock` (same as radix_leaf_link_rmap), if
  * `list_only_one_entry(&Page::rmap_list)` then exactly one `Radix_node_t` is
  * linked and `owner` is read without radix range locks. Otherwise fall back to
- * `vmm_radix_tree_query_leaf` (shared PPN / multiple rmaps).
+ * `vmm_radix_tree_query_range` (shared PPN / multiple rmaps).
  *
  * `flags`: OR'd onto GLOBAL|READ|VALID|WRITE after stripping software-only
  * bits so callers can add e.g. UNCACHED without carrying REMAP/LAZY into PTE.
+ *
+ * Only @p page_num pages are mapped. Chunk paths zero each object in
+ * @c chunk_get_obj; large @c kalloc page allocations zero the mapping in @c kalloc.
  */
 
 /* Radix owner tag = allocating CPU index (see core_get_free_pages). */
@@ -72,19 +74,16 @@ static int kmem_radix_kernel_heap_owner_cpu(VSpace* root_vs, vaddr kva)
         vaddr vaddr_end;
         if (!vmm_radix_tree_calculate_end_check(vaddr_start, 1, &vaddr_end))
                 return INVALID_CPU_ID;
-        if (vmm_radix_tree_lock_range_small(&percpu(Map_Handler),
-                                            root_vs,
-                                            vaddr_start,
-                                            vaddr_end,
-                                            RADIX_RL_QUERY_OR_CHANGE)
+        if (vmm_radix_tree_lock_range_big_and_small(&percpu(Map_Handler),
+                                                    root_vs,
+                                                    vaddr_start,
+                                                    vaddr_end,
+                                                    RADIX_RL_QUERY_OR_CHANGE)
             != REND_SUCCESS)
                 return INVALID_CPU_ID;
-        error_t err_query = vmm_radix_tree_query_leaf(root_vs,
-                                                      vaddr_start,
-                                                      vaddr_end,
-                                                      NULL,
-                                                      &owner);
-        (void)vmm_radix_tree_unlock_range_small(
+        error_t err_query = vmm_radix_tree_query_range(
+                root_vs, vaddr_start, vaddr_end, NULL, &owner);
+        (void)vmm_radix_tree_unlock_range_big_and_small(
                 root_vs, vaddr_start, vaddr_end);
         if (err_query != REND_SUCCESS)
                 return INVALID_CPU_ID;
@@ -92,8 +91,7 @@ static int kmem_radix_kernel_heap_owner_cpu(VSpace* root_vs, vaddr kva)
 }
 
 static void* core_get_free_pages(size_t page_num, VSpace* vs,
-                                 ENTRY_FLAGS_t flags,
-                                 size_t* alloced_page_number)
+                                 ENTRY_FLAGS_t flags)
 {
         const ENTRY_FLAGS_t kheap_leaf_base =
                 PAGE_ENTRY_GLOBAL | PAGE_ENTRY_READ | PAGE_ENTRY_VALID
@@ -107,13 +105,14 @@ static void* core_get_free_pages(size_t page_num, VSpace* vs,
         u32 alloc_cpu = percpu(cpu_number);
         tagged_ptr_t owner_tp = tp_new((void*)insert_root_vs, (u16)alloc_cpu);
 
-        if (page_num == 0 || !vs || !alloced_page_number) {
+        if (page_num == 0 || !vs) {
                 pr_error("[ KALLOC ] core_get_free_pages: bad parameter\n");
                 return NULL;
         }
         vaddr free_page_addr;
         vaddr vaddr_end;
         size_t mapped_count = 0;
+        size_t pages_allocated = 0;
         struct map_handler* handler = &percpu(Map_Handler);
 
         struct pmm* pmm_ptr = vs->pmm;
@@ -121,40 +120,49 @@ static void* core_get_free_pages(size_t page_num, VSpace* vs,
                 pr_error("[ KALLOC ] core_get_free_pages: missing pmm\n");
                 goto alloc_ppn_fail;
         }
-        ppn_t ppn = pmm_ptr->pmm_alloc(pmm_ptr, page_num, alloced_page_number);
-        if (invalid_ppn(ppn) || (*alloced_page_number) < page_num) {
+        ppn_t ppn = pmm_ptr->pmm_alloc(pmm_ptr, page_num, &pages_allocated);
+        if (invalid_ppn(ppn)) {
+                pr_error("[ KALLOC ] ERROR: pmm_alloc failed\n");
+                goto alloc_ppn_fail;
+        } else if (pages_allocated < page_num) {
                 pr_error(
                         "[ KALLOC ] ERROR: pmm_alloc got %lu pages, need %lu\n",
-                        (unsigned long)*alloced_page_number,
+                        (unsigned long)pages_allocated,
                         (unsigned long)page_num);
-                goto alloc_ppn_fail;
+                goto after_alloc_fail;
+        } else if (pages_allocated > page_num) {
+                pmm_ptr->pmm_free(pmm_ptr,
+                                  ppn + (ppn_t)page_num,
+                                  pages_allocated - page_num);
         }
         free_page_addr = KERNEL_PHY_TO_VIRT(PADDR(ppn));
 
         if (!vmm_radix_tree_calculate_end_check(
-                    free_page_addr, *alloced_page_number, &vaddr_end)) {
+                    free_page_addr, page_num, &vaddr_end)) {
                 pr_error("[ KALLOC ] ERROR: radix end check fail\n");
-                goto before_lock_fail;
+                goto after_check_succ;
         }
-        if (vmm_radix_tree_lock_range_small(
+        if (vmm_radix_tree_lock_range_big(vs, free_page_addr, vaddr_end)
+            != REND_SUCCESS) {
+                pr_error("[ KALLOC ] ERROR: radix lock fail\n");
+                goto after_check_succ;
+        }
+        if (vmm_radix_tree_lock_range_small_with_big_locked(
                     handler, vs, free_page_addr, vaddr_end, RADIX_RL_INSERT)
             != REND_SUCCESS) {
                 pr_error("[ KALLOC ] ERROR: radix lock fail\n");
                 goto before_lock_fail;
         }
-        if (vmm_radix_tree_insert_range(vs,
-                                        owner_tp,
-                                        free_page_addr,
-                                        leaf_eflags,
-                                        vaddr_end)
+        if (vmm_radix_tree_insert_range(
+                    vs, owner_tp, free_page_addr, leaf_eflags, vaddr_end)
             != REND_SUCCESS) {
                 (void)vmm_radix_tree_unlock_range_small(
-                                vs, free_page_addr, vaddr_end);
+                        vs, free_page_addr, vaddr_end);
                 pr_error(
                         "[ KALLOC ] ERROR: insert_range fail (after INSERT lock)\n");
                 goto before_lock_fail;
         }
-        while (mapped_count < (*alloced_page_number)) {
+        while (mapped_count < page_num) {
                 vaddr va = free_page_addr + mapped_count * PAGE_SIZE;
                 error_t map_error = map(vs,
                                         ppn + (ppn_t)mapped_count,
@@ -167,6 +175,8 @@ static void* core_get_free_pages(size_t page_num, VSpace* vs,
                                 "[ KALLOC ] ERROR: map fail at page %lu e=%d\n",
                                 mapped_count,
                                 map_error);
+                        /* Drop L2 only; L0 stays held until before_lock_fail.
+                         */
                         (void)vmm_radix_tree_unlock_range_small(
                                 vs, free_page_addr, vaddr_end);
                         goto fail_unmap_rollback;
@@ -182,6 +192,7 @@ static void* core_get_free_pages(size_t page_num, VSpace* vs,
                 goto fail_unmap_rollback;
         }
         (void)vmm_radix_tree_unlock_range_small(vs, free_page_addr, vaddr_end);
+        (void)vmm_radix_tree_unlock_range_big(vs, free_page_addr, vaddr_end);
 
         return (void*)free_page_addr;
 
@@ -193,36 +204,38 @@ fail_unmap_rollback:
         }
 before_lock_fail:
         /*
-         * Shrink radix reservation after INSERT partial progress (phase 5 may
-         * have run), insert_range/map/leaf_bind rollback (LAZY leaves). Recompute
-         * the band end here so paths that never passed the first
-         * calculate_end_check do not use an uninitialized vaddr_end.
+         * Reached only after lock_range_big succeeded (see after_check_succ).
+         * Shrink radix after partial INSERT / failed map or bind: DELETE under
+         * held L0, then release L0. vaddr_end is valid from calculate_end_check
+         * above.
          */
-        if (vmm_radix_tree_calculate_end_check(
-                    free_page_addr, *alloced_page_number, &vaddr_end)
-            && vmm_radix_tree_lock_range_small(
-                       handler, vs, free_page_addr, vaddr_end, RADIX_RL_DELETE)
-                       == REND_SUCCESS)
+        if (vmm_radix_tree_lock_range_small_with_big_locked(
+                    handler, vs, free_page_addr, vaddr_end, RADIX_RL_DELETE)
+            == REND_SUCCESS)
                 (void)vmm_radix_tree_unlock_range_small(
                         vs, free_page_addr, vaddr_end);
-        pmm_ptr->pmm_free(pmm_ptr, ppn, (*alloced_page_number));
+        (void)vmm_radix_tree_unlock_range_big(vs, free_page_addr, vaddr_end);
+after_check_succ:
+        /* calculate_end_check or lock_range_big failed; never held L0. */
+        pmm_ptr->pmm_free(pmm_ptr, ppn, page_num);
+        return NULL;
+after_alloc_fail:
+        pmm_ptr->pmm_free(pmm_ptr, ppn, pages_allocated);
 alloc_ppn_fail:
         return NULL;
 }
-static error_t core_free_pages(void* p, int page_num, VSpace* vs)
+static error_t core_free_pages(void* p, size_t page_num, VSpace* vs)
 {
-        if (!p || page_num <= 0 || !vs || !vs->pmm) {
+        if (!p || page_num == 0 || !vs || !vs->pmm) {
                 pr_error("[ KALLOC ] core_free_pages: bad parameter\n");
                 return -E_IN_PARAM;
         }
-        vaddr base = (vaddr)p;
-        if (ROUND_DOWN(base, PAGE_SIZE) != base) {
-                pr_error("[ KALLOC ] core_free_pages: unaligned base\n");
+        if (ROUND_DOWN((vaddr)p, PAGE_SIZE) != (vaddr)p) {
+                pr_error("[ KALLOC ] core_free_pages: unaligned p\n");
                 return -E_IN_PARAM;
         }
-        size_t np = (size_t)page_num;
         struct map_handler* handler = &percpu(Map_Handler);
-        ppn_t ppn_first = PPN(KERNEL_VIRT_TO_PHY(base));
+        ppn_t ppn_first = PPN(KERNEL_VIRT_TO_PHY((vaddr)p));
         if (invalid_ppn(ppn_first)) {
                 pr_error("[ KALLOC ] core_free_pages: bad ppn\n");
                 return -E_IN_PARAM;
@@ -230,80 +243,99 @@ static error_t core_free_pages(void* p, int page_num, VSpace* vs)
 
         error_t err;
         vaddr vaddr_end;
-        if (!vmm_radix_tree_calculate_end_check(base, np, &vaddr_end)) {
+        if (!vmm_radix_tree_calculate_end_check((vaddr)p, page_num, &vaddr_end)) {
                 pr_error("[ KALLOC ] core_free_pages: radix end check fail\n");
                 return -E_IN_PARAM;
         }
 
-        err = vmm_radix_tree_lock_range_small(
-                handler, vs, base, vaddr_end, RADIX_RL_QUERY_OR_CHANGE);
+        err = vmm_radix_tree_lock_range_big(vs, (vaddr)p, vaddr_end);
         if (err != REND_SUCCESS) {
                 pr_error(
-                        "[ KALLOC ] core_free_pages: QUERY_OR_CHANGE lock fail base=%lx e=%d\n",
-                        (unsigned long)base,
-                        (int)err);
+                        "[ KALLOC ] core_free_pages: acquire lock big fail p=%lx e=%d\n",
+                        (vaddr)p,
+                        err);
                 return err;
+        }
+        err = vmm_radix_tree_lock_range_small_with_big_locked(
+                handler, vs, (vaddr)p, vaddr_end, RADIX_RL_QUERY_OR_CHANGE);
+        if (err != REND_SUCCESS) {
+                pr_error(
+                        "[ KALLOC ] core_free_pages: QUERY_OR_CHANGE lock fail p=%lx e=%d\n",
+                        (vaddr)p,
+                        err);
+                goto error_free_big;
         }
         err = vmm_radix_tree_leaf_unbind_range(
-                vs, base, ppn_first, vaddr_end);
-        error_t err_unlock =
-                vmm_radix_tree_unlock_range_small(vs, base, vaddr_end);
+                vs, (vaddr)p, ppn_first, vaddr_end);
         if (err != REND_SUCCESS) {
                 pr_error(
-                        "[ KALLOC ] core_free_pages: leaf_unbind_range fail base=%lx e=%d\n",
-                        (unsigned long)base,
-                        (int)err);
-                return err;
+                        "[ KALLOC ] core_free_pages: leaf_unbind_range fail p=%lx e=%d\n",
+                        (vaddr)p,
+                        err);
+                goto error_free_small_and_big;
         }
-        if (err_unlock != REND_SUCCESS) {
+        err = vmm_radix_tree_unlock_range_small(vs, (vaddr)p, vaddr_end);
+        if (err != REND_SUCCESS) {
                 pr_error(
-                        "[ KALLOC ] core_free_pages: unlock after unbind fail base=%lx e=%d\n",
-                        (unsigned long)base,
-                        (int)err_unlock);
-                return err_unlock;
+                        "[ KALLOC ] core_free_pages: unlock after unbind fail p=%lx e=%d\n",
+                        (vaddr)p,
+                        err);
+                goto error_free_big;
         }
 
-        for (size_t i = 0; i < np; i++) {
-                vaddr va = base + i * PAGE_SIZE;
-                ppn_t u = unmap(vs, VPN(va), 0, handler);
-                if (invalid_ppn(u)) {
+        for (size_t i = 0; i < page_num; i++) {
+                vaddr va = (vaddr)p + i * PAGE_SIZE;
+                ppn_t ppn = unmap(vs, VPN(va), 0, handler);
+                if (invalid_ppn(ppn)) {
                         pr_error(
                                 "[ KALLOC ] core_free_pages: unmap fail page %lu ppn=%ld\n",
-                                (unsigned long)i,
-                                (long)u);
-                        if (u < 0)
-                                return (error_t)u;
-                        return -E_RENDEZVOS;
+                                i,
+                                ppn);
+                        err = -E_RENDEZVOS;
                 }
         }
-
-        err = vmm_radix_tree_lock_range_small(
-                handler, vs, base, vaddr_end, RADIX_RL_DELETE);
         if (err != REND_SUCCESS) {
-                pr_error(
-                        "[ KALLOC ] core_free_pages: DELETE lock fail base=%lx e=%d\n",
-                        (unsigned long)base,
-                        (int)err);
-                return err;
-        }
-        err = vmm_radix_tree_unlock_range_small(vs, base, vaddr_end);
-        if (err != REND_SUCCESS) {
-                pr_error(
-                        "[ KALLOC ] core_free_pages: unlock after DELETE fail base=%lx e=%d\n",
-                        (unsigned long)base,
-                        (int)err);
-                return err;
+                goto error_free_big;
         }
 
-        err = vs->pmm->pmm_free(vs->pmm, ppn_first, np);
+        err = vmm_radix_tree_lock_range_small_with_big_locked(
+                handler, vs, (vaddr)p, vaddr_end, RADIX_RL_DELETE);
         if (err != REND_SUCCESS) {
                 pr_error(
-                        "[ KALLOC ] core_free_pages: pmm_free fail base=%lx ppn=%ld np=%lu e=%d\n",
-                        (unsigned long)base,
-                        (long)ppn_first,
-                        (unsigned long)np,
-                        (int)err);
+                        "[ KALLOC ] core_free_pages: DELETE lock fail p=%lx e=%d\n",
+                        (vaddr)p,
+                        err);
+                goto error_free_big;
         }
+        err = vmm_radix_tree_unlock_range_small(vs, (vaddr)p, vaddr_end);
+        (void)vmm_radix_tree_unlock_range_big(vs, (vaddr)p, vaddr_end);
+        if (err != REND_SUCCESS) {
+                /*
+                 * L0 already released above; L2 release failed (walk_check —
+                 * should not happen for the same band as lock).
+                 */
+                pr_error(
+                        "[ KALLOC ] core_free_pages: unlock after DELETE fail p=%lx e=%d\n",
+                        (vaddr)p,
+                        err);
+                return err;
+        }
+
+        err = vs->pmm->pmm_free(vs->pmm, ppn_first, page_num);
+        if (err != REND_SUCCESS) {
+                pr_error(
+                        "[ KALLOC ] core_free_pages: pmm_free fail p=%lx ppn=%ld np=%lu e=%d\n",
+                        (vaddr)p,
+                        ppn_first,
+                        page_num,
+                        err);
+        }
+        return err;
+
+error_free_small_and_big:
+        (void)vmm_radix_tree_unlock_range_small(vs, (vaddr)p, vaddr_end);
+error_free_big:
+        (void)vmm_radix_tree_unlock_range_big(vs, (vaddr)p, vaddr_end);
         return err;
 }
 
@@ -440,6 +472,7 @@ struct object_header* chunk_get_obj(struct mem_chunk* chunk)
         list_del(&get_obj->obj_list);
         list_add_head(&get_obj->obj_list, &chunk->full_obj_list);
         chunk->nr_used_objs++;
+        memset(get_obj->obj, 0, slot_size[chunk->chunk_order]);
         return get_obj;
 }
 error_t chunk_free_obj(struct object_header* obj, struct mem_chunk* chunk)
@@ -569,17 +602,11 @@ static void* _k_alloc(struct mem_allocator* k_allocator_p, size_t Bytes)
                         */
                         /* here we will change the group linked list, we
                          * also need to think the lock*/
-                        size_t ap = 0;
                         void* page_ptr =
                                 core_get_free_pages((size_t)PAGE_PER_CHUNK,
                                                     &root_vspace,
-                                                    PAGE_ENTRY_NONE,
-                                                    &ap);
-                        if (!page_ptr || ap != (size_t)PAGE_PER_CHUNK) {
-                                if (page_ptr)
-                                        (void)core_free_pages(page_ptr,
-                                                              (int)ap,
-                                                              &root_vspace);
+                                                    PAGE_ENTRY_NONE);
+                        if (!page_ptr) {
                                 pr_error("[ERROR] get free page fail\n");
                                 return NULL;
                         }
@@ -869,18 +896,17 @@ static void* kalloc(struct allocator* allocator_p, size_t Bytes)
                         return res_ptr;
                 }
                 memset(pcn, 0, sizeof(struct page_chunk_node));
-                size_t alloced_pages = 0;
                 res_ptr = core_get_free_pages((size_t)page_num,
                                               &root_vspace,
-                                              PAGE_ENTRY_NONE,
-                                              &alloced_pages);
+                                              PAGE_ENTRY_NONE);
                 if (!res_ptr) {
                         pr_error("[ERROR] core_get_free_pages fail\n");
                         (void)_k_free((void*)pcn);
                         return res_ptr;
                 }
+                memset(res_ptr, 0, (size_t)page_num * PAGE_SIZE);
                 pcn->page_addr = (vaddr)res_ptr;
-                pcn->page_num = (i64)alloced_pages;
+                pcn->page_num = (i64)page_num;
                 lock_cas(&k_allocator_p->lock);
                 page_chunk_rb_tree_insert(pcn, &k_allocator_p->page_chunk_root);
                 unlock_cas(&k_allocator_p->lock);

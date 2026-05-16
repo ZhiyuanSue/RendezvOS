@@ -554,8 +554,9 @@ l0_bypass:
  *
  * @pre Caller **must** already hold @ref vmm_radix_tree_lock_range_big on the
  * L0 shards covering this walk. Search-shaped helpers cannot use
- * @ref vmm_radix_tree_lock_range_small (that contract assumes a uniformly
- * present/absent band). Without big, L0 table stability is not guaranteed.
+ * @ref vmm_radix_tree_lock_range_big_and_small (that contract assumes a
+ * uniformly present/absent band). Without big, L0 table stability is not
+ * guaranteed.
  *
  * L2 lines are updated under @c radix_entry_lock(l2e). Big lock alone does not
  * exclude concurrent L2 holders (see long comment in @c clone_vspace); this
@@ -914,20 +915,16 @@ static void radix_lock_rollback_entry(VSpace* vs, struct pmm* pmm,
         case RADIX_TREE_LEVEL0:
                 entry = walk->curr_l0_entry;
                 if (kind != RADIX_RL_INSERT) {
-                        radix_entry_unlock(entry);
                         return;
                 }
                 if (entry_get_count(entry->value) != 0) {
-                        radix_entry_unlock(entry);
                         return;
                 }
                 if (L0_INDEX(walk->current_vaddr) >= 256) {
-                        radix_entry_unlock(entry);
                         return;
                 }
                 child_page_addr = entry_child(entry);
                 if (child_page_addr == 0) {
-                        radix_entry_unlock(entry);
                         return;
                 }
                 break;
@@ -962,7 +959,7 @@ static error_t radix_lock_ensure_path(Radix_entry_t* entry,
                         err = radix_alloc_level_table(
                                 vs, pmm, handler, &next_table_vaddr, level + 1);
                         if (err != REND_SUCCESS) {
-                                if (level != RADIX_TREE_LEVEL1)
+                                if (level == RADIX_TREE_LEVEL2)
                                         radix_entry_unlock(entry);
                                 return err;
                         }
@@ -972,7 +969,7 @@ static error_t radix_lock_ensure_path(Radix_entry_t* entry,
         } else {
                 if (!entry_valid(entry)) {
                         err = -E_REND_NOFOUND;
-                        if (level != RADIX_TREE_LEVEL1)
+                        if (level == RADIX_TREE_LEVEL2)
                                 radix_entry_unlock(entry);
                         return err;
                 }
@@ -1004,7 +1001,7 @@ static error_t radix_range_lock_acquire(VSpace* vs, struct map_handler* handler,
                 return -E_IN_PARAM;
         do {
                 Radix_entry_t* l0_entry = l0_walk_iter.curr_l0_entry;
-                radix_entry_lock(l0_entry);
+                /*this func must be used under l0 is locked*/
                 err = radix_lock_ensure_path(l0_entry,
                                              &l0_walk_iter,
                                              vs,
@@ -1095,7 +1092,7 @@ static error_t radix_range_lock_acquire(VSpace* vs, struct map_handler* handler,
         /*Phase 5, update the valid and count for level 0/1/2, no fail possible
          * at this phase begin, so we can reuse the level 0/1/2 walk iters*/
         if (kind == RADIX_RL_QUERY_OR_CHANGE) {
-                goto phase6;
+                goto end;
         }
 
         int l1_head_delta = 0, l1_tail_delta = 0;
@@ -1163,7 +1160,7 @@ static error_t radix_range_lock_acquire(VSpace* vs, struct map_handler* handler,
         } while (radix_tree_level_walk(&l2_walk_iter));
 
         if (skip_l1_phase)
-                goto phase6;
+                goto end;
 
         radix_tree_level_walk_init(&l1_walk_iter,
                                    root,
@@ -1219,7 +1216,7 @@ static error_t radix_range_lock_acquire(VSpace* vs, struct map_handler* handler,
         } while (radix_tree_level_walk(&l1_walk_iter));
 
         if (skip_l0_phase)
-                goto phase6;
+                goto end;
 
         radix_tree_level_walk_init(&l0_walk_iter,
                                    root,
@@ -1263,12 +1260,7 @@ static error_t radix_range_lock_acquire(VSpace* vs, struct map_handler* handler,
                 }
                 radix_entry_update(l0_entry, update_flags, 0, delta);
         } while (radix_tree_level_walk(&l0_walk_iter));
-phase6:
-        l0_walk_iter.direction = RADIX_TREE_DIRECTION_DEC;
-        do {
-                Radix_entry_t* l0_entry = l0_walk_iter.curr_l0_entry;
-                radix_entry_unlock(l0_entry);
-        } while (radix_tree_level_walk(&l0_walk_iter));
+end:
         return err;
 
 phase3_clean_all:
@@ -1397,9 +1389,9 @@ error_t vmm_radix_tree_unlock_range_big(VSpace* vs, vaddr vaddr_start,
         return REND_SUCCESS;
 }
 
-error_t vmm_radix_tree_lock_range_small(struct map_handler* handler, VSpace* vs,
-                                        vaddr vaddr_start, vaddr vaddr_end,
-                                        radix_lock_acquire_kind_t kind)
+error_t vmm_radix_tree_lock_range_small_with_big_locked(
+        struct map_handler* handler, VSpace* vs, vaddr vaddr_start,
+        vaddr vaddr_end, radix_lock_acquire_kind_t kind)
 {
         Radix_entry_t* root = radix_root_from_vs(vs);
 
@@ -1419,6 +1411,47 @@ error_t vmm_radix_tree_unlock_range_small(VSpace* vs, vaddr vaddr_start,
         if (!root)
                 return -E_IN_PARAM;
         return radix_range_lock_release(root, vaddr_start, vaddr_end);
+}
+error_t vmm_radix_tree_lock_range_big_and_small(struct map_handler* handler,
+                                                VSpace* vs, vaddr vaddr_start,
+                                                vaddr vaddr_end,
+                                                radix_lock_acquire_kind_t kind)
+{
+        Radix_entry_t* root = radix_root_from_vs(vs);
+
+        if (!root || !vs || !vs->pmm || !handler)
+                return -E_IN_PARAM;
+        if (kind < 0 || kind > (int)RADIX_RL_QUERY_OR_CHANGE)
+                return -E_IN_PARAM;
+
+        radix_tree_level_walk_t l0_walk_iter;
+
+        radix_tree_level_walk_init(&l0_walk_iter,
+                                   root,
+                                   ROUND_DOWN(vaddr_start,
+                                              (vaddr)HUGE_PAGE_SIZE),
+                                   vaddr_end,
+                                   RADIX_TREE_LEVEL0,
+                                   RADIX_TREE_DIRECTION_INC);
+        if (!radix_tree_level_walk_check(&l0_walk_iter))
+                return -E_IN_PARAM;
+        do {
+                radix_entry_lock(l0_walk_iter.curr_l0_entry);
+        } while (radix_tree_level_walk(&l0_walk_iter));
+
+        l0_walk_iter.direction = RADIX_TREE_DIRECTION_DEC;
+        error_t e = radix_range_lock_acquire(
+                vs, handler, root, vaddr_start, vaddr_end, kind);
+        do {
+                radix_entry_unlock(l0_walk_iter.curr_l0_entry);
+        } while (radix_tree_level_walk(&l0_walk_iter));
+
+        return e;
+}
+error_t vmm_radix_tree_unlock_range_big_and_small(VSpace* vs, vaddr vaddr_start,
+                                                  vaddr vaddr_end)
+{
+        return vmm_radix_tree_unlock_range_small(vs, vaddr_start, vaddr_end);
 }
 
 /* === range ops apis === */
@@ -1735,7 +1768,7 @@ change_range_flag_out:
         return err;
 }
 
-error_t vmm_radix_tree_query_leaf(VSpace* vs, vaddr vaddr_start,
+error_t vmm_radix_tree_query_range(VSpace* vs, vaddr vaddr_start,
                                   vaddr vaddr_end, ENTRY_FLAGS_t* out_flags,
                                   tagged_ptr_t* out_owner)
 {
@@ -1759,14 +1792,14 @@ error_t vmm_radix_tree_query_leaf(VSpace* vs, vaddr vaddr_start,
                 if (out_owner)
                         *out_owner = tp_new_none();
                 err = -E_IN_PARAM;
-                goto query_leaf_out;
+                goto query_range_out;
         }
         if (out_flags)
                 *out_flags = l3_walk.curr_l3_node->flags;
         if (out_owner)
                 *out_owner = l3_walk.curr_l3_node->owner;
 
-query_leaf_out:
+query_range_out:
         return err;
 }
 
@@ -1839,7 +1872,7 @@ error_t vmm_radix_tree_destroy(struct map_handler* handler, VSpace* vs)
                                                                 pmm->zone);
                                                 }
                                                 if (!(leaf->flags
-                                                    & PAGE_ENTRY_VALID))
+                                                      & PAGE_ENTRY_VALID))
                                                         continue;
                                                 /*for normal radix tree,
                                                  * the handler should

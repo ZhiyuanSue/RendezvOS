@@ -183,18 +183,14 @@ vs_structure_fail:
         free_user_vs_structure(vs);
         return NULL;
 }
-static void clone_rollback_src_write_pte_pages(VSpace* src_vs,
-                                               vaddr va_start,
+static void clone_rollback_src_write_pte_pages(VSpace* src_vs, vaddr va_start,
                                                vaddr va_end,
                                                struct map_handler* handler)
 {
         for (vaddr va = va_start; va < va_end; va += PAGE_SIZE) {
                 ENTRY_FLAGS_t src_map_flag;
-                ppn_t src_ppn = have_mapped(src_vs,
-                                            VPN(va),
-                                            &src_map_flag,
-                                            NULL,
-                                            handler);
+                ppn_t src_ppn = have_mapped(
+                        src_vs, VPN(va), &src_map_flag, NULL, handler);
                 if (invalid_ppn(src_ppn)) {
                         pr_error(
                                 "[Error] vspace clone rollback src have_mapped\n");
@@ -274,14 +270,14 @@ error_t clone_vspace(VSpace* src_vs, VSpace** dst_vs_out,
                         clear_mask_u64(range_flags, PAGE_ENTRY_VALID);
                 bool need_bind = range_flags & PAGE_ENTRY_VALID;
 
-                if (vmm_radix_tree_lock_range_small(handler,
-                                                    dst_vs,
-                                                    searched_start,
-                                                    searched_end,
-                                                    RADIX_RL_INSERT)
+                if (vmm_radix_tree_lock_range_big_and_small(handler,
+                                                            dst_vs,
+                                                            searched_start,
+                                                            searched_end,
+                                                            RADIX_RL_INSERT)
                     != REND_SUCCESS) {
                         pr_error(
-                                "[Error] clone vspace lock range small fail\n");
+                                "[Error] clone vspace lock range big and small small fail\n");
                         e = -E_RENDEZVOS;
                         goto rollback_prev_interval;
                 }
@@ -294,7 +290,7 @@ error_t clone_vspace(VSpace* src_vs, VSpace** dst_vs_out,
                                                 searched_end)
                     != REND_SUCCESS) {
                         pr_error("[Error] clone vspace insert_range fail\n");
-                        (void)vmm_radix_tree_unlock_range_small(
+                        (void)vmm_radix_tree_unlock_range_big_and_small(
                                 dst_vs, searched_start, searched_end);
                         e = -E_RENDEZVOS;
                         goto rollback_prev_interval;
@@ -315,7 +311,7 @@ error_t clone_vspace(VSpace* src_vs, VSpace** dst_vs_out,
                                                             handler);
                                 if (invalid_ppn(src_ppn)) {
                                         e = -E_RENDEZVOS;
-                                        (void)vmm_radix_tree_unlock_range_small(
+                                        (void)vmm_radix_tree_unlock_range_big_and_small(
                                                 dst_vs,
                                                 searched_start,
                                                 searched_end);
@@ -330,7 +326,7 @@ error_t clone_vspace(VSpace* src_vs, VSpace** dst_vs_out,
                                         if (invalid_ppn(dst_ppn)
                                             || alloced_page_number != 1) {
                                                 e = -E_RENDEZVOS;
-                                                (void)vmm_radix_tree_unlock_range_small(
+                                                (void)vmm_radix_tree_unlock_range_big_and_small(
                                                         dst_vs,
                                                         searched_start,
                                                         searched_end);
@@ -345,7 +341,7 @@ error_t clone_vspace(VSpace* src_vs, VSpace** dst_vs_out,
                                                         dst_vs->pmm,
                                                         dst_ppn,
                                                         1);
-                                                (void)vmm_radix_tree_unlock_range_small(
+                                                (void)vmm_radix_tree_unlock_range_big_and_small(
                                                         dst_vs,
                                                         searched_start,
                                                         searched_end);
@@ -362,7 +358,7 @@ error_t clone_vspace(VSpace* src_vs, VSpace** dst_vs_out,
                                                         dst_vs->pmm,
                                                         dst_ppn,
                                                         1);
-                                                (void)vmm_radix_tree_unlock_range_small(
+                                                (void)vmm_radix_tree_unlock_range_big_and_small(
                                                         dst_vs,
                                                         searched_start,
                                                         searched_end);
@@ -381,7 +377,7 @@ error_t clone_vspace(VSpace* src_vs, VSpace** dst_vs_out,
                                                         dst_vs->pmm,
                                                         dst_ppn,
                                                         1);
-                                                (void)vmm_radix_tree_unlock_range_small(
+                                                (void)vmm_radix_tree_unlock_range_big_and_small(
                                                         dst_vs,
                                                         searched_start,
                                                         searched_end);
@@ -396,7 +392,7 @@ error_t clone_vspace(VSpace* src_vs, VSpace** dst_vs_out,
                                                     src_map_flag)
                                             != REND_SUCCESS) {
                                                 e = -E_RENDEZVOS;
-                                                (void)vmm_radix_tree_unlock_range_small(
+                                                (void)vmm_radix_tree_unlock_range_big_and_small(
                                                         dst_vs,
                                                         searched_start,
                                                         searched_end);
@@ -418,7 +414,7 @@ error_t clone_vspace(VSpace* src_vs, VSpace** dst_vs_out,
                                                         src_ppn,
                                                         1,
                                                         false);
-                                                (void)vmm_radix_tree_unlock_range_small(
+                                                (void)vmm_radix_tree_unlock_range_big_and_small(
                                                         dst_vs,
                                                         searched_start,
                                                         searched_end);
@@ -434,7 +430,7 @@ error_t clone_vspace(VSpace* src_vs, VSpace** dst_vs_out,
                                                 handler)
                                             != REND_SUCCESS) {
                                                 e = -E_RENDEZVOS;
-                                                (void)vmm_radix_tree_unlock_range_small(
+                                                (void)vmm_radix_tree_unlock_range_big_and_small(
                                                         dst_vs,
                                                         searched_start,
                                                         searched_end);
@@ -451,7 +447,7 @@ error_t clone_vspace(VSpace* src_vs, VSpace** dst_vs_out,
                                             range_flags | PAGE_ENTRY_COW)
                                     != REND_SUCCESS) {
                                         e = -E_RENDEZVOS;
-                                        (void)vmm_radix_tree_unlock_range_small(
+                                        (void)vmm_radix_tree_unlock_range_big_and_small(
                                                 dst_vs,
                                                 searched_start,
                                                 searched_end);
@@ -464,7 +460,7 @@ error_t clone_vspace(VSpace* src_vs, VSpace** dst_vs_out,
                                             range_flags | PAGE_ENTRY_COW)
                                     != REND_SUCCESS) {
                                         e = -E_RENDEZVOS;
-                                        (void)vmm_radix_tree_unlock_range_small(
+                                        (void)vmm_radix_tree_unlock_range_big_and_small(
                                                 dst_vs,
                                                 searched_start,
                                                 searched_end);
@@ -473,11 +469,11 @@ error_t clone_vspace(VSpace* src_vs, VSpace** dst_vs_out,
                         }
                 }
 
-                if (vmm_radix_tree_unlock_range_small(
+                if (vmm_radix_tree_unlock_range_big_and_small(
                             dst_vs, searched_start, searched_end)
                     != REND_SUCCESS) {
                         pr_error(
-                                "[Error] clone vspace unlock range small fail\n");
+                                "[Error] clone vspace unlock radix range fail\n");
                         e = -E_RENDEZVOS;
                         goto rollback_prev_interval;
                 }
@@ -493,7 +489,8 @@ error_t clone_vspace(VSpace* src_vs, VSpace** dst_vs_out,
         *dst_vs_out = dst_vs;
         return e;
 rollback_pte_flags_prev:
-        /* Same half-open range as the descending loop: [searched_start, page_iter). */
+        /* Same half-open range as the descending loop: [searched_start,
+         * page_iter). */
         clone_rollback_src_write_pte_pages(
                 src_vs, searched_start, page_iter, handler);
         goto rollback_prev_interval;
@@ -514,10 +511,11 @@ rollback_prev_interval:
                         bool need_bind = rollback_range_flags
                                          & PAGE_ENTRY_VALID;
                         if (need_bind) {
-                                clone_rollback_src_write_pte_pages(src_vs,
-                                                                   rollback_searched_start,
-                                                                   rollback_searched_end,
-                                                                   handler);
+                                clone_rollback_src_write_pte_pages(
+                                        src_vs,
+                                        rollback_searched_start,
+                                        rollback_searched_end,
+                                        handler);
                                 if (vmm_radix_tree_change_range_flag(
                                             src_vs,
                                             rollback_searched_start,

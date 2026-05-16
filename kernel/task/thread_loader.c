@@ -1,7 +1,10 @@
+#include <common/align.h>
+#include <common/mm.h>
 #include <rendezvos/task/thread_loader.h>
 #include <modules/log/log.h>
-#include <rendezvos/mm/vmm_anon_backend.h>
+#include <rendezvos/mm/mm_user_utils.h>
 #include <rendezvos/mm/vmm.h>
+#include <rendezvos/mm/vmm_radix_tree.h>
 #include <rendezvos/smp/percpu.h>
 
 /* Owner ref drop: may trigger free_vspace_ref -> del_vspace. */
@@ -32,11 +35,19 @@ vaddr generate_user_stack(VSpace *vs)
         int page_num = thread_ustack_page_num;
         ENTRY_FLAGS_t page_flags = PAGE_ENTRY_USER | PAGE_ENTRY_VALID
                                    | PAGE_ENTRY_WRITE | PAGE_ENTRY_READ;
-        vaddr stack_base = mm_user_anon_map_pages(
-                vs,
-                USER_SPACE_TOP - (vaddr)page_num * PAGE_SIZE,
-                (size_t)page_num,
-                page_flags);
+        vaddr stack_lo =
+                USER_SPACE_TOP - (vaddr)page_num * PAGE_SIZE;
+        vaddr vaddr_end;
+        if (!vmm_radix_tree_calculate_end_check(
+                    stack_lo, (size_t)page_num, &vaddr_end)) {
+                return 0;
+        }
+        vaddr l0_lo = ROUND_DOWN(stack_lo, (vaddr)HUGE_PAGE_SIZE);
+        if (vmm_radix_tree_lock_range_big(vs, l0_lo, vaddr_end) != REND_SUCCESS)
+                return 0;
+        vaddr stack_base = mm_user_utils_set_range_and_fill(
+                vs, stack_lo, (size_t)page_num, page_flags);
+        (void)vmm_radix_tree_unlock_range_big(vs, l0_lo, vaddr_end);
         if (!stack_base) {
                 return 0;
         }
@@ -77,9 +88,20 @@ error_t elf_Phdr_64_load_handle(vaddr elf_start, Elf64_Phdr *phdr_ptr,
                 page_flags |= PAGE_ENTRY_READ;
         }
 
-        if (!mm_user_anon_map_pages(
-                    vs, aligned_start, (size_t)page_num, page_flags))
+        vaddr vaddr_end;
+        if (!vmm_radix_tree_calculate_end_check(
+                    aligned_start, (size_t)page_num, &vaddr_end)) {
+                return -E_IN_PARAM;
+        }
+        vaddr l0_lo = ROUND_DOWN(aligned_start, (vaddr)HUGE_PAGE_SIZE);
+        if (vmm_radix_tree_lock_range_big(vs, l0_lo, vaddr_end) != REND_SUCCESS)
                 return -E_RENDEZVOS;
+        if (!mm_user_utils_set_range_and_fill(
+                    vs, aligned_start, (size_t)page_num, page_flags)) {
+                (void)vmm_radix_tree_unlock_range_big(vs, l0_lo, vaddr_end);
+                return -E_RENDEZVOS;
+        }
+        (void)vmm_radix_tree_unlock_range_big(vs, l0_lo, vaddr_end);
 
         memcpy((void *)(ph_start),
                (void *)(elf_start + offset),
