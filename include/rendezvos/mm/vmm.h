@@ -37,7 +37,7 @@ struct VSpace {
          * Physical memory policy/affinity for this address space.
          * For now it is a single PMM pointer (typically ZONE_NORMAL).
          * Future NUMA: this can evolve into a "mem policy" object or per-region
-         * routing, but storing it here keeps nexus decoupled from map_handler.
+         * routing, but storing it here keeps radix tree decoupled from map_handler.
          */
         struct pmm* pmm;
         /*

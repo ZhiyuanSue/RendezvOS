@@ -62,7 +62,7 @@ error_t elf_Phdr_64_load_handle(vaddr elf_start, Elf64_Phdr *phdr_ptr,
         /*
                 TODO: we should add a data structure to record the used
            user space, which will be used for clean. and it might affect the
-           nexus
+           radix tree
         */
         print_elf_ph64(phdr_ptr);
 

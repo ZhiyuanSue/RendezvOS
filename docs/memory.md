@@ -169,7 +169,7 @@ struct mem_section {
 typedef struct {
         i64 ref_count;
         MemSection *sec;
-        struct list_entry rmap_list;   /* 反向映射：链到映射该页的 nexus_node */
+        struct list_entry rmap_list;   /* 反向映射：链到映射该页的 radix tree node */
 } Page;
 ```
 
@@ -298,7 +298,7 @@ struct map_handler {
 ```
 
 - 每个 CPU 的 4 个虚址为 `map_pages + cpu_id * 4 * PAGE_SIZE`。**使用 4 个 entry 而非单 entry 反复复用**，是为了避免单页多次映射不同表页带来的 **TLB flush 开销**；每级固定占一页，修改时各自映射一次即可。
-- 2MiB 空间共 512 个 4K 页，每 CPU 占 4 页，故 **最多支持 128 个 CPU**；map_handler 与 per-CPU 的 allocator/nexus 数量受此上限约束。`init_map()` 为每 CPU 分配 4 个 ppn 填入 `handler_ppn[]`，并设定上述 `map_vaddr[]`。
+- 2MiB 空间共 512 个 4K 页，每 CPU 占 4 页，故 **最多支持 128 个 CPU**；map_handler 与 per-CPU 的 allocator 数量受此上限约束。`init_map()` 为每 CPU 分配 4 个 ppn 填入 `handler_ppn[]`，并设定上述 `map_vaddr[]`。
 
 **自映射的建立**（`kernel/mm/map_handler.c` 中 `sys_init_map`，仅在 BSP 执行一次）：
 
@@ -482,8 +482,8 @@ Radix tree 提供**range-based APIs**，支持 INSERT/DELETE/QUERY_OR_CHANGE 三
 ### 5.1 层次与接口
 
 - 上层：`struct allocator`，提供 `m_alloc(allocator, size)` / `m_free(allocator, ptr)`。
-- 实现为 `struct mem_allocator`（`include/rendezvos/mm/kmalloc.h`），内部持有一个 `nexus_node* nexus_root`（即本 CPU 的 nexus），和 12 个 `mem_group`、一个 `page_chunk_root`（红黑树）、以及每 CPU 的 buffer 无锁队列等。
-- 分配时：小对象从对应 slot 的 group 取 object；若需新页则通过 `get_free_page(nexus_root, ...)` 向 Nexus 要页（Nexus 再向 PMM 要）。  
+- 实现为 `struct mem_allocator`（`include/rendezvos/mm/kmalloc.h`），内部包含 radix tree、12 个 `mem_group`、一个 `page_chunk_root`（红黑树）、以及每 CPU 的 buffer 无锁队列等。
+- 分配时：小对象从对应 slot 的 group 取 object；若需新页则通过 radix tree 向 PMM 要页。  
 - 释放时：若指针是 4K 对齐的“整页分配”，则走 `free_pages` 并查 `page_chunk_root` 确定页数；否则按 object 归还到对应 chunk/group。若对象属于其他 CPU 的 allocator（通过 `allocator_id`），则放入目标 CPU 的 buffer 无锁队列，由目标 CPU 在后续 free 时统一回收。
 
 ### 5.2 档位与 chunk 结构
@@ -527,7 +527,6 @@ struct mem_group {
 
 struct mem_allocator {
         /* MM_COMMON: init, m_alloc, m_free, allocator_id */
-        struct nexus_node *nexus_root;
         struct mem_group groups[MAX_GROUP_SLOTS];
         struct rb_root page_chunk_root;   /* 整页分配的 (page_addr, page_num) */
         ms_queue_t *buffer_msq;           /* 其他 CPU 释放过来的 object 队列 */

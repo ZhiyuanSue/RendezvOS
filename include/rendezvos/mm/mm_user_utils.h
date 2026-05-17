@@ -159,8 +159,8 @@ error_t mm_user_utils_clean_range_and_unfill(struct VSpace* vs,
  * @brief Replace physical page and/or PTE/radix flags for one mapped user page.
  *
  * **Pre:** caller holds big on the page's L0 span. PPN change uses @c
- * vmm_radix_tree_change_leaf_ppn then @c map(..., @c PAGE_ENTRY_REMAP) (legacy
- * @c nexus_update_node order); not @c unmap+@c map.
+ * vmm_radix_tree_change_leaf_ppn then @c map(..., @c PAGE_ENTRY_REMAP) (radix
+ * tree change order); not @c unmap+@c map.
  */
 error_t mm_user_utils_remap_page(struct VSpace* vs, vaddr page_va,
                                  ppn_t new_ppn, ENTRY_FLAGS_t new_flags,

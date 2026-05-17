@@ -306,7 +306,7 @@ error_t delete_task(Tcb_Base* tcb)
                         /*
                          * User address spaces: radix metadata + PTE teardown
                          * run in del_vspace() when the last refcount drops
-                         * (free_vspace_ref). Do not duplicate unmap/nexus work
+                         * (free_vspace_ref). Do not duplicate unmap/radix tree work
                          * here.
                          */
                         error_t put_e =

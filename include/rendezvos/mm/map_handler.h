@@ -125,12 +125,12 @@ static inline error_t map_handler_copy_page(struct map_handler* handler,
  * @param old_vs_root_paddr  Physical address of an **existing** L0 root to
  *                           copy from, or 0.
  *   - **0**: `memset` the user half of the new L0 to empty (typical new user
- *     address space before nexus/map fills it).
+ *     address space before radix tree/map fills it).
  *   - **Non-0**: `memcpy` the **user half of L0 only** (first-level entries)
  *     from that root into the new root. This duplicates **pointers** into the
  *     same lower-level page tables as the source; it is **not** a full
- *     vspace clone and does **not** by itself establish COW or nexus truth.
- *     Upper layers (e.g. `vspace_clone` + nexus) own fork/COW semantics.
+ *     vspace clone and does **not** by itself establish COW or radix tree truth.
+ *     Upper layers (e.g. `vspace_clone` + radix tree) own fork/COW semantics.
  *
  * @param handler  Per-CPU map handler (must match the CPU doing the alloc).
  *
