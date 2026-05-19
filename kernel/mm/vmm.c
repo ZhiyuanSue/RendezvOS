@@ -572,6 +572,43 @@ error_t unregister_vspace(VSpace* vs)
         return REND_SUCCESS;
 }
 
+error_t vspace_clear_user_mappings(VSpace* vs, struct map_handler* handler)
+{
+        error_t e;
+
+        if (!vs || !handler)
+                return -E_IN_PARAM;
+        if (vs == vs->root_vs || vs == &root_vspace)
+                return -E_IN_PARAM;
+
+        lock_cas(&vs->tlb_cpu_mask_lock);
+        bool tlb_empty = vs_tlb_cpu_mask_is_zero(vs);
+        unlock_cas(&vs->tlb_cpu_mask_lock);
+        if (!tlb_empty)
+                return -E_REND_RC_UNEQUAL;
+
+        if (vs->root_radix) {
+                e = vmm_radix_tree_clean_user(handler, vs);
+                if (e != REND_SUCCESS) {
+                        pr_error(
+                                "[VMM] vspace_clear_user_mappings: radix clean_user failed e=%d\n",
+                                (int)e);
+                        return e;
+                }
+        }
+
+        if (!vs->vspace_root_addr)
+                return REND_SUCCESS;
+
+        e = vspace_free_user_pt(vs, handler);
+        if (e != REND_SUCCESS) {
+                pr_error(
+                        "[VMM] vspace_clear_user_mappings: free user pt failed e=%d\n",
+                        (int)e);
+        }
+        return e;
+}
+
 error_t del_vspace(VSpace** vs)
 {
         if (!(*vs))
@@ -585,35 +622,26 @@ error_t del_vspace(VSpace** vs)
                 return -E_IN_PARAM;
 
         struct map_handler* map_handler = &percpu(Map_Handler);
-        error_t ret = REND_SUCCESS;
+        error_t ret;
 
-        lock_cas(&vspace->tlb_cpu_mask_lock);
-        bool empty = vs_tlb_cpu_mask_is_zero(vspace);
-        unlock_cas(&vspace->tlb_cpu_mask_lock);
-        if (!empty)
-                return -E_REND_RC_UNEQUAL;
+        ret = vspace_clear_user_mappings(vspace, map_handler);
+        if (ret != REND_SUCCESS)
+                return ret;
 
-        bool had_radix = vspace->root_radix != NULL;
-
-        if (had_radix) {
-                error_t dr = vmm_radix_tree_destroy(map_handler, vspace);
-                if (dr != REND_SUCCESS) {
+        if (vspace->root_radix) {
+                ret = vmm_radix_tree_delete(map_handler, vspace);
+                if (ret != REND_SUCCESS) {
                         pr_error(
-                                "[VMM] del_vspace: vmm_radix_tree_destroy failed e=%d\n",
-                                (int)dr);
-                        return dr;
+                                "[VMM] del_vspace: radix delete failed e=%d\n",
+                                (int)ret);
+                        return ret;
                 }
         }
 
         if (vspace->vspace_root_addr) {
-                if (had_radix) {
-                        error_t user_err =
-                                vspace_free_user_pt(vspace, map_handler);
-                        if (user_err != REND_SUCCESS && ret == REND_SUCCESS)
-                                ret = user_err;
-                }
-                error_t root_err = vspace_free_root_page(vspace, map_handler);
-                if (root_err != REND_SUCCESS && ret == REND_SUCCESS)
+                error_t root_err =
+                        vspace_free_root_page(vspace, map_handler);
+                if (root_err != REND_SUCCESS)
                         ret = root_err;
         }
 

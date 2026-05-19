@@ -37,6 +37,14 @@ error_t gen_task_from_elf(Thread_Base** elf_thread_ptr,
                           size_t append_tcb_info_len,
                           size_t append_thread_info_len, vaddr elf_start,
                           vaddr elf_end, elf_init_handler_t elf_init);
+error_t load_elf_to_vs(vaddr elf_start, vaddr elf_end, VSpace* vs,
+                       vaddr* max_load_end_out);
+/*
+ * Map the standard user stack at USER_SPACE_TOP and return the initial RSP
+ * (top minus 8, 16-byte friendly). Used by gen_task_from_elf and exec after
+ * vspace_clear_user_mappings.
+ */
+vaddr generate_user_stack(VSpace* vs);
 typedef void* (*kthread_func)(void*);
 error_t gen_thread_from_func(Thread_Base** func_thread_ptr, kthread_func thread,
                              char* thread_name, Task_Manager* tm, void* arg);

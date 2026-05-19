@@ -68,6 +68,22 @@ void arch_ctx_merge_from_src(Arch_Task_Context* dst_ctx,
 void arch_ctx_refresh(Arch_Task_Context* ctx);
 void arch_return_to_user(u64 kstack_bottom,
                          const struct trap_frame* template_tf, u64 syscall_ret);
+/*
+ * Path A: in-flight syscall trap_frame (syscall_ctx). User PC in rcx, RSP in
+ * percpu(user_rsp_scratch), syscall return value in rax.
+ */
+void arch_syscall_set_user_return(struct trap_frame* tf, Arch_Task_Context* ctx,
+                                  vaddr user_pc, vaddr user_sp, u64 syscall_ret);
+void arch_syscall_get_user_return(const struct trap_frame* tf,
+                                  const Arch_Task_Context* ctx, vaddr* user_pc,
+                                  vaddr* user_sp, u64* syscall_ret);
+/*
+ * Set SysV AMD64 user integer argument reg (0..NR_ABI_PARAMETER_INT_REG-1):
+ * 0=rdi, 1=rsi, 2=rdx, 3=rcx, 4=r8, 5=r9.
+ * Path A: index 3 (rcx) is also syscall return PC; do not use after set_user_return.
+ */
+void arch_syscall_set_user_int_arg(struct trap_frame* tf, unsigned int arg_index,
+                                   u64 value);
 
 /* Zeroed syscall-shaped frame for first ELF entry; rcx = user RIP (sysret). */
 static inline void arch_empty_drop_trap_frame(struct trap_frame* tf,

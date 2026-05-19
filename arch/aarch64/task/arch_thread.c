@@ -38,6 +38,46 @@ void arch_ctx_merge_from_src(Arch_Task_Context* dst_ctx,
         dst_ctx->regs[aarch64_task_ctx_lr] = lr;
 }
 
+void arch_syscall_set_user_return(struct trap_frame* tf, Arch_Task_Context* ctx,
+                                  vaddr user_pc, vaddr user_sp, u64 syscall_ret)
+{
+        if (!tf) {
+                return;
+        }
+        tf->ELR = user_pc;
+        tf->REGS[0] = syscall_ret;
+        tf->SP = user_sp;
+        if (ctx) {
+                ctx->sp_el0 = user_sp;
+        }
+        msr("SP_EL0", user_sp);
+}
+
+void arch_syscall_get_user_return(const struct trap_frame* tf,
+                                  const Arch_Task_Context* ctx, vaddr* user_pc,
+                                  vaddr* user_sp, u64* syscall_ret)
+{
+        (void)ctx;
+        if (user_pc) {
+                *user_pc = tf ? tf->ELR : 0;
+        }
+        if (user_sp) {
+                *user_sp = tf ? tf->SP : 0;
+        }
+        if (syscall_ret) {
+                *syscall_ret = tf ? tf->REGS[0] : 0;
+        }
+}
+
+void arch_syscall_set_user_int_arg(struct trap_frame* tf, unsigned int arg_index,
+                                   u64 value)
+{
+        if (!tf || arg_index >= NR_ABI_PARAMETER_INT_REG) {
+                return;
+        }
+        tf->REGS[arg_index] = value;
+}
+
 void arch_return_to_user(u64 kstack_bottom,
                          const struct trap_frame* template_tf, u64 syscall_ret)
 {

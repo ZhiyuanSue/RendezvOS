@@ -132,6 +132,25 @@ error_t unregister_vspace(VSpace* vs);
 /*remember unregister the vs before del vspace*/
 error_t del_vspace(VSpace** vs);
 
+struct map_handler;
+
+/*
+ * Clear user low-half mappings (radix clean_user + vspace_free_user_pt).
+ *
+ * Keeps: VSpace object, ASID, registration, page-table root frame, L0 radix
+ * page, kernel high-half PTE and L0[256..511] radix slots. Use for in-place
+ * exec before load_elf_to_vs.
+ *
+ * del_vspace (after unregister_vspace) calls this, then vmm_radix_tree_delete,
+ * then vspace_free_root_page, then frees the VSpace / ASID.
+ *
+ * Caller obligations (Linux/exec policy stays above core):
+ * - No other thread in the owning task may still run on this vs.
+ * - vs_tlb_cpu_mask must be zero.
+ * - vs must not be root_vspace.
+ */
+error_t vspace_clear_user_mappings(VSpace* vs, struct map_handler* handler);
+
 void arch_set_L0_entry(paddr p, vaddr v, union L0_entry* pt_addr,
                        ARCH_PFLAGS_t flags);
 void arch_set_L1_entry(paddr p, vaddr v, union L1_entry* pt_addr,

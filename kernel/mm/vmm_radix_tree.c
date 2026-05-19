@@ -1824,7 +1824,38 @@ Radix_entry_t* vmm_radix_tree_init(struct map_handler* handler, VSpace* vs)
         return (Radix_entry_t*)vs->root_radix;
 }
 
-error_t vmm_radix_tree_destroy(struct map_handler* handler, VSpace* vs)
+/*
+ * Per-leaf teardown for vmm_radix_tree_clean_user: detach rmap, unmap user PTE,
+ * return physical page to PMM. Skips non-VALID leaves (LAZY-only slots).
+ */
+static void radix_clean_user_leaf(VSpace* vs, struct map_handler* handler,
+                                  struct pmm* pmm, vaddr va,
+                                  Radix_node_t* leaf)
+{
+        if (!leaf)
+                return;
+
+        if (!list_node_is_detached(&leaf->rmap_list) && pmm->zone) {
+                pmm_zone_lock(pmm->zone);
+                list_del_init(&leaf->rmap_list);
+                pmm_zone_unlock(pmm->zone);
+        }
+
+        if (!(leaf->flags & PAGE_ENTRY_VALID))
+                return;
+
+        /*
+         * Radix metadata pages are normally accessed without walking user PTEs;
+         * clean_user is an exception: drop the user mapping before pmm_free.
+         */
+        ppn_t ppn = have_mapped(vs, VPN(va), NULL, NULL, handler);
+        if (invalid_ppn(ppn))
+                return;
+        (void)unmap(vs, VPN(va), 0, handler);
+        (void)pmm->pmm_free(pmm, ppn, 1);
+}
+
+error_t vmm_radix_tree_clean_user(struct map_handler* handler, VSpace* vs)
 {
         if (!vs || !vs->pmm || !handler)
                 return -E_IN_PARAM;
@@ -1856,49 +1887,17 @@ error_t vmm_radix_tree_destroy(struct map_handler* handler, VSpace* vs)
                                 if (!l2_entry || !entry_valid(l2_entry))
                                         continue;
                                 vaddr l3_table_vaddr = entry_child(l2_entry);
-                                if (pmm->zone) {
-                                        for (vaddr l3_iter = l2_iter;
-                                             l3_iter
-                                             < l2_iter + radix_level_step[2];
-                                             l3_iter += radix_level_step[3]) {
-                                                Radix_node_t* leaf =
-                                                        radix_l3_node(l2_entry,
-                                                                      l3_iter);
-                                                if (!leaf)
-                                                        continue;
-                                                if (!list_node_is_detached(
-                                                            &leaf->rmap_list)) {
-                                                        pmm_zone_lock(
-                                                                pmm->zone);
-                                                        list_del_init(
-                                                                &leaf->rmap_list);
-
-                                                        pmm_zone_unlock(
-                                                                pmm->zone);
-                                                }
-                                                if (!(leaf->flags
-                                                      & PAGE_ENTRY_VALID))
-                                                        continue;
-                                                /*for normal radix tree,
-                                                 * the handler should
-                                                 * not used for any pte
-                                                 * leaf page, but here
-                                                 * is an exception*/
-                                                ppn_t ppn = have_mapped(
-                                                        vs,
-                                                        VPN(l3_iter),
-                                                        NULL,
-                                                        NULL,
-                                                        handler);
-                                                if (invalid_ppn(ppn))
-                                                        continue;
-                                                (void)unmap(vs,
-                                                            VPN(l3_iter),
-                                                            0,
-                                                            handler);
-                                                (void)pmm->pmm_free(
-                                                        pmm, ppn, 1);
-                                        }
+                                for (vaddr l3_iter = l2_iter;
+                                     l3_iter
+                                     < l2_iter + radix_level_step[2];
+                                     l3_iter += radix_level_step[3]) {
+                                        Radix_node_t* leaf = radix_l3_node(
+                                                l2_entry, l3_iter);
+                                        radix_clean_user_leaf(vs,
+                                                              handler,
+                                                              pmm,
+                                                              l3_iter,
+                                                              leaf);
                                 }
                                 (void)free_level_table(vs,
                                                        pmm,
@@ -1918,11 +1917,37 @@ error_t vmm_radix_tree_destroy(struct map_handler* handler, VSpace* vs)
                         vs, pmm, handler, l1_table_vaddr, RADIX_TREE_LEVEL1);
                 l0_entry->value = 0;
         }
-        vaddr root_vaddr = (vaddr)root;
-        (void)free_level_table(vs, pmm, handler, root_vaddr, RADIX_TREE_LEVEL0);
-        vs->root_radix = (void*)NULL;
         return REND_SUCCESS;
 }
+
+error_t vmm_radix_tree_delete(struct map_handler* handler, VSpace* vs)
+{
+        if (!vs || !vs->pmm || !handler)
+                return -E_IN_PARAM;
+
+        Radix_entry_t* root = radix_root_from_vs(vs);
+        if (!root)
+                return REND_SUCCESS;
+
+        (void)free_level_table(vs,
+                               vs->pmm,
+                               handler,
+                               (vaddr)root,
+                               RADIX_TREE_LEVEL0);
+        vs->root_radix = NULL;
+        return REND_SUCCESS;
+}
+
+error_t vmm_radix_tree_destroy(struct map_handler* handler, VSpace* vs)
+{
+        error_t e;
+
+        e = vmm_radix_tree_clean_user(handler, vs);
+        if (e != REND_SUCCESS)
+                return e;
+        return vmm_radix_tree_delete(handler, vs);
+}
+
 /* shared high half l1 pages */
 static ppn_t kernel_radix_l1_table_base_ppn;
 

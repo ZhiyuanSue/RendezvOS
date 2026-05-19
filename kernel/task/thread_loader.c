@@ -124,17 +124,14 @@ error_t elf_Phdr_64_dynamic_handle(vaddr elf_start, Elf64_Phdr *phdr_ptr,
         print_elf_ph64(phdr_ptr);
         return REND_SUCCESS;
 }
-error_t run_elf_program(vaddr elf_start, vaddr elf_end, VSpace *vs,
-                        elf_init_handler_t elf_init)
+error_t load_elf_to_vs(vaddr elf_start, vaddr elf_end, VSpace *vs,
+                       vaddr *max_load_end_out)
 {
-        pr_info("start gen task from elf start %lx end %lx vs %lx\n",
-                elf_start,
-                elf_end,
-                vs);
-        if (!elf_start || !elf_end || !vs) {
+        vaddr load_end = 0;
+
+        if (!elf_start || !elf_end || elf_end <= elf_start || !vs) {
                 return -E_IN_PARAM;
         }
-        Thread_Base *elf_thread = get_cpu_current_thread();
         error_t e = REND_SUCCESS;
         if (!check_elf_header(elf_start)) {
                 pr_error("[ERROR] bad elf file\n");
@@ -144,17 +141,14 @@ error_t run_elf_program(vaddr elf_start, vaddr elf_end, VSpace *vs,
                 pr_error("[Error] Rendezvos not support elf32 file running\n");
                 return -E_RENDEZVOS;
         }
-        Elf64_Ehdr *elf_header = (Elf64_Ehdr *)elf_start;
-        vaddr entry_addr = elf_header->e_entry;
-        vaddr max_load_end = 0;
         for_each_program_header_64(elf_start)
         {
                 /*handle LOAD*/
                 if (phdr_ptr->p_type == PT_LOAD) {
                         vaddr end = (vaddr)phdr_ptr->p_vaddr
                                     + (vaddr)phdr_ptr->p_memsz;
-                        if (end > max_load_end)
-                                max_load_end = end;
+                        if (end > load_end)
+                                load_end = end;
                         e = elf_Phdr_64_load_handle(elf_start, phdr_ptr, vs);
                         if (e != REND_SUCCESS) {
                                 pr_error("[ Error ]elf load handle fail\n");
@@ -173,6 +167,26 @@ error_t run_elf_program(vaddr elf_start, vaddr elf_end, VSpace *vs,
                         }
                 }
         }
+        if (max_load_end_out)
+                *max_load_end_out = ROUND_UP(load_end, PAGE_SIZE);
+        return e;
+}
+error_t run_elf_program(vaddr elf_start, vaddr elf_end, VSpace *vs,
+                        elf_init_handler_t elf_init)
+{
+        pr_info("start gen task from elf start %lx end %lx vs %lx\n",
+                elf_start,
+                elf_end,
+                vs);
+        vaddr max_load_end;
+        if (load_elf_to_vs(elf_start, elf_end, vs, &max_load_end)
+            != REND_SUCCESS)
+                return -E_RENDEZVOS;
+        Thread_Base *elf_thread = get_cpu_current_thread();
+
+        Elf64_Ehdr *elf_header = (Elf64_Ehdr *)elf_start;
+        vaddr entry_addr = elf_header->e_entry;
+
         vaddr user_sp = arch_get_thread_user_sp(&elf_thread->ctx);
         user_sp -= 8;
         *((u64 *)user_sp) = 0;
@@ -182,7 +196,7 @@ error_t run_elf_program(vaddr elf_start, vaddr elf_end, VSpace *vs,
                         .elf_start = elf_start,
                         .elf_end = elf_end,
                         .entry_addr = entry_addr,
-                        .max_load_end = ROUND_UP(max_load_end, PAGE_SIZE),
+                        .max_load_end = max_load_end,
                         .user_sp = user_sp,
                         .phnum = elf_header->e_phnum,
                         .phentsize = elf_header->e_phentsize,

@@ -58,8 +58,9 @@
  * band, then @ref vmm_radix_tree_unlock_range_big_and_small (equivalently
  * @ref vmm_radix_tree_unlock_range_small) (DELETE work runs inside the internal
  * acquire). Caller removes PTEs first per policy; then @ref
- * vmm_radix_tree_destroy for full radix teardown (low half + root only; shared
- * high-half L1 slab is not freed here).
+ * vmm_radix_tree_clean_user for user low-half teardown, and @ref
+ * vmm_radix_tree_delete to drop the L0 metadata page (or @ref
+ * vmm_radix_tree_destroy for both).
  *
  * @par Internal acquire Phase 4 (L3) by @ref radix_lock_acquire_kind_t
  * - @ref RADIX_RL_INSERT: reject overlap on reserved slots (@c
@@ -101,7 +102,7 @@
  * refcounts. Internal Phase 5 adjusts counts when ranges cross 2 MiB bands.
  * Reclaim uses counts as guards when dropping whole L3/L2/L1 pages (I7:
  * structural pages from failed insert are not freed until @ref
- * vmm_radix_tree_destroy, except shared L1 slab).
+ * vmm_radix_tree_delete, except shared L1 slab).
  *
  * @par Rmap and PMM zone
  * `radix_leaf_link_rmap` / `radix_leaf_unlink_rmap` run under `vs->pmm->zone`
@@ -616,17 +617,42 @@ error_t vmm_radix_tree_query_range(VSpace* vs, vaddr vaddr_start,
 Radix_entry_t* vmm_radix_tree_init(struct map_handler* handler, VSpace* vs);
 
 /**
- * @brief Tear down radix metadata for @p vs (unmap KERNEL_PHY_TO_VIRT metadata,
- *        free radix pages per policy).
+ * @brief Drop user low-half radix metadata and user mappings for @p vs.
  *
- * @param handler  Map handler (unmap before pmm_free).
+ * Walks L0 indices 0..255 only. For each VALID leaf: detach rmap (under PMM
+ * zone lock when present), @c unmap user PTE, @c pmm_free the backing page.
+ * Frees per-vspace L1/L2/L3 radix tables; clears low-half L0 child pointers.
+ * Keeps the L0 metadata page (@c vs->root_radix) and L0[256..511] entries
+ * (shared kernel high-half wiring).
+ *
+ * @param handler  Map handler (unmap + metadata table free).
  * @param vs       Target vspace.
  *
  * @return @c REND_SUCCESS or an error code.
  *
- * @note Before freeing each low-half L3 table, detaches @ref
- * Radix_node_t::rmap_list for leaves whose `owner` matches @p vs under the PMM
- * zone lock. L0[256..511] shared slab is not freed here.
+ * @note Does not free the shared kernel high-half L1 slab. Caller must ensure
+ *       no CPU holds live TLB entries for this vspace and no concurrent user
+ *       threads (see @ref vspace_clear_user_mappings).
+ */
+error_t vmm_radix_tree_clean_user(struct map_handler* handler, VSpace* vs);
+
+/**
+ * @brief Free the L0 radix metadata page and clear @c vs->root_radix.
+ *
+ * @param handler  Map handler (unmap KERNEL_PHY_TO_VIRT metadata via
+ *                 @c free_level_table).
+ * @param vs       Target vspace.
+ *
+ * @return @c REND_SUCCESS or an error code.
+ *
+ * @note Call @ref vmm_radix_tree_clean_user first so user L1/L2/L3 tables and
+ *       user physical pages are not leaked. Does not free shared high-half L1.
+ */
+error_t vmm_radix_tree_delete(struct map_handler* handler, VSpace* vs);
+
+/**
+ * @brief Full radix teardown: @ref vmm_radix_tree_clean_user then @ref
+ *        vmm_radix_tree_delete.
  */
 error_t vmm_radix_tree_destroy(struct map_handler* handler, VSpace* vs);
 
@@ -658,9 +684,9 @@ vmm_radix_tree_bootstrap_shared_kernel_high_half(struct map_handler* handler,
  *
  * @note Uses per-slot `radix_entry_lock` / `radix_entry_update`; never memcpy
  *       from another vspace's entry words. Requires bootstrap completed first.
- *       Idempotent if already correct. @ref vmm_radix_tree_destroy does not
- * free this shared band; do not destroy one vspace while others still depend on
- *       the same shared L1 subtree unless policy guarantees disjoint use.
+ *       Idempotent if already correct. @ref vmm_radix_tree_delete does not
+ * free this shared band; do not delete one vspace's L0 while others still depend
+ *       on the same shared L1 subtree unless policy guarantees disjoint use.
  */
 error_t vmm_radix_tree_install_shared_kernel_high_half(VSpace* vs);
 
