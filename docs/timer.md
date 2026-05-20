@@ -1,3 +1,11 @@
+# Timers
+
+> **文档角色：** 硬件/驱动参考（8254/APIC/generic timer 笔记；非 API 手册）  
+> **对外 API：** `rendezvos/time.h`（`mdelay`、`get_ticks` 等，以头文件为准）  
+> **入口：** [`GUIDE.md`](GUIDE.md) §6 · **IRQ 笔记：** [`interrupt.md`](interrupt.md)
+
+---
+
 # 8254时钟
 这是在使用8259A的情况下，使用8254的时钟。
 连接到IRQ0

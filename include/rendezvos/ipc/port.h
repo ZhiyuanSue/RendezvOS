@@ -48,44 +48,127 @@ struct Port_Table {
 
 extern struct spin_lock_t port_table_spin_lock;
 
+/**
+ * @brief Read the port thread-queue state tag (empty, send, or recv).
+ * @param port Port whose queue state is queried.
+ * @return One of IPC_PORT_STATE_EMPTY, IPC_PORT_STATE_SEND, or
+ *         IPC_PORT_STATE_RECV.
+ */
 static inline u16 ipc_get_queue_state(Message_Port_t* port)
 {
         tagged_ptr_t tail = atomic64_load(&port->thread_queue.tail);
         return tp_get_tag(tail) & ((1 << IPC_PORT_APPEND_BITS) - 1);
 }
 
-/* Basic port operations */
+/**
+ * @brief Allocate and initialize an unregistered message port.
+ * @param name Port name (non-empty, shorter than PORT_NAME_LEN_MAX).
+ * @return New port with refcount 1, or NULL on invalid name or allocation
+ *         failure.
+ */
 Message_Port_t* create_message_port(const char* name);
+
+/**
+ * @brief Free port memory after the wait queue has been drained.
+ * @param port Port to destroy; no-op if NULL.
+ */
 void delete_message_port_structure(Message_Port_t* port);
+
+/**
+ * @brief Refcount destructor for Message_Port_t (calls
+ * delete_message_port_structure).
+ * @param ref_count_ptr Pointer to port->refcount.
+ * @return REND_SUCCESS on success; -E_IN_PARAM if ref_count_ptr is NULL.
+ */
 error_t free_message_port_ref(ref_count_t* ref_count_ptr);
 
-/* Port table operations */
+/**
+ * @brief Allocate a port table and initialize its name index.
+ * @return New Port_Table, or NULL on allocation failure.
+ */
 struct Port_Table* port_table_create(void);
+
+/**
+ * @brief Initialize an existing Port_Table name index.
+ * @param table Table to initialize; no-op if NULL.
+ */
 void port_table_init(struct Port_Table* table);
+
+/**
+ * @brief Look up a registered port by name and hold a reference.
+ * @param table Port table to search.
+ * @param name Port name to look up.
+ * @return Port with refcount incremented, or NULL if not found or on invalid
+ *         input.
+ */
 Message_Port_t* port_table_lookup(struct Port_Table* table, const char* name);
-/*
- * Like port_table_lookup, but optionally fills *tok_out with stable (index,gen)
- * for per-thread cache. tok_out may be NULL.
+
+/**
+ * @brief Look up a port by name and optionally capture a cache token.
+ * @param table Port table to search.
+ * @param name Port name to look up.
+ * @param tok_out Optional output for a stable (index, gen) token; may be NULL.
+ * @return Port with refcount incremented, or NULL if not found or on invalid
+ *         input.
  */
 Message_Port_t* port_table_lookup_with_token(struct Port_Table* table,
                                              const char* name,
                                              name_index_token_t* tok_out);
-/*
- * Resolve a cached token under the table lock; on success returns with the same
- * ref semantics as port_table_lookup. If `tok` is NULL, behaves like
- * port_table_lookup.
+
+/**
+ * @brief Resolve a cached token to a port under the table lock.
+ * @param table Port table to search.
+ * @param tok Cached token from a prior lookup; if NULL, behaves like
+ *        port_table_lookup.
+ * @param name Port name used to validate the token.
+ * @return Port with refcount incremented, or NULL if the token is stale or
+ *         input is invalid.
  */
 Message_Port_t* port_table_resolve_token(struct Port_Table* table,
                                          const name_index_token_t* tok,
                                          const char* name);
+
+/**
+ * @brief Test whether port is still the live registered entry for name.
+ * @param table Port table to search.
+ * @param name Port name to compare.
+ * @param port Port pointer to validate.
+ * @return true if port matches the registered entry for name; false otherwise.
+ */
 bool port_table_port_is_live(struct Port_Table* table, const char* name,
                              Message_Port_t* port);
+
+/**
+ * @brief Register a port in the table under its name.
+ * @param table Port table to update.
+ * @param port Port to register; must have a non-empty name.
+ * @return REND_SUCCESS on success or if port is already registered in table;
+ *         -E_IN_PARAM on invalid input; -E_RENDEZVOS if the name is taken or
+ *         registration fails.
+ */
 error_t register_port(struct Port_Table* table, Message_Port_t* port);
+
+/**
+ * @brief Remove a port from the table and drop the table's reference.
+ * @param table Port table to update.
+ * @param name Port name to unregister.
+ * @return REND_SUCCESS; -E_IN_PARAM if table or name is NULL.
+ */
 error_t unregister_port(struct Port_Table* table, const char* name);
+
+/**
+ * @brief Tear down a port table and free its backing storage.
+ * @param table Table to destroy; no-op if NULL.
+ */
 void delete_port_table_structure(struct Port_Table* table);
 
 /* Global port table - declared in port.c */
 extern struct Port_Table* global_port_table;
+
+/**
+ * @brief Create and initialize the global port table at boot.
+ * @return REND_SUCCESS on success; -E_RENDEZVOS if allocation fails.
+ */
 error_t global_port_init(void);
 
 #endif

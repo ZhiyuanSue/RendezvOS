@@ -8,7 +8,9 @@ YuJian is my senior brother, a 2020 master's student in the Department of Comput
 
 RendezvOS is the standalone kernel tree. In another word, it's a core of a kernel. It contains the boot flow, memory management, task/thread management, IPC, and the architecture-specific code needed to bring the kernel up.
 
-The repository root now acts as the integration layer for the Linux-compatible modules and the user-test payload. If you are working on the full system, prefer the root-level `Makefile`. If you want to exercise the kernel itself, use the commands in this document.
+**Documentation:** [`docs/USING_CORE.md`](docs/USING_CORE.md) (external callers) · [`docs/GUIDE.md`](docs/GUIDE.md) (in-tree index) · Repo map: [`../doc/README.md`](../doc/README.md).
+
+When this tree is combined with other repositories at the workspace root, use the root-level `Makefile` for the full image; use the commands below for kernel-only builds in this tree.
 
 ## Standalone RendezvOS workflow
 

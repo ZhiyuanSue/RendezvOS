@@ -1,6 +1,51 @@
 # Trap中断处理文档
 
+> **文档角色：** 子系统参考（maintained） · **导航：** [`GUIDE.md`](GUIDE.md) §4  
+> **相关：** [`task-thread.md`](task-thread.md) · `arch/*/tcb_arch.h`
+
 本文档记录硬件的trap/interrupt处理行为，以及core/中的架构无关抽象层设计。
+
+---
+
+## Syscall entry（与弱符号 `syscall`）
+
+用户态进入内核的 **系统调用** 在抽象层中归类为 `TRAP_CLASS_SYSCALL`（x86：`syscall` 指令；aarch64：SVC，EC 0x15/0x18）。
+
+### 架构入口（boot 阶段注册）
+
+| Arch | 注册方式 | 实现位置（典型） |
+|------|----------|------------------|
+| x86_64 | `MSR_IA32_LSTAR` ← `arch_set_syscall_entry()`；入口汇编保存 `trap_frame` 后 `call syscall` | `arch/x86_64/boot/start_arch.c`, `trap/kernel_entry.S` |
+| aarch64 | `register_irq_handler(0x15, syscall, …)` | `arch/aarch64/boot/start_arch.c`, `trap/trap.c` |
+
+### 弱符号分发（core 默认）
+
+```c
+/* core/kernel/system/syscall.c */
+__attribute__((weak)) void syscall(struct trap_frame* syscall_ctx);
+```
+
+- Core 提供 **空弱实现**；人格层（或链接进镜像的其他对象）提供 **强符号** `syscall` 覆盖它。
+- 入口汇编将 **in-flight** 的 `struct trap_frame*` 作为唯一参数传入；syscall 编号与参数在 arch 宏中（如 x86 `ARCH_SYSCALL_ID` = `rax`，参数 `rdi`…，见 `arch/*/trap/trap.h`）。
+- 从 syscall 返回用户：**不要**随意改 `trap_frame` 布局；使用 [`task-thread.md`](task-thread.md) 中的 `arch_syscall_set_user_return` / `arch_syscall_get_user_return`（path A）。
+
+### 与 IRQ / fault 的区别
+
+| 类型 | 注册 API | 典型用途 |
+|------|----------|----------|
+| Syscall | 上述 MSR/向量 + `syscall()` 覆盖 | 系统调用表 |
+| Fault / trap class | `register_fixed_trap(TRAP_CLASS_*, handler, flags)` | `#PF`、非法指令 |
+| Device IRQ | `register_irq_handler(irq_num, handler, attr)` | 定时器、块设备 |
+
+Portable 代码应使用 **`trap_class`** 和 `arch_populate_trap_info()`，避免硬编码 IRQ 号或向量号（见下文「上层使用方式」）。
+
+### Trap 返回与调度
+
+`core/kernel/trap/trap.c` 在处理完 trap/IRQ 后会对当前 CPU 调用 **`schedule(percpu(core_tm))`**。上层若在 trap 路径上修改了线程状态（阻塞、唤醒），应假定可能在返回用户态前发生一次调度。
+
+### aarch64 SVC 注意
+
+Boot 通常只注册 **EC 0x15** → `syscall`。若需要 **EC 0x18** 作为独立入口，须在 `start_arch.c` 中额外 `register_irq_handler`；当前未注册时 0x18 不会进入 `syscall()`。
 
 ---
 
@@ -392,7 +437,7 @@ arch/x86_64/trap/trap.h
    - 实现`arch_populate_trap_info()`
    - 实现`register_fixed_trap()`（映射trap_class到硬件trap ID）
 
-### 对于上层开发者（linux_layer/）
+### 对于 trap 处理代码（core 外调用方）
 
 **推荐的编写方式**：
 1. 优先使用`trap_class`而不是架构特定trap ID

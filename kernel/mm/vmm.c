@@ -572,7 +572,35 @@ error_t unregister_vspace(VSpace* vs)
         return REND_SUCCESS;
 }
 
-error_t vspace_clear_user_mappings(VSpace* vs, struct map_handler* handler)
+static error_t vspace_clear_check_tlb(VSpace* vs, bool allow_self_use)
+{
+        cpu_id_t self = percpu(cpu_number);
+
+        lock_cas(&vs->tlb_cpu_mask_lock);
+        if (allow_self_use && percpu(current_vspace) == vs) {
+                for (u32 cpu = 0; cpu < (u32)RENDEZVOS_MAX_CPU_NUMBER; cpu++) {
+                        if (!BITMAP_OPS(vs_tlb_cpu_bitmap, test)(
+                                    &vs->tlb_cpu_mask, cpu))
+                                continue;
+                        if (cpu != (u32)self) {
+                                unlock_cas(&vs->tlb_cpu_mask_lock);
+                                return -E_REND_RC_UNEQUAL;
+                        }
+                }
+                unlock_cas(&vs->tlb_cpu_mask_lock);
+                return REND_SUCCESS;
+        }
+
+        if (!vs_tlb_cpu_mask_is_zero(vs)) {
+                unlock_cas(&vs->tlb_cpu_mask_lock);
+                return -E_REND_RC_UNEQUAL;
+        }
+        unlock_cas(&vs->tlb_cpu_mask_lock);
+        return REND_SUCCESS;
+}
+
+error_t vspace_clear_user_mappings(VSpace* vs, struct map_handler* handler,
+                                   bool allow_self_use)
 {
         error_t e;
 
@@ -581,11 +609,9 @@ error_t vspace_clear_user_mappings(VSpace* vs, struct map_handler* handler)
         if (vs == vs->root_vs || vs == &root_vspace)
                 return -E_IN_PARAM;
 
-        lock_cas(&vs->tlb_cpu_mask_lock);
-        bool tlb_empty = vs_tlb_cpu_mask_is_zero(vs);
-        unlock_cas(&vs->tlb_cpu_mask_lock);
-        if (!tlb_empty)
-                return -E_REND_RC_UNEQUAL;
+        e = vspace_clear_check_tlb(vs, allow_self_use);
+        if (e != REND_SUCCESS)
+                return e;
 
         if (vs->root_radix) {
                 e = vmm_radix_tree_clean_user(handler, vs);
@@ -624,7 +650,7 @@ error_t del_vspace(VSpace** vs)
         struct map_handler* map_handler = &percpu(Map_Handler);
         error_t ret;
 
-        ret = vspace_clear_user_mappings(vspace, map_handler);
+        ret = vspace_clear_user_mappings(vspace, map_handler, false);
         if (ret != REND_SUCCESS)
                 return ret;
 
@@ -658,24 +684,35 @@ error_t del_vspace(VSpace** vs)
 
 error_t virt_mm_init(cpu_id_t cpu_id, struct setup_info* arch_setup_info)
 {
+        error_t e;
+        struct pmm* pmm = mem_zones[ZONE_NORMAL].pmm;
+
+        if (!pmm)
+                return -E_IN_PARAM;
+
         if (cpu_id == BSP_ID) {
-                sys_init_map(mem_zones[ZONE_NORMAL].pmm);
-                init_map(&per_cpu(Map_Handler, cpu_id),
-                         cpu_id,
-                         mem_zones[ZONE_NORMAL].pmm);
+                e = sys_init_map(pmm);
+                if (e != REND_SUCCESS)
+                        return e;
+                e = init_map(&per_cpu(Map_Handler, cpu_id), cpu_id, pmm);
+                if (e != REND_SUCCESS)
+                        return e;
                 asid_init();
 
                 memset(&root_vspace, 0, sizeof(struct VSpace));
 
-                if (init_root_vspace(&root_vspace, cpu_id) != REND_SUCCESS)
-                        return -E_RENDEZVOS;
+                e = init_root_vspace(&root_vspace, cpu_id);
+                if (e != REND_SUCCESS)
+                        return e;
 
                 per_cpu(boot_stack_bottom, cpu_id) =
                         (vaddr)(&boot_stack) + boot_stack_size;
         } else {
-                init_map(&per_cpu(Map_Handler, cpu_id),
-                         cpu_id,
-                         mem_zones[ZONE_NORMAL].pmm);
+                if (!arch_setup_info)
+                        return -E_IN_PARAM;
+                e = init_map(&per_cpu(Map_Handler, cpu_id), cpu_id, pmm);
+                if (e != REND_SUCCESS)
+                        return e;
                 per_cpu(boot_stack_bottom, cpu_id) =
                         arch_setup_info->ap_boot_stack_ptr;
         }

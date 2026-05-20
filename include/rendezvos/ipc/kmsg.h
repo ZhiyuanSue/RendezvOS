@@ -46,11 +46,28 @@ typedef struct {
         u8 payload[];
 } kmsg_t;
 
-/*
- * Build a kmsg (serialized payload per ipc_serial.h) and wrap it in Msg_Data.
- * Public name is kmsg_create — the encoding is an implementation detail.
+/**
+ * @brief Build a kmsg header plus ipc_serial TLV payload and wrap it in
+ * Msg_Data.
+ * @param module Value stored in kmsg_hdr.module (typically port service_id).
+ * @param opcode Operation code for the receiver to dispatch on.
+ * @param fmt Format string for variadic arguments: one type char per argument
+ *        (whitespace ignored). Supported tags: @c p (pointer), @c q (i64), @c i
+ *        (i32), @c u (u32), @c s (C string, wire includes trailing NUL), @c t
+ *        (port name, same wire as @c s). Each argument is encoded as
+ *        type_tag + u32 len + value bytes; see ipc_serial.h.
+ * @param ... Arguments matching fmt in order.
+ * @return Msg_Data tagged MSG_DATA_TAG_KMSG with refcount 1, or NULL on encode
+ *         error, oversize payload, or allocation failure.
  */
 Msg_Data_t* kmsg_create(u16 module, u16 opcode, const char* fmt, ...);
+
+/**
+ * @brief Extract a validated kmsg view from a Message_t carrier.
+ * @param msg Message whose Msg_Data must be MSG_DATA_TAG_KMSG.
+ * @return Pointer to kmsg inside the message buffer, or NULL if layout or magic
+ *         checks fail.
+ */
 const kmsg_t* kmsg_from_msg(const Message_t* msg);
 
 #endif

@@ -1,3 +1,10 @@
+# Lock-free IPC design
+
+> **文档角色：** 子系统参考（long, maintained）  
+> **用法摘要：** [`ipc.md`](ipc.md) · **API：** `rendezvos/ipc/*.h` · [`GUIDE.md`](GUIDE.md) §6
+
+---
+
 # 一、问题背景
 
 ## 1.1概述

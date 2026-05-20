@@ -1,63 +1,47 @@
-TODO list:
+# Core open work items
 
-# DONE WORK
+Active maintainer backlog. Completed history: [`archive/TODO_DONE.md`](archive/TODO_DONE.md).
 
+For public APIs, see [`GUIDE.md`](GUIDE.md) §6.
 
-4、参考其他内核，给不同架构的页表的bits设定一个统一的表示。(done)
-5、根据修改过的架构统一页表flag表示，修改原先的代码。(done)
-6、添加清理tlb的部分(紧急！！！因为试图反复把某些页面映射过去，所以必须刷新tlb，而不刷新就会出问题。实际上map函数较为工作良好)(done)
-7、添加map函数的test和unmap的实现(done)
-8、实现nexus(done)
-9、实现spmalloc(done)
-11、启动PIT时钟，并用于校准APIC时钟(Done)
-12、阅读intel文档，完成x86下简单的中断的保存的处理（如有需要，可以参考Linux实现嵌套中断的情况），查找为何进入中断idt向量之后，没有硬件cli的问题并修复。(Done)
-13、尝试实现x86下一个简单的时钟系统。最起码可以delay并且读取最新的时钟(Done)
-14、根据mdelay的实现，完成APIC多核的启动。(Done)
-16、学习了解aarch64的smp启动（Done）
-17、x86 64既然已经运行起来了smp，需要进一步的启动其他核心（Done）
-18、尝试更新makefile，我认为包括以下几个地方：是否能有个脚本，在运行期生成子文件夹下的makefile，因为看上去都相同。是否可以把.d文件生成到build下的对应文件夹下，而不是生成在当前文件夹。(Done)
-20、学习Linux的mcs spinlock，设计并实现多核spinlock(Done)，并整合到现有的多核mm中去，以及多核输入输出中去（Done）。
-21、了解 arm的generic timer（Done）并设计实现arm下的时钟以及时钟中断的处理。(Done)
-23、需要了解aarch64的中断和Syscall处理这一部分，开启中断以及相应的处理。(Done)
-24、我完成了aarch64的简单的时钟中断的实现，但是剩下几个问题，在系统的timer函数中，还有一个X86 64的平台相关的ifdef（Done），然后generic time这里还有一个因为头文件include的问题导致的vs code的显示问题影响观感(Done)，还有就是，不知道为什么还有一个aarch64 跑起来的一个unknown trap，应该是没注册导致的，不确定(Done)。这几个bug需要修复。另外，加上了aarch64的时钟之后，x86_64看上去并没有成功的定时了，以至于出现了超过1s启动起来，我怀疑存在额外的问题，如果不是，也需要修复这个问题。(Done,直接改到10s了，应该，大概，就是单纯的时间更长了)
-29、已经有了相关dtb解析的代码，可以在启动的时候，动态解析aarch64下的dtb中的uart的位置，以让内核更通用化。(Done)我在这里使用的代码跟查找memory那里的主要逻辑基本相同，需要继续封装(Done)
-33、开启简单的进程相关调研和设计(DONE)
-34、设计如何让内核实现拆分，用户程序、内核的上层接口和rendezvos核心如何拆分到多个仓库并进行联合编译，同时，内核可以指定不同的接口仓库以适应不同的内核接口，以及可以测试一些用户程序（但不能侵入式的修改内核代码，以适应更多可能的内核仓库）(DONE)
-35、现有的初始化内存分配已经足够复杂，增加统一的输出，在调试中能够判别初始化的内存分配情况。(DONE)
-36、重新设计rendezvos的error_t，调查了解，大概有哪些错误类型（或者简单的给出只有一个错误类型也可以），目前的想法是，尽量兼容linux的内容。linux的error类型是-1开始的，所以采用加上一个偏移。同时修改所有的error返回设计。（DONE）
-41、在x86_64架构下，还需要处理从用户态进入内核的中断的代码。否则会出现triple fault。(DONE)
-32、检查在percpu初始化之前，使用到percpu参数的那些地方，这可能埋了雷。
-40、在改变了percpu的offset从偏移存储位置转移到percpu寄存器之后，产生了很多计算percpu的bug（目前已经修复）。但为了允许x86的AP启动（它需要物理地址），所以在低地址的映射，仍然在x86的smp启动之前保留着。但是aarch64没有，因此这导致了，在start arch中正式启动percpu的值之前，都是使用的错误的percpu地址(当然，在正式启用percpu之后，就没有这个问题了)。好在，smp的启动是一个一个遍历的，不会产生锁的竞争。因此，需要清理所有在start arch之前的percpu使用（除了跟x86架构强相关的内容可以允许继续存在外）。目前主要集中在print这里，打印打得到处都是，但是为了不是乱码，都是用mcs锁锁死的。另一个方案是，在aarch64架构下继续允许低地址的映射，直到smp完成启动所有核心。（但是这也意味着其他架构都需如此设计）
-45、增加IPC机制。这需要考虑同步和异步，如果是同步的，那么我需要在发送之后立马就切换到对应的线程去。另外，比如Linux还有信号机制。这其实也是某种程度的发送消息。是否需要实现基于endpoint、port等中间节点的通信设计。（Done）
-47、将test作为一个线程来运行。
-47、按照mm现有的文档修改pmm分成多个node和zone的方式(Done)，修改nexus表示虚拟地址空间的方式（Done），并基于改造，实现反向页表等内容，使其易于扩展。(Done)
-49、现在的mm文档经过这么多轮的修改，需要重构其描述方式了。目前真的太多轮迭代了。（Done with cursor）
-51、检查所有的返回值是否被上层正确的处理了。检查所有的入参是否都被正确检查了。（Done with cursor）
-44、目前缺少回收某个进程（线程）的资源的操作(Done with cursor)
+---
 
-# TODO WORK
+## Trap / IRQ / CPU
 
-1、设置好IDT表，这需要设置好相应的gdt表中的段，type的设置，dpl，cpl，rpl在64位模式下的使用情况。
-2、考虑8259A存在与不存在使用APIC的情况。
-3、完善CPUID的部分，不要每次都要读取一遍了。
-10、查看是否会修改一些页表项中的隔离域等问题
-15、设计好给不同核心以及同一核心上的stack的页面以及权限，如果有需要，需要给maphandler添加更改页面权限的函数。
-19、acpi的基本解析目前结束了（虽然只使用了很少一部分），并且相对独立，需要整理到modules中来实现模块化，当然，可以理解的是，部分跟内核强相关的函数，不得不实现在内核中，这部分需要额外一些函数调用。
-22、在cpu id这部分，我们实际上需要考虑cpu本身的信息，以及cpu的拓扑情况。
-25、考虑中断嵌套的情形，用于处理中断，同时考虑添加一个RT的flag，某些操作（比如时钟）其实不适合允许中断嵌套或者中断线程化
-26、测试内存分配器的cacheline的碰撞概率。
-27、算是上一条的子任务，因为测试内存分配器的cache碰撞概率，需要知道cpu核心的cache大小，而这点在smp上可能是不同的，因此，需要把cpu info改为percpu的，并且添加相应cache的内容。
-28、根据上述的cacheline碰撞概率测试，优化malloc分配器的行为。
-30、bitmap是一个重要的数据结构，但是Linux的实现中也包括了原子的（架构相关）和非原子的，需要实现相应的代码，但是注意common并不应该包含其他的数据结构。（请注意头文件包含）
-31、使用memory_zone等传递进去的参数改写默认的ZONE_NORMAL参数，对于模块来说他的参数应当是在上层初始化等时候设定好的，而不是硬写进去的。
-37、对于log模块,使用全局buffer的方法，print会先写入到buffer中，只有当buffer溢出，或者到了某个核心的时钟中断的时候才允许print
-38、已经增加了对于x86实模式下直接写显存方式打印字符串的支持，但是目前log模块只是简单的调用这些内容，需要更高的抽象，来解决相关的耦合。
-39、已经增加了multiboot2协议的支持，但是它是否真的生效，是否存在bug，仍然需要进一步搭建调试环境，进一步调试。
-42、在用户态的栈的设置上，正常情况需要加入argc和argv相关内容。
-43、在aarch64下也会存在PCIe设备节点，需要进一步地整合dtb下的设备和pci下的设备管理的代码。
+1. IDT/GDT: segment types, DPL/CPL/RPL usage in 64-bit mode.
+2. 8259A vs APIC coexistence paths.
+3. CPUID caching (avoid re-read every query).
+10. Page-table isolation domain bits review.
+22. CPU topology in `cpu_id` / per-CPU info.
+25. Interrupt nesting policy; RT flag for non-nestable timers.
 
-46、改造uart的log模块和输出相关代码，让他作为一个单独的进程，并通过ipc来进行通信，并通过该进程来输出信息。（对于使用文本模式和framebuffer模式的输出也是一样的。
-48、需要允许在多个zone的不同的分配器中，找到合适的分配器去进行分配，而不是使用handler默认的分配器，那虽然确实给handler用，也可以用于内核，但是以buddy分配器为例，他可能存在2M分配的上限，但是有些分配器则没有这个上限，所以在不同的zone中进行分配是一个合理的方案。
-50、逐步修改函数的注释为Doxygen风格
-52、增加port的管理，增加function call封装成为ipc的message的实现。
-53、先别管其他的了，有几个重要的内存分配器的问题需要修：1/增加handler的状态和状态检查，如果他的四个entry在一次map之后没有成功重新填充，那么要标记为不可分配的。并且重新试图填充对应核心的ppn。（这是为了解决页表本身的物理页面不够问题）2/重新考虑nexus的逻辑，他可能分配内核的页面成功但是试图分配nexus entry失败，而且在多个entry的时候，这种失败非常麻烦。需要重新考虑整套fault handler逻辑。
+## Memory
+
+15. Per-core stack pages and permissions; map_handler permission change API if needed.
+26–28. Allocator cache-line collision tests; per-CPU cache size; kmalloc tuning.
+30. Atomic vs non-atomic bitmap in `common/` (header discipline).
+31. `memory_zone` parameters instead of hardcoded `ZONE_NORMAL`.
+48. Multi-zone allocator selection (not only handler default).
+53. Map handler entry refill on failure; fault handler / nexus entry failure paths.
+
+## Platform / drivers
+
+19. ACPI parsing modularization into `modules/`.
+39. Multiboot2 path validation under QEMU.
+43. aarch64 DTB vs PCI device unification.
+46. Log/output via dedicated IPC server process.
+52. Port management; function-call → IPC message wrappers.
+
+## Log / user bring-up
+
+37–38. Log buffer + flush policy; decouple VGA early print from log module.
+42. User stack argc/argv in standard loader paths.
+47. Run core tests as kernel thread (if not already).
+
+## Documentation
+
+50. Doxygen-style comments on public APIs (incremental).
+
+---
+
+*Last reorganized: 2026-05 — done items moved to `archive/TODO_DONE.md`.*

@@ -1,3 +1,9 @@
+# Interrupt controller notes
+
+> **文档角色：** 硬件参考（PIC/APIC/GIC 笔记） · **导航：** [`traps-and-irq.md`](traps-and-irq.md) · [`trap.md`](trap.md)
+
+---
+
 # 中断的level trigger和edge trigger
 level trigger触发的条件是只要保持在特定的电平，这个中断就会持续触发
 edge trigger的条件是从高电平到低电平或者低电平到高电平，只要变化了就会触发一次。

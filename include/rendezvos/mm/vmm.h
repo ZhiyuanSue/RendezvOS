@@ -114,8 +114,6 @@ static inline bool vs_tlb_cpu_mask_is_zero(const VSpace* vs)
         return BITMAP_OPS(vs_tlb_cpu_bitmap, is_zero)(&vs->tlb_cpu_mask);
 }
 
-extern VSpace nexus_kernel_heap_vs_common;
-
 extern VSpace* current_vspace; // per cpu pointer
 extern VSpace root_vspace;
 #define boot_stack_size 0x10000
@@ -145,11 +143,14 @@ struct map_handler;
  * then vspace_free_root_page, then frees the VSpace / ASID.
  *
  * Caller obligations (Linux/exec policy stays above core):
- * - No other thread in the owning task may still run on this vs.
- * - vs_tlb_cpu_mask must be zero.
- * - vs must not be root_vspace.
+ * - No other thread in the owning task may still run on this @p vs.
+ * - @p allow_self_use: if true (in-place exec), only remote CPUs may have
+ *   tlb_cpu_mask bits set; this CPU may retain its bit when current_vspace==vs.
+ *   If false (del_vspace), vs_tlb_cpu_mask must be zero on all CPUs.
+ * - @p vs must not be root_vspace.
  */
-error_t vspace_clear_user_mappings(VSpace* vs, struct map_handler* handler);
+error_t vspace_clear_user_mappings(VSpace* vs, struct map_handler* handler,
+                                   bool allow_self_use);
 
 void arch_set_L0_entry(paddr p, vaddr v, union L0_entry* pt_addr,
                        ARCH_PFLAGS_t flags);

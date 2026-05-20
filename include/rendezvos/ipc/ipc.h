@@ -52,6 +52,8 @@ error_t recv_msg(Message_Port_t* port);
 /**
  * @brief Cancel IPC of a thread blocked on send or recv. Async: after return,
  * check target_thread's status until it is no longer thread_status_cancel_ipc.
+ * @note No implementation in tree yet (see commented stub in ipc.c). Do not
+ *       call until linked; use thread exit / teardown paths instead.
  * @param target_thread Thread to cancel IPC for.
  * @return REND_SUCCESS thread dequeued or status set to cancel_ipc; -E_IN_PARAM
  *         if target_thread is NULL; -E_RENDEZVOS on internal error.

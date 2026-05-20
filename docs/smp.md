@@ -1,3 +1,10 @@
+# SMP bring-up
+
+> **文档角色：** 平台参考 · **读者：** AP 启动排障  
+> **相关：** [`sync-and-smp.md`](sync-and-smp.md) · [`hardware/README.md`](hardware/README.md)
+
+---
+
 # 关于smp启动
 首先在我增加这个md的commit中，我修改了smp的值为4，并且修改了aarch64的dts为对应的多核cpu的版本
 

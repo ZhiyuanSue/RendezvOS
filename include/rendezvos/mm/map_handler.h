@@ -21,8 +21,8 @@ struct map_handler {
         spin_lock_t vspace_lock_node;
 };
 extern struct map_handler Map_Handler;
-void sys_init_map(struct pmm* pmm);
-void init_map(struct map_handler* handler, cpu_id_t cpu_id, struct pmm* pmm);
+error_t sys_init_map(struct pmm* pmm);
+error_t init_map(struct map_handler* handler, cpu_id_t cpu_id, struct pmm* pmm);
 /*
         kernel might try to mapping one page to a different vspace
         and if the vspace is not exist, it should try to alloc a new one

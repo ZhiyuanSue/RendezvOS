@@ -6,9 +6,13 @@
 #include <rendezvos/mm/vmm.h>
 extern u64 L0_table[512];
 extern u64 *MAP_L1_table, *MAP_L2_table, *MAP_L3_table;
-void sys_init_map(struct pmm *pmm)
+error_t sys_init_map(struct pmm *pmm)
 {
         ARCH_PFLAGS_t flags;
+
+        if (!pmm)
+                return -E_IN_PARAM;
+
         paddr vspace_root_addr = arch_get_current_kernel_vspace_root();
         flags = arch_decode_flags(0,
                                   PAGE_ENTRY_GLOBAL | PAGE_ENTRY_READ
@@ -52,23 +56,25 @@ void sys_init_map(struct pmm *pmm)
                 size_t alloced_page_number;
                 ppn_t ppn = pmm->pmm_alloc(
                         pmm, need_page_number, &alloced_page_number);
-                if (alloced_page_number == need_page_number
-                    && !invalid_ppn(ppn)) {
-                        arch_set_L0_entry(PADDR(ppn),
-                                          KERNEL_VIRT_OFFSET
-                                                  + (index - 256)
-                                                            * HUGE_PAGE_SIZE,
-                                          (union L0_entry *)KERNEL_PHY_TO_VIRT(
-                                                  vspace_root_addr),
-                                          flags);
+                if (alloced_page_number != need_page_number || invalid_ppn(ppn)) {
+                        pr_error(
+                                "[VMM] sys_init_map: L0[%d] L1 page alloc failed\n",
+                                index);
+                        return -E_RENDEZVOS;
                 }
+                arch_set_L0_entry(PADDR(ppn),
+                                  KERNEL_VIRT_OFFSET
+                                          + (vaddr)(index - 256) * HUGE_PAGE_SIZE,
+                                  (union L0_entry*)KERNEL_PHY_TO_VIRT(
+                                          vspace_root_addr),
+                                  flags);
         }
+        return REND_SUCCESS;
 }
-void init_map(struct map_handler *handler, cpu_id_t cpu_id, struct pmm *pmm)
+error_t init_map(struct map_handler *handler, cpu_id_t cpu_id, struct pmm *pmm)
 {
-        if (!handler || !pmm) {
-                return;
-        }
+        if (!handler || !pmm)
+                return -E_IN_PARAM;
         handler->cpu_id = cpu_id;
         handler->pmm = pmm;
         vaddr map_vaddr = map_pages + (vaddr)cpu_id * PAGE_SIZE * 4;
@@ -89,10 +95,11 @@ void init_map(struct map_handler *handler, cpu_id_t cpu_id, struct pmm *pmm)
                                         handler->handler_ppn[j] = -E_RENDEZVOS;
                                 }
                         }
-                        return;
+                        return -E_RENDEZVOS;
                 }
                 map_vaddr += PAGE_SIZE;
         }
+        return REND_SUCCESS;
 }
 static void util_map(paddr p, vaddr v)
 /*This function try to map one phy page to virtual page at the MAP_L3_table as a

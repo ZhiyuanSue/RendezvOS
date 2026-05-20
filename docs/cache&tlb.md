@@ -1,3 +1,10 @@
+# Cache and TLB
+
+> **文档角色：** 硬件/MM 参考 · **读者：** 改页表属性或 TLB shootdown 时  
+> **相关：** [`memory.md`](memory.md) · [`sync-and-smp.md`](sync-and-smp.md)
+
+---
+
 # x86下的cache
 缺少相应的指令
 但是intel手册中有将页面控制cache的部分
