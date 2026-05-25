@@ -602,109 +602,104 @@ Radix_node_t* vmm_radix_tree_find_first_occupied_leaf(VSpace* vs, vaddr start,
         if (last_page < first_page)
                 return NULL;
 
+        /* Align search boundaries to huge page granularity for loop control */
         vaddr l0_start = ROUND_DOWN(first_page, l0_step);
         vaddr l0_end = ROUND_DOWN(last_page, l0_step);
 
-        Radix_entry_t* l0e = NULL;
-        vaddr huge_start = 0;
-        vaddr huge_end = 0;
-        vaddr l0_iter;
-
-        for (l0_iter = (direction > 0 ? l0_start : l0_end);;
+        for (vaddr l0_iter = (direction > 0 ? l0_start : l0_end);;
              l0_iter = (vaddr)((i64)l0_iter + direction * (i64)l0_step)) {
                 if (direction > 0) {
                         if (l0_iter > l0_end)
-                                return NULL;
+                                break;
                 } else {
                         if (l0_iter < l0_start)
-                                return NULL;
+                                break;
                 }
-                huge_start = MAX(first_page, l0_iter);
-                huge_end = MIN(last_page, l0_iter + l0_step - l3_step);
-                l0e = radix_l0_entry(root, l0_iter);
-                if (l0e && entry_valid(l0e) && entry_child(l0e)
-                    && entry_get_count(l0e->value) != 0)
-                        break;
-        }
 
-        Radix_entry_t* l1e = NULL;
-        vaddr giga_start = 0;
-        vaddr giga_end = 0;
-        vaddr l1_start = ROUND_DOWN(huge_start, l1_step);
-        vaddr l1_end = ROUND_DOWN(huge_end, l1_step);
-        vaddr l1_iter;
+                vaddr huge_start = MAX(first_page, l0_iter);
+                vaddr huge_end = MIN(last_page, l0_iter + l0_step - l3_step);
 
-        for (l1_iter = (direction > 0 ? l1_start : l1_end);;
-             l1_iter = (vaddr)((i64)l1_iter + direction * (i64)l1_step)) {
-                if (direction > 0) {
-                        if (l1_iter > l1_end)
-                                return NULL;
-                } else {
-                        if (l1_iter < l1_start)
-                                return NULL;
-                }
-                giga_start = MAX(huge_start, l1_iter);
-                giga_end = MIN(huge_end, l1_iter + l1_step - l3_step);
-                l1e = radix_l1_entry(l0e, l1_iter);
-                if (l1e && entry_valid(l1e) && entry_child(l1e)
-                    && entry_get_count(l1e->value) != 0)
-                        break;
-        }
-
-        Radix_entry_t* l2e = NULL;
-        vaddr mid_start = 0;
-        vaddr mid_end = 0;
-        vaddr l2_start = ROUND_DOWN(giga_start, l2_step);
-        vaddr l2_end = ROUND_DOWN(giga_end, l2_step);
-        vaddr l2_iter;
-
-        for (l2_iter = (direction > 0 ? l2_start : l2_end);;
-             l2_iter = (vaddr)((i64)l2_iter + direction * (i64)l2_step)) {
-                if (direction > 0) {
-                        if (l2_iter > l2_end)
-                                return NULL;
-                } else {
-                        if (l2_iter < l2_start)
-                                return NULL;
-                }
-                mid_start = MAX(giga_start, l2_iter);
-                mid_end = MIN(giga_end, l2_iter + l2_step - l3_step);
-                Radix_entry_t* cand = radix_l2_entry(l1e, l2_iter);
-                if (!cand)
+                Radix_entry_t* l0 = radix_l0_entry(root, l0_iter);
+                if (!entry_valid(l0) || !entry_child(l0))
                         continue;
-                radix_entry_lock(cand);
-                if (entry_valid(cand) && entry_child(cand)
-                    && entry_get_count(cand->value) != 0) {
-                        l2e = cand;
-                        break;
-                }
-                radix_entry_unlock(cand);
-        }
 
-        if (!l2e)
-                return NULL;
+                vaddr l1_start = ROUND_DOWN(huge_start, l1_step);
+                vaddr l1_end = ROUND_DOWN(huge_end, l1_step);
+                for (vaddr l1_iter = (direction > 0 ? l1_start : l1_end);;
+                     l1_iter =
+                             (vaddr)((i64)l1_iter + direction * (i64)l1_step)) {
+                        if (direction > 0) {
+                                if (l1_iter > l1_end)
+                                        break;
+                        } else {
+                                if (l1_iter < l1_start)
+                                        break;
+                        }
 
-        for (vaddr l3_iter = (direction > 0 ? mid_start : mid_end);;
-             l3_iter = (vaddr)((i64)l3_iter + direction * (i64)l3_step)) {
-                if (direction > 0) {
-                        if (l3_iter > mid_end) {
-                                radix_entry_unlock(l2e);
-                                return NULL;
+                        vaddr giga_start = MAX(huge_start, l1_iter);
+                        vaddr giga_end =
+                                MIN(huge_end, l1_iter + l1_step - l3_step);
+
+                        Radix_entry_t* l1 = radix_l1_entry(l0, l1_iter);
+                        if (!l1 || !entry_valid(l1) || !entry_child(l1))
+                                continue;
+
+                        vaddr l2_start = ROUND_DOWN(giga_start, l2_step);
+                        vaddr l2_end = ROUND_DOWN(giga_end, l2_step);
+                        for (vaddr mid_base =
+                                     (direction > 0 ? l2_start : l2_end);
+                             ;
+                             mid_base = (vaddr)((i64)mid_base
+                                                + direction * (i64)l2_step)) {
+                                if (direction > 0) {
+                                        if (mid_base > l2_end)
+                                                break;
+                                } else {
+                                        if (mid_base < l2_start)
+                                                break;
+                                }
+
+                                vaddr mid_start = MAX(giga_start, mid_base);
+                                vaddr mid_end = MIN(
+                                        giga_end, mid_base + l2_step - l3_step);
+
+                                Radix_entry_t* l2 =
+                                        radix_l2_entry(l1, mid_base);
+                                if (!l2 || !entry_valid(l2) || !entry_child(l2))
+                                        continue;
+
+                                /* Skip 2M blocks that have no leaves at all */
+                                if (entry_get_count(l2->value) == 0)
+                                        continue;
+
+                                for (vaddr l3_iter =
+                                             (direction > 0 ? mid_start :
+                                                              mid_end);
+                                     ;
+                                     l3_iter =
+                                             (vaddr)((i64)l3_iter
+                                                     + direction
+                                                               * (i64)l3_step)) {
+                                        if (direction > 0) {
+                                                if (l3_iter > mid_end)
+                                                        break;
+                                        } else {
+                                                if (l3_iter < mid_start)
+                                                        break;
+                                        }
+
+                                        Radix_node_t* leaf =
+                                                radix_l3_node(l2, l3_iter);
+                                        if (!leaf)
+                                                continue;
+                                        if (radix_l3_overlap_insert(leaf)) {
+                                                *out_va = l3_iter;
+                                                return leaf;
+                                        }
+                                }
                         }
-                } else {
-                        if (l3_iter < mid_start) {
-                                radix_entry_unlock(l2e);
-                                return NULL;
-                        }
-                }
-                Radix_node_t* leaf = radix_l3_node(l2e, l3_iter);
-                if (leaf && radix_l3_overlap_insert(leaf)) {
-                        *out_va = l3_iter;
-                        radix_entry_unlock(l2e);
-                        return leaf;
                 }
         }
-        radix_entry_unlock(l2e);
         return NULL;
 }
 bool vmm_radix_tree_find_first_occupied_interval(VSpace* vs, vaddr search_start,
@@ -713,10 +708,13 @@ bool vmm_radix_tree_find_first_occupied_interval(VSpace* vs, vaddr search_start,
                                                  vaddr* interval_end_out,
                                                  ENTRY_FLAGS_t* flags_out)
 {
-        if (!vs || !vs->root_radix || !interval_start_out || !interval_end_out)
+        if (!vs || !vs->root_radix || !interval_start_out
+            || !interval_end_out) {
                 return false;
-        if (search_end <= search_start)
+        }
+        if (search_end <= search_start) {
                 return false;
+        }
 
         vaddr first_vaddr;
         Radix_node_t* first_leaf = vmm_radix_tree_find_first_occupied_leaf(
@@ -725,8 +723,10 @@ bool vmm_radix_tree_find_first_occupied_interval(VSpace* vs, vaddr search_start,
                 search_end,
                 RADIX_TREE_DIRECTION_INC,
                 &first_vaddr);
-        if (!first_leaf)
+
+        if (!first_leaf) {
                 return false;
+        }
 
         const ENTRY_FLAGS_t range_flags = first_leaf->flags;
 
@@ -778,6 +778,7 @@ out:
         *interval_end_out = vaddr_iter;
         if (flags_out)
                 *flags_out = range_flags;
+
         return true;
 }
 
@@ -1829,8 +1830,7 @@ Radix_entry_t* vmm_radix_tree_init(struct map_handler* handler, VSpace* vs)
  * return physical page to PMM. Skips non-VALID leaves (LAZY-only slots).
  */
 static void radix_clean_user_leaf(VSpace* vs, struct map_handler* handler,
-                                  struct pmm* pmm, vaddr va,
-                                  Radix_node_t* leaf)
+                                  struct pmm* pmm, vaddr va, Radix_node_t* leaf)
 {
         if (!leaf)
                 return;
@@ -1888,8 +1888,7 @@ error_t vmm_radix_tree_clean_user(struct map_handler* handler, VSpace* vs)
                                         continue;
                                 vaddr l3_table_vaddr = entry_child(l2_entry);
                                 for (vaddr l3_iter = l2_iter;
-                                     l3_iter
-                                     < l2_iter + radix_level_step[2];
+                                     l3_iter < l2_iter + radix_level_step[2];
                                      l3_iter += radix_level_step[3]) {
                                         Radix_node_t* leaf = radix_l3_node(
                                                 l2_entry, l3_iter);
@@ -1929,11 +1928,8 @@ error_t vmm_radix_tree_delete(struct map_handler* handler, VSpace* vs)
         if (!root)
                 return REND_SUCCESS;
 
-        (void)free_level_table(vs,
-                               vs->pmm,
-                               handler,
-                               (vaddr)root,
-                               RADIX_TREE_LEVEL0);
+        (void)free_level_table(
+                vs, vs->pmm, handler, (vaddr)root, RADIX_TREE_LEVEL0);
         vs->root_radix = NULL;
         return REND_SUCCESS;
 }

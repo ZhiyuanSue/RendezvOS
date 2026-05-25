@@ -256,12 +256,15 @@ error_t clone_vspace(VSpace* src_vs, VSpace** dst_vs_out,
         ENTRY_FLAGS_t range_flags;
         vaddr page_iter = USER_SPACE_TOP + 1;
 
+        int interval_count = 0;
         while (vmm_radix_tree_find_first_occupied_interval(src_vs,
                                                            iter_start,
                                                            iter_end,
                                                            &searched_start,
                                                            &searched_end,
                                                            &range_flags)) {
+                interval_count++;
+
                 /*try to insert the range first, we have to handle the flags,
                  * the valid flag must set to the lazy for later bind*/
 

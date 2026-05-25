@@ -51,6 +51,7 @@ vaddr generate_user_stack(VSpace *vs)
                 return 0;
         }
         vaddr user_sp = stack_base + (vaddr)page_num * PAGE_SIZE - 8;
+
         return user_sp;
 }
 error_t elf_Phdr_64_load_handle(vaddr elf_start, Elf64_Phdr *phdr_ptr,
