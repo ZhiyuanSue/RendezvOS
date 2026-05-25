@@ -313,10 +313,13 @@ error_t pmm_free(struct pmm *pmm, ppn_t ppn, size_t page_number)
 
         /*buddy alloc guarantees physical contiguity, so only check head and
          * tail*/
-        if (!ppn_in_Zone(pmm->zone, ppn)
-            || (total_pages > 1
-                && !ppn_in_Zone(pmm->zone, ppn + total_pages - 1))) {
-                pr_error("[ BUDDY ]this ppn %llx is illegal\n", ppn);
+        if (!ppn_in_Zone(pmm->zone, ppn)) {
+                pr_error("[ BUDDY ]ppn start %llx is not in zone\n", ppn);
+                return (-E_RENDEZVOS);
+        }
+        if (total_pages > 1 && !ppn_in_Zone(pmm->zone, ppn + total_pages - 1)) {
+                pr_error("[ BUDDY ]ppn end %llx is not in zone\n",
+                         ppn + total_pages - 1);
                 return (-E_RENDEZVOS);
         }
 
@@ -324,7 +327,7 @@ error_t pmm_free(struct pmm *pmm, ppn_t ppn, size_t page_number)
 
         ZonePageCursor cur;
         if (!zone_page_cursor_init(&cur, pmm->zone, ppn)) {
-                pr_error("[ BUDDY ]this ppn %llx is illegal\n", ppn);
+                pr_error("[ BUDDY ]this ppn %llx cursor init fail\n", ppn);
                 pmm_unlock(pmm);
                 return (-E_RENDEZVOS);
         }

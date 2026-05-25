@@ -383,6 +383,15 @@ error_t mm_user_utils_clean_range_and_unfill(struct VSpace* vs,
                                 (unsigned long)page_index,
                                 (long)unmapped_ppn);
                         err = -E_RENDEZVOS;
+                        continue;
+                }
+                err = vs->pmm->pmm_free(vs->pmm, unmapped_ppn, 1);
+                if (err != REND_SUCCESS) {
+                        pr_error(
+                                "[MM_USER] clean_range_and_unfill: pmm_free fail va=%lx ppn=%lx e=%d\n",
+                                (unsigned long)range_start,
+                                (long)page_va,
+                                (int)err);
                 }
         }
         if (err != REND_SUCCESS) {
@@ -406,16 +415,6 @@ error_t mm_user_utils_clean_range_and_unfill(struct VSpace* vs,
                         (unsigned long)range_start,
                         (int)err);
                 return err;
-        }
-
-        err = vs->pmm->pmm_free(vs->pmm, ppn_first, page_count);
-        if (err != REND_SUCCESS) {
-                pr_error(
-                        "[MM_USER] clean_range_and_unfill: pmm_free fail va=%lx ppn=%ld count=%lu e=%d\n",
-                        (unsigned long)range_start,
-                        (long)ppn_first,
-                        (unsigned long)page_count,
-                        (int)err);
         }
         return err;
 
