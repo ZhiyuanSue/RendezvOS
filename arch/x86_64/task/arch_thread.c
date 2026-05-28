@@ -54,6 +54,15 @@ void arch_ctx_refresh(Arch_Task_Context* ctx)
         ctx->user_gs = rdmsrq(MSR_KERNEL_GS_BASE);
 }
 
+void arch_set_user_tls_base(Arch_Task_Context* ctx, u64 tls_base)
+{
+        if (!ctx) {
+                return;
+        }
+        ctx->user_fs = tls_base;
+        wrmsrq(MSR_FS_BASE, tls_base);
+}
+
 void arch_syscall_set_user_return(struct trap_frame* tf, Arch_Task_Context* ctx,
                                   vaddr user_pc, vaddr user_sp, u64 syscall_ret)
 {

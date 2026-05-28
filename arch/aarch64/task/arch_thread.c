@@ -13,6 +13,15 @@ void arch_ctx_refresh(Arch_Task_Context* ctx)
         mrs("TPIDR_EL0", ctx->tpidr_el0);
 }
 
+void arch_set_user_tls_base(Arch_Task_Context* ctx, u64 tls_base)
+{
+        if (!ctx) {
+                return;
+        }
+        ctx->tpidr_el0 = tls_base;
+        msr("TPIDR_EL0", tls_base);
+}
+
 void switch_to(Arch_Task_Context* old_context, Arch_Task_Context* new_context)
 {
         mrs("TPIDR_EL0", old_context->tpidr_el0);

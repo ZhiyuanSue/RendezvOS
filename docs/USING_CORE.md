@@ -56,7 +56,7 @@ Details: [`ipc.md`](ipc.md).
 2. `load_elf_to_vs(elf_start, elf_end, vs, &max_end)`.
 3. `generate_user_stack(vs)`.
 4. Caller lays out argv/env on user stack (policy).
-5. If returning from **syscall**: `arch_ctx_refresh` if needed → `arch_syscall_set_user_return(tf, ctx, entry, sp, ret)`.
+5. If returning from **syscall**: `arch_ctx_refresh` if needed → `arch_syscall_set_user_return(tf, ctx, entry, sp, ret)`. (TLS via `arch_set_user_tls_base` when needed).
 
 Use path A on the in-flight `trap_frame`; do not invent a separate “first entry” jump if already in syscall context.
 

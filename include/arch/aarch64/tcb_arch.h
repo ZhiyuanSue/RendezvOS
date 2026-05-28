@@ -50,6 +50,12 @@ void arch_ctx_merge_from_src(Arch_Task_Context* dst_ctx,
  * child does not inherit stale EL0-visible state.
  */
 void arch_ctx_refresh(Arch_Task_Context* ctx);
+/** Update ctx TLS base (TPIDR_EL0) and program the live CPU when on this thread. */
+void arch_set_user_tls_base(Arch_Task_Context* ctx, u64 tls_base);
+static inline u64 arch_get_user_tls_base(const Arch_Task_Context* ctx)
+{
+        return ctx ? ctx->tpidr_el0 : 0;
+}
 /*
  * Return to user from syscall save area below kstack_bottom.
  */

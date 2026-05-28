@@ -66,6 +66,12 @@ void arch_ctx_merge_from_src(Arch_Task_Context* dst_ctx,
  * live values to avoid returning to user mode with stale state.
  */
 void arch_ctx_refresh(Arch_Task_Context* ctx);
+/** Update ctx TLS base (FS_BASE) and program the live CPU when on this thread. */
+void arch_set_user_tls_base(Arch_Task_Context* ctx, u64 tls_base);
+static inline u64 arch_get_user_tls_base(const Arch_Task_Context* ctx)
+{
+        return ctx ? ctx->user_fs : 0;
+}
 void arch_return_to_user(u64 kstack_bottom,
                          const struct trap_frame* template_tf, u64 syscall_ret);
 /*
