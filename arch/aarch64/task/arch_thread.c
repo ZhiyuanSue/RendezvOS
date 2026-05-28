@@ -55,7 +55,7 @@ void arch_syscall_set_user_return(struct trap_frame* tf, Arch_Task_Context* ctx,
         }
         tf->ELR = user_pc;
         tf->REGS[0] = syscall_ret;
-        tf->SP = user_sp;
+        tf->SP = (vaddr)tf;
         if (ctx) {
                 ctx->sp_el0 = user_sp;
         }

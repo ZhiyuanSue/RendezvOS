@@ -29,7 +29,6 @@ void trap_handler(struct trap_frame *tf)
         }
         if (!arch_int_from_kernel(tf)) {
                 if (percpu(core_tm)) {
-                        pr_info("schedule\n");
                         schedule(percpu(core_tm));
                 }
         }
