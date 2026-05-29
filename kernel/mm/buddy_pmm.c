@@ -300,16 +300,11 @@ free_one:
 }
 error_t pmm_free(struct pmm *pmm, ppn_t ppn, size_t page_number)
 {
-        u32 alloc_order;
         int free_one_result;
-        size_t total_pages;
         // print("free ppn %lx\n",ppn);
 
         if (ppn == -E_RENDEZVOS)
                 return (-E_RENDEZVOS);
-
-        alloc_order = log2_of_next_power_of_two(page_number);
-        total_pages = 1 << alloc_order;
 
         /*buddy alloc guarantees physical contiguity, so only check head and
          * tail*/
@@ -317,9 +312,9 @@ error_t pmm_free(struct pmm *pmm, ppn_t ppn, size_t page_number)
                 pr_error("[ BUDDY ]ppn start %llx is not in zone\n", ppn);
                 return (-E_RENDEZVOS);
         }
-        if (total_pages > 1 && !ppn_in_Zone(pmm->zone, ppn + total_pages - 1)) {
+        if (page_number > 1 && !ppn_in_Zone(pmm->zone, ppn + page_number - 1)) {
                 pr_error("[ BUDDY ]ppn end %llx is not in zone\n",
-                         ppn + total_pages - 1);
+                         ppn + page_number - 1);
                 return (-E_RENDEZVOS);
         }
 
@@ -332,7 +327,7 @@ error_t pmm_free(struct pmm *pmm, ppn_t ppn, size_t page_number)
                 return (-E_RENDEZVOS);
         }
 
-        for (size_t page_count = 0; page_count < total_pages; page_count++) {
+        for (size_t page_count = 0; page_count < page_number; page_count++) {
                 Page *free_phy_page = zone_page_cursor_page(&cur);
                 if (!free_phy_page)
                         goto next_page;
@@ -347,7 +342,7 @@ error_t pmm_free(struct pmm *pmm, ppn_t ppn, size_t page_number)
                         goto out_unlock_return;
 
         next_page:
-                if (page_count + 1 < total_pages) {
+                if (page_count + 1 < page_number) {
                         if (!zone_page_cursor_next(&cur)) {
                                 /*
                                  * Zone metadata is inconsistent with the ppn

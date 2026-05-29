@@ -52,11 +52,10 @@ error_t sys_init_map(struct pmm *pmm)
                         + index;
                 if (L0_E->entry != 0)
                         continue;
-                size_t need_page_number = 1;
                 size_t alloced_page_number;
                 ppn_t ppn = pmm->pmm_alloc(
-                        pmm, need_page_number, &alloced_page_number);
-                if (alloced_page_number != need_page_number || invalid_ppn(ppn)) {
+                        pmm, 1, &alloced_page_number);
+                if (alloced_page_number != 1 || invalid_ppn(ppn)) {
                         pr_error(
                                 "[VMM] sys_init_map: L0[%d] L1 page alloc failed\n",
                                 index);
