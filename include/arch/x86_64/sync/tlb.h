@@ -17,26 +17,43 @@ static inline void arch_tlb_invalidate_all(void)
                              : "memory");
 }
 
-static inline void arch_tlb_invalidate_page(u64 vspace_id, vaddr addr)
+static inline void arch_tlb_invalidate_page(u64 asid, vaddr addr)
 {
-        (void)vspace_id;
+        (void)asid;
+        invlpg(addr);
+}
+static inline void arch_tlb_invalidate_page_all_core(u64 asid, vaddr addr)
+{
+        (void)asid;
         invlpg(addr);
 }
 static inline void arch_tlb_invalidate_kernel_page(vaddr addr)
 {
         invlpg(addr);
 }
-static inline void arch_tlb_invalidate_vspace_page(u64 vspace_id, vaddr addr)
+static inline void arch_tlb_invalidate_kernel_page_all_core(vaddr addr)
 {
-        // TODO:unimplemented in x86_64
-        (void)vspace_id;
+        invlpg(addr);
+}
+static inline void arch_tlb_invalidate_vspace_page(u64 asid, vaddr addr)
+{
+        // TODO:unimplemented PCID and smp IPI in x86_64
+        (void)asid;
         (void)addr;
+        arch_tlb_invalidate_all();
+}
+static inline void arch_tlb_invalidate_vspace_page_all_core(u64 asid, vaddr addr)
+{
+        // TODO:unimplemented PCID and smp IPI in x86_64
+        (void)asid;
+        (void)addr;
+        arch_tlb_invalidate_all();
 }
 
-static inline void arch_tlb_invalidate_range(u64 vspace_id, vaddr start,
+static inline void arch_tlb_invalidate_range(u64 asid, vaddr start,
                                              vaddr end)
 {
-        (void)vspace_id;
+        (void)asid;
         for (vaddr addr = start; addr < end; addr += PAGE_SIZE) {
                 invlpg(addr);
         }

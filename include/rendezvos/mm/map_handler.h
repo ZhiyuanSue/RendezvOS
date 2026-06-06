@@ -113,6 +113,8 @@ static inline error_t map_handler_copy_page(struct map_handler* handler,
         return map_handler_copy_data_range(
                 handler, PADDR(dst_ppn), PADDR(src_ppn), PAGE_SIZE);
 }
+error_t map_handler_user_kernel_copy(VSpace *vs, u64 user_va, void *kbuf,
+                                     size_t len, bool to_user);
 
 /*
  * @brief Allocate a new top-level (L0) page-table root for a table vspace.

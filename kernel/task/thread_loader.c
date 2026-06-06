@@ -103,18 +103,12 @@ error_t elf_Phdr_64_load_handle(vaddr elf_start, Elf64_Phdr *phdr_ptr,
         }
         (void)vmm_radix_tree_unlock_range_big(vs, l0_lo, vaddr_end);
 
-        memcpy((void *)(ph_start),
-               (void *)(elf_start + offset),
-               phdr_ptr->p_filesz);
-        /*bss*/
-        if (phdr_ptr->p_memsz > phdr_ptr->p_filesz) {
-                /*need to fill in the 0*/
-                vaddr bss_start = ph_start + phdr_ptr->p_filesz;
-                vaddr bss_end = ph_start + phdr_ptr->p_memsz;
-                u64 bss_size = bss_end - bss_start;
-                memset((void *)bss_start, 0, bss_size);
-        }
-        return REND_SUCCESS;
+
+        return map_handler_user_kernel_copy(vs,
+                                     ph_start,
+                                     (void *)(elf_start + offset),
+                                     phdr_ptr->p_filesz,
+                                     true);
 }
 error_t elf_Phdr_64_dynamic_handle(vaddr elf_start, Elf64_Phdr *phdr_ptr,
                                    VSpace *vs)
