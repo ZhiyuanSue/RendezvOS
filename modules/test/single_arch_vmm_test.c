@@ -61,7 +61,10 @@ int arch_vmm_test(void)
                 pr_error("[ TEST ] error memset in during init map test\n");
         mem_zones[ZONE_NORMAL].pmm->pmm_free(
                 mem_zones[ZONE_NORMAL].pmm, ppn, 1);
+
+        arch_tlb_flush_begin_barrier();
         arch_tlb_invalidate_kernel_page(page_vaddr);
+        arch_tlb_flush_end_barrier();
         pr_info("[ TEST ] PASS: vmm:init map system ok!\n");
         /*=== === === ===*/
         /*

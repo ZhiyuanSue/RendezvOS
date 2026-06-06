@@ -123,7 +123,9 @@ vaddr map_handler_map_slot(struct map_handler *handler, int slot_id, ppn_t ppn)
         if (!v)
                 return 0;
         util_map(PADDR(ppn), v);
+        arch_tlb_flush_begin_barrier();
         arch_tlb_invalidate_kernel_page(v);
+        arch_tlb_flush_end_barrier();
         return v;
 }
 
@@ -138,7 +140,9 @@ void map_handler_unmap_slot(struct map_handler *handler, int slot_id)
                 return;
         arch_set_L3_entry(
                 0, v, (union L3_entry *)&MAP_L3_table, PAGE_ENTRY_NONE);
+        arch_tlb_flush_begin_barrier();
         arch_tlb_invalidate_kernel_page(v);
+        arch_tlb_flush_end_barrier();
 }
 
 error_t map_handler_zero_page(struct map_handler *handler, ppn_t ppn)
@@ -358,6 +362,7 @@ error_t map(VSpace *vs, ppn_t ppn, vpn_t vpn, int level, ENTRY_FLAGS_t eflags,
                 if (invalid_ppn(handler->handler_ppn[1])) {
                         pr_error("[ ERROR ] L1 try alloc ppn fail\n");
                         res = -E_RENDEZVOS;
+                        arch_tlb_flush_begin_barrier();
                         goto map_l0_fail;
                 }
                 next_level_paddr = PADDR(handler->handler_ppn[1]);
@@ -384,6 +389,7 @@ error_t map(VSpace *vs, ppn_t ppn, vpn_t vpn, int level, ENTRY_FLAGS_t eflags,
                 if (invalid_ppn(handler->handler_ppn[2])) {
                         pr_error("[ ERROR ] L2 try alloc ppn fail\n");
                         res = -E_RENDEZVOS;
+                        arch_tlb_flush_begin_barrier();
                         goto map_l1_fail;
                 }
                 next_level_paddr = PADDR(handler->handler_ppn[2]);
@@ -412,7 +418,8 @@ error_t map(VSpace *vs, ppn_t ppn, vpn_t vpn, int level, ENTRY_FLAGS_t eflags,
                                 p,
                                 v);
                         res = -E_IN_PARAM;
-                        goto map_l0_fail;
+                        arch_tlb_flush_begin_barrier();
+                        goto map_l2_fail;
                 }
                 flags = arch_decode_flags(2, PAGE_ENTRY_HUGE | eflags);
                 next_level_paddr = L2_entry_addr(((
@@ -423,6 +430,7 @@ error_t map(VSpace *vs, ppn_t ppn, vpn_t vpn, int level, ENTRY_FLAGS_t eflags,
                                 pr_error(
                                         "the vpn and ppn must all 2M aligned\n");
                                 res = -E_RENDEZVOS;
+                                arch_tlb_flush_begin_barrier();
                                 goto map_l2_fail;
                         }
                         arch_set_L2_entry(
@@ -494,6 +502,7 @@ error_t map(VSpace *vs, ppn_t ppn, vpn_t vpn, int level, ENTRY_FLAGS_t eflags,
                                                 next_level_paddr,
                                                 p);
                                         res = -E_RENDEZVOS;
+                                        arch_tlb_flush_begin_barrier();
                                         arch_tlb_invalidate_kernel_page(
                                                 ROUND_DOWN(
                                                         ((handler->map_vaddr[2])
@@ -512,7 +521,8 @@ error_t map(VSpace *vs, ppn_t ppn, vpn_t vpn, int level, ENTRY_FLAGS_t eflags,
                                                 "[ MAP ] failed to free empty L3 page table (ppn: 0x%lx)\n",
                                                 PPN(next_level_paddr));
                                         res = -E_RENDEZVOS;
-                                        goto map_l2_fail;
+                                        arch_tlb_flush_begin_barrier();
+                                        goto map_l3_fail;
                                 }
                                 pr_debug(
                                         "[ MAP ] upgraded empty L3 page table to 2M mapping\n");
@@ -534,6 +544,7 @@ error_t map(VSpace *vs, ppn_t ppn, vpn_t vpn, int level, ENTRY_FLAGS_t eflags,
                                         next_level_paddr,
                                         p);
                                 res = -E_RENDEZVOS;
+                                arch_tlb_flush_begin_barrier();
                                 goto map_l2_fail;
 
                         } else {
@@ -546,6 +557,7 @@ error_t map(VSpace *vs, ppn_t ppn, vpn_t vpn, int level, ENTRY_FLAGS_t eflags,
                                                 "[ MAP ] invalid entry with non-zero physical address 0x%lx (possible data corruption)\n",
                                                 next_level_paddr);
                                         res = -E_RENDEZVOS;
+                                        arch_tlb_flush_begin_barrier();
                                         goto map_l2_fail;
                                 }
                                 /* next_level_paddr == 0: truly empty entry,
@@ -553,6 +565,7 @@ error_t map(VSpace *vs, ppn_t ppn, vpn_t vpn, int level, ENTRY_FLAGS_t eflags,
                                 pr_error(
                                         "[ MAP ] unexpected empty entry in != branch\n");
                                 res = -E_RENDEZVOS;
+                                arch_tlb_flush_begin_barrier();
                                 goto map_l2_fail;
                         }
                 }
@@ -573,6 +586,7 @@ error_t map(VSpace *vs, ppn_t ppn, vpn_t vpn, int level, ENTRY_FLAGS_t eflags,
                                 "[ MAP ] cannot update flags: invalid entry with physical address 0x%lx (data corruption?)\n",
                                 next_level_paddr);
                         res = -E_RENDEZVOS;
+                        arch_tlb_flush_begin_barrier();
                         goto map_l2_fail;
                 }
 
@@ -594,6 +608,7 @@ error_t map(VSpace *vs, ppn_t ppn, vpn_t vpn, int level, ENTRY_FLAGS_t eflags,
                         if (invalid_ppn(handler->handler_ppn[3])) {
                                 pr_error("[ ERROR ] L3 try alloc ppn fail\n");
                                 res = -E_RENDEZVOS;
+                                arch_tlb_flush_begin_barrier();
                                 goto map_l2_fail;
                         }
                         next_level_paddr = PADDR(handler->handler_ppn[3]);
@@ -616,6 +631,7 @@ error_t map(VSpace *vs, ppn_t ppn, vpn_t vpn, int level, ENTRY_FLAGS_t eflags,
                 pr_error(
                         "[ MAP ] try to map a level 3 page but a level 2 page have mapped here\n");
                 res = -E_RENDEZVOS;
+                arch_tlb_flush_begin_barrier();
                 goto map_l2_fail;
         }
         util_map(next_level_paddr, handler->map_vaddr[3]);
@@ -643,6 +659,7 @@ error_t map(VSpace *vs, ppn_t ppn, vpn_t vpn, int level, ENTRY_FLAGS_t eflags,
                         next_level_paddr,
                         v);
                 res = -E_RENDEZVOS;
+                arch_tlb_flush_begin_barrier();
                 goto map_l3_fail;
         }
 
@@ -655,6 +672,7 @@ error_t map(VSpace *vs, ppn_t ppn, vpn_t vpn, int level, ENTRY_FLAGS_t eflags,
                         p,
                         v);
                 res = -E_RENDEZVOS;
+                arch_tlb_flush_begin_barrier();
                 goto map_l3_fail;
         } else {
                 pr_debug(
@@ -666,6 +684,7 @@ error_t map(VSpace *vs, ppn_t ppn, vpn_t vpn, int level, ENTRY_FLAGS_t eflags,
         arch_set_L3_entry(
                 p, v, (union L3_entry *)(handler->map_vaddr[3]), flags);
 map_succ:
+        arch_tlb_flush_begin_barrier();
         if (new_map) {
                 if (v >= KERNEL_VIRT_OFFSET)
                         arch_tlb_invalidate_kernel_page(v);
@@ -685,6 +704,7 @@ map_l1_fail:
         arch_tlb_invalidate_kernel_page(handler->map_vaddr[1]);
 map_l0_fail:
         arch_tlb_invalidate_kernel_page(handler->map_vaddr[0]);
+        arch_tlb_flush_end_barrier();
         unlock_mcs(&vs->vspace_lock, &handler->vspace_lock_node);
 map_fail:
         /*
@@ -745,6 +765,7 @@ ppn_t unmap(VSpace *vs, vpn_t vpn, u64 new_entry_addr,
                         "[ ERROR ] L0 entry not mapped, entry is 0x%lx, unmap error\n",
                         L0_E);
                 ppn = -E_RENDEZVOS;
+                arch_tlb_flush_begin_barrier();
                 goto unmap_l0_fail;
         }
 
@@ -760,10 +781,12 @@ ppn_t unmap(VSpace *vs, vpn_t vpn, u64 new_entry_addr,
         {
                 pr_error("[ ERROR ] L1 entry not mapped, unmap error\n");
                 ppn = -E_RENDEZVOS;
+                arch_tlb_flush_begin_barrier();
                 goto unmap_l1_fail;
         } else if (is_final_level_pt(1, entry_flags)) {
                 pr_error("[ ERROR ] we do not use 1G huge page, unmap error\n");
                 ppn = -E_RENDEZVOS;
+                arch_tlb_flush_begin_barrier();
                 goto unmap_l1_fail;
         }
 
@@ -780,6 +803,7 @@ ppn_t unmap(VSpace *vs, vpn_t vpn, u64 new_entry_addr,
                 pr_error("[ ERROR ] L2 entry %lx not mapped, unmap error\n",
                          L2_E.entry);
                 ppn = -E_RENDEZVOS;
+                arch_tlb_flush_begin_barrier();
                 goto unmap_l2_fail;
         } else if (is_final_level_pt(2, entry_flags)) {
                 /*check the vpn 2M aligned*/
@@ -791,6 +815,7 @@ ppn_t unmap(VSpace *vs, vpn_t vpn, u64 new_entry_addr,
                                 v,
                                 per_cpu(cpu_number, handler->cpu_id));
                         ppn = -E_RENDEZVOS;
+                        arch_tlb_flush_begin_barrier();
                         goto unmap_l2_fail;
                 }
                 ppn = PPN(next_level_paddr);
@@ -824,6 +849,7 @@ ppn_t unmap(VSpace *vs, vpn_t vpn, u64 new_entry_addr,
         ((union L3_entry *)(handler->map_vaddr[3]))[L3_INDEX(v)].paddr =
                 new_entry_addr;
 unmap_succ:
+        arch_tlb_flush_begin_barrier();
         if (v >= KERNEL_VIRT_OFFSET)
                 arch_tlb_invalidate_kernel_page_all_core(v);
         else
@@ -836,6 +862,7 @@ unmap_l1_fail:
         arch_tlb_invalidate_kernel_page(handler->map_vaddr[1]);
 unmap_l0_fail:
         arch_tlb_invalidate_kernel_page(handler->map_vaddr[0]);
+        arch_tlb_flush_end_barrier();
 unmap_fail:
         unlock_mcs(&vs->vspace_lock, &handler->vspace_lock_node);
         return ppn;
@@ -875,6 +902,7 @@ ppn_t have_mapped(VSpace *vs, vpn_t vpn, ENTRY_FLAGS_t *entry_flags_out,
         ppn = L0_E.paddr;
         if (!ppn || !(entry_flags & PAGE_ENTRY_VALID)) {
                 ppn = 0;
+                arch_tlb_flush_begin_barrier();
                 goto have_mapped_l0_fail;
         }
 
@@ -885,10 +913,12 @@ ppn_t have_mapped(VSpace *vs, vpn_t vpn, ENTRY_FLAGS_t *entry_flags_out,
         ppn = L1_E.paddr;
         if (!ppn || !(entry_flags & PAGE_ENTRY_VALID)) {
                 ppn = 0;
+                arch_tlb_flush_begin_barrier();
                 goto have_mapped_l1_fail;
         } else if (is_final_level_pt(1, entry_flags)) {
                 pr_error("[ ERROR ] we do not use 1G huge page, check error\n");
                 ppn = 0;
+                arch_tlb_flush_begin_barrier();
                 goto have_mapped_l1_fail;
         }
 
@@ -899,6 +929,7 @@ ppn_t have_mapped(VSpace *vs, vpn_t vpn, ENTRY_FLAGS_t *entry_flags_out,
         ppn = L2_E.paddr;
         if (!ppn || !(entry_flags & PAGE_ENTRY_VALID)) {
                 ppn = 0;
+                arch_tlb_flush_begin_barrier();
                 goto have_mapped_l2_fail;
         } else if (is_final_level_pt(2, entry_flags)) {
                 entry_level = 2;
@@ -915,6 +946,7 @@ ppn_t have_mapped(VSpace *vs, vpn_t vpn, ENTRY_FLAGS_t *entry_flags_out,
                 ppn = 0;
         }
 have_mapped_succ:
+        arch_tlb_flush_begin_barrier();
         if (ppn > 0) {
                 if (entry_flags_out)
                         *entry_flags_out = entry_flags;
@@ -928,6 +960,7 @@ have_mapped_l1_fail:
         arch_tlb_invalidate_kernel_page(handler->map_vaddr[1]);
 have_mapped_l0_fail:
         arch_tlb_invalidate_kernel_page(handler->map_vaddr[0]);
+        arch_tlb_flush_end_barrier();
         unlock_mcs(&vs->vspace_lock, &handler->vspace_lock_node);
 have_mapped_fail:
         return ppn;
@@ -964,12 +997,16 @@ paddr new_vs_root(paddr old_vs_root_paddr, struct map_handler *handler)
                 memcpy((void *)(handler->map_vaddr[0]),
                        (void *)(handler->map_vaddr[1]),
                        PAGE_SIZE / 2);
+                arch_tlb_flush_begin_barrier();
                 arch_tlb_invalidate_kernel_page(handler->map_vaddr[1]);
+                arch_tlb_flush_end_barrier();
         } else {
                 memset((void *)(handler->map_vaddr[0]), 0, PAGE_SIZE / 2);
         }
 
+        arch_tlb_flush_begin_barrier();
         arch_tlb_invalidate_kernel_page(handler->map_vaddr[0]);
+        arch_tlb_flush_end_barrier();
 
         if (handler->handler_ppn[0] == -E_RENDEZVOS) {
                 struct pmm *pmm_ptr = handler->pmm;
@@ -1083,8 +1120,10 @@ error_t vspace_free_user_pt(VSpace *vs, struct map_handler *handler)
                                         l2_table[l2_index].entry = 0;
                                         l2_table[l2_index].paddr = 0;
                                 }
+                                arch_tlb_flush_begin_barrier();
                                 arch_tlb_invalidate_kernel_page(
                                         handler->map_vaddr[3]);
+                                arch_tlb_flush_end_barrier();
                         }
 
                         if (!l2_nonempty) {
@@ -1098,7 +1137,9 @@ error_t vspace_free_user_pt(VSpace *vs, struct map_handler *handler)
                         } else {
                                 l1_nonempty = true;
                         }
+                        arch_tlb_flush_begin_barrier();
                         arch_tlb_invalidate_kernel_page(handler->map_vaddr[2]);
+                        arch_tlb_flush_end_barrier();
                 }
 
                 if (!l1_nonempty) {
@@ -1108,11 +1149,15 @@ error_t vspace_free_user_pt(VSpace *vs, struct map_handler *handler)
                         l0_table[l0_index].entry = 0;
                         l0_table[l0_index].paddr = 0;
                 }
+                arch_tlb_flush_begin_barrier();
                 arch_tlb_invalidate_kernel_page(handler->map_vaddr[1]);
+                arch_tlb_flush_end_barrier();
         }
 
+        arch_tlb_flush_begin_barrier();
         arch_tlb_invalidate_kernel_page(handler->map_vaddr[0]);
         arch_tlb_invalidate_vspace_page_all_core(vs->asid, 0);
+        arch_tlb_flush_end_barrier();
         return root_nonempty ? -E_RENDEZVOS : REND_SUCCESS;
 }
 

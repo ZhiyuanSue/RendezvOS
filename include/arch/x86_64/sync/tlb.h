@@ -2,6 +2,16 @@
 #define _RENDEZVOS_TLB_H_
 #include <common/types.h>
 #include <common/mm.h>
+
+static inline void arch_tlb_flush_begin_barrier(void)
+{
+        ;
+}
+static inline void arch_tlb_flush_end_barrier(void)
+{
+        ;
+}
+
 static inline void invlpg(vaddr addr)
 {
         __asm__ __volatile__("invlpg (%0)" ::"r"(addr) : "memory");
@@ -42,7 +52,8 @@ static inline void arch_tlb_invalidate_vspace_page(u64 asid, vaddr addr)
         (void)addr;
         arch_tlb_invalidate_all();
 }
-static inline void arch_tlb_invalidate_vspace_page_all_core(u64 asid, vaddr addr)
+static inline void arch_tlb_invalidate_vspace_page_all_core(u64 asid,
+                                                            vaddr addr)
 {
         // TODO:unimplemented PCID and smp IPI in x86_64
         (void)asid;
@@ -50,8 +61,7 @@ static inline void arch_tlb_invalidate_vspace_page_all_core(u64 asid, vaddr addr
         arch_tlb_invalidate_all();
 }
 
-static inline void arch_tlb_invalidate_range(u64 asid, vaddr start,
-                                             vaddr end)
+static inline void arch_tlb_invalidate_range(u64 asid, vaddr start, vaddr end)
 {
         (void)asid;
         for (vaddr addr = start; addr < end; addr += PAGE_SIZE) {
