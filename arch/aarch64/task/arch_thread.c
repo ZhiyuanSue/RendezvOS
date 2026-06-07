@@ -71,7 +71,9 @@ void arch_syscall_get_user_return(const struct trap_frame* tf,
                 *user_pc = tf ? tf->ELR : 0;
         }
         if (user_sp) {
-                *user_sp = tf ? tf->SP : 0;
+                u64 sp_el0 = 0;
+                mrs("SP_EL0", sp_el0);
+                *user_sp = (vaddr)sp_el0;
         }
         if (syscall_ret) {
                 *syscall_ret = tf ? tf->REGS[0] : 0;

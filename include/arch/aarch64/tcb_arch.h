@@ -62,8 +62,8 @@ static inline u64 arch_get_user_tls_base(const Arch_Task_Context* ctx)
 void arch_return_to_user(u64 kstack_bottom,
                          const struct trap_frame* template_tf, u64 syscall_ret);
 /*
- * Path A: in-flight syscall trap_frame (syscall_ctx). User PC in ELR, RSP in
- * trap_frame->SP and SP_EL0, syscall return value in REGS[0].
+ * Path A: in-flight syscall trap_frame (syscall_ctx). User PC in ELR, user SP
+ * in SP_EL0 (and ctx->sp_el0); tf->SP is the kernel trap save-area pointer.
  */
 void arch_syscall_set_user_return(struct trap_frame* tf, Arch_Task_Context* ctx,
                                   vaddr user_pc, vaddr user_sp, u64 syscall_ret);
