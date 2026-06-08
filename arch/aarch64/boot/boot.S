@@ -245,6 +245,8 @@ setup_info:
 	.quad	0	/*x3,reserved*/
 	.quad	log_buffer
 	.quad	0	/*the map address end*/
+	.quad	0	/*boot uart base addr*/
+	.quad	0	/*boot dtb header base addr*/
 	.quad	0	/*ap_boot_stack_ptr*/
 	.quad	0	/*cpu id*/
 
