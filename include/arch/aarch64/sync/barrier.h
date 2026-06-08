@@ -6,5 +6,5 @@
 #define dsb(opt) __asm__ __volatile__("dsb " #opt : : : "memory")
 
 #define barrier()        __asm__ __volatile__("" : : : "memory")
-#define arch_cpu_relax() isb()
+#define arch_cpu_relax() __asm__ __volatile__("yield" : : : "memory")
 #endif
