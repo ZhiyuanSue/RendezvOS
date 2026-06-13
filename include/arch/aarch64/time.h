@@ -2,6 +2,7 @@
 #define _RENDEZVOS_ARCH_TIME_
 #include <common/types.h>
 #include <arch/aarch64/sys_ctrl.h>
+#include <common/stdbool.h>
 /*CNTFRQ_EL0*/
 
 /*CNTV_CTL_EL0*/
@@ -9,5 +10,5 @@
 #define CNTV_CTL_EL0_IMASK   (0x1 << 1)
 #define CNTV_CTL_EL0_ISTATUS (0x1 << 2)
 
-void arch_init_timer(void);
+void arch_init_timer(bool is_bsp);
 #endif

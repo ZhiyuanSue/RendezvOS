@@ -103,12 +103,11 @@ error_t elf_Phdr_64_load_handle(vaddr elf_start, Elf64_Phdr *phdr_ptr,
         }
         (void)vmm_radix_tree_unlock_range_big(vs, l0_lo, vaddr_end);
 
-
         return map_handler_user_kernel_copy(vs,
-                                     ph_start,
-                                     (void *)(elf_start + offset),
-                                     phdr_ptr->p_filesz,
-                                     true);
+                                            ph_start,
+                                            (void *)(elf_start + offset),
+                                            phdr_ptr->p_filesz,
+                                            true);
 }
 error_t elf_Phdr_64_dynamic_handle(vaddr elf_start, Elf64_Phdr *phdr_ptr,
                                    VSpace *vs)

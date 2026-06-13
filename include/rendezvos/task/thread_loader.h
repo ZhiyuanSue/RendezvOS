@@ -18,7 +18,8 @@
 error_t load_elf_Phdr_64(vaddr elf_start, Elf64_Phdr* phdr_ptr, VSpace* vs);
 
 /**
- * @brief ELF load result passed to elf_init_handler_t (core-defined, ABI-neutral).
+ * @brief ELF load result passed to elf_init_handler_t (core-defined,
+ * ABI-neutral).
  */
 typedef struct elf_load_info {
         vaddr elf_start;
@@ -31,7 +32,8 @@ typedef struct elf_load_info {
 } elf_load_info_t;
 
 /**
- * @brief Optional hook after PT_LOAD and user stack setup, before userspace entry.
+ * @brief Optional hook after PT_LOAD and user stack setup, before userspace
+ * entry.
  * @param ctx Child thread arch context.
  * @param info Load addresses and program-header metadata.
  * @return Opaque value (unused by core loader).
@@ -46,7 +48,8 @@ typedef void* (*elf_init_handler_t)(Arch_Task_Context* ctx,
  * @param elf_end End of ELF image in kernel memory.
  * @param vs Address space to map into.
  * @param elf_init Optional pre-entry hook (may be NULL).
- * @return REND_SUCCESS if control returns; -E_RENDEZVOS on load or entry failure.
+ * @return REND_SUCCESS if control returns; -E_RENDEZVOS on load or entry
+ * failure.
  */
 error_t run_elf_program(vaddr elf_start, vaddr elf_end, VSpace* vs,
                         elf_init_handler_t elf_init);
@@ -71,8 +74,10 @@ error_t gen_task_from_elf(Thread_Base** elf_thread_ptr,
  * @param elf_start Kernel mapping of ELF base.
  * @param elf_end End of ELF image in kernel memory.
  * @param vs Target address space.
- * @param max_load_end_out Optional out: page-aligned max PT_LOAD end (may be NULL).
- * @return REND_SUCCESS; -E_IN_PARAM or -E_RENDEZVOS on bad image or map failure.
+ * @param max_load_end_out Optional out: page-aligned max PT_LOAD end (may be
+ * NULL).
+ * @return REND_SUCCESS; -E_IN_PARAM or -E_RENDEZVOS on bad image or map
+ * failure.
  */
 error_t load_elf_to_vs(vaddr elf_start, vaddr elf_end, VSpace* vs,
                        vaddr* max_load_end_out);

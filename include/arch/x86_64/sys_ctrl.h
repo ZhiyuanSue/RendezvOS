@@ -3,6 +3,7 @@
 #include <arch/x86_64/desc.h>
 #include <arch/x86_64/trap/tss.h>
 #include <common/types.h>
+#include <arch/x86_64/sync/barrier.h>
 // #include <arch/x86_64/sys_ctrl_def.h>
 // /*cpuid*/
 // struct cpuid_result {
@@ -105,14 +106,17 @@ inline static void ltr(union desc_selector *selector)
 
 inline static u64 rdmsr(u32 msr_id)
 {
-        u64 val;
+        u64 val = 0;
 
-        __asm__ __volatile__("rdmsr" : "=a"(val) : "c"(msr_id));
+        __asm__ __volatile__("rdmsr" : "=a"(val) : "c"(msr_id) : "edx");
         return (val);
 }
 inline static void wrmsr(u32 msr_id, u64 val)
 {
-        __asm__ __volatile__("wrmsr" ::"c"(msr_id), "a"(val));
+        mfence();
+        lfence();
+        __asm__ __volatile__("wrmsr" ::"c"(msr_id), "a"(val), "d"(0)
+                             : "memory");
 }
 inline static u64 rdmsrq(u32 msr_id)
 {
@@ -123,6 +127,8 @@ inline static u64 rdmsrq(u32 msr_id)
 }
 inline static void wrmsrq(u32 msr_id, u64 val)
 {
+        mfence();
+        lfence();
         __asm__ __volatile__(
                 "wrmsr" ::"c"(msr_id), "a"((u32)val), "d"((u32)(val >> 32))
                 : "memory");
@@ -134,5 +140,13 @@ inline static void cli(void)
 inline static void sti(void)
 {
         __asm__ __volatile__("sti");
+}
+inline static u64 rdtsc(void)
+{
+        u32 low, high;
+        mfence();
+        lfence();
+        __asm__ __volatile__("rdtsc" : "=a"(low), "=d"(high));
+        return ((u64)high << 32) | low;
 }
 #endif

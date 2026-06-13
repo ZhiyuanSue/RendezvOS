@@ -179,12 +179,11 @@ static void* core_get_free_pages(size_t page_num, VSpace* vs,
                 mapped_count++;
         }
 
-        if (vmm_radix_tree_lock_range_big_and_small(
-                    handler,
-                    vs,
-                    free_page_addr,
-                    vaddr_end,
-                    RADIX_RL_QUERY_OR_CHANGE)
+        if (vmm_radix_tree_lock_range_big_and_small(handler,
+                                                    vs,
+                                                    free_page_addr,
+                                                    vaddr_end,
+                                                    RADIX_RL_QUERY_OR_CHANGE)
             != REND_SUCCESS) {
                 pr_error("[ KALLOC ] ERROR: radix bind-phase lock fail\n");
                 goto fail_unmap_rollback;
@@ -362,7 +361,7 @@ static int bytes_to_pages(size_t Bytes)
 static void page_chunk_rb_tree_insert(struct page_chunk_node* node,
                                       struct rb_root* page_chunk_root)
 {
-        struct rb_node **new = &page_chunk_root->rb_root, *parent = NULL;
+        struct rb_node** new = &page_chunk_root->rb_root, *parent = NULL;
         u64 key = node->page_addr;
         while (*new) {
                 parent = *new;
@@ -480,14 +479,14 @@ error_t chunk_free_obj(struct object_header* obj, struct mem_chunk* chunk)
         }
         /*
         The legal obj must not be 4K aligned, but we do not check here.
-        If it's 4K aligned, it means it's a page alloc, and should use free_pages.
-        But there's a problem: how can we know the pages we need to free?
-        Let's check the radix tree realization.
-        In the radix tree, for kernel space, we query the page metadata to
-        determine the page count for a contiguous allocation.
-        The page_chunk_root red-black tree records (page_addr, page_num) for
-        page_chunk_node entries, allowing us to find the page count by vaddr lookup.
-        Let's remember one thing: kmalloc is only used for kernel!!!!!!
+        If it's 4K aligned, it means it's a page alloc, and should use
+        free_pages. But there's a problem: how can we know the pages we need to
+        free? Let's check the radix tree realization. In the radix tree, for
+        kernel space, we query the page metadata to determine the page count for
+        a contiguous allocation. The page_chunk_root red-black tree records
+        (page_addr, page_num) for page_chunk_node entries, allowing us to find
+        the page count by vaddr lookup. Let's remember one thing: kmalloc is
+        only used for kernel!!!!!!
         */
         if (chunk->magic != CHUNK_MAGIC) {
                 pr_error("[ERROR]illegal chunk magic\n");

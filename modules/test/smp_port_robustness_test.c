@@ -17,7 +17,6 @@
 #include <rendezvos/mm/kmalloc.h>
 #include <common/string.h>
 
-extern cpu_id_t BSP_ID;
 extern int NR_CPU;
 
 #define SMP_PORT_TEST_ROUNDS            10000

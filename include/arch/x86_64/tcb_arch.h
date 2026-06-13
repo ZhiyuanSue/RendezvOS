@@ -66,7 +66,8 @@ void arch_ctx_merge_from_src(Arch_Task_Context* dst_ctx,
  * live values to avoid returning to user mode with stale state.
  */
 void arch_ctx_refresh(Arch_Task_Context* ctx);
-/** Update ctx TLS base (FS_BASE) and program the live CPU when on this thread. */
+/** Update ctx TLS base (FS_BASE) and program the live CPU when on this thread.
+ */
 void arch_set_user_tls_base(Arch_Task_Context* ctx, u64 tls_base);
 static inline u64 arch_get_user_tls_base(const Arch_Task_Context* ctx)
 {
@@ -79,17 +80,19 @@ void arch_return_to_user(u64 kstack_bottom,
  * percpu(user_rsp_scratch), syscall return value in rax.
  */
 void arch_syscall_set_user_return(struct trap_frame* tf, Arch_Task_Context* ctx,
-                                  vaddr user_pc, vaddr user_sp, u64 syscall_ret);
+                                  vaddr user_pc, vaddr user_sp,
+                                  u64 syscall_ret);
 void arch_syscall_get_user_return(const struct trap_frame* tf,
                                   const Arch_Task_Context* ctx, vaddr* user_pc,
                                   vaddr* user_sp, u64* syscall_ret);
 /*
  * Set SysV AMD64 user integer argument reg (0..NR_ABI_PARAMETER_INT_REG-1):
  * 0=rdi, 1=rsi, 2=rdx, 3=rcx, 4=r8, 5=r9.
- * Path A: index 3 (rcx) is also syscall return PC; do not use after set_user_return.
+ * Path A: index 3 (rcx) is also syscall return PC; do not use after
+ * set_user_return.
  */
-void arch_syscall_set_user_int_arg(struct trap_frame* tf, unsigned int arg_index,
-                                   u64 value);
+void arch_syscall_set_user_int_arg(struct trap_frame* tf,
+                                   unsigned int arg_index, u64 value);
 
 /* Zeroed syscall-shaped frame for first ELF entry; rcx = user RIP (sysret). */
 static inline void arch_empty_drop_trap_frame(struct trap_frame* tf,

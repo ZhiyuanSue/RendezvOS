@@ -7,7 +7,6 @@
 extern char ap_start;
 extern char ap_start_end;
 extern int NR_CPU;
-extern cpu_id_t BSP_ID;
 extern enum cpu_status CPU_STATE;
 extern void clean_tmp_page_table(void);
 static void copy_ap_start_code(void)

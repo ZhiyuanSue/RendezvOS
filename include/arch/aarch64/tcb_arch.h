@@ -50,7 +50,8 @@ void arch_ctx_merge_from_src(Arch_Task_Context* dst_ctx,
  * child does not inherit stale EL0-visible state.
  */
 void arch_ctx_refresh(Arch_Task_Context* ctx);
-/** Update ctx TLS base (TPIDR_EL0) and program the live CPU when on this thread. */
+/** Update ctx TLS base (TPIDR_EL0) and program the live CPU when on this
+ * thread. */
 void arch_set_user_tls_base(Arch_Task_Context* ctx, u64 tls_base);
 static inline u64 arch_get_user_tls_base(const Arch_Task_Context* ctx)
 {
@@ -66,7 +67,8 @@ void arch_return_to_user(u64 kstack_bottom,
  * in SP_EL0 (and ctx->sp_el0); tf->SP is the kernel trap save-area pointer.
  */
 void arch_syscall_set_user_return(struct trap_frame* tf, Arch_Task_Context* ctx,
-                                  vaddr user_pc, vaddr user_sp, u64 syscall_ret);
+                                  vaddr user_pc, vaddr user_sp,
+                                  u64 syscall_ret);
 void arch_syscall_get_user_return(const struct trap_frame* tf,
                                   const Arch_Task_Context* ctx, vaddr* user_pc,
                                   vaddr* user_sp, u64* syscall_ret);
@@ -75,8 +77,8 @@ void arch_syscall_get_user_return(const struct trap_frame* tf,
  * REGS[N]. Path A: index 0 is also ARCH_SYSCALL_RET; set after set_user_return
  * if the handler needs x0 (e.g. signal handler(int sig)).
  */
-void arch_syscall_set_user_int_arg(struct trap_frame* tf, unsigned int arg_index,
-                                   u64 value);
+void arch_syscall_set_user_int_arg(struct trap_frame* tf,
+                                   unsigned int arg_index, u64 value);
 
 /* Zeroed EL0-shaped frame for first ELF entry; ELR = user entry. */
 static inline void arch_empty_drop_trap_frame(struct trap_frame* tf,

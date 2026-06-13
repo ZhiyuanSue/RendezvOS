@@ -180,7 +180,8 @@ void choose_schedule(Task_Manager* tm);
 Task_Manager* init_proc();
 
 /**
- * @brief Allocate and zero-initialize a task control block (plus optional tail).
+ * @brief Allocate and zero-initialize a task control block (plus optional
+ * tail).
  * @param cpu_allocator Allocator for the TCB allocation.
  * @param append_tcb_info_len Extra bytes after TCB_COMMON for extensions.
  * @return New TCB, or NULL if @p cpu_allocator is NULL or allocation fails.
@@ -201,8 +202,8 @@ Task_Manager* new_task_manager();
 void del_task_manager_structure(Task_Manager* tm);
 
 /**
- * @brief Free thread structure after last refcount drop (detaches from task/manager
- * rings, drains IPC queues and kstack).
+ * @brief Free thread structure after last refcount drop (detaches from
+ * task/manager rings, drains IPC queues and kstack).
  * @param thread Thread to destroy (no-op if NULL).
  */
 void del_thread_structure(Thread_Base* thread);
@@ -263,8 +264,8 @@ error_t add_task_to_manager(Task_Manager* core_tm, Tcb_Base* task);
 /**
  * @brief Unlink @p task from its task manager sched_task_list.
  * @param task Task to detach.
- * @return REND_SUCCESS; -E_IN_PARAM if @p task is NULL; -E_RENDEZVOS if task has
- *         no manager.
+ * @return REND_SUCCESS; -E_IN_PARAM if @p task is NULL; -E_RENDEZVOS if task
+ * has no manager.
  */
 error_t del_task_from_manager(Tcb_Base* task);
 
@@ -289,7 +290,8 @@ error_t del_thread_from_manager(Thread_Base* thread);
  * @param __func Target function pointer stored in init_parameter.
  * @param append_thread_info_len Extra bytes after THREAD_COMMON.
  * @param reserve_trap_frame Whether arch context reserves a trap frame slot.
- * @param nr_parameter Number of u64 varargs (capped by NR_ABI_PARAMETER_INT_REG).
+ * @param nr_parameter Number of u64 varargs (capped by
+ * NR_ABI_PARAMETER_INT_REG).
  * @return New thread with refcount initialized, or NULL on failure.
  */
 Thread_Base* create_thread(void* __func, size_t append_thread_info_len,
@@ -423,9 +425,9 @@ static inline void thread_set_name(char* name, Thread_Base* thread)
 }
 
 /**
- * @brief Attach @p thread to @p task and per-CPU manager; mark ready for scheduling.
- * Not a blocking wait-for-exit: does not reap the thread. Adds to task list,
- * adds to percpu(core_tm), and sets thread_status_ready.
+ * @brief Attach @p thread to @p task and per-CPU manager; mark ready for
+ * scheduling. Not a blocking wait-for-exit: does not reap the thread. Adds to
+ * task list, adds to percpu(core_tm), and sets thread_status_ready.
  * @param task Task that will own the thread.
  * @param thread Detached or new thread to register.
  * @return REND_SUCCESS; -E_IN_PARAM if pointers are NULL; error from
@@ -444,7 +446,8 @@ void run_copied_thread(u64 syscall_return_value);
  * @brief Duplicate a user thread into @p target_task (trap frame and arch ctx).
  * @param parent_thread Source user thread (must have THREAD_FLAG_USER).
  * @param target_task Task that will own the child (belong_tcb set; not joined).
- * @param custom_return_value Stored in child init int_para[0] for run_copied_thread.
+ * @param custom_return_value Stored in child init int_para[0] for
+ * run_copied_thread.
  * @param append_thread_info_len Bytes to copy from parent append_thread_info.
  * @return New thread in ready status, or NULL on error.
  */

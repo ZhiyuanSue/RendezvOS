@@ -93,8 +93,8 @@ void arch_syscall_get_user_return(const struct trap_frame* tf,
         }
 }
 
-void arch_syscall_set_user_int_arg(struct trap_frame* tf, unsigned int arg_index,
-                                   u64 value)
+void arch_syscall_set_user_int_arg(struct trap_frame* tf,
+                                   unsigned int arg_index, u64 value)
 {
         if (!tf || arg_index >= NR_ABI_PARAMETER_INT_REG) {
                 return;

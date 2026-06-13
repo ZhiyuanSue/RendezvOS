@@ -6,6 +6,8 @@
 
 typedef u64 cpu_id_t;
 
+extern cpu_id_t BSP_ID;
+
 #define CPU_ID_INVALID ((cpu_id_t)U64_MAX)
 
 #endif

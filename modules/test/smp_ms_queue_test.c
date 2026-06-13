@@ -21,7 +21,6 @@ error_t free_ms_test_data(ref_count_t* refcount)
         percpu(kallocator)->m_free(percpu(kallocator), test_data);
         return REND_SUCCESS;
 }
-extern cpu_id_t BSP_ID;
 extern int NR_CPU;
 #define percpu_ms_queue_test_number 100000
 /*

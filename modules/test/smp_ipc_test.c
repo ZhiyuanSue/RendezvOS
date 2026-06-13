@@ -16,7 +16,6 @@
 
 extern struct allocator* kallocator;
 
-extern cpu_id_t BSP_ID;
 extern int NR_CPU;
 
 #define SMP_IPC_MSG_COUNT 50000

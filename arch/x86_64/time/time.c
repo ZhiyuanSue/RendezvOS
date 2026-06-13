@@ -6,40 +6,47 @@
 #include <rendezvos/time.h>
 
 extern enum IRQ_type arch_irq_type;
+extern enum timer_type sys_timer_type;
 u32 timer_irq_num = _8259A_MASTER_IRQ_NUM_ + _8259A_TIMER_;
-void arch_init_timer(void)
+void arch_init_timer(bool is_bsp)
 {
         if (arch_irq_type == NO_IRQ) {
                 return;
         } else if (arch_irq_type == PIC_IRQ) {
-                init_8254_cyclical(1000);
-                enable_PIC_IRQ(timer_irq_num);
-        } else if (arch_irq_type == xAPIC_IRQ) {
-                if (TSC_DDL_support()) {
-                        pr_info("tsc ddl mode is supported\n");
-                        /*
-                                TODO: but not supported in qemu platform
-                                and if we using tsc ddl mode
-                                the apic timer regs are no use anymore
-                        */
+                if (is_bsp) {
+                        init_8254_cyclical(1000);
+                        enable_PIC_IRQ(timer_irq_num);
                 }
-                APIC_timer_calibration();
-                APIC_timer_reset();
+        } else if (arch_irq_type == xAPIC_IRQ) {
+                if (is_bsp) {
+                        if (TSC_DDL_support()) {
+                                pr_info("tsc ddl mode is supported\n");
+                                sys_timer_type = TIMER_TYPE_X86_TSC_DDL;
+                                TSC_timer_calibration();
+                        } else {
+                                APIC_timer_calibration();
+                        }
+                }
+
+                APIC_timer_init(sys_timer_type);
                 software_enable_APIC();
         } else if (arch_irq_type == x2APIC_IRQ) {
-                if (TSC_DDL_support()) {
-                        pr_info("tsc ddl mode is supported\n");
-                        /*
-                                same TODO
-                        */
+                if (is_bsp) {
+                        if (TSC_DDL_support()) {
+                                pr_info("tsc ddl mode is supported\n");
+                                sys_timer_type = TIMER_TYPE_X86_TSC_DDL;
+                                TSC_timer_calibration();
+                        } else {
+                                APIC_timer_calibration();
+                        }
                 }
-                APIC_timer_calibration();
-                APIC_timer_reset();
+                APIC_timer_init(sys_timer_type);
                 software_enable_APIC();
         }
-        get_rtc_time();
+        if (is_bsp)
+                get_rtc_time();
 }
 void arch_reset_timer(void)
 {
-        /*Do nothing*/
+        APIC_timer_reset(sys_timer_type);
 }

@@ -9,7 +9,6 @@
 #include <rendezvos/sync/cas_lock.h>
 #include <rendezvos/error.h>
 #include <modules/log/log.h>
-extern cpu_id_t BSP_ID;
 extern u64 boot_stack;
 DEFINE_PER_CPU(u64, boot_stack_bottom);
 DEFINE_PER_CPU(struct map_handler, Map_Handler);
@@ -582,8 +581,8 @@ static error_t vspace_clear_check_tlb(VSpace* vs, bool allow_self_use)
         lock_cas(&vs->tlb_cpu_mask_lock);
         if (allow_self_use && percpu(current_vspace) == vs) {
                 for (u32 cpu = 0; cpu < (u32)RENDEZVOS_MAX_CPU_NUMBER; cpu++) {
-                        if (!BITMAP_OPS(vs_tlb_cpu_bitmap, test)(
-                                    &vs->tlb_cpu_mask, cpu))
+                        if (!BITMAP_OPS(vs_tlb_cpu_bitmap,
+                                        test)(&vs->tlb_cpu_mask, cpu))
                                 continue;
                         if (cpu != (u32)self) {
                                 unlock_cas(&vs->tlb_cpu_mask_lock);
@@ -660,16 +659,14 @@ error_t del_vspace(VSpace** vs)
         if (vspace->root_radix) {
                 ret = vmm_radix_tree_delete(map_handler, vspace);
                 if (ret != REND_SUCCESS) {
-                        pr_error(
-                                "[VMM] del_vspace: radix delete failed e=%d\n",
-                                (int)ret);
+                        pr_error("[VMM] del_vspace: radix delete failed e=%d\n",
+                                 (int)ret);
                         return ret;
                 }
         }
 
         if (vspace->vspace_root_addr) {
-                error_t root_err =
-                        vspace_free_root_page(vspace, map_handler);
+                error_t root_err = vspace_free_root_page(vspace, map_handler);
                 if (root_err != REND_SUCCESS)
                         ret = root_err;
         }

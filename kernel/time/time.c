@@ -3,6 +3,7 @@
 volatile i64 jeffies = 0;
 u64 loop_per_jeffies;
 u64 udelay_max_loop;
+enum timer_type sys_timer_type = TIMER_TYPE_ONE_SHOT;
 DEFINE_PER_CPU(u64, tick_cnt);
 /*
     every core have a local apic, so every core have a tick_cnt
@@ -37,8 +38,10 @@ void rendezvos_time_init(void)
         percpu(tick_cnt) = jeffies;
         register_irq_handler(
                 timer_irq_num, rendezvos_do_time_irq, IRQ_NEED_EOI);
-        arch_init_timer();
-        loop_per_jeffies = timer_calibration();
+        bool is_bsp = (percpu(cpu_number) == BSP_ID);
+        arch_init_timer(is_bsp);
+        if (is_bsp)
+                loop_per_jeffies = timer_calibration();
         udelay_max_loop = (loop_per_jeffies * UDELAY_MAX * UDELAY_MUL)
                           >> UDELAY_SHIFT;
 }

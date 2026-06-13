@@ -113,7 +113,7 @@ static inline error_t map_handler_copy_page(struct map_handler* handler,
         return map_handler_copy_data_range(
                 handler, PADDR(dst_ppn), PADDR(src_ppn), PAGE_SIZE);
 }
-error_t map_handler_user_kernel_copy(VSpace *vs, u64 user_va, void *kbuf,
+error_t map_handler_user_kernel_copy(VSpace* vs, u64 user_va, void* kbuf,
                                      size_t len, bool to_user);
 
 /*
@@ -131,8 +131,9 @@ error_t map_handler_user_kernel_copy(VSpace *vs, u64 user_va, void *kbuf,
  *   - **Non-0**: `memcpy` the **user half of L0 only** (first-level entries)
  *     from that root into the new root. This duplicates **pointers** into the
  *     same lower-level page tables as the source; it is **not** a full
- *     vspace clone and does **not** by itself establish COW or radix tree truth.
- *     Upper layers (e.g. `vspace_clone` + radix tree) own fork/COW semantics.
+ *     vspace clone and does **not** by itself establish COW or radix tree
+ * truth. Upper layers (e.g. `vspace_clone` + radix tree) own fork/COW
+ * semantics.
  *
  * @param handler  Per-CPU map handler (must match the CPU doing the alloc).
  *

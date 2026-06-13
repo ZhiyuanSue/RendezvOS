@@ -1,15 +1,12 @@
-#include <modules/driver/uart/uart_16550A.h>
 #include <modules/log/log.h>
 #include <rendezvos/common.h>
 #include <rendezvos/mm/pmm.h>
 #include <rendezvos/task/tcb.h>
 #include <rendezvos/task/initcall.h>
-#include <arch/aarch64/sys_ctrl.h>
 #include <rendezvos/system/panic.h>
 extern int log_level;
 extern char _bss_start, _bss_end;
 extern char _end;
-extern cpu_id_t BSP_ID;
 
 void cmain(struct setup_info *arch_setup_info)
 {

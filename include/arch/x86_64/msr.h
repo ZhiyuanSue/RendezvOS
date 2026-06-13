@@ -17,6 +17,7 @@
 #define IA32_APIC_BASE_X_ENABLE      (1 << 11)
 #define IA32_APIC_BASE_X2_ENABLE     (1 << 10)
 #define IA32_APIC_BASE_BSP           (1 << 8)
+#define IA32_TSC_DEADLINE            (0x6E0)
 
 /*FS and GS*/
 #define MSR_FS_BASE        0xC0000100

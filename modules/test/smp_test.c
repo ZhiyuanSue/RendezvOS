@@ -2,7 +2,6 @@
 #include <rendezvos/limits.h>
 #include <rendezvos/task/tcb.h>
 
-extern cpu_id_t BSP_ID;
 extern int NR_CPU;
 extern volatile i64 jeffies;
 static struct smp_test_case smp_test[MAX_SMP_TEST_CASE] = {

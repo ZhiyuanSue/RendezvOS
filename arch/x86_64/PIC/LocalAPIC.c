@@ -119,12 +119,14 @@ bool map_LAPIC(void)
 }
 
 static tick_t apic_hz_per_second;
+static tick_t tsc_hz_per_second;
+static u32 init_cnt;
+#define APIC_CALIBRATE_MS   25
+#define APIC_CALIBRATE_TIME 10
 // Here we use PIT to calibration
 // if possible, use HPET instead
 tick_t APIC_timer_calibration(void)
 {
-#define APIC_CALIBRATE_MS   25
-#define APIC_CALIBRATE_TIME 10
         u32 timer_value = 0;
         u32 hz_cnt = 0;
         u64 total_hz_cnt = 0;
@@ -154,17 +156,69 @@ tick_t APIC_timer_calibration(void)
         apic_hz_per_second = total_hz_cnt;
         return total_hz_cnt;
 }
-void APIC_timer_reset(void)
+tick_t TSC_timer_calibration(void)
 {
-        u32 init_cnt = (apic_hz_per_second / INT_PER_SECOND) >> 4;
-        u32 lvt_timer_val = 0;
-        lvt_timer_val = set_mask_u32(lvt_timer_val, timer_irq_num);
-        lvt_timer_val =
-                set_mask_u32(lvt_timer_val, APIC_LVT_TIMER_MODE_PERIODIC);
+        tick_t tsc_count = 0;
+        tick_t tsc_start, tsc_end;
+        u32 hz_cnt = 0;
+        u64 total_hz_cnt = 0;
 
-        APIC_WR_REG(INIT_CNT, KERNEL_VIRT_OFFSET, init_cnt);
-        APIC_WR_REG(DCR, KERNEL_VIRT_OFFSET, APIC_DCR_DIV_16);
+        for (int i = 0; i < APIC_CALIBRATE_TIME; i++) {
+                tsc_start = rdtsc();
+                PIT_mdelay(APIC_CALIBRATE_MS);
+                tsc_end = rdtsc();
+                tsc_count = tsc_end - tsc_start;
+                hz_cnt = tsc_count * 1000ULL / APIC_CALIBRATE_MS;
+                total_hz_cnt += hz_cnt;
+        }
+        total_hz_cnt /= APIC_CALIBRATE_TIME;
+        print("apic(tsc) hz count is about %d.%03d MHZ\n",
+              (total_hz_cnt / (1000 * 1000)),
+              (total_hz_cnt / 1000) % 1000);
+        tsc_hz_per_second = total_hz_cnt;
+        return total_hz_cnt;
+}
+void APIC_timer_init(enum timer_type sys_timer_type)
+{
+        u32 lvt_timer_val = 0;
+        if (sys_timer_type == TIMER_TYPE_X86_TSC_DDL) {
+                init_cnt = (tsc_hz_per_second / INT_PER_SECOND);
+                lvt_timer_val = set_mask_u32(lvt_timer_val, timer_irq_num);
+                lvt_timer_val = set_mask_u32(lvt_timer_val,
+                                             APIC_LVT_TIMER_MODE_TSC_DDL);
+        } else { /* periodic or one shot*/
+                init_cnt = (apic_hz_per_second / INT_PER_SECOND) >> 4;
+                lvt_timer_val = set_mask_u32(lvt_timer_val, timer_irq_num);
+                if (sys_timer_type == TIMER_TYPE_PERIODIC) {
+                        lvt_timer_val = set_mask_u32(
+                                lvt_timer_val, APIC_LVT_TIMER_MODE_PERIODIC);
+                } else if (sys_timer_type == TIMER_TYPE_ONE_SHOT) {
+                        lvt_timer_val = set_mask_u32(
+                                lvt_timer_val, APIC_LVT_TIMER_MODE_ONE_SHOT);
+                } else {
+                        ;
+                }
+
+                APIC_WR_REG(INIT_CNT, KERNEL_VIRT_OFFSET, init_cnt);
+                APIC_WR_REG(DCR, KERNEL_VIRT_OFFSET, APIC_DCR_DIV_16);
+        }
         APIC_WR_REG(LVT_TIME, KERNEL_VIRT_OFFSET, lvt_timer_val);
+        if (sys_timer_type == TIMER_TYPE_X86_TSC_DDL) {
+                APIC_timer_reset(TIMER_TYPE_X86_TSC_DDL);
+        }
+}
+inline void APIC_timer_reset(enum timer_type sys_timer_type)
+{
+        if (sys_timer_type == TIMER_TYPE_X86_TSC_DDL) {
+                u64 tsc_time = rdtsc();
+                tsc_time += init_cnt;
+                wrmsrq(IA32_TSC_DEADLINE, tsc_time);
+        } else if (sys_timer_type == TIMER_TYPE_ONE_SHOT) {
+                APIC_WR_REG(INIT_CNT, KERNEL_VIRT_OFFSET, init_cnt);
+        } else {
+                /*Do Nothing for periodic type*/
+                ;
+        }
 }
 inline tick_t APIC_GET_HZ(void)
 {

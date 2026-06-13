@@ -16,6 +16,13 @@
 
 #include "rendezvos/trap/trap.h"
 
+// Timer type enum
+enum timer_type {
+        TIMER_TYPE_PERIODIC,
+        TIMER_TYPE_ONE_SHOT,
+        TIMER_TYPE_X86_TSC_DDL,
+};
+
 extern volatile i64 jeffies;
 extern u32 timer_irq_num;
 /*in rendezvos we only use 64 bit time cnt*/

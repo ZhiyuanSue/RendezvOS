@@ -182,10 +182,12 @@ void reset_APIC(void);
 void reset_xAPIC_LDR(void);
 
 /*apic timer part*/
-tick_t APIC_timer_calibration();
-void APIC_timer_reset();
+tick_t APIC_timer_calibration(void);
+tick_t TSC_timer_calibration(void);
+void APIC_timer_init(enum timer_type sys_timer_type);
+void APIC_timer_reset(enum timer_type sys_timer_type);
 tick_t APIC_GET_HZ();
-tick_t APIC_GET_CUR_TIME();
+tick_t APIC_GET_CUR_TIME(void);
 
 void software_enable_APIC(void);
 bool map_LAPIC(void);

@@ -685,8 +685,8 @@ vmm_radix_tree_bootstrap_shared_kernel_high_half(struct map_handler* handler,
  * @note Uses per-slot `radix_entry_lock` / `radix_entry_update`; never memcpy
  *       from another vspace's entry words. Requires bootstrap completed first.
  *       Idempotent if already correct. @ref vmm_radix_tree_delete does not
- * free this shared band; do not delete one vspace's L0 while others still depend
- *       on the same shared L1 subtree unless policy guarantees disjoint use.
+ * free this shared band; do not delete one vspace's L0 while others still
+ * depend on the same shared L1 subtree unless policy guarantees disjoint use.
  */
 error_t vmm_radix_tree_install_shared_kernel_high_half(VSpace* vs);
 

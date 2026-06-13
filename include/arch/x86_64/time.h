@@ -2,6 +2,7 @@
 #define _RENDEZVOS_ARCH_TIME_
 #include <modules/driver/timer/8254.h>
 #include <common/types.h>
+#include <common/stdbool.h>
 enum TIMER_SRC_type {
         TSC_timer = 0x1,
         ACPI_timer = 0x2,
@@ -19,6 +20,6 @@ struct rtc_time {
                 u16 year;
         };
 };
-void arch_init_timer(void);
+void arch_init_timer(bool is_bsp);
 struct rtc_time get_rtc_time();
 #endif

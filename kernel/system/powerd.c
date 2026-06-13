@@ -11,8 +11,6 @@
 #include <rendezvos/task/thread_loader.h>
 #include <rendezvos/system/panic.h>
 
-extern cpu_id_t BSP_ID;
-
 static void* powerd_thread(void* arg)
 {
         (void)arg;
