@@ -3,15 +3,6 @@
 #include <common/types.h>
 #include <common/mm.h>
 
-static inline void arch_tlb_flush_begin_barrier(void)
-{
-        ;
-}
-static inline void arch_tlb_flush_end_barrier(void)
-{
-        ;
-}
-
 static inline void invlpg(vaddr addr)
 {
         __asm__ __volatile__("invlpg (%0)" ::"r"(addr) : "memory");

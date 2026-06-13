@@ -16,7 +16,8 @@
 struct map_handler {
         cpu_id_t cpu_id;
         vaddr map_vaddr[4];
-        ppn_t handler_ppn[4];
+        ppn_t ppn_cache[4];
+        ppn_t mapped_ppn[4];
         struct pmm* pmm;
         spin_lock_t vspace_lock_node;
 };

@@ -28,7 +28,6 @@ union L1_entry l1;
 union L2_entry_huge l2_h;
 union L2_entry l2;
 union L3_entry l3;
-extern char MAP_L3_table;
 
 int arch_vmm_test(void)
 {
@@ -41,30 +40,38 @@ int arch_vmm_test(void)
         pr_info("[ TEST ] PASS: vmm:arch vmm test ok!\n");
         /*=== === === ===*/
 
-        /*TEST:memset the map l3 table to 0*/
+        /*
+         * Verify the per-CPU mapping window via map_handler APIs (not raw
+         * MAP_L3_table writes) so mapped_ppn[] stays in sync with slot PTEs.
+         */
         size_t alloced_page_number;
         ppn_t ppn = mem_zones[ZONE_NORMAL].pmm->pmm_alloc(
                 mem_zones[ZONE_NORMAL].pmm, 1, &alloced_page_number);
-        paddr page_paddr = PADDR(ppn);
-        vaddr page_vaddr = map_pages;
-        ENTRY_FLAGS_t flags = arch_decode_flags(
-                3, PAGE_ENTRY_READ | PAGE_ENTRY_VALID | PAGE_ENTRY_WRITE);
+        if (invalid_ppn(ppn)) {
+                pr_error("[ TEST ] init map: pmm_alloc fail\n");
+                goto arch_vmm_test_error;
+        }
 
-        arch_set_L3_entry(
-                page_paddr, page_vaddr, (union L3_entry *)&MAP_L3_table, flags);
-        u64 tmp_test = *((u64 *)page_vaddr);
-        *((u64 *)page_vaddr) = tmp_test + 1;
-        if (*((u64 *)page_vaddr) != tmp_test + 1)
+        vaddr win = map_handler_map_slot(&Map_Handler, 0, ppn);
+        if (!win) {
+                pr_error("[ TEST ] map_handler_map_slot fail\n");
+                mem_zones[ZONE_NORMAL].pmm->pmm_free(
+                        mem_zones[ZONE_NORMAL].pmm, ppn, 1);
+                goto arch_vmm_test_error;
+        }
+
+        u64 tmp_test = *((u64 *)win);
+        *((u64 *)win) = tmp_test + 1;
+        if (*((u64 *)win) != tmp_test + 1)
                 pr_error("[ TEST ] error write in during init map test\n");
-        memset((char *)page_vaddr, 0, PAGE_SIZE);
-        if (*((u64 *)page_vaddr))
+        memset((char *)win, 0, PAGE_SIZE);
+        if (*((u64 *)win))
                 pr_error("[ TEST ] error memset in during init map test\n");
+
+        map_handler_unmap_slot(&Map_Handler, 0);
         mem_zones[ZONE_NORMAL].pmm->pmm_free(
                 mem_zones[ZONE_NORMAL].pmm, ppn, 1);
 
-        arch_tlb_flush_begin_barrier();
-        arch_tlb_invalidate_kernel_page(page_vaddr);
-        arch_tlb_flush_end_barrier();
         pr_info("[ TEST ] PASS: vmm:init map system ok!\n");
         /*=== === === ===*/
         /*
