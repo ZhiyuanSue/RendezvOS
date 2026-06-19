@@ -1,6 +1,6 @@
 #ifndef _RENDEZVOS_ARCH_TIME_
 #define _RENDEZVOS_ARCH_TIME_
-#include <modules/driver/timer/8254.h>
+#include <arch/x86_64/PIC/PIT.h>
 #include <common/types.h>
 #include <common/stdbool.h>
 enum TIMER_SRC_type {

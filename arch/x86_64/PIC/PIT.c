@@ -1,7 +1,7 @@
-#ifdef _X86_64_
+
 #include <arch/x86_64/io.h>
 #include <arch/x86_64/io_port.h>
-#include <modules/driver/timer/8254.h>
+#include <arch/x86_64/PIC/PIT.h>
 
 void init_8254_cyclical(int freq)
 {
@@ -56,4 +56,3 @@ inline void PIT_mdelay(int ms)
                 t = read_8254_val();
         }
 }
-#endif

@@ -14,8 +14,9 @@ u64 arch_init_timer(bool is_bsp)
         if (arch_irq_type == NO_IRQ) {
                 return 0;
         } else if (arch_irq_type == PIC_IRQ) {
+                heartbeat_gap = PIT_TICK_RATE / INT_PER_SECOND;
                 if (is_bsp) {
-                        init_8254_cyclical(1000);
+                        init_8254_one_shot(heartbeat_gap);
                         enable_PIC_IRQ(timer_irq_num);
                 }
         } else if (arch_irq_type == xAPIC_IRQ) {
@@ -50,5 +51,9 @@ u64 arch_init_timer(bool is_bsp)
 }
 void arch_reset_timer(u64 next_event_gap)
 {
-        APIC_timer_reset(sys_timer_type, next_event_gap);
+        if (arch_irq_type != PIC_IRQ) {
+                APIC_timer_reset(sys_timer_type, next_event_gap);
+        } else if (arch_irq_type == PIC_IRQ) {
+                init_8254_one_shot(next_event_gap);
+        }
 }
