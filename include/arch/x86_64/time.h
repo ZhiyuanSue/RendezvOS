@@ -20,6 +20,6 @@ struct rtc_time {
                 u16 year;
         };
 };
-void arch_init_timer(bool is_bsp);
+u64 arch_init_timer(bool is_bsp);
 struct rtc_time get_rtc_time();
 #endif

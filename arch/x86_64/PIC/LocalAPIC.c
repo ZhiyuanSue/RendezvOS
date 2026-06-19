@@ -120,7 +120,6 @@ bool map_LAPIC(void)
 
 static tick_t apic_hz_per_second;
 static tick_t tsc_hz_per_second;
-static u32 init_cnt;
 #define APIC_CALIBRATE_MS   25
 #define APIC_CALIBRATE_TIME 10
 // Here we use PIT to calibration
@@ -178,9 +177,10 @@ tick_t TSC_timer_calibration(void)
         tsc_hz_per_second = total_hz_cnt;
         return total_hz_cnt;
 }
-void APIC_timer_init(enum timer_type sys_timer_type)
+u64 APIC_timer_init(enum timer_type sys_timer_type)
 {
         u32 lvt_timer_val = 0;
+        u32 init_cnt;
         if (sys_timer_type == TIMER_TYPE_X86_TSC_DDL) {
                 init_cnt = (tsc_hz_per_second / INT_PER_SECOND);
                 lvt_timer_val = set_mask_u32(lvt_timer_val, timer_irq_num);
@@ -204,17 +204,18 @@ void APIC_timer_init(enum timer_type sys_timer_type)
         }
         APIC_WR_REG(LVT_TIME, KERNEL_VIRT_OFFSET, lvt_timer_val);
         if (sys_timer_type == TIMER_TYPE_X86_TSC_DDL) {
-                APIC_timer_reset(TIMER_TYPE_X86_TSC_DDL);
+                APIC_timer_reset(sys_timer_type, init_cnt);
         }
+        return (u64)init_cnt;
 }
-inline void APIC_timer_reset(enum timer_type sys_timer_type)
+inline void APIC_timer_reset(enum timer_type sys_timer_type, u64 next_event_gap)
 {
         if (sys_timer_type == TIMER_TYPE_X86_TSC_DDL) {
                 u64 tsc_time = rdtsc();
-                tsc_time += init_cnt;
+                tsc_time += next_event_gap;
                 wrmsrq(IA32_TSC_DEADLINE, tsc_time);
         } else if (sys_timer_type == TIMER_TYPE_ONE_SHOT) {
-                APIC_WR_REG(INIT_CNT, KERNEL_VIRT_OFFSET, init_cnt);
+                APIC_WR_REG(INIT_CNT, KERNEL_VIRT_OFFSET, next_event_gap);
         } else {
                 /*Do Nothing for periodic type*/
                 ;

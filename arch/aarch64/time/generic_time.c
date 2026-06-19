@@ -27,7 +27,7 @@ tick_t get_cval(void)
         mrs("CNTV_CVAL_EL0", cntv_cval);
         return cntv_cval;
 }
-void arch_init_timer(bool is_bsp)
+u64 arch_init_timer(bool is_bsp)
 {
         u64 time_ctrl_value = CNTV_CTL_EL0_ENABLE;
         if (is_bsp) {
@@ -39,8 +39,9 @@ void arch_init_timer(bool is_bsp)
         }
         msr("CNTP_TVAL_EL0", time_irq_cycle);
         msr("CNTP_CTL_EL0", time_ctrl_value);
+        return time_irq_cycle;
 }
-void arch_reset_timer(void)
+void arch_reset_timer(u64 next_event_gap)
 {
-        msr("CNTP_TVAL_EL0", time_irq_cycle);
+        msr("CNTP_TVAL_EL0", next_event_gap);
 }

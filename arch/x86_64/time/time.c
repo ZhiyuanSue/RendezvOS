@@ -8,10 +8,11 @@
 extern enum IRQ_type arch_irq_type;
 extern enum timer_type sys_timer_type;
 u32 timer_irq_num = _8259A_MASTER_IRQ_NUM_ + _8259A_TIMER_;
-void arch_init_timer(bool is_bsp)
+u64 arch_init_timer(bool is_bsp)
 {
+        u64 heartbeat_gap = 0;
         if (arch_irq_type == NO_IRQ) {
-                return;
+                return 0;
         } else if (arch_irq_type == PIC_IRQ) {
                 if (is_bsp) {
                         init_8254_cyclical(1000);
@@ -28,7 +29,7 @@ void arch_init_timer(bool is_bsp)
                         }
                 }
 
-                APIC_timer_init(sys_timer_type);
+                heartbeat_gap = APIC_timer_init(sys_timer_type);
                 software_enable_APIC();
         } else if (arch_irq_type == x2APIC_IRQ) {
                 if (is_bsp) {
@@ -40,13 +41,14 @@ void arch_init_timer(bool is_bsp)
                                 APIC_timer_calibration();
                         }
                 }
-                APIC_timer_init(sys_timer_type);
+                heartbeat_gap = APIC_timer_init(sys_timer_type);
                 software_enable_APIC();
         }
         if (is_bsp)
                 get_rtc_time();
+        return heartbeat_gap;
 }
-void arch_reset_timer(void)
+void arch_reset_timer(u64 next_event_gap)
 {
-        APIC_timer_reset(sys_timer_type);
+        APIC_timer_reset(sys_timer_type, next_event_gap);
 }

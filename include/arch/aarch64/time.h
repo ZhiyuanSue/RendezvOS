@@ -10,5 +10,5 @@
 #define CNTV_CTL_EL0_IMASK   (0x1 << 1)
 #define CNTV_CTL_EL0_ISTATUS (0x1 << 2)
 
-void arch_init_timer(bool is_bsp);
+u64 arch_init_timer(bool is_bsp);
 #endif

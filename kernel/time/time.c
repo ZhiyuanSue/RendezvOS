@@ -3,6 +3,7 @@
 volatile i64 jeffies = 0;
 u64 loop_per_jeffies;
 u64 udelay_max_loop;
+u64 heartbeat_gap;
 enum timer_type sys_timer_type = TIMER_TYPE_ONE_SHOT;
 DEFINE_PER_CPU(u64, tick_cnt);
 /*
@@ -39,7 +40,7 @@ void rendezvos_time_init(void)
         register_irq_handler(
                 timer_irq_num, rendezvos_do_time_irq, IRQ_NEED_EOI);
         bool is_bsp = (percpu(cpu_number) == BSP_ID);
-        arch_init_timer(is_bsp);
+        heartbeat_gap = arch_init_timer(is_bsp);
         if (is_bsp)
                 loop_per_jeffies = timer_calibration();
         udelay_max_loop = (loop_per_jeffies * UDELAY_MAX * UDELAY_MUL)
@@ -54,7 +55,7 @@ void rendezvos_do_time_irq(struct trap_frame *tf)
                 jeffies = percpu(tick_cnt);
         }
         /*TODO: maybe need add the unlock*/
-        arch_reset_timer();
+        arch_reset_timer(heartbeat_gap);
 }
 void __udelay(u64 lpj, u64 us)
 {
