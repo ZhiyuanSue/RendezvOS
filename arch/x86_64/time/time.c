@@ -54,6 +54,17 @@ void arch_reset_timer(u64 next_event_gap)
         if (arch_irq_type != PIC_IRQ) {
                 APIC_timer_reset(sys_timer_type, next_event_gap);
         } else if (arch_irq_type == PIC_IRQ) {
+                if (percpu(cpu_number) != BSP_ID)
+                        return;
+                /*for smp, it must use apic, so if pic mode, it must be bsp*/
                 init_8254_one_shot(next_event_gap);
         }
+}
+tick_t arch_timer_read(void)
+{
+        return APIC_timer_read(sys_timer_type);
+}
+tick_t arch_timer_get_hz(void)
+{
+        return APIC_timer_hz(sys_timer_type);
 }

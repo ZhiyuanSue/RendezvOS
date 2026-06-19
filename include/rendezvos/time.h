@@ -33,7 +33,10 @@ extern u32 timer_irq_num;
 
 typedef u64 tick_t;
 void rendezvos_time_init(void);
+u64 arch_init_timer(bool is_bsp);
 void arch_reset_timer(u64 next_event_gap);
+tick_t arch_timer_read(void);
+tick_t arch_timer_get_hz(void);
 void rendezvos_do_time_irq(struct trap_frame *tf);
 #define SYS_TIME_MS_PER_INT 10
 #define INT_PER_SECOND      (1000 / SYS_TIME_MS_PER_INT)

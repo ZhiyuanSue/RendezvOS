@@ -177,6 +177,8 @@ tick_t TSC_timer_calibration(void)
         tsc_hz_per_second = total_hz_cnt;
         return total_hz_cnt;
 }
+DEFINE_PER_CPU(tick_t, apic_timer_base);
+DEFINE_PER_CPU(tick_t, apic_timer_gap);
 u64 APIC_timer_init(enum timer_type sys_timer_type)
 {
         u32 lvt_timer_val = 0;
@@ -198,7 +200,8 @@ u64 APIC_timer_init(enum timer_type sys_timer_type)
                 } else {
                         ;
                 }
-
+                percpu(apic_timer_base) = 0;
+                percpu(apic_timer_gap) = init_cnt;
                 APIC_WR_REG(INIT_CNT, KERNEL_VIRT_OFFSET, init_cnt);
                 APIC_WR_REG(DCR, KERNEL_VIRT_OFFSET, APIC_DCR_DIV_16);
         }
@@ -208,6 +211,23 @@ u64 APIC_timer_init(enum timer_type sys_timer_type)
         }
         return (u64)init_cnt;
 }
+inline tick_t APIC_timer_hz(enum timer_type sys_timer_type)
+{
+        if (sys_timer_type == TIMER_TYPE_X86_TSC_DDL) {
+                return apic_hz_per_second >> 4;
+        } else {
+                return tsc_hz_per_second;
+        }
+}
+inline tick_t APIC_timer_read(enum timer_type sys_timer_type)
+{
+        if (sys_timer_type == TIMER_TYPE_X86_TSC_DDL) {
+                return rdtsc();
+        } else {
+                return percpu(apic_timer_base) + percpu(apic_timer_gap)
+                       - (tick_t)APIC_RD_REG(CURR_CNT, KERNEL_VIRT_OFFSET);
+        }
+}
 inline void APIC_timer_reset(enum timer_type sys_timer_type, u64 next_event_gap)
 {
         if (sys_timer_type == TIMER_TYPE_X86_TSC_DDL) {
@@ -215,19 +235,14 @@ inline void APIC_timer_reset(enum timer_type sys_timer_type, u64 next_event_gap)
                 tsc_time += next_event_gap;
                 wrmsrq(IA32_TSC_DEADLINE, tsc_time);
         } else if (sys_timer_type == TIMER_TYPE_ONE_SHOT) {
+                percpu(apic_timer_base) += percpu(apic_timer_gap);
+                percpu(apic_timer_gap) = next_event_gap;
                 APIC_WR_REG(INIT_CNT, KERNEL_VIRT_OFFSET, next_event_gap);
         } else {
-                /*Do Nothing for periodic type*/
-                ;
+                /*only record the timer add for periodic type*/
+                percpu(apic_timer_base) += percpu(apic_timer_gap);
+                percpu(apic_timer_gap) = next_event_gap;
         }
-}
-inline tick_t APIC_GET_HZ(void)
-{
-        return apic_hz_per_second;
-}
-inline tick_t APIC_GET_CUR_TIME(void)
-{
-        return APIC_RD_REG(CURR_CNT, KERNEL_VIRT_OFFSET);
 }
 u64 isr_reg[8] = {
         APIC_REG_ISR_0,
