@@ -41,6 +41,25 @@ error_t ipc_transfer_message(Thread_Base* sender, Thread_Base* receiver);
 error_t send_msg(Message_Port_t* port);
 
 /**
+ * @brief Non-blocking send: same preconditions and transfer path as `send_msg`,
+ * but returns `-E_REND_AGAIN` instead of blocking on the port when no receiver
+ * is waiting.
+ *
+ * The caller must `enqueue_msg_for_send(msg)` before this call (same as
+ * `send_msg`). `ipc_transfer_message` pulls from the current thread's send
+ * queue. If this returns `-E_REND_AGAIN`, the message remains enqueued on
+ * the send queue unless the caller removes it.
+ *
+ * On success the matched receiver moves from `thread_status_block_on_receive`
+ * to `thread_status_ready`.
+ *
+ * @param port Port to send on.
+ * @return REND_SUCCESS message transferred; `-E_REND_AGAIN` if no receiver is
+ *         waiting; other negative errors on failure.
+ */
+error_t ipc_try_send_msg(Message_Port_t* port);
+
+/**
  * @brief Receive a message from the port. After return REND_SUCCESS, please
  * dequeue the message from current thread's recv queue (e.g. via
  * dequeue_recv_msg).
@@ -50,15 +69,18 @@ error_t send_msg(Message_Port_t* port);
 error_t recv_msg(Message_Port_t* port);
 
 /**
- * @brief Cancel IPC of a thread blocked on send or recv. Async: after return,
- * check target_thread's status until it is no longer thread_status_cancel_ipc.
- * @note No implementation in tree yet (see commented stub in ipc.c). Do not
- *       call until linked; use thread exit / teardown paths instead.
- * @param target_thread Thread to cancel IPC for.
- * @return REND_SUCCESS thread dequeued or status set to cancel_ipc; -E_IN_PARAM
- *         if target_thread is NULL; -E_RENDEZVOS on internal error.
+ * @brief Non-blocking receive: try to match a sender on @p port and pull one
+ * message without enqueueing the receiver on the port wait queue.
+ *
+ * On success the matched sender is moved from `thread_status_block_on_send` to
+ * `thread_status_ready`; the caller must `dequeue_recv_msg()` to obtain the
+ * message (same as `recv_msg`).
+ *
+ * @param port Port to receive from.
+ * @return REND_SUCCESS a message was received; `-E_REND_AGAIN` if no sender is
+ *         waiting; other negative errors on failure.
  */
-error_t cancel_ipc(Thread_Base* target_thread);
+error_t ipc_try_recv_msg(Message_Port_t* port);
 
 /**
  * @brief Enqueue a message to the current thread's send queue (before

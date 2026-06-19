@@ -14,9 +14,9 @@ void* BSP_test(void* arg)
         core_test_phase_set(CORE_TEST_PHASE_UPPER_TESTS);
 
         pr_info("[Core test] Waiting for other tests to complete\n");
-        while (core_test_phase_get() < CORE_TEST_PHASE_DONE) {
-                schedule(percpu(core_tm));
-        }
+        // while (core_test_phase_get() < CORE_TEST_PHASE_DONE) {
+        //         schedule(percpu(core_tm));
+        // }
 
 #ifdef RENDEZVOS_CORE_AUTO_POWEROFF
         pr_info("[Core test] All tests completed, requesting shutdown\n");

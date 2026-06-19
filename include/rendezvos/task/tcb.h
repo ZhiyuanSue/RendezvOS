@@ -32,7 +32,6 @@ enum thread_status_base {
         thread_status_zombie,
         thread_status_block_on_send,
         thread_status_block_on_receive,
-        thread_status_cancel_ipc,
         thread_status_suspend,
         thread_status_exit,
 };

@@ -46,7 +46,8 @@ Core docs describe **mechanisms only**—not Linux syscall numbers, errno tables
 1. `DEFINE_INIT` → `gen_thread_from_func(..., entry, name, percpu(core_tm), arg)`.
 2. `port_table_lookup(global_port_table, name)` or `create_message_port` + `register_port`.
 3. Loop: `recv_msg(port)` → `dequeue_recv_msg()` → dispatch → `kmsg_create` → `enqueue_msg_for_send` → `send_msg`.
-4. Shutdown: stop loop, `unregister_port`, `delete_thread`.
+4. Optional non-blocking delivery (timers, cancel): `enqueue_msg_for_send` then `ipc_try_send_msg(port)` — see [`ipc.md`](ipc.md).
+5. Shutdown: stop loop, `unregister_port`, `delete_thread`.
 
 Details: [`ipc.md`](ipc.md).
 

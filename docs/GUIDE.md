@@ -116,8 +116,8 @@ Update this table when adding or changing public symbols.
 | Thread | Teardown | `delete_thread` `delete_task` | [`task-thread.md`](task-thread.md) | `stable` |
 | Scheduler | Block / run | `thread_set_status` `schedule` | [`task-thread.md`](task-thread.md) | `code-only` |
 | IPC | Port table | `global_port_table` `port_table_lookup` `register_port` | [`ipc.md`](ipc.md) | `stable` |
-| IPC | Send / recv | `enqueue_msg_for_send` `send_msg` `recv_msg` `dequeue_recv_msg` | [`ipc.md`](ipc.md) | `stable` |
-| IPC | Cancel blocked IPC | `cancel_ipc` (decl only; unimplemented) | [`ipc.md`](ipc.md) | `code-only` |
+| IPC | Send / recv (blocking) | `enqueue_msg_for_send` `send_msg` `recv_msg` `dequeue_recv_msg` | [`ipc.md`](ipc.md) | `stable` |
+| IPC | Send / recv (non-blocking) | `ipc_try_send_msg` `ipc_try_recv_msg` | [`ipc.md`](ipc.md) | `stable` |
 | IPC | Payload | `ipc/kmsg.h` `ipc/ipc_serial.h` | [`ipc.md`](ipc.md) | `doc` |
 | Registry | Name index | `registry/name_index.h` | §7 | `code-only` |
 | MM | Clone address space | `mm/vmm.h` `clone_vspace` | [`memory.md`](memory.md) | `stable` |

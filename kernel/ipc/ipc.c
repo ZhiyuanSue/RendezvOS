@@ -89,12 +89,6 @@ Ipc_Request_t* ipc_port_try_match(Message_Port_t* port, u16 my_ipc_state)
                         ref_put(&dequeued_node->refcount, free_ipc_request);
                         continue;
                 }
-                if (thread_set_status_with_expect(opposite_thread,
-                                                  thread_status_cancel_ipc,
-                                                  thread_status_ready)) {
-                        ref_put(&dequeued_node->refcount, free_ipc_request);
-                        continue;
-                }
                 u64 thread_port =
                         atomic64_cas((volatile u64*)&opposite_thread->port_ptr,
                                      (u64)port,
@@ -397,6 +391,47 @@ error_t send_msg(Message_Port_t* port)
         }
         return REND_SUCCESS;
 }
+error_t ipc_try_send_msg(Message_Port_t* port)
+{
+        if (!port) {
+                return -E_IN_PARAM;
+        }
+        Thread_Base* sender = get_cpu_current_thread();
+        if (!sender) {
+                return -E_REND_AGAIN;
+        }
+        Ipc_Request_t* receiver_request = NULL;
+        while (1) {
+                if (!receiver_request) {
+                        receiver_request =
+                                ipc_port_try_match(port, IPC_PORT_STATE_SEND);
+                }
+                if (!receiver_request) {
+                        return -E_REND_AGAIN;
+                }
+                error_t try_transfer_result =
+                        ipc_transfer_message(sender, receiver_request->thread);
+                switch (try_transfer_result) {
+                case REND_SUCCESS: {
+                        thread_set_status_with_expect(
+                                receiver_request->thread,
+                                thread_status_block_on_receive,
+                                thread_status_ready);
+                        ref_put(&receiver_request->ms_queue_node.refcount,
+                                free_ipc_request);
+                        return REND_SUCCESS;
+                }
+                case -E_REND_AGAIN: {
+                        continue;
+                }
+                default: {
+                        ref_put(&receiver_request->ms_queue_node.refcount,
+                                free_ipc_request);
+                        return try_transfer_result;
+                }
+                }
+        }
+}
 error_t recv_msg(Message_Port_t* port)
 {
         if (!port) {
@@ -482,6 +517,52 @@ error_t recv_msg(Message_Port_t* port)
 
         return REND_SUCCESS;
 }
+error_t ipc_try_recv_msg(Message_Port_t* port)
+{
+        if (!port) {
+                return -E_IN_PARAM;
+        }
+        Thread_Base* receiver = get_cpu_current_thread();
+        if (!receiver) {
+                return -E_REND_AGAIN;
+        }
+        Ipc_Request_t* sender_request = NULL;
+        while (1) {
+                if (!sender_request) {
+                        sender_request =
+                                ipc_port_try_match(port, IPC_PORT_STATE_RECV);
+                }
+                if (!sender_request) {
+                        return -E_REND_AGAIN;
+                }
+                error_t try_transfer_result =
+                        ipc_transfer_message(sender_request->thread, receiver);
+                switch (try_transfer_result) {
+                case REND_SUCCESS: {
+                        thread_set_status_with_expect(
+                                sender_request->thread,
+                                thread_status_block_on_send,
+                                thread_status_ready);
+                        ref_put(&sender_request->ms_queue_node.refcount,
+                                free_ipc_request);
+                        return REND_SUCCESS;
+                }
+                case -E_REND_NO_MSG: {
+                        continue;
+                }
+                case -E_REND_AGAIN: {
+                        ref_put(&sender_request->ms_queue_node.refcount,
+                                free_ipc_request);
+                        return -E_RENDEZVOS;
+                }
+                default: {
+                        ref_put(&sender_request->ms_queue_node.refcount,
+                                free_ipc_request);
+                        return try_transfer_result;
+                }
+                }
+        }
+}
 
 error_t enqueue_msg_for_send(Message_t* msg)
 {
@@ -511,58 +592,3 @@ Message_t* dequeue_recv_msg(void)
         ms_queue_node_t* msg_node = (ms_queue_node_t*)tp_get_ptr(dp);
         return container_of(msg_node, Message_t, ms_queue_node);
 }
-// error_t cancel_ipc(Thread_Base* target_thread)
-// {
-//         /*
-//         first we need to check the thread's status, only blocked on
-//         send/recv can we cancel the ipc. second, if the thread is the
-//         head of the waiting queue, we can remove it from the queue
-//         even there's no opposite thread try to remove it.
-//         */
-//         /*
-//         Remember:
-//         You need to check the thread's status and decide how to
-//         schedule after this function, only it's ready means the
-//         target thread's ipc have canceled
-//         */
-//         if (!target_thread) {
-//                 return -E_IN_PARAM;
-//         }
-//         Message_Port_t* port =
-//         (Message_Port_t*)(target_thread->port_ptr); tagged_ptr_t
-//         dequeue_head_ptr = tp_new_none(); if
-//         (thread_set_status_with_expect(target_thread,
-//                                           thread_status_block_on_send,
-//                                           thread_status_cancel_ipc))
-//                                           {
-//                 dequeue_head_ptr = msq_dequeue_check_head(
-//                         &port->thread_queue,
-//                         MSQ_CHECK_FIELD_PTR,
-//                         tp_new((void*)(&target_thread->ms_queue_node),
-//                                IPC_PORT_STATE_SEND),
-//                         NULL);
-
-//         } else if (thread_set_status_with_expect(target_thread,
-//                                                  thread_status_block_on_receive,
-//                                                  thread_status_cancel_ipc))
-//                                                  {
-//                 dequeue_head_ptr = msq_dequeue_check_head(
-//                         &port->thread_queue,
-//                         MSQ_CHECK_FIELD_PTR,
-//                         tp_new((void*)(&target_thread->ms_queue_node),
-//                                IPC_PORT_STATE_RECV),
-//                         NULL);
-//         }
-//         if (!tp_is_none(dequeue_head_ptr)) {
-//                 ref_put(&((ms_queue_node_t*)tp_get_ptr(dequeue_head_ptr))
-//                                  ->refcount,
-//                         NULL);
-//                 if (!thread_set_status_with_expect(target_thread,
-//                                                    thread_status_cancel_ipc,
-//                                                    thread_status_ready))
-//                                                    {
-//                         return -E_RENDEZVOS;
-//                 }
-//         }
-//         return REND_SUCCESS;
-// }

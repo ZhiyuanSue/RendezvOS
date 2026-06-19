@@ -244,7 +244,7 @@ static error_t core_free_pages(void* p, size_t page_num, VSpace* vs)
                 return -E_IN_PARAM;
         }
 
-        error_t err;
+        error_t err = REND_SUCCESS;
         vaddr vaddr_end;
         if (!vmm_radix_tree_calculate_end_check(
                     (vaddr)p, page_num, &vaddr_end)) {
@@ -361,7 +361,7 @@ static int bytes_to_pages(size_t Bytes)
 static void page_chunk_rb_tree_insert(struct page_chunk_node* node,
                                       struct rb_root* page_chunk_root)
 {
-        struct rb_node** new = &page_chunk_root->rb_root, *parent = NULL;
+        struct rb_node **new = &page_chunk_root->rb_root, *parent = NULL;
         u64 key = node->page_addr;
         while (*new) {
                 parent = *new;
@@ -489,7 +489,7 @@ error_t chunk_free_obj(struct object_header* obj, struct mem_chunk* chunk)
         only used for kernel!!!!!!
         */
         if (chunk->magic != CHUNK_MAGIC) {
-                pr_error("[ERROR]illegal chunk magic\n");
+                pr_error("[ ERROR ]illegal chunk magic\n");
                 return -E_IN_PARAM;
         }
         list_del(&obj->obj_list);
