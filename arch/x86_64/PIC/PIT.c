@@ -2,7 +2,13 @@
 #include <arch/x86_64/io.h>
 #include <arch/x86_64/io_port.h>
 #include <arch/x86_64/PIC/PIT.h>
-
+u64 pit_timer_base = 0;
+u64 pit_timer_gap;
+void PIT_update_timer(u16 step)
+{
+        pit_timer_base += pit_timer_gap;
+        pit_timer_gap = step;
+}
 void init_8254_cyclical(int freq)
 {
         u16 t = PIT_TICK_RATE / freq;
@@ -55,4 +61,9 @@ inline void PIT_mdelay(int ms)
         while (t >= 0) {
                 t = read_8254_val();
         }
+}
+inline u64 PIT_timer_read(void)
+{
+        init_8254_read();
+        return pit_timer_base + pit_timer_gap - read_8254_val();
 }

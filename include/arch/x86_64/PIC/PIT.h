@@ -19,5 +19,11 @@ void init_8254_one_shot(u16 t);
 void init_8254_read();
 u16 read_8254_val();
 void PIT_mdelay(int ms);
+void PIT_update_timer(u16 step);
+u64 PIT_timer_read(void);
 #define PIT_TICK_RATE 1193181
+static inline u64 PIT_get_hz()
+{
+        return PIT_TICK_RATE;
+}
 #endif

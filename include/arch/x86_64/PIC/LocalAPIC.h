@@ -186,7 +186,7 @@ tick_t APIC_timer_calibration(void);
 tick_t TSC_timer_calibration(void);
 
 u64 APIC_timer_init(enum timer_type sys_timer_type);
-inline tick_t APIC_timer_hz(enum timer_type sys_timer_type);
+tick_t APIC_timer_hz(enum timer_type sys_timer_type);
 tick_t APIC_timer_read(enum timer_type sys_timer_type);
 void APIC_timer_reset(enum timer_type sys_timer_type, tick_t next_event_gap);
 

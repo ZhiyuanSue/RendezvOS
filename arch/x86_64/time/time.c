@@ -58,13 +58,24 @@ void arch_reset_timer(u64 next_event_gap)
                         return;
                 /*for smp, it must use apic, so if pic mode, it must be bsp*/
                 init_8254_one_shot(next_event_gap);
+                PIT_update_timer((u16)next_event_gap);
         }
 }
 tick_t arch_timer_read(void)
 {
-        return APIC_timer_read(sys_timer_type);
+        if (arch_irq_type != PIC_IRQ) {
+                return APIC_timer_read(sys_timer_type);
+        } else if (arch_irq_type == PIC_IRQ) {
+                return PIT_timer_read();
+        }
+        return 0;
 }
 tick_t arch_timer_get_hz(void)
 {
-        return APIC_timer_hz(sys_timer_type);
+        if (arch_irq_type != PIC_IRQ) {
+                return APIC_timer_hz(sys_timer_type);
+        } else if (arch_irq_type == PIC_IRQ) {
+                return PIT_get_hz();
+        }
+        return 0;
 }

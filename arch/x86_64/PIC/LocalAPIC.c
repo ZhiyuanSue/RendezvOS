@@ -214,9 +214,9 @@ u64 APIC_timer_init(enum timer_type sys_timer_type)
 inline tick_t APIC_timer_hz(enum timer_type sys_timer_type)
 {
         if (sys_timer_type == TIMER_TYPE_X86_TSC_DDL) {
-                return apic_hz_per_second >> 4;
-        } else {
                 return tsc_hz_per_second;
+        } else {
+                return apic_hz_per_second >> 4;
         }
 }
 inline tick_t APIC_timer_read(enum timer_type sys_timer_type)
