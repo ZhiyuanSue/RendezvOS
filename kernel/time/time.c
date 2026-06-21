@@ -4,6 +4,7 @@
 #include <common/dsa/rb_tree.h>
 #include <common/dsa/list.h>
 #include <common/string.h>
+#include <modules/log/log.h>
 volatile i64 jeffies = 0;
 u64 loop_per_jeffies;
 u64 udelay_max_loop;
@@ -12,7 +13,7 @@ u64 clock_hz;
 enum timer_type sys_timer_type = TIMER_TYPE_ONE_SHOT;
 DEFINE_PER_CPU(u64, tick_cnt);
 DEFINE_PER_CPU(u64, boot_base_time);
-
+DEFINE_PER_CPU(struct rendezvos_timer_event, heartbeat_event);
 DEFINE_PER_CPU(struct rb_root, event_tree_root);
 
 static bool timer_event_is_rb_head(const rendezvos_timer_event *event,
@@ -77,6 +78,17 @@ static void timer_event_rb_tree_remove(rendezvos_timer_event *event,
         RB_Remove(&event->node, root);
         event->node.black_height = event->node.rb_parent_color = 0;
         event->node.left_child = event->node.right_child = NULL;
+}
+
+static rendezvos_timer_event *timer_event_rb_tree_first(struct rb_root *root)
+{
+        struct rb_node *node = root->rb_root;
+
+        if (!node)
+                return NULL;
+        while (node->left_child)
+                node = node->left_child;
+        return container_of(node, rendezvos_timer_event, node);
 }
 
 /*timer event ops*/
@@ -179,11 +191,16 @@ void rendezvos_time_init(void)
                 timer_irq_num, rendezvos_do_time_irq, IRQ_NEED_EOI);
         bool is_bsp = (percpu(cpu_number) == BSP_ID);
         heartbeat_gap = arch_init_timer(is_bsp);
+
+        percpu(boot_base_time) = arch_timer_read();
+        rendezvos_timer_event_init(&percpu(heartbeat_event));
+        percpu(heartbeat_event).periodic_gap = heartbeat_gap;
+        rendezvos_timer_event_add(&percpu(heartbeat_event),
+                                  percpu(boot_base_time) + heartbeat_gap);
         if (is_bsp) {
                 loop_per_jeffies = timer_calibration();
                 clock_hz = arch_timer_get_hz();
         }
-        percpu(boot_base_time) = arch_timer_read();
         udelay_max_loop = (loop_per_jeffies * UDELAY_MAX * UDELAY_MUL)
                           >> UDELAY_SHIFT;
 }
@@ -191,20 +208,55 @@ void rendezvos_do_time_irq(struct trap_frame *tf)
 {
         u64 local_tick;
         i64 global_tick;
+        struct rb_root *root = &percpu(event_tree_root);
+        rendezvos_timer_event *current_event;
+        rendezvos_timer_event *next_event;
+        tick_t now;
+        u64 next_event_gap;
+        // print("go into do timer irq\n");
 
         (void)tf;
-        local_tick = ++percpu(tick_cnt);
-        global_tick = (i64)atomic64_load((volatile const u64 *)&jeffies);
-        while (time_after(local_tick, (u64)global_tick)) {
-                if (atomic64_cas((volatile u64 *)&jeffies,
-                                 (u64)global_tick,
-                                 local_tick)
-                    == (u64)global_tick)
-                        break;
-                global_tick =
-                        (i64)atomic64_load((volatile const u64 *)&jeffies);
+
+        /*handle current and some might expired event*/
+        now = arch_timer_read();
+        while ((current_event = timer_event_rb_tree_first(root))
+               && !time_before(now, current_event->expired)) {
+                if (current_event->periodic_gap) {
+                        rendezvos_timer_event_change(
+                                current_event,
+                                now + current_event->periodic_gap);
+                        if (current_event != &percpu(heartbeat_event))
+                                continue;
+                        local_tick = ++percpu(tick_cnt);
+                        global_tick = (i64)atomic64_load(
+                                (volatile const u64 *)&jeffies);
+                        while (time_after(local_tick, (u64)global_tick)) {
+                                if (atomic64_cas((volatile u64 *)&jeffies,
+                                                 (u64)global_tick,
+                                                 local_tick)
+                                    == (u64)global_tick)
+                                        break;
+                                global_tick = (i64)atomic64_load(
+                                        (volatile const u64 *)&jeffies);
+                        }
+                } else {
+                        rendezvos_timer_event_del(current_event);
+                        /* TODO: PORT delivery via timer_delivery kthread */
+                }
         }
-        arch_reset_timer(heartbeat_gap);
+
+        now = arch_timer_read();
+        next_event = timer_event_rb_tree_first(root);
+        if (!next_event) {
+                /*impossible,because we must reput the heartbeat into it*/
+                arch_reset_timer(heartbeat_gap);
+                return;
+        }
+        if (time_before(now, next_event->expired))
+                next_event_gap = next_event->expired - now;
+        else
+                next_event_gap = 1;
+        arch_reset_timer(next_event_gap);
 }
 tick_t rendezvos_time_now(void)
 {

@@ -45,6 +45,8 @@ typedef struct rendezvos_timer_event {
         struct rb_node node;
         struct list_entry same_expired_list;
         tick_t expired;
+        /*if periodic gap is not 0, means we need to readd it to the rb tree*/
+        u64 periodic_gap;
 } rendezvos_timer_event;
 
 void rendezvos_timer_event_init(rendezvos_timer_event *event);
