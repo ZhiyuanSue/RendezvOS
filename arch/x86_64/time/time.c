@@ -17,6 +17,7 @@ u64 arch_init_timer(bool is_bsp)
                 heartbeat_gap = PIT_TICK_RATE / INT_PER_SECOND;
                 if (is_bsp) {
                         init_8254_one_shot(heartbeat_gap);
+                        PIT_update_timer((u16)heartbeat_gap);
                         enable_PIC_IRQ(timer_irq_num);
                 }
         } else if (arch_irq_type == xAPIC_IRQ) {

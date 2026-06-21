@@ -32,12 +32,20 @@ extern u32 timer_irq_num;
 #define time_before_eq(a, b) time_after_eq(b, a)
 
 typedef u64 tick_t;
-void rendezvos_time_init(void);
+/*arch interfaces*/
 u64 arch_init_timer(bool is_bsp);
 void arch_reset_timer(u64 next_event_gap);
 tick_t arch_timer_read(void);
 tick_t arch_timer_get_hz(void);
+
+/*public interfaces*/
+void rendezvos_time_init(void);
 void rendezvos_do_time_irq(struct trap_frame *tf);
+tick_t rendezvos_time_now(void);
+u64 rendezvos_time_count_to_us(tick_t count);
+u64 rendezvos_time_count_to_ms(tick_t count);
+tick_t rendezvos_time_us_to_count(u64 us);
+tick_t rendezvos_time_ms_to_count(u64 ms);
 #define SYS_TIME_MS_PER_INT 10
 #define INT_PER_SECOND      (1000 / SYS_TIME_MS_PER_INT)
 #define UDELAY_MUL \
