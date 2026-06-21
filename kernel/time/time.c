@@ -1,5 +1,9 @@
 #include <rendezvos/time.h>
 #include <rendezvos/smp/percpu.h>
+#include <common/atomic.h>
+#include <common/dsa/rb_tree.h>
+#include <common/dsa/list.h>
+#include <common/string.h>
 volatile i64 jeffies = 0;
 u64 loop_per_jeffies;
 u64 udelay_max_loop;
@@ -8,10 +12,141 @@ u64 clock_hz;
 enum timer_type sys_timer_type = TIMER_TYPE_ONE_SHOT;
 DEFINE_PER_CPU(u64, tick_cnt);
 DEFINE_PER_CPU(u64, boot_base_time);
-/*
-    every core have a local apic, so every core have a tick_cnt
-    but it must sync with jeffies
-*/
+
+DEFINE_PER_CPU(struct rb_root, event_tree_root);
+
+static bool timer_event_is_rb_head(const rendezvos_timer_event *event,
+                                   const struct rb_root *root)
+{
+        const struct rb_node *node = &event->node;
+        return root->rb_root == node || RB_PARENT(node);
+}
+
+static bool timer_event_is_linked(const rendezvos_timer_event *event,
+                                  const struct rb_root *root)
+{
+        return timer_event_is_rb_head(event, root)
+               || !list_node_is_detached(
+                       (struct list_entry *)&event->same_expired_list);
+}
+
+/*rb tree ops*/
+static rendezvos_timer_event *timer_event_rb_tree_find(struct rb_root *root,
+                                                       tick_t expired)
+{
+        struct rb_node *node = root->rb_root;
+
+        while (node) {
+                rendezvos_timer_event *tmp =
+                        container_of(node, rendezvos_timer_event, node);
+
+                if (time_before(expired, tmp->expired))
+                        node = node->left_child;
+                else if (time_before(tmp->expired, expired))
+                        node = node->right_child;
+                else
+                        return tmp;
+        }
+        return NULL;
+}
+
+static error_t timer_event_rb_tree_insert(rendezvos_timer_event *event,
+                                          struct rb_root *root)
+{
+        struct rb_node **new = &root->rb_root, *parent = NULL;
+        rendezvos_timer_event *tmp;
+
+        while (*new) {
+                parent = *new;
+                tmp = container_of(parent, rendezvos_timer_event, node);
+                if (time_before(event->expired, tmp->expired))
+                        new = &parent->left_child;
+                else if (time_before(tmp->expired, event->expired))
+                        new = &parent->right_child;
+                else
+                        return -E_IN_PARAM;
+        }
+        RB_Link_Node(&event->node, parent, new);
+        RB_SolveDoubleRed(&event->node, root);
+        return REND_SUCCESS;
+}
+
+static void timer_event_rb_tree_remove(rendezvos_timer_event *event,
+                                       struct rb_root *root)
+{
+        RB_Remove(&event->node, root);
+        event->node.black_height = event->node.rb_parent_color = 0;
+        event->node.left_child = event->node.right_child = NULL;
+}
+
+/*timer event ops*/
+void rendezvos_timer_event_init(rendezvos_timer_event *event)
+{
+        memset(event, 0, sizeof(*event));
+        INIT_LIST_HEAD(&event->same_expired_list);
+}
+
+error_t rendezvos_timer_event_add(rendezvos_timer_event *event,
+                                  tick_t expires_at)
+{
+        struct rb_root *root = &percpu(event_tree_root);
+
+        if (timer_event_is_linked(event, root))
+                return -E_IN_PARAM;
+        event->expired = expires_at;
+        rendezvos_timer_event *head =
+                timer_event_rb_tree_find(root, event->expired);
+        if (head) {
+                list_add_tail(&event->same_expired_list,
+                              &head->same_expired_list);
+                return REND_SUCCESS;
+        } else {
+                INIT_LIST_HEAD(&event->same_expired_list);
+                return timer_event_rb_tree_insert(event, root);
+        }
+}
+
+error_t rendezvos_timer_event_del(rendezvos_timer_event *event)
+{
+        struct rb_root *root = &percpu(event_tree_root);
+
+        if (timer_event_is_rb_head(event, root)) {
+                if (list_empty(&event->same_expired_list)) {
+                        timer_event_rb_tree_remove(event, root);
+                } else {
+                        rendezvos_timer_event *succ =
+                                list_entry(event->same_expired_list.next,
+                                           rendezvos_timer_event,
+                                           same_expired_list);
+
+                        list_del(&event->same_expired_list);
+
+                        timer_event_rb_tree_remove(event, root);
+                        timer_event_rb_tree_insert(succ, root);
+                }
+        } else if (!list_node_is_detached(&event->same_expired_list)) {
+                list_del_init(&event->same_expired_list);
+        } else {
+                return -E_REND_NOFOUND;
+        }
+        return REND_SUCCESS;
+}
+
+error_t rendezvos_timer_event_change(rendezvos_timer_event *event,
+                                     tick_t expires_at)
+{
+        error_t res = rendezvos_timer_event_del(event);
+        if (res != REND_SUCCESS)
+                return res;
+        return rendezvos_timer_event_add(event, expires_at);
+}
+
+bool rendezvos_timer_event_exist(const rendezvos_timer_event *event)
+{
+        return timer_event_is_linked(event, &percpu(event_tree_root));
+}
+
+/*timer part*/
 __attribute__((optimize("O0"))) u64 loop_delay(volatile u64 loop_cnt)
 {
         u64 cnt = loop_cnt;
@@ -38,12 +173,13 @@ static inline u64 timer_calibration(void)
 }
 void rendezvos_time_init(void)
 {
+        percpu(event_tree_root).rb_root = NULL;
         percpu(tick_cnt) = jeffies;
         register_irq_handler(
                 timer_irq_num, rendezvos_do_time_irq, IRQ_NEED_EOI);
         bool is_bsp = (percpu(cpu_number) == BSP_ID);
         heartbeat_gap = arch_init_timer(is_bsp);
-        if (is_bsp){
+        if (is_bsp) {
                 loop_per_jeffies = timer_calibration();
                 clock_hz = arch_timer_get_hz();
         }
@@ -53,13 +189,21 @@ void rendezvos_time_init(void)
 }
 void rendezvos_do_time_irq(struct trap_frame *tf)
 {
+        u64 local_tick;
+        i64 global_tick;
+
         (void)tf;
-        percpu(tick_cnt)++;
-        /*TODO: maybe need add the lock*/
-        if (time_after(percpu(tick_cnt), jeffies)) {
-                jeffies = percpu(tick_cnt);
+        local_tick = ++percpu(tick_cnt);
+        global_tick = (i64)atomic64_load((volatile const u64 *)&jeffies);
+        while (time_after(local_tick, (u64)global_tick)) {
+                if (atomic64_cas((volatile u64 *)&jeffies,
+                                 (u64)global_tick,
+                                 local_tick)
+                    == (u64)global_tick)
+                        break;
+                global_tick =
+                        (i64)atomic64_load((volatile const u64 *)&jeffies);
         }
-        /*TODO: maybe need add the unlock*/
         arch_reset_timer(heartbeat_gap);
 }
 tick_t rendezvos_time_now(void)
