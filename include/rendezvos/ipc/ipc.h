@@ -94,10 +94,74 @@ error_t enqueue_msg_for_send(Message_t* msg);
 /**
  * @brief Dequeue one message from the current thread's recv queue (after
  * recv_msg). Hides ms_queue dummy-node semantics: returns the actual Message_t,
- * not the internal head node.
+ * not the internal head node. Decrements recv_pending_cnt for each message
+ * dequeued.
  * @return The Message_t* (caller must ref_dec when done),
  *         or NULL if queue is empty or no current thread.
  */
 Message_t* dequeue_recv_msg(void);
+
+/*
+ * System IPC (async outbound from IRQ / trap)
+ *
+ * Two delivery models (see lockfree-ipc.md §9.3):
+ *
+ * 1. ipc_system_try_deliver(port, msg) — timer / wait_port: receiver is whoever
+ *    is block_on_receive on @p port (try_match). Requires a dedicated waiter.
+ *
+ * 2. ipc_system_deliver_to(receiver, msg) — device IRQ (e.g. NIC): @p receiver
+ *    is bound at init (driver kthread). No port rendezvous; message lands in
+ *    receiver->recv_msg_queue; receiver drains with dequeue_recv_msg in thread
+ *    context (need not be blocked on a port).
+ *
+ * Both use the per-CPU system proxy (boot: idle_thread_ptr) as sender,
+ * send_pending_msg single-slot staging, and exchange clean on failure. Do not
+ * use enqueue_msg_for_send on the proxy.
+ *
+ * Ordinary thread IPC stays current-thread-only (send_msg / recv_msg). We do
+ * not add Thread_Base* to public send_msg / ipc_try_send_msg — only these core
+ * async entry points take an explicit receiver where the model requires it.
+ */
+
+/**
+ * @brief Best-effort deliver one message from the system proxy to a waiter
+ * on @p port (non-blocking).
+ *
+ * Port try_match path (mode 1). Stages @p msg in
+ * proxy->send_pending_msg, swaps current_thread to proxy, calls
+ * ipc_try_send_msg(@p port), try-clean on failure.
+ *
+ * Caller transfers ownership of @p msg on entry. After staging, failure
+ * releases
+ * @p msg; success consumes it via ipc_transfer_message.
+ *
+ * @param port Target wait port (selects the blocked receiver).
+ * @param msg Message to deliver.
+ * @return REND_SUCCESS transferred; -E_REND_AGAIN if no receiver on port or no
+ *         proxy; -E_REND_IPC if slot busy or invalid refs; -E_IN_PARAM if
+ *         port or msg is NULL.
+ */
+error_t ipc_system_try_deliver(Message_Port_t* port, Message_t* msg);
+
+/**
+ * @brief Best-effort deliver one message from the system proxy directly to
+ * @p receiver (non-blocking).
+ *
+ * Known-receiver path (mode 2, e.g. NIC IRQ). Stages @p msg in
+ * proxy->send_pending_msg and calls ipc_transfer_message(proxy, @p
+ * receiver) without port try_match. @p receiver need not be blocked on a port;
+ * it should dequeue from its recv queue in thread context.
+ *
+ * Caller must keep @p receiver valid for the call (typically a driver kthread
+ * bound at init). Same staging / try-clean / single in-flight constraints as
+ * ipc_system_try_deliver.
+ *
+ * @param receiver Target thread (recv_msg_queue).
+ * @param msg Message to deliver.
+ * @return REND_SUCCESS transferred; -E_REND_AGAIN if proxy unavailable or
+ *         transfer failed with receiver exiting; -E_REND_IPC if slot busy or
+ *         invalid refs; -E_IN_PARAM if receiver or msg is NULL.
+ */
+error_t ipc_system_deliver_to(Thread_Base* receiver, Message_t* msg);
 
 #endif

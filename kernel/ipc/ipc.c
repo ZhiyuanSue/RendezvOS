@@ -265,7 +265,6 @@ error_t ipc_transfer_message(Thread_Base* sender, Thread_Base* receiver)
         /* first try to give this message to the receiver and add the ref count
          * of this message, which means now the receiver and the
          * send_pending_msg all have this message*/
-        atomic64_add(&receiver->recv_pending_cnt, 1);
         /* recv_msg_ptr from create_message_with_msg has refcount=1;
          * refcount_is_zero=false */
         if (fill_message_data(recv_msg_ptr, send_msg_ptr->data)
@@ -283,6 +282,7 @@ error_t ipc_transfer_message(Thread_Base* sender, Thread_Base* receiver)
                     free_message_ref);
         ref_put(&recv_msg_ptr->ms_queue_node.refcount, free_message_ref);
         recv_msg_ptr = NULL;
+        atomic64_add(&receiver->recv_pending_cnt, 1);
 
         if (thread_get_status(receiver) == thread_status_exit) {
                 /*
@@ -391,47 +391,6 @@ error_t send_msg(Message_Port_t* port)
         }
         return REND_SUCCESS;
 }
-error_t ipc_try_send_msg(Message_Port_t* port)
-{
-        if (!port) {
-                return -E_IN_PARAM;
-        }
-        Thread_Base* sender = get_cpu_current_thread();
-        if (!sender) {
-                return -E_REND_AGAIN;
-        }
-        Ipc_Request_t* receiver_request = NULL;
-        while (1) {
-                if (!receiver_request) {
-                        receiver_request =
-                                ipc_port_try_match(port, IPC_PORT_STATE_SEND);
-                }
-                if (!receiver_request) {
-                        return -E_REND_AGAIN;
-                }
-                error_t try_transfer_result =
-                        ipc_transfer_message(sender, receiver_request->thread);
-                switch (try_transfer_result) {
-                case REND_SUCCESS: {
-                        thread_set_status_with_expect(
-                                receiver_request->thread,
-                                thread_status_block_on_receive,
-                                thread_status_ready);
-                        ref_put(&receiver_request->ms_queue_node.refcount,
-                                free_ipc_request);
-                        return REND_SUCCESS;
-                }
-                case -E_REND_AGAIN: {
-                        continue;
-                }
-                default: {
-                        ref_put(&receiver_request->ms_queue_node.refcount,
-                                free_ipc_request);
-                        return try_transfer_result;
-                }
-                }
-        }
-}
 error_t recv_msg(Message_Port_t* port)
 {
         if (!port) {
@@ -517,6 +476,47 @@ error_t recv_msg(Message_Port_t* port)
 
         return REND_SUCCESS;
 }
+error_t ipc_try_send_msg(Message_Port_t* port)
+{
+        if (!port) {
+                return -E_IN_PARAM;
+        }
+        Thread_Base* sender = get_cpu_current_thread();
+        if (!sender) {
+                return -E_REND_AGAIN;
+        }
+        Ipc_Request_t* receiver_request = NULL;
+        while (1) {
+                if (!receiver_request) {
+                        receiver_request =
+                                ipc_port_try_match(port, IPC_PORT_STATE_SEND);
+                }
+                if (!receiver_request) {
+                        return -E_REND_AGAIN;
+                }
+                error_t try_transfer_result =
+                        ipc_transfer_message(sender, receiver_request->thread);
+                switch (try_transfer_result) {
+                case REND_SUCCESS: {
+                        thread_set_status_with_expect(
+                                receiver_request->thread,
+                                thread_status_block_on_receive,
+                                thread_status_ready);
+                        ref_put(&receiver_request->ms_queue_node.refcount,
+                                free_ipc_request);
+                        return REND_SUCCESS;
+                }
+                case -E_REND_AGAIN: {
+                        continue;
+                }
+                default: {
+                        ref_put(&receiver_request->ms_queue_node.refcount,
+                                free_ipc_request);
+                        return try_transfer_result;
+                }
+                }
+        }
+}
 error_t ipc_try_recv_msg(Message_Port_t* port)
 {
         if (!port) {
@@ -589,6 +589,110 @@ Message_t* dequeue_recv_msg(void)
         tagged_ptr_t dp = msq_dequeue(&self->recv_msg_queue, NULL);
         if (tp_is_none(dp))
                 return NULL;
+        atomic64_sub(&self->recv_pending_cnt, 1);
         ms_queue_node_t* msg_node = (ms_queue_node_t*)tp_get_ptr(dp);
         return container_of(msg_node, Message_t, ms_queue_node);
+}
+/*
+DO NOT CHANGE THE FOLLOWING COMMENT!!!
+a problem is if a sender or a receiver is not a thread
+For example, the timer interrupt try to send a message to a thread which is
+waiting on a port.
+
+But, what is the timer interrupt's thread???
+The current thread ? No!!!
+if the current thread's send msg queue have some msg,
+the ipc transfer message func will only try to get a msg from the head of the
+send queue, but the new message must enqueue to the end of the queue. It will be
+an error.
+
+More and more, if the system itself (maybe some interrupt handler) try to send
+or receiver a message to a thread that block on a port. which thread should be
+use?
+
+So we temporarily modify the value of current thread, setting it to the idle
+thread, and then use the idle thread to send messages. The idle thread acts as a
+proxy thread. Afterwards, we change the current thread back.
+
+However, we must send messages sequentially one by one. But this is not the case
+in the queue. We must cache only one message at a time, attempt to send it, and
+if it fails, clear the message. Therefore, we directly use the sender's
+`send_pending_msg` pointer. The key is that it is compatible with the design of
+`ipc_transfer_message`. So we should not change any other interfaces.
+
+*/
+
+static Thread_Base* get_ipc_system_proxy(void)
+{
+        return percpu(idle_thread_ptr);
+}
+
+error_t ipc_system_try_deliver(Message_Port_t* port, Message_t* msg)
+{
+        if (!port || !msg)
+                return -E_IN_PARAM;
+        if (!ref_count(&msg->ms_queue_node.refcount)
+            || (msg->data && !ref_count(&msg->data->refcount))) {
+                return -E_REND_IPC;
+        }
+
+        Thread_Base* proxy = get_ipc_system_proxy();
+        if (!proxy)
+                return -E_REND_AGAIN;
+
+        Task_Manager* tm = percpu(core_tm);
+        if (!tm)
+                return -E_IN_PARAM;
+
+        if (atomic64_cas((volatile u64*)&proxy->send_pending_msg,
+                         (u64)NULL,
+                         (u64)msg)
+            != (u64)NULL) {
+                return -E_REND_IPC;
+        }
+
+        Thread_Base* curr = tm->current_thread;
+        tm->current_thread = proxy;
+        error_t err = ipc_try_send_msg(port);
+        tm->current_thread = curr;
+
+        if (err != REND_SUCCESS) {
+                Message_t* pending = (Message_t*)atomic64_exchange(
+                        (volatile u64*)&proxy->send_pending_msg, (u64)NULL);
+                if (pending)
+                        ref_put(&pending->ms_queue_node.refcount,
+                                free_message_ref);
+        }
+        return err;
+}
+
+error_t ipc_system_deliver_to(Thread_Base* receiver, Message_t* msg)
+{
+        if (!receiver || !msg)
+                return -E_IN_PARAM;
+        if (!ref_count(&msg->ms_queue_node.refcount)
+            || (msg->data && !ref_count(&msg->data->refcount))) {
+                return -E_REND_IPC;
+        }
+
+        Thread_Base* proxy = get_ipc_system_proxy();
+        if (!proxy)
+                return -E_REND_AGAIN;
+
+        if (atomic64_cas((volatile u64*)&proxy->send_pending_msg,
+                         (u64)NULL,
+                         (u64)msg)
+            != (u64)NULL) {
+                return -E_REND_IPC;
+        }
+
+        error_t err = ipc_transfer_message(proxy, receiver);
+        if (err != REND_SUCCESS) {
+                Message_t* pending = (Message_t*)atomic64_exchange(
+                        (volatile u64*)&proxy->send_pending_msg, (u64)NULL);
+                if (pending)
+                        ref_put(&pending->ms_queue_node.refcount,
+                                free_message_ref);
+        }
+        return err;
 }
