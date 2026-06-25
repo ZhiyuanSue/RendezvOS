@@ -622,43 +622,43 @@ if it fails, clear the message. Therefore, we directly use the sender's
 
 */
 
-static Thread_Base* get_ipc_system_proxy(void)
+error_t ipc_system_try_deliver(Message_Port_t* port, Message_t* msg,
+                               bool use_system_proxy)
 {
-        return percpu(idle_thread_ptr);
-}
+        Thread_Base* curr = get_cpu_current_thread();
+        Thread_Base* proxy = percpu(idle_thread_ptr);
+        Thread_Base* sender = use_system_proxy ? proxy : curr;
+        error_t err;
 
-error_t ipc_system_try_deliver(Message_Port_t* port, Message_t* msg)
-{
         if (!port || !msg)
                 return -E_IN_PARAM;
         if (!ref_count(&msg->ms_queue_node.refcount)
             || (msg->data && !ref_count(&msg->data->refcount))) {
                 return -E_REND_IPC;
         }
-
-        Thread_Base* proxy = get_ipc_system_proxy();
-        if (!proxy)
+        if (!sender)
                 return -E_REND_AGAIN;
-
-        Task_Manager* tm = percpu(core_tm);
-        if (!tm)
+        if (use_system_proxy && !percpu(core_tm))
                 return -E_IN_PARAM;
 
-        if (atomic64_cas((volatile u64*)&proxy->send_pending_msg,
+        if (atomic64_cas((volatile u64*)&sender->send_pending_msg,
                          (u64)NULL,
                          (u64)msg)
             != (u64)NULL) {
                 return -E_REND_IPC;
         }
 
-        Thread_Base* curr = tm->current_thread;
-        tm->current_thread = proxy;
-        error_t err = ipc_try_send_msg(port);
-        tm->current_thread = curr;
+        if (use_system_proxy)
+                set_cpu_current_thread(proxy);
+
+        err = ipc_try_send_msg(port);
+
+        if (use_system_proxy)
+                set_cpu_current_thread(curr);
 
         if (err != REND_SUCCESS) {
                 Message_t* pending = (Message_t*)atomic64_exchange(
-                        (volatile u64*)&proxy->send_pending_msg, (u64)NULL);
+                        (volatile u64*)&sender->send_pending_msg, (u64)NULL);
                 if (pending)
                         ref_put(&pending->ms_queue_node.refcount,
                                 free_message_ref);
@@ -666,8 +666,12 @@ error_t ipc_system_try_deliver(Message_Port_t* port, Message_t* msg)
         return err;
 }
 
-error_t ipc_system_deliver_to(Thread_Base* receiver, Message_t* msg)
+error_t ipc_system_deliver_to(Thread_Base* receiver, Message_t* msg,
+                              bool use_system_proxy)
 {
+        Thread_Base* sender;
+        error_t err;
+
         if (!receiver || !msg)
                 return -E_IN_PARAM;
         if (!ref_count(&msg->ms_queue_node.refcount)
@@ -675,21 +679,22 @@ error_t ipc_system_deliver_to(Thread_Base* receiver, Message_t* msg)
                 return -E_REND_IPC;
         }
 
-        Thread_Base* proxy = get_ipc_system_proxy();
-        if (!proxy)
+        sender = use_system_proxy ? percpu(idle_thread_ptr) :
+                                    get_cpu_current_thread();
+        if (!sender)
                 return -E_REND_AGAIN;
 
-        if (atomic64_cas((volatile u64*)&proxy->send_pending_msg,
+        if (atomic64_cas((volatile u64*)&sender->send_pending_msg,
                          (u64)NULL,
                          (u64)msg)
             != (u64)NULL) {
                 return -E_REND_IPC;
         }
 
-        error_t err = ipc_transfer_message(proxy, receiver);
+        err = ipc_transfer_message(sender, receiver);
         if (err != REND_SUCCESS) {
                 Message_t* pending = (Message_t*)atomic64_exchange(
-                        (volatile u64*)&proxy->send_pending_msg, (u64)NULL);
+                        (volatile u64*)&sender->send_pending_msg, (u64)NULL);
                 if (pending)
                         ref_put(&pending->ms_queue_node.refcount,
                                 free_message_ref);

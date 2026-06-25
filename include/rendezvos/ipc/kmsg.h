@@ -33,6 +33,10 @@
 /* Power control (handled by powerd). */
 #define KMSG_OP_CORE_POWER_SHUTDOWN 2u
 #define KMSG_OP_CORE_POWER_REBOOT   3u
+/* Timer one-shot expire notify (payload: u64 delivery_token via kmsg fmt "q"). */
+#define KMSG_OP_CORE_TIMER_EXPIRE   4u
+/* Timer one-shot cancel notify (payload: u64 delivery_token via kmsg fmt "q"). */
+#define KMSG_OP_CORE_TIMER_CANCEL   5u
 
 typedef struct {
         u32 magic;

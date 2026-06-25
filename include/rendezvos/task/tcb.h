@@ -330,6 +330,19 @@ static inline Thread_Base* get_cpu_current_thread()
 }
 
 /**
+ * @brief Set current thread on this CPU's task manager.
+ * No-op if core_tm is not set.
+ */
+static inline void set_cpu_current_thread(Thread_Base* thread)
+{
+        Task_Manager* tm = percpu(core_tm);
+
+        if (!tm)
+                return;
+        tm->current_thread = thread;
+}
+
+/**
  * @brief Task owning the current thread, or root_task if belong_tcb is unset.
  * @return Owning TCB, or NULL if no task manager or current thread.
  */

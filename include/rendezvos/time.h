@@ -20,6 +20,8 @@
 #include <common/dsa/list.h>
 #include "rendezvos/trap/trap.h"
 
+#include <rendezvos/ipc/port.h>
+
 // Timer type enum
 enum timer_type {
         TIMER_TYPE_PERIODIC,
@@ -38,6 +40,9 @@ extern u32 timer_irq_num;
 typedef u64 tick_t;
 
 /*
+ * Per-CPU timer queue (rb-tree + same_expired_list). Call add/change/del on the
+ * CPU where the event should fire; IRQ handler drains that CPU's queue.
+ *
  * same_expired_list: rb-tree head uses it as list anchor; equal-expiry events
  * hang here and are not separate rb nodes.
  */
@@ -45,16 +50,76 @@ typedef struct rendezvos_timer_event {
         struct rb_node node;
         struct list_entry same_expired_list;
         tick_t expired;
-        /*if periodic gap is not 0, means we need to readd it to the rb tree*/
+        /* Non-zero: periodic re-arm in IRQ (e.g. heartbeat). Zero: one-shot. */
         u64 periodic_gap;
+        /* One-shot only: delivery port (model B ref from init until fini/expire). */
+        Message_Port_t* wait_port;
+        /* One-shot kmsg payload; waiter validates to ignore stale delivery. */
+        u64 delivery_token;
 } rendezvos_timer_event;
 
-void rendezvos_timer_event_init(rendezvos_timer_event *event);
+/**
+ * @brief Reset @p event and bind delivery parameters (model B port ref).
+ *
+ * After prechecks pass, @p event is memset to zero and @p same_expired_list is
+ * initialized. On failure before that point, @p event is left unchanged.
+ * Re-init requires prior fini on one-shot (@p wait_port NULL) and not linked.
+ *
+ * One-shot (@p periodic_gap == 0): @p wait_port is required; holds one port ref
+ * via ref_get_not_zero until fini or IRQ expire teardown. @p delivery_token is
+ * sent in KMSG_OP_CORE_TIMER_EXPIRE / KMSG_OP_CORE_TIMER_CANCEL.
+ *
+ * Periodic (@p periodic_gap != 0): @p wait_port must be NULL; @p delivery_token
+ * is ignored. Do not call fini on periodic events (use del only).
+ *
+ * Typical sequence: init → add(expires_at) → … → del / cancel / fini (one-shot).
+ *
+ * @return REND_SUCCESS; -E_IN_PARAM if already bound, linked, or bad args;
+ *         -E_REND_IPC if one-shot port ref_get fails.
+ */
+error_t rendezvos_timer_event_init(rendezvos_timer_event* event, u64 periodic_gap,
+                                   Message_Port_t* wait_port, u64 delivery_token);
+/**
+ * @brief One-shot teardown: disarm if queued, release init's port ref, clear
+ *        wait_port.
+ *
+ * Do not call on periodic events (e.g. per-CPU heartbeat); use del alone.
+ * IRQ expire path calls this after KMSG_OP_CORE_TIMER_EXPIRE delivery
+ * (delivery failure still finis — one-shot lifetime ends at expiry).
+ *
+ * @return REND_SUCCESS; -E_IN_PARAM if @p event is periodic.
+ */
+error_t rendezvos_timer_event_fini(rendezvos_timer_event* event);
+/**
+ * @brief Disarm a one-shot if queued, then deliver KMSG_OP_CORE_TIMER_CANCEL via
+ *        ipc_system_try_deliver(..., use_system_proxy=false).
+ *
+ * Does not fini and does not release the port ref; caller may fini after cancel
+ * if the timer object is no longer needed.
+ *
+ * @return IPC/timer error from delivery; -E_IN_PARAM if @p event is NULL,
+ *         periodic, or has no wait_port.
+ */
+error_t rendezvos_timer_event_cancel(rendezvos_timer_event* event);
+/**
+ * @brief Insert @p event into the current CPU's timer queue at @p expires_at
+ *        (arch timer count, same domain as arch_timer_read()).
+ *
+ * @p event must be initialized and not already linked.
+ */
 error_t rendezvos_timer_event_add(rendezvos_timer_event *event,
                                   tick_t expires_at);
+/**
+ * @brief Reschedule: del then add at @p expires_at.
+ */
 error_t rendezvos_timer_event_change(rendezvos_timer_event *event,
                                      tick_t expires_at);
+/**
+ * @brief Unlink from the per-CPU timer queue only; does not release port ref
+ *        or clear wait_port.
+ */
 error_t rendezvos_timer_event_del(rendezvos_timer_event *event);
+/** @brief True if @p event is linked in the current CPU's timer queue. */
 bool rendezvos_timer_event_exist(const rendezvos_timer_event *event);
 /*arch interfaces*/
 u64 arch_init_timer(bool is_bsp);

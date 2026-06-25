@@ -81,6 +81,12 @@ static inline bool list_node_is_detached(struct list_entry *n)
         return n && n->next == n && n->prev == n;
 }
 
+/** True if @p n has both @p next and @p prev set (not BSS/zero-init). */
+static inline bool list_node_is_valid(struct list_entry *n)
+{
+        return n && n->next && n->prev;
+}
+
 /**
  * list_for_each - iterate over a list
  * @pos: the &struct list_entry to use as a loop cursor.

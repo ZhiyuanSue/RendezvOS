@@ -152,8 +152,8 @@ Headers: `rendezvos/ipc/ipc.h`, `ipc/port.h`, `ipc/message.h`, `ipc/kmsg.h`.
 | `recv_msg(port)` | — | One msg on current recv queue | If no peer |
 | `ipc_try_recv_msg(port)` | — | Same as recv on match | No |
 | `dequeue_recv_msg()` | After recv API returned `REND_SUCCESS` | Returns `Message_t*` or NULL; decrements `recv_pending_cnt` | No |
-| `ipc_system_try_deliver(port, msg)` | IRQ/trap; valid `msg` refs | One msg to port waiter’s recv queue; persona stages `send_pending_msg` | No |
-| `ipc_system_deliver_to(receiver, msg)` | IRQ/trap; bound `receiver`; valid `msg` refs | One msg on `receiver->recv_msg_queue` via direct transfer | No |
+| `ipc_system_try_deliver(port, msg, use_system_proxy)` | Valid `msg` refs; thread ctx if proxy false | Staged try_send to port waiter | No |
+| `ipc_system_deliver_to(receiver, msg, use_system_proxy)` | Valid `msg` refs; bound `receiver` | Staged transfer to recv queue | No |
 
 **Not exported:** `ipc_port_try_match`, `ipc_port_enqueue_wait` (internal to `ipc.c`).
 
@@ -218,7 +218,7 @@ Not a spin-wait on an empty port.
 |------|--------|
 | No API | `cancel_ipc` is not implemented and not planned |
 | Wakeup mechanism | Peer completes `ipc_transfer_message`; waiter → `ready` |
-| Abort pattern | Dedicated port + protocol message via `send_msg` or `ipc_try_send_msg`; waiter interprets payload after `dequeue_recv_msg` |
+| Abort pattern | Dedicated port + protocol message; timer cancel uses `rendezvos_timer_event_cancel()` → `ipc_system_try_deliver(..., false)` (see §10); other cases may use `send_msg` / `ipc_try_send_msg` after `enqueue_msg_for_send` |
 | Stale waiters | `ipc_port_try_match` drops requests if thread status ≠ expected block state |
 
 Rationale and alternatives: [`lockfree-ipc.md`](lockfree-ipc.md) §8.1.
@@ -260,12 +260,24 @@ if (r == -E_REND_AGAIN) {
 }
 ```
 
-**Timer / wait_port from IRQ (system persona — do not enqueue on current):**
+**Timer expire from IRQ (`use_system_proxy = true`):**
 
 ```c
-Message_t *msg = /* build FIRE payload */;
-error_t r = ipc_system_try_deliver(wait_port, msg);
-/* On failure after staging, API released msg. On SUCCESS, waiter may be ready. */
+Message_t *msg = /* build TIMER_EXPIRE payload (delivery_token) */;
+error_t r = ipc_system_try_deliver(wait_port, msg, true);
+/* Stages on idle persona; set_cpu_current_thread(proxy) for try_send; try-clean on fail. */
+```
+
+**Timer cancel (thread context, `use_system_proxy = false`):**
+
+```c
+/* Prefer the core helper (disarm + build TIMER_CANCEL kmsg + deliver): */
+error_t r = rendezvos_timer_event_cancel(&ev);
+
+/* Equivalent manual path: */
+Message_t *msg = /* build TIMER_CANCEL payload (delivery_token) */;
+error_t r = ipc_system_try_deliver(wait_port, msg, false);
+/* Stages on current thread send_pending_msg; no enqueue; try-clean on fail. */
 ```
 
 **Device IRQ to bound driver kthread (known receiver):**
@@ -273,8 +285,8 @@ error_t r = ipc_system_try_deliver(wait_port, msg);
 ```c
 for (each pending packet) {
         Message_t *msg = /* build */;
-        error_t r = ipc_system_deliver_to(nic_kthread, msg);
-        /* Loop: one in-flight on persona at a time; clean on failure. */
+        error_t r = ipc_system_deliver_to(nic_kthread, msg, true);
+        /* Loop: one in-flight on sender send_pending_msg at a time; try-clean on failure. */
 }
 
 /* nic_kthread (thread context): */
@@ -294,7 +306,7 @@ while ((m = dequeue_recv_msg()) != NULL) {
 4. `-E_REND_AGAIN` from `ipc_try_send_msg` means **no transfer occurred** — not implicit success.
 5. Do **not** modify `send_msg`/`recv_msg` when adding features; add try paths or new functions.
 6. Do **not** implement Linux-style forced dequeue of blocked threads from port MS-queue.
-7. **System async:** at most one outbound message staged on persona `send_pending_msg` at a time; never `enqueue_msg_for_send` on persona; try-clean on failure (§10).
+7. **System async:** at most one outbound message staged on the chosen sender's `send_pending_msg` at a time; never `enqueue_msg_for_send` on these paths; try-clean on failure (§10).
 
 ---
 
@@ -306,26 +318,28 @@ Design rationale and IRQ sender model: [`lockfree-ipc.md`](lockfree-ipc.md) §9.
 
 Timer and device IRQ paths have **no legitimate sender** `Thread_Base*`. Using `get_cpu_current_thread()` would pollute the interrupted thread’s `send_msg_queue` (transfer always takes the **queue head**, not a newly enqueued tail message).
 
-**Solution:** per-CPU **system persona** (boot: `idle_thread_ptr`) as sender; stage outbound messages in `persona->send_pending_msg` (single slot, compatible with `ipc_transfer_message`).
+**Solution:** stage outbound messages in the sender's `send_pending_msg` (single slot, compatible with `ipc_transfer_message`). Pick sender via `use_system_proxy`:
+
+- **`true`:** per-CPU idle persona (`idle_thread_ptr`); `try_deliver` also `set_cpu_current_thread(proxy)` around `ipc_try_send_msg` (see `get_cpu_current_thread` / `set_cpu_current_thread` in `task/tcb.h`).
+- **`false`:** current thread (`get_cpu_current_thread()`); no `current_thread` change; do **not** `enqueue_msg_for_send` — staging only (e.g. timer cancel).
 
 **Inbound core mail** (something sends *to* core) uses a **dedicated kthread** + blocking `recv_msg` on its port (same as `powerd` / servers). There is **no** `ipc_system_try_recv` — persona recv in IRQ was intentionally omitted.
 
 ### 10.2 Two outbound models
 
-| | `ipc_system_try_deliver(port, msg)` | `ipc_system_deliver_to(receiver, msg)` |
+| | `ipc_system_try_deliver(port, msg, proxy)` | `ipc_system_deliver_to(receiver, msg, proxy)` |
 |---|-------------------------------------|----------------------------------------|
-| **Use case** | Timer FIRE, sleep `wait_port` | NIC / device IRQ → driver kthread |
+| **Use case** | Timer expire (proxy true) / cancel (proxy false) | NIC / device IRQ → driver kthread (proxy true) |
+| **Sender** | Idle persona if `proxy`; else current thread | Same |
 | **Find receiver** | `ipc_try_send_msg(port)` → port try_match | Caller passes `Thread_Base*` (bound at init) |
-| **Receiver must block on port?** | **Yes** (block_on_receive on `port`) | **No** — may run send path; drains recv queue in thread context |
-| **Wakeup** | Matched waiter → `block_on_receive` → `ready` | **No** status change; receiver must `dequeue_recv_msg` |
-| **`current_thread` swap** | Yes (for `ipc_try_send_msg`) | No (`ipc_transfer_message` uses explicit sender/receiver) |
-| **Design ref** | lockfree-ipc §9.3 mode 1 | lockfree-ipc §9.3 mode 2 |
+| **Receiver must block on port?** | **Yes** (try_deliver only) | **No** — drains recv queue in thread context |
+| **`current_thread` switch** | `set_cpu_current_thread(proxy)` only when `proxy == true` (try_deliver) | Never |
 
 ```mermaid
 flowchart LR
-  subgraph irq [IRQ / trap]
-    PND[pending event]
-    STG["CAS → persona.send_pending_msg"]
+  subgraph irq [IRQ / trap or thread cancel]
+    PND[pending / cancel call]
+    STG["CAS → sender.send_pending_msg"]
   end
 
   subgraph mode1 [try_deliver]
@@ -345,40 +359,49 @@ flowchart LR
 
 ### 10.3 Shared rules (both APIs)
 
-1. **Stage:** `atomic64_cas(persona->send_pending_msg, NULL, msg)` — slot must be empty; else `-E_REND_IPC` (caller still owns `msg`).
-2. **Transfer:** one message per call; batch IRQ pending by **looping** the API (each iteration: stage → transfer → success or clean → next).
-3. **Try-clean:** on any result other than `REND_SUCCESS` after staging, `exchange(send_pending_msg, NULL)` + `ref_put(msg)`.
-4. **Ownership:** caller **transfers** `msg` on entry; after staging, failure is API’s to release; success is consumed by `ipc_transfer_message`.
-5. **Do not** `enqueue_msg_for_send` on persona for these paths.
-6. **Do not** add `Thread_Base*` to public `send_msg` / `ipc_try_send_msg` — only `ipc_system_deliver_to` takes an explicit receiver, and only for this core-async model.
+1. **Stage:** `atomic64_cas(sender->send_pending_msg, NULL, msg)` on chosen sender — slot must be empty; else `-E_REND_IPC`.
+2. **Transfer:** one message per call; batch by looping (each: stage → transfer → success or clean → next).
+3. **Try-clean:** on failure after staging, `exchange(send_pending_msg, NULL)` + `ref_put(msg)`.
+4. **Ownership:** caller transfers `msg` on entry; failure releases via try-clean; success consumed by transfer.
+5. **Do not** `enqueue_msg_for_send` for these paths — use staging only.
+6. **Do not** expose raw `Thread_Base*` on `send_msg` / `ipc_try_send_msg`; `ipc_system_deliver_to` is the explicit-receiver async entry.
 
-### 10.4 `ipc_system_try_deliver(port, msg)`
+### 10.4 `ipc_system_try_deliver(port, msg, use_system_proxy)`
 
 1. Validate `port`, `msg`, refcounts.
-2. CAS stage on persona `send_pending_msg`.
-3. Save `tm->current_thread`; set to persona; `ipc_try_send_msg(port)`; restore.
-4. On failure: exchange clean + `ref_put`.
+2. `curr = get_cpu_current_thread()`, `proxy = idle_thread_ptr`, `sender = use_system_proxy ? proxy : curr`.
+3. If `!sender` → `-E_REND_AGAIN`. If `use_system_proxy && !core_tm` → `-E_IN_PARAM` (before staging).
+4. CAS stage on `sender->send_pending_msg`; slot busy → `-E_REND_IPC`.
+5. If `use_system_proxy`: `set_cpu_current_thread(proxy)`.
+6. `ipc_try_send_msg(port)`; if step 5 ran: `set_cpu_current_thread(curr)`.
+7. On transfer failure: exchange `send_pending_msg` + `ref_put(msg)`.
 
 | Return | Meaning |
 |--------|---------|
 | `REND_SUCCESS` | Transfer OK; port waiter likely `ready` |
-| `-E_REND_AGAIN` | No receiver on port, or no persona |
+| `-E_REND_AGAIN` | No receiver on port, or no sender (no proxy / no current thread) |
 | `-E_REND_IPC` | Slot busy or invalid message refs |
-| `-E_IN_PARAM` | NULL `port`/`msg`, or no `core_tm` |
+| `-E_IN_PARAM` | NULL `port`/`msg`, or proxy path without `core_tm` |
 
-Stale FIRE when waiter already left the port: `-E_REND_AGAIN` + try-clean — expected; use generation in payload (compat layer).
+Stale expire/cancel when waiter already left the port: `-E_REND_AGAIN` + try-clean — expected; waiter validates `delivery_token` (compat layer).
 
-### 10.5 `ipc_system_deliver_to(receiver, msg)`
+**Timer (one-shot, model B port ref):** `rendezvos_timer_event_init` ref_get; `fini` ref_put (one-shot only — never `fini` periodic heartbeat). `del` / `cancel` do not release the port ref. EXPIRE: IRQ calls `ipc_system_try_deliver(..., true)`. CANCEL: `rendezvos_timer_event_cancel()` → `ipc_system_try_deliver(..., false)`.
+
+### 10.5 `ipc_system_deliver_to(receiver, msg, use_system_proxy)`
 
 1. Validate `receiver`, `msg`, refcounts.
-2. CAS stage on persona `send_pending_msg`.
-3. `ipc_transfer_message(persona, receiver)` (no port, no `current` swap).
-4. On failure: exchange clean + `ref_put`.
+2. `sender = use_system_proxy ? idle_thread_ptr : get_cpu_current_thread()`.
+3. If `!sender` → `-E_REND_AGAIN`.
+4. CAS stage on `sender->send_pending_msg`; slot busy → `-E_REND_IPC`.
+5. `ipc_transfer_message(sender, receiver)`.
+6. On transfer failure: exchange `send_pending_msg` + `ref_put(msg)`.
+
+No `set_cpu_current_thread` on this path (proxy or not).
 
 | Return | Meaning |
 |--------|---------|
 | `REND_SUCCESS` | Copy on `receiver->recv_msg_queue`; `recv_pending_cnt` incremented in transfer |
-| `-E_REND_AGAIN` | No persona, or transfer failed (e.g. receiver exiting) |
+| `-E_REND_AGAIN` | No sender, or transfer failed (e.g. receiver exiting) |
 | `-E_REND_IPC` | Slot busy or invalid refs |
 | `-E_IN_PARAM` | NULL `receiver` or `msg` |
 
@@ -399,6 +422,9 @@ Receiver **must** poll `dequeue_recv_msg()` (and `ref_put`) in thread context; m
 | `include/rendezvos/ipc/ipc.h` | Public declarations (incl. system async §10) |
 | `kernel/ipc/message.c` | `Message_t` lifecycle |
 | `include/rendezvos/ipc/port.h` | `Message_Port_t`, port table |
+| `include/rendezvos/task/tcb.h` | `get_cpu_current_thread`, `set_cpu_current_thread` |
+| `kernel/time/time.c` | Timer queue; `rendezvos_timer_event_cancel` |
+| `include/rendezvos/ipc/kmsg.h` | `KMSG_OP_CORE_TIMER_EXPIRE`, `KMSG_OP_CORE_TIMER_CANCEL` |
 | `lockfree-ipc.md` | Design document (authoritative “why”, §9 IRQ sender) |
 | `task-thread.md` | `thread_set_status`, `schedule`, teardown |
 
@@ -409,5 +435,6 @@ Receiver **must** poll `dequeue_recv_msg()` (and `ref_put`) in thread context; m
 - Create payloads: `kmsg_create(module, opcode, fmt, ...)`.
 - Client and server **must** use the same `fmt` for a given opcode.
 - Reply port name: conventionally embedded in TLV stream.
+- Core timer opcodes: `KMSG_OP_CORE_TIMER_EXPIRE` (IRQ delivery), `KMSG_OP_CORE_TIMER_CANCEL` (thread-context cancel); payload includes `delivery_token` for waiter validation.
 
 Details: `ipc/kmsg.h`, `ipc/ipc_serial.h`, [`GUIDE.md`](GUIDE.md) §10 for `error_t`.
