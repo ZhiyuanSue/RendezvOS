@@ -13,6 +13,7 @@ static struct single_test_case single_test[MAX_SINGLE_TEST_CASE] = {
         {ipc_test, "ipc\0"},
         {ipc_multi_round_test, "ipc_multi_round\0"},
         {single_port_test, "port_discovery\0"},
+        {single_timer_test, "timer\0"},
 };
 
 void single_cpu_test(void)

@@ -61,9 +61,10 @@ typedef struct rendezvos_timer_event {
 /**
  * @brief Reset @p event and bind delivery parameters (model B port ref).
  *
- * After prechecks pass, @p event is memset to zero and @p same_expired_list is
- * initialized. On failure before that point, @p event is left unchanged.
- * Re-init requires prior fini on one-shot (@p wait_port NULL) and not linked.
+ * Validates @p periodic_gap / @p wait_port, then memset + INIT_LIST_HEAD and
+ * writes new fields. Does not read prior @p event contents (safe on garbage /
+ * stack storage). Caller must not init an event that is still in the timer
+ * queue or still holds a port ref — disarm with @p del / @p fini first.
  *
  * One-shot (@p periodic_gap == 0): @p wait_port is required; holds one port ref
  * via ref_get_not_zero until fini or IRQ expire teardown. @p delivery_token is
@@ -74,8 +75,8 @@ typedef struct rendezvos_timer_event {
  *
  * Typical sequence: init → add(expires_at) → … → del / cancel / fini (one-shot).
  *
- * @return REND_SUCCESS; -E_IN_PARAM if already bound, linked, or bad args;
- *         -E_REND_IPC if one-shot port ref_get fails.
+ * @return REND_SUCCESS; -E_IN_PARAM if @p event is NULL or args invalid;
+ *         -E_REND_IPC if one-shot port ref_get fails (@p event unchanged).
  */
 error_t rendezvos_timer_event_init(rendezvos_timer_event* event, u64 periodic_gap,
                                    Message_Port_t* wait_port, u64 delivery_token);

@@ -117,11 +117,11 @@ error_t rendezvos_timer_event_init(rendezvos_timer_event *event,
                                    u64 periodic_gap, Message_Port_t *wait_port,
                                    u64 delivery_token)
 {
-        if (event->wait_port != NULL)
-                return -E_IN_PARAM;
-        if (timer_event_is_linked(event, &percpu(event_tree_root)))
+        if (!event)
                 return -E_IN_PARAM;
         if (!periodic_gap && !wait_port)
+                return -E_IN_PARAM;
+        if (periodic_gap && wait_port)
                 return -E_IN_PARAM;
         if (!periodic_gap && !ref_get_not_zero(&wait_port->refcount))
                 return -E_REND_IPC;

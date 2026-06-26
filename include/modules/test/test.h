@@ -43,6 +43,7 @@ int test_pci_scan(void);
 int ipc_test(void);
 int ipc_multi_round_test(void);
 int single_port_test(void);
+int single_timer_test(void);
 
 /*in smp case
 one test function cannot easily be checked
