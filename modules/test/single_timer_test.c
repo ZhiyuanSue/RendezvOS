@@ -23,8 +23,8 @@ static volatile int timer_waiter_phase1;
 static volatile int timer_waiter_phase2;
 static volatile int timer_waiter_failed;
 
-static bool timer_test_parse_kmsg(const Message_t* msg, u16 expect_opcode,
-                                  u64 expect_token)
+static bool timer_test_parse_kmsg(const Message_t* msg, u16 expect_module,
+                                  u16 expect_opcode, u64 expect_token)
 {
         const kmsg_t* km;
         i64 token;
@@ -32,10 +32,11 @@ static bool timer_test_parse_kmsg(const Message_t* msg, u16 expect_opcode,
         if (!msg)
                 return false;
         km = kmsg_from_msg(msg);
-        if (!km || km->hdr.module != KMSG_MOD_CORE
+        if (!km || km->hdr.module != expect_module
             || km->hdr.opcode != expect_opcode)
                 return false;
-        if (ipc_serial_decode(km->payload, km->hdr.payload_len, "q", &token)
+        if (ipc_serial_decode(km->payload, km->hdr.payload_len,
+                              KMSG_FMT_SYSTEM_TIMER, &token)
             != REND_SUCCESS)
                 return false;
         return (u64)token == expect_token;
@@ -52,7 +53,8 @@ static void* timer_waiter_thread(void* arg)
                 return NULL;
         }
         msg = dequeue_recv_msg();
-        if (!timer_test_parse_kmsg(msg, KMSG_OP_CORE_TIMER_EXPIRE,
+        if (!timer_test_parse_kmsg(msg, port->service_id,
+                                    KMSG_OP_SYSTEM_TIMER_EXPIRE,
                                     TIMER_TEST_EXPIRE_TOKEN)) {
                 pr_error("[single_timer_test] waiter: bad TIMER_EXPIRE kmsg\n");
                 ref_put(&msg->ms_queue_node.refcount, free_message_ref);
@@ -68,7 +70,8 @@ static void* timer_waiter_thread(void* arg)
                 return NULL;
         }
         msg = dequeue_recv_msg();
-        if (!timer_test_parse_kmsg(msg, KMSG_OP_CORE_TIMER_CANCEL,
+        if (!timer_test_parse_kmsg(msg, port->service_id,
+                                    KMSG_OP_SYSTEM_TIMER_CANCEL,
                                     TIMER_TEST_CANCEL_TOKEN)) {
                 pr_error("[single_timer_test] waiter: bad TIMER_CANCEL kmsg\n");
                 ref_put(&msg->ms_queue_node.refcount, free_message_ref);

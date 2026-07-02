@@ -424,7 +424,8 @@ Receiver **must** poll `dequeue_recv_msg()` (and `ref_put`) in thread context; m
 | `include/rendezvos/ipc/port.h` | `Message_Port_t`, port table |
 | `include/rendezvos/task/tcb.h` | `get_cpu_current_thread`, `set_cpu_current_thread` |
 | `kernel/time/time.c` | Timer queue; `rendezvos_timer_event_cancel` |
-| `include/rendezvos/ipc/kmsg.h` | `KMSG_OP_CORE_TIMER_EXPIRE`, `KMSG_OP_CORE_TIMER_CANCEL` |
+| `include/rendezvos/ipc/kmsg.h` | Envelope: `kmsg_create`, `kmsg_from_msg` |
+| `include/rendezvos/ipc/kmsg_system.h` | System opcodes (power, timer) |
 | `lockfree-ipc.md` | Design document (authoritative “why”, §9 IRQ sender) |
 | `task-thread.md` | `thread_set_status`, `schedule`, teardown |
 
@@ -432,9 +433,10 @@ Receiver **must** poll `dequeue_recv_msg()` (and `ref_put`) in thread context; m
 
 ## 12. kmsg (minimal)
 
-- Create payloads: `kmsg_create(module, opcode, fmt, ...)`.
+- Create payloads: `kmsg_create(module, opcode, fmt, ...)`; `module` is the destination port `service_id`, not a fixed core constant.
 - Client and server **must** use the same `fmt` for a given opcode.
 - Reply port name: conventionally embedded in TLV stream.
-- Core timer opcodes: `KMSG_OP_CORE_TIMER_EXPIRE` (IRQ delivery), `KMSG_OP_CORE_TIMER_CANCEL` (thread-context cancel); payload includes `delivery_token` for waiter validation.
+- System opcodes (in `ipc/kmsg_system.h`): powerd shutdown/reboot; timer one-shot `KMSG_OP_SYSTEM_TIMER_EXPIRE` / `KMSG_OP_SYSTEM_TIMER_CANCEL` with `KMSG_FMT_SYSTEM_TIMER` (`delivery_token`).
+- Linux compat protocols: `include/linux_compat/ipc/clean_protocol.h`, `exit_protocol.h`, `fs/vfs_protocol.h`.
 
 Details: `ipc/kmsg.h`, `ipc/ipc_serial.h`, [`GUIDE.md`](GUIDE.md) §10 for `error_t`.

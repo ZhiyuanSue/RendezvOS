@@ -6,6 +6,7 @@
 #include <rendezvos/error.h>
 #include <rendezvos/ipc/ipc.h>
 #include <rendezvos/ipc/kmsg.h>
+#include <rendezvos/ipc/kmsg_system.h>
 #include <rendezvos/ipc/message.h>
 #include <rendezvos/ipc/port.h>
 #include <rendezvos/mm/allocator.h>
@@ -21,7 +22,7 @@ static inline error_t rendezvos_request_poweroff(void)
                 return -E_RENDEZVOS;
 
         Msg_Data_t* d =
-                kmsg_create(port->service_id, KMSG_OP_CORE_POWER_SHUTDOWN, "");
+                kmsg_create(port->service_id, KMSG_OP_SYSTEM_POWER_SHUTDOWN, "");
         if (!d) {
                 ref_put(&port->refcount, free_message_port_ref);
                 return -E_RENDEZVOS;

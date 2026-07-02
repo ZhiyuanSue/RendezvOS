@@ -118,7 +118,7 @@ Update this table when adding or changing public symbols.
 | IPC | Port table | `global_port_table` `port_table_lookup` `register_port` | [`ipc.md`](ipc.md) | `stable` |
 | IPC | Send / recv (blocking) | `enqueue_msg_for_send` `send_msg` `recv_msg` `dequeue_recv_msg` | [`ipc.md`](ipc.md) | `stable` |
 | IPC | Send / recv (non-blocking) | `ipc_try_send_msg` `ipc_try_recv_msg` | [`ipc.md`](ipc.md) | `stable` |
-| IPC | Payload | `ipc/kmsg.h` `ipc/ipc_serial.h` | [`ipc.md`](ipc.md) | `doc` |
+| IPC | Payload | `ipc/kmsg.h` `ipc/kmsg_system.h` `ipc/ipc_serial.h` | [`ipc.md`](ipc.md) | `doc` |
 | Registry | Name index | `registry/name_index.h` | §7 | `code-only` |
 | MM | Clone address space | `mm/vmm.h` `clone_vspace` | [`memory.md`](memory.md) | `stable` |
 | MM | Clear user mappings | `mm/vmm.h` `vspace_clear_user_mappings` | [`memory.md`](memory.md) | `doc` |
@@ -148,7 +148,7 @@ Under `core/include/`.
 | `time.h` | Timekeeping |
 | `mm/pmm.h`, `mm/vmm.h`, `mm/vmm_radix_tree.h`, `mm/map_handler.h`, `mm/mm_user_utils.h`, `mm/kmalloc.h`, `mm/allocator.h`, `mm/asid.h` | Memory |
 | `task/tcb.h`, `task/thread_loader.h`, `task/initcall.h`, `task/id.h`, `task/ebr.h` | Tasks |
-| `ipc/port.h`, `ipc/ipc.h`, `ipc/message.h`, `ipc/kmsg.h`, `ipc/ipc_serial.h` | IPC |
+| `ipc/port.h`, `ipc/ipc.h`, `ipc/message.h`, `ipc/kmsg.h`, `ipc/kmsg_system.h`, `ipc/ipc_serial.h` | IPC |
 | `smp/percpu.h`, `smp/smp.h`, `smp/cpu_id.h` | SMP |
 | `sync/spin_lock.h`, `sync/cas_lock.h`, `sync/barrier.h` | Sync |
 | `trap/trap.h`, `trap/trap_common.h` | Traps |

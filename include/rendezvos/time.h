@@ -3,6 +3,7 @@
 #include <common/types.h>
 #include <common/stdbool.h>
 #include <rendezvos/error.h>
+#include <rendezvos/ipc/kmsg_system.h>
 
 #ifdef _AARCH64_
 #include <arch/aarch64/time.h>
@@ -68,7 +69,7 @@ typedef struct rendezvos_timer_event {
  *
  * One-shot (@p periodic_gap == 0): @p wait_port is required; holds one port ref
  * via ref_get_not_zero until fini or IRQ expire teardown. @p delivery_token is
- * sent in KMSG_OP_CORE_TIMER_EXPIRE / KMSG_OP_CORE_TIMER_CANCEL.
+ * sent in KMSG_OP_SYSTEM_TIMER_EXPIRE / KMSG_OP_SYSTEM_TIMER_CANCEL.
  *
  * Periodic (@p periodic_gap != 0): @p wait_port must be NULL; @p delivery_token
  * is ignored. Do not call fini on periodic events (use del only).
@@ -85,14 +86,14 @@ error_t rendezvos_timer_event_init(rendezvos_timer_event* event, u64 periodic_ga
  *        wait_port.
  *
  * Do not call on periodic events (e.g. per-CPU heartbeat); use del alone.
- * IRQ expire path calls this after KMSG_OP_CORE_TIMER_EXPIRE delivery
+ * IRQ expire path calls this after KMSG_OP_SYSTEM_TIMER_EXPIRE delivery
  * (delivery failure still finis — one-shot lifetime ends at expiry).
  *
  * @return REND_SUCCESS; -E_IN_PARAM if @p event is periodic.
  */
 error_t rendezvos_timer_event_fini(rendezvos_timer_event* event);
 /**
- * @brief Disarm a one-shot if queued, then deliver KMSG_OP_CORE_TIMER_CANCEL via
+ * @brief Disarm a one-shot if queued, then deliver KMSG_OP_SYSTEM_TIMER_CANCEL via
  *        ipc_system_try_deliver(..., use_system_proxy=false).
  *
  * Does not fini and does not release the port ref; caller may fini after cancel

@@ -2,6 +2,7 @@
 #include <rendezvos/error.h>
 #include <rendezvos/ipc/ipc.h>
 #include <rendezvos/ipc/kmsg.h>
+#include <rendezvos/ipc/kmsg_system.h>
 #include <rendezvos/ipc/message.h>
 #include <rendezvos/ipc/port.h>
 #include <rendezvos/smp/percpu.h>
@@ -48,10 +49,10 @@ static void* powerd_thread(void* arg)
                 u16 op = km->hdr.opcode;
                 ref_put(&m->ms_queue_node.refcount, free_message_ref);
 
-                if (op == KMSG_OP_CORE_POWER_SHUTDOWN) {
+                if (op == KMSG_OP_SYSTEM_POWER_SHUTDOWN) {
                         pr_info("[powerd] shutdown request\n");
                         kernel_halt();
-                } else if (op == KMSG_OP_CORE_POWER_REBOOT) {
+                } else if (op == KMSG_OP_SYSTEM_POWER_REBOOT) {
                         pr_error("[powerd] reboot not implemented\n");
                 } else {
                         pr_error("[powerd] unknown opcode %u\n", (unsigned)op);

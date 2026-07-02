@@ -2,6 +2,7 @@
 #include <rendezvos/smp/percpu.h>
 #include <rendezvos/ipc/ipc.h>
 #include <rendezvos/ipc/kmsg.h>
+#include <rendezvos/ipc/kmsg_system.h>
 #include <rendezvos/ipc/message.h>
 #include <rendezvos/system/panic.h>
 #include <common/atomic.h>
@@ -102,7 +103,8 @@ static error_t timer_event_deliver_kmsg(Message_Port_t *port, u16 opcode,
         Msg_Data_t *msgdata;
         Message_t *msg;
 
-        msgdata = kmsg_create(KMSG_MOD_CORE, opcode, "q", (i64)delivery_token);
+        msgdata = kmsg_create(port->service_id, opcode, KMSG_FMT_SYSTEM_TIMER,
+                              (i64)delivery_token);
         if (!msgdata)
                 return -E_REND_IPC;
         msg = create_message_with_msg(msgdata);
@@ -155,7 +157,7 @@ error_t rendezvos_timer_event_cancel(rendezvos_timer_event *event)
         if (rendezvos_timer_event_exist(event))
                 rendezvos_timer_event_del(event);
         return timer_event_deliver_kmsg(event->wait_port,
-                                        KMSG_OP_CORE_TIMER_CANCEL,
+                                        KMSG_OP_SYSTEM_TIMER_CANCEL,
                                         event->delivery_token,
                                         false);
 }
@@ -311,7 +313,7 @@ void rendezvos_do_time_irq(struct trap_frame *tf)
                         }
                 } else {
                         timer_event_deliver_kmsg(current_event->wait_port,
-                                                 KMSG_OP_CORE_TIMER_EXPIRE,
+                                                 KMSG_OP_SYSTEM_TIMER_EXPIRE,
                                                  current_event->delivery_token,
                                                  true);
                         rendezvos_timer_event_fini(current_event);
