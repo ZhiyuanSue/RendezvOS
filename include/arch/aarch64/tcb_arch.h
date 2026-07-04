@@ -35,6 +35,7 @@ typedef struct {
         u64 regs[NR_AARCH64_CALLEE_SAVED_REGS];
         u64 tpidr_el0;
         u64 sp_el0;
+        u64 daif;
 } Arch_Task_Context;
 
 /* Declared in arch-specific task/arch_thread.c (context merge & syscall-trap
@@ -95,6 +96,7 @@ typedef struct {
 static inline void arch_task_ctx_init(Arch_Task_Context* ctx)
 {
         ctx->sp_el1 = ctx->spsr_el1 = ctx->tpidr_el0 = ctx->sp_el0 = 0;
+        ctx->daif = 0;
         memset(&(ctx->regs), 0, sizeof(u64) * NR_AARCH64_CALLEE_SAVED_REGS);
 }
 static inline void arch_set_new_thread_ctx(Arch_Task_Context* ctx,
@@ -112,7 +114,8 @@ static inline void arch_set_new_thread_ctx(Arch_Task_Context* ctx,
         }
         ctx->sp_el1 = (u64)sp;
         ctx->regs[aarch64_task_ctx_lr] = (u64)func_ptr;
-        /*TODO:should I add spsr el1???*/
+        ctx->spsr_el1 = SPSR_EL1_M_64_EL1H;
+        ctx->daif = 0;
 }
 static inline vaddr arch_get_thread_user_sp(Arch_Task_Context* ctx)
 {

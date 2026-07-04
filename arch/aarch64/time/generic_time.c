@@ -43,6 +43,7 @@ u64 arch_init_timer(bool is_bsp)
 void arch_reset_timer(u64 next_event_gap)
 {
         msr("CNTP_TVAL_EL0", next_event_gap);
+        isb();
 }
 tick_t arch_timer_read(void)
 {

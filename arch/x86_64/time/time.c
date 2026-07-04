@@ -46,8 +46,7 @@ u64 arch_init_timer(bool is_bsp)
                 heartbeat_gap = APIC_timer_init(sys_timer_type);
                 software_enable_APIC();
         }
-        if (is_bsp)
-                get_rtc_time();
+
         return heartbeat_gap;
 }
 void arch_reset_timer(u64 next_event_gap)

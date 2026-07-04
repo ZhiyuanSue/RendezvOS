@@ -1,5 +1,6 @@
 #include <arch/aarch64/tcb_arch.h>
 #include <arch/aarch64/sys_ctrl.h>
+#include <arch/aarch64/sync/barrier.h>
 #include <common/string.h>
 
 void arch_ctx_refresh(Arch_Task_Context* ctx)
@@ -28,7 +29,13 @@ void switch_to(Arch_Task_Context* old_context, Arch_Task_Context* new_context)
         msr("TPIDR_EL0", new_context->tpidr_el0);
         mrs("SP_EL0", old_context->sp_el0);
         msr("SP_EL0", new_context->sp_el0);
+        mrs("DAIF", old_context->daif);
         context_switch(old_context, new_context);
+        /* here we should not using new context, because if the context switch
+         * have return to here, it means we return to the old thread context, we
+         * should allow the interrupt */
+        msr("DAIF", old_context->daif);
+        isb();
 }
 
 void arch_ctx_merge_from_src(Arch_Task_Context* dst_ctx,
