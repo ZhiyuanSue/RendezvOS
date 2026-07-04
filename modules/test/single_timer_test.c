@@ -35,8 +35,10 @@ static bool timer_test_parse_kmsg(const Message_t* msg, u16 expect_module,
         if (!km || km->hdr.module != expect_module
             || km->hdr.opcode != expect_opcode)
                 return false;
-        if (ipc_serial_decode(km->payload, km->hdr.payload_len,
-                              KMSG_FMT_SYSTEM_TIMER, &token)
+        if (ipc_serial_decode(km->payload,
+                              km->hdr.payload_len,
+                              KMSG_FMT_SYSTEM_TIMER,
+                              &token)
             != REND_SUCCESS)
                 return false;
         return (u64)token == expect_token;
@@ -53,9 +55,10 @@ static void* timer_waiter_thread(void* arg)
                 return NULL;
         }
         msg = dequeue_recv_msg();
-        if (!timer_test_parse_kmsg(msg, port->service_id,
-                                    KMSG_OP_SYSTEM_TIMER_EXPIRE,
-                                    TIMER_TEST_EXPIRE_TOKEN)) {
+        if (!timer_test_parse_kmsg(msg,
+                                   port->service_id,
+                                   KMSG_OP_SYSTEM_TIMER_EXPIRE,
+                                   TIMER_TEST_EXPIRE_TOKEN)) {
                 pr_error("[single_timer_test] waiter: bad TIMER_EXPIRE kmsg\n");
                 ref_put(&msg->ms_queue_node.refcount, free_message_ref);
                 timer_waiter_failed = 1;
@@ -70,9 +73,10 @@ static void* timer_waiter_thread(void* arg)
                 return NULL;
         }
         msg = dequeue_recv_msg();
-        if (!timer_test_parse_kmsg(msg, port->service_id,
-                                    KMSG_OP_SYSTEM_TIMER_CANCEL,
-                                    TIMER_TEST_CANCEL_TOKEN)) {
+        if (!timer_test_parse_kmsg(msg,
+                                   port->service_id,
+                                   KMSG_OP_SYSTEM_TIMER_CANCEL,
+                                   TIMER_TEST_CANCEL_TOKEN)) {
                 pr_error("[single_timer_test] waiter: bad TIMER_CANCEL kmsg\n");
                 ref_put(&msg->ms_queue_node.refcount, free_message_ref);
                 timer_waiter_failed = 1;
@@ -124,8 +128,7 @@ int single_timer_test(void)
         schedule(tm);
 
         now = arch_timer_read();
-        err = rendezvos_timer_event_init(
-                &ev, 0, port, TIMER_TEST_EXPIRE_TOKEN);
+        err = rendezvos_timer_event_init(&ev, 0, port, TIMER_TEST_EXPIRE_TOKEN);
         if (err != REND_SUCCESS) {
                 pr_error("[single_timer_test] init expire failed e=%d\n", err);
                 delete_message_port_structure(port);
@@ -149,15 +152,14 @@ int single_timer_test(void)
         }
 
         now = arch_timer_read();
-        err = rendezvos_timer_event_init(
-                &ev, 0, port, TIMER_TEST_CANCEL_TOKEN);
+        err = rendezvos_timer_event_init(&ev, 0, port, TIMER_TEST_CANCEL_TOKEN);
         if (err != REND_SUCCESS) {
                 pr_error("[single_timer_test] init cancel failed e=%d\n", err);
                 delete_message_port_structure(port);
                 return -E_REND_TEST;
         }
-        err = rendezvos_timer_event_add(
-                &ev, now + timer_test_short_delay() * 1000);
+        err = rendezvos_timer_event_add(&ev,
+                                        now + timer_test_short_delay() * 1000);
         if (err != REND_SUCCESS) {
                 pr_error("[single_timer_test] add cancel-arm failed e=%d\n",
                          err);

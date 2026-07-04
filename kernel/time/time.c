@@ -103,7 +103,9 @@ static error_t timer_event_deliver_kmsg(Message_Port_t *port, u16 opcode,
         Msg_Data_t *msgdata;
         Message_t *msg;
 
-        msgdata = kmsg_create(port->service_id, opcode, KMSG_FMT_SYSTEM_TIMER,
+        msgdata = kmsg_create(port->service_id,
+                              opcode,
+                              KMSG_FMT_SYSTEM_TIMER,
                               (i64)delivery_token);
         if (!msgdata)
                 return -E_REND_IPC;
@@ -262,12 +264,14 @@ void rendezvos_time_init(void)
         error_t err = rendezvos_timer_event_init(
                 &percpu(heartbeat_event), heartbeat_gap, NULL, 0);
         if (err != REND_SUCCESS)
-                kernel_panic("[ ERROR ]rendezvos_time_init: heartbeat init failed");
+                kernel_panic(
+                        "[ ERROR ]rendezvos_time_init: heartbeat init failed");
 
         err = rendezvos_timer_event_add(&percpu(heartbeat_event),
                                         percpu(boot_base_time) + heartbeat_gap);
         if (err != REND_SUCCESS)
-                kernel_panic("[ ERROR ]rendezvos_time_init: heartbeat add failed");
+                kernel_panic(
+                        "[ ERROR ]rendezvos_time_init: heartbeat add failed");
 
         if (is_bsp) {
                 loop_per_jeffies = timer_calibration();

@@ -53,8 +53,9 @@ typedef struct rendezvos_timer_event {
         tick_t expired;
         /* Non-zero: periodic re-arm in IRQ (e.g. heartbeat). Zero: one-shot. */
         u64 periodic_gap;
-        /* One-shot only: delivery port (model B ref from init until fini/expire). */
-        Message_Port_t* wait_port;
+        /* One-shot only: delivery port (model B ref from init until
+         * fini/expire). */
+        Message_Port_t *wait_port;
         /* One-shot kmsg payload; waiter validates to ignore stale delivery. */
         u64 delivery_token;
 } rendezvos_timer_event;
@@ -74,13 +75,15 @@ typedef struct rendezvos_timer_event {
  * Periodic (@p periodic_gap != 0): @p wait_port must be NULL; @p delivery_token
  * is ignored. Do not call fini on periodic events (use del only).
  *
- * Typical sequence: init → add(expires_at) → … → del / cancel / fini (one-shot).
+ * Typical sequence: init → add(expires_at) → … → del / cancel / fini
+ * (one-shot).
  *
  * @return REND_SUCCESS; -E_IN_PARAM if @p event is NULL or args invalid;
  *         -E_REND_IPC if one-shot port ref_get fails (@p event unchanged).
  */
-error_t rendezvos_timer_event_init(rendezvos_timer_event* event, u64 periodic_gap,
-                                   Message_Port_t* wait_port, u64 delivery_token);
+error_t rendezvos_timer_event_init(rendezvos_timer_event *event,
+                                   u64 periodic_gap, Message_Port_t *wait_port,
+                                   u64 delivery_token);
 /**
  * @brief One-shot teardown: disarm if queued, release init's port ref, clear
  *        wait_port.
@@ -91,10 +94,10 @@ error_t rendezvos_timer_event_init(rendezvos_timer_event* event, u64 periodic_ga
  *
  * @return REND_SUCCESS; -E_IN_PARAM if @p event is periodic.
  */
-error_t rendezvos_timer_event_fini(rendezvos_timer_event* event);
+error_t rendezvos_timer_event_fini(rendezvos_timer_event *event);
 /**
- * @brief Disarm a one-shot if queued, then deliver KMSG_OP_SYSTEM_TIMER_CANCEL via
- *        ipc_system_try_deliver(..., use_system_proxy=false).
+ * @brief Disarm a one-shot if queued, then deliver KMSG_OP_SYSTEM_TIMER_CANCEL
+ * via ipc_system_try_deliver(..., use_system_proxy=false).
  *
  * Does not fini and does not release the port ref; caller may fini after cancel
  * if the timer object is no longer needed.
@@ -102,7 +105,7 @@ error_t rendezvos_timer_event_fini(rendezvos_timer_event* event);
  * @return IPC/timer error from delivery; -E_IN_PARAM if @p event is NULL,
  *         periodic, or has no wait_port.
  */
-error_t rendezvos_timer_event_cancel(rendezvos_timer_event* event);
+error_t rendezvos_timer_event_cancel(rendezvos_timer_event *event);
 /**
  * @brief Insert @p event into the current CPU's timer queue at @p expires_at
  *        (arch timer count, same domain as arch_timer_read()).

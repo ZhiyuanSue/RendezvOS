@@ -21,8 +21,8 @@ static inline error_t rendezvos_request_poweroff(void)
         if (!port)
                 return -E_RENDEZVOS;
 
-        Msg_Data_t* d =
-                kmsg_create(port->service_id, KMSG_OP_SYSTEM_POWER_SHUTDOWN, "");
+        Msg_Data_t* d = kmsg_create(
+                port->service_id, KMSG_OP_SYSTEM_POWER_SHUTDOWN, "");
         if (!d) {
                 ref_put(&port->refcount, free_message_port_ref);
                 return -E_RENDEZVOS;

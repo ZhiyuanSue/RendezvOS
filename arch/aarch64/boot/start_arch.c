@@ -16,20 +16,52 @@
 #include <rendezvos/mm/allocator.h>
 #include <rendezvos/trap/trap.h>
 #include <rendezvos/time.h>
+#include <arch/aarch64/sys_ctrl.h>
+#include <arch/aarch64/sync/barrier.h>
 
 extern u64 L2_table;
 cpu_id_t BSP_ID = 0;
 struct cpuinfo cpu_info = {0};
 
 extern void syscall(struct trap_frame *syscall_ctx);
+
 /*
- * @brief the init_syscall function is register the syscall function as the 0x15
- irq under the AArch64 architecture, this irq means syscall
+ * Merge user PSTATE I (from SPSR at trap entry) into live DAIF.
+ * D/A/F stay as the current kernel policy (typically masked after exception
+ * entry). Aligns with x86 syscall entry sti intent: syscall window respects
+ * user IF when set.
+ */
+static void arch_inherit_daif_i_from_user(u64 spsr)
+{
+        u64 live;
+
+        mrs("DAIF", live);
+        live = (live & ~PSTATE_DAIF_I) | (spsr & PSTATE_DAIF_I);
+        msr("DAIF", live);
+        isb();
+}
+
+/*
+ * TRAP_CLASS_SYSCALL fixed handler: arch entry glue, then portable syscall().
+ * EL0 SVC only for DAIF inherit; same-EL SVC (EC 0x18) keeps kernel mask
+ * policy.
+ */
+static void arch_syscall_helper(struct trap_frame *tf)
+{
+        if (tf && !arch_int_from_kernel(tf)) {
+                arch_inherit_daif_i_from_user(tf->SPSR);
+        }
+        syscall(tf);
+}
+
+/*
+ * Bind syscall via trap_class; register_fixed_trap() reverse-scans
+ * aarch64_ec_to_trap_class() (EC 0x15/0x18 -> TRAP_CLASS_SYSCALL).
  */
 static void init_syscall(void)
 {
-        /*TODO:0x15 need defined by macros*/
-        register_irq_handler(0x15, syscall, IRQ_NO_ATTR);
+        register_fixed_trap(
+                TRAP_CLASS_SYSCALL, arch_syscall_helper, IRQ_NO_ATTR);
 }
 /*
  * @brief get_cpu_info read some cpu register and read the cpu infomation to the

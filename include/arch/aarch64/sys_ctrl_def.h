@@ -177,10 +177,10 @@
 #define SPSR_EL1_M_4_AARCH32   (1)
 
 /* PSTATE / DAIF mask bits (same positions in SPSR_ELx and DAIF). */
-#define PSTATE_DAIF_F          (1UL << 6)
-#define PSTATE_DAIF_I          (1UL << 7)
-#define PSTATE_DAIF_A          (1UL << 8)
-#define PSTATE_DAIF_D          (1UL << 9)
-#define PSTATE_DAIF_MASK       (PSTATE_DAIF_D | PSTATE_DAIF_A | PSTATE_DAIF_I \
-                                | PSTATE_DAIF_F)
+#define PSTATE_DAIF_F (1UL << 6)
+#define PSTATE_DAIF_I (1UL << 7)
+#define PSTATE_DAIF_A (1UL << 8)
+#define PSTATE_DAIF_D (1UL << 9)
+#define PSTATE_DAIF_MASK \
+        (PSTATE_DAIF_D | PSTATE_DAIF_A | PSTATE_DAIF_I | PSTATE_DAIF_F)
 #endif

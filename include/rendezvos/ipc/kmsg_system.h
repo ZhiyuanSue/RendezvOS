@@ -16,8 +16,8 @@
 #define KMSG_OP_SYSTEM_POWER_REBOOT   2u
 
 /* Timer one-shot notify (any rendezvos_timer_event wait_port). */
-#define KMSG_OP_SYSTEM_TIMER_EXPIRE   3u
-#define KMSG_OP_SYSTEM_TIMER_CANCEL   4u
-#define KMSG_FMT_SYSTEM_TIMER         "q"
+#define KMSG_OP_SYSTEM_TIMER_EXPIRE 3u
+#define KMSG_OP_SYSTEM_TIMER_CANCEL 4u
+#define KMSG_FMT_SYSTEM_TIMER       "q"
 
 #endif /* _RENDEZVOS_KMSG_SYSTEM_H_ */
