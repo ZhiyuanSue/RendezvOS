@@ -43,15 +43,24 @@ static void arch_inherit_daif_i_from_user(u64 spsr)
 
 /*
  * TRAP_CLASS_SYSCALL fixed handler: arch entry glue, then portable syscall().
- * EL0 SVC only for DAIF inherit; same-EL SVC (EC 0x18) keeps kernel mask
- * policy.
+ * EL0 SVC only: save live DAIF, inherit user I for the syscall window, restore
+ * on return (same pattern as x86 sti/cli around the syscall body).
+ * Same-EL SVC (EC 0x18) keeps kernel DAIF policy unchanged.
  */
 static void arch_syscall_helper(struct trap_frame *tf)
 {
-        if (tf && !arch_int_from_kernel(tf)) {
+        u64 saved_daif = 0;
+        bool from_user = tf && !arch_int_from_kernel(tf);
+
+        if (from_user) {
+                mrs("DAIF", saved_daif);
                 arch_inherit_daif_i_from_user(tf->SPSR);
         }
         syscall(tf);
+        if (from_user) {
+                msr("DAIF", saved_daif);
+                isb();
+        }
 }
 
 /*

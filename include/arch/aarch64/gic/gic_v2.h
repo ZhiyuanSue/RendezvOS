@@ -61,8 +61,9 @@ struct gic_distributor {
         volatile u32 GICD_ITARGETSRn_RO[0x8]; /*RO	0x800 - 0x81C*/
         volatile u32 GICD_ITARGETSRn_RW[0xF7]; /*RW	0x820 - 0xBF8*/
         u32 Res_3; /*		0xBFC*/
-#define GIC_V2_GICD_1_N          (1)
-#define GIC_V2_GICD_EDGE_TRIGGER (1 << 1)
+#define GIC_V2_GICD_1_N           (1)
+#define GIC_V2_GICD_LEVEL_TRIGGER (0)
+#define GIC_V2_GICD_EDGE_TRIGGER  (1 << 1)
         volatile u32 GICD_ICFGRn[0x40]; /*RW	0xC00 - 0xCFC*/
 
         volatile u32 Impl_1[0x40]; /*		0xD00 - 0xDFC*/

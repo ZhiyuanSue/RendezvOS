@@ -1,5 +1,6 @@
 #include <arch/aarch64/gic/gic_v2.h>
 #include <arch/aarch64/sync/barrier.h>
+#include <common/bit.h>
 #include <modules/dtb/dtb.h>
 #include <rendezvos/mm/vmm.h>
 #include <rendezvos/mm/map_handler.h>
@@ -74,8 +75,15 @@ void gicd_v2_mask_irq(u32 irq_num)
 }
 void gicd_v2_set_type(u32 irq_num, u32 type)
 {
-        /*write the GICD_ICFGR reg*/
-        gic.gicd->GICD_ICFGRn[irq_num / 16] |= type << ((irq_num % 16) * 2);
+        u32 idx = irq_num / 16;
+        u32 shift = (irq_num % 16) * 2;
+        u32 field_mask = 0x3u << shift;
+        u32 val = gic.gicd->GICD_ICFGRn[idx];
+
+        val = clear_mask_u32(val, field_mask);
+        val = set_mask_u32(val, (type & 0x3u) << shift);
+        gic.gicd->GICD_ICFGRn[idx] = val;
+        isb();
 }
 void gicd_v2_set_priority(u32 irq_num, u32 prio)
 {
@@ -193,8 +201,11 @@ void gic_v2_init_cpu_interface(void)
                 gic.unmask_irq(irq);
         }
         /*set all the ppi and sgi type */
-        for (u32 irq = GIC_V2_SGI_START; irq <= GIC_V2_PPI_END; irq++) {
+        for (u32 irq = GIC_V2_SGI_START; irq <= GIC_V2_SGI_END; irq++) {
                 gic.set_type(irq, GIC_V2_GICD_EDGE_TRIGGER);
+        }
+        for (u32 irq = GIC_V2_PPI_START; irq <= GIC_V2_PPI_END; irq++) {
+                gic.set_type(irq, GIC_V2_GICD_LEVEL_TRIGGER);
         }
 
         gic.gicc->GICC_BPR = 0x3; /*we set 8 irq as the same priority group*/
