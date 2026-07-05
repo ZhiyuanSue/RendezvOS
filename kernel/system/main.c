@@ -57,7 +57,7 @@ void cmain(struct setup_info *arch_setup_info)
         create_test_thread(true);
         thread_set_status(get_cpu_current_thread(), thread_status_suspend);
 #endif
-        while (1) {
+        for (;;) {
                 schedule(percpu(core_tm));
                 arch_cpu_relax();
         }

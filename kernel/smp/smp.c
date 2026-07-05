@@ -52,9 +52,11 @@ void start_secondary_cpu(struct setup_info *arch_setup_info)
         do_init_call();
 #ifdef RENDEZVOS_TEST
         create_test_thread(false);
-        thread_set_status(get_cpu_current_thread(), thread_status_suspend);
-        schedule(percpu(core_tm));
 #endif
-        pr_info("[ CPU%d ] idle\n", current_cpu_id);
-        cpu_idle();
+        pr_info("[ CPU%d ] init done, enter scheduler\n", current_cpu_id);
+        thread_set_status(percpu(init_thread_ptr), thread_status_suspend);
+        for (;;) {
+                schedule(percpu(core_tm));
+                arch_cpu_relax();
+        }
 }
