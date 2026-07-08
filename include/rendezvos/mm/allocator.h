@@ -5,6 +5,7 @@
 
 #define MM_COMMON                                                       \
         struct allocator* (*init)(int allocator_id);                    \
+        /*m_alloc must ensure the memory zero-filled*/                  \
         void* (*m_alloc)(struct allocator * allocator_p, size_t Bytes); \
         void (*m_free)(struct allocator * allocator_p, void* p);        \
         i64 allocator_id

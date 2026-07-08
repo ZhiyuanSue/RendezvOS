@@ -55,6 +55,7 @@
 | 查询映射 | `vmm_radix_tree_query_range` | `RADIX_RL_QUERY_OR_CHANGE` |
 | 页故障处理 | fault 路径 + radix `VALID`/COW 叶 | 见 [`trap.md`](trap.md) `TRAP_CLASS_PAGE_FAULT` |
 | 销毁地址空间 | `unregister_vspace` → `del_vspace` | `del_vspace` 会 clean_user + radix delete |
+| 内核稀疏大 buffer（page cache 等） | `page_slice_*`（`mm/page_slice.h`） | **非** `VSpace`；调用方分配内容页；见 [`page-slice.md`](page-slice.md) |
 
 更细的 radix 语义以 `vmm_radix_tree.h` 内 Doxygen 为准。
 
@@ -137,6 +138,7 @@ while (search_start < search_end) {
 | 层次 | 组件 | 职责 |
 |------|------|------|
 | 上层 | **kmalloc**（每 CPU `kallocator`） | 小对象按 slot；整页经 **`root_vspace` radix + `map()`**（见 §5） |
+| 上层 | **page_slice** | 内核逻辑 buffer：pgoff → 调用方 kva（稀疏页）；见 [`page-slice.md`](page-slice.md) |
 | 元数据 | **VSpace radix tree** | 记录 VA 区间与叶标志（LAZY/VALID/rmap）；用户编排见 **`mm_user_utils_*`** |
 | 页表 | **Map Handler** + `map`/`unmap` | 每 CPU 临时映射区修改页表；非一次性全映射 |
 | 物理 | **PMM**（Zone + Buddy） | 物理页框分配 |
@@ -692,6 +694,7 @@ struct mem_allocator {
 | Radix Tree 与两层锁 | `kernel/mm/vmm_radix_tree.c`，`include/rendezvos/mm/vmm_radix_tree.h` |
 | 用户编排层（mm_user_utils） | `kernel/mm/mm_user_utils.c`，`include/rendezvos/mm/mm_user_utils.h` |
 | kmalloc | `kernel/mm/kmalloc.c`，`include/rendezvos/mm/kmalloc.h` |
+| page_slice | `kernel/mm/page_slice.c`，`include/rendezvos/mm/page_slice.h` |
 | 虚拟 MM 与 per-CPU 初始化 | `kernel/mm/vmm.c`（virt_mm_init, init_map, init_radix, kinit） |
 
 ---

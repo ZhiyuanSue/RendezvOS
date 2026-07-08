@@ -14,6 +14,7 @@ enum Error_t {
         E_REND_RC_UNEQUAL,
         E_REND_NOFOUND,
         E_REND_OVERFLOW,
+        E_REND_NO_MEM,
 };
 
 #endif

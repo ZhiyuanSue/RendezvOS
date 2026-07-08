@@ -8,6 +8,7 @@ Core docs describe **mechanisms only**—not Linux syscall numbers, errno tables
 |--------------|------|
 | API index + headers | [`GUIDE.md`](GUIDE.md) §6–§7 |
 | Memory / radix / COW mechanics | [`memory.md`](memory.md) §0–§0.7 |
+| Kernel sparse page index (page_slice) | [`page-slice.md`](page-slice.md) |
 | Threads / ELF / fork primitives | [`task-thread.md`](task-thread.md) |
 | IPC ports + messages | [`ipc.md`](ipc.md) · design [`lockfree-ipc.md`](lockfree-ipc.md) |
 | Traps + syscall hook | [`trap.md`](trap.md) |
@@ -36,6 +37,7 @@ Core docs describe **mechanisms only**—not Linux syscall numbers, errno tables
 | **Page fault** handler | §3.5 → [`trap.md`](trap.md) |
 | **Syscall** dispatch | §3.6 → [`trap.md`](trap.md) |
 | **MM COW** policy on caller side | [`memory.md`](memory.md) §0.7 + caller design doc |
+| **Kernel sparse buffer** (page cache, large linear window) | [`page-slice.md`](page-slice.md) · §3.7 |
 
 ---
 
@@ -90,6 +92,18 @@ void syscall(struct trap_frame* syscall_ctx);  /* core/kernel/system/syscall.c *
 ```
 
 Read `ARCH_SYSCALL_*` macros in `arch/*/trap/trap.h`. Return to user via `arch_syscall_*` ([`trap.md`](trap.md), [`task-thread.md`](task-thread.md)).
+
+### 3.7 Kernel sparse page index (`page_slice`)
+
+For **kernel-only** buffers indexed by file page offset (not user `VSpace`). Full contract: [`page-slice.md`](page-slice.md).
+
+1. Caller allocates each **content page** with `percpu(kallocator)->m_alloc(..., PAGE_SIZE)`.
+2. `page_slice_create(append_info_size, logical_byte_size)`.
+3. `page_slice_insert_page(slice, pgoff, kva, flags)` — default flags: slice **owns** kva and `m_free`s on remove/destroy; use `PAGE_SLICE_FLAG_PIN` if caller keeps the page.
+4. `page_slice_lookup(slice, pgoff)` → `entry->kernel_virtual_address` (+ `PAGE_SLICE_IN_PAGE_OFF` for byte offsets).
+5. Evict: `page_slice_remove_page`; teardown: `page_slice_destroy(&slice)` or `page_slice_set_size(&slice, 0)`.
+
+Do **not** double-free content kva after non-PIN remove. Do **not** use `page_slice` for user mappings — use radix + `mm_user_utils_*`.
 
 ---
 

@@ -125,6 +125,7 @@ Update this table when adding or changing public symbols.
 | MM | Radix lock/query/insert | `vmm_radix_tree_lock_range_big`, `insert_range`, `query_range`, … | [`memory.md`](memory.md) §0.3 | `doc` |
 | MM | Page tables (per CPU) | `map_handler.h` `map()` / `&percpu(Map_Handler)` | [`memory.md`](memory.md) | `doc` |
 | MM | User range orchestration | `mm_user_utils_*` (requires L0 held) | [`memory.md`](memory.md) §0 | `doc` |
+| MM | Kernel sparse pgoff → kva | `mm/page_slice.h` `page_slice_*` | [`page-slice.md`](page-slice.md) | `stable` |
 | MM | Page fault hook | `register_fixed_trap(TRAP_CLASS_PAGE_FAULT, …)` | [`trap.md`](trap.md) | `doc` |
 | Syscall | Dispatch hook | `syscall(trap_frame*)` weak in core | [`trap.md`](trap.md) | `stable` |
 | MM | Destroy vspace | `del_vspace` `unregister_vspace` | [`memory.md`](memory.md) | `code-only` |
@@ -146,7 +147,7 @@ Under `core/include/`.
 |--------|---------|
 | `common.h`, `error.h`, `limits.h` | Types, `error_t` |
 | `time.h` | Timekeeping |
-| `mm/pmm.h`, `mm/vmm.h`, `mm/vmm_radix_tree.h`, `mm/map_handler.h`, `mm/mm_user_utils.h`, `mm/kmalloc.h`, `mm/allocator.h`, `mm/asid.h` | Memory |
+| `mm/pmm.h`, `mm/vmm.h`, `mm/vmm_radix_tree.h`, `mm/map_handler.h`, `mm/mm_user_utils.h`, `mm/kmalloc.h`, `mm/page_slice.h`, `mm/allocator.h`, `mm/asid.h` | Memory |
 | `task/tcb.h`, `task/thread_loader.h`, `task/initcall.h`, `task/id.h`, `task/ebr.h` | Tasks |
 | `ipc/port.h`, `ipc/ipc.h`, `ipc/message.h`, `ipc/kmsg.h`, `ipc/kmsg_system.h`, `ipc/ipc_serial.h` | IPC |
 | `smp/percpu.h`, `smp/smp.h`, `smp/cpu_id.h` | SMP |
@@ -192,4 +193,5 @@ All **how to use core from outside this tree** documentation lives in **[`USING_
 | 2026-05 | Unified guide; merged ARCHITECTURE, CAPABILITY_INDEX, HEADERS, trap/SMP bridges, MAINTENANCE |
 | 2026-05 | §9 call patterns, §10 error_t; expanded §6 MM/IPC APIs |
 | 2026-05 | Review pass: `memory.md` §0, `task-thread` runtime, `trap` syscall entry |
+| 2026-06 | `page-slice.md`; GUIDE §6 page_slice API |
 | 2026-05 | External usage → `USING_CORE.md`; §9–§10 slimmed |
