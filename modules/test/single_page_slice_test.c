@@ -1,6 +1,7 @@
 #include <modules/test/test.h>
 #include <modules/log/log.h>
 #include <rendezvos/mm/page_slice.h>
+#include <rendezvos/mm/page_slice_copy.h>
 #include <rendezvos/mm/kmalloc.h>
 #include <rendezvos/smp/percpu.h>
 #include <common/stddef.h>
@@ -249,6 +250,75 @@ static int ps_test_unbind(struct page_slice* slice, u64 pgoff,
                 return -E_REND_TEST;
         }
         return ps_test_expect_no_lookup(slice, pgoff);
+}
+
+static error_t ps_test_copy_to_slice(struct allocator* alloc)
+{
+        struct page_slice* src = page_slice_create(0, PAGE_SIZE * 2);
+        struct page_slice* dst = page_slice_create(0, PAGE_SIZE * 2);
+        struct page_slice_entry* src_e0;
+        struct page_slice_entry* src_e1;
+        u8 verify[8];
+        u8 i;
+        error_t err = REND_SUCCESS;
+
+        if (!src || !dst) {
+                err = -E_REND_TEST;
+                goto out;
+        }
+
+        if (ps_test_bind(src, 0, alloc, "copy src pg0") != REND_SUCCESS
+            || ps_test_bind(src, 1, alloc, "copy src pg1") != REND_SUCCESS
+            || ps_test_bind(dst, 0, alloc, "copy dst pg0") != REND_SUCCESS
+            || ps_test_bind(dst, 1, alloc, "copy dst pg1") != REND_SUCCESS) {
+                err = -E_REND_TEST;
+                goto out;
+        }
+
+        src_e0 = page_slice_lookup(src, 0);
+        src_e1 = page_slice_lookup(src, 1);
+        memset((void*)src_e0->kernel_virtual_address, 0xAA, PAGE_SIZE);
+        memset((void*)src_e1->kernel_virtual_address, 0xBB, PAGE_SIZE);
+
+        err = page_slice_copy_to_slice(dst, 0, src, 0, PAGE_SIZE * 2);
+        if (err != REND_SUCCESS) {
+                goto out;
+        }
+
+        err = page_slice_copy_to_buffer(dst, PAGE_SIZE - 1, verify, 1);
+        if (err != REND_SUCCESS || verify[0] != 0xAA) {
+                err = -E_REND_TEST;
+                goto out;
+        }
+
+        err = page_slice_copy_to_buffer(dst, PAGE_SIZE, verify, 1);
+        if (err != REND_SUCCESS || verify[0] != 0xBB) {
+                err = -E_REND_TEST;
+                goto out;
+        }
+
+        err = page_slice_copy_to_slice(dst, 200, src, 100, 8);
+        if (err != REND_SUCCESS) {
+                goto out;
+        }
+
+        err = page_slice_copy_to_buffer(dst, 200, verify, 8);
+        if (err != REND_SUCCESS) {
+                goto out;
+        }
+
+        for (i = 0; i < 8; i++) {
+                if (verify[i]
+                    != ((u8*)src_e0->kernel_virtual_address)[100 + i]) {
+                        err = -E_REND_TEST;
+                        break;
+                }
+        }
+
+out:
+        page_slice_destroy(&src);
+        page_slice_destroy(&dst);
+        return err;
 }
 
 static int ps_test_root_empty(struct page_slice* slice, const char* step)
@@ -835,6 +905,8 @@ int page_slice_test(void)
         err = page_slice_destroy(&slice);
         ps_test_slice = slice;
         PS_TEST_CHECK("set_size shrink2 destroy", err == REND_SUCCESS && slice == NULL);
+
+        PS_TEST_CHECK("copy_to_slice", ps_test_copy_to_slice(alloc) == REND_SUCCESS);
 
         slice = page_slice_create(0, PAGE_SIZE * 256);
         ps_test_slice = slice;

@@ -6,24 +6,14 @@
 #include <modules/elf/elf_print.h>
 #include <rendezvos/task/tcb.h>
 #include <rendezvos/mm/allocator.h>
-
-/**
- * @brief Map one ELF64 program header into a vspace.
- * @deprecated Unimplemented in this tree; use load_elf_to_vs instead.
- * @param elf_start Kernel mapping of the ELF image base.
- * @param phdr_ptr Program header to map.
- * @param vs Target address space.
- * @return Not linked; do not call.
- */
-error_t load_elf_Phdr_64(vaddr elf_start, Elf64_Phdr* phdr_ptr, VSpace* vs);
+#include <rendezvos/mm/page_slice.h>
 
 /**
  * @brief ELF load result passed to elf_init_handler_t (core-defined,
  * ABI-neutral).
  */
 typedef struct elf_load_info {
-        vaddr elf_start;
-        vaddr elf_end;
+        struct page_slice* slice;
         vaddr entry_addr;
         vaddr max_load_end; /* max(PT_LOAD.vaddr + memsz), page-aligned */
         vaddr user_sp; /* initial user SP after stack setup */
@@ -44,14 +34,14 @@ typedef void* (*elf_init_handler_t)(Arch_Task_Context* ctx,
 /**
  * @brief Map ELF PT_LOAD/PT_DYNAMIC into @p vs on the current thread, run
  * @p elf_init, then drop to userspace at the image entry.
- * @param elf_start Kernel mapping of ELF base.
- * @param elf_end End of ELF image in kernel memory.
+ * @param slice Populated page_slice of the ELF file image; caller retains
+ *        ownership (core does not destroy).
  * @param vs Address space to map into.
  * @param elf_init Optional pre-entry hook (may be NULL).
- * @return REND_SUCCESS if control returns; -E_RENDEZVOS on load or entry
- * failure.
+ * @return REND_SUCCESS if control returns; -E_IN_PARAM or -E_RENDEZVOS on
+ *         failure. Does not modify slice lifetime.
  */
-error_t run_elf_program(vaddr elf_start, vaddr elf_end, VSpace* vs,
+error_t run_elf_program(struct page_slice* slice, VSpace* vs,
                         elf_init_handler_t elf_init);
 
 /**
@@ -59,27 +49,28 @@ error_t run_elf_program(vaddr elf_start, vaddr elf_end, VSpace* vs,
  * @param elf_thread_ptr Optional out pointer for the new thread.
  * @param append_tcb_info_len Extra TCB tail bytes.
  * @param append_thread_info_len Extra thread tail bytes.
- * @param elf_start Kernel mapping of ELF base.
- * @param elf_end End of ELF image in kernel memory.
+ * @param slice Populated page_slice of the ELF file image.
  * @param elf_init Optional pre-entry hook (may be NULL).
  * @return REND_SUCCESS on success; negative error on failure (rolls back task).
+ * @p slice is passed through to the new thread; caller / @p elf_init decide
+ * when to release it (core does not destroy).
  */
 error_t gen_task_from_elf(Thread_Base** elf_thread_ptr,
                           size_t append_tcb_info_len,
-                          size_t append_thread_info_len, vaddr elf_start,
-                          vaddr elf_end, elf_init_handler_t elf_init);
+                          size_t append_thread_info_len,
+                          struct page_slice* slice,
+                          elf_init_handler_t elf_init);
 
 /**
  * @brief Map ELF64 PT_LOAD and handle PT_DYNAMIC into @p vs.
- * @param elf_start Kernel mapping of ELF base.
- * @param elf_end End of ELF image in kernel memory.
+ * @param slice Populated page_slice of the ELF file image.
  * @param vs Target address space.
  * @param max_load_end_out Optional out: page-aligned max PT_LOAD end (may be
  * NULL).
  * @return REND_SUCCESS; -E_IN_PARAM or -E_RENDEZVOS on bad image or map
  * failure.
  */
-error_t load_elf_to_vs(vaddr elf_start, vaddr elf_end, VSpace* vs,
+error_t load_elf_to_vs(struct page_slice* slice, VSpace* vs,
                        vaddr* max_load_end_out);
 
 /**

@@ -694,7 +694,8 @@ struct mem_allocator {
 | Radix Tree 与两层锁 | `kernel/mm/vmm_radix_tree.c`，`include/rendezvos/mm/vmm_radix_tree.h` |
 | 用户编排层（mm_user_utils） | `kernel/mm/mm_user_utils.c`，`include/rendezvos/mm/mm_user_utils.h` |
 | kmalloc | `kernel/mm/kmalloc.c`，`include/rendezvos/mm/kmalloc.h` |
-| page_slice | `kernel/mm/page_slice.c`，`include/rendezvos/mm/page_slice.h` |
+| page_slice | `kernel/mm/page_slice.c`, `include/rendezvos/mm/page_slice.h` |
+| page_slice copy | `kernel/mm/page_slice_copy.c`, `include/rendezvos/mm/page_slice_copy.h` |
 | 虚拟 MM 与 per-CPU 初始化 | `kernel/mm/vmm.c`（virt_mm_init, init_map, init_radix, kinit） |
 
 ---

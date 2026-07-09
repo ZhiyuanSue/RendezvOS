@@ -1,5 +1,4 @@
 #include <rendezvos/mm/page_slice.h>
-#include <rendezvos/mm/kmalloc.h>
 #include <rendezvos/smp/percpu.h>
 
 #define PS_STRUCTURAL_PATH_DEPTH 3u

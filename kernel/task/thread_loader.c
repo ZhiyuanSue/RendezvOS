@@ -3,6 +3,7 @@
 #include <rendezvos/task/thread_loader.h>
 #include <modules/log/log.h>
 #include <rendezvos/mm/mm_user_utils.h>
+#include <rendezvos/mm/page_slice_copy.h>
 #include <rendezvos/mm/vmm.h>
 #include <rendezvos/mm/vmm_radix_tree.h>
 #include <rendezvos/smp/percpu.h>
@@ -24,6 +25,20 @@ static void elf_task_delete_tcb(Tcb_Base *elf_task)
                 return;
         if (delete_task(elf_task) != REND_SUCCESS)
                 pr_error("[ Error ] delete_task cleanup failed\n");
+}
+
+static vaddr elf_slice_file_base(struct page_slice *slice)
+{
+        struct page_slice_entry *entry;
+
+        if (!slice) {
+                return 0;
+        }
+        entry = page_slice_lookup(slice, 0);
+        if (!entry) {
+                return 0;
+        }
+        return entry->kernel_virtual_address;
 }
 
 vaddr generate_user_stack(VSpace *vs)
@@ -54,10 +69,10 @@ vaddr generate_user_stack(VSpace *vs)
 
         return user_sp;
 }
-error_t elf_Phdr_64_load_handle(vaddr elf_start, Elf64_Phdr *phdr_ptr,
-                                VSpace *vs)
+static error_t elf_Phdr_64_load_handle(struct page_slice *slice,
+                                       Elf64_Phdr *phdr_ptr, VSpace *vs)
 {
-        if (!vs || !phdr_ptr || !elf_start) {
+        if (!vs || !phdr_ptr || !slice) {
                 return -E_IN_PARAM;
         }
         /*
@@ -71,7 +86,6 @@ error_t elf_Phdr_64_load_handle(vaddr elf_start, Elf64_Phdr *phdr_ptr,
         u64 offset = phdr_ptr->p_offset;
 
         vaddr aligned_start = ROUND_DOWN(ph_start, PAGE_SIZE);
-        // u64 aligned_offset = ROUND_DOWN(offset, PAGE_SIZE);
 
         u64 map_length = ph_start + phdr_ptr->p_memsz - aligned_start;
         u64 page_num = ROUND_UP(map_length, PAGE_SIZE) / PAGE_SIZE;
@@ -103,30 +117,46 @@ error_t elf_Phdr_64_load_handle(vaddr elf_start, Elf64_Phdr *phdr_ptr,
         }
         (void)vmm_radix_tree_unlock_range_big(vs, l0_lo, vaddr_end);
 
-        return map_handler_user_kernel_copy(vs,
-                                            ph_start,
-                                            (void *)(elf_start + offset),
-                                            phdr_ptr->p_filesz,
-                                            true);
+        if (phdr_ptr->p_filesz == 0)
+                return REND_SUCCESS;
+
+        return page_slice_copy_to_user(
+                vs, ph_start, slice, offset, (size_t)phdr_ptr->p_filesz);
 }
-error_t elf_Phdr_64_dynamic_handle(vaddr elf_start, Elf64_Phdr *phdr_ptr,
-                                   VSpace *vs)
+
+static error_t elf_Phdr_64_dynamic_handle(struct page_slice *slice,
+                                          Elf64_Phdr *phdr_ptr, VSpace *vs)
 {
-        if (!vs || !elf_start || !phdr_ptr) {
+        (void)slice;
+        if (!vs || !phdr_ptr) {
                 return -E_IN_PARAM;
         }
         print_elf_ph64(phdr_ptr);
         return REND_SUCCESS;
 }
-error_t load_elf_to_vs(vaddr elf_start, vaddr elf_end, VSpace *vs,
+error_t load_elf_to_vs(struct page_slice *slice, VSpace *vs,
                        vaddr *max_load_end_out)
 {
         vaddr load_end = 0;
+        vaddr elf_start;
+        Elf64_Ehdr *ehdr;
+        u64 slice_size;
 
-        if (!elf_start || !elf_end || elf_end <= elf_start || !vs) {
+        if (!slice || !vs) {
+                return -E_IN_PARAM;
+        }
+
+        slice_size = page_slice_get_size(slice);
+        if (slice_size < sizeof(Elf64_Ehdr)) {
                 return -E_IN_PARAM;
         }
         error_t e = REND_SUCCESS;
+
+        elf_start = elf_slice_file_base(slice);
+        if (!elf_start) {
+                return -E_RENDEZVOS;
+        }
+
         if (!check_elf_header(elf_start)) {
                 pr_error("[ERROR] bad elf file\n");
                 return -E_RENDEZVOS;
@@ -135,15 +165,26 @@ error_t load_elf_to_vs(vaddr elf_start, vaddr elf_end, VSpace *vs,
                 pr_error("[Error] Rendezvos not support elf32 file running\n");
                 return -E_RENDEZVOS;
         }
+        ehdr = ELF64_HEADER(elf_start);
+        if (ehdr->e_phoff + (u64)ehdr->e_phnum * (u64)ehdr->e_phentsize
+            > slice_size) {
+                return -E_RENDEZVOS;
+        }
+
         for_each_program_header_64(elf_start)
         {
-                /*handle LOAD*/
-                if (phdr_ptr->p_type == PT_LOAD) {
-                        vaddr end = (vaddr)phdr_ptr->p_vaddr
-                                    + (vaddr)phdr_ptr->p_memsz;
+                Elf64_Phdr phdr;
+                u64 ph_off = (u64)phdr_ptr - elf_start;
+
+                e = page_slice_copy_to_buffer(slice, ph_off, &phdr, sizeof(phdr));
+                if (e != REND_SUCCESS) {
+                        return e;
+                }
+                if (phdr.p_type == PT_LOAD) {
+                        vaddr end = (vaddr)phdr.p_vaddr + (vaddr)phdr.p_memsz;
                         if (end > load_end)
                                 load_end = end;
-                        e = elf_Phdr_64_load_handle(elf_start, phdr_ptr, vs);
+                        e = elf_Phdr_64_load_handle(slice, &phdr, vs);
                         if (e != REND_SUCCESS) {
                                 pr_error("[ Error ]elf load handle fail\n");
                                 return e;
@@ -152,9 +193,15 @@ error_t load_elf_to_vs(vaddr elf_start, vaddr elf_end, VSpace *vs,
         }
         for_each_program_header_64(elf_start)
         {
-                /*handle DYNAMIC*/
-                if (phdr_ptr->p_type == PT_DYNAMIC) {
-                        e = elf_Phdr_64_dynamic_handle(elf_start, phdr_ptr, vs);
+                Elf64_Phdr phdr;
+                u64 ph_off = (u64)phdr_ptr - elf_start;
+
+                e = page_slice_copy_to_buffer(slice, ph_off, &phdr, sizeof(phdr));
+                if (e != REND_SUCCESS) {
+                        return e;
+                }
+                if (phdr.p_type == PT_DYNAMIC) {
+                        e = elf_Phdr_64_dynamic_handle(slice, &phdr, vs);
                         if (e != REND_SUCCESS) {
                                 pr_error("[ Error ] elf dynamic handle fail\n");
                                 return e;
@@ -165,20 +212,29 @@ error_t load_elf_to_vs(vaddr elf_start, vaddr elf_end, VSpace *vs,
                 *max_load_end_out = ROUND_UP(load_end, PAGE_SIZE);
         return e;
 }
-error_t run_elf_program(vaddr elf_start, vaddr elf_end, VSpace *vs,
+error_t run_elf_program(struct page_slice *slice, VSpace *vs,
                         elf_init_handler_t elf_init)
 {
-        pr_info("start gen task from elf start %lx end %lx vs %lx\n",
-                elf_start,
-                elf_end,
-                vs);
+        pr_info("start gen task from elf slice %lx vs %lx\n", slice, vs);
         vaddr max_load_end;
-        if (load_elf_to_vs(elf_start, elf_end, vs, &max_load_end)
-            != REND_SUCCESS)
+        vaddr elf_start;
+        error_t e;
+
+        if (!slice || !vs) {
+                return -E_IN_PARAM;
+        }
+
+        e = load_elf_to_vs(slice, vs, &max_load_end);
+        if (e != REND_SUCCESS) {
+                return -E_RENDEZVOS;
+        }
+
+        elf_start = elf_slice_file_base(slice);
+        if (!elf_start)
                 return -E_RENDEZVOS;
         Thread_Base *elf_thread = get_cpu_current_thread();
 
-        Elf64_Ehdr *elf_header = (Elf64_Ehdr *)elf_start;
+        Elf64_Ehdr *elf_header = ELF64_HEADER(elf_start);
         vaddr entry_addr = elf_header->e_entry;
 
         vaddr user_sp = arch_get_thread_user_sp(&elf_thread->ctx);
@@ -187,8 +243,7 @@ error_t run_elf_program(vaddr elf_start, vaddr elf_end, VSpace *vs,
         arch_set_thread_user_sp(&elf_thread->ctx, user_sp);
         if (elf_init) {
                 elf_load_info_t info = {
-                        .elf_start = elf_start,
-                        .elf_end = elf_end,
+                        .slice = slice,
                         .entry_addr = entry_addr,
                         .max_load_end = max_load_end,
                         .user_sp = user_sp,
@@ -207,13 +262,12 @@ error_t run_elf_program(vaddr elf_start, vaddr elf_end, VSpace *vs,
         pr_error("[run_elf_thread] goto unreachable\n");
         return -E_RENDEZVOS;
 }
-/*we must load all the elf file into kernel memory before we use this function*/
 error_t gen_task_from_elf(Thread_Base **elf_thread_ptr,
                           size_t append_tcb_info_len,
-                          size_t append_thread_info_len, vaddr elf_start,
-                          vaddr elf_end, elf_init_handler_t elf_init)
+                          size_t append_thread_info_len,
+                          struct page_slice *slice, elf_init_handler_t elf_init)
 {
-        if (!elf_start || !elf_end) {
+        if (!slice) {
                 return -E_IN_PARAM;
         }
         error_t e = REND_SUCCESS;
@@ -245,9 +299,8 @@ error_t gen_task_from_elf(Thread_Base **elf_thread_ptr,
         Thread_Base *elf_thread = create_thread((void *)run_elf_program,
                                                 append_thread_info_len,
                                                 true,
-                                                4,
-                                                elf_start,
-                                                elf_end,
+                                                3,
+                                                slice,
                                                 elf_task->vs,
                                                 elf_init);
         if (!elf_thread) {

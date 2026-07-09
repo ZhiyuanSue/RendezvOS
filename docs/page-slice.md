@@ -141,7 +141,15 @@ struct my_cache_slice {
 | `page_slice_insert_page` | 可 grow radix；同 pgoff 同 kva 幂等；不同 kva → `-E_REND_AGAIN` |
 | `page_slice_remove_page` | 清槽、cascade、shrink（多 pass） |
 
-### 5.1 常见 errno
+Copy helpers (composed on lookup; `include/rendezvos/mm/page_slice_copy.h`, `kernel/mm/page_slice_copy.c`):
+
+| 函数 | 说明 |
+|------|------|
+| `page_slice_copy_to_buffer` | slice → 连续内核 buffer |
+| `page_slice_copy_to_slice` | slice → slice（dst pgoff 须已 bind） |
+| `page_slice_copy_to_user` | slice → 用户 VA（`VSpace` + map_handler） |
+
+### 5.2 常见 errno
 
 | 返回值 | 含义 |
 |--------|------|

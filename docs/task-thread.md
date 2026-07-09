@@ -62,7 +62,7 @@ Module registration: `DEFINE_INIT` / `do_init_call()` in `task/initcall.h`.
 Typical in-address-space sequence:
 
 1. `vspace_clear_user_mappings(vs, handler, true)` — remove existing user mappings
-2. `load_elf_to_vs(elf_start, elf_end, vs, &max_end)` — map `PT_LOAD`
+2. `load_elf_to_vs(slice, vs, &max_end)` — map `PT_LOAD` from a populated `page_slice`
 3. `generate_user_stack(vs)` — user stack at `USER_SPACE_TOP`
 4. Return to user mode via arch syscall-return helpers on the trap frame:
 

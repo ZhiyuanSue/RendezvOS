@@ -61,6 +61,7 @@
 #include <common/dsa/list.h>
 #include <rendezvos/error.h>
 #include <rendezvos/sync/cas_lock.h>
+#include <rendezvos/mm/kmalloc.h>
 
 /* === leaf entry (pgoff mapping) === */
 

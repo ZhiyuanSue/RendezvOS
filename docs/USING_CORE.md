@@ -56,7 +56,8 @@ Details: [`ipc.md`](ipc.md).
 ### 3.2 Replace user image (same `VSpace`)
 
 1. `vspace_clear_user_mappings(vs, &percpu(Map_Handler), true)` — obligations: [`memory.md`](memory.md) §0.5.
-2. `load_elf_to_vs(elf_start, elf_end, vs, &max_end)`.
+2. Populate a `page_slice` (create + `page_slice_insert_page`, or compat `linux_page_slice_copy_from_kva`).
+3. `load_elf_to_vs(slice, vs, &max_end)`.
 3. `generate_user_stack(vs)`.
 4. Caller lays out argv/env on user stack (policy).
 5. If returning from **syscall**: `arch_ctx_refresh` if needed → `arch_syscall_set_user_return(tf, ctx, entry, sp, ret)`. (TLS via `arch_set_user_tls_base` when needed).
@@ -99,11 +100,12 @@ For **kernel-only** buffers indexed by file page offset (not user `VSpace`). Ful
 
 1. Caller allocates each **content page** with `percpu(kallocator)->m_alloc(..., PAGE_SIZE)`.
 2. `page_slice_create(append_info_size, logical_byte_size)`.
-3. `page_slice_insert_page(slice, pgoff, kva, flags)` — default flags: slice **owns** kva and `m_free`s on remove/destroy; use `PAGE_SLICE_FLAG_PIN` if caller keeps the page.
-4. `page_slice_lookup(slice, pgoff)` → `entry->kernel_virtual_address` (+ `PAGE_SLICE_IN_PAGE_OFF` for byte offsets).
-5. Evict: `page_slice_remove_page`; teardown: `page_slice_destroy(&slice)` or `page_slice_set_size(&slice, 0)`.
+3. `page_slice_insert_page(slice, pgoff, kva, flags)` — default flags `0`: slice **owns** kva and `m_free`s on remove/destroy.
+4. `page_slice_copy_to_buffer` / `page_slice_copy_to_user` / `page_slice_copy_to_slice` — see `page_slice_copy.h` (composed on lookup/insert; not in `page_slice.c`).
+5. `page_slice_lookup(slice, pgoff)` → `entry->kernel_virtual_address` (+ `PAGE_SLICE_IN_PAGE_OFF` for byte offsets).
+6. Evict: `page_slice_remove_page`; teardown: `page_slice_destroy(&slice)` or `page_slice_set_size(&slice, 0)`.
 
-Do **not** double-free content kva after non-PIN remove. Do **not** use `page_slice` for user mappings — use radix + `mm_user_utils_*`.
+Populate slices from file images in the **caller** (e.g. compat `linux_page_slice_copy_from_kva`, or lazy `insert_page` per page). Do **not** alias foreign kva into slice slots from core.
 
 ---
 
