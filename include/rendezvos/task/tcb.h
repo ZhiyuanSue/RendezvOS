@@ -50,6 +50,23 @@ it is a percpu structure and have a percpu schedule algorithm
 typedef struct task_manager Task_Manager;
 extern Task_Manager* core_tm;
 
+struct Tcb_Base;
+struct Thread_Base;
+
+/**
+ * @brief Optional hook before freeing @c append_tcb_info tail (ABI-neutral).
+ * Called from delete_task() immediately before the TCB allocation is returned
+ * to the allocator. Upper layers release heap objects referenced from append.
+ */
+typedef void (*task_append_fini_t)(struct Tcb_Base* tcb);
+
+/**
+ * @brief Optional hook before freeing @c append_thread_info tail.
+ * Called from del_thread_structure() immediately before the Thread_Base
+ * allocation is returned to the allocator.
+ */
+typedef void (*thread_append_fini_t)(struct Thread_Base* thread);
+
 /* task */
 #define TASK_SCHE_COMMON                           \
         struct {                                   \
@@ -62,6 +79,8 @@ extern Task_Manager* core_tm;
         i64 thread_number;                  \
         struct list_entry thread_head_node; \
         VSpace* vs;                         \
+        size_t append_tcb_info_len;         \
+        task_append_fini_t append_fini;     \
         TASK_SCHE_COMMON
 /* as the base class of tcb */
 typedef struct {
@@ -113,6 +132,8 @@ extern u64 thread_kstack_page_num;
         atomic64_t recv_pending_cnt; /*how much msg arrive*/        \
         volatile void* port_ptr; /*expect Message_Port_t*/          \
         struct thread_port_cache port_cache;                        \
+        size_t append_thread_info_len;                              \
+        thread_append_fini_t append_fini;                           \
         THERAD_SCHE_COMMON
 
 #define THREAD_FLAG_NONE               0
@@ -183,10 +204,13 @@ Task_Manager* init_proc();
  * tail).
  * @param cpu_allocator Allocator for the TCB allocation.
  * @param append_tcb_info_len Extra bytes after TCB_COMMON for extensions.
+ * @param append_fini Optional pre-free hook (NULL if @p append_tcb_info_len is
+ *        0 or append has no heap-backed extensions).
  * @return New TCB, or NULL if @p cpu_allocator is NULL or allocation fails.
  */
 Tcb_Base* new_task_structure(struct allocator* cpu_allocator,
-                             size_t append_tcb_info_len);
+                             size_t append_tcb_info_len,
+                             task_append_fini_t append_fini);
 
 /**
  * @brief Allocate a per-CPU task manager and set default scheduler.
@@ -211,10 +235,12 @@ void del_thread_structure(Thread_Base* thread);
  * @brief Allocate and initialize a thread control block (plus optional tail).
  * @param cpu_allocator Allocator for thread, init params, and IPC dummy nodes.
  * @param append_thread_info_len Extra bytes after THREAD_COMMON for extensions.
+ * @param append_fini Optional pre-free hook (NULL if no append teardown).
  * @return New thread, or NULL on allocation failure.
  */
 Thread_Base* new_thread_structure(struct allocator* cpu_allocator,
-                                  size_t append_thread_info_len);
+                                  size_t append_thread_info_len,
+                                  thread_append_fini_t append_fini);
 
 /**
  * @brief Refcount destructor: calls del_thread_structure for the owning thread.
@@ -288,12 +314,14 @@ error_t del_thread_from_manager(Thread_Base* thread);
  * @brief Create a kernel thread that enters via thread_entry then run_thread.
  * @param __func Target function pointer stored in init_parameter.
  * @param append_thread_info_len Extra bytes after THREAD_COMMON.
+ * @param append_fini Optional pre-free hook for append_thread_info (NULL ok).
  * @param reserve_trap_frame Whether arch context reserves a trap frame slot.
  * @param nr_parameter Number of u64 varargs (capped by
  * NR_ABI_PARAMETER_INT_REG).
  * @return New thread with refcount initialized, or NULL on failure.
  */
 Thread_Base* create_thread(void* __func, size_t append_thread_info_len,
+                           thread_append_fini_t append_fini,
                            bool reserve_trap_frame, int nr_parameter, ...);
 
 /**

@@ -265,14 +265,17 @@ error_t run_elf_program(struct page_slice *slice, VSpace *vs,
 error_t gen_task_from_elf(Thread_Base **elf_thread_ptr,
                           size_t append_tcb_info_len,
                           size_t append_thread_info_len,
+                          task_append_fini_t task_append_fini,
+                          thread_append_fini_t thread_append_fini,
                           struct page_slice *slice, elf_init_handler_t elf_init)
 {
         if (!slice) {
                 return -E_IN_PARAM;
         }
         error_t e = REND_SUCCESS;
-        Tcb_Base *elf_task =
-                new_task_structure(percpu(kallocator), append_tcb_info_len);
+        Tcb_Base *elf_task = new_task_structure(percpu(kallocator),
+                                                append_tcb_info_len,
+                                                task_append_fini);
         if (!elf_task)
                 return -E_RENDEZVOS;
 
@@ -298,6 +301,7 @@ error_t gen_task_from_elf(Thread_Base **elf_thread_ptr,
 
         Thread_Base *elf_thread = create_thread((void *)run_elf_program,
                                                 append_thread_info_len,
+                                                thread_append_fini,
                                                 true,
                                                 3,
                                                 slice,
@@ -344,7 +348,7 @@ error_t gen_thread_from_func(Thread_Base **func_thread_ptr, kthread_func thread,
                 return -E_IN_PARAM;
         }
         Thread_Base *func_t;
-        func_t = create_thread((void *)thread, 0, false, 1, arg);
+        func_t = create_thread((void *)thread, 0, NULL, false, 1, arg);
         if (!func_t) {
                 pr_error("[Error] create kernel thread fail\n");
                 return -E_RENDEZVOS;

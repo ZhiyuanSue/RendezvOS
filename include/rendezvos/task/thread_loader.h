@@ -49,6 +49,8 @@ error_t run_elf_program(struct page_slice* slice, VSpace* vs,
  * @param elf_thread_ptr Optional out pointer for the new thread.
  * @param append_tcb_info_len Extra TCB tail bytes.
  * @param append_thread_info_len Extra thread tail bytes.
+ * @param task_append_fini Optional task append pre-free hook (NULL ok).
+ * @param thread_append_fini Optional thread append pre-free hook (NULL ok).
  * @param slice Populated page_slice of the ELF file image.
  * @param elf_init Optional pre-entry hook (may be NULL).
  * @return REND_SUCCESS on success; negative error on failure (rolls back task).
@@ -58,6 +60,8 @@ error_t run_elf_program(struct page_slice* slice, VSpace* vs,
 error_t gen_task_from_elf(Thread_Base** elf_thread_ptr,
                           size_t append_tcb_info_len,
                           size_t append_thread_info_len,
+                          task_append_fini_t task_append_fini,
+                          thread_append_fini_t thread_append_fini,
                           struct page_slice* slice,
                           elf_init_handler_t elf_init);
 

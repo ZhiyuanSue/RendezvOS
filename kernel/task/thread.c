@@ -67,7 +67,8 @@ static void thread_port_cache_clear(struct thread_port_cache* cache)
 }
 
 Thread_Base* new_thread_structure(struct allocator* cpu_kallocator,
-                                  size_t append_thread_info_len)
+                                  size_t append_thread_info_len,
+                                  thread_append_fini_t append_fini)
 {
         if (!cpu_kallocator)
                 return NULL;
@@ -95,6 +96,8 @@ Thread_Base* new_thread_structure(struct allocator* cpu_kallocator,
         }
 
         thread->tid = INVALID_ID;
+        thread->append_thread_info_len = append_thread_info_len;
+        thread->append_fini = append_fini;
         arch_task_ctx_init(&(thread->ctx));
         thread_set_status(thread, thread_status_init);
         INIT_LIST_HEAD(&(thread->sched_thread_list));
@@ -193,6 +196,8 @@ void del_thread_structure(Thread_Base* thread)
         thread_release_owned_resources(thread);
         del_init_parameter_structure(thread->init_parameter);
         thread->init_parameter = NULL;
+        if (thread->append_fini)
+                thread->append_fini((struct Thread_Base *)thread);
         cpu_kallocator->m_free(cpu_kallocator, thread);
 }
 error_t free_thread_ref(ref_count_t* ref_count_ptr)
@@ -225,11 +230,13 @@ void del_init_parameter_structure(Thread_Init_Para* pm)
 }
 /*general thread create function*/
 Thread_Base* create_thread(void* __func, size_t append_thread_info_len,
+                           thread_append_fini_t append_fini,
                            bool reserve_trap_frame, int nr_parameter, ...)
 {
         struct allocator* cpu_kallocator = percpu(kallocator);
-        Thread_Base* thread =
-                new_thread_structure(cpu_kallocator, append_thread_info_len);
+        Thread_Base* thread = new_thread_structure(cpu_kallocator,
+                                                   append_thread_info_len,
+                                                   append_fini);
         if (!thread) {
                 goto new_thread_structure_error;
         }
@@ -527,6 +534,7 @@ Thread_Base* copy_thread(Thread_Base* src_thread, Tcb_Base* target_task,
         /* Merge user-visible context while preserving kernel bootstrap regs. */
         Thread_Base* dst_thread = create_thread((void*)run_copied_thread,
                                                 append_thread_info_len,
+                                                src_thread->append_fini,
                                                 true,
                                                 1,
                                                 custom_return_value);
@@ -563,9 +571,15 @@ Thread_Base* copy_thread(Thread_Base* src_thread, Tcb_Base* target_task,
         }
 
         if (append_thread_info_len > 0) {
+                size_t copy_len = src_thread->append_thread_info_len;
+
+                if (copy_len == 0)
+                        copy_len = append_thread_info_len;
+                if (copy_len > append_thread_info_len)
+                        copy_len = append_thread_info_len;
                 memcpy(dst_thread->append_thread_info,
                        src_thread->append_thread_info,
-                       append_thread_info_len);
+                       copy_len);
         }
 
         thread_set_status(dst_thread, thread_status_ready);
