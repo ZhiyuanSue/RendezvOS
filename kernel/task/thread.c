@@ -148,7 +148,8 @@ alloc_thread_error:
  * ref_put(dummy) twice.
  *
  * Teardown contract:
- * 1) delete_thread: detach from task + Task_Manager sched ring (del_thread_*),
+ * 1) delete_thread: detach from Task_Manager sched ring (del_thread_from_manager;
+ *    retries -E_REND_AGAIN by scheduling on owner CPU), then del_thread_from_task,
  *    then ref_put — thread struct may survive if IPC etc. still holds a ref.
  * 2) Last ref -> free_thread_ref -> del_thread_structure -> here + init + free.
  */
@@ -275,29 +276,40 @@ get_kstack_error:
 new_thread_structure_error:
         return NULL;
 }
-void delete_thread(Thread_Base* thread)
+error_t delete_thread(Thread_Base* thread)
 {
         if (!thread || !thread->belong_tcb)
-                return;
+                return -E_IN_PARAM;
         atomic64_store(&thread->status, thread_status_exit);
         /* Heap/queues/kstack: released in del_thread_structure on last ref
          * only. */
 
         error_t e = -E_RENDEZVOS;
+        Task_Manager* tm = thread->tm;
+        if (tm) {
+                for (;;) {
+                        e = del_thread_from_manager(thread);
+                        if (e == -E_REND_AGAIN) {
+                                if (percpu(cpu_number) == tm->owner_cpu)
+                                        schedule(tm);
+                                continue;
+                        }
+                        if (e != REND_SUCCESS) {
+                                pr_error(
+                                        "[ Error ] delete thread from manager fail,please check\n");
+                                return e;
+                        }
+                        break;
+                }
+        }
         e = del_thread_from_task(thread);
         if (e != REND_SUCCESS) {
                 pr_error(
                         "[ Error ] delete thread from task fail, please check\n");
-        }
-        if (thread->tm) {
-                e = del_thread_from_manager(thread);
-                if (e != REND_SUCCESS) {
-                        pr_error(
-                                "[ Error ] delete thread from manager fail,please check\n");
-                }
+                return e;
         }
         ref_put(&thread->refcount, free_thread_ref);
-        return;
+        return REND_SUCCESS;
 }
 error_t thread_join(Tcb_Base* task, Thread_Base* thread)
 {

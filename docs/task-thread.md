@@ -103,7 +103,13 @@ Before copy, ensure the parent’s user context is current when entering from a 
 | `delete_task` | Remove task and its threads |
 | `del_*_from_manager` | Detach from scheduler structures |
 
+`delete_thread` order: `del_thread_from_manager` (sched ring) → `del_thread_from_task` → `ref_put`.
+
+`del_thread_from_manager` returns `-E_REND_AGAIN` when the thread is still `tm->current_thread` on the owner CPU (checked under `sched_lock`). `delete_thread` retries that case: on the owner CPU it calls `schedule(tm)`; remote callers spin-retry while the owner’s exit path runs `schedule`.
+
 Follow usual refcount and cross-CPU teardown discipline for the calling environment.
+
+`schedule` clears `vs->tlb_cpu_mask` and drops a vspace ref when switching between user threads with different `VSpace` objects. User → kernel/idle transitions do not clear the mask; `del_vspace` then waits until `tlb_cpu_mask` is zero (see [`memory.md`](memory.md)).
 
 ---
 

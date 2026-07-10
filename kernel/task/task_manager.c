@@ -1,3 +1,4 @@
+#include <common/atomic.h>
 #include <rendezvos/task/tcb.h>
 #include <rendezvos/smp/percpu.h>
 #include <rendezvos/sync/cas_lock.h>
@@ -108,8 +109,10 @@ void schedule(Task_Manager* tm)
                 if target thread is not a kernel thread,
                 try to change the vspace
                 */
-                Tcb_Base* prev_tcb = curr->belong_tcb;
-                Tcb_Base* next_tcb = tm->current_thread->belong_tcb;
+                Tcb_Base* prev_tcb = (Tcb_Base*)atomic64_load(
+                        (volatile const u64*)&curr->belong_tcb);
+                Tcb_Base* next_tcb = (Tcb_Base*)atomic64_load(
+                        (volatile const u64*)&tm->current_thread->belong_tcb);
                 if (!prev_tcb || !next_tcb || !next_tcb->vs) {
                         pr_error("[ Error ] unexpect thread config\n");
                         goto use_old_thread;

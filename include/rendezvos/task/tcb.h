@@ -306,7 +306,10 @@ error_t add_thread_to_manager(Task_Manager* core_tm, Thread_Base* thread);
 /**
  * @brief Unlink @p thread from its task manager sched_thread_list (idempotent).
  * @param thread Thread to detach.
- * @return REND_SUCCESS, or -E_IN_PARAM if @p thread is NULL.
+ * @return REND_SUCCESS, or -E_IN_PARAM if @p thread is NULL, or -E_REND_AGAIN
+ *         if @p thread is still @p thread->tm->current_thread (checked under
+ *         sched_lock). Callers that need a hard detach should retry after the
+ *         owner CPU schedules away (see delete_thread).
  */
 error_t del_thread_from_manager(Thread_Base* thread);
 
@@ -325,10 +328,13 @@ Thread_Base* create_thread(void* __func, size_t append_thread_info_len,
                            bool reserve_trap_frame, int nr_parameter, ...);
 
 /**
- * @brief Mark thread exiting, detach from task and manager, drop refcount.
+ * @brief Mark thread exiting, detach from manager and task, drop refcount.
  * @param thread Thread to delete (no-op if NULL or not attached to a task).
+ * @return REND_SUCCESS on success; -E_IN_PARAM if @p thread is NULL or has no
+ *         task; other errors from del_thread_from_* (manager detach retries
+ *         -E_REND_AGAIN internally by scheduling on the owner CPU).
  */
-void delete_thread(Thread_Base* thread);
+error_t delete_thread(Thread_Base* thread);
 
 /**
  * @brief Remove task from manager and free TCB when it has no threads.

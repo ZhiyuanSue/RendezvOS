@@ -239,10 +239,15 @@ error_t add_thread_to_manager(Task_Manager* core_tm, Thread_Base* thread)
 error_t del_thread_from_manager(Thread_Base* thread)
 {
         if (!thread)
-                return E_IN_PARAM;
+                return -E_IN_PARAM;
         if (thread->tm) {
                 Task_Manager* core_tm = thread->tm;
                 lock_cas(&core_tm->sched_lock);
+                /* Still running on owner CPU: caller must schedule away first. */
+                if (core_tm->current_thread == thread) {
+                        unlock_cas(&core_tm->sched_lock);
+                        return -E_REND_AGAIN;
+                }
                 list_del_init(&thread->sched_thread_list);
                 unlock_cas(&core_tm->sched_lock);
                 thread->tm = NULL;
