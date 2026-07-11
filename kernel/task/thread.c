@@ -563,7 +563,6 @@ Thread_Base* copy_thread(Thread_Base* src_thread, Tcb_Base* target_task,
         arch_ctx_refresh(&src_thread->ctx);
         arch_ctx_merge_from_src(&dst_thread->ctx, &src_thread->ctx);
 
-        dst_thread->belong_tcb = target_task;
         dst_thread->flags = src_thread->flags;
 
         if (src_thread->name) {
@@ -592,6 +591,12 @@ Thread_Base* copy_thread(Thread_Base* src_thread, Tcb_Base* target_task,
                 memcpy(dst_thread->append_thread_info,
                        src_thread->append_thread_info,
                        copy_len);
+        }
+
+        if (add_thread_to_task(target_task, dst_thread) != REND_SUCCESS) {
+                pr_error("[copy_thread] add_thread_to_task failed\n");
+                del_thread_structure(dst_thread);
+                return NULL;
         }
 
         thread_set_status(dst_thread, thread_status_ready);

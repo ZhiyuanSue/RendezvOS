@@ -4,10 +4,12 @@
 #include <rendezvos/smp/percpu.h>
 #include <rendezvos/error.h>
 #include <common/string.h>
+#include <common/refcount.h>
 #include <rendezvos/mm/allocator.h>
-#include <rendezvos/task/initcall.h>
 #include <rendezvos/task/thread_loader.h>
 #include <rendezvos/sync/cas_lock.h>
+#include <rendezvos/ipc/message.h>
+#include <rendezvos/ipc/port.h>
 
 u64 thread_kstack_page_num = 2;
 u64 thread_ustack_page_num = 8;
@@ -39,6 +41,7 @@ error_t create_init_thread(Tcb_Base* root_task)
                 pr_error("[ Error ] new thread structure fail\n");
                 goto new_thread_fail;
         }
+        ref_init(&init_t->refcount);
         init_t->tid = get_new_id(&tid_manager);
         e = add_thread_to_task(root_task, init_t);
         if (e != REND_SUCCESS) {
@@ -67,6 +70,80 @@ add_thread_to_task_fail:
 new_thread_fail:
         return e;
 }
+
+static init_thread_ipc_handler_fn init_thread_ipc_handler;
+
+void kernel_set_ipc_handler(init_thread_ipc_handler_fn handler)
+{
+        init_thread_ipc_handler = handler;
+}
+
+error_t kernel_port_register(void)
+{
+        Message_Port_t* port;
+        error_t err;
+
+        if (!global_port_table) {
+                return -E_RENDEZVOS;
+        }
+
+        port = create_message_port(KERNEL_PORT_NAME);
+        if (!port) {
+                pr_error("[kernel_port] create_message_port '%s' failed\n",
+                         KERNEL_PORT_NAME);
+                return -E_RENDEZVOS;
+        }
+
+        err = register_port(global_port_table, port);
+        if (err != REND_SUCCESS) {
+                pr_error("[kernel_port] register_port '%s' failed e=%d\n",
+                         KERNEL_PORT_NAME,
+                         (int)err);
+                delete_message_port_structure(port);
+                return err;
+        }
+
+        pr_info("[kernel_port] registered '%s' service_id=%u\n",
+                KERNEL_PORT_NAME,
+                (unsigned)port->service_id);
+        ref_put(&port->refcount, free_message_port_ref);
+        return REND_SUCCESS;
+}
+
+error_t kernel_handle_msg(void)
+{
+        Message_Port_t* port;
+
+        port = thread_lookup_port(KERNEL_PORT_NAME);
+        if (!port) {
+                pr_error("[init_thread] lookup '%s' failed\n", KERNEL_PORT_NAME);
+                return -E_RENDEZVOS;
+        }
+
+        for (;;) {
+                error_t e = recv_msg(port);
+
+                if (e != REND_SUCCESS) {
+                        pr_error("[init_thread] recv_msg failed e=%d\n",
+                                 (int)e);
+                        continue;
+                }
+
+                Message_t* msg;
+
+                while ((msg = dequeue_recv_msg()) != NULL) {
+                        u16 service_id = port->service_id;
+
+                        if (init_thread_ipc_handler) {
+                                init_thread_ipc_handler(msg, service_id);
+                        } else {
+                                ref_put(&msg->ms_queue_node.refcount,
+                                        free_message_ref);
+                        }
+                }
+        }
+}
+
 error_t create_idle_thread(void)
 {
         error_t e = gen_thread_from_func(&percpu(idle_thread_ptr),

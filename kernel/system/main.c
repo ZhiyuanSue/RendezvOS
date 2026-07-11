@@ -4,6 +4,7 @@
 #include <rendezvos/task/tcb.h>
 #include <rendezvos/task/initcall.h>
 #include <rendezvos/system/panic.h>
+#include <rendezvos/system/powerd.h>
 extern int log_level;
 extern char _bss_start, _bss_end;
 extern char _end;
@@ -52,13 +53,18 @@ void cmain(struct setup_info *arch_setup_info)
         }
 
         do_init_call();
+        if (kernel_port_register() != REND_SUCCESS) {
+                pr_error("cmain: kernel_port_register failed\n");
+                (void)rendezvos_request_poweroff();
+        }
         start_smp(arch_setup_info);
 #ifdef RENDEZVOS_TEST
         create_test_thread(true);
         thread_set_status(get_cpu_current_thread(), thread_status_suspend);
 #endif
-        for (;;) {
-                schedule(percpu(core_tm));
-                arch_cpu_relax();
+        pr_info("[ CPU%d ] init done, enter init IPC loop\n", BSP_ID);
+        if (kernel_handle_msg() != REND_SUCCESS) {
+                pr_error("cmain: kernel_handle_msg failed\n");
+                (void)rendezvos_request_poweroff();
         }
 }

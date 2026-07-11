@@ -5,6 +5,7 @@
 #include <rendezvos/common.h>
 #include <rendezvos/task/tcb.h>
 #include <rendezvos/task/initcall.h>
+#include <rendezvos/system/powerd.h>
 int NR_CPU = 1;
 DEFINE_PER_CPU(enum cpu_status, CPU_STATE);
 #define ALL_CPU_ENABLED_FAIL 0
@@ -53,10 +54,9 @@ void start_secondary_cpu(struct setup_info *arch_setup_info)
 #ifdef RENDEZVOS_TEST
         create_test_thread(false);
 #endif
-        pr_info("[ CPU%d ] init done, enter scheduler\n", current_cpu_id);
-        thread_set_status(percpu(init_thread_ptr), thread_status_suspend);
-        for (;;) {
-                schedule(percpu(core_tm));
-                arch_cpu_relax();
+        pr_info("[ CPU%d ] init done, enter init IPC loop\n", current_cpu_id);
+        if (kernel_handle_msg() != REND_SUCCESS) {
+                pr_error("start_secondary_cpu: kernel_handle_msg failed\n");
+                (void)rendezvos_request_poweroff();
         }
 }

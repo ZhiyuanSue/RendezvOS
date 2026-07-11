@@ -158,6 +158,27 @@ typedef struct Thread_Base Thread_Base;
 extern Thread_Base* init_thread_ptr;
 extern Thread_Base* idle_thread_ptr;
 extern volatile bool is_print_sche_info;
+
+/*
+ * If system need to send msg to one server, see ipc.h
+ * ipc_system_try_deliver/ipc_system_deliver_to. And the idle thread is used to
+ * represent the system to send. But the system need to recv msg, you need to
+ * use the init port to handle something. Otherwise if you the recv msg need to
+ * reply using a send msg, the send msg might have some error.
+ * 
+ * So you must using 2 different thread's send/recv queue
+ */
+#define KERNEL_PORT_NAME "kernel_port"
+
+typedef void (*init_thread_ipc_handler_fn)(Message_t* msg, u16 service_id);
+
+void kernel_set_ipc_handler(init_thread_ipc_handler_fn handler);
+
+/* register KERNEL_PORT_NAME, but BSP only */
+error_t kernel_port_register(void);
+
+error_t kernel_handle_msg(void);
+
 struct task_manager {
         TASK_MANAGER_SCHE_COMMON
         cpu_id_t owner_cpu;
@@ -491,7 +512,8 @@ void run_copied_thread(u64 syscall_return_value);
 /**
  * @brief Duplicate a user thread into @p target_task (trap frame and arch ctx).
  * @param parent_thread Source user thread (must have THREAD_FLAG_USER).
- * @param target_task Task that will own the child (belong_tcb set; not joined).
+ * @param target_task Task that will own the child (linked via
+ * add_thread_to_task).
  * @param custom_return_value Stored in child init int_para[0] for
  * run_copied_thread.
  * @param append_thread_info_len Bytes to copy from parent append_thread_info.
