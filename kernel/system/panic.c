@@ -10,6 +10,8 @@
 
 #include <rendezvos/system/panic.h>
 
+/* The upper layer must ipc with powerd, and let the powerd using kernel panic
+ * and halt*/
 void kernel_panic(const char* msg)
 {
         pr_error("KERNEL PANIC: %s\n", msg ? msg : "(unknown)");

@@ -68,7 +68,8 @@ static void thread_port_cache_clear(struct thread_port_cache* cache)
 
 Thread_Base* new_thread_structure(struct allocator* cpu_kallocator,
                                   size_t append_thread_info_len,
-                                  thread_append_fini_t append_fini)
+                                  thread_append_fini_t append_fini,
+                                  thread_append_copy_t append_copy)
 {
         if (!cpu_kallocator)
                 return NULL;
@@ -98,6 +99,7 @@ Thread_Base* new_thread_structure(struct allocator* cpu_kallocator,
         thread->tid = INVALID_ID;
         thread->append_thread_info_len = append_thread_info_len;
         thread->append_fini = append_fini;
+        thread->append_copy = append_copy;
         arch_task_ctx_init(&(thread->ctx));
         thread_set_status(thread, thread_status_init);
         INIT_LIST_HEAD(&(thread->sched_thread_list));
@@ -148,10 +150,11 @@ alloc_thread_error:
  * ref_put(dummy) twice.
  *
  * Teardown contract:
- * 1) delete_thread: detach from Task_Manager sched ring (del_thread_from_manager;
- *    retries -E_REND_AGAIN by scheduling on owner CPU), then del_thread_from_task,
- *    then ref_put — thread struct may survive if IPC etc. still holds a ref.
- * 2) Last ref -> free_thread_ref -> del_thread_structure -> here + init + free.
+ * 1) delete_thread: detach from Task_Manager sched ring
+ * (del_thread_from_manager; retries -E_REND_AGAIN by scheduling on owner CPU),
+ * then del_thread_from_task, then ref_put — thread struct may survive if IPC
+ * etc. still holds a ref. 2) Last ref -> free_thread_ref ->
+ * del_thread_structure -> here + init + free.
  */
 static void thread_release_owned_resources(Thread_Base* thread)
 {
@@ -198,7 +201,7 @@ void del_thread_structure(Thread_Base* thread)
         del_init_parameter_structure(thread->init_parameter);
         thread->init_parameter = NULL;
         if (thread->append_fini)
-                thread->append_fini((struct Thread_Base *)thread);
+                thread->append_fini((struct Thread_Base*)thread);
         cpu_kallocator->m_free(cpu_kallocator, thread);
 }
 error_t free_thread_ref(ref_count_t* ref_count_ptr)
@@ -232,12 +235,14 @@ void del_init_parameter_structure(Thread_Init_Para* pm)
 /*general thread create function*/
 Thread_Base* create_thread(void* __func, size_t append_thread_info_len,
                            thread_append_fini_t append_fini,
+                           thread_append_copy_t append_copy,
                            bool reserve_trap_frame, int nr_parameter, ...)
 {
         struct allocator* cpu_kallocator = percpu(kallocator);
         Thread_Base* thread = new_thread_structure(cpu_kallocator,
                                                    append_thread_info_len,
-                                                   append_fini);
+                                                   append_fini,
+                                                   append_copy);
         if (!thread) {
                 goto new_thread_structure_error;
         }
@@ -539,7 +544,7 @@ Thread_Base* copy_thread(Thread_Base* src_thread, Tcb_Base* target_task,
         }
 
         if (!(src_thread->flags & THREAD_FLAG_USER)) {
-                pr_error("[copy_thread] parent is not a user thread\n");
+                pr_error("[copy_thread] src is not a user thread\n");
                 return NULL;
         }
 
@@ -547,6 +552,7 @@ Thread_Base* copy_thread(Thread_Base* src_thread, Tcb_Base* target_task,
         Thread_Base* dst_thread = create_thread((void*)run_copied_thread,
                                                 append_thread_info_len,
                                                 src_thread->append_fini,
+                                                src_thread->append_copy,
                                                 true,
                                                 1,
                                                 custom_return_value);
@@ -559,7 +565,7 @@ Thread_Base* copy_thread(Thread_Base* src_thread, Tcb_Base* target_task,
         dst_trap_frame = ((struct trap_frame*)(dst_thread->kstack_bottom)) - 1;
         *dst_trap_frame = *src_trap_frame;
 
-        /* Fork can run in syscall context; refresh live user SP/TLS first. */
+        /* copy_thread may run in syscall context; refresh live user SP/TLS. */
         arch_ctx_refresh(&src_thread->ctx);
         arch_ctx_merge_from_src(&dst_thread->ctx, &src_thread->ctx);
 
@@ -591,6 +597,16 @@ Thread_Base* copy_thread(Thread_Base* src_thread, Tcb_Base* target_task,
                 memcpy(dst_thread->append_thread_info,
                        src_thread->append_thread_info,
                        copy_len);
+        }
+
+        if (dst_thread->append_copy) {
+                if (dst_thread->append_copy((struct Thread_Base*)dst_thread,
+                                            (struct Thread_Base*)src_thread)
+                    != REND_SUCCESS) {
+                        pr_error("[copy_thread] append_copy failed\n");
+                        del_thread_structure(dst_thread);
+                        return NULL;
+                }
         }
 
         if (add_thread_to_task(target_task, dst_thread) != REND_SUCCESS) {

@@ -34,7 +34,7 @@ error_t create_init_thread(Tcb_Base* root_task)
                 return -E_IN_PARAM;
         /*we let the current execution flow as init thread*/
         Thread_Base* init_t = percpu(init_thread_ptr) =
-                new_thread_structure(percpu(kallocator), 0, NULL);
+                new_thread_structure(percpu(kallocator), 0, NULL, NULL);
 
         error_t e = -E_RENDEZVOS;
         if (!init_t) {
@@ -167,7 +167,7 @@ Task_Manager* init_proc(void)
         }
         /*create the root task and init it*/
         percpu(core_tm)->root_task =
-                new_task_structure(percpu(kallocator), 0, NULL);
+                new_task_structure(percpu(kallocator), 0, NULL, NULL);
         if (!percpu(core_tm)->root_task) {
                 pr_error("[ Error ] new root task fail\n");
                 goto new_root_task_fail;
@@ -344,7 +344,8 @@ error_t del_thread_from_manager(Thread_Base* thread)
 
 Tcb_Base* new_task_structure(struct allocator* cpu_kallocator,
                              size_t append_tcb_info_len,
-                             task_append_fini_t append_fini)
+                             task_append_fini_t append_fini,
+                             task_append_copy_t append_copy)
 {
         if (!cpu_kallocator)
                 return NULL;
@@ -354,6 +355,7 @@ Tcb_Base* new_task_structure(struct allocator* cpu_kallocator,
                 tcb->pid = INVALID_ID;
                 tcb->append_tcb_info_len = append_tcb_info_len;
                 tcb->append_fini = append_fini;
+                tcb->append_copy = append_copy;
                 lock_init_cas(&tcb->thread_list_lock);
                 INIT_LIST_HEAD(&(tcb->sched_task_list));
                 tcb->thread_number = 0;

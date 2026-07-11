@@ -86,12 +86,25 @@ One-shot helpers:
 ## Thread duplication
 
 ```c
-struct Thread_Base* copy_thread(Thread_Base* parent, Tcb_Base* child_task,
+struct Thread_Base* copy_thread(Thread_Base* src_thread, Tcb_Base* target_task,
                                 u64 return_value, size_t append_thread_info_len);
 void run_copied_thread(u64 return_value);
 ```
 
-Before copy, ensure the parent’s user context is current when entering from a syscall path (`arch_ctx_refresh` / `arch_ctx_merge_from_src` on the parent `Arch_Task_Context`).
+Before copy, ensure the source thread’s user context is current when entering from a syscall path (`arch_ctx_refresh` / `arch_ctx_merge_from_src` on the source `Arch_Task_Context`).
+
+After `memcpy` of `append_thread_info`, core invokes `dst_thread->append_copy(dst, src)` when non-NULL. Upper layers detach shared heap pointers and reset dst-only fields (same role as `append_fini` on destroy, but after copy).
+
+For task-level heap state (not memcopied by core), upper layers invoke `dst_task->append_copy(dst, src)` after initializing static proc-append fields.
+
+| Hook | When core / caller runs it |
+|------|----------------------------|
+| `task_append_fini` | `delete_task` |
+| `task_append_copy` | Caller after task duplication |
+| `thread_append_fini` | `del_thread_structure` |
+| `thread_append_copy` | `copy_thread` after append memcpy |
+
+Pass hooks via `new_task_structure` / `create_thread` / `gen_task_from_elf`; `copy_thread` inherits `append_fini` and `append_copy` from the source thread.
 
 ---
 
