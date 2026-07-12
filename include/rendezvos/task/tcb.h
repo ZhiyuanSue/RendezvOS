@@ -121,19 +121,6 @@ typedef struct thread_append_hooks {
         thread_append_fini_t fini;
 } thread_append_hooks_t;
 
-static inline size_t task_append_info_len(const Tcb_Base* tcb)
-{
-        return (tcb && tcb->append_hooks) ? tcb->append_hooks->append_info_len :
-                                            0;
-}
-
-static inline size_t thread_append_info_len(const Thread_Base* thread)
-{
-        return (thread && thread->append_hooks) ?
-                       thread->append_hooks->append_info_len :
-                       0;
-}
-
 /* task */
 #define TASK_SCHE_COMMON                           \
         struct {                                   \
@@ -148,7 +135,7 @@ static inline size_t thread_append_info_len(const Thread_Base* thread)
         VSpace* vs;                         \
         TASK_SCHE_COMMON
 /* as the base class of tcb */
-typedef struct {
+typedef struct Tcb_Base {
         TCB_COMMON
         const task_append_hooks_t* append_hooks;
         u64 append_tcb_info[];
@@ -219,6 +206,19 @@ struct Thread_Base {
         u64 append_thread_info[];
 };
 typedef struct Thread_Base Thread_Base;
+
+static inline size_t task_append_info_len(const Tcb_Base* tcb)
+{
+        return (tcb && tcb->append_hooks) ? tcb->append_hooks->append_info_len :
+                                            0;
+}
+
+static inline size_t thread_append_info_len(const Thread_Base* thread)
+{
+        return (thread && thread->append_hooks) ?
+                       thread->append_hooks->append_info_len :
+                       0;
+}
 
 extern Thread_Base* init_thread_ptr;
 extern Thread_Base* idle_thread_ptr;
