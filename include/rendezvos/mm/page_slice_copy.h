@@ -28,6 +28,27 @@ error_t page_slice_copy_to_slice(struct page_slice* dst, u64 dst_byte_off,
                                  size_t len);
 
 /**
+ * @brief Deep-clone a slice's mapped radix tree (bound pgoffs only).
+ *
+ * Creates a new slice with the same logical @c slice->size as @p src and copies
+ * only pgoffs that are valid in @p src (new owned pages via kallocator).
+ * Unmapped holes in @p src are not materialized in the destination tree.
+ *
+ * Does **not** copy @c append_page_slice_info; upper layers that attach typed
+ * metadata must install it via their own copy hook (same discipline as task
+ * append_hooks->copy vs blind memcpy).
+ *
+ * @param dst_out Output; set to the new slice on success.
+ * @param src     Source slice.
+ *
+ * @retval REND_SUCCESS   Clone complete.
+ * @retval -E_IN_PARAM    Bad args.
+ * @retval -E_REND_NO_MEM Allocation failed.
+ * @retval -E_RENDEZVOS   Insert or internal walk failure.
+ */
+error_t page_slice_clone(struct page_slice** dst_out, struct page_slice* src);
+
+/**
  * @brief Copy a mapped slice range into a user virtual address range.
  */
 error_t page_slice_copy_to_user(struct VSpace* vs, u64 user_va,
