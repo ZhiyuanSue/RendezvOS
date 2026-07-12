@@ -212,8 +212,7 @@ error_t load_elf_to_vs(struct page_slice *slice, VSpace *vs,
                 *max_load_end_out = ROUND_UP(load_end, PAGE_SIZE);
         return e;
 }
-error_t run_elf_program(struct page_slice *slice, VSpace *vs,
-                        elf_init_handler_t elf_init)
+error_t run_elf_program(struct page_slice *slice, VSpace *vs)
 {
         pr_info("start gen task from elf slice %lx vs %lx\n", slice, vs);
         vaddr max_load_end;
@@ -241,7 +240,7 @@ error_t run_elf_program(struct page_slice *slice, VSpace *vs,
         user_sp -= 8;
         *((u64 *)user_sp) = 0;
         arch_set_thread_user_sp(&elf_thread->ctx, user_sp);
-        if (elf_init) {
+        if (elf_thread->append_hooks && elf_thread->append_hooks->init) {
                 elf_load_info_t info = {
                         .slice = slice,
                         .entry_addr = entry_addr,
@@ -250,7 +249,11 @@ error_t run_elf_program(struct page_slice *slice, VSpace *vs,
                         .phnum = elf_header->e_phnum,
                         .phentsize = elf_header->e_phentsize,
                 };
-                elf_init(&elf_thread->ctx, &info);
+                if (elf_thread->append_hooks->init(
+                            (struct Thread_Base*)elf_thread, &info)
+                    != REND_SUCCESS) {
+                        pr_error("[run_elf_program] append init hook failed\n");
+                }
         }
 
         Thread_Base *current_thread = percpu(core_tm)->current_thread;
@@ -263,22 +266,16 @@ error_t run_elf_program(struct page_slice *slice, VSpace *vs,
         return -E_RENDEZVOS;
 }
 error_t gen_task_from_elf(Thread_Base **elf_thread_ptr,
-                          size_t append_tcb_info_len,
-                          size_t append_thread_info_len,
-                          task_append_fini_t task_append_fini,
-                          task_append_copy_t task_append_copy,
-                          thread_append_fini_t thread_append_fini,
-                          thread_append_copy_t thread_append_copy,
-                          struct page_slice *slice, elf_init_handler_t elf_init)
+                          const task_append_hooks_t* task_append_hooks,
+                          const thread_append_hooks_t* thread_append_hooks,
+                          struct page_slice *slice)
 {
         if (!slice) {
                 return -E_IN_PARAM;
         }
         error_t e = REND_SUCCESS;
         Tcb_Base *elf_task = new_task_structure(percpu(kallocator),
-                                                append_tcb_info_len,
-                                                task_append_fini,
-                                                task_append_copy);
+                                                task_append_hooks);
         if (!elf_task)
                 return -E_RENDEZVOS;
 
@@ -303,14 +300,11 @@ error_t gen_task_from_elf(Thread_Base **elf_thread_ptr,
         }
 
         Thread_Base *elf_thread = create_thread((void *)run_elf_program,
-                                                append_thread_info_len,
-                                                thread_append_fini,
-                                                thread_append_copy,
+                                                thread_append_hooks,
                                                 true,
-                                                3,
+                                                2,
                                                 slice,
-                                                elf_task->vs,
-                                                elf_init);
+                                                elf_task->vs);
         if (!elf_thread) {
                 e = -E_RENDEZVOS;
                 goto create_thread_error;
@@ -352,7 +346,7 @@ error_t gen_thread_from_func(Thread_Base **func_thread_ptr, kthread_func thread,
                 return -E_IN_PARAM;
         }
         Thread_Base *func_t;
-        func_t = create_thread((void *)thread, 0, NULL, NULL, false, 1, arg);
+        func_t = create_thread((void *)thread, NULL, false, 1, arg);
         if (!func_t) {
                 pr_error("[Error] create kernel thread fail\n");
                 return -E_RENDEZVOS;

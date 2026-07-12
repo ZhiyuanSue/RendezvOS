@@ -9,8 +9,7 @@
 #include <rendezvos/mm/page_slice.h>
 
 /**
- * @brief ELF load result passed to elf_init_handler_t (core-defined,
- * ABI-neutral).
+ * @brief ELF load metadata passed to @c thread_append_hooks.init.
  */
 typedef struct elf_load_info {
         struct page_slice* slice;
@@ -22,53 +21,30 @@ typedef struct elf_load_info {
 } elf_load_info_t;
 
 /**
- * @brief Optional hook after PT_LOAD and user stack setup, before userspace
- * entry.
- * @param ctx Child thread arch context.
- * @param info Load addresses and program-header metadata.
- * @return Opaque value (unused by core loader).
- */
-typedef void* (*elf_init_handler_t)(Arch_Task_Context* ctx,
-                                    const elf_load_info_t* info);
-
-/**
  * @brief Map ELF PT_LOAD/PT_DYNAMIC into @p vs on the current thread, run
- * @p elf_init, then drop to userspace at the image entry.
+ * @p thread append @c init hook when set, then drop to userspace.
  * @param slice Populated page_slice of the ELF file image; caller retains
  *        ownership (core does not destroy).
  * @param vs Address space to map into.
- * @param elf_init Optional pre-entry hook (may be NULL).
  * @return REND_SUCCESS if control returns; -E_IN_PARAM or -E_RENDEZVOS on
  *         failure. Does not modify slice lifetime.
  */
-error_t run_elf_program(struct page_slice* slice, VSpace* vs,
-                        elf_init_handler_t elf_init);
+error_t run_elf_program(struct page_slice* slice, VSpace* vs);
 
 /**
  * @brief Create task and user thread, map ELF, set user stack, thread_join.
  * @param elf_thread_ptr Optional out pointer for the new thread.
- * @param append_tcb_info_len Extra TCB tail bytes.
- * @param append_thread_info_len Extra thread tail bytes.
- * @param task_append_fini Optional task append pre-free hook (NULL ok).
- * @param task_append_copy Optional task append post-copy hook (NULL ok).
- * @param thread_append_fini Optional thread append pre-free hook (NULL ok).
- * @param thread_append_copy Optional thread append post-copy_thread hook (NULL
- * ok).
+ * @param task_append_hooks Optional task append lifecycle hooks (NULL ok).
+ * @param thread_append_hooks Optional thread append lifecycle hooks (NULL ok).
  * @param slice Populated page_slice of the ELF file image.
- * @param elf_init Optional pre-entry hook (may be NULL).
  * @return REND_SUCCESS on success; negative error on failure (rolls back task).
- * @p slice is passed through to the new thread; caller / @p elf_init decide
+ * @p slice is passed through to the new thread; upper @c init hook decides
  * when to release it (core does not destroy).
  */
 error_t gen_task_from_elf(Thread_Base** elf_thread_ptr,
-                          size_t append_tcb_info_len,
-                          size_t append_thread_info_len,
-                          task_append_fini_t task_append_fini,
-                          task_append_copy_t task_append_copy,
-                          thread_append_fini_t thread_append_fini,
-                          thread_append_copy_t thread_append_copy,
-                          struct page_slice* slice,
-                          elf_init_handler_t elf_init);
+                          const task_append_hooks_t* task_append_hooks,
+                          const thread_append_hooks_t* thread_append_hooks,
+                          struct page_slice* slice);
 
 /**
  * @brief Map ELF64 PT_LOAD and handle PT_DYNAMIC into @p vs.

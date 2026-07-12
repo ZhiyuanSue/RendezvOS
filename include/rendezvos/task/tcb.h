@@ -54,6 +54,11 @@ struct Tcb_Base;
 struct Thread_Base;
 
 /**
+ * @brief Optional hook after append tail is allocated (first-time setup).
+ */
+typedef error_t (*task_append_init_t)(struct Tcb_Base* tcb);
+
+/**
  * @brief Optional hook before freeing @c append_tcb_info tail (ABI-neutral).
  * Called from delete_task() immediately before the TCB allocation is returned
  * to the allocator. Upper layers release heap objects referenced from append.
@@ -67,6 +72,29 @@ typedef error_t (*task_append_copy_t)(struct Tcb_Base* dst,
                                       struct Tcb_Base* src);
 
 /**
+ * @brief Task append lifecycle hooks (init / copy / fini).
+ *
+ * Stored as a pointer on each TCB; upper layers usually pass one static table.
+ * Any member may be NULL.
+ */
+typedef struct task_append_hooks {
+        size_t append_info_len;
+        task_append_init_t init;
+        task_append_copy_t copy;
+        task_append_fini_t fini;
+} task_append_hooks_t;
+
+struct elf_load_info;
+
+/**
+ * @brief Optional hook for first-time append setup on a new thread.
+ * @param elf_info Non-NULL when core invokes init from @c run_elf_program after
+ *        PT_LOAD and user stack setup; NULL for other future init paths.
+ */
+typedef error_t (*thread_append_init_t)(struct Thread_Base* thread,
+                                        const struct elf_load_info* elf_info);
+
+/**
  * @brief Optional hook before freeing @c append_thread_info tail.
  * Called from del_thread_structure() immediately before the Thread_Base
  * allocation is returned to the allocator.
@@ -74,10 +102,37 @@ typedef error_t (*task_append_copy_t)(struct Tcb_Base* dst,
 typedef void (*thread_append_fini_t)(struct Thread_Base* thread);
 
 /**
- * @brief Optional hook after copy_thread() memcopies append_thread_info.
+ * @brief Optional hook after copy_thread(); upper layer builds dst append
+ * state.
  */
 typedef error_t (*thread_append_copy_t)(struct Thread_Base* dst,
                                         struct Thread_Base* src);
+
+/**
+ * @brief Thread append lifecycle hooks (init / copy / fini).
+ *
+ * Stored as a pointer on each thread; upper layers usually pass one static
+ * table. Any member may be NULL.
+ */
+typedef struct thread_append_hooks {
+        size_t append_info_len;
+        thread_append_init_t init;
+        thread_append_copy_t copy;
+        thread_append_fini_t fini;
+} thread_append_hooks_t;
+
+static inline size_t task_append_info_len(const Tcb_Base* tcb)
+{
+        return (tcb && tcb->append_hooks) ? tcb->append_hooks->append_info_len :
+                                            0;
+}
+
+static inline size_t thread_append_info_len(const Thread_Base* thread)
+{
+        return (thread && thread->append_hooks) ?
+                       thread->append_hooks->append_info_len :
+                       0;
+}
 
 /* task */
 #define TASK_SCHE_COMMON                           \
@@ -91,13 +146,11 @@ typedef error_t (*thread_append_copy_t)(struct Thread_Base* dst,
         i64 thread_number;                  \
         struct list_entry thread_head_node; \
         VSpace* vs;                         \
-        size_t append_tcb_info_len;         \
-        task_append_fini_t append_fini;     \
-        task_append_copy_t append_copy;     \
         TASK_SCHE_COMMON
 /* as the base class of tcb */
 typedef struct {
         TCB_COMMON
+        const task_append_hooks_t* append_hooks;
         u64 append_tcb_info[];
 } Tcb_Base;
 
@@ -145,9 +198,6 @@ extern u64 thread_kstack_page_num;
         atomic64_t recv_pending_cnt; /*how much msg arrive*/        \
         volatile void* port_ptr; /*expect Message_Port_t*/          \
         struct thread_port_cache port_cache;                        \
-        size_t append_thread_info_len;                              \
-        thread_append_fini_t append_fini;                           \
-        thread_append_copy_t append_copy;                           \
         THERAD_SCHE_COMMON
 
 #define THREAD_FLAG_NONE               0
@@ -165,6 +215,7 @@ extern u64 thread_kstack_page_num;
 
 struct Thread_Base {
         THREAD_COMMON
+        const thread_append_hooks_t* append_hooks;
         u64 append_thread_info[];
 };
 typedef struct Thread_Base Thread_Base;
@@ -179,7 +230,7 @@ extern volatile bool is_print_sche_info;
  * represent the system to send. But the system need to recv msg, you need to
  * use the init port to handle something. Otherwise if you the recv msg need to
  * reply using a send msg, the send msg might have some error.
- * 
+ *
  * So you must using 2 different thread's send/recv queue
  */
 #define KERNEL_PORT_NAME "kernel_port"
@@ -238,16 +289,12 @@ Task_Manager* init_proc();
  * @brief Allocate and zero-initialize a task control block (plus optional
  * tail).
  * @param cpu_allocator Allocator for the TCB allocation.
- * @param append_tcb_info_len Extra bytes after TCB_COMMON for extensions.
- * @param append_fini Optional pre-free hook (NULL if @p append_tcb_info_len is
- *        0 or append has no heap-backed extensions).
- * @param append_copy Optional hook (NULL if unused).
+ * @param append_hooks Optional lifecycle hooks (NULL if unused). Append tail
+ *        size comes from @p append_hooks->append_info_len (0 when NULL).
  * @return New TCB, or NULL if @p cpu_allocator is NULL or allocation fails.
  */
 Tcb_Base* new_task_structure(struct allocator* cpu_allocator,
-                             size_t append_tcb_info_len,
-                             task_append_fini_t append_fini,
-                             task_append_copy_t append_copy);
+                             const task_append_hooks_t* append_hooks);
 
 /**
  * @brief Allocate a per-CPU task manager and set default scheduler.
@@ -271,15 +318,12 @@ void del_thread_structure(Thread_Base* thread);
 /**
  * @brief Allocate and initialize a thread control block (plus optional tail).
  * @param cpu_allocator Allocator for thread, init params, and IPC dummy nodes.
- * @param append_thread_info_len Extra bytes after THREAD_COMMON for extensions.
- * @param append_fini Optional pre-free hook (NULL if no append teardown).
- * @param append_copy Optional hook (NULL if unused).
+ * @param append_hooks Optional lifecycle hooks (NULL if no append tail).
+ *        Append tail size comes from @p append_hooks->append_info_len.
  * @return New thread, or NULL on allocation failure.
  */
 Thread_Base* new_thread_structure(struct allocator* cpu_allocator,
-                                  size_t append_thread_info_len,
-                                  thread_append_fini_t append_fini,
-                                  thread_append_copy_t append_copy);
+                                  const thread_append_hooks_t* append_hooks);
 
 /**
  * @brief Refcount destructor: calls del_thread_structure for the owning thread.
@@ -355,17 +399,17 @@ error_t del_thread_from_manager(Thread_Base* thread);
 /**
  * @brief Create a kernel thread that enters via thread_entry then run_thread.
  * @param __func Target function pointer stored in init_parameter.
- * @param append_thread_info_len Extra bytes after THREAD_COMMON.
- * @param append_fini Optional pre-free hook for append_thread_info (NULL ok).
- * @param append_copy Optional post-copy_thread hook (NULL ok).
+ * @param append_hooks Optional lifecycle hooks (NULL ok). Append tail size and
+ *        @p init/@p copy/@p fini come from the table. @p init runs from
+ *        @c run_elf_program after PT_LOAD; copy_thread attaches hooks before
+ *        @p copy.
  * @param reserve_trap_frame Whether arch context reserves a trap frame slot.
  * @param nr_parameter Number of u64 varargs (capped by
  * NR_ABI_PARAMETER_INT_REG).
  * @return New thread with refcount initialized, or NULL on failure.
  */
-Thread_Base* create_thread(void* __func, size_t append_thread_info_len,
-                           thread_append_fini_t append_fini,
-                           thread_append_copy_t append_copy,
+Thread_Base* create_thread(void* __func,
+                           const thread_append_hooks_t* append_hooks,
                            bool reserve_trap_frame, int nr_parameter, ...);
 
 /**
@@ -533,14 +577,13 @@ void run_copied_thread(u64 syscall_return_value);
 /**
  * @brief Duplicate a user thread into @p target_task (trap frame and arch ctx).
  * @param src_thread Source user thread (must have THREAD_FLAG_USER).
- * @param target_task Task that will own the copy (linked via add_thread_to_task).
+ * @param target_task Task that will own the copy (linked via
+ * add_thread_to_task).
  * @param custom_return_value Stored in dst init int_para[0] for
  * run_copied_thread.
- * @param append_thread_info_len Bytes to copy from src append_thread_info.
  * @return New thread in ready status, or NULL on error.
  */
 struct Thread_Base* copy_thread(Thread_Base* src_thread, Tcb_Base* target_task,
-                                u64 custom_return_value,
-                                size_t append_thread_info_len);
+                                u64 custom_return_value);
 
 #endif

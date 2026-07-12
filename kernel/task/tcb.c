@@ -34,7 +34,7 @@ error_t create_init_thread(Tcb_Base* root_task)
                 return -E_IN_PARAM;
         /*we let the current execution flow as init thread*/
         Thread_Base* init_t = percpu(init_thread_ptr) =
-                new_thread_structure(percpu(kallocator), 0, NULL, NULL);
+                new_thread_structure(percpu(kallocator), NULL);
 
         error_t e = -E_RENDEZVOS;
         if (!init_t) {
@@ -116,7 +116,8 @@ error_t kernel_handle_msg(void)
 
         port = thread_lookup_port(KERNEL_PORT_NAME);
         if (!port) {
-                pr_error("[init_thread] lookup '%s' failed\n", KERNEL_PORT_NAME);
+                pr_error("[init_thread] lookup '%s' failed\n",
+                         KERNEL_PORT_NAME);
                 return -E_RENDEZVOS;
         }
 
@@ -167,7 +168,7 @@ Task_Manager* init_proc(void)
         }
         /*create the root task and init it*/
         percpu(core_tm)->root_task =
-                new_task_structure(percpu(kallocator), 0, NULL, NULL);
+                new_task_structure(percpu(kallocator), NULL);
         if (!percpu(core_tm)->root_task) {
                 pr_error("[ Error ] new root task fail\n");
                 goto new_root_task_fail;
@@ -320,7 +321,8 @@ error_t del_thread_from_manager(Thread_Base* thread)
         if (thread->tm) {
                 Task_Manager* core_tm = thread->tm;
                 lock_cas(&core_tm->sched_lock);
-                /* Still running on owner CPU: caller must schedule away first. */
+                /* Still running on owner CPU: caller must schedule away first.
+                 */
                 if (core_tm->current_thread == thread) {
                         unlock_cas(&core_tm->sched_lock);
                         return -E_REND_AGAIN;
@@ -343,25 +345,31 @@ error_t del_thread_from_manager(Thread_Base* thread)
 }
 
 Tcb_Base* new_task_structure(struct allocator* cpu_kallocator,
-                             size_t append_tcb_info_len,
-                             task_append_fini_t append_fini,
-                             task_append_copy_t append_copy)
+                             const task_append_hooks_t* append_hooks)
 {
+        size_t append_tcb_info_len =
+                append_hooks ? append_hooks->append_info_len : 0;
+
         if (!cpu_kallocator)
                 return NULL;
         Tcb_Base* tcb = (Tcb_Base*)(cpu_kallocator->m_alloc(
                 cpu_kallocator, sizeof(Tcb_Base) + append_tcb_info_len));
         if (tcb) {
                 tcb->pid = INVALID_ID;
-                tcb->append_tcb_info_len = append_tcb_info_len;
-                tcb->append_fini = append_fini;
-                tcb->append_copy = append_copy;
+                tcb->append_hooks = append_hooks;
                 lock_init_cas(&tcb->thread_list_lock);
                 INIT_LIST_HEAD(&(tcb->sched_task_list));
                 tcb->thread_number = 0;
                 INIT_LIST_HEAD(&(tcb->thread_head_node));
                 tcb->vs = NULL;
                 tcb->tm = NULL;
+                if (append_hooks && append_hooks->init) {
+                        if (append_hooks->init((struct Tcb_Base*)tcb)
+                            != REND_SUCCESS) {
+                                cpu_kallocator->m_free(cpu_kallocator, tcb);
+                                return NULL;
+                        }
+                }
         }
         return tcb;
 }
@@ -409,8 +417,8 @@ error_t delete_task(Tcb_Base* tcb)
                 }
         }
 
-        if (tcb->append_fini)
-                tcb->append_fini((struct Tcb_Base *)tcb);
+        if (tcb->append_hooks && tcb->append_hooks->fini)
+                tcb->append_hooks->fini((struct Tcb_Base*)tcb);
 
         cpu_kallocator->m_free(cpu_kallocator, tcb);
         return e;

@@ -67,10 +67,11 @@ static void thread_port_cache_clear(struct thread_port_cache* cache)
 }
 
 Thread_Base* new_thread_structure(struct allocator* cpu_kallocator,
-                                  size_t append_thread_info_len,
-                                  thread_append_fini_t append_fini,
-                                  thread_append_copy_t append_copy)
+                                  const thread_append_hooks_t* append_hooks)
 {
+        size_t append_thread_info_len =
+                append_hooks ? append_hooks->append_info_len : 0;
+
         if (!cpu_kallocator)
                 return NULL;
         Thread_Base* thread = (Thread_Base*)(cpu_kallocator->m_alloc(
@@ -97,9 +98,7 @@ Thread_Base* new_thread_structure(struct allocator* cpu_kallocator,
         }
 
         thread->tid = INVALID_ID;
-        thread->append_thread_info_len = append_thread_info_len;
-        thread->append_fini = append_fini;
-        thread->append_copy = append_copy;
+        thread->append_hooks = append_hooks;
         arch_task_ctx_init(&(thread->ctx));
         thread_set_status(thread, thread_status_init);
         INIT_LIST_HEAD(&(thread->sched_thread_list));
@@ -200,8 +199,8 @@ void del_thread_structure(Thread_Base* thread)
         thread_release_owned_resources(thread);
         del_init_parameter_structure(thread->init_parameter);
         thread->init_parameter = NULL;
-        if (thread->append_fini)
-                thread->append_fini((struct Thread_Base*)thread);
+        if (thread->append_hooks && thread->append_hooks->fini)
+                thread->append_hooks->fini((struct Thread_Base*)thread);
         cpu_kallocator->m_free(cpu_kallocator, thread);
 }
 error_t free_thread_ref(ref_count_t* ref_count_ptr)
@@ -233,16 +232,13 @@ void del_init_parameter_structure(Thread_Init_Para* pm)
         cpu_kallocator->m_free(cpu_kallocator, (void*)pm);
 }
 /*general thread create function*/
-Thread_Base* create_thread(void* __func, size_t append_thread_info_len,
-                           thread_append_fini_t append_fini,
-                           thread_append_copy_t append_copy,
+Thread_Base* create_thread(void* __func,
+                           const thread_append_hooks_t* append_hooks,
                            bool reserve_trap_frame, int nr_parameter, ...)
 {
         struct allocator* cpu_kallocator = percpu(kallocator);
-        Thread_Base* thread = new_thread_structure(cpu_kallocator,
-                                                   append_thread_info_len,
-                                                   append_fini,
-                                                   append_copy);
+        Thread_Base* thread =
+                new_thread_structure(cpu_kallocator, append_hooks);
         if (!thread) {
                 goto new_thread_structure_error;
         }
@@ -533,7 +529,7 @@ run_thread_end:
 }
 
 Thread_Base* copy_thread(Thread_Base* src_thread, Tcb_Base* target_task,
-                         u64 custom_return_value, size_t append_thread_info_len)
+                         u64 custom_return_value)
 {
         struct trap_frame* src_trap_frame;
         struct trap_frame* dst_trap_frame;
@@ -550,9 +546,7 @@ Thread_Base* copy_thread(Thread_Base* src_thread, Tcb_Base* target_task,
 
         /* Merge user-visible context while preserving kernel bootstrap regs. */
         Thread_Base* dst_thread = create_thread((void*)run_copied_thread,
-                                                append_thread_info_len,
-                                                src_thread->append_fini,
-                                                src_thread->append_copy,
+                                                src_thread->append_hooks,
                                                 true,
                                                 1,
                                                 custom_return_value);
@@ -587,32 +581,19 @@ Thread_Base* copy_thread(Thread_Base* src_thread, Tcb_Base* target_task,
                 dst_thread->name = NULL;
         }
 
-        if (append_thread_info_len > 0) {
-                size_t copy_len = src_thread->append_thread_info_len;
-
-                if (copy_len == 0)
-                        copy_len = append_thread_info_len;
-                if (copy_len > append_thread_info_len)
-                        copy_len = append_thread_info_len;
-                memcpy(dst_thread->append_thread_info,
-                       src_thread->append_thread_info,
-                       copy_len);
-        }
-
-        if (dst_thread->append_copy) {
-                if (dst_thread->append_copy((struct Thread_Base*)dst_thread,
-                                            (struct Thread_Base*)src_thread)
+        if (dst_thread->append_hooks && dst_thread->append_hooks->copy) {
+                if (dst_thread->append_hooks->copy(
+                            (struct Thread_Base*)dst_thread,
+                            (struct Thread_Base*)src_thread)
                     != REND_SUCCESS) {
-                        pr_error("[copy_thread] append_copy failed\n");
-                        del_thread_structure(dst_thread);
-                        return NULL;
+                        pr_error("[copy_thread] append copy hook failed\n");
+                        goto copy_thread_error;
                 }
         }
 
         if (add_thread_to_task(target_task, dst_thread) != REND_SUCCESS) {
                 pr_error("[copy_thread] add_thread_to_task failed\n");
-                del_thread_structure(dst_thread);
-                return NULL;
+                goto copy_thread_error;
         }
 
         thread_set_status(dst_thread, thread_status_ready);
@@ -621,4 +602,7 @@ Thread_Base* copy_thread(Thread_Base* src_thread, Tcb_Base* target_task,
                  dst_thread->tid);
 
         return dst_thread;
+copy_thread_error:
+        del_thread_structure(dst_thread);
+        return NULL;
 }

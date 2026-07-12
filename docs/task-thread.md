@@ -75,7 +75,7 @@ One-shot helpers:
 
 | API | Role |
 |-----|------|
-| `gen_task_from_elf` | New task + thread + load + optional `elf_init_handler_t` |
+| `gen_task_from_elf` | New task + thread + load; runs @c thread_append_hooks.init |
 | `run_elf_program` | Load into an existing `VSpace` and run |
 | `load_elf_to_vs` | Map ELF PT_LOAD into a `VSpace` (preferred) |
 
@@ -87,24 +87,26 @@ One-shot helpers:
 
 ```c
 struct Thread_Base* copy_thread(Thread_Base* src_thread, Tcb_Base* target_task,
-                                u64 return_value, size_t append_thread_info_len);
+                                u64 return_value);
 void run_copied_thread(u64 return_value);
 ```
 
 Before copy, ensure the source thread’s user context is current when entering from a syscall path (`arch_ctx_refresh` / `arch_ctx_merge_from_src` on the source `Arch_Task_Context`).
 
-After `memcpy` of `append_thread_info`, core invokes `dst_thread->append_copy(dst, src)` when non-NULL. Upper layers detach shared heap pointers and reset dst-only fields (same role as `append_fini` on destroy, but after copy).
+Core does not copy append tail bytes. After attaching `append_hooks` from the source thread, core invokes `dst_thread->append_hooks->copy(dst, src)` when present. Upper layers build dst append state (shared vs fresh heap, inherited scalars, etc.).
 
-For task-level heap state (not memcopied by core), upper layers invoke `dst_task->append_copy(dst, src)` after initializing static proc-append fields.
+For task-level append, upper layers invoke `dst_task->append_hooks->copy(dst, src)` after initializing static proc-append fields.
 
 | Hook | When core / caller runs it |
 |------|----------------------------|
-| `task_append_fini` | `delete_task` |
-| `task_append_copy` | Caller after task duplication |
-| `thread_append_fini` | `del_thread_structure` |
-| `thread_append_copy` | `copy_thread` after append memcpy |
+| `task_append_hooks.init` | `new_task_structure` after kallocator alloc |
+| `task_append_hooks.copy` | Caller after task duplication |
+| `task_append_hooks.fini` | `delete_task` |
+| `thread_append_hooks.init` | `run_elf_program` after PT_LOAD + user SP (@p elf_info set) |
+| `thread_append_hooks.copy` | `copy_thread` after hooks attached from src |
+| `thread_append_hooks.fini` | `del_thread_structure` |
 
-Pass hooks via `new_task_structure` / `create_thread` / `gen_task_from_elf`; `copy_thread` inherits `append_fini` and `append_copy` from the source thread.
+Pass hook tables via `new_task_structure` / `create_thread` / `gen_task_from_elf`; `copy_thread` inherits `append_hooks` from the source thread.
 
 ---
 
