@@ -176,7 +176,8 @@ error_t load_elf_to_vs(struct page_slice *slice, VSpace *vs,
                 Elf64_Phdr phdr;
                 u64 ph_off = (u64)phdr_ptr - elf_start;
 
-                e = page_slice_copy_to_buffer(slice, ph_off, &phdr, sizeof(phdr));
+                e = page_slice_copy_to_buffer(
+                        slice, ph_off, &phdr, sizeof(phdr));
                 if (e != REND_SUCCESS) {
                         return e;
                 }
@@ -196,7 +197,8 @@ error_t load_elf_to_vs(struct page_slice *slice, VSpace *vs,
                 Elf64_Phdr phdr;
                 u64 ph_off = (u64)phdr_ptr - elf_start;
 
-                e = page_slice_copy_to_buffer(slice, ph_off, &phdr, sizeof(phdr));
+                e = page_slice_copy_to_buffer(
+                        slice, ph_off, &phdr, sizeof(phdr));
                 if (e != REND_SUCCESS) {
                         return e;
                 }
@@ -250,7 +252,7 @@ error_t run_elf_program(struct page_slice *slice, VSpace *vs)
                         .phentsize = elf_header->e_phentsize,
                 };
                 if (elf_thread->append_hooks->init(
-                            (struct Thread_Base*)elf_thread, &info)
+                            (struct Thread_Base *)elf_thread, &info)
                     != REND_SUCCESS) {
                         pr_error("[run_elf_program] append init hook failed\n");
                 }
@@ -259,23 +261,27 @@ error_t run_elf_program(struct page_slice *slice, VSpace *vs)
         Thread_Base *current_thread = percpu(core_tm)->current_thread;
         struct trap_frame elf_drop_tf;
 
+        /* Append hook may replace SP; re-read it. */
+        user_sp = arch_get_thread_user_sp(&elf_thread->ctx);
         arch_empty_drop_trap_frame(&elf_drop_tf, entry_addr);
+        arch_syscall_set_user_return(
+                &elf_drop_tf, &elf_thread->ctx, entry_addr, user_sp, 0);
         arch_return_to_user(current_thread->kstack_bottom, &elf_drop_tf, 0);
         /*unreachable*/
         pr_error("[run_elf_thread] goto unreachable\n");
         return -E_RENDEZVOS;
 }
 error_t gen_task_from_elf(Thread_Base **elf_thread_ptr,
-                          const task_append_hooks_t* task_append_hooks,
-                          const thread_append_hooks_t* thread_append_hooks,
+                          const task_append_hooks_t *task_append_hooks,
+                          const thread_append_hooks_t *thread_append_hooks,
                           struct page_slice *slice)
 {
         if (!slice) {
                 return -E_IN_PARAM;
         }
         error_t e = REND_SUCCESS;
-        Tcb_Base *elf_task = new_task_structure(percpu(kallocator),
-                                                task_append_hooks);
+        Tcb_Base *elf_task =
+                new_task_structure(percpu(kallocator), task_append_hooks);
         if (!elf_task)
                 return -E_RENDEZVOS;
 

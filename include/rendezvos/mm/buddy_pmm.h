@@ -4,9 +4,10 @@
 #include "pmm.h"
 #include <common/dsa/list.h>
 
-#define BUDDY_MAXORDER 9
+#define BUDDY_MAXORDER 10
 /*for buddy in linux, this number is 10, but I think the page table will map a
- * 2Mb page, which need the order 9*/
+ * 2Mb page, which need the order 9, however, I have to compat with the linux,
+ * so I changed back to 10, but I'm not sure whether have any bug. */
 
 struct buddy_page {
         struct list_entry page_list;
