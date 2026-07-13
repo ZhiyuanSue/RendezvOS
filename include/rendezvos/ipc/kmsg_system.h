@@ -20,4 +20,16 @@
 #define KMSG_OP_SYSTEM_TIMER_CANCEL 4u
 #define KMSG_FMT_SYSTEM_TIMER       "q"
 
+/*
+ * the port is closed info
+ */
+#define KMSG_OP_SYSTEM_PORT_CLOSED  5u
+#define KMSG_FMT_SYSTEM_PORT_CLOSED "q"
+
+/*
+ * The upper msgs must start at the kmsg system end + 1.
+ * otherwise, the code might overlap and have bug
+ */
+#define KMSG_OP_SYSTEM_END 6u
+
 #endif /* _RENDEZVOS_KMSG_SYSTEM_H_ */

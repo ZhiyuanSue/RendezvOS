@@ -366,6 +366,13 @@ error_t send_msg(Message_Port_t* port)
                                  * woken up, a receiver has matched us
                                  * and transferred the message*/
                                 schedule(percpu(core_tm));
+                                if (sender->flags
+                                    & THREAD_FLAG_IPC_PORT_CLOSED) {
+                                        sender->flags = clear_mask_u64(
+                                                sender->flags,
+                                                THREAD_FLAG_IPC_PORT_CLOSED);
+                                        return -E_REND_PORT_CLOSED;
+                                }
                                 return REND_SUCCESS;
                         }
                         case -E_REND_AGAIN: {
@@ -450,6 +457,13 @@ error_t recv_msg(Message_Port_t* port)
                                  * has matched us and transferred the
                                  * message*/
                                 schedule(percpu(core_tm));
+                                if (receiver->flags
+                                    & THREAD_FLAG_IPC_PORT_CLOSED) {
+                                        receiver->flags = clear_mask_u64(
+                                                receiver->flags,
+                                                THREAD_FLAG_IPC_PORT_CLOSED);
+                                        return -E_REND_PORT_CLOSED;
+                                }
                                 return REND_SUCCESS;
                         }
                         case -E_REND_AGAIN: {

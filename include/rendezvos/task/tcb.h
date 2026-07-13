@@ -198,6 +198,11 @@ extern u64 thread_kstack_page_num;
  * server waits on THREAD_FLAG_EXIT_REQUESTED until status is zombie.
  */
 #define THREAD_FLAG_EXIT_REQUESTED (0x2ull)
+/*
+ * Set when the port is being closed, and cleared after schedule() when waken
+ * and return E_REND_PORT_CLOSED .
+ */
+#define THREAD_FLAG_IPC_PORT_CLOSED (0x4ull)
 /*let the default is kernel thread*/
 
 struct Thread_Base {

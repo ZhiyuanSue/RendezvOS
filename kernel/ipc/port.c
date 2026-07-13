@@ -1,9 +1,13 @@
 #include <rendezvos/ipc/port.h>
 #include <rendezvos/ipc/ipc.h>
+#include <rendezvos/ipc/kmsg.h>
+#include <rendezvos/ipc/kmsg_system.h>
+#include <rendezvos/ipc/message.h>
 #include <rendezvos/task/tcb.h>
 #include <rendezvos/smp/percpu.h>
 #include <rendezvos/mm/allocator.h>
 #include <rendezvos/sync/spin_lock.h>
+#include <common/atomic.h>
 #include <common/string.h>
 #include <modules/log/log.h>
 
@@ -106,11 +110,86 @@ Message_Port_t* create_message_port(const char* name)
         return mp;
 }
 
+static void port_clean_thread_queue(Message_Port_t* port)
+{
+        tagged_ptr_t dequeued_ptr;
+
+        if (!port) {
+                return;
+        }
+
+        while (!tp_is_none(dequeued_ptr =
+                                   msq_dequeue(&port->thread_queue, NULL))) {
+                ms_queue_node_t* node =
+                        (ms_queue_node_t*)tp_get_ptr(dequeued_ptr);
+                Ipc_Request_t* req =
+                        container_of(node, Ipc_Request_t, ms_queue_node);
+                Thread_Base* thread = req->thread;
+
+                if (thread) {
+                        u64 status = thread_get_status(thread);
+
+                        if (status == thread_status_block_on_receive) {
+                                Msg_Data_t* msg_data;
+                                Message_t* msg;
+                                error_t err;
+
+                                atomic64_cas((volatile u64*)&thread->port_ptr,
+                                             (u64)port,
+                                             (u64)NULL);
+
+                                msg_data =
+                                        kmsg_create(port->service_id,
+                                                    KMSG_OP_SYSTEM_PORT_CLOSED,
+                                                    KMSG_FMT_SYSTEM_PORT_CLOSED,
+                                                    (i64)0);
+                                if (msg_data) {
+                                        msg = create_message_with_msg(msg_data);
+                                        ref_put(&msg_data->refcount,
+                                                free_msgdata_ref_default);
+                                        if (msg) {
+                                                err = ipc_system_deliver_to(
+                                                        thread, msg, false);
+                                                if (err != REND_SUCCESS) {
+                                                        ref_put(&msg->ms_queue_node
+                                                                         .refcount,
+                                                                free_message_ref);
+                                                }
+                                        }
+                                }
+
+                                (void)thread_set_status_with_expect(
+                                        thread,
+                                        thread_status_block_on_receive,
+                                        thread_status_ready);
+                                if (atomic64_load((volatile u64*)&thread
+                                                          ->recv_pending_cnt)
+                                    == 0) {
+                                        thread_or_flags(
+                                                thread,
+                                                THREAD_FLAG_IPC_PORT_CLOSED);
+                                }
+                        } else if (status == thread_status_block_on_send) {
+                                atomic64_cas((volatile u64*)&thread->port_ptr,
+                                             (u64)port,
+                                             (u64)NULL);
+                                thread_or_flags(thread,
+                                                THREAD_FLAG_IPC_PORT_CLOSED);
+                                (void)thread_set_status_with_expect(
+                                        thread,
+                                        thread_status_block_on_send,
+                                        thread_status_ready);
+                        }
+                }
+                ref_put(&node->refcount, free_ipc_request);
+        }
+}
+
 void delete_message_port_structure(Message_Port_t* port)
 {
         if (!port)
                 return;
-        msq_clean_queue(&port->thread_queue, true, free_ipc_request);
+        port_clean_thread_queue(port);
         struct allocator* cpu_kallocator = percpu(kallocator);
         if (cpu_kallocator && !cpu_kallocator->m_free) {
                 pr_error(
