@@ -95,6 +95,7 @@ const void *fdt_offset_ptr(const void *fdt, int offset, unsigned int len)
         return (fdt_offset_ptr_(fdt, offset));
 }
 
+__attribute__((optimize("no-jump-tables")))
 uint32_t fdt_next_tag(const void *fdt, int startoffset, int *nextoffset)
 {
         uint32_t tag;
