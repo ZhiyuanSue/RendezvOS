@@ -7,7 +7,7 @@
 #include <rendezvos/task/initcall.h>
 #include <rendezvos/system/powerd.h>
 int NR_CPU = 1;
-DEFINE_PER_CPU(enum cpu_status, CPU_STATE);
+DEFINE_PER_CPU(volatile u64, CPU_STATE);
 #define ALL_CPU_ENABLED_FAIL 0
 #define ALL_CPU_ENABLED_SUCC 1
 atomic64_t all_enabled;
@@ -40,7 +40,7 @@ void start_secondary_cpu(struct setup_info *arch_setup_info)
                 return;
         }
         pr_info("successfully start secondary cpu %d\n", current_cpu_id);
-        per_cpu(CPU_STATE, current_cpu_id) = cpu_enable;
+        atomic64_store((volatile u64*)&per_cpu(CPU_STATE, current_cpu_id),cpu_enable);
         percpu(core_tm) = init_proc();
         if (!percpu(core_tm)) {
                 print("[ERROR] init proc fail\n");

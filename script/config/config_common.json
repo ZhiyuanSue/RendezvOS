@@ -1,0 +1,23 @@
+{
+    "CFLAGS": [
+        "-Werror",
+        "-Wall",
+        "-Wextra",
+        "-Werror=return-type",
+        "-Werror=format",
+        "-Wmissing-field-initializers",
+        "-Wunused-result",
+        "-Os",
+        "-nostdlib",
+        "-nostdinc",
+        "-fno-builtin",
+        "-fno-stack-protector",
+        "-std=c11",
+        "-fno-pic",
+        "-fno-pie"
+    ],
+    "LDFLAGS": [
+        "--no-relax",
+        "-no-pie"
+    ]
+}

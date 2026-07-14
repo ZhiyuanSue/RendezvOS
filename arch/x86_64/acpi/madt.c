@@ -6,7 +6,7 @@
 #include <rendezvos/error.h>
 struct acpi_table_madt *madt_table;
 extern int NR_CPU;
-extern enum cpu_status CPU_STATE;
+extern volatile u64 CPU_STATE;
 error_t parser_apic(void)
 {
         NR_CPU = 0;

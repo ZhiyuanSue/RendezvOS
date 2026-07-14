@@ -85,6 +85,7 @@ prepare_page_table:
 	adr	x4,#L2_table
 	adr	x5,#L3_table
 	adr	x6,#setup_info
+	ldr x7,=property_types
 	bl	boot_map_pg_table
 	b finish_prepare_page_table
 

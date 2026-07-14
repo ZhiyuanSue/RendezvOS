@@ -7,7 +7,7 @@
 #include <rendezvos/smp/percpu.h>
 extern char ap_entry;
 extern int NR_CPU;
-extern enum cpu_status CPU_STATE;
+extern volatile u64 CPU_STATE;
 extern struct cpuinfo cpu_info;
 DEFINE_PER_CPU(struct device_node*, cpu_device_node);
 /*
@@ -23,6 +23,7 @@ void arch_start_smp(struct setup_info* arch_setup_info)
         if (NR_CPUS == 1)
                 return;
 #endif
+		__asm__ __volatile__("msr DAIFSET, 0x7" ::: "memory");
         struct device_node* cpu_node = dev_node_find_by_type(NULL, "cpu");
         while (cpu_node) {
                 struct property* reg_prop =
@@ -82,4 +83,5 @@ void arch_start_smp(struct setup_info* arch_setup_info)
                 cpu_node = dev_node_find_by_type(dev_tree_get_next(cpu_node),
                                                  "cpu");
         }
+		__asm__ __volatile__("msr DAIFCLR, 0x7" ::: "memory");
 }

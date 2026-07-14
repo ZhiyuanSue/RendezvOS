@@ -16,7 +16,8 @@
 			"-mno-sse4",
 			"-mno-mmx",
 			"-mno-3dnow",
-			"-msoft-float"
+			"-msoft-float",
+			"-mcmodel=large"
 		],
 		"features":[
 			"_X86_64_",

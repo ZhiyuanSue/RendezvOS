@@ -49,13 +49,10 @@ else ifeq ($(ARCH), loongarch)
 else ifeq ($(ARCH), null)
 $(error the arch is not supportted or haven't configured)
 endif
-CFLAGS	+= -Werror -Wall -Wextra -Werror=return-type -Werror=format -Wmissing-field-initializers -Wunused-result -Os -nostdlib -nostdinc -fno-builtin
-CFLAGS	+= -fno-stack-protector -std=c11
 CFLAGS	+=	-I $(INCLUDE_DIR) -DNR_CPUS=$(SMP)
 CFLAGS	+= $(EXTRA_CFLAGS)
 
 LDFLAGS	+=	-T $(SCRIPT_LINK_DIR)/$(ARCH)_linker.ld
-LDFLAGS	+=	--no-relax
 
 ARFLAGS	+=	-rcs
 

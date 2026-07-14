@@ -7,8 +7,6 @@
 #include <rendezvos/mm/vmm.h>
 extern void boot_Error();
 
-extern struct property_type property_types[255];
-const char *uart_compatible = "arm,pl011\0";
 /*
  * @brief before the virtual address space start,
  parser the dtb, which info is in setup_info_paddr,
@@ -20,20 +18,30 @@ const char *uart_compatible = "arm,pl011\0";
  * @uart_len the ptr that the upper level function get the uart len
  */
 static void boot_get_uart_info(struct setup_info *setup_info_paddr,
-                               u64 *uart_phy_addr, u64 *uart_len)
+                               u64 *uart_phy_addr, u64 *uart_len,
+                               struct property_type *property_types)
 {
         struct property_type *property_types_paddr =
                 (struct property_type *)(KERNEL_VIRT_TO_PHY(
                         (u64)(property_types)));
-        const char *uart_compatible_phyaddr =
-                (const char *)(KERNEL_VIRT_TO_PHY((u64)uart_compatible));
-        const char *compatible_type_str =
+		char uart_compatible[12];
+        uart_compatible[0] = 'a';
+        uart_compatible[1] = 'r';
+        uart_compatible[2] = 'm';
+        uart_compatible[3] = ',';
+        uart_compatible[4] = 'p';
+        uart_compatible[5] = 'l';
+        uart_compatible[6] = '0';
+        uart_compatible[7] = '1';
+        uart_compatible[8] = '1';
+        uart_compatible[9] = '\0';
+        char *compatible_type_str =
                 property_types_paddr[PROPERTY_TYPE_COMPATIBLE].property_string;
         struct fdt_property *uart_prop_ptr =
                 raw_get_prop_from_dtb((void *)(setup_info_paddr->dtb_ptr),
                                       0,
                                       property_types_paddr,
-                                      uart_compatible_phyaddr,
+                                      uart_compatible,
                                       compatible_type_str,
                                       DTB_RAW_GET_PROP_MODE_SINGLE,
                                       NULL);
@@ -79,7 +87,8 @@ void boot_map_pg_table(u64 kernel_start_addr, u64 kernel_end_addr,
                        union L1_entry *L1_table_paddr,
                        union L2_entry *L2_table_paddr,
                        union L3_entry *L3_table_paddr,
-                       struct setup_info *setup_info_paddr)
+                       struct setup_info *setup_info_paddr,
+                       struct property_type *property_types_paddr)
 {
         u64 kernel_start_page = ROUND_DOWN(kernel_start_addr, MIDDLE_PAGE_SIZE);
         u64 kernel_end_page = ROUND_UP(kernel_end_addr, MIDDLE_PAGE_SIZE);
@@ -114,7 +123,10 @@ void boot_map_pg_table(u64 kernel_start_addr, u64 kernel_end_addr,
                                   | PT_DESC_ATTR_LOWER_AF);
         /*get the uart addr and len*/
         u64 uart_phy_addr = 0, uart_len = 0;
-        boot_get_uart_info(setup_info_paddr, &uart_phy_addr, &uart_len);
+        boot_get_uart_info(setup_info_paddr,
+                           &uart_phy_addr,
+                           &uart_len,
+                           property_types_paddr);
         /*map the uart regs*/
         for (vaddr offset = 0; offset < uart_len; offset += PAGE_SIZE) {
                 arch_set_L3_entry(uart_phy_addr + offset,

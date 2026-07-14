@@ -7,7 +7,7 @@
 extern char ap_start;
 extern char ap_start_end;
 extern int NR_CPU;
-extern enum cpu_status CPU_STATE;
+extern volatile u64 CPU_STATE;
 extern void clean_tmp_page_table(void);
 static void copy_ap_start_code(void)
 {
@@ -47,6 +47,7 @@ static void send_sipi(cpu_id_t cpu_id, paddr ap_start_addr)
 void arch_start_smp(struct setup_info* arch_setup_info)
 {
         if (NR_CPU > 1) {
+				cli();
                 per_cpu(CPU_STATE, BSP_ID) = cpu_enable;
                 /*
                     if we only have one cpu,no need for this,
@@ -88,7 +89,7 @@ void arch_start_smp(struct setup_info* arch_setup_info)
                                 send_sipi(i, _RENDEZVOS_X86_64_AP_PHY_ADDR_);
                                 for (int j = 0;
                                      j < 1000
-                                     && per_cpu(CPU_STATE, i) == cpu_disable;
+                                     && atomic64_load((volatile u64*)&per_cpu(CPU_STATE, i)) == cpu_disable;
                                      j++) {
                                         mdelay(10);
                                 }
@@ -99,6 +100,7 @@ void arch_start_smp(struct setup_info* arch_setup_info)
                                 }
                         }
                 }
+				sti();
                 /* if all ap is enabled, then we should clean ap start
                  * code*/
                 clean_ap_start_code();

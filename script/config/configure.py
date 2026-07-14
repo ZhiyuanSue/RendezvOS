@@ -14,7 +14,19 @@ usable_module_list={}
 module_features=[]
 kernel_features=[]
 
-def configure_kernel(kernel_config,root_dir):
+def configure_kernel(script_config_dir,kernel_config,root_dir):
+	# ==== ==== ==== ==== ==== ==== ==== ==== #
+	# deal with the common configs
+	common_config_path = os.path.join(script_config_dir, "config_common.json")
+	common_cflags = []
+	common_ldflags = []
+	if os.path.isfile(common_config_path):
+		with open(common_config_path, 'r') as f:
+			common = json.load(f)
+			common_cflags = common.get("CFLAGS", [])
+			common_ldflags = common.get("LDFLAGS", [])
+	else:
+		print("Warning: config_common.json not found, using only per-arch flags")
 	# ==== ==== ==== ==== ==== ==== ==== ==== #
 	# deal with the kernel configs
 	
@@ -70,21 +82,23 @@ def configure_kernel(kernel_config,root_dir):
 	kernel_config_str = kernel_config_str + "DBG\t:=\t" + DGB_kernel_config  + "\n"
 		
 	# CFLAGS
+	CFLAGS_kernel_config=common_cflags
 	if 'CFLAGS' in kernel_config.keys():
-		CFLAGS_kernel_config=kernel_config['CFLAGS']
-		kernel_config_str = kernel_config_str + "CFLAGS\t:=\t"
-		for CFLAGS in CFLAGS_kernel_config:
-			kernel_config_str = kernel_config_str + CFLAGS + ' '
-		kernel_config_str = kernel_config_str + '\n'
+		CFLAGS_kernel_config=CFLAGS_kernel_config + kernel_config['CFLAGS']
+	kernel_config_str = kernel_config_str + "CFLAGS\t:=\t"
+	for CFLAGS in CFLAGS_kernel_config:
+		kernel_config_str = kernel_config_str + CFLAGS + ' '
+	kernel_config_str = kernel_config_str + '\n'
 		
 	
 	# LDFLAGS
+	LDFLAGS_kernel_config=common_ldflags
 	if 'LDFLAGS' in kernel_config.keys():
-		LDFLAGS_kernel_config=kernel_config['LDFLAGS']
-		kernel_config_str = kernel_config_str + "LDFLAGS\t:=\t"
-		for LDFLAGS in LDFLAGS_kernel_config:
-			kernel_config_str = kernel_config_str + LDFLAGS + ' '
-		kernel_config_str = kernel_config_str + '\n'
+		LDFLAGS_kernel_config=LDFLAGS_kernel_config + kernel_config['LDFLAGS']
+	kernel_config_str = kernel_config_str + "LDFLAGS\t:=\t"
+	for LDFLAGS in LDFLAGS_kernel_config:
+		kernel_config_str = kernel_config_str + LDFLAGS + ' '
+	kernel_config_str = kernel_config_str + '\n'
 	# ==== ==== ==== ==== ==== ==== ==== ==== #
 	# the previous keys is used for all kind of archs
 	# but if the arch need some special keys, add it here
@@ -287,7 +301,7 @@ def configure(config_file):
 			print("Error:the kernel configs must exist")
 			exit(1)
 		kernel_config=config_json['kernel']
-		configure_kernel(kernel_config,root_dir)
+		configure_kernel(script_config_dir,kernel_config,root_dir)
 			
 		# starting config the modules
 		if 'modules' not in config_json.keys():
