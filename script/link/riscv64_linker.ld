@@ -27,18 +27,21 @@ SECTIONS{
 	_e_init = .;
 	. = ALIGN(4K);
 	.data : {
-		*(.data)
+		*(.data .data.*)
+		*(.ldata .ldata.*)
 		. = ALIGN(8);
 		*(.user)
 	}
 	. = ALIGN(4K);
 	.rodata : {
-		*(.rodata)
+		*(.rodata .rodata.*)
+		*(.lrodata .lrodata.*)
 	}
 	. = ALIGN(4K);
 	.bss : {
 		*(.boot.stack)
-		*(.bss)
+		*(.bss .bss.*)
+		*(.lbss .lbss.*)
 	}
 	_bss_end = .;
 	. += 4K*8;

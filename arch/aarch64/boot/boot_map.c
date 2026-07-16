@@ -24,7 +24,7 @@ static void boot_get_uart_info(struct setup_info *setup_info_paddr,
         struct property_type *property_types_paddr =
                 (struct property_type *)(KERNEL_VIRT_TO_PHY(
                         (u64)(property_types)));
-		char uart_compatible[12];
+        char uart_compatible[12];
         uart_compatible[0] = 'a';
         uart_compatible[1] = 'r';
         uart_compatible[2] = 'm';
@@ -79,6 +79,10 @@ static void boot_get_uart_info(struct setup_info *setup_info_paddr,
  * @param L2_table_paddr the level2 page table paddr
  * @param L3_table_paddr the level3 page table paddr
  * @param setup_info_paddr the setup info structure paddr
+ * @param property_types_paddr here you must understand it's running before the
+ * mmu is enable, and the problem is the the addr is paddr, so it relays on the
+ * relative addressing. so the asm must calculate the property_type's paddr and
+ * give it to this function.
  * @note take care of the vaddr and paddr ,here most are paddr, we using the 4
  * level page system
  */
@@ -98,19 +102,20 @@ void boot_map_pg_table(u64 kernel_start_addr, u64 kernel_end_addr,
         arch_set_L0_entry((paddr)L1_table_paddr,
                           (vaddr)kernel_start_page,
                           L0_table_paddr,
-                          PT_DESC_V | PT_DESC_BLOCK_OR_TABLE);
+                          PT_DESC_V | MEM_ATTR_NORMAL | PT_DESC_BLOCK_OR_TABLE);
         /*L1*/
         arch_set_L1_entry((paddr)L2_table_paddr,
                           (vaddr)kernel_start_page,
                           L1_table_paddr,
-                          PT_DESC_V | PT_DESC_BLOCK_OR_TABLE);
+                          PT_DESC_V | MEM_ATTR_NORMAL | PT_DESC_BLOCK_OR_TABLE);
         /*L2*/
         for (vaddr page_start = kernel_start_page; page_start < kernel_end_page;
              page_start += MIDDLE_PAGE_SIZE) {
                 arch_set_L2_entry((paddr)page_start,
                                   page_start,
                                   L2_table_paddr,
-                                  PT_DESC_V | PT_DESC_ATTR_LOWER_AF);
+                                  PT_DESC_V | MEM_ATTR_NORMAL
+                                          | PT_DESC_ATTR_LOWER_AF);
         }
         setup_info_paddr->map_end_virt_addr =
                 setup_info_paddr->boot_uart_base_addr =
@@ -119,8 +124,7 @@ void boot_map_pg_table(u64 kernel_start_addr, u64 kernel_end_addr,
         arch_set_L2_entry((paddr)L3_table_paddr,
                           kernel_end_page,
                           L2_table_paddr,
-                          PT_DESC_V | PT_DESC_BLOCK_OR_TABLE
-                                  | PT_DESC_ATTR_LOWER_AF);
+                          PT_DESC_V | PT_DESC_BLOCK_OR_TABLE | MEM_ATTR_NORMAL);
         /*get the uart addr and len*/
         u64 uart_phy_addr = 0, uart_len = 0;
         boot_get_uart_info(setup_info_paddr,
@@ -132,7 +136,7 @@ void boot_map_pg_table(u64 kernel_start_addr, u64 kernel_end_addr,
                 arch_set_L3_entry(uart_phy_addr + offset,
                                   kernel_end_page + offset,
                                   L3_table_paddr,
-                                  PT_DESC_V | PT_DESC_PAGE
+                                  PT_DESC_V | PT_DESC_PAGE | MEM_ATTR_DEVICE
                                           | PT_DESC_ATTR_LOWER_AF);
         }
         setup_info_paddr->map_end_virt_addr = KERNEL_PHY_TO_VIRT(
@@ -141,8 +145,7 @@ void boot_map_pg_table(u64 kernel_start_addr, u64 kernel_end_addr,
         arch_set_L0_entry((paddr)L1_table_paddr,
                           KERNEL_PHY_TO_VIRT(kernel_start_page),
                           L0_table_paddr,
-                          PT_DESC_V | PT_DESC_BLOCK_OR_TABLE
-                                  | PT_DESC_ATTR_LOWER_AF);
+                          PT_DESC_V | PT_DESC_BLOCK_OR_TABLE | MEM_ATTR_NORMAL);
         /*mov the dtb data behind the end of the kernel*/
         u8 *dst_dtb_paddr =
                 (u8 *)ROUND_UP(kernel_end_page + uart_len, MIDDLE_PAGE_SIZE);

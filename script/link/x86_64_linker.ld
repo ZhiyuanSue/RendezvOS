@@ -33,11 +33,18 @@ SECTIONS {
 	}
 	_e_init = .;
 	. = ALIGN(4K);
+	.rodata :
+	{
+		*(.rodata .rodata.*)
+		*(.lrodata .lrodata.*)
+	}
+	. = ALIGN(4K);
 	_sdata = .;
 	.data :
 	{
 		*(.boot.map_util)
 		*(.data .data.*)
+		*(.ldata .ldata.*)
 		. = ALIGN(8);
 		*(.user)
 	}
@@ -49,6 +56,7 @@ SECTIONS {
 		*(.boot_stack)
 		_boot_stack_bottom = .;
 		*(.bss .bss.*)
+		*(.lbss .lbss.*)
 	}
 	_bss_end = .;
 	. =ALIGN(4K);

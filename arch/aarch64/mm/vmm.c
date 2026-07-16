@@ -33,11 +33,8 @@ void mair_init(void)
          * it*/
         u64 mair_reg_val = 0;
         u8 attr[8] = {MAIR_EL1_ATTR_0,
-#define MEM_ATTR_DEVICE (0 << PT_DESC_ATTR_LOWER_ATTRINDX_OFF)
                       MAIR_EL1_ATTR_1,
-#define MEM_ATTR_UNCACHED (1 << PT_DESC_ATTR_LOWER_ATTRINDX_OFF)
                       MAIR_EL1_ATTR_2,
-#define MEM_ATTR_NORMAL (2 << PT_DESC_ATTR_LOWER_ATTRINDX_OFF)
                       MAIR_EL1_ATTR_3,
                       MAIR_EL1_ATTR_4,
                       MAIR_EL1_ATTR_5,

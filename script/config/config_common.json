@@ -14,7 +14,8 @@
         "-fno-stack-protector",
         "-std=c11",
         "-fno-pic",
-        "-fno-pie"
+        "-fno-pie",
+        "-fno-common"
     ],
     "LDFLAGS": [
         "--no-relax",

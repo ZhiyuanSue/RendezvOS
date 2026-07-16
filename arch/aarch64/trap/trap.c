@@ -340,6 +340,14 @@ void arch_populate_trap_info(struct trap_frame *tf,
                         u8 dfsc = info->esr_fields.dfsc;
                         info->is_present = !((dfsc >= 0x04 && dfsc <= 0x07)
                                              || dfsc == 0x2B);
+                        /*
+                         * DFSC 0x21 = alignment fault. EC is still a data
+                         * abort (0x24/0x25), so we land here first; reclassify
+                         * so callers do not treat it as a missing page.
+                         */
+                        if (dfsc == 0x21) {
+                                info->trap_class = TRAP_CLASS_ALIGNMENT;
+                        }
                 } else {
                         /* Instruction abort: parse IFSC */
                         info->esr_fields.ifsc = info->esr_fields.iss & 0x3F;
