@@ -223,7 +223,7 @@ error_t arch_start_core(cpu_id_t cpu_id)
         init_interrupt();
         init_irq();
         init_syscall();
-        sti();
+        arch_enable_irq();
         rendezvos_time_init();
         enable_cache();
         start_fp();

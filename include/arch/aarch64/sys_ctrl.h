@@ -15,4 +15,12 @@ static inline void set_vbar_el1(vaddr trap_vec)
         msr("VBAR_EL1", trap_vec);
 }
 
+static inline void arch_disable_irq(void)
+{
+        __asm__ __volatile__("msr daifset, 0x3" ::: "memory");
+}
+static inline void arch_enable_irq(void)
+{
+        __asm__ __volatile__("msr daifclr, 0x3" ::: "memory");
+}
 #endif

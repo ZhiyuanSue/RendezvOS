@@ -23,7 +23,7 @@ void arch_start_smp(struct setup_info* arch_setup_info)
         if (NR_CPUS == 1)
                 return;
 #endif
-		__asm__ __volatile__("msr DAIFSET, 0x7" ::: "memory");
+        arch_disable_irq();
         struct device_node* cpu_node = dev_node_find_by_type(NULL, "cpu");
         while (cpu_node) {
                 struct property* reg_prop =
@@ -83,5 +83,5 @@ void arch_start_smp(struct setup_info* arch_setup_info)
                 cpu_node = dev_node_find_by_type(dev_tree_get_next(cpu_node),
                                                  "cpu");
         }
-		__asm__ __volatile__("msr DAIFCLR, 0x7" ::: "memory");
+        arch_enable_irq();
 }

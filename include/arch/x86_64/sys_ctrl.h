@@ -141,6 +141,12 @@ inline static void sti(void)
 {
         __asm__ __volatile__("sti");
 }
+inline static void arch_disable_irq(void){
+        cli();
+}
+inline static void arch_enable_irq(void){
+        sti();
+}
 inline static u64 rdtsc(void)
 {
         u32 low, high;
