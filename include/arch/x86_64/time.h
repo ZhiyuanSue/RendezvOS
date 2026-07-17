@@ -3,6 +3,7 @@
 #include <arch/x86_64/PIC/PIT.h>
 #include <common/types.h>
 #include <common/stdbool.h>
+#include <arch/x86_64/sys_ctrl.h>
 enum TIMER_SRC_type {
         TSC_timer = 0x1,
         ACPI_timer = 0x2,

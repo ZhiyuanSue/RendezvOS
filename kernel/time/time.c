@@ -117,6 +117,18 @@ static error_t timer_event_deliver_kmsg(Message_Port_t *port, u16 opcode,
 }
 
 /*timer event ops*/
+/*
+ * Do not change the following comments:
+ * the timer is per-cpu, but some functions in this module still might have race
+ * condition. because the syscall is inherit the irq state of user.
+ * So, if in a timer syscall(e.x. sleep), it might changing the rb tree,
+ * but the irq is still enable. And if the syscall's changing the rb tree, and a
+ * timer irq happen, it must be an error.
+ *
+ * So we must disable the irq(not lock, for it's percpu timer, a irq disable is
+ * enough). and then can we read or write the rb tree.
+ *
+ */
 error_t rendezvos_timer_event_init(rendezvos_timer_event *event,
                                    u64 periodic_gap, Message_Port_t *wait_port,
                                    u64 delivery_token)
@@ -138,34 +150,13 @@ error_t rendezvos_timer_event_init(rendezvos_timer_event *event,
         return REND_SUCCESS;
 }
 
-error_t rendezvos_timer_event_fini(rendezvos_timer_event *event)
+bool rendezvos_timer_event_exist_inner(const rendezvos_timer_event *event)
 {
-        if (event->periodic_gap)
-                return -E_IN_PARAM;
-        if (rendezvos_timer_event_exist(event))
-                rendezvos_timer_event_del(event);
-        if (event->wait_port) {
-                ref_put(&event->wait_port->refcount, free_message_port_ref);
-                event->wait_port = NULL;
-        }
-        return REND_SUCCESS;
+        return timer_event_is_linked(event, &percpu(event_tree_root));
 }
 
-error_t rendezvos_timer_event_cancel(rendezvos_timer_event *event)
-{
-        if (!event || event->periodic_gap || !event->wait_port)
-                return -E_IN_PARAM;
-
-        if (rendezvos_timer_event_exist(event))
-                rendezvos_timer_event_del(event);
-        return timer_event_deliver_kmsg(event->wait_port,
-                                        KMSG_OP_SYSTEM_TIMER_CANCEL,
-                                        event->delivery_token,
-                                        false);
-}
-
-error_t rendezvos_timer_event_add(rendezvos_timer_event *event,
-                                  tick_t expires_at)
+static inline error_t
+rendezvos_timer_event_add_inner(rendezvos_timer_event *event, tick_t expires_at)
 {
         struct rb_root *root = &percpu(event_tree_root);
 
@@ -184,8 +175,8 @@ error_t rendezvos_timer_event_add(rendezvos_timer_event *event,
         INIT_LIST_HEAD(&event->same_expired_list);
         return timer_event_rb_tree_insert(event, root);
 }
-
-error_t rendezvos_timer_event_del(rendezvos_timer_event *event)
+static inline error_t
+rendezvos_timer_event_del_inner(rendezvos_timer_event *event)
 {
         struct rb_root *root = &percpu(event_tree_root);
 
@@ -211,19 +202,69 @@ error_t rendezvos_timer_event_del(rendezvos_timer_event *event)
         }
         return REND_SUCCESS;
 }
+error_t rendezvos_timer_event_fini(rendezvos_timer_event *event)
+{
+        if (event->periodic_gap)
+                return -E_IN_PARAM;
+        u64 flags = arch_save_and_disable_irq();
+        if (rendezvos_timer_event_exist_inner(event))
+                rendezvos_timer_event_del_inner(event);
+        arch_irq_restore(flags);
+        if (event->wait_port) {
+                ref_put(&event->wait_port->refcount, free_message_port_ref);
+                event->wait_port = NULL;
+        }
+        return REND_SUCCESS;
+}
+
+error_t rendezvos_timer_event_cancel(rendezvos_timer_event *event)
+{
+        if (!event || event->periodic_gap || !event->wait_port)
+                return -E_IN_PARAM;
+
+        u64 flags = arch_save_and_disable_irq();
+        if (rendezvos_timer_event_exist_inner(event))
+                rendezvos_timer_event_del_inner(event);
+        arch_irq_restore(flags);
+        return timer_event_deliver_kmsg(event->wait_port,
+                                        KMSG_OP_SYSTEM_TIMER_CANCEL,
+                                        event->delivery_token,
+                                        false);
+}
+error_t rendezvos_timer_event_add(rendezvos_timer_event *event,
+                                  tick_t expires_at)
+{
+        u64 flags = arch_save_and_disable_irq();
+        error_t e = rendezvos_timer_event_add_inner(event, expires_at);
+        arch_irq_restore(flags);
+        return e;
+}
+
+error_t rendezvos_timer_event_del(rendezvos_timer_event *event)
+{
+        u64 flags = arch_save_and_disable_irq();
+        error_t e = rendezvos_timer_event_del_inner(event);
+        arch_irq_restore(flags);
+        return e;
+}
 
 error_t rendezvos_timer_event_change(rendezvos_timer_event *event,
                                      tick_t expires_at)
 {
-        error_t res = rendezvos_timer_event_del(event);
-        if (res != REND_SUCCESS)
-                return res;
-        return rendezvos_timer_event_add(event, expires_at);
+        u64 flags = arch_save_and_disable_irq();
+        error_t res = rendezvos_timer_event_del_inner(event);
+        if (res == REND_SUCCESS)
+                res = rendezvos_timer_event_add_inner(event, expires_at);
+        arch_irq_restore(flags);
+        return res;
 }
 
 bool rendezvos_timer_event_exist(const rendezvos_timer_event *event)
 {
-        return timer_event_is_linked(event, &percpu(event_tree_root));
+        u64 flags = arch_save_and_disable_irq();
+        bool res = rendezvos_timer_event_exist_inner(event);
+        arch_irq_restore(flags);
+        return res;
 }
 
 /*timer part*/
@@ -316,11 +357,17 @@ void rendezvos_do_time_irq(struct trap_frame *tf)
                                         (volatile const u64 *)&jeffies);
                         }
                 } else {
-                        timer_event_deliver_kmsg(current_event->wait_port,
-                                                 KMSG_OP_SYSTEM_TIMER_EXPIRE,
-                                                 current_event->delivery_token,
-                                                 true);
-                        rendezvos_timer_event_fini(current_event);
+                        error_t e = timer_event_deliver_kmsg(
+                                current_event->wait_port,
+                                KMSG_OP_SYSTEM_TIMER_EXPIRE,
+                                current_event->delivery_token,
+                                true);
+                        if (e == REND_SUCCESS) {
+                                rendezvos_timer_event_fini(current_event);
+                        } else {
+                                rendezvos_timer_event_change(current_event,
+                                                             now + 1);
+                        }
                 }
         }
 

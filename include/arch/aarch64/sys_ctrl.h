@@ -23,4 +23,19 @@ static inline void arch_enable_irq(void)
 {
         __asm__ __volatile__("msr daifclr, 0x3" ::: "memory");
 }
+static inline u64 arch_save_and_disable_irq(void)
+{
+        u64 flags;
+        __asm__ __volatile__("mrs %0, daif\n\t"
+                             "msr daifset, #3"
+                             : "=r"(flags)
+                             :
+                             : "memory");
+        return flags;
+}
+
+static inline void arch_irq_restore(u64 flags)
+{
+        __asm__ __volatile__("msr daif, %0" : : "r"(flags) : "memory");
+}
 #endif
