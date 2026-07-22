@@ -596,7 +596,8 @@ Thread_Base* copy_thread(Thread_Base* src_thread, Tcb_Base* target_task,
                 goto copy_thread_error;
         }
 
-        thread_set_status(dst_thread, thread_status_ready);
+        /* we do not set it as ready here(and expect init status), but set it at
+         * add_thread_to_manager*/
 
         pr_debug("[copy_thread] Created dst_thread thread tid=%d\n",
                  dst_thread->tid);

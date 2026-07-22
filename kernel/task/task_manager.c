@@ -49,6 +49,19 @@ void choose_schedule(Task_Manager* tm)
         tm->scheduler = round_robin_schedule;
         is_print_sche_info = false;
 }
+
+char thread_status_list[9][20] = {
+        "error",
+        "init",
+        "running",
+        "ready",
+        "zombie",
+        "block_on_send",
+        "block_on_receive",
+        "suspend",
+        "exit",
+};
+
 void print_sche_info(Thread_Base* old, Thread_Base* new)
 {
         if (!old || !new)
@@ -57,27 +70,31 @@ void print_sche_info(Thread_Base* old, Thread_Base* new)
                 return;
         if (old->name) {
                 if (new->name) {
-                        pr_info("[CPU %d SCHE INFO] old %s new %s\n",
+                        pr_info("[CPU %d SCHED INFO] old %s(status:%s) new %s\n",
                                 percpu(cpu_number),
                                 old->name,
+                                thread_status_list[old->status + 1],
                                 new->name);
                 } else {
-                        pr_info("[CPU %d SCHED INFO] old %s new %lx\n",
+                        pr_info("[CPU %d SCHED INFO] old %s(status:%s) new %lx\n",
                                 percpu(cpu_number),
                                 old->name,
+                                thread_status_list[old->status + 1],
                                 new);
                 }
 
         } else {
                 if (new->name) {
-                        pr_info("[CPU %d SCHED INFO] old %lx new %s\n",
+                        pr_info("[CPU %d SCHED INFO] old %lx(status:%s) new %s\n",
                                 percpu(cpu_number),
                                 old,
+                                thread_status_list[old->status + 1],
                                 new->name);
                 } else {
-                        pr_info("[CPU %d SCHED INFO] old %lx new %lx\n",
+                        pr_info("[CPU %d SCHED INFO] old %lx(status:%s) new %lx\n",
                                 percpu(cpu_number),
                                 old,
+                                thread_status_list[old->status + 1],
                                 new);
                 }
         }

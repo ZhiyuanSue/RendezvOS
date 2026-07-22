@@ -46,9 +46,9 @@ static void send_sipi(cpu_id_t cpu_id, paddr ap_start_addr)
 
 void arch_start_smp(struct setup_info* arch_setup_info)
 {
+        per_cpu(CPU_STATE, BSP_ID) = cpu_enable;
         if (NR_CPU > 1) {
                 arch_disable_irq();
-                per_cpu(CPU_STATE, BSP_ID) = cpu_enable;
                 /*
                     if we only have one cpu,no need for this,
                     we only have one single cpu and we needn't mark that this

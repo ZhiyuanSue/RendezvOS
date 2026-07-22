@@ -312,6 +312,12 @@ error_t add_thread_to_manager(Task_Manager* core_tm, Thread_Base* thread)
                       &(core_tm->sched_thread_list));
         thread->tm = core_tm;
         unlock_cas(&core_tm->sched_lock);
+
+        bool is_init_status = thread_set_status_with_expect(
+                thread, thread_status_init, thread_status_ready);
+        if (!is_init_status) {
+                pr_warn("[ERROR] a thread add to the manager with a status not init\n");
+        }
         return REND_SUCCESS;
 }
 error_t del_thread_from_manager(Thread_Base* thread)
