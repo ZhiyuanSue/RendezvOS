@@ -338,12 +338,12 @@ void rendezvos_do_time_irq(struct trap_frame *tf)
         rendezvos_timer_event *next_event;
         tick_t now;
         u64 next_event_gap;
-        // print("go into do timer irq\n");
 
         (void)tf;
 
         /*handle current and some might expired event*/
         now = arch_timer_read();
+        tick_t base = percpu(boot_base_time);
         while ((current_event = timer_event_rb_tree_first(root))
                && !time_before(now, current_event->expired)) {
                 if (current_event->periodic_gap) {
@@ -352,9 +352,7 @@ void rendezvos_do_time_irq(struct trap_frame *tf)
                                 now + current_event->periodic_gap);
                         if (current_event == &percpu(heartbeat_event)
                             && clock_hz) {
-                                percpu(tick_cnt) =
-                                        (now - percpu(boot_base_time))
-                                        / jeffy_ticks;
+                                percpu(tick_cnt) = (now - base) / jeffy_ticks;
                         }
                 } else {
                         error_t e = timer_event_deliver_kmsg(
