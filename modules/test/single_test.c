@@ -1,7 +1,7 @@
 #include <modules/test/test.h>
 #include <rendezvos/task/tcb.h>
+#include <rendezvos/time.h>
 
-extern volatile i64 jeffies;
 static struct single_test_case single_test[MAX_SINGLE_TEST_CASE] = {
         {rb_tree_test, "rb_tree\0"},
         {arch_vmm_test, "arch_vmm\0"},
@@ -25,13 +25,13 @@ void single_cpu_test(void)
                 if ((u64)(single_test[i].test)) {
                         if (single_test[i].test()) {
                                 pr_error("[ TEST @%8x ] ERROR: test %s fail!\n",
-                                         jeffies,
+                                         jeffies_get(),
                                          single_test[i].name);
                                 test_pass = false;
                                 break;
                         } else {
                                 pr_notice("[ TEST @%8x ] PASS: test %s ok!\n",
-                                          jeffies,
+                                          jeffies_get(),
                                           single_test[i].name);
                         }
                         schedule(percpu(core_tm));

@@ -5,20 +5,26 @@
 #include <rendezvos/ipc/kmsg_system.h>
 #include <rendezvos/ipc/message.h>
 #include <rendezvos/system/panic.h>
-#include <common/atomic.h>
 #include <common/dsa/rb_tree.h>
 #include <common/dsa/list.h>
 #include <common/string.h>
-volatile i64 jeffies = 0;
 u64 loop_per_jeffies;
 u64 udelay_max_loop;
 u64 heartbeat_gap;
-u64 clock_hz;
+u64 clock_hz = 0;
+u64 jeffy_ticks;
 enum timer_type sys_timer_type = TIMER_TYPE_ONE_SHOT;
 DEFINE_PER_CPU(u64, tick_cnt);
 DEFINE_PER_CPU(u64, boot_base_time);
 DEFINE_PER_CPU(struct rendezvos_timer_event, heartbeat_event);
 DEFINE_PER_CPU(struct rb_root, event_tree_root);
+i64 jeffies_get(void)
+{
+        if (!clock_hz)
+                return 0;
+        return (i64)((arch_timer_read() - per_cpu(boot_base_time, BSP_ID))
+                     / jeffy_ticks);
+}
 
 static bool timer_event_is_rb_head(const rendezvos_timer_event *event,
                                    const struct rb_root *root)
@@ -278,24 +284,25 @@ __attribute__((optimize("O0"))) u64 loop_delay(volatile u64 loop_cnt)
 static inline u64 timer_calibration(void)
 {
         volatile u64 lpj = 0;
-        i64 tick_val;
 #define LPJ_CALIBRATION_CNT 25
+        if (!clock_hz)
+                return 0;
+        tick_t gap = clock_hz / INT_PER_SECOND;
+        if (!gap)
+                gap = 1;
         for (int i = 0; i < LPJ_CALIBRATION_CNT; i++) {
-                tick_val = jeffies;
-                while (tick_val == jeffies)
-                        ; /*wait for next jeffies*/
-                tick_val = jeffies;
+                tick_t start = arch_timer_read();
+                tick_t end = start + gap;
 
-                while (tick_val == jeffies) {
+                while (time_before(arch_timer_read(), end))
                         lpj++;
-                }
         }
-        return lpj / 25;
+        return lpj / LPJ_CALIBRATION_CNT;
 }
 void rendezvos_time_init(void)
 {
         percpu(event_tree_root).rb_root = NULL;
-        percpu(tick_cnt) = jeffies;
+        percpu(tick_cnt) = 0;
         register_irq_handler(
                 timer_irq_num, rendezvos_do_time_irq, IRQ_NEED_EOI);
         bool is_bsp = (percpu(cpu_number) == BSP_ID);
@@ -315,16 +322,17 @@ void rendezvos_time_init(void)
                         "[ ERROR ]rendezvos_time_init: heartbeat add failed");
 
         if (is_bsp) {
-                loop_per_jeffies = timer_calibration();
                 clock_hz = arch_timer_get_hz();
+                jeffy_ticks = clock_hz / INT_PER_SECOND;
+                if (!jeffy_ticks)
+                        jeffy_ticks = 1;
+                loop_per_jeffies = timer_calibration();
         }
         udelay_max_loop = (loop_per_jeffies * UDELAY_MAX * UDELAY_MUL)
                           >> UDELAY_SHIFT;
 }
 void rendezvos_do_time_irq(struct trap_frame *tf)
 {
-        u64 local_tick;
-        i64 global_tick;
         struct rb_root *root = &percpu(event_tree_root);
         rendezvos_timer_event *current_event;
         rendezvos_timer_event *next_event;
@@ -342,19 +350,11 @@ void rendezvos_do_time_irq(struct trap_frame *tf)
                         rendezvos_timer_event_change(
                                 current_event,
                                 now + current_event->periodic_gap);
-                        if (current_event != &percpu(heartbeat_event))
-                                continue;
-                        local_tick = ++percpu(tick_cnt);
-                        global_tick = (i64)atomic64_load(
-                                (volatile const u64 *)&jeffies);
-                        while (time_after(local_tick, (u64)global_tick)) {
-                                if (atomic64_cas((volatile u64 *)&jeffies,
-                                                 (u64)global_tick,
-                                                 local_tick)
-                                    == (u64)global_tick)
-                                        break;
-                                global_tick = (i64)atomic64_load(
-                                        (volatile const u64 *)&jeffies);
+                        if (current_event == &percpu(heartbeat_event)
+                            && clock_hz) {
+                                percpu(tick_cnt) =
+                                        (now - percpu(boot_base_time))
+                                        / jeffy_ticks;
                         }
                 } else {
                         error_t e = timer_event_deliver_kmsg(

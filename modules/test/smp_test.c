@@ -1,9 +1,9 @@
 #include <modules/test/test.h>
 #include <rendezvos/limits.h>
 #include <rendezvos/task/tcb.h>
+#include <rendezvos/time.h>
 
 extern int NR_CPU;
-extern volatile i64 jeffies;
 static struct smp_test_case smp_test[MAX_SMP_TEST_CASE] = {
         /* CPU support:
          * - scalable: works for any NR_CPU >= 1
@@ -114,7 +114,7 @@ void multi_cpu_test(void)
                                                 all_test_success = false;
                                                 pr_error(
                                                         "[ TEST @%8x ] ERROR: test %s on cpu: %d fail!\n",
-                                                        jeffies,
+                                                        jeffies_get(),
                                                         smp_test[i].name,
                                                         cpu_id);
                                                 break;
@@ -129,7 +129,7 @@ void multi_cpu_test(void)
                                 break;
                         }
                         pr_notice("[ TEST @%8x ] PASS: test %s ok!\n",
-                                  jeffies,
+                                  jeffies_get(),
                                   smp_test[i].name);
                         for (int j = 0; j < NR_CPU; j++)
                                 test_state[j] = multi_cpu_test_not_start;
