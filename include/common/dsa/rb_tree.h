@@ -329,14 +329,14 @@ static inline struct rb_node* RB_Next(struct rb_node* rb_p)
 static inline struct rb_node* RB_First(struct rb_root* root)
 {
         struct rb_node* first = root->rb_root;
-        while (first)
+        while (first->left_child)
                 first = first->left_child;
         return first;
 }
 static inline struct rb_node* RB_Last(struct rb_root* root)
 {
         struct rb_node* last = root->rb_root;
-        while (last)
+        while (last->right_child)
                 last = last->right_child;
         return last;
 }

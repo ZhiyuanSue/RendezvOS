@@ -283,19 +283,18 @@ __attribute__((optimize("O0"))) u64 loop_delay(volatile u64 loop_cnt)
 }
 static inline u64 timer_calibration(void)
 {
+        u64 tick_val;
         volatile u64 lpj = 0;
 #define LPJ_CALIBRATION_CNT 25
-        if (!clock_hz)
-                return 0;
-        tick_t gap = clock_hz / INT_PER_SECOND;
-        if (!gap)
-                gap = 1;
         for (int i = 0; i < LPJ_CALIBRATION_CNT; i++) {
-                tick_t start = arch_timer_read();
-                tick_t end = start + gap;
+                tick_val = percpu(tick_cnt);
+                while (tick_val == percpu(tick_cnt))
+                        ; /*wait for next jeffies*/
+                tick_val = percpu(tick_cnt);
 
-                while (time_before(arch_timer_read(), end))
+                while (tick_val == percpu(tick_cnt)) {
                         lpj++;
+                }
         }
         return lpj / LPJ_CALIBRATION_CNT;
 }
@@ -342,10 +341,13 @@ void rendezvos_do_time_irq(struct trap_frame *tf)
         (void)tf;
 
         /*handle current and some might expired event*/
-        now = arch_timer_read();
+
         tick_t base = percpu(boot_base_time);
-        while ((current_event = timer_event_rb_tree_first(root))
-               && !time_before(now, current_event->expired)) {
+        while ((current_event = timer_event_rb_tree_first(root))) {
+                now = arch_timer_read();
+                if (time_before(now, current_event->expired)) {
+                        break;
+                }
                 if (current_event->periodic_gap) {
                         rendezvos_timer_event_change(
                                 current_event,

@@ -3,7 +3,6 @@
 #include <arch/aarch64/trap/trap.h>
 #include <modules/log/log.h>
 #include <rendezvos/time.h>
-// TODO:fix this include problem in vscode
 u32 timer_irq_num = AARCH64_IRQ_TO_TRAP_ID(30);
 u64 time_irq_cycle;
 u64 timer_freq;
