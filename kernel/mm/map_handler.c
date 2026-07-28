@@ -659,11 +659,11 @@ error_t map(VSpace *vs, ppn_t ppn, vpn_t vpn, int level, ENTRY_FLAGS_t eflags,
                 res = -E_RENDEZVOS;
                 goto map_unlock;
         } else {
-                pr_debug(
-                        "[ MAP ] remapping same 4K physical page with updated flags (vaddr: 0x%lx, old_flags: 0x%lx, new_flags: 0x%lx)\n",
-                        v,
-                        entry_flags,
-                        flags);
+                // pr_debug(
+                //         "[ MAP ] remapping same 4K physical page with updated flags (vaddr: 0x%lx, old_flags: 0x%lx, new_flags: 0x%lx)\n",
+                //         v,
+                //         entry_flags,
+                //         flags);
         }
         arch_set_L3_entry(
                 p, v, (union L3_entry *)(handler->map_vaddr[3]), flags);
