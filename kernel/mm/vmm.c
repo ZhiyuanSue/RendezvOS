@@ -406,7 +406,8 @@ error_t clone_vspace(VSpace* src_vs, VSpace** dst_vs_out,
                                                 src_ppn,
                                                 VPN(page_iter),
                                                 3,
-                                                range_flags,
+                                                clear_mask_u64(src_map_flag,
+                                                               PAGE_ENTRY_WRITE),
                                                 handler)
                                             != REND_SUCCESS) {
                                                 e = -E_RENDEZVOS;
