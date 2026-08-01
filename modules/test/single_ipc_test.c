@@ -132,6 +132,10 @@ int ipc_test(void)
                 pr_error("[single_ipc_test] create_message_port failed\n");
                 return -E_REND_TEST;
         }
+        /* Peer-held pointer path: skip name_index; ops gate needs REGISTERED.
+         */
+        (void)port_ops_set_life_with_expect(
+                port, PORT_OPS_LIFE_ACTIVE, PORT_OPS_LIFE_REGISTERED);
 
         e = gen_thread_from_func(
                 NULL, ipc_sender_thread, "ipc_sender", tm, port);
@@ -344,6 +348,8 @@ int ipc_multi_round_test(void)
                         "[single_ipc_multi_round_test] create_message_port failed\n");
                 return -E_REND_TEST;
         }
+        (void)port_ops_set_life_with_expect(
+                port, PORT_OPS_LIFE_ACTIVE, PORT_OPS_LIFE_REGISTERED);
 
         e = gen_thread_from_func(NULL,
                                  ipc_multi_round_sender_thread,

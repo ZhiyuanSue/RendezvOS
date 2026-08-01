@@ -17,6 +17,38 @@
 
 #define PORT_NAME_LEN_MAX 64
 
+/*
+ * DONOT CHANGE THE FOLLOWING COMMENT!
+ * Port have a life cycle, and if it's unregisted, it should not allow the send/recv
+ * Even there might have some reference
+ * So we add the following port ops micro and the port_ops_* functions.
+ * The name means whether the port can do any ops.
+ * 
+ * It can be seen as a rw lock, the lock between recv/send or recv/recv or send/send
+ * should not be locked, and they using lock free algorithms to work.
+ *
+ * And the lock between recv/send thread and the unregister thread should be work.
+ * 
+ * If there have some recv/send threads, they must using port_ops_begin/port_ops_end
+ * to protect it, and the unregister thread should not clean the thread_queue.
+ * 
+ * And if the unregister thread have get the lock,
+ * the send/recv must fail and return the -E_REND_PORT_CLOSED
+ * 
+ * You have to consider the schedule, and should not hold the 'lock' when blocked
+ */
+
+/* 
+ * ACTIVE:     created, not in name_index, ops must not begin)
+ * REGISTERED: in name_index, port_ops_* can begin/end
+ * CLOSING:    unregister or register_abort,ops must not begin
+ * CLOSED:     all the msqueue request are cleaned
+ */
+#define PORT_OPS_LIFE_CLOSED     0
+#define PORT_OPS_LIFE_ACTIVE     1
+#define PORT_OPS_LIFE_REGISTERED 2
+#define PORT_OPS_LIFE_CLOSING    3
+
 #ifndef PORT_SLOTS_INITIAL_CAP
 #define PORT_SLOTS_INITIAL_CAP (32ULL)
 #endif
@@ -37,8 +69,85 @@ struct Msg_Port {
          * Routing and discovery still use the port name string.
          */
         u16 service_id;
-        bool registered; /* 是否已注册 */
+        atomic64_t ops_life; /* PORT_OPS_LIFE_* status */
+        atomic64_t ops_count; /* count for how much the receiver/sender are operating */
 };
+
+/* ---- ops basic funcs ---- */
+
+/** Create-time init only: life starts as ACTIVE. */
+static inline void port_ops_life_init(Message_Port_t* port)
+{
+        if (!port)
+                return;
+        atomic64_init(&port->ops_life, PORT_OPS_LIFE_ACTIVE);
+}
+
+static inline i64 port_ops_life_get(const Message_Port_t* port)
+{
+        if (!port)
+                return PORT_OPS_LIFE_CLOSED;
+        return (i64)atomic64_load(
+                (volatile const u64*)&port->ops_life.counter);
+}
+
+static inline bool port_ops_set_life_with_expect(Message_Port_t* port, i64 expect,
+                                             i64 target)
+{
+        if (!port)
+                return false;
+        return atomic64_cas((volatile u64*)&port->ops_life.counter,
+                            (u64)expect,
+                            (u64)target)
+               == (u64)expect;
+}
+
+static inline bool port_is_registered(const Message_Port_t* port)
+{
+        return port_ops_life_get(port) == PORT_OPS_LIFE_REGISTERED;
+}
+
+static inline void port_ops_count_init(Message_Port_t* port)
+{
+        if (!port)
+                return;
+        atomic64_init(&port->ops_count, 0);
+}
+
+static inline i64 port_ops_count_get(const Message_Port_t* port)
+{
+        if (!port)
+                return 0;
+        return (i64)atomic64_load(
+                (volatile const u64*)&port->ops_count.counter);
+}
+
+static inline void port_ops_count_inc(Message_Port_t* port)
+{
+        if (!port)
+                return;
+        atomic64_inc(&port->ops_count);
+}
+
+static inline void port_ops_count_dec(Message_Port_t* port)
+{
+        if (!port)
+                return;
+        atomic64_dec(&port->ops_count);
+}
+/**
+ * @brief Enter a send/recv/try critical section on @p port (reader side of the
+ * ops gate). Does not serialize send against recv.
+ * @return true if entered; false if port is closing/closed (caller returns
+ *         -E_REND_PORT_CLOSED). Must pair with port_ops_end before schedule()
+ *         on the blocking wait path.
+ */
+bool port_ops_begin(Message_Port_t* port);
+
+/**
+ * @brief Leave the critical section started by port_ops_begin.
+ */
+void port_ops_end(Message_Port_t* port);
 
 /* Global port table: string-keyed index over Message_Port_t (see name_index).
  */

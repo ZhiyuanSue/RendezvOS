@@ -1,6 +1,36 @@
 #include <rendezvos/ipc/ipc.h>
 #include <rendezvos/task/ebr.h>
+#include <rendezvos/task/tcb.h>
+#include <rendezvos/smp/percpu.h>
 #include <modules/log/log.h>
+
+/*
+ * Port close aborted a blocked send without transfer, and a payload may still
+ * on send_pending_msg or in send_msg_queue(because before send ,a
+ * enqueue_msg_for_send is called, and if the port closed, it only set the flag
+ * and do not clean it). Drop the current message so the next send will not send
+ * this msg.
+ */
+static void ipc_drop_one_orphan_send_msg(Thread_Base* sender)
+{
+        Message_t* msg;
+        tagged_ptr_t dequeued_ptr;
+
+        if (!sender)
+                return;
+
+        msg = (Message_t*)atomic64_exchange(
+                (volatile u64*)&sender->send_pending_msg, (u64)NULL);
+        if (!msg) {
+                dequeued_ptr =
+                        msq_dequeue(&sender->send_msg_queue, free_message_ref);
+                if (tp_is_none(dequeued_ptr))
+                        return;
+                msg = container_of(
+                        tp_get_ptr(dequeued_ptr), Message_t, ms_queue_node);
+        }
+        ref_put(&msg->ms_queue_node.refcount, free_message_ref);
+}
 static error_t free_ipc_request_real(ref_count_t* refcount)
 {
         if (!refcount)
@@ -317,6 +347,16 @@ error_t send_msg(Message_Port_t* port)
         }
         Thread_Base* sender = get_cpu_current_thread();
         Ipc_Request_t* receiver_request = NULL;
+        if (!sender) {
+                return -E_RENDEZVOS;
+        }
+        if (!port_ops_begin(port)) {
+                /*before there's a enqueue_msg_for_send, so we must try clean
+                 * it, the same as ipc_try_send_msg*/
+                ipc_drop_one_orphan_send_msg(sender);
+                return -E_REND_PORT_CLOSED;
+        }
+
         while (1) {
                 if (!receiver_request) {
                         receiver_request =
@@ -336,6 +376,7 @@ error_t send_msg(Message_Port_t* port)
                                 ref_put(&receiver_request->ms_queue_node
                                                  .refcount,
                                         free_ipc_request);
+                                port_ops_end(port);
                                 return REND_SUCCESS;
                         }
                         case -E_REND_AGAIN: {
@@ -351,6 +392,7 @@ error_t send_msg(Message_Port_t* port)
                                 ref_put(&receiver_request->ms_queue_node
                                                  .refcount,
                                         free_ipc_request);
+                                port_ops_end(port);
                                 return try_transfer_result;
                         }
                         }
@@ -365,12 +407,24 @@ error_t send_msg(Message_Port_t* port)
                                  * queue, need schedule; when we are
                                  * woken up, a receiver has matched us
                                  * and transferred the message*/
+                                /*
+                                 * Unlock before schedule so
+                                 * unregister can wait count==0 and clean
+                                 * while we sleep, we also do it at recv_msg
+                                 */
+                                port_ops_end(port);
                                 schedule(percpu(core_tm));
                                 if (sender->flags
                                     & THREAD_FLAG_IPC_PORT_CLOSED) {
                                         sender->flags = clear_mask_u64(
                                                 sender->flags,
                                                 THREAD_FLAG_IPC_PORT_CLOSED);
+                                        /*
+                                         * if we are woken, and find the port is
+                                         * closed, but the send msg is still in
+                                         * the queue or on the ptr, so clean it
+                                         */
+                                        ipc_drop_one_orphan_send_msg(sender);
                                         return -E_REND_PORT_CLOSED;
                                 }
                                 return REND_SUCCESS;
@@ -391,12 +445,12 @@ error_t send_msg(Message_Port_t* port)
                                         sender,
                                         thread_status_block_on_send,
                                         old_status);
+                                port_ops_end(port);
                                 return -E_RENDEZVOS;
                         }
                         }
                 }
         }
-        return REND_SUCCESS;
 }
 error_t recv_msg(Message_Port_t* port)
 {
@@ -405,6 +459,13 @@ error_t recv_msg(Message_Port_t* port)
         }
         Thread_Base* receiver = get_cpu_current_thread();
         Ipc_Request_t* sender_request = NULL;
+        if (!receiver) {
+                return -E_RENDEZVOS;
+        }
+        if (!port_ops_begin(port)) {
+                return -E_REND_PORT_CLOSED;
+        }
+
         while (1) {
                 if (!sender_request) {
                         sender_request =
@@ -422,6 +483,7 @@ error_t recv_msg(Message_Port_t* port)
                                         thread_status_ready);
                                 ref_put(&sender_request->ms_queue_node.refcount,
                                         free_ipc_request);
+                                port_ops_end(port);
                                 return REND_SUCCESS;
                         }
                         case -E_REND_NO_MSG: {
@@ -435,6 +497,7 @@ error_t recv_msg(Message_Port_t* port)
                                  * can return -E_REND_AGAIN*/
                                 ref_put(&sender_request->ms_queue_node.refcount,
                                         free_ipc_request);
+                                port_ops_end(port);
                                 return -E_RENDEZVOS;
                         }
                         default: {
@@ -442,6 +505,7 @@ error_t recv_msg(Message_Port_t* port)
                                  * impossible*/
                                 ref_put(&sender_request->ms_queue_node.refcount,
                                         free_ipc_request);
+                                port_ops_end(port);
                                 return try_transfer_result;
                         }
                         }
@@ -456,6 +520,7 @@ error_t recv_msg(Message_Port_t* port)
                                  * queue; when we are woken up, a sender
                                  * has matched us and transferred the
                                  * message*/
+                                port_ops_end(port);
                                 schedule(percpu(core_tm));
                                 if (receiver->flags
                                     & THREAD_FLAG_IPC_PORT_CLOSED) {
@@ -482,13 +547,12 @@ error_t recv_msg(Message_Port_t* port)
                                         receiver,
                                         thread_status_block_on_receive,
                                         old_status);
+                                port_ops_end(port);
                                 return -E_RENDEZVOS;
                         }
                         }
                 }
         }
-
-        return REND_SUCCESS;
 }
 error_t ipc_try_send_msg(Message_Port_t* port)
 {
@@ -500,12 +564,18 @@ error_t ipc_try_send_msg(Message_Port_t* port)
                 return -E_REND_AGAIN;
         }
         Ipc_Request_t* receiver_request = NULL;
+        if (!port_ops_begin(port)) {
+                ipc_drop_one_orphan_send_msg(sender);
+                return -E_REND_PORT_CLOSED;
+        }
+
         while (1) {
                 if (!receiver_request) {
                         receiver_request =
                                 ipc_port_try_match(port, IPC_PORT_STATE_SEND);
                 }
                 if (!receiver_request) {
+                        port_ops_end(port);
                         return -E_REND_AGAIN;
                 }
                 error_t try_transfer_result =
@@ -518,6 +588,7 @@ error_t ipc_try_send_msg(Message_Port_t* port)
                                 thread_status_ready);
                         ref_put(&receiver_request->ms_queue_node.refcount,
                                 free_ipc_request);
+                        port_ops_end(port);
                         return REND_SUCCESS;
                 }
                 case -E_REND_AGAIN: {
@@ -526,6 +597,7 @@ error_t ipc_try_send_msg(Message_Port_t* port)
                 default: {
                         ref_put(&receiver_request->ms_queue_node.refcount,
                                 free_ipc_request);
+                        port_ops_end(port);
                         return try_transfer_result;
                 }
                 }
@@ -541,12 +613,17 @@ error_t ipc_try_recv_msg(Message_Port_t* port)
                 return -E_REND_AGAIN;
         }
         Ipc_Request_t* sender_request = NULL;
+        if (!port_ops_begin(port)) {
+                return -E_REND_PORT_CLOSED;
+        }
+
         while (1) {
                 if (!sender_request) {
                         sender_request =
                                 ipc_port_try_match(port, IPC_PORT_STATE_RECV);
                 }
                 if (!sender_request) {
+                        port_ops_end(port);
                         return -E_REND_AGAIN;
                 }
                 error_t try_transfer_result =
@@ -559,6 +636,7 @@ error_t ipc_try_recv_msg(Message_Port_t* port)
                                 thread_status_ready);
                         ref_put(&sender_request->ms_queue_node.refcount,
                                 free_ipc_request);
+                        port_ops_end(port);
                         return REND_SUCCESS;
                 }
                 case -E_REND_NO_MSG: {
@@ -567,11 +645,13 @@ error_t ipc_try_recv_msg(Message_Port_t* port)
                 case -E_REND_AGAIN: {
                         ref_put(&sender_request->ms_queue_node.refcount,
                                 free_ipc_request);
+                        port_ops_end(port);
                         return -E_RENDEZVOS;
                 }
                 default: {
                         ref_put(&sender_request->ms_queue_node.refcount,
                                 free_ipc_request);
+                        port_ops_end(port);
                         return try_transfer_result;
                 }
                 }

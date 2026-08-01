@@ -116,6 +116,8 @@ int single_timer_test(void)
                 pr_error("[single_timer_test] create_message_port failed\n");
                 return -E_REND_TEST;
         }
+        (void)port_ops_set_life_with_expect(
+                port, PORT_OPS_LIFE_ACTIVE, PORT_OPS_LIFE_REGISTERED);
 
         err = gen_thread_from_func(
                 NULL, timer_waiter_thread, "timer_waiter", tm, port);

@@ -200,6 +200,9 @@ int smp_ipc_test(void)
                         pr_error("[smp_ipc_test] create_message_port failed\n");
                         return -E_REND_TEST;
                 }
+                (void)port_ops_set_life_with_expect(smp_ipc_port,
+                                                    PORT_OPS_LIFE_ACTIVE,
+                                                    PORT_OPS_LIFE_REGISTERED);
                 for (int i = 0; i < SMP_IPC_CPU_SLOTS; i++) {
                         smp_ipc_send_ok[i] = 0;
                         smp_ipc_recv_ok[i] = 0;

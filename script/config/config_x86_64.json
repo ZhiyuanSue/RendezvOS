@@ -17,7 +17,8 @@
 			"-mno-mmx",
 			"-mno-3dnow",
 			"-msoft-float",
-			"-mcmodel=large"
+			"-mcmodel=large",
+			"-mno-red-zone"
 		],
 		"features":[
 			"_X86_64_",

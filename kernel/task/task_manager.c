@@ -113,11 +113,12 @@ void schedule(Task_Manager* tm)
         ebr_try_reclaim();
         lock_cas(&tm->sched_lock);
         Thread_Base* curr = tm->current_thread;
+        thread_set_status_with_expect(
+                curr, thread_status_running, thread_status_ready);
         if (tm->scheduler)
                 tm->current_thread = tm->scheduler(tm);
         if (!tm->current_thread || curr == tm->current_thread) {
-                unlock_cas(&tm->sched_lock);
-                return;
+                goto use_old_thread;
         }
         print_sche_info(curr, tm->current_thread);
 
@@ -172,18 +173,11 @@ void schedule(Task_Manager* tm)
                         }
                 }
         }
-        /*
-         * if before the schedule no status is set
-         * set it to ready, otherwise using the set status
-         */
         if ((curr->flags & THREAD_FLAG_EXIT_REQUESTED)
-            && thread_get_status(curr) == thread_status_running) {
+            && thread_get_status(curr) == thread_status_ready) {
                 /* Owner CPU proves switch-away; safe to reap. */
                 thread_set_status_with_expect(
-                        curr, thread_status_running, thread_status_zombie);
-        } else {
-                thread_set_status_with_expect(
-                        curr, thread_status_running, thread_status_ready);
+                        curr, thread_status_ready, thread_status_zombie);
         }
         thread_set_status(tm->current_thread, thread_status_running);
         unlock_cas(&tm->sched_lock);
@@ -191,6 +185,8 @@ void schedule(Task_Manager* tm)
         return;
 use_old_thread:
         tm->current_thread = curr;
+        thread_set_status_with_expect(
+                curr, thread_status_ready, thread_status_running);
         unlock_cas(&tm->sched_lock);
         return;
 }

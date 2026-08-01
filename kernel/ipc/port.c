@@ -41,7 +41,13 @@ static void port_on_register(void* v, void* owner_context)
         struct Port_Table* table = (struct Port_Table*)owner_context;
         if (!p)
                 return;
-        p->registered = true;
+        if (!port_ops_set_life_with_expect(
+                    p, PORT_OPS_LIFE_ACTIVE, PORT_OPS_LIFE_REGISTERED)) {
+                pr_error("[port] on_register life CAS ACTIVE→REGISTERED failed "
+                         "name=%s life=%ld\n",
+                         p->name,
+                         port_ops_life_get(p));
+        }
         p->table = table;
 }
 
@@ -51,8 +57,14 @@ static void port_on_unregister(void* v, void* owner_context)
         (void)owner_context;
         if (!p)
                 return;
-        p->registered = false;
         p->table = NULL;
+        if (!port_ops_set_life_with_expect(
+                    p, PORT_OPS_LIFE_REGISTERED, PORT_OPS_LIFE_CLOSING)) {
+                pr_error("[port] on_unregister life CAS REGISTERED→CLOSING "
+                         "failed name=%s life=%ld\n",
+                         p->name,
+                         port_ops_life_get(p));
+        }
 }
 
 /*
@@ -105,9 +117,36 @@ Message_Port_t* create_message_port(const char* name)
         ref_init(&mp->refcount); /* creator holds one ref */
         mp->table = NULL;
         mp->service_id = service_id_from_name(mp->name);
-        mp->registered = false;
+        port_ops_life_init(mp);
+        port_ops_count_init(mp);
 
         return mp;
+}
+
+/*
+ * It's one-shot REGISTERED→CLOSING→CLOSED
+ * and in a port's life we only have one unregister
+ * So we can use this try-redo begin function and needn't complex lock
+ */
+bool port_ops_begin(Message_Port_t* port)
+{
+        if (!port)
+                return false;
+        if (!port_is_registered(port))
+                return false;
+        port_ops_count_inc(port);
+        if (!port_is_registered(port)) {
+                port_ops_count_dec(port);
+                return false;
+        }
+        return true;
+}
+
+void port_ops_end(Message_Port_t* port)
+{
+        if (!port)
+                return;
+        port_ops_count_dec(port);
 }
 
 static void port_clean_thread_queue(Message_Port_t* port)
@@ -189,6 +228,9 @@ void delete_message_port_structure(Message_Port_t* port)
 {
         if (!port)
                 return;
+        /*
+         *         port_clean_thread_queue is just a defensive clean here.
+         */
         port_clean_thread_queue(port);
         struct allocator* cpu_kallocator = percpu(kallocator);
         if (cpu_kallocator && !cpu_kallocator->m_free) {
@@ -212,7 +254,7 @@ bool port_table_port_is_live(struct Port_Table* table, const char* name,
         lock_mcs(&table->by_name.lock, my_lock);
         Message_Port_t* p =
                 (Message_Port_t*)name_index_search(&table->by_name, name, NULL);
-        bool ok = (p == port && port->registered);
+        bool ok = (p == port && port_is_registered(port));
         unlock_mcs(&table->by_name.lock, my_lock);
         return ok;
 }
@@ -228,11 +270,11 @@ static void free_message_port_ref_real(ref_count_t* ref_count_ptr)
          * Final free must not mutate the port table index.
          * register/unregister is the only legal path to add/remove entries.
          */
-        if (port->registered || port->table) {
+        if (port_is_registered(port) || port->table) {
                 pr_error(
-                        "[port] free_ref still registered name=%s reg=%lx table_hi=%lx table_lo=%lx\n",
+                        "[port] free_ref still registered name=%s life=%lx table_hi=%lx table_lo=%lx\n",
                         port->name,
-                        (u32)port->registered,
+                        (u32)port_ops_life_get(port),
                         (u32)(((u64)(uintptr_t)port->table >> 32) & 0xffffffff),
                         (u32)((u64)(uintptr_t)port->table & 0xffffffff));
         }
@@ -326,13 +368,39 @@ error_t unregister_port(struct Port_Table* table, const char* name)
         u64 row_idx = 0;
         Message_Port_t* port = (Message_Port_t*)name_index_search(
                 &table->by_name, name, &row_idx);
-        if (!port || !port->registered) {
+        if (!port || !port_is_registered(port)) {
                 unlock_mcs(&table->by_name.lock, my_lock);
                 return REND_SUCCESS;
         }
 
         name_index_unregister(&table->by_name, (void*)port, row_idx, name);
         unlock_mcs(&table->by_name.lock, my_lock);
+
+        /*
+         * It's waiting for the old have beginned send/recv end.
+         * and the new sender/receiver's ops_begin will fail, for the status is
+         * not REGISTERED any more.
+         */
+        while (port_ops_count_get(port) != 0) {
+                schedule(percpu(core_tm));
+        }
+        /* DO NOT CHANGE THE FOLLOWING COMMENTS!
+         * The port_clean_thread_queue must be put here.
+         * if this clean put at the ref count == 0 and clean time.
+         * A case will happen:
+         * the port is unregistered but still some ref,
+         * and there's some thread still waiting for the message.
+         * but some thread have still hold the ref count,
+         * and all the thread are blocked.
+         */
+        port_clean_thread_queue(port);
+        if (!port_ops_set_life_with_expect(
+                    port, PORT_OPS_LIFE_CLOSING, PORT_OPS_LIFE_CLOSED)) {
+                pr_error("[port] unregister life CAS CLOSING→CLOSED failed "
+                         "name=%s life=%ld\n",
+                         name,
+                         port_ops_life_get(port));
+        }
 
         ref_put(&port->refcount, free_message_port_ref);
         return REND_SUCCESS;
