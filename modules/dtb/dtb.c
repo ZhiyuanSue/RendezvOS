@@ -6,12 +6,12 @@
    u-boot(https://github.com/u-boot/u-boot) and changed something to let it pass
    complie 2024/5/21
 */
-static int check_off_(uint32_t hdrsize, uint32_t totalsize, uint32_t off)
+static int check_off_(u32 hdrsize, u32 totalsize, u32 off)
 {
         return (off >= hdrsize) && (off <= totalsize);
 }
-static int check_block_(uint32_t hdrsize, uint32_t totalsize, uint32_t base,
-                        uint32_t size)
+static int check_block_(u32 hdrsize, u32 totalsize, u32 base,
+                        u32 size)
 {
         if (!check_off_(hdrsize, totalsize, base))
                 return (0); /* block start out of bounds */
@@ -95,14 +95,14 @@ const void *fdt_offset_ptr(const void *fdt, int offset, unsigned int len)
         return (fdt_offset_ptr_(fdt, offset));
 }
 
-__attribute__((optimize("no-jump-tables")))
-uint32_t fdt_next_tag(const void *fdt, int startoffset, int *nextoffset)
+__attribute__((optimize("no-jump-tables"))) u32
+fdt_next_tag(const void *fdt, int startoffset, int *nextoffset)
 {
-        uint32_t tag;
+        u32 tag;
         int offset;
         const char *p;
 
-        const uint32_t *tagp, *lenp;
+        const u32 *tagp, *lenp;
         offset = startoffset;
         *nextoffset = -FDT_ERR_TRUNCATED;
         tagp = fdt_offset_ptr(fdt, offset, FDT_TAGSIZE);
@@ -161,7 +161,7 @@ int fdt_check_prop_offset_(const void *fdt, int offset)
 int fdt_next_node(const void *fdt, int offset, int *depth)
 {
         int nextoffset;
-        uint32_t tag;
+        u32 tag;
 
         nextoffset = 0;
         if (offset >= 0)
@@ -195,7 +195,7 @@ int fdt_next_node(const void *fdt, int offset, int *depth)
 
 static int nextprop_(const void *fdt, int offset)
 {
-        uint32_t tag;
+        u32 tag;
         int nextoffset;
 
         do {

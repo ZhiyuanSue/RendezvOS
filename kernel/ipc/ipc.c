@@ -710,9 +710,9 @@ if it fails, clear the message. Therefore, we directly use the sender's
 `send_pending_msg` pointer. The key is that it is compatible with the design of
 `ipc_transfer_message`. So we should not change any other interfaces.
 
-Besides, if the system need receive, we designed using the init thread.
-For example, the orphan need to let the init clean it, we design it at
-cmain(init) end（maybe also start secondary cpu). But the init thread might
+Besides, if the system need receive, we designed using the boot thread.
+For example, the orphan need to let the boot clean it, we design it at
+cmain(boot) end（maybe also start secondary cpu). But the boot thread might
 receive and then send, and it might also blocked, which is not match the system
 send model. ——the system send model need the send queue is clean.
 */

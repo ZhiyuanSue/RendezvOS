@@ -40,7 +40,8 @@ void start_secondary_cpu(struct setup_info *arch_setup_info)
                 return;
         }
         pr_info("successfully start secondary cpu %d\n", current_cpu_id);
-        atomic64_store((volatile u64*)&per_cpu(CPU_STATE, current_cpu_id),cpu_enable);
+        atomic64_store((volatile u64 *)&per_cpu(CPU_STATE, current_cpu_id),
+                       cpu_enable);
         percpu(core_tm) = init_proc();
         if (!percpu(core_tm)) {
                 print("[ERROR] init proc fail\n");

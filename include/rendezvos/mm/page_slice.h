@@ -50,8 +50,9 @@
  *     index page (0..PAGE_SLICE_INDEX_CAPACITY);
  *   height 0 (ptr==0) — live==0 (root only).
  *
- * slice->mapped_entries: upper-layer stat only (pgoffs with PAGE_SLICE_FLAG_VALID).
- * Updated on insert/remove; not used by radix grow/shrink/free.
+ * slice->mapped_entries: upper-layer stat only (pgoffs with
+ * PAGE_SLICE_FLAG_VALID). Updated on insert/remove; not used by radix
+ * grow/shrink/free.
  */
 
 #include <common/types.h>

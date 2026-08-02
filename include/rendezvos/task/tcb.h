@@ -225,7 +225,7 @@ static inline size_t thread_append_info_len(const Thread_Base* thread)
                        0;
 }
 
-extern Thread_Base* init_thread_ptr;
+extern Thread_Base* boot_thread_ptr;
 extern Thread_Base* idle_thread_ptr;
 extern volatile bool is_print_sche_info;
 
@@ -233,16 +233,16 @@ extern volatile bool is_print_sche_info;
  * If system need to send msg to one server, see ipc.h
  * ipc_system_try_deliver/ipc_system_deliver_to. And the idle thread is used to
  * represent the system to send. But the system need to recv msg, you need to
- * use the init port to handle something. Otherwise if you the recv msg need to
+ * use the boot port to handle something. Otherwise if you the recv msg need to
  * reply using a send msg, the send msg might have some error.
  *
  * So you must using 2 different thread's send/recv queue
  */
 #define KERNEL_PORT_NAME "kernel_port"
 
-typedef void (*init_thread_ipc_handler_fn)(Message_t* msg, u16 service_id);
+typedef void (*boot_thread_ipc_handler_fn)(Message_t* msg, u16 service_id);
 
-void kernel_set_ipc_handler(init_thread_ipc_handler_fn handler);
+void kernel_set_ipc_handler(boot_thread_ipc_handler_fn handler);
 
 /* register KERNEL_PORT_NAME, but BSP only */
 error_t kernel_port_register(void);
@@ -284,8 +284,8 @@ Thread_Base* round_robin_schedule(Task_Manager* tm);
 void choose_schedule(Task_Manager* tm);
 
 /**
- * @brief Bootstrap per-CPU task manager, root task, init and idle threads;
- * switches from idle to init thread context.
+ * @brief Bootstrap per-CPU task manager, root task, boot and idle threads;
+ * switches from idle to boot thread context.
  * @return Per-CPU core_tm on success, or NULL on failure.
  */
 Task_Manager* init_proc();

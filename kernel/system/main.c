@@ -62,7 +62,7 @@ void cmain(struct setup_info *arch_setup_info)
         create_test_thread(true);
         thread_set_status(get_cpu_current_thread(), thread_status_suspend);
 #endif
-        pr_info("[ CPU%d ] init done, enter init IPC loop\n", BSP_ID);
+        pr_info("[ CPU%d ] boot done, enter boot IPC loop\n", BSP_ID);
         if (kernel_handle_msg() != REND_SUCCESS) {
                 pr_error("cmain: kernel_handle_msg failed\n");
                 (void)rendezvos_request_poweroff();

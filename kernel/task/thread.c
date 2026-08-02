@@ -121,7 +121,7 @@ Thread_Base* new_thread_structure(struct allocator* cpu_kallocator,
 
         thread->send_pending_msg = NULL;
         thread->recv_pending_cnt.counter = 0;
-        atomic64_store((volatile u64 *)&thread->port_ptr, (u64)NULL);
+        atomic64_store((volatile u64*)&thread->port_ptr, (u64)NULL);
         thread_port_cache_init(&thread->port_cache);
         return thread;
 

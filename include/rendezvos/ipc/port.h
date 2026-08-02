@@ -19,26 +19,29 @@
 
 /*
  * DONOT CHANGE THE FOLLOWING COMMENT!
- * Port have a life cycle, and if it's unregisted, it should not allow the send/recv
- * Even there might have some reference
- * So we add the following port ops micro and the port_ops_* functions.
- * The name means whether the port can do any ops.
- * 
- * It can be seen as a rw lock, the lock between recv/send or recv/recv or send/send
- * should not be locked, and they using lock free algorithms to work.
+ * Port have a life cycle, and if it's unregisted, it should not allow the
+ * send/recv Even there might have some reference So we add the following port
+ * ops micro and the port_ops_* functions. The name means whether the port can
+ * do any ops.
  *
- * And the lock between recv/send thread and the unregister thread should be work.
- * 
- * If there have some recv/send threads, they must using port_ops_begin/port_ops_end
- * to protect it, and the unregister thread should not clean the thread_queue.
- * 
+ * It can be seen as a rw lock, the lock between recv/send or recv/recv or
+ * send/send should not be locked, and they using lock free algorithms to work.
+ *
+ * And the lock between recv/send thread and the unregister thread should be
+ * work.
+ *
+ * If there have some recv/send threads, they must using
+ * port_ops_begin/port_ops_end to protect it, and the unregister thread should
+ * not clean the thread_queue.
+ *
  * And if the unregister thread have get the lock,
  * the send/recv must fail and return the -E_REND_PORT_CLOSED
- * 
- * You have to consider the schedule, and should not hold the 'lock' when blocked
+ *
+ * You have to consider the schedule, and should not hold the 'lock' when
+ * blocked
  */
 
-/* 
+/*
  * ACTIVE:     created, not in name_index, ops must not begin)
  * REGISTERED: in name_index, port_ops_* can begin/end
  * CLOSING:    unregister or register_abort,ops must not begin
@@ -70,7 +73,8 @@ struct Msg_Port {
          */
         u16 service_id;
         atomic64_t ops_life; /* PORT_OPS_LIFE_* status */
-        atomic64_t ops_count; /* count for how much the receiver/sender are operating */
+        atomic64_t ops_count; /* count for how much the receiver/sender are
+                                 operating */
 };
 
 /* ---- ops basic funcs ---- */
@@ -87,12 +91,11 @@ static inline i64 port_ops_life_get(const Message_Port_t* port)
 {
         if (!port)
                 return PORT_OPS_LIFE_CLOSED;
-        return (i64)atomic64_load(
-                (volatile const u64*)&port->ops_life.counter);
+        return (i64)atomic64_load((volatile const u64*)&port->ops_life.counter);
 }
 
-static inline bool port_ops_set_life_with_expect(Message_Port_t* port, i64 expect,
-                                             i64 target)
+static inline bool port_ops_set_life_with_expect(Message_Port_t* port,
+                                                 i64 expect, i64 target)
 {
         if (!port)
                 return false;

@@ -6,7 +6,7 @@
 #include <rendezvos/mm/allocator.h>
 #include <rendezvos/mm/kmalloc.h>
 #include <rendezvos/task/ebr.h>
-extern Thread_Base* init_thread_ptr;
+extern Thread_Base* boot_thread_ptr;
 extern Thread_Base* idle_thread_ptr;
 DEFINE_PER_CPU(Task_Manager*, core_tm);
 volatile bool is_print_sche_info;

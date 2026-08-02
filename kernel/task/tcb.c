@@ -14,8 +14,8 @@
 u64 thread_kstack_page_num = 2;
 u64 thread_ustack_page_num = 8;
 
-DEFINE_PER_CPU(Thread_Base*, init_thread_ptr);
-char init_thread_name[] = "init_thread";
+DEFINE_PER_CPU(Thread_Base*, boot_thread_ptr);
+char boot_thread_name[] = "boot_thread";
 
 DEFINE_PER_CPU(Thread_Base*, idle_thread_ptr);
 char idle_thread_name[] = "idle_thread";
@@ -28,54 +28,54 @@ void* idle_thread(void* arg)
                 schedule(percpu(core_tm));
         }
 }
-error_t create_init_thread(Tcb_Base* root_task)
+error_t create_boot_thread(Tcb_Base* root_task)
 {
         if (!root_task || !percpu(core_tm))
                 return -E_IN_PARAM;
-        /*we let the current execution flow as init thread*/
-        Thread_Base* init_t = percpu(init_thread_ptr) =
+        /*we let the current execution flow as boot thread*/
+        Thread_Base* boot_t = percpu(boot_thread_ptr) =
                 new_thread_structure(percpu(kallocator), NULL);
 
         error_t e = -E_RENDEZVOS;
-        if (!init_t) {
+        if (!boot_t) {
                 pr_error("[ Error ] new thread structure fail\n");
                 goto new_thread_fail;
         }
-        ref_init(&init_t->refcount);
-        init_t->tid = get_new_id(&tid_manager);
-        e = add_thread_to_task(root_task, init_t);
+        ref_init(&boot_t->refcount);
+        boot_t->tid = get_new_id(&tid_manager);
+        e = add_thread_to_task(root_task, boot_t);
         if (e != REND_SUCCESS) {
                 pr_error("[ Error ] add thread to task fail\n");
                 goto add_thread_to_task_fail;
         }
-        e = add_thread_to_manager(percpu(core_tm), init_t);
+        e = add_thread_to_manager(percpu(core_tm), boot_t);
         if (e != REND_SUCCESS) {
                 pr_error("[ Error ] add thread to manager fail\n");
                 goto add_thread_to_manager_fail;
         }
         /*we have to set the kstack bottom to the percpu stack*/
-        init_t->kstack_bottom = percpu(boot_stack_bottom);
-        thread_set_status(init_t, thread_status_running); /*init thread is the
+        boot_t->kstack_bottom = percpu(boot_stack_bottom);
+        thread_set_status(boot_t, thread_status_running); /*boot thread is the
                                                              running thread*/
-        thread_set_name(init_thread_name, init_t);
+        thread_set_name(boot_thread_name, boot_t);
         return REND_SUCCESS;
 add_thread_to_manager_fail:
         lock_cas(&root_task->thread_list_lock);
-        list_del_init(&(init_t->thread_list_node));
+        list_del_init(&(boot_t->thread_list_node));
         if (root_task->thread_number > 0)
                 root_task->thread_number--;
         unlock_cas(&root_task->thread_list_lock);
 add_thread_to_task_fail:
-        del_thread_structure(init_t);
+        del_thread_structure(boot_t);
 new_thread_fail:
         return e;
 }
 
-static init_thread_ipc_handler_fn init_thread_ipc_handler;
+static boot_thread_ipc_handler_fn boot_thread_ipc_handler;
 
-void kernel_set_ipc_handler(init_thread_ipc_handler_fn handler)
+void kernel_set_ipc_handler(boot_thread_ipc_handler_fn handler)
 {
-        init_thread_ipc_handler = handler;
+        boot_thread_ipc_handler = handler;
 }
 
 error_t kernel_port_register(void)
@@ -116,7 +116,7 @@ error_t kernel_handle_msg(void)
 
         port = thread_lookup_port(KERNEL_PORT_NAME);
         if (!port) {
-                pr_error("[init_thread] lookup '%s' failed\n",
+                pr_error("[boot_thread] lookup '%s' failed\n",
                          KERNEL_PORT_NAME);
                 return -E_RENDEZVOS;
         }
@@ -125,7 +125,7 @@ error_t kernel_handle_msg(void)
                 error_t e = recv_msg(port);
 
                 if (e != REND_SUCCESS) {
-                        pr_error("[init_thread] recv_msg failed e=%d\n",
+                        pr_error("[boot_thread] recv_msg failed e=%d\n",
                                  (int)e);
                         continue;
                 }
@@ -135,8 +135,8 @@ error_t kernel_handle_msg(void)
                 while ((msg = dequeue_recv_msg()) != NULL) {
                         u16 service_id = port->service_id;
 
-                        if (init_thread_ipc_handler) {
-                                init_thread_ipc_handler(msg, service_id);
+                        if (boot_thread_ipc_handler) {
+                                boot_thread_ipc_handler(msg, service_id);
                         } else {
                                 ref_put(&msg->ms_queue_node.refcount,
                                         free_message_ref);
@@ -181,37 +181,37 @@ Task_Manager* init_proc(void)
                 goto add_task_to_manager_fail;
         }
 
-        e = create_init_thread(percpu(core_tm)->root_task);
+        e = create_boot_thread(percpu(core_tm)->root_task);
         if (e != REND_SUCCESS) {
-                pr_error("[ Error ] create init thread fail %d\n", e);
-                goto create_init_thread_fail;
+                pr_error("[ Error ] create boot thread fail %d\n", e);
+                goto create_boot_thread_fail;
         }
         e = create_idle_thread();
         if (e != REND_SUCCESS) {
                 pr_error("[ Error ] create idle thread fail %d\n", e);
                 goto create_idle_thread_fail;
         }
-        if (percpu(init_thread_ptr) && percpu(idle_thread_ptr)) {
+        if (percpu(boot_thread_ptr) && percpu(idle_thread_ptr)) {
                 percpu(core_tm)->current_thread = percpu(idle_thread_ptr);
                 /*manually set the status of the thread*/
-                thread_set_status(percpu(init_thread_ptr), thread_status_ready);
+                thread_set_status(percpu(boot_thread_ptr), thread_status_ready);
                 thread_set_status(percpu(idle_thread_ptr),
                                   thread_status_running);
-                switch_to(&(percpu(init_thread_ptr)->ctx),
+                switch_to(&(percpu(boot_thread_ptr)->ctx),
                           &(percpu(idle_thread_ptr)->ctx));
         } else {
-                pr_error("[Error] init_proc fail\n");
+                pr_error("[Error] boot_proc fail\n");
                 return NULL;
         }
         return percpu(core_tm);
 create_idle_thread_fail:
         lock_cas(&percpu(core_tm)->root_task->thread_list_lock);
-        list_del_init(&(percpu(init_thread_ptr)->thread_list_node));
+        list_del_init(&(percpu(boot_thread_ptr)->thread_list_node));
         if (percpu(core_tm)->root_task->thread_number > 0)
                 percpu(core_tm)->root_task->thread_number--;
         unlock_cas(&percpu(core_tm)->root_task->thread_list_lock);
-        del_thread_structure(percpu(init_thread_ptr));
-create_init_thread_fail:
+        del_thread_structure(percpu(boot_thread_ptr));
+create_boot_thread_fail:
         if (del_task_from_manager(percpu(core_tm)->root_task) != REND_SUCCESS) {
                 pr_error(
                         "fail to delete task from task manager, please check\n");

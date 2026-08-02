@@ -8,7 +8,7 @@
 // for check
 extern struct property_type property_types[255];
 void print_property_value_empty(enum property_type_enum p_type, void *data,
-                                uint32_t len)
+                                u32 len)
 {
         (void)p_type;
         (void)data;
@@ -16,7 +16,7 @@ void print_property_value_empty(enum property_type_enum p_type, void *data,
         return;
 }
 void print_property_value_u32(enum property_type_enum p_type, void *data,
-                              uint32_t len)
+                              u32 len)
 {
         (void)p_type;
         u32 *u32_data;
@@ -34,7 +34,7 @@ void print_property_value_u32(enum property_type_enum p_type, void *data,
         }
 }
 void print_property_value_u64(enum property_type_enum p_type, void *data,
-                              uint32_t len)
+                              u32 len)
 {
         (void)p_type;
         u64 *u64_data;
@@ -52,14 +52,14 @@ void print_property_value_u64(enum property_type_enum p_type, void *data,
         }
 }
 void print_property_value_string(enum property_type_enum p_type, void *data,
-                                 uint32_t len)
+                                 u32 len)
 {
         (void)p_type;
         (void)len;
         print("%s\n", data);
 }
 void print_property_value_prop_encoded_array(enum property_type_enum p_type,
-                                             void *data, uint32_t len)
+                                             void *data, u32 len)
 {
         u32 *u32_data;
 
@@ -98,14 +98,14 @@ void print_property_value_prop_encoded_array(enum property_type_enum p_type,
         }
 }
 void print_property_value_phandle(enum property_type_enum p_type, void *data,
-                                  uint32_t len)
+                                  u32 len)
 {
         (void)p_type;
         (void)data;
         (void)len;
 }
 void print_property_value_stringlist(enum property_type_enum p_type, void *data,
-                                     uint32_t len)
+                                     u32 len)
 {
         (void)p_type;
         const char *ch_data = (const char *)data;
@@ -126,7 +126,7 @@ void print_property_value_stringlist(enum property_type_enum p_type, void *data,
 }
 
 void (*print_property_value_list[7])(enum property_type_enum p_type, void *data,
-                                     uint32_t len) = {
+                                     u32 len) = {
         print_property_value_empty,
         print_property_value_u32,
         print_property_value_u64,
@@ -135,7 +135,7 @@ void (*print_property_value_list[7])(enum property_type_enum p_type, void *data,
         print_property_value_phandle,
         print_property_value_stringlist};
 
-void print_property_value(const char *property_name, void *data, uint32_t len)
+void print_property_value(const char *property_name, void *data, u32 len)
 {
         enum property_type_enum p_type;
         enum property_value_type p_value;

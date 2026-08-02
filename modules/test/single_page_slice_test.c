@@ -24,21 +24,21 @@
         (PAGE_SLICE_LEAF_CAPACITY * PAGE_SLICE_INDEX_CAPACITY)
 #define PS_TEST_SLICE_INDEX2 ((PS_TEST_PGOFF_INDEX2 + 1ULL) * PAGE_SIZE)
 
-#define PS_TEST_PGOFF_INDEX3 \
+#define PS_TEST_PGOFF_INDEX3                                  \
         (PAGE_SLICE_LEAF_CAPACITY * PAGE_SLICE_INDEX_CAPACITY \
          * PAGE_SLICE_INDEX_CAPACITY)
 #define PS_TEST_SLICE_INDEX3 ((PS_TEST_PGOFF_INDEX3 + 1ULL) * PAGE_SIZE)
 
-#define PS_FUZZ_SHADOW_MAX         512u
-#define PS_FUZZ_OPS_SMALL          4096u
-#define PS_FUZZ_OPS_INDEX2         2048u
-#define PS_FUZZ_OPS_INDEX3          512u
-#define PS_FUZZ_INDEX3_MAX_MAPPED    32u
-#define PS_FUZZ_VERIFY_INTERVAL     256u
+#define PS_FUZZ_SHADOW_MAX        512u
+#define PS_FUZZ_OPS_SMALL         4096u
+#define PS_FUZZ_OPS_INDEX2        2048u
+#define PS_FUZZ_OPS_INDEX3        512u
+#define PS_FUZZ_INDEX3_MAX_MAPPED 32u
+#define PS_FUZZ_VERIFY_INTERVAL   256u
 
-#define PS_FUZZ_SMALL_SEED_COUNT    5u
-#define PS_FUZZ_INDEX2_SEED_COUNT   3u
-#define PS_FUZZ_INDEX3_SEED_COUNT   3u
+#define PS_FUZZ_SMALL_SEED_COUNT  5u
+#define PS_FUZZ_INDEX2_SEED_COUNT 3u
+#define PS_FUZZ_INDEX3_SEED_COUNT 3u
 
 static const u64 ps_fuzz_small_seeds[PS_FUZZ_SMALL_SEED_COUNT] = {
         0x5047465aULL, /* "PGFZ" */
@@ -128,13 +128,14 @@ static void ps_test_dump_pgoff_ctx(struct page_slice* slice, u64 pgoff)
                                   (PAGE_SLICE_INDEX_ENTRY(pgoff, 1) ?
                                            PS_HEIGHT_INDEX2 :
                                            PS_HEIGHT_INDEX1));
-        pr_error("[page_slice_test] pgoff=%llu need_h=%u stored_h=%u slot_l0=%llu "
-                 "leaf_idx=%llu\n",
-                 (u64)pgoff,
-                 (unsigned)need_h,
-                 (unsigned)stored_h,
-                 (u64)slot_l0,
-                 (u64)PAGE_SLICE_LEAF_IDX(pgoff));
+        pr_error(
+                "[page_slice_test] pgoff=%llu need_h=%u stored_h=%u slot_l0=%llu "
+                "leaf_idx=%llu\n",
+                (u64)pgoff,
+                (unsigned)need_h,
+                (unsigned)stored_h,
+                (u64)slot_l0,
+                (u64)PAGE_SLICE_LEAF_IDX(pgoff));
 
         if (!page_slice_root_is_index(slice)) {
                 pr_error("[page_slice_test] pgoff ctx: root is not index "
@@ -163,12 +164,12 @@ static void ps_test_fail_at(const char* step)
         ps_test_dump_slice(step);
 }
 
-#define PS_TEST_CHECK(step, cond)                     \
-        do {                                          \
-                if (!(cond)) {                        \
-                        ps_test_fail_at(step);        \
-                        goto fail;                    \
-                }                                     \
+#define PS_TEST_CHECK(step, cond)              \
+        do {                                   \
+                if (!(cond)) {                 \
+                        ps_test_fail_at(step); \
+                        goto fail;             \
+                }                              \
         } while (0)
 
 static vaddr ps_test_kmalloc_page(struct allocator* alloc)
@@ -192,7 +193,7 @@ static int ps_test_expect_lookup(struct page_slice* slice, u64 pgoff, vaddr kva)
         }
         if (entry->kernel_virtual_address != kva) {
                 pr_error("[page_slice_test] lookup pgoff %llu kva 0x%llx "
-                          "expected 0x%llx\n",
+                         "expected 0x%llx\n",
                          (u64)pgoff,
                          (u64)entry->kernel_virtual_address,
                          (u64)kva);
@@ -237,8 +238,7 @@ static int ps_test_bind(struct page_slice* slice, u64 pgoff,
         return ps_test_expect_lookup(slice, pgoff, kva);
 }
 
-static int ps_test_unbind(struct page_slice* slice, u64 pgoff,
-                          const char* step)
+static int ps_test_unbind(struct page_slice* slice, u64 pgoff, const char* step)
 {
         error_t err = page_slice_remove_page(slice, pgoff);
 
@@ -364,11 +364,12 @@ static void ps_test_dump_shadow_summary(const char* label)
         for (i = 0; i < PS_FUZZ_SHADOW_MAX; i++) {
                 if (!ps_fuzz_shadow[i].mapped)
                         continue;
-                pr_error("[page_slice_test] %s shadow[%u] pgoff=%llu kva=0x%llx\n",
-                         label,
-                         (unsigned)i,
-                         (u64)ps_fuzz_shadow[i].pgoff,
-                         (u64)ps_fuzz_shadow[i].kva);
+                pr_error(
+                        "[page_slice_test] %s shadow[%u] pgoff=%llu kva=0x%llx\n",
+                        label,
+                        (unsigned)i,
+                        (u64)ps_fuzz_shadow[i].pgoff,
+                        (u64)ps_fuzz_shadow[i].kva);
                 if (++shown >= 8) {
                         pr_error("[page_slice_test] %s shadow ... truncated\n",
                                  label);
@@ -429,7 +430,8 @@ static const char* ps_fuzz_err_name(error_t err)
  * Pick a pgoff not tracked in shadow.  Random first; if the slice is nearly
  * full, fall back to a linear scan instead of returning a colliding pgoff.
  */
-static bool ps_fuzz_pick_pgoff(u64* rng, u64 max_pages, u32 slot, u64* pgoff_out)
+static bool ps_fuzz_pick_pgoff(u64* rng, u64 max_pages, u32 slot,
+                               u64* pgoff_out)
 {
         static const u64 bounds[] = {
                 0,
@@ -485,10 +487,11 @@ static int ps_fuzz_verify_shadow(struct page_slice* slice, const char* tag)
 
         expect = ps_fuzz_shadow_count();
         if (slice->mapped_entries != expect) {
-                pr_error("[page_slice_test] %s: mapped_entries=%llu shadow=%llu\n",
-                         tag,
-                         (u64)slice->mapped_entries,
-                         (u64)expect);
+                pr_error(
+                        "[page_slice_test] %s: mapped_entries=%llu shadow=%llu\n",
+                        tag,
+                        (u64)slice->mapped_entries,
+                        (u64)expect);
                 return -E_REND_TEST;
         }
 
@@ -499,10 +502,11 @@ static int ps_fuzz_verify_shadow(struct page_slice* slice, const char* tag)
                                           ps_fuzz_shadow[i].pgoff,
                                           ps_fuzz_shadow[i].kva)
                     != REND_SUCCESS) {
-                        pr_error("[page_slice_test] %s: shadow slot %u pgoff %llu\n",
-                                 tag,
-                                 (unsigned)i,
-                                 (u64)ps_fuzz_shadow[i].pgoff);
+                        pr_error(
+                                "[page_slice_test] %s: shadow slot %u pgoff %llu\n",
+                                tag,
+                                (unsigned)i,
+                                (u64)ps_fuzz_shadow[i].pgoff);
                         return -E_REND_TEST;
                 }
         }
@@ -541,35 +545,37 @@ static int ps_fuzz_run(struct page_slice* slice, struct allocator* alloc,
                                 if (max_mapped > 0
                                     && ps_fuzz_shadow_count() >= max_mapped)
                                         continue;
-                                if (!ps_fuzz_pick_pgoff(&rng,
-                                                        max_pages,
-                                                        slot,
-                                                        &pgoff))
+                                if (!ps_fuzz_pick_pgoff(
+                                            &rng, max_pages, slot, &pgoff))
                                         continue;
                                 kva = ps_test_kmalloc_page(alloc);
                                 if (!kva) {
-                                        pr_error("[page_slice_test] %s fuzz kmalloc "
-                                                 "op=%u slot=%u pgoff=%llu\n",
-                                                 label,
-                                                 (unsigned)op_idx,
-                                                 (unsigned)slot,
-                                                 (u64)pgoff);
+                                        pr_error(
+                                                "[page_slice_test] %s fuzz kmalloc "
+                                                "op=%u slot=%u pgoff=%llu\n",
+                                                label,
+                                                (unsigned)op_idx,
+                                                (unsigned)slot,
+                                                (u64)pgoff);
                                         goto fuzz_fail;
                                 }
-                                err = page_slice_insert_page(slice, pgoff, kva, 0);
+                                err = page_slice_insert_page(
+                                        slice, pgoff, kva, 0);
                                 if (err != REND_SUCCESS) {
-                                        int owner = ps_fuzz_find_shadow_pgoff(pgoff);
+                                        int owner = ps_fuzz_find_shadow_pgoff(
+                                                pgoff);
 
-                                        pr_error("[page_slice_test] %s fuzz insert "
-                                                 "op=%u slot=%u pgoff=%llu err=%d "
-                                                 "(%s) shadow_owner=%d\n",
-                                                 label,
-                                                 (unsigned)op_idx,
-                                                 (unsigned)slot,
-                                                 (u64)pgoff,
-                                                 (int)err,
-                                                 ps_fuzz_err_name(err),
-                                                 owner);
+                                        pr_error(
+                                                "[page_slice_test] %s fuzz insert "
+                                                "op=%u slot=%u pgoff=%llu err=%d "
+                                                "(%s) shadow_owner=%d\n",
+                                                label,
+                                                (unsigned)op_idx,
+                                                (unsigned)slot,
+                                                (u64)pgoff,
+                                                (int)err,
+                                                ps_fuzz_err_name(err),
+                                                owner);
                                         ps_test_dump_pgoff_ctx(slice, pgoff);
                                         ps_test_dump_shadow_summary(label);
                                         alloc->m_free(alloc, (void*)kva);
@@ -584,20 +590,22 @@ static int ps_fuzz_run(struct page_slice* slice, struct allocator* alloc,
                                 pgoff = ps_fuzz_shadow[slot].pgoff;
                                 err = page_slice_remove_page(slice, pgoff);
                                 if (err != REND_SUCCESS) {
-                                        pr_error("[page_slice_test] %s fuzz remove "
-                                                 "op=%u slot=%u pgoff=%llu err=%d\n",
-                                                 label,
-                                                 (unsigned)op_idx,
-                                                 (unsigned)slot,
-                                                 (u64)pgoff,
-                                                 (int)err);
+                                        pr_error(
+                                                "[page_slice_test] %s fuzz remove "
+                                                "op=%u slot=%u pgoff=%llu err=%d\n",
+                                                label,
+                                                (unsigned)op_idx,
+                                                (unsigned)slot,
+                                                (u64)pgoff,
+                                                (int)err);
                                         goto fuzz_fail;
                                 }
                                 ps_fuzz_shadow[slot].mapped = false;
                                 ps_fuzz_shadow[slot].pgoff = 0;
                                 ps_fuzz_shadow[slot].kva = 0;
                         }
-                } else if (ps_fuzz_verify_shadow(slice, label) != REND_SUCCESS) {
+                } else if (ps_fuzz_verify_shadow(slice, label)
+                           != REND_SUCCESS) {
                         goto fuzz_fail;
                 }
 
@@ -618,12 +626,13 @@ static int ps_fuzz_run(struct page_slice* slice, struct allocator* alloc,
                         err = page_slice_remove_page(slice,
                                                      ps_fuzz_shadow[i].pgoff);
                         if (err != REND_SUCCESS) {
-                                pr_error("[page_slice_test] %s fuzz drain remove "
-                                         "slot=%u pgoff=%llu err=%d\n",
-                                         label,
-                                         (unsigned)i,
-                                         (u64)ps_fuzz_shadow[i].pgoff,
-                                         (int)err);
+                                pr_error(
+                                        "[page_slice_test] %s fuzz drain remove "
+                                        "slot=%u pgoff=%llu err=%d\n",
+                                        label,
+                                        (unsigned)i,
+                                        (u64)ps_fuzz_shadow[i].pgoff,
+                                        (int)err);
                                 goto fuzz_fail;
                         }
                         ps_fuzz_shadow[i].mapped = false;
@@ -642,11 +651,12 @@ static int ps_fuzz_run(struct page_slice* slice, struct allocator* alloc,
         return REND_SUCCESS;
 
 fuzz_fail:
-        pr_error("[page_slice_test] %s fuzz FAIL op=%u seed=0x%llx rng=0x%llx\n",
-                 label,
-                 (unsigned)op_idx,
-                 (u64)seed,
-                 (u64)rng);
+        pr_error(
+                "[page_slice_test] %s fuzz FAIL op=%u seed=0x%llx rng=0x%llx\n",
+                label,
+                (unsigned)op_idx,
+                (u64)seed,
+                (u64)rng);
         ps_test_dump_shadow_summary(label);
         ps_test_fail_at(label);
         return -E_REND_TEST;
@@ -659,12 +669,11 @@ static int ps_test_dual_branch(struct page_slice* slice,
 
         PS_TEST_CHECK("dual bind 0",
                       ps_test_bind(slice, 0, alloc, "dual bind 0") == 0);
-        PS_TEST_CHECK("dual bind index2",
-                      ps_test_bind(slice,
-                                   PS_TEST_PGOFF_INDEX2,
-                                   alloc,
-                                   "dual bind index2")
-                              == 0);
+        PS_TEST_CHECK(
+                "dual bind index2",
+                ps_test_bind(
+                        slice, PS_TEST_PGOFF_INDEX2, alloc, "dual bind index2")
+                        == 0);
         PS_TEST_CHECK("dual height index2",
                       page_slice_stored_height(slice) >= PS_HEIGHT_INDEX2);
 
@@ -672,15 +681,16 @@ static int ps_test_dual_branch(struct page_slice* slice,
                              ->kernel_virtual_address;
         PS_TEST_CHECK("dual unbind 0",
                       ps_test_unbind(slice, 0, "dual unbind 0") == 0);
-        PS_TEST_CHECK("dual lookup index2 after unbind 0",
-                      ps_test_expect_lookup(slice, PS_TEST_PGOFF_INDEX2, kva_index2)
-                              == 0);
+        PS_TEST_CHECK(
+                "dual lookup index2 after unbind 0",
+                ps_test_expect_lookup(slice, PS_TEST_PGOFF_INDEX2, kva_index2)
+                        == 0);
         PS_TEST_CHECK("dual height after unbind 0",
                       page_slice_stored_height(slice) >= PS_HEIGHT_INDEX2);
 
         PS_TEST_CHECK("dual unbind index2",
-                      ps_test_unbind(slice, PS_TEST_PGOFF_INDEX2,
-                                     "dual unbind index2")
+                      ps_test_unbind(
+                              slice, PS_TEST_PGOFF_INDEX2, "dual unbind index2")
                               == 0);
         PS_TEST_CHECK("dual root empty",
                       ps_test_root_empty(slice, "dual root empty") == 0);
@@ -741,7 +751,8 @@ static int ps_test_index3_triple_branch(struct page_slice* slice,
         vaddr kva_index3;
 
         PS_TEST_CHECK("index3 triple bind 0",
-                      ps_test_bind(slice, 0, alloc, "index3 triple bind 0") == 0);
+                      ps_test_bind(slice, 0, alloc, "index3 triple bind 0")
+                              == 0);
         PS_TEST_CHECK("index3 triple bind index2",
                       ps_test_bind(slice,
                                    PS_TEST_PGOFF_INDEX2,
@@ -764,12 +775,14 @@ static int ps_test_index3_triple_branch(struct page_slice* slice,
 
         PS_TEST_CHECK("index3 triple unbind 0",
                       ps_test_unbind(slice, 0, "index3 triple unbind 0") == 0);
-        PS_TEST_CHECK("index3 triple lookup index2",
-                      ps_test_expect_lookup(slice, PS_TEST_PGOFF_INDEX2, kva_index2)
-                              == 0);
-        PS_TEST_CHECK("index3 triple lookup index3",
-                      ps_test_expect_lookup(slice, PS_TEST_PGOFF_INDEX3, kva_index3)
-                              == 0);
+        PS_TEST_CHECK(
+                "index3 triple lookup index2",
+                ps_test_expect_lookup(slice, PS_TEST_PGOFF_INDEX2, kva_index2)
+                        == 0);
+        PS_TEST_CHECK(
+                "index3 triple lookup index3",
+                ps_test_expect_lookup(slice, PS_TEST_PGOFF_INDEX3, kva_index3)
+                        == 0);
         PS_TEST_CHECK("index3 triple unbind index2",
                       ps_test_unbind(slice,
                                      PS_TEST_PGOFF_INDEX2,
@@ -807,7 +820,8 @@ int page_slice_test(void)
 
         PS_TEST_CHECK("bind pgoff 0",
                       ps_test_bind(slice, 0, alloc, "bind pgoff 0") == 0);
-        PS_TEST_CHECK("get_size", page_slice_get_size(slice) == PAGE_SIZE * 256);
+        PS_TEST_CHECK("get_size",
+                      page_slice_get_size(slice) == PAGE_SIZE * 256);
         PS_TEST_CHECK("mapped 1", slice->mapped_entries == 1);
         PS_TEST_CHECK("height leaf after pgoff 0",
                       page_slice_stored_height(slice) == PS_HEIGHT_LEAF);
@@ -843,31 +857,29 @@ int page_slice_test(void)
         ps_test_slice = slice;
         PS_TEST_CHECK("set_size index2", err == REND_SUCCESS && slice != NULL);
 
-        PS_TEST_CHECK("bind pgoff index2",
-                      ps_test_bind(slice,
-                                   PS_TEST_PGOFF_INDEX2,
-                                   alloc,
-                                   "bind pgoff index2")
-                              == 0);
+        PS_TEST_CHECK(
+                "bind pgoff index2",
+                ps_test_bind(
+                        slice, PS_TEST_PGOFF_INDEX2, alloc, "bind pgoff index2")
+                        == 0);
         PS_TEST_CHECK("height index2",
                       page_slice_stored_height(slice) >= PS_HEIGHT_INDEX2);
 
-        PS_TEST_CHECK("unbind index2",
-                      ps_test_unbind(slice, PS_TEST_PGOFF_INDEX2,
-                                     "unbind index2")
-                              == 0);
+        PS_TEST_CHECK(
+                "unbind index2",
+                ps_test_unbind(slice, PS_TEST_PGOFF_INDEX2, "unbind index2")
+                        == 0);
         PS_TEST_CHECK("unbind 129",
-                      ps_test_unbind(slice, PAGE_SLICE_LEAF_CAPACITY + 1,
-                                     "unbind 129")
+                      ps_test_unbind(
+                              slice, PAGE_SLICE_LEAF_CAPACITY + 1, "unbind 129")
                               == 0);
-        PS_TEST_CHECK("unbind 128",
-                      ps_test_unbind(slice, PAGE_SLICE_LEAF_CAPACITY,
-                                     "unbind 128")
-                              == 0);
+        PS_TEST_CHECK(
+                "unbind 128",
+                ps_test_unbind(slice, PAGE_SLICE_LEAF_CAPACITY, "unbind 128")
+                        == 0);
         PS_TEST_CHECK("unbind 127",
                       ps_test_unbind(slice, 127, "unbind 127") == 0);
-        PS_TEST_CHECK("unbind 0",
-                      ps_test_unbind(slice, 0, "unbind 0") == 0);
+        PS_TEST_CHECK("unbind 0", ps_test_unbind(slice, 0, "unbind 0") == 0);
         PS_TEST_CHECK("root empty after unbind all",
                       ps_test_root_empty(slice, "root empty after unbind all")
                               == 0);
@@ -876,16 +888,20 @@ int page_slice_test(void)
                       ps_test_bind(slice, 40, alloc, "bind pgoff 40") == 0);
         err = page_slice_set_size(&slice, PAGE_SIZE * 40);
         ps_test_slice = slice;
-        PS_TEST_CHECK("set_size shrink 40", err == REND_SUCCESS && slice != NULL);
-        PS_TEST_CHECK("get_size 40", page_slice_get_size(slice) == PAGE_SIZE * 40);
+        PS_TEST_CHECK("set_size shrink 40",
+                      err == REND_SUCCESS && slice != NULL);
+        PS_TEST_CHECK("get_size 40",
+                      page_slice_get_size(slice) == PAGE_SIZE * 40);
         PS_TEST_CHECK("lookup 40 gone",
                       ps_test_expect_no_lookup(slice, 40) == 0);
         PS_TEST_CHECK("root empty after shrink",
-                      ps_test_root_empty(slice, "root empty after shrink") == 0);
+                      ps_test_root_empty(slice, "root empty after shrink")
+                              == 0);
 
         err = page_slice_set_size(&slice, 0);
         ps_test_slice = slice;
-        PS_TEST_CHECK("destroy via set_size 0", err == REND_SUCCESS && slice == NULL);
+        PS_TEST_CHECK("destroy via set_size 0",
+                      err == REND_SUCCESS && slice == NULL);
 
         slice = page_slice_create(0, PS_TEST_SLICE_INDEX2);
         ps_test_slice = slice;
@@ -894,7 +910,8 @@ int page_slice_test(void)
                       ps_test_dual_branch(slice, alloc) == REND_SUCCESS);
         err = page_slice_destroy(&slice);
         ps_test_slice = slice;
-        PS_TEST_CHECK("dual branch destroy", err == REND_SUCCESS && slice == NULL);
+        PS_TEST_CHECK("dual branch destroy",
+                      err == REND_SUCCESS && slice == NULL);
 
         slice = page_slice_create(0, PS_TEST_SLICE_INDEX2);
         ps_test_slice = slice;
@@ -904,9 +921,11 @@ int page_slice_test(void)
                               == REND_SUCCESS);
         err = page_slice_destroy(&slice);
         ps_test_slice = slice;
-        PS_TEST_CHECK("set_size shrink2 destroy", err == REND_SUCCESS && slice == NULL);
+        PS_TEST_CHECK("set_size shrink2 destroy",
+                      err == REND_SUCCESS && slice == NULL);
 
-        PS_TEST_CHECK("copy_to_slice", ps_test_copy_to_slice(alloc) == REND_SUCCESS);
+        PS_TEST_CHECK("copy_to_slice",
+                      ps_test_copy_to_slice(alloc) == REND_SUCCESS);
 
         slice = page_slice_create(0, PAGE_SIZE * 256);
         ps_test_slice = slice;
@@ -920,7 +939,8 @@ int page_slice_test(void)
         PS_TEST_CHECK("unbind pgoff 166",
                       ps_test_unbind(slice, 166, "unbind pgoff 166") == 0);
         PS_TEST_CHECK("index1 slot0 root empty",
-                      ps_test_root_empty(slice, "index1 slot0 root empty") == 0);
+                      ps_test_root_empty(slice, "index1 slot0 root empty")
+                              == 0);
         {
                 u32 seed_i;
 
@@ -938,7 +958,8 @@ int page_slice_test(void)
         }
         err = page_slice_destroy(&slice);
         ps_test_slice = slice;
-        PS_TEST_CHECK("fuzz small destroy", err == REND_SUCCESS && slice == NULL);
+        PS_TEST_CHECK("fuzz small destroy",
+                      err == REND_SUCCESS && slice == NULL);
 
         slice = page_slice_create(0, PS_TEST_SLICE_INDEX2);
         ps_test_slice = slice;
@@ -960,13 +981,15 @@ int page_slice_test(void)
         }
         err = page_slice_destroy(&slice);
         ps_test_slice = slice;
-        PS_TEST_CHECK("fuzz index2 destroy", err == REND_SUCCESS && slice == NULL);
+        PS_TEST_CHECK("fuzz index2 destroy",
+                      err == REND_SUCCESS && slice == NULL);
 
         slice = page_slice_create(0, PS_TEST_SLICE_INDEX3);
         ps_test_slice = slice;
         PS_TEST_CHECK("create index3", slice != NULL);
         PS_TEST_CHECK("index3 triple branch",
-                      ps_test_index3_triple_branch(slice, alloc) == REND_SUCCESS);
+                      ps_test_index3_triple_branch(slice, alloc)
+                              == REND_SUCCESS);
         {
                 u32 seed_i;
 

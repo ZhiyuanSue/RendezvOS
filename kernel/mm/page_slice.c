@@ -170,15 +170,16 @@ static error_t ps_raise_height(struct page_slice* slice, u8 target_height,
                         child = (void*)page_slice_root_get_index(slice);
                 }
                 wrapped_live = page_slice_root_live(slice);
-                /* Empty slots remain tp_new_none(); never ps_entry_new(NULL,…). */
+                /* Empty slots remain tp_new_none(); never ps_entry_new(NULL,…).
+                 */
                 if (child)
-                        new_root[0] = ps_entry_new(child, new_height,
-                                                    wrapped_live);
+                        new_root[0] =
+                                ps_entry_new(child, new_height, wrapped_live);
 
-                slice->root = ps_entry_new(
-                        new_root,
-                        new_height,
-                        ps_entry_is_none(new_root[0]) ? 0 : 1);
+                slice->root =
+                        ps_entry_new(new_root,
+                                     new_height,
+                                     ps_entry_is_none(new_root[0]) ? 0 : 1);
         }
         return REND_SUCCESS;
 }
@@ -278,8 +279,7 @@ static error_t ps_descend_pgoff(struct page_slice* slice, u64 pgoff,
                 if (!leaf)
                         return -E_REND_NO_MEM;
                 if (bottom_index) {
-                        bottom_index[slot_l0] =
-                                ps_entry_new(leaf, page_h, 0);
+                        bottom_index[slot_l0] = ps_entry_new(leaf, page_h, 0);
                         ps_entry_live_inc(slice, structural_parent);
                 } else {
                         slice->root = ps_entry_new(leaf, PS_HEIGHT_LEAF, 0);
@@ -382,7 +382,8 @@ static void ps_free_index_page_recursive(page_slice_index_entry_t* index_page,
                 else
                         ps_free_index_page_recursive(
                                 ps_entry_as_index_page(entry),
-                                (u8)(page_h - 1), alloc);
+                                (u8)(page_h - 1),
+                                alloc);
         }
         alloc->m_free(alloc, index_page);
 }
@@ -536,10 +537,9 @@ static void ps_shrink(struct page_slice* slice, struct allocator* alloc)
                 page_slice_root_clear(slice);
         } else if (page_slice_root_is_index(slice)
                    && page_slice_root_live(slice) == 0) {
-                ps_free_index_page_recursive(
-                        page_slice_root_get_index(slice),
-                        page_slice_stored_height(slice),
-                        alloc);
+                ps_free_index_page_recursive(page_slice_root_get_index(slice),
+                                             page_slice_stored_height(slice),
+                                             alloc);
                 page_slice_root_clear(slice);
         }
 }

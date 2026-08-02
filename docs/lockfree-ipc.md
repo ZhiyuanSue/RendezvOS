@@ -1355,25 +1355,25 @@ RendezvOS
 [ PSCI ] use hvc call
 [ PSCI ] version is D
 [ GIC ] irq num 288 and cpu num 3
-[CPU 0 SCHE INFO] old idle_thread new init_thread
+[CPU 0 SCHE INFO] old idle_thread new boot_thread
 start smp
 [ CPU1 ]RendezvOS
 successfully start secondary cpu 1
 [ CPU2 ]RendezvOS
-[CPU 1 SCHE INFO] old idle_thread new init_thread
-[CPU 1 SCHE INFO] old init_thread new idle_thread
+[CPU 1 SCHE INFO] old idle_thread new boot_thread
+[CPU 1 SCHE INFO] old boot_thread new idle_thread
 [CPU 1 SCHE INFO] old idle_thread new test_thread
 successfully start secondary cpu 2
-[ CP[CPU 2 SCHE INFO] old idle_thread new init_thread
+[ CP[CPU 2 SCHE INFO] old idle_thread new boot_thread
 U3 ]endezvOS
-0;32m[CPU 2 SCHE INFO] old init_thread new idle_thread
+0;32m[CPU 2 SCHE INFO] old boot_thread new idle_thread
 [CPU 2 SCHE INFO] old idle_thread new test_thread
 successfully start secondary cpu 3
-[CPU 0 SCHE INFO] old init_thread new idle_thread
+[CPU 0 SCHE INFO] old boot_thread new idle_thread
 [CPU 0 SCHE INFO] old idle_thread new test_thread
-[CPU 3 SCHE INFO] old idle_thread new init_thread
+[CPU 3 SCHE INFO] old idle_thread new boot_thread
 ====== [ KERNEL SINGLE CPU TEST ] ======
-[CPU 3 SCHE INFO] old init_thread new idle_thread
+[CPU 3 SCHE INFO] old boot_thread new idle_thread
 [CPU 3 SCHE INFO] old idle_thread new test_thread
 [ TEST @      f7 ] PASS: test rb_tree ok!
 [ TEST ] PASS: vmm:arch vmm test ok!
@@ -1541,10 +1541,10 @@ cpu 1 receiver done, total=50000
 BSP all_done, exiting wait
 [ TEST @     d20 ] PASS: test smp ipc test ok!
 ====== [ MULTI CPU TEST PASS ] ======
-[CPU 2 SCHE INFO] old test_thread new init_thread
-[CPU 1 SCHE INFO] old test_thread new init_thread
-[CPU 3 SCHE INFO] old test_thread new init_thread
-[CPU 0 SCHE INFO] old test_thread new init_thread
+[CPU 2 SCHE INFO] old test_thread new boot_thread
+[CPU 1 SCHE INFO] old test_thread new boot_thread
+[CPU 3 SCHE INFO] old test_thread new boot_thread
+[CPU 0 SCHE INFO] old test_thread new boot_thread
 ```
 
 至少需要看到上述几个test的ok输出。

@@ -331,7 +331,7 @@ Timer and device IRQ paths have **no legitimate sender** `Thread_Base*`. Using `
 |---|-------------------------------------|----------------------------------------|
 | **Use case** | Timer expire (proxy true) / cancel (proxy false) | NIC / device IRQ → driver kthread (proxy true) |
 | **Sender** | Idle persona if `proxy`; else current thread | Same |
-| **Find receiver** | `ipc_try_send_msg(port)` → port try_match | Caller passes `Thread_Base*` (bound at init) |
+| **Find receiver** | `ipc_try_send_msg(port)` → port try_match | Caller passes `Thread_Base*` (bound at boot) |
 | **Receiver must block on port?** | **Yes** (try_deliver only) | **No** — drains recv queue in thread context |
 | **`current_thread` switch** | `set_cpu_current_thread(proxy)` only when `proxy == true` (try_deliver) | Never |
 
