@@ -55,7 +55,7 @@ void start_secondary_cpu(struct setup_info *arch_setup_info)
 #ifdef RENDEZVOS_TEST
         create_test_thread(false);
 #endif
-        pr_info("[ CPU%d ] init done, enter init IPC loop\n", current_cpu_id);
+        pr_info("[ CPU%d ] boot done, enter boot IPC loop\n", current_cpu_id);
         if (kernel_handle_msg() != REND_SUCCESS) {
                 pr_error("start_secondary_cpu: kernel_handle_msg failed\n");
                 (void)rendezvos_request_poweroff();
