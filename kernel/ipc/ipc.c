@@ -116,6 +116,9 @@ Ipc_Request_t* ipc_port_try_match(Message_Port_t* port, u16 my_ipc_state)
                  * be free the structure)*/
                 if (thread_get_status(opposite_thread)
                     != target_thread_status) {
+                        atomic64_cas((volatile u64*)&opposite_thread->port_ptr,
+                                     (u64)port,
+                                     (u64)NULL);
                         ref_put(&dequeued_node->refcount, free_ipc_request);
                         continue;
                 }
@@ -123,16 +126,10 @@ Ipc_Request_t* ipc_port_try_match(Message_Port_t* port, u16 my_ipc_state)
                         atomic64_cas((volatile u64*)&opposite_thread->port_ptr,
                                      (u64)port,
                                      (u64)NULL);
-                if (thread_port != (u64)port && thread_port != (u64)NULL) {
-                        /* the thread hold by the request have had a port and
-                         * not this port, this request is useless*/
-                        /*for some cases, it might be null, but it's normal*/
+                if (thread_port != (u64)port) {
                         ref_put(&dequeued_node->refcount, free_ipc_request);
                         continue;
                 }
-                atomic64_cas((volatile u64*)&opposite_thread->port_ptr,
-                             (u64)thread_port,
-                             (u64)NULL);
                 return opposite_request;
         }
 }
@@ -152,6 +149,7 @@ error_t ipc_port_enqueue_wait(Message_Port_t* port, u16 my_ipc_state,
                 return -E_IN_PARAM;
         u8 queue_ipc_state = ipc_get_queue_state(port);
         u64 expected_ipc_state;
+        error_t ret;
         if (queue_ipc_state == IPC_PORT_STATE_EMPTY) {
                 expected_ipc_state = IPC_PORT_STATE_EMPTY;
         } else if (queue_ipc_state == my_ipc_state) {
@@ -170,24 +168,22 @@ error_t ipc_port_enqueue_wait(Message_Port_t* port, u16 my_ipc_state,
 
         atomic64_store((volatile u64*)&req->queue_ptr,
                        (u64)(&port->thread_queue));
-        error_t ret = msq_enqueue_check_tail(&port->thread_queue,
-                                             &req->ms_queue_node,
-                                             my_ipc_state,
-                                             tp_new(NULL, expected_ipc_state),
-                                             free_ipc_request);
+        if (atomic64_cas(
+                    (volatile u64*)&my_thread->port_ptr, (u64)NULL, (u64)port)
+            != (u64)NULL) {
+                ret = -E_REND_AGAIN;
+                goto enqueue_wait_out;
+        }
+
+        ret = msq_enqueue_check_tail(&port->thread_queue,
+                                     &req->ms_queue_node,
+                                     my_ipc_state,
+                                     tp_new(NULL, expected_ipc_state),
+                                     free_ipc_request);
         if (ret != REND_SUCCESS) {
                 atomic64_store((volatile u64*)&my_thread->port_ptr, (u64)NULL);
         }
-        /*
-           we just try to cas change the thread's port, but it might fail。
-           but it's not a problem,because if it fail,
-           when opposite thread using ipc_port_try_match to dequeue,
-           such a request will be abandon,
-           some special case will happen, for example, the thread first put
-           request to port A enqueue,and then try to enqueue port B, the this
-           cas to B fail, then port A dequeue, then dequeue from B cas success.
-        */
-        atomic64_cas((volatile u64*)&my_thread->port_ptr, (u64)NULL, (u64)port);
+enqueue_wait_out:
         /*put the create refcount, now only queue hold one request*/
         ref_put(&req->ms_queue_node.refcount, free_ipc_request);
         return ret;
