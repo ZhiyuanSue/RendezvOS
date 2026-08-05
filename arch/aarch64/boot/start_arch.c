@@ -20,6 +20,7 @@
 #include <arch/aarch64/sync/barrier.h>
 
 extern u64 L2_table;
+extern char* cmdline_ptr;
 cpu_id_t BSP_ID = 0;
 struct cpuinfo cpu_info = {0};
 
@@ -240,6 +241,27 @@ error_t arch_start_platform(struct setup_info *arch_setup_info)
         device_root =
                 build_device_tree(malloc, NULL, (void *)dtb_header_ptr, 0, 0);
         // print_device_tree(device_root);
+        struct device_node *cmdline_node =
+                dev_node_find_by_name(device_root, "chosen");
+        if (!cmdline_node) {
+                print("no input cmdline\n");
+        } else {
+                struct property *curr_property = cmdline_node->property;
+
+                while (curr_property) {
+                        if (curr_property->name
+                            && !strcmp(curr_property->name, "bootargs")) {
+                                cmdline_ptr = (char *)curr_property->data;
+                                break;
+                        }
+                        curr_property = curr_property->next;
+                }
+                if (cmdline_ptr) {
+                        print("cmdline:%s\n", cmdline_ptr);
+                } else {
+                        print("no input cmdline\n");
+                }
+        }
         psci_init();
         gic.probe();
         gic.init_distributor();

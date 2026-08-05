@@ -10,6 +10,7 @@ SMP		?=	4
 DUMP	?=
 DUMPFILE	?= $(ROOT_DIR)/objdump.log
 MEM_SIZE	?= 256M
+CMDLINE		?=
 SCRIPT_MAKE_DIR		:=	$(SCRIPT_DIR)/make
 SCRIPT_LINK_DIR		:=	$(SCRIPT_DIR)/link
 ARCH_DIR	:=	$(ROOT_DIR)/arch
@@ -18,6 +19,14 @@ KERNEL_DIR	:=	$(ROOT_DIR)/kernel
 MODULES_DIR	:=	$(ROOT_DIR)/modules
 Target_ELF		:=	$(BUILD)/kernel.elf
 Target_BIN	:=	$(BUILD)/kernel.bin
+
+# config must not reuse CMDLINE from a previous Makefile.env include.
+# Only a command-line CMDLINE=... is written into the new env.
+ifeq ($(origin CMDLINE),command line)
+CONFIG_CMDLINE := $(CMDLINE)
+else
+CONFIG_CMDLINE :=
+endif
 
 KERNELVERSION=0.1
 
@@ -58,7 +67,7 @@ ARFLAGS	+=	-rcs
 
 MAKEFLAGS += --no-print-directory
 
-export ARCH KERNELVERSION ROOT_DIR BUILD SCRIPT_MAKE_DIR INCLUDE_DIR CC LD AR CFLAGS ARFLAGS LDFLAGS LIBS DBG MEM_SIZE OVERRIDE_CFLAGS
+export ARCH KERNELVERSION ROOT_DIR BUILD SCRIPT_MAKE_DIR INCLUDE_DIR CC LD AR CFLAGS ARFLAGS LDFLAGS LIBS DBG MEM_SIZE OVERRIDE_CFLAGS CMDLINE
 
 all:  init have_config $(Target_BIN)
 
@@ -93,7 +102,7 @@ have_config:
 run:qemu
 
 config: mrproper
-	@python3 $(SCRIPT_CONFIG_DIR)/configure.py ${ROOT_DIR} ${SCRIPT_CONFIG_DIR} $(SCRIPT_CONFIG_DIR)/${CONFIG} $(SMP)
+	@python3 $(SCRIPT_CONFIG_DIR)/configure.py ${ROOT_DIR} ${SCRIPT_CONFIG_DIR} $(SCRIPT_CONFIG_DIR)/${CONFIG} $(SMP) "$(CONFIG_CMDLINE)"
 	@if [ $$? -eq 0 ]; \
 		then echo "$(GREEN_CHAR)Config Success$(END_CHAR)";  \
 	else $(MAKE) mrproper;  \
@@ -103,6 +112,7 @@ show_config:
 	@echo "kernel_version\t=\t"$(KERNELVERSION)
 	@echo "config_file\t=\t"$(CONFIG_FILE)
 	@echo "smp\t=\t"$(SMP)
+	@echo "cmdline\t=\t"$(CMDLINE)
 	@echo ""
 	@./show_config.sh
 fmt:

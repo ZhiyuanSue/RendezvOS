@@ -9,6 +9,8 @@ extern int log_level;
 extern char _bss_start, _bss_end;
 extern char _end;
 
+char* cmdline_ptr=NULL;
+
 void cmain(struct setup_info *arch_setup_info)
 {
         if (arch_setup_info == NULL)

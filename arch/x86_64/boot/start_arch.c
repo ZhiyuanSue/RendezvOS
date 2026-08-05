@@ -19,6 +19,7 @@
 #include <rendezvos/trap/trap.h>
 
 extern u32 max_phy_addr_width;
+extern char *cmdline_ptr;
 struct cpuinfo cpu_info = {0};
 cpu_id_t BSP_ID = 0;
 extern struct pseudo_descriptor gdt_desc;
@@ -126,8 +127,9 @@ error_t prepare_arch(struct setup_info *arch_setup_info)
                 struct multiboot_info *mtb_info =
                         GET_MULTIBOOT_INFO(arch_setup_info);
                 if ((mtb_info->flags & MULTIBOOT_INFO_FLAG_CMD)) {
-                        print("cmdline:%s\n",
-                              (char *)(KERNEL_PHY_TO_VIRT(mtb_info->cmdline)));
+                        cmdline_ptr =
+                                (char *)(KERNEL_PHY_TO_VIRT(mtb_info->cmdline));
+                        print("cmdline:%s\n", cmdline_ptr);
                 } else {
                         print("no input cmdline\n");
                 }
@@ -135,19 +137,18 @@ error_t prepare_arch(struct setup_info *arch_setup_info)
                 print("using multiboot 2\n");
                 struct multiboot2_info *mtb2_info =
                         GET_MULTIBOOT2_INFO(arch_setup_info);
-                bool have_cmd_line = false;
                 for_each_tag(mtb2_info)
                 {
                         switch (tag->type) {
                         case MULTIBOOT2_TAG_TYPE_CMDLINE: {
-                                have_cmd_line = true;
-                                print("cmdline:%s\n",
-                                      ((struct multiboot2_tag_string *)tag)
-                                              ->string);
+                                cmdline_ptr =
+                                        ((struct multiboot2_tag_string *)tag)
+                                                ->string;
+                                print("cmdline:%s\n", cmdline_ptr);
                         } break;
                         }
                 }
-                if (!have_cmd_line)
+                if (!cmdline_ptr)
                         print("no input cmdline\n");
         } else {
                 print("not using the multiboot protocol, stop\n");

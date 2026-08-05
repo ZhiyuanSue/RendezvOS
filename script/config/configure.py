@@ -61,7 +61,15 @@ def configure_kernel(script_config_dir,kernel_config,root_dir):
 	if smp_val < 1:
 		smp_val = 1
 	kernel_config_str = kernel_config_str + "SMP\t:=\t" + str(smp_val) + "\n"
-		
+
+	# CMDLINE 
+	# Pass a cmdline as argv[5], default to empty
+	cmdline_val=""
+	if len(sys.argv) > 5:
+		cmdline_val = sys.argv[5]
+	cmdline_val = cmdline_val.replace("\n", " ").replace("\r", "")
+	kernel_config_str = kernel_config_str + "CMDLINE\t:=\t" + cmdline_val + "\n"
+
 	# CROSS COMPLIER
 	if 'CROSS_COMPLIER' not in kernel_config.keys():
 		print("Error:the kernel configs must have 'CROSS_COMPLIER' attribute")
