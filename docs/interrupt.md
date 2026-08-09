@@ -1,6 +1,8 @@
-# Interrupt controller notes
+# 中断控制器笔记
 
-> **文档角色：** 硬件参考（PIC/APIC/GIC 笔记） · **导航：** [`traps-and-irq.md`](traps-and-irq.md) · [`trap.md`](trap.md)
+> 硬件笔记（PIC/APIC/GIC）。软件怎么挂外设中断见 [`trap.md`](trap.md) 的 `register_irq_handler`；先控制器 unmask/路由，需要再 IRQ→IPC。  
+> 现状：x86 走 APIC 时 IOAPIC 还是空的，外设中断（含 COM1）基本挂不上，见 [`TODO.md`](TODO.md) 第 2 条。  
+> 另见 [`traps-and-irq.md`](traps-and-irq.md)。
 
 ---
 

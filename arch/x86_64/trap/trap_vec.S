@@ -2,7 +2,6 @@
 	sub		$(\error_code_num * 8),	%rsp
 	sub		$(16*8),%rsp
 
-	/*TODO: check the trap from kernel or user, if user, swapgs*/
 	mov		%r15,	8(%rsp)
 	mov		%r14,	16(%rsp)
 	mov		%r13,	24(%rsp)
@@ -24,7 +23,6 @@
 	and		$(0x3),		%rbx
 	cmp		$0,		%rbx
 	je		trap_enter_from_kernel\@
-	/*the following is something that trap from user need to do*/
 	swapgs
 trap_enter_from_kernel\@:
 	mov		%rax,	(%rsp)

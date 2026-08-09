@@ -1,6 +1,6 @@
-# Completed core work items (archive)
+# Core 已完成项（归档）
 
-Historical checklist moved from `TODO.md`. **Do not add new items here**—close work in git/PR and update [`../TODO.md`](../TODO.md) or subsystem docs.
+从 `TODO.md` 挪过来的历史清单。新完成的项请追加在下面，并同步改 [`../TODO.md`](../TODO.md)。
 
 ---
 
@@ -28,9 +28,9 @@ Historical checklist moved from `TODO.md`. **Do not add new items here**—close
 36、error_t 重设计(DONE)  
 41、x86_64 用户态进内核中断(DONE)  
 45、IPC 机制(Done)  
-47、pmm node/zone、nexus 改造(Done)  
+47、pmm node/zone、nexus 改造(Done，nexus整套系统均已废除)  
 49、mm 文档重构(Done with cursor)  
 51、返回值/入参检查(Done with cursor)  
 44、进程/线程资源回收(Done with cursor)  
-
-(Original Chinese notes preserved in git history of `TODO.md` before 2026-05 split.)
+54、x86 用户态 trap 路径上的 swapgs（已实现；`trap_vec.S` 过时 TODO 注释已删）(done)  
+55、core 测试以内核线程跑（modules/test → gen_thread_from_func）(done)  
