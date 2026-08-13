@@ -2,6 +2,7 @@
 #define _RENDEZVOS_TLB_H_
 #include <common/types.h>
 #include <common/mm.h>
+#include <rendezvos/mm/tlb_cpu_mask.h>
 
 static inline void invlpg(vaddr addr)
 {
@@ -23,33 +24,46 @@ static inline void arch_tlb_invalidate_page(u64 asid, vaddr addr)
         (void)asid;
         invlpg(addr);
 }
-static inline void arch_tlb_invalidate_page_all_core(u64 asid, vaddr addr)
+
+/* for x86_64, we have to send IPI to flush a page's tlb */
+/* flush one page's tlb on all other used cores */
+void arch_smp_flush_page_tlb(vaddr addr, const vs_tlb_cpu_bitmap_t *cpu_mask);
+/* flush one vspace's pages on all other used cores */
+void arch_smp_flush_all_tlb(const vs_tlb_cpu_bitmap_t *cpu_mask);
+/* register the IPI handler for SMP TLB flush */
+void arch_smp_flush_tlb_init(void);
+static inline void
+arch_tlb_invalidate_page_all_core(u64 asid, vaddr addr,
+                                  const vs_tlb_cpu_bitmap_t *cpu_mask)
 {
         (void)asid;
-        invlpg(addr);
+        arch_smp_flush_page_tlb(addr, cpu_mask);
 }
 static inline void arch_tlb_invalidate_kernel_page(vaddr addr)
 {
         invlpg(addr);
 }
+/*
+ * For Kernel pages, the RendezvOS is designed percpu.
+ * So we only need to invlpg of current core
+ */
 static inline void arch_tlb_invalidate_kernel_page_all_core(vaddr addr)
 {
         invlpg(addr);
 }
 static inline void arch_tlb_invalidate_vspace_page(u64 asid, vaddr addr)
 {
-        // TODO:unimplemented PCID and smp IPI in x86_64
         (void)asid;
         (void)addr;
         arch_tlb_invalidate_all();
 }
-static inline void arch_tlb_invalidate_vspace_page_all_core(u64 asid,
-                                                            vaddr addr)
+static inline void
+arch_tlb_invalidate_vspace_page_all_core(u64 asid, vaddr addr,
+                                         const vs_tlb_cpu_bitmap_t *cpu_mask)
 {
-        // TODO:unimplemented PCID and smp IPI in x86_64
         (void)asid;
         (void)addr;
-        arch_tlb_invalidate_all();
+        arch_smp_flush_all_tlb(cpu_mask);
 }
 
 static inline void arch_tlb_invalidate_range(u64 asid, vaddr start, vaddr end)

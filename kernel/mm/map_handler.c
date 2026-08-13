@@ -676,7 +676,8 @@ map_succ:
                 if (v >= KERNEL_VIRT_OFFSET)
                         arch_tlb_invalidate_kernel_page_all_core(v);
                 else
-                        arch_tlb_invalidate_page_all_core(vs->asid, v);
+                        arch_tlb_invalidate_page_all_core(
+                                vs->asid, v, &vs->tlb_cpu_mask);
         }
 map_unlock:
         unlock_mcs(&vs->vspace_lock, &handler->vspace_lock_node);
@@ -810,7 +811,8 @@ unmap_succ:
         if (v >= KERNEL_VIRT_OFFSET)
                 arch_tlb_invalidate_kernel_page_all_core(v);
         else
-                arch_tlb_invalidate_page_all_core(vs->asid, v);
+                arch_tlb_invalidate_page_all_core(
+                        vs->asid, v, &vs->tlb_cpu_mask);
 unmap_fail:
         unlock_mcs(&vs->vspace_lock, &handler->vspace_lock_node);
         return ppn;
@@ -1073,7 +1075,8 @@ error_t vspace_free_user_pt(VSpace *vs, struct map_handler *handler)
                 }
         }
 
-        arch_tlb_invalidate_vspace_page_all_core(vs->asid, 0);
+        arch_tlb_invalidate_vspace_page_all_core(
+                vs->asid, 0, &vs->tlb_cpu_mask);
         return root_nonempty ? -E_RENDEZVOS : REND_SUCCESS;
 }
 

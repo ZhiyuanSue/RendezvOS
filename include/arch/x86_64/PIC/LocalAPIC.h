@@ -81,10 +81,16 @@
 #define APIC_ICR_DEL_MODE_NMI             (0x4 << APIC_ICR_DEL_MODE_SHIFT)
 #define APIC_ICR_DEL_MODE_INIT            (0x5 << APIC_ICR_DEL_MODE_SHIFT)
 #define APIC_ICR_DEL_MODE_START_UP        (0x6 << APIC_ICR_DEL_MODE_SHIFT)
-#define APIC_ICR_DEST_MODE                (0x1 << 11)
+/* ICR bit 11: 0 = physical dest, 1 = logical dest */
+#define APIC_ICR_DEST_PHYSICAL            (0x0)
+#define APIC_ICR_DEST_LOGICAL             (0x1 << 11)
 #define APIC_ICR_DELIVERY_STATUS          (0x1 << 12)
-#define APIC_ICR_LEVEL                    (0x1 << 14)
-#define APIC_ICR_TRIGGER_MODE             (0x1 << 15)
+/* ICR bit 14: 0 = de-assert, 1 = assert (for INIT etc.) */
+#define APIC_ICR_LEVEL_DEASSERT           (0x0)
+#define APIC_ICR_LEVEL_ASSERT             (0x1 << 14)
+/* ICR bit 15: 0 = edge, 1 = level trigger */
+#define APIC_ICR_TRIGGER_EDGE             (0x0)
+#define APIC_ICR_TRIGGER_LEVEL            (0x1 << 15)
 #define APIC_ICR_DEST_SH_SHIFT            (18)
 #define APIC_ICR_DEST_SH_NO               (0x0 << APIC_ICR_DEST_SH_SHIFT)
 #define APIC_ICR_DEST_SH_SELF             (0x1 << APIC_ICR_DEST_SH_SHIFT)

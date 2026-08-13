@@ -13,9 +13,9 @@
 #else
 #include <arch/x86_64/mm/vmm.h>
 #endif
-#include <common/dsa/bitmap.h>
 #include <common/dsa/rb_tree.h>
 #include <common/refcount.h>
+#include <rendezvos/mm/tlb_cpu_mask.h>
 #include <rendezvos/smp/cpu_id.h>
 #include <rendezvos/limits.h>
 #include <rendezvos/sync/spin_lock.h>
@@ -24,9 +24,6 @@
 #define PTE_SIZE 8
 #endif
 
-/* One bit per logical CPU in [0, RENDEZVOS_MAX_CPU_NUMBER). */
-#define VS_TLB_CPU_MASK_BITS (RENDEZVOS_MAX_CPU_NUMBER)
-BITMAP_DEFINE_TYPE(vs_tlb_cpu_bitmap_t, VS_TLB_CPU_MASK_BITS)
 typedef struct VSpace VSpace;
 struct VSpace {
         /* AArch64: Address Space Identifier for TTBR0. */
@@ -53,10 +50,9 @@ struct VSpace {
         u64 vspace_id;
         /*
          * CPUs that may have live TLB entries for this ASID.
-         * With the "no-IPI" scheme we clear a CPU's bit when it
-         * switches away from this vspace after doing a local
-         * TLBI ASIDE1(asid). Teardown waits for this mask to
-         * become 0 before freeing PT frames and recycling ASID.
+         * schedule: set on switch-in, local TLBI + clear on switch-away.
+         * x86 map/unmap: IPI only CPUs still in this mask.
+         * Teardown waits for mask == 0 before freeing PT / recycling ASID.
          */
         vs_tlb_cpu_bitmap_t tlb_cpu_mask;
         cas_lock_t tlb_cpu_mask_lock;

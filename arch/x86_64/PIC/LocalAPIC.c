@@ -421,8 +421,9 @@ void APIC_send_IPI(u8 dest_field, u32 dest_sh, u32 trigger_mode, u32 level,
         if (arch_irq_type == xAPIC_IRQ) {
                 u32 icr_low_value = icr_value & 0xffffffff;
                 u32 icr_high_value = (icr_value >> 32) & 0xffffffff;
-                xAPIC_WR_REG(ICR, KERNEL_VIRT_OFFSET, icr_low_value);
+                /*The write of ICR will send ipi, so we must write high first*/
                 xAPIC_WR_REG(ICR_HIGH, KERNEL_VIRT_OFFSET, icr_high_value);
+                xAPIC_WR_REG(ICR, KERNEL_VIRT_OFFSET, icr_low_value);
         } else if (arch_irq_type == x2APIC_IRQ) {
                 x2APIC_WR_REG(ICR, KERNEL_VIRT_OFFSET, icr_value);
         } else {

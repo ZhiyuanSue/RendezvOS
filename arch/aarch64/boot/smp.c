@@ -7,7 +7,6 @@
 #include <rendezvos/smp/percpu.h>
 extern char ap_entry;
 extern int NR_CPU;
-extern volatile u64 CPU_STATE;
 extern struct cpuinfo cpu_info;
 DEFINE_PER_CPU(struct device_node*, cpu_device_node);
 /*

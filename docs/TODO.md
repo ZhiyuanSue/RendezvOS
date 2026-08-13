@@ -5,7 +5,7 @@
 
 2026-08-09 对照源码与 log / lockfree-ipc 文档核过一遍：下面按「平台 → 内存 → 日志与 IPC → 不做或归上层」列，方便一项项收窄。编号沿用旧清单（中间空号是历史留下的）。
 
-建议收尾顺序：先平台（IOAPIC / 外设中断 / UART 收包 / TLB IPI），再内存（改页属性、boot 栈），再日志前后端与 IPC 输出（#37–38、#46），最后清文档和过时注释。
+建议收尾顺序：先平台（IOAPIC / 外设中断 / **IDT 向量登记** / UART 收包），再内存（改页属性、boot 栈），再日志前后端与 IPC 输出（#37–38、#46），最后清文档和过时注释。
 
 ---
 
@@ -25,7 +25,8 @@
 
 - x2APIC 路径收尾（`IRQ.c` 已 enable，注释仍 TODO）  
 - APIC timer 是否 always-running（CPUID 0x06 / ARAT，`LocalAPIC.c`、`cpuinfo.h`）  
-- PCID 与 SMP 上 TLB shootdown 的 IPI（`tlb.h`，现在整页 invalidate）  
+- **IDT 向量占用未登记（timer 与 TLB IPI 同债）**：core 各自硬编码占用 IDT 槽——timer 用 `timer_irq_num`（现约 `0x20`）、SMP TLB flush IPI 用 `IRQ_VECTOR_SMP_TLB_FLUSH`（现 `0x30`）、另有 spurious 等——**没有**给兼容层 / 日后 IOAPIC 设备分配看的「保留集」。结果是上层若按 Linux 习惯在中低段要设备向量，可能与 core 私占号撞车；兼容层也不该靠猜「哪几个号已被占」。应做：（1）软件 IPI（TLB 及以后 resched 等）收到**高位保留区**，与设备向量池分开；（2）core 单一真源登记或极小分配接口（保留 IPI / 分配设备向量），timer、TLB、IOAPIC 路由都走它；（3）上层禁止私自拣裸 vector，只能向 core 申请。功能上 TLB IPI 最小路径已接；本项是**所有权与防冲突**，不是再实现一遍 SMP flush。  
+- PCID：用户态 SMP TLB flush 已按 `tlb_cpu_mask` 定点 IPI；远端按页 `invlpg` 已接，PCID 仍未做（`arch_smp_tlb_flush.c`）  
 - UART 16550A：`getc` 恒返回 0，IER=0（收包中断关着）  
 - UART PL011：`getc` 恒返回 0；开了 RXIM 但没有 handler / 真读 DR  
 - PCI：使能设备、分配 IRQ、BAR 直接复用 BIOS、ROM device（`pci_ops.c`）  
@@ -34,7 +35,7 @@
 - `get_cpu_var` / `put_cpu_var` 仍是空宏（`percpu.h`）  
 - `start_arch.c` 重写 CPUID 检查（和上面 3 一条线）  
 
-外设中断怎么挂：先在控制器上 unmask / 路由（x86 走 APIC 就必须把 IOAPIC 做起来），再 `register_irq_handler`（写法见 `trap.md`，不要只看 `interrupt.md` 硬件笔记），需要进线程再走现有的 IRQ→IPC。
+外设中断怎么挂：先在控制器上 unmask / 路由（x86 走 APIC 就必须把 IOAPIC 做起来），再 `register_irq_handler`（写法见 `trap.md`，不要只看 `interrupt.md` 硬件笔记），需要进线程再走现有的 IRQ→IPC。设备向量号必须避开上一则 core 保留集，勿与 timer / IPI 硬编码槽冲突。
 
 ---
 

@@ -3,6 +3,7 @@
 
 #include <common/types.h>
 #include <common/mm.h>
+#include <rendezvos/mm/tlb_cpu_mask.h>
 #include "barrier.h"
 
 static inline void arch_tlb_invalidate_all(void)
@@ -20,9 +21,12 @@ static inline void arch_tlb_invalidate_page(u64 asid, vaddr addr)
         dsb(ISH);
         isb();
 }
-static inline void arch_tlb_invalidate_page_all_core(u64 asid, vaddr addr)
+static inline void
+arch_tlb_invalidate_page_all_core(u64 asid, vaddr addr,
+                                  const vs_tlb_cpu_bitmap_t *cpu_mask)
 {
         u64 tmp = (asid << 48) | ((addr >> 12) & ((1ULL << 44) - 1));
+        (void)cpu_mask;
         dsb(ISHST);
         __asm__ __volatile__("tlbi vae1is,%0;" : : "r"(tmp));
         dsb(ISH);
@@ -55,10 +59,12 @@ static inline void arch_tlb_invalidate_vspace_page(u64 asid, vaddr addr)
         dsb(ISH);
         isb();
 }
-static inline void arch_tlb_invalidate_vspace_page_all_core(u64 asid,
-                                                            vaddr addr)
+static inline void
+arch_tlb_invalidate_vspace_page_all_core(u64 asid, vaddr addr,
+                                         const vs_tlb_cpu_bitmap_t *cpu_mask)
 {
         (void)addr;
+        (void)cpu_mask;
         if (asid >= (1 << 16))
                 return;
         u64 tmp = (asid << 48);

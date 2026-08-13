@@ -90,7 +90,7 @@ void arch_eoi_irq(u64 trap_info)
 {
         if (arch_irq_type == PIC_IRQ) {
                 PIC_EOI(TRAP_ID(trap_info));
-        } else if (arch_irq_type == xAPIC_IRQ) {
+        } else if (arch_irq_type == xAPIC_IRQ || arch_irq_type == x2APIC_IRQ) {
                 APIC_EOI();
         }
 }

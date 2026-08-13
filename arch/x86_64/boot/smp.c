@@ -7,7 +7,6 @@
 extern char ap_start;
 extern char ap_start_end;
 extern int NR_CPU;
-extern volatile u64 CPU_STATE;
 extern void clean_tmp_page_table(void);
 static void copy_ap_start_code(void)
 {
@@ -29,17 +28,17 @@ static void send_sipi(cpu_id_t cpu_id, paddr ap_start_addr)
 {
         APIC_send_IPI(cpu_id,
                       APIC_ICR_DEST_SH_NO,
-                      0,
-                      APIC_ICR_LEVEL,
-                      0,
+                      APIC_ICR_TRIGGER_EDGE,
+                      APIC_ICR_LEVEL_ASSERT,
+                      APIC_ICR_DEST_PHYSICAL,
                       APIC_ICR_DEL_MODE_START_UP,
                       PPN(ap_start_addr));
         udelay(200);
         APIC_send_IPI(cpu_id,
                       APIC_ICR_DEST_SH_NO,
-                      0,
-                      APIC_ICR_LEVEL,
-                      0,
+                      APIC_ICR_TRIGGER_EDGE,
+                      APIC_ICR_LEVEL_ASSERT,
+                      APIC_ICR_DEST_PHYSICAL,
                       APIC_ICR_DEL_MODE_START_UP,
                       PPN(ap_start_addr));
 }
@@ -59,9 +58,9 @@ void arch_start_smp(struct setup_info* arch_setup_info)
                 /*send init ipi to all cores*/
                 APIC_send_IPI(0,
                               APIC_ICR_DEST_SH_ALL_EXCLUDE_SELF,
-                              0,
-                              APIC_ICR_LEVEL,
-                              0,
+                              APIC_ICR_TRIGGER_EDGE,
+                              APIC_ICR_LEVEL_ASSERT,
+                              APIC_ICR_DEST_PHYSICAL,
                               APIC_ICR_DEL_MODE_INIT,
                               0);
                 mdelay(10);
