@@ -34,3 +34,17 @@
 44、进程/线程资源回收(Done with cursor)  
 54、x86 用户态 trap 路径上的 swapgs（已实现；`trap_vec.S` 过时 TODO 注释已删）(done)  
 55、core 测试以内核线程跑（modules/test → gen_thread_from_func）(done)  
+
+---
+
+明确不做 / 归上层：
+
+1、cancel IPC（`lockfree-ipc` 8.1）：已拒绝  
+2、固定容量背压 API（8.2）：阻塞本身即背压；流控归上层  
+3、Linux argc/argv、personality：归兼容层（原 42）  
+4、换页 / swap 策略、缺页 COW 语义：归上层；core 只留分配失败注入点  
+5、busybox 默认 cmdline 写进 core Makefile：不要，上层注入  
+6、旧 26、allocator cache-line 碰撞测试：QEMU 无意义；真机再立  
+7、旧 27、28（per-CPU cache / kmalloc 调参）：远期调优  
+8、旧 30、bitmap atomic 版：多 cell 仍要锁；`tlb_cpu_mask` 写侧已持锁  
+9、x86 PCID / INVPCID：不当基线（Intel 早、AMD 约 Zen 3）；按无 PCID（CR3 / invlpg + IPI）即可，勿再当待实现功能  

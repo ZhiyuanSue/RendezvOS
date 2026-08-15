@@ -421,7 +421,16 @@ void APIC_send_IPI(u8 dest_field, u32 dest_sh, u32 trigger_mode, u32 level,
         if (arch_irq_type == xAPIC_IRQ) {
                 u32 icr_low_value = icr_value & 0xffffffff;
                 u32 icr_high_value = (icr_value >> 32) & 0xffffffff;
-                /*The write of ICR will send ipi, so we must write high first*/
+                /*
+                 * For xAPIC, if a ICR bit 12 is set, the previous IPI is left
+                 * on the target CPU, we must wait. But it's not used for
+                 * x2APIC, no ICR read and wait need.
+                 */
+                while (xAPIC_RD_REG(ICR, KERNEL_VIRT_OFFSET)
+                       & APIC_ICR_DELIVERY_STATUS) {
+                        arch_cpu_relax();
+                }
+                /*The write of ICR LOW will send ipi, so we must write high first*/
                 xAPIC_WR_REG(ICR_HIGH, KERNEL_VIRT_OFFSET, icr_high_value);
                 xAPIC_WR_REG(ICR, KERNEL_VIRT_OFFSET, icr_low_value);
         } else if (arch_irq_type == x2APIC_IRQ) {

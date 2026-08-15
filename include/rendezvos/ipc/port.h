@@ -62,10 +62,10 @@
 /*port structure*/
 typedef struct Msg_Port Message_Port_t;
 struct Msg_Port {
-        ms_queue_t thread_queue; /* 线程等待队列 */
-        ref_count_t refcount; /* 引用计数 */
-        struct Port_Table* table; /* 所属注册表（如果已注册） */
-        char name[PORT_NAME_LEN_MAX]; /* 端口名称 */
+        ms_queue_t thread_queue; /* thread wait queue */
+        ref_count_t refcount; /* port refcount */
+        struct Port_Table* table; /* belonging register table（if registered） */
+        char name[PORT_NAME_LEN_MAX]; /* port name */
         /*
          * Service id bound to this port name.
          * Used as kmsg_hdr.module for fast "is this for me?" validation.

@@ -203,22 +203,23 @@ i64 pmm_alloc(struct pmm *pmm, size_t page_number, size_t *alloced_page_number)
 {
         u32 alloc_order;
         struct buddy *bp = (struct buddy *)pmm;
+        size_t have_tried_reclaim_attempt = 0;
 
         if (page_number == 0) {
                 *alloced_page_number = 0;
                 return (0);
         }
 
+retry:
         pmm_lock(pmm);
 
         if (bp->total_avaliable_pages < page_number) {
                 pr_error(
                         "[ BUDDY ]this zone have no memory to alloc, left %d avaliables\n",
                         bp->total_avaliable_pages);
-                /*TODO:if so ,we need to swap the memory*/
                 *alloced_page_number = 0;
                 pmm_unlock(pmm);
-                return (-E_RENDEZVOS);
+                goto try_reclaim;
         }
 
         if (page_number > (1 << BUDDY_MAXORDER)) {
@@ -231,7 +232,17 @@ i64 pmm_alloc(struct pmm *pmm, size_t page_number, size_t *alloced_page_number)
         alloc_order = log2_of_next_power_of_two(page_number);
         i64 res = pmm_alloc_zone(bp, alloc_order, alloced_page_number);
         pmm_unlock(pmm);
-        return res;
+        if (!invalid_ppn(res))
+                return res;
+
+try_reclaim:
+        if (!pmm->reclaim_fn
+            || have_tried_reclaim_attempt >= PMM_RECLAIM_MAX_ATTEMPTS)
+                return (-E_REND_RETRY);
+        if (!pmm->reclaim_fn(pmm, page_number, have_tried_reclaim_attempt))
+                return (-E_REND_NO_MEM);
+        have_tried_reclaim_attempt++;
+        goto retry;
 }
 static error_t pmm_free_one_index(struct buddy *bp, i64 index)
 {
@@ -380,4 +391,5 @@ struct buddy buddy_pmm = {.pmm_init = pmm_init,
                           .pmm_free = pmm_free,
                           .pmm_calculate_manage_space = calculate_manage_space,
                           .pmm_show_info = pmm_show_info,
-                          .spin_ptr = NULL};
+                          .spin_ptr = NULL,
+                          .reclaim_fn = NULL};

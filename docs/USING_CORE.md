@@ -107,6 +107,24 @@ For **kernel-only** buffers indexed by file page offset (not user `VSpace`). Ful
 
 Populate slices from file images in the **caller** (e.g. compat `linux_page_slice_copy_from_kva`, or lazy `insert_page` per page). Do **not** alias foreign kva into slice slots from core.
 
+### 3.8 PMM reclaim (optional, per zone / per `struct pmm`)
+
+When that pmm cannot satisfy `pmm_alloc`:
+
+```c
+pmm_set_reclaim_hook(zone->pmm, my_reclaim);
+
+bool my_reclaim(struct pmm *pmm, size_t need_pages, unsigned attempt)
+{
+        /* Free/swap/kill for *this* pmm/zone only. Use need_pages + attempt. */
+        if (/* give up */)
+                return false;
+        return true; /* alloc will try again */
+}
+```
+
+No second hook: **true = retry, false = give up**. Core also caps at `PMM_RECLAIM_MAX_ATTEMPTS`. May `pmm_free`; **must not** `pmm_alloc`. Unset hook ⇒ fail immediately.
+
 ---
 
 ## 4. `error_t` (caller mapping)

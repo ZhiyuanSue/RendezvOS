@@ -16,6 +16,7 @@ enum Error_t {
         E_REND_OVERFLOW,
         E_REND_NO_MEM,
         E_REND_PORT_CLOSED,
+        E_REND_RETRY,
 };
 
 #endif

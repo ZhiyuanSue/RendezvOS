@@ -3,9 +3,9 @@
 已完成历史：[`archive/TODO_DONE.md`](archive/TODO_DONE.md)  
 接口入口：[`GUIDE.md`](GUIDE.md) §6 · [`USING_CORE.md`](USING_CORE.md)
 
-2026-08-09 对照源码与 log / lockfree-ipc 文档核过一遍：下面按「平台 → 内存 → 日志与 IPC → 不做或归上层」列，方便一项项收窄。编号沿用旧清单（中间空号是历史留下的）。
+2026-08-09 对照源码与 log / lockfree-ipc 文档核过一遍：下面按「平台 → 内存 → 日志与 IPC」列，方便一项项收窄。编号沿用旧清单（中间空号是历史留下的）。明确不做 / 归上层见 [`archive/TODO_DONE.md`](archive/TODO_DONE.md) 文末。
 
-建议收尾顺序：先平台（IOAPIC / 外设中断 / **IDT 向量登记** / UART 收包），再内存（改页属性、boot 栈），再日志前后端与 IPC 输出（#37–38、#46），最后清文档和过时注释。
+建议收尾顺序：先平台（IOAPIC / 外设中断 / **IDT 向量登记** / UART 收包），再内存（改页属性、boot 栈、分配失败 hook），再日志前后端与 IPC 输出（#37–38、#46），**冻结前补 Port 准入/可见性 hook（A+B）**，最后清文档和过时注释。
 
 ---
 
@@ -26,7 +26,7 @@
 - x2APIC 路径收尾（`IRQ.c` 已 enable，注释仍 TODO）  
 - APIC timer 是否 always-running（CPUID 0x06 / ARAT，`LocalAPIC.c`、`cpuinfo.h`）  
 - **IDT 向量占用未登记（timer 与 TLB IPI 同债）**：core 各自硬编码占用 IDT 槽——timer 用 `timer_irq_num`（现约 `0x20`）、SMP TLB flush IPI 用 `IRQ_VECTOR_SMP_TLB_FLUSH`（现 `0x30`）、另有 spurious 等——**没有**给兼容层 / 日后 IOAPIC 设备分配看的「保留集」。结果是上层若按 Linux 习惯在中低段要设备向量，可能与 core 私占号撞车；兼容层也不该靠猜「哪几个号已被占」。应做：（1）软件 IPI（TLB 及以后 resched 等）收到**高位保留区**，与设备向量池分开；（2）core 单一真源登记或极小分配接口（保留 IPI / 分配设备向量），timer、TLB、IOAPIC 路由都走它；（3）上层禁止私自拣裸 vector，只能向 core 申请。功能上 TLB IPI 最小路径已接；本项是**所有权与防冲突**，不是再实现一遍 SMP flush。  
-- PCID：用户态 SMP TLB flush 已按 `tlb_cpu_mask` 定点 IPI；远端按页 `invlpg` 已接，PCID 仍未做（`arch_smp_tlb_flush.c`）  
+- **软件 IPI 统一薄封装（收口债）**：x86 已有 LAPIC Fixed IPI；aarch64 应对齐 **GIC SGI**（与 TLB 的 `tlbi *is` 无关）。目标是同一调用约定（目标 CPU + 向量/原因），实现落在 arch；向量号走上一则登记，勿再硬编码散落。上层暂无消费者也不等于 core 永久缺这层。  
 - UART 16550A：`getc` 恒返回 0，IER=0（收包中断关着）  
 - UART PL011：`getc` 恒返回 0；开了 RXIM 但没有 handler / 真读 DR  
 - PCI：使能设备、分配 IRQ、BAR 直接复用 BIOS、ROM device（`pci_ops.c`）  
@@ -42,25 +42,18 @@
 ## 二、内存（基本收尾相关）
 
 15、每核栈页与权限；map_handler 增加「只改页表项属性、不换物理页」的接口。（部分：线程栈已走分配器；boot 栈还是静态的；改属性 API 没有。和下面源码条重叠。）  
-30、`common/dsa/bitmap.h` 分清「可多核原子改」和「单线程/已持锁再改」两套用法。（未做：现在只有普通读写改 bit；谁在多核共享位图上用、要不要另做 atomic 版或强制外层加锁，头文件/注释里要写死，避免混用。）  
 31、`memory_zone` 参数化，别写死 ZONE_NORMAL。（未做）  
 48、多 zone 时选哪个分配器，不要只会 handler 默认那一套。（未做：见 `memory.md`）  
-53、map handler entry 失败时 refill；fault / 分配失败路径。（部分：`map_fail` 能补 ppn_cache；OOM/swap 没有）  
+53、map handler entry 失败时 refill；fault / 分配失败路径。（部分：`map_fail` 能补 ppn_cache；per-pmm `reclaim_fn` 已接，策略归上层）  
 
 源码 / 文档里还有：
 
 - `map_handler.h`：缺改 PTE 属性接口（归进 15）  
 - `main.c`：PMM 起来后给栈分配页，弃用 boot stack（x86 LSS）  
-- `buddy_pmm.c`：buddy 耗尽时 swap（策略偏上层，core 至少先把失败语义说清楚）  
+- `buddy_pmm.c`：耗尽时走该 pmm 的 `reclaim_fn`（策略在上层）  
 - `pmm.c`：更多 zone / zone 上界  
 - `thread_loader.c`：记录已用到的用户 VA，方便清理 / 影响 radix  
-- `memory.md`：多 zone、OOM→swap 仍是文档级 TODO  
-
-分配器性能调优（不挡基本收尾；QEMU 上意义不大，真机再做）：
-
-- 旧 26、测「多个核的分配器元数据是否打在同一 cache line 上」——不做（见第五节）。  
-- 旧 27、per-CPU cache 大小：每个 CPU 本地先囤多少空闲对象/页再去碰全局堆。囤多了费内存，囤少了多核抢锁更勤。现在是「以后要不要改这个数字」的调优，不是缺功能。  
-- 旧 28、kmalloc 调参：各档尺寸、对齐、多大改走 buddy 等参数怎么选。同样是性能/碎片权衡，功能上 kmalloc 已能用。  
+- `memory.md`：多 zone 仍文档级 TODO  
 
 ---
 
@@ -84,6 +77,11 @@
 42、标准 loader 路径上用户栈 argc/argv。（core 的 `thread_loader` 基本只设 SP；Linux 的 argv/auxv 在兼容层 `linux_boot` / exec 栈——策略别塞回 core。）  
 52、Port 管理；函数调用包成 IPC wrapper。（原语在 core；系统化 wrapper 更像上层，compat RPC 已有一套。）  
 
+- **Port 准入 + 可见性 hook（冻结前；A+B；只留门缝不写策略）**：core 定位是混合内核**基座**——为微内核式隔离提供可能，**不**在 core 里实现完整 capability / namespace / cgroup。今天 `port_ops_begin/end` 只做生命周期门闩（能否配对）；全局 `name_index` 谁都能查（有名字≈有权）。冻结前要补的是可注入的基础面，仿 `pmm->reclaim_fn`：  
+  - **A（配对）**：`port_ops_begin`（send/recv/try）路径问 hook：当前 thread/task 可否对该 port 做该 op。  
+  - **B（可见性）**：lookup（及必要时 register）路径同样过 hook，避免只卡收发、名字仍全局泄漏。  
+  - 默认 hook = NULL → 行为与今完全相同。core 只认 allow/deny（或 errno），**不**放 cap 表、不放 namespace 对象、不做委派/回收。capability / 容器策略全归上层；有此 hook 后上层才「有基本实现可挂」。这符合「机制在下、策略在上」。**明确不做（本项范围外）**：L4 式 capability 系统、拆掉全局 port 表、cgroup 配额——那些是上层亮点，不是冻结前 core 债。参考动机：MettEagle（OSDI’25）用 cap 表达可见性；我们只预留等价注入点。  
+
 `lockfree-ipc.md` §8 里还挂着的：
 
 - 8.3 批量 / 异步 / 函数调用式直投（原语有一些，上层模式没产品化）  
@@ -98,16 +96,4 @@
 
 ---
 
-## 五、不做，或明确归上层 / 远期
-
-- cancel IPC（`lockfree-ipc` 8.1）：已拒绝，不做。  
-- 固定容量那种背压 API（8.2）：阻塞 send/recv 本身就是背压；异步批量的流控归上层。  
-- Linux 风格 argc/argv、personality：归兼容层（42）。  
-- 换页 / swap 策略、缺页 COW 语义：归上层；core 负责分配失败和 map/radix。  
-- 把 busybox 默认 cmdline 写进 core Makefile：不要，策略在上层注入。  
-- 旧 26、allocator cache-line 碰撞测试：QEMU 上看不出真实伪共享，短期不做；真机性能问题再单独立项。  
-- 旧 27、28（per-CPU cache 大小、kmalloc 调参）：远期性能调优，不列入基本收尾。  
-
----
-
-做完一项：在 [`archive/TODO_DONE.md`](archive/TODO_DONE.md) 按同样中文条目录一条，并把源码里过时的 TODO 注释清掉。
+做完一项：在 [`archive/TODO_DONE.md`](archive/TODO_DONE.md) 按同样中文条目录一条，并把源码里过时的 TODO 注释清掉。明确不做的也记进该归档文末列表，勿堆在本文件。

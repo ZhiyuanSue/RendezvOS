@@ -397,7 +397,7 @@ PMM 层对外接口为 `pmm_alloc` / `pmm_free`。**自本仓库当前实现起�
 - **禁止**：在持有 PMM 锁期间调用 `pmm_alloc` / `pmm_free`（否则会因 allocator 内部再次取同一把锁而死锁）。
 - **建议**：调用方不要再直接展开 `lock_mcs(&pmm->spin_ptr, &percpu(pmm_spin_lock[zone_id]))`，而是统一使用 `pmm_lock/pmm_unlock` 或 `pmm_zone_lock/pmm_zone_unlock`，以保证 `me` 节点选择一致（per-zone per-CPU）。
 
-若从 buddy 取不到页，后续应在上层做 **swap**（置换），以腾出物理页再分配，当前为 TODO。
+若从该 zone 的 buddy 取不到页：调用该 `pmm` 上可选的 `reclaim_fn`（**不持** PMM 锁；可对本 pmm `pmm_free`，禁止 `pmm_alloc`）。参数：`need_pages`（本次请求页数）、`attempt`（从 0 起的 reclaim 轮次）。返回 true 则再分配，false 或未注册则失败；另有 `PMM_RECLAIM_MAX_ATTEMPTS` 防挂死。swap / 杀谁 / 清多少由 hook 用上述参数决定，不进 core。
 
 ---
 

@@ -198,6 +198,28 @@ static inline bool zone_page_cursor_next(ZonePageCursor* cur)
         return true;
 }
 
+/**
+ * @brief Sync reclaim callback for a pmm zone.
+ *
+ * Invoked when @c pmm_alloc cannot satisfy a request. The zone PMM lock is
+ * @b not held: the callback may @c pmm_free pages of this @p pmm, but must
+ * @b not call @c pmm_alloc. Swap / OOM / kill policy belongs to the caller.
+ *
+ * @param pmm        Zone allocator that failed (do not reclaim other zones
+ * here).
+ * @param need_pages Page count of the failing allocation.
+ * @param have_tried_attempts    The reclaim function have tried time for this
+ * allocation.
+ * @return @c true to ask @c pmm_alloc to retry; @c false to give up.
+ *
+ * @note Core also stops after @c PMM_RECLAIM_MAX_ATTEMPTS to avoid hangs. The
+ * upper level(if have set the reclaim hook), must see it as this zone cannot
+ * get any page anyway
+ */
+typedef bool (*pmm_reclaim_fn_t)(struct pmm* pmm, size_t need_pages,
+                                 unsigned have_tried_attempts);
+#define PMM_RECLAIM_MAX_ATTEMPTS 64u
+
 #define PMM_COMMON                                                            \
         void (*pmm_init)(struct pmm * pmm,                                    \
                          paddr pmm_phy_start_addr,                            \
@@ -210,11 +232,23 @@ static inline bool zone_page_cursor_next(ZonePageCursor* cur)
         void (*pmm_show_info)(struct pmm * pmm);                              \
         spin_lock spin_ptr;                                                   \
         MemZone* zone;                                                        \
-        u64 total_avaliable_pages;
+        u64 total_avaliable_pages;                                            \
+        pmm_reclaim_fn_t reclaim_fn;
 
 struct pmm {
         PMM_COMMON;
 };
+
+/**
+ * @brief Install or clear the reclaim callback for @p pmm.
+ * @param pmm Zone allocator (typically @c zone->pmm).
+ * @param fn  Callback, or @c NULL to disable reclaim for this pmm.
+ */
+static inline void pmm_set_reclaim_hook(struct pmm* pmm, pmm_reclaim_fn_t fn)
+{
+        if (pmm)
+                pmm->reclaim_fn = fn;
+}
 
 extern MemZone mem_zones[ZONE_NR_MAX];
 extern struct spin_lock_t pmm_spin_lock[ZONE_NR_MAX];
