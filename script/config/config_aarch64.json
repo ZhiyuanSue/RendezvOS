@@ -83,18 +83,6 @@
 			],
 			"path":"modules/dtb"
 		},
-		"psci":
-		{
-			"use":true,
-			"features":[
-				"DTB"
-			],
-			"depend_module":[
-				"log",
-				"dtb"
-			],
-			"path":"modules/psci"
-		},
 		"elf":
 		{
 			"use":true,

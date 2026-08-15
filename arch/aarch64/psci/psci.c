@@ -1,4 +1,4 @@
-#include <modules/psci/psci.h>
+#include <arch/aarch64/psci/psci.h>
 
 struct psci_func_64 psci_func;
 

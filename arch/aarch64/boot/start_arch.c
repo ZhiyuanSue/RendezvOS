@@ -9,7 +9,7 @@
 #include <modules/dtb/dtb.h>
 #include <modules/dtb/print_property.h>
 #include <modules/log/log.h>
-#include <modules/psci/psci.h>
+#include <arch/aarch64/psci/psci.h>
 #include <rendezvos/error.h>
 #include <rendezvos/smp/percpu.h>
 #include <rendezvos/mm/vmm.h>

@@ -1,6 +1,6 @@
 #ifndef _RENDEZVOS_AARCH64_POWER_CTRL_H_
 #define _RENDEZVOS_AARCH64_POWER_CTRL_H_
-#include <modules/psci/psci.h>
+#include <arch/aarch64/psci/psci.h>
 
 static inline void arch_shutdown(void)
 {
