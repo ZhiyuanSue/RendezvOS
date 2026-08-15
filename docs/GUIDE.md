@@ -89,6 +89,7 @@ Prefer `register_fixed_trap(TRAP_CLASS_*, …)` over hard-coded vector numbers.
 ## 5. SMP and synchronization
 
 - **Per-CPU:** `rendezvos/smp/percpu.h` — MCS waiter node must be this CPU’s slot.
+- **Soft IPI:** `rendezvos/smp/ipi.h` — one HW doorbell per arch; logical reasons via `smp_ipi_register` / `smp_ipi_send` (see [USING_CORE §3.9](USING_CORE.md)).
 - **Locks:** `sync/spin_lock.h`, `sync/cas_lock.h`, `sync/barrier.h`.
 - **Bring-up:** [`smp.md`](smp.md); sample DT [`hardware/README.md`](hardware/README.md).
 - **IPC vs locks:** motivation in [`lockfree-ipc.md`](lockfree-ipc.md) §1.
@@ -133,6 +134,7 @@ Update this table when adding or changing public symbols.
 | Trap | Handlers | `trap/trap.h` | [`trap.md`](trap.md) | `doc` |
 | Time | Timers | `time.h` | [`timer.md`](timer.md) | `doc` |
 | SMP | Per-CPU | `smp/percpu.h` `smp/smp.h` | §5, [`smp.md`](smp.md) | `doc` |
+| SMP | Soft IPI doorbell | `smp_ipi_register` / `smp_ipi_send` / `smp_ipi_init`（每 arch 一 HW 线） | §5 · USING §3.9 | `stable` |
 | Sync | Locks | `sync/spin_lock.h` etc. | §5 | `doc` |
 | Log | Print | `modules/log/log.h` | [`log.md`](log.md) | `doc` |
 
@@ -151,7 +153,7 @@ Under `core/include/`.
 | `mm/pmm.h`, `mm/vmm.h`, `mm/vmm_radix_tree.h`, `mm/map_handler.h`, `mm/mm_user_utils.h`, `mm/kmalloc.h`, `mm/page_slice.h`, `mm/page_slice_copy.h`, `mm/allocator.h`, `mm/asid.h` | Memory（含 per-pmm `pmm_set_reclaim_hook`） |
 | `task/tcb.h`, `task/thread_loader.h`, `task/initcall.h`, `task/id.h`, `task/ebr.h` | Tasks |
 | `ipc/port.h`, `ipc/ipc.h`, `ipc/message.h`, `ipc/kmsg.h`, `ipc/kmsg_system.h`, `ipc/ipc_serial.h` | IPC |
-| `smp/percpu.h`, `smp/smp.h`, `smp/cpu_id.h` | SMP |
+| `smp/percpu.h`, `smp/smp.h`, `smp/cpu_id.h`, `smp/ipi.h` | SMP（`ipi.h` 含 `ipi_id_t` / soft IPI） |
 | `sync/spin_lock.h`, `sync/cas_lock.h`, `sync/barrier.h` | Sync |
 | `trap/trap.h`, `trap/trap_common.h` | Traps |
 | `registry/name_index.h` | Name tables |
@@ -196,3 +198,4 @@ All **how to use core from outside this tree** documentation lives in **[`USING_
 | 2026-05 | Review pass: `memory.md` §0, `task-thread` runtime, `trap` syscall entry |
 | 2026-06 | `page-slice.md`; GUIDE §6 page_slice API |
 | 2026-05 | External usage → `USING_CORE.md`; §9–§10 slimmed |
+| 2026-08 | Soft IPI: §5 / §6–§7 `smp/ipi.h` stable; see USING §3.9 |

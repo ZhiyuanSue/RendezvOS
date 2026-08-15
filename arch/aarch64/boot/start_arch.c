@@ -11,6 +11,7 @@
 #include <modules/log/log.h>
 #include <arch/aarch64/psci/psci.h>
 #include <rendezvos/error.h>
+#include <rendezvos/smp/ipi.h>
 #include <rendezvos/smp/percpu.h>
 #include <rendezvos/mm/vmm.h>
 #include <rendezvos/mm/allocator.h>
@@ -280,6 +281,7 @@ error_t arch_start_core(cpu_id_t cpu_id)
         isb();
         init_interrupt();
         gic.init_cpu_interface();
+        smp_ipi_init();
         rendezvos_time_init();
         init_syscall();
         return (0);

@@ -13,6 +13,7 @@
 #include <modules/acpi/acpi.h>
 #include <modules/pci/pci_ops.h>
 #include <arch/x86_64/sync/tlb.h>
+#include <rendezvos/smp/ipi.h>
 #include <rendezvos/smp/percpu.h>
 #include <rendezvos/error.h>
 #include <rendezvos/mm/vmm.h>
@@ -224,6 +225,7 @@ error_t arch_start_core(cpu_id_t cpu_id)
 
         init_interrupt();
         init_irq();
+        smp_ipi_init();
         arch_smp_flush_tlb_init();
         init_syscall();
         arch_enable_irq();

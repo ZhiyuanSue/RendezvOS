@@ -125,6 +125,22 @@ bool my_reclaim(struct pmm *pmm, size_t need_pages, unsigned attempt)
 
 No second hook: **true = retry, false = give up**. Core also caps at `PMM_RECLAIM_MAX_ATTEMPTS`. May `pmm_free`; **must not** `pmm_alloc`. Unset hook ⇒ fail immediately.
 
+### 3.9 Soft IPI doorbell (`smp/ipi.h`) — shipped
+
+One HW IPI line per arch; many logical reasons share it (per-CPU pending bits + handler table). Public surface is complete for callers; x86 TLB flush already uses it.
+
+```c
+#include <rendezvos/smp/ipi.h>
+
+static void example_ipi_fn(void) { /* IRQ context: flag / work; no sleep */ }
+
+ipi_id_t ipi;
+smp_ipi_register(&ipi, example_ipi_fn); /* once: logical table row */
+smp_ipi_send(target_cpu, ipi);          /* pending bit + arch HW send */
+```
+
+Each CPU: `smp_ipi_init()` → `arch_smp_ipi_init(dispatch)` after the interrupt controller is ready. Do **not** call `APIC_send_IPI` / `gic.send_sgi` from outside `arch/`. Table rows: `RENDEZVOS_SMP_IPI_MAX` in `limits.h` (not HW vector count). Same shape as future riscv SSIP. Remaining platform debt: IDT/vector ownership registry (not another IPI API).
+
 ---
 
 ## 4. `error_t` (caller mapping)
@@ -172,3 +188,4 @@ Mechanism choice is **caller architecture**; core does not mandate servers.
 | Date | Change |
 |------|--------|
 | 2026-05 | Created; consolidated external-caller material from repo upper-layer docs |
+| 2026-08 | §3.9 soft IPI shipped (`smp_ipi_register` / `send` / `init`) |

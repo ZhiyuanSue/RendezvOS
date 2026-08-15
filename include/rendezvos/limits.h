@@ -20,6 +20,11 @@
  */
 #define INVALID_CPU_ID (-1)
 
+/*
+ * IPI logical handler table capacity.
+ */
+#define RENDEZVOS_SMP_IPI_MAX 16u
+
 extern u64 thread_kstack_page_num;
 extern u64 thread_ustack_page_num;
 #endif

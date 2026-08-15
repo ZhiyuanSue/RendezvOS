@@ -25,8 +25,7 @@
 
 - x2APIC 路径收尾（`IRQ.c` 已 enable，注释仍 TODO）  
 - APIC timer 是否 always-running（CPUID 0x06 / ARAT，`LocalAPIC.c`、`cpuinfo.h`）  
-- **IDT 向量占用未登记（timer 与 TLB IPI 同债）**：core 各自硬编码占用 IDT 槽——timer 用 `timer_irq_num`（现约 `0x20`）、SMP TLB flush IPI 用 `IRQ_VECTOR_SMP_TLB_FLUSH`（现 `0x30`）、另有 spurious 等——**没有**给兼容层 / 日后 IOAPIC 设备分配看的「保留集」。结果是上层若按 Linux 习惯在中低段要设备向量，可能与 core 私占号撞车；兼容层也不该靠猜「哪几个号已被占」。应做：（1）软件 IPI（TLB 及以后 resched 等）收到**高位保留区**，与设备向量池分开；（2）core 单一真源登记或极小分配接口（保留 IPI / 分配设备向量），timer、TLB、IOAPIC 路由都走它；（3）上层禁止私自拣裸 vector，只能向 core 申请。功能上 TLB IPI 最小路径已接；本项是**所有权与防冲突**，不是再实现一遍 SMP flush。  
-- **软件 IPI 统一薄封装（收口债）**：x86 已有 LAPIC Fixed IPI；aarch64 应对齐 **GIC SGI**（与 TLB 的 `tlbi *is` 无关）。目标是同一调用约定（目标 CPU + 向量/原因），实现落在 arch；向量号走上一则登记，勿再硬编码散落。上层暂无消费者也不等于 core 永久缺这层。  
+- **IDT 向量占用未登记（timer / soft IPI HW 槽同债）**：soft IPI **逻辑框架已完成**（见归档）；x86 仍硬编码单门铃向量 `0x30`、timer 约 `0x20`、spurious 等，**没有**给兼容层 / IOAPIC 看的保留集。应做：（1）core 保留 IPI/timer 等到高位或单一登记表；（2）设备向量走分配接口；（3）上层禁止私拣裸 vector。本项是**向量所有权**，不是再实现一套 IPI。  
 - UART 16550A：`getc` 恒返回 0，IER=0（收包中断关着）  
 - UART PL011：`getc` 恒返回 0；开了 RXIM 但没有 handler / 真读 DR  
 - PCI：使能设备、分配 IRQ、BAR 直接复用 BIOS、ROM device（`pci_ops.c`）  
