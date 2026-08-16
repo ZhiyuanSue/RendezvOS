@@ -127,6 +127,7 @@ Update this table when adding or changing public symbols.
 | MM | Radix lock/query/insert | `vmm_radix_tree_lock_range_big`, `insert_range`, `query_range`, … | [`memory.md`](memory.md) §0.3 | `doc` |
 | MM | Page tables (per CPU) | `map_handler.h` `map()` / `&percpu(Map_Handler)` | [`memory.md`](memory.md) | `doc` |
 | MM | Alloc reclaim hook | `pmm_set_reclaim_hook(pmm, …)` per zone | [`memory.md`](memory.md) §2.5 | `doc` |
+| MM | Boot zone config | `configure_pmm_zones_hook` (weak) → fill `mem_zones` / `nr_mem_zones` | [`memory.md`](memory.md) §2.4.1 · USING §3.8a | `stable` |
 | MM | User range orchestration | `mm_user_utils_*` (requires L0 held) | [`memory.md`](memory.md) §0 | `doc` |
 | MM | Kernel sparse pgoff → kva | `mm/page_slice.h` `page_slice_*` · copy: `mm/page_slice_copy.h` | [`page-slice.md`](page-slice.md) | `stable` |
 | MM | Page fault hook | `register_fixed_trap(TRAP_CLASS_PAGE_FAULT, …)` | [`trap.md`](trap.md) | `doc` |
@@ -152,7 +153,7 @@ Under `core/include/`.
 |--------|---------|
 | `common.h`, `error.h`, `limits.h` | Types, `error_t` |
 | `time.h` | Timekeeping |
-| `mm/pmm.h`, `mm/vmm.h`, `mm/vmm_radix_tree.h`, `mm/map_handler.h`, `mm/mm_user_utils.h`, `mm/kmalloc.h`, `mm/page_slice.h`, `mm/page_slice_copy.h`, `mm/allocator.h`, `mm/asid.h` | Memory（含 per-pmm `pmm_set_reclaim_hook`） |
+| `mm/pmm.h`, `mm/vmm.h`, `mm/vmm_radix_tree.h`, `mm/map_handler.h`, `mm/mm_user_utils.h`, `mm/kmalloc.h`, `mm/page_slice.h`, `mm/page_slice_copy.h`, `mm/allocator.h`, `mm/asid.h` | Memory（含 per-pmm reclaim；boot zone：`configure_pmm_zones_hook`） |
 | `task/tcb.h`, `task/thread_loader.h`, `task/initcall.h`, `task/id.h`, `task/ebr.h` | Tasks |
 | `ipc/port.h`, `ipc/ipc.h`, `ipc/message.h`, `ipc/kmsg.h`, `ipc/kmsg_system.h`, `ipc/ipc_serial.h` | IPC |
 | `smp/percpu.h`, `smp/smp.h`, `smp/cpu_id.h`, `smp/ipi.h` | SMP（`ipi.h` 含 `ipi_id_t` / soft IPI） |

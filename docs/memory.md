@@ -50,7 +50,7 @@
 | 分配连续用户页并清零 | `mm_user_utils_set_range_and_fill` | 需先 L0；区间不得与已有 insertable 重叠 |
 |  demand-fill 单页（已有 LAZY 叶） | `mm_user_utils_fill_page_with_exist_range` | 需先 L0 |
 | 拆掉连续用户映射 | `mm_user_utils_clean_range_and_unfill` 等 | 见 `mm_user_utils.h` |
-| 统一改一段 VA 的 flags | `mm_user_utils_set_range_flags` | 区间须已 VALID 且 flags 一致 |
+| 统一改一段 VA 的 flags | `mm_user_utils_set_range_flags` | 区间须已 VALID 且 flags 一致；PTE 侧对同 PPN 再调 `map()`（见 §3.3） |
 | 低层插入/删除 radix 记录 | `vmm_radix_tree_insert_range` / `leaf_bind` / `leaf_unbind` | 在 L0+L2 契约下使用 |
 | 查询映射 | `vmm_radix_tree_query_range` | `RADIX_RL_QUERY_OR_CHANGE` |
 | 页故障处理 | fault 路径 + radix `VALID`/COW 叶 | 见 [`trap.md`](trap.md) `TRAP_CLASS_PAGE_FAULT` |
@@ -302,14 +302,54 @@ typedef struct {
 } Page;
 ```
 
-- `split_pmm_zones` 根据可用物理范围为每个 zone 计算与各 memory region 的交集，得到 section 数量与总页数。  
-- `generate_zone_data` 在已预留的 PMM 物理区间内依次放置 `MemSection` 及其 `Page pages[]`，并初始化 `Page.sec` 与 `rmap_list`。
+- `pmm_configure_zones`（`phy_mm_init` 内）：调用 weak/strong `configure_pmm_zones_hook`，由 hook **直接**写 `mem_zones[]` / `nr_mem_zones`；`pmm_zone_config_legal` 不通过则回退默认单 NORMAL。  
+- `split_pmm_zones`：对 `[0, nr_mem_zones)` 做窗口 ∩ `m_regions`，填 `zone_total_pages` / `zone_total_sections`，并 `pmm->zone = zone`。  
+- `generate_zone_data`：在已预留的 PMM 物理区间内依次放置 `MemSection` 及其 `Page pages[]`，并初始化 `Page.sec` 与 `rmap_list`。
 
-**设计意图**：Zone 是高于具体分配器的抽象；**不同 zone 可采用不同分配器**（例如 ZONE_NORMAL 用 buddy，DMA/CMA 等可用线性或专用分配器），以便更灵活地适配硬件与策略，当前实现中仅 ZONE_NORMAL 使用 buddy。若将来支持多 zone（如 DMA），`get_free_page`/`pmm_alloc` 可能需扩展 zone 参数及多 zone 下的加锁策略，预留为 TODO。
+#### 2.4.1 多 zone（容量、活跃数、boot 配置）
+
+| 符号 | 含义 |
+|------|------|
+| `ZONE_NR_MAX`（当前 16） | **编译期容量**：`mem_zones[]` / `pmm_spin_lock[]` 长度。early boot 无分配器，不能动态拉长。 |
+| `nr_mem_zones`（`int`） | **活跃个数**；只用紧凑前缀 `[0, nr_mem_zones)`。几何 / manage-pages / `pmm_init` 都按它遍历。 |
+| `ZONE_NORMAL`（= 0） | 默认通用池下标；今日默认唯一 active zone。 |
+| `configure_pmm_zones_hook` | weak hook：填 `mem_zones[i].{lower_addr,upper_addr,pmm}` + `nr_mem_zones`。 |
+
+**Boot 顺序（`phy_mm_init`）：**
+
+```text
+calculate_avaliable_phy_addr_region
+        → pmm_configure_zones          /* hook 填 mem_zones；非法则 default */
+        → split_pmm_zones              /* 求交计 section / pages */
+        → 预留 PMM 元数据区 → generate_zone_data → 各 zone->pmm->pmm_init
+```
+
+**默认（weak 体）**：`nr_mem_zones = 1`，`mem_zones[ZONE_NORMAL]` = 全部可用物理范围 + `buddy_pmm`。
+
+**扩展第二 zone（如 DMA）**：在 arch（或其它 early `.o`）提供**同名强符号**覆盖 weak。只允许写静态 `struct pmm` 与 `mem_zones` 字段；**不是** initcall / compat `DEFINE_INIT`（`phy_mm_init` 已过）。不另建平行 config 表——策略字段就是 `MemZone` 本身。
+
+```c
+/* strong symbol — example only */
+void configure_pmm_zones_hook(paddr avail_lo, paddr avail_hi)
+{
+        memset(mem_zones, 0, sizeof(mem_zones));
+        nr_mem_zones = 2;
+        mem_zones[0].lower_addr = dma_lo;
+        mem_zones[0].upper_addr = dma_hi;
+        mem_zones[0].pmm = &dma_pmm;          /* static */
+        mem_zones[1].lower_addr = normal_lo;
+        mem_zones[1].upper_addr = avail_hi;
+        mem_zones[1].pmm = (struct pmm *)&buddy_pmm;
+}
+```
+
+**调用方选 zone**：`root_vspace` / map_handler / 多数测试仍用 `mem_zones[ZONE_NORMAL].pmm`。非 NORMAL 池由需要该约束的路径显式选用；core 不做「第二池自动回退」。
+
+**不做**：compat 晚期动态加 zone；`malloc` zone 描述符；与 `MemZone` 平行的 boot 配置结构体；把分区策略塞进 buddy。上层入口：[`USING_CORE.md`](USING_CORE.md) §3.8a。
 
 ### 2.5 Buddy 分配器（每 Zone）
 
-当前仅 ZONE_NORMAL 使用 buddy，实现在 `kernel/mm/buddy_pmm.c`，结构在 `include/rendezvos/mm/buddy_pmm.h`。
+默认路径下仅 `ZONE_NORMAL` 使用 buddy（`kernel/mm/buddy_pmm.c`，`include/rendezvos/mm/buddy_pmm.h`）。其它 zone 可绑不同的静态 `struct pmm`；第二 zone 有硬件需求时再加。
 
 #### 2.5.1 设计意图：树状数组与“每阶一个链表”的取舍
 
@@ -451,7 +491,11 @@ struct map_handler {
 
 ### 3.3 map / unmap 与层级
 
-- `map(VSpace*, ppn, vpn, level, eflags, handler)`：在 `vs` 的页表中建立 `vpn` → `ppn` 的映射；`level == 2` 表示 2M 页，`level == 3` 表示 4K 页。内部按 L0→L1→L2→L3 逐级用 `util_map` 与 `ppn_cache[]` 创建缺失表页并写表项。
+- `map(VSpace*, ppn, vpn, level, eflags, handler)`：在 `vs` 的页表中建立或更新 `vpn` → `ppn`；`level == 2` 表示 2M 页，`level == 3` 表示 4K 页。内部按 L0→L1→L2→L3 逐级用 `util_map` 与 `ppn_cache[]` 创建缺失表页并写表项。
+- **已有 final leaf 时的语义**（无需单独「改属性」API）：
+  - **同 PPN**：只改硬件 PTE flags（`mprotect` / `mm_user_utils_set_range_flags` 走这条）；不必置 `PAGE_ENTRY_REMAP`。
+  - **异 PPN**：须在 `eflags` 中带 `PAGE_ENTRY_REMAP`，否则失败；COW / `mm_user_utils_remap_page` 在 radix 接受新页后使用。
+  - `PAGE_ENTRY_REMAP` / `LAZY` / `COW` 等为软件位，写入 PTE 前由 `entry_flags_rm_sw_flags` 剥掉。
 - `unmap`：清除对应 vpn 的映射，可选地将同一 vpn 指向新的物理页（用于部分高级用法）。
 - 内核恒等映射区的新页通过 `map()` 在对应 level 插入 2M 或 4K 项；用户 vspace 由 `mm_user_utils_*` 或 fault 路径在持锁契约下调用 `map`/`unmap`。
 
@@ -598,7 +642,7 @@ Radix tree 提供**range-based APIs**，支持 INSERT/DELETE/QUERY_OR_CHANGE 三
 - **lazy 分配**：`mm_user_utils_fill_page_with_exist_range`：page fault 时将 LAZY 叶子物化为 VALID，分配物理页并映射。
 - **释放**：`mm_user_utils_clean_range_and_unfill`：`leaf_unbind_range` → `unmap` → radix DELETE 路径 → `pmm_free`。
 - **remap**：`mm_user_utils_remap_page`：COW 分裂或 `mremap`，更新 PPN 和 flags。
-- **flag 更新**：`mm_user_utils_set_range_flags`：`mprotect` 批量更新 PTE 和 radix flags，支持 ABSOLUTE/DELTA/DELTA_PTE_ONLY 三种模式。
+- **flag 更新**：`mm_user_utils_set_range_flags`：`mprotect` 批量更新；每页对**同一 PPN**调用 `map()` 改 PTE flags，并（除非 `DELTA_PTE_ONLY`）更新 radix shadow。见 §3.3。
 
 **反向映射（rmap）**：
 - 每个 `Page` 的 `rmap_list` 链起所有映射到该页的 `Radix_node_t`（通过 `radix_leaf_link_rmap` / `radix_leaf_unlink_rmap` 操作）。
@@ -684,11 +728,11 @@ struct mem_allocator {
 
 | 主题 | 主要文件 |
 |------|----------|
-| 物理内存区域与预留 | `kernel/mm/pmm.c`（m_regions, phy_mm_init, split_pmm_zones, generate_zone_data） |
+| 物理内存区域与预留 | `kernel/mm/pmm.c`（m_regions, phy_mm_init, `configure_pmm_zones_hook` / `pmm_configure_zones`, split_pmm_zones, generate_zone_data） |
 | PMM 超 1G 时的 L1/L2 额外映射 | `kernel/mm/pmm.c`（calculate_pmm_space, arch_map_pmm_data_space） |
 | x86_64 内存发现 | `arch/x86_64/mm/pmm.c`（arch_init_pmm, multiboot mmap） |
 | aarch64 内存发现与 boot 映射 | `arch/aarch64/mm/pmm.c`，`arch/aarch64/boot/boot_map.c` |
-| Zone / Section / Page | `include/rendezvos/mm/pmm.h` |
+| Zone / Section / Page | `include/rendezvos/mm/pmm.h`（`ZONE_NR_MAX`, `nr_mem_zones`, `mem_zones[]`） |
 | Buddy | `kernel/mm/buddy_pmm.c`，`include/rendezvos/mm/buddy_pmm.h` |
 | 页表自映射与 map | `kernel/mm/map_handler.c`，`include/rendezvos/mm/map_handler.h`，`kernel/mm/map_util_page.S` |
 | Radix Tree 与两层锁 | `kernel/mm/vmm_radix_tree.c`，`include/rendezvos/mm/vmm_radix_tree.h` |

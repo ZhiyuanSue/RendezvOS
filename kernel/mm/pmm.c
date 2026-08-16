@@ -7,9 +7,50 @@
 struct memory_regions m_regions;
 MemZone mem_zones[ZONE_NR_MAX];
 DEFINE_PER_CPU(struct spin_lock_t, pmm_spin_lock[ZONE_NR_MAX]);
+int nr_mem_zones;
 extern u64 L2_table, L1_table;
 extern struct buddy buddy_pmm;
 extern u64 _start, _end; /*the kernel end virt addr*/
+
+static void pmm_zone_configure_default(paddr avail_lo, paddr avail_hi)
+{
+        memset(mem_zones, 0, sizeof(mem_zones));
+        nr_mem_zones = 0;
+        if (avail_lo >= avail_hi)
+                return;
+        mem_zones[ZONE_NORMAL].lower_addr = avail_lo;
+        mem_zones[ZONE_NORMAL].upper_addr = avail_hi;
+        mem_zones[ZONE_NORMAL].pmm = (struct pmm *)&buddy_pmm;
+        nr_mem_zones = 1;
+}
+
+__attribute__((weak)) void configure_pmm_zones_hook(paddr avail_lo,
+                                                    paddr avail_hi)
+{
+        pmm_zone_configure_default(avail_lo, avail_hi);
+}
+
+static bool pmm_zone_config_legal(void)
+{
+        if (nr_mem_zones <= 0 || nr_mem_zones > ZONE_NR_MAX)
+                return false;
+        for (int i = 0; i < nr_mem_zones; i++) {
+                if (!mem_zones[i].pmm
+                    || mem_zones[i].lower_addr >= mem_zones[i].upper_addr)
+                        return false;
+        }
+        return true;
+}
+
+static void pmm_configure_zones(paddr avail_lo, paddr avail_hi)
+{
+        configure_pmm_zones_hook(avail_lo, avail_hi);
+        if (!pmm_zone_config_legal()) {
+                print("[ PMM ] bad zone config (nr=%d), using default\n",
+                      nr_mem_zones);
+                pmm_zone_configure_default(avail_lo, avail_hi);
+        }
+}
 
 error_t memory_regions_insert(paddr addr, u64 len)
 {
@@ -268,38 +309,29 @@ calculate_avaliable_phy_addr_region(paddr *avaliable_phy_addr_start,
         *avaliable_phy_addr_end =
                 ROUND_DOWN((*avaliable_phy_addr_end), PAGE_SIZE);
 }
-static inline void split_pmm_zones(paddr lower, paddr upper,
-                                   size_t *total_section_number)
+static inline void split_pmm_zones(size_t *total_section_number)
 {
         MemZone *zone;
         struct region reg;
         paddr sec_start_addr;
         paddr sec_end_addr;
         *total_section_number = 0;
-        for (int mem_zone = 0; mem_zone < ZONE_NR_MAX; ++mem_zone) {
+
+        if (!pmm_zone_config_legal()) {
+                print("[ PMM ] no active zones\n");
+                return;
+        }
+
+        for (int mem_zone = 0; mem_zone < nr_mem_zones; ++mem_zone) {
                 zone = &(mem_zones[mem_zone]);
-                zone->lower_addr = 0;
-                zone->upper_addr = 0;
                 zone->zone_total_sections = 0;
                 zone->zone_id = mem_zone;
                 INIT_LIST_HEAD(&zone->section_list);
-                switch (mem_zone) {
-                        /*TODO:if we need more zones ,we can define zone upper
-                         * and lower addr*/
-                case ZONE_NORMAL:
-                        zone->lower_addr = lower;
-                        zone->upper_addr = upper;
-                        zone->zone_total_pages = 0;
-                        zone->pmm = (struct pmm *)&buddy_pmm;
-                        buddy_pmm.zone = zone;
-                        break;
-                default:
-                        break;
-                }
+                zone->zone_total_pages = 0;
+                zone->pmm->zone = zone;
                 for (u64 i = 0; i < m_regions.region_count; i++) {
                         if (m_regions.memory_regions_entry_empty(i))
                                 continue;
-                        /*total 6 cases*/
                         reg = m_regions.memory_regions[i];
                         sec_start_addr = reg.addr;
                         sec_end_addr = sec_start_addr + reg.len;
@@ -347,8 +379,10 @@ static inline error_t generate_zone_data(paddr zone_data_phy_start,
         paddr sec_start_addr;
         paddr sec_end_addr;
         MemSection *sec;
-        for (int mem_zone = 0; mem_zone < ZONE_NR_MAX; ++mem_zone) {
+        for (int mem_zone = 0; mem_zone < nr_mem_zones; ++mem_zone) {
                 zone = &(mem_zones[mem_zone]);
+                if (!zone->pmm)
+                        continue;
                 zone->zone_total_pages = 0;
                 u64 sec_id_count = 0;
                 for (u64 i = 0; i < m_regions.region_count; i++) {
@@ -460,14 +494,14 @@ error_t phy_mm_init(struct setup_info *arch_setup_info)
         calculate_avaliable_phy_addr_region(&avaliable_phy_start,
                                             &avaliable_phy_end,
                                             &total_phy_page_frame_number);
-        split_pmm_zones(
-                avaliable_phy_start, avaliable_phy_end, &total_section_number);
+        pmm_configure_zones(avaliable_phy_start, avaliable_phy_end);
+        split_pmm_zones(&total_section_number);
 
         /*calculate the total section and phy page frame need pages */
         u64 zone_total_pages, pmm_total_pages, L2_table_pages;
         zone_total_pages = pmm_total_pages = calculate_sec_and_page_frame_pages(
                 total_phy_page_frame_number, total_section_number);
-        for (int mem_zone = 0; mem_zone < ZONE_NR_MAX; ++mem_zone) {
+        for (int mem_zone = 0; mem_zone < nr_mem_zones; ++mem_zone) {
                 MemZone *zone = &(mem_zones[mem_zone]);
                 if (zone->pmm && zone->pmm->pmm_calculate_manage_space) {
                         zone->zone_pmm_manage_pages =
@@ -521,7 +555,7 @@ error_t phy_mm_init(struct setup_info *arch_setup_info)
                 goto init_pmm_error;
         }
         /*generate the pmm data per zone*/
-        for (int mem_zone = 0; mem_zone < ZONE_NR_MAX; ++mem_zone) {
+        for (int mem_zone = 0; mem_zone < nr_mem_zones; ++mem_zone) {
                 MemZone *zone = &(mem_zones[mem_zone]);
                 if (zone->pmm && zone->pmm->pmm_init) {
                         zone->pmm->pmm_init(

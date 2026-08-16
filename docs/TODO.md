@@ -5,7 +5,9 @@
 
 2026-08-09 对照源码与 log / lockfree-ipc 文档核过一遍：下面按「平台 → 内存 → 日志与 IPC」列，方便一项项收窄。编号沿用旧清单（中间空号是历史留下的）。明确不做 / 归上层见 [`archive/TODO_DONE.md`](archive/TODO_DONE.md) 文末。
 
-建议收尾顺序：先平台（UART 收包；外设中断若要接设备再谈控制器路由 / IOAPIC），再内存（改页属性、boot 栈、分配失败 hook），再日志前后端与 IPC 输出（#37–38、#46），**冻结前补 Port 准入/可见性 hook（A+B）**，最后清文档和过时注释。
+建议收尾顺序：先平台（UART 收包；外设中断若要接设备再谈 IOAPIC），再日志前后端与 IPC 输出（#37–38、#46），**冻结前补 Port 准入/可见性 hook（A+B）**，最后清文档和过时注释。
+
+**内存（原 §二）已全部归档**：#58 栈/PTE、#59 reclaim、#60 多 zone——见 [`archive/TODO_DONE.md`](archive/TODO_DONE.md)。第二 DMA 池等有硬件约束再开，不必占 TODO 行。
 
 trap_id 保留与分配池已完成（[`USING_CORE`](USING_CORE.md) §3.10）。IOAPIC **不是**冻结必做项。
 
@@ -39,27 +41,7 @@ trap_id 保留与分配池已完成（[`USING_CORE`](USING_CORE.md) §3.10）。
 
 ---
 
-## 二、内存（基本收尾相关）
-
-15、每核栈页与权限；map_handler 增加「只改页表项属性、不换物理页」的接口。（部分：线程栈已走分配器；boot 栈还是静态的；改属性 API 没有。和下面源码条重叠。）  
-31、`memory_zone` 参数化，别写死 ZONE_NORMAL。（未做）  
-48、多 zone 时选哪个分配器，不要只会 handler 默认那一套。（未做：见 `memory.md`）  
-53、map handler entry 失败时 refill；fault / 分配失败路径。（部分：`map_fail` 能补 ppn_cache；per-pmm `reclaim_fn` 已接，策略归上层）  
-
-源码 / 文档里还有：
-
-- `map_handler.h`：缺改 PTE 属性接口（归进 15）  
-- `main.c`：PMM 起来后给栈分配页，弃用 boot stack（x86 LSS）  
-- `buddy_pmm.c`：耗尽时走该 pmm 的 `reclaim_fn`（策略在上层）  
-- `pmm.c`：更多 zone / zone 上界  
-- `thread_loader.c`：记录已用到的用户 VA，方便清理 / 影响 radix  
-- `memory.md`：多 zone 仍文档级 TODO  
-
----
-
----
-
-## 三、日志、串口输出、IPC 运行时（和上层关系紧）
+## 二、日志、串口输出、IPC 运行时（和上层关系紧）
 
 37、log buffer 与刷出策略。  
 38、VGA early print 和 log 模块解耦。  
@@ -90,7 +72,7 @@ trap_id 保留与分配池已完成（[`USING_CORE`](USING_CORE.md) §3.10）。
 
 ---
 
-## 四、文档
+## 三、文档
 
 50、公共 API 逐步补 Doxygen 风格注释。（做一点算一点）  
 

@@ -24,11 +24,39 @@ struct map_handler {
 extern struct map_handler Map_Handler;
 error_t sys_init_map(struct pmm* pmm);
 error_t init_map(struct map_handler* handler, cpu_id_t cpu_id, struct pmm* pmm);
-/*
-        kernel might try to mapping one page to a different vspace
-        and if the vspace is not exist, it should try to alloc a new one
-*/
-
+/**
+ * @brief Map or update @p vpn → @p ppn in @p vs page tables.
+ *
+ * Walks L0→L1→L2→L3 (creating missing table pages from @p handler->ppn_cache
+ * as needed) and writes the final leaf for @p level (@c 2 = 2MiB, @c 3 = 4KiB).
+ *
+ * @par Cases (final leaf already present and VALID)
+ * -# **Same @p ppn**: rewrite PTE flags only. Used by mprotect /
+ *    @ref mm_user_utils_set_range_flags. @c PAGE_ENTRY_REMAP is **not**
+ *    required.
+ * -# **Different @p ppn, @c PAGE_ENTRY_REMAP set in @p eflags**: replace the
+ *    physical page and flags (COW / @ref mm_user_utils_remap_page after radix
+ *    has accepted the new PPN).
+ * -# **Different @p ppn, no @c PAGE_ENTRY_REMAP**: fail (refuse silent steal
+ *    of an existing mapping).
+ *
+ * @par Cases (no valid final leaf yet)
+ * -# Establish a new @p vpn → @p ppn mapping with @p eflags (minus software
+ *    bits). Intermediate levels are allocated from the handler cache as needed.
+ *
+ * Software-only bits in @p eflags (@c PAGE_ENTRY_REMAP, @c PAGE_ENTRY_LAZY,
+ * @c PAGE_ENTRY_COW, …) are stripped before the hardware PTE is written
+ * (@c entry_flags_rm_sw_flags).
+ *
+ * @param vs      Target address space (must already have a root).
+ * @param ppn     Physical page number to map (or keep, for flags-only update).
+ * @param vpn     Virtual page number.
+ * @param level   @c 2 for 2MiB leaf, @c 3 for 4KiB leaf.
+ * @param eflags  Desired entry flags (+ optional @c PAGE_ENTRY_REMAP).
+ * @param handler Per-CPU map handler (typically @c &percpu(Map_Handler)).
+ *
+ * @return @c REND_SUCCESS on success; negative @c error_t on failure.
+ */
 error_t map(VSpace* vs, ppn_t ppn, vpn_t vpn, int level, ENTRY_FLAGS_t eflags,
             struct map_handler* handler);
 /*
@@ -147,7 +175,4 @@ paddr new_vs_root(paddr old_vs_root_paddr, struct map_handler* handler);
 error_t vspace_free_user_pt(VSpace* vs, struct map_handler* handler);
 error_t vspace_free_root_page(VSpace* vs, struct map_handler* handler);
 
-/*
-        TODO: we need to add a function to change the page entry's attribute
-*/
 #endif

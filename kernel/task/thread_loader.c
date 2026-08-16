@@ -75,11 +75,6 @@ static error_t elf_Phdr_64_load_handle(struct page_slice *slice,
         if (!vs || !phdr_ptr || !slice) {
                 return -E_IN_PARAM;
         }
-        /*
-                TODO: we should add a data structure to record the used
-           user space, which will be used for clean. and it might affect the
-           radix tree
-        */
         print_elf_ph64(phdr_ptr);
 
         vaddr ph_start = phdr_ptr->p_vaddr;

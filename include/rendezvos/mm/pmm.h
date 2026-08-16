@@ -43,7 +43,30 @@ struct memory_regions {
 };
 extern struct memory_regions m_regions;
 
-enum zone_type { ZONE_NORMAL, ZONE_NR_MAX };
+/**
+ * Zone indices. @c ZONE_NR_MAX is the **compile-time capacity** of
+ * @c mem_zones[] / @c pmm_spin_lock[] (not the number of active zones).
+ * Active count is @ref nr_mem_zones (compact prefix @c [0, nr_mem_zones)).
+ */
+enum zone_type {
+        ZONE_NORMAL = 0,
+        ZONE_NR_MAX = 16,
+};
+/**
+ * @brief Hook: fill @ref mem_zones[0 .. nr_mem_zones) before split.
+ *
+ * Called from @c phy_mm_init after the post-reserve available range is known,
+ * before @c split_pmm_zones. Set @ref nr_mem_zones and for each active zone
+ * set @c lower_addr / @c upper_addr / @c pmm (static @c struct pmm only).
+ * Weak default: one @c ZONE_NORMAL covering all available RAM + buddy.
+ *
+ * @param avail_lo Inclusive-style window start used by default NORMAL.
+ * @param avail_hi End of that available range (same convention as MemZone).
+ */
+void configure_pmm_zones_hook(paddr avail_lo, paddr avail_hi);
+
+/** Active zone count in @ref mem_zones (0 .. ZONE_NR_MAX). */
+extern int nr_mem_zones;
 
 typedef struct mem_section MemSection;
 typedef struct {

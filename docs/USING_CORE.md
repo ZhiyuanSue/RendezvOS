@@ -125,6 +125,16 @@ bool my_reclaim(struct pmm *pmm, size_t need_pages, unsigned attempt)
 
 No second hook: **true = retry, false = give up**. Core also caps at `PMM_RECLAIM_MAX_ATTEMPTS`. May `pmm_free`; **must not** `pmm_alloc`. Unset hook ⇒ fail immediately.
 
+### 3.8a Boot PMM zones (weak `configure_pmm_zones_hook`)
+
+`ZONE_NR_MAX` is compile-time capacity; `nr_mem_zones` is the active compact prefix of `mem_zones[]`. Full contract: [`memory.md`](memory.md) §2.4.1.
+
+**Default (weak):** one `ZONE_NORMAL` = all available RAM + `buddy_pmm`.
+
+**Override:** strong `configure_pmm_zones_hook(avail_lo, avail_hi)` that sets `nr_mem_zones` and `mem_zones[i].{lower_addr,upper_addr,pmm}` (static `struct pmm*` only). Invoked from `phy_mm_init` → `pmm_configure_zones` **before** `split_pmm_zones`. Not initcall / compat `DEFINE_INIT`. Illegal plan → core falls back to default.
+
+Callers that need a non-NORMAL pool select that zone’s `pmm` explicitly; most of core still uses `mem_zones[ZONE_NORMAL].pmm`.
+
 ### 3.9 Soft IPI doorbell (`smp/ipi.h`) — shipped
 
 One HW IPI line per arch; many logical reasons share it (per-CPU pending bits + handler table). Public surface is complete for callers; x86 TLB flush already uses it.
