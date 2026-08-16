@@ -6,6 +6,8 @@
 #include <arch/x86_64/trap/tss.h>
 #include <modules/log/log.h>
 #include <common/string.h>
+#include <rendezvos/smp/percpu.h>
+#include <rendezvos/trap/trap.h>
 
 extern u64 trap_vec;
 extern enum IRQ_type arch_irq_type;
@@ -36,6 +38,19 @@ const char *trap_name_string[TRAP_ARCH_USED + 2] = {
         "Intel reserved\n\0",
         /*for trap number between 21-31*/
         "User Defined interrupts\n\0"};
+void arch_init_irq_vector_state(void)
+{
+        cpu_id_t me = percpu(cpu_number);
+
+        irq_vector_reserve_range_for_cpu(me, 0, (u32)TRAP_ARCH_USED - 1);
+        irq_vector_reserve_range_for_cpu(
+                me, ARCH_IRQ_VEC_TIMER, ARCH_IRQ_VEC_TIMER);
+        irq_vector_reserve_range_for_cpu(
+                me, ARCH_IRQ_VEC_SPURIOUS, ARCH_IRQ_VEC_SPURIOUS);
+        irq_vector_reserve_range_for_cpu(
+                me, ARCH_IRQ_VEC_IPI, ARCH_IRQ_VEC_IPI);
+        irq_vector_set_alloc_pool(ARCH_IRQ_VEC_ALLOC_LO, ARCH_IRQ_VEC_ALLOC_HI);
+}
 void arch_init_interrupt(void)
 {
         struct pseudo_descriptor idtr_desc;

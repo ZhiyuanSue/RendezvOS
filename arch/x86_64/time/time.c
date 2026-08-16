@@ -1,5 +1,6 @@
 #include <arch/x86_64/PIC/IRQ.h>
 #include <arch/x86_64/time.h>
+#include <arch/x86_64/trap/trap.h>
 #include <common/bit.h>
 #include <modules/log/log.h>
 #include <rendezvos/mm/vmm.h>
@@ -7,7 +8,7 @@
 
 extern enum IRQ_type arch_irq_type;
 extern enum timer_type sys_timer_type;
-u32 timer_irq_num = _8259A_MASTER_IRQ_NUM_ + _8259A_TIMER_;
+u32 timer_irq_num = ARCH_IRQ_VEC_TIMER;
 u64 arch_init_timer(bool is_bsp)
 {
         u64 heartbeat_gap = 0;

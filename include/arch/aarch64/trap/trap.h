@@ -9,6 +9,16 @@
 #define AARCH64_IRQ_TO_TRAP_ID(irq_number) (irq_number + AARCH64_IRQ_OFFSET)
 #define AARCH64_TRAP_ID_TO_IRQ(trap_id)    (trap_id - AARCH64_IRQ_OFFSET)
 
+/*
+ * The core have used irq vec number
+ */
+#define ARCH_IRQ_INTID_IPI      GIC_V2_SGI_START /* 0 */
+#define ARCH_IRQ_INTID_TIMER    30u
+#define ARCH_IRQ_VEC_IPI        AARCH64_IRQ_TO_TRAP_ID(ARCH_IRQ_INTID_IPI)
+#define ARCH_IRQ_VEC_TIMER     AARCH64_IRQ_TO_TRAP_ID(ARCH_IRQ_INTID_TIMER)
+#define ARCH_IRQ_VEC_ALLOC_LO  AARCH64_IRQ_TO_TRAP_ID(GIC_V2_SPI_START)
+#define ARCH_IRQ_VEC_ALLOC_HI  AARCH64_IRQ_TO_TRAP_ID(GIC_V2_SPI_END)
+
 #define TRAP_ID(trap_info)  (trap_info & AARCH64_TRAP_ID_MASK)
 #define TRAP_SRC(trap_info) (trap_info & AARCH64_TRAP_SRC_MASK)
 #define TRAP_CPU(trap_info) \
@@ -69,6 +79,7 @@ struct trap_frame {
         (((u64)(esr_value) & AARCH64_ESR_EC_MASK) >> AARCH64_ESR_EC_SHIFT)
 
 void arch_init_interrupt(void);
+void arch_init_irq_vector_state(void);
 void arch_unknown_trap_handler(struct trap_frame *tf);
 static inline bool arch_int_from_kernel(struct trap_frame *tf)
 {

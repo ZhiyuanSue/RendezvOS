@@ -7,11 +7,9 @@
 
 extern enum IRQ_type arch_irq_type;
 
-#define ARCH_SMP_IPI_VECTOR 0x30u
-
 void arch_smp_ipi_init(void (*handler)(struct trap_frame *tf))
 {
-        register_irq_handler(ARCH_SMP_IPI_VECTOR, handler, IRQ_NEED_EOI);
+        register_irq_handler(ARCH_IRQ_VEC_IPI, handler, IRQ_NEED_EOI);
 }
 
 error_t arch_smp_ipi_send(cpu_id_t cpu)
@@ -25,6 +23,6 @@ error_t arch_smp_ipi_send(cpu_id_t cpu)
                       APIC_ICR_LEVEL_ASSERT,
                       APIC_ICR_DEST_PHYSICAL,
                       APIC_ICR_DEL_MODE_FIXED,
-                      ARCH_SMP_IPI_VECTOR);
+                      ARCH_IRQ_VEC_IPI);
         return REND_SUCCESS;
 }

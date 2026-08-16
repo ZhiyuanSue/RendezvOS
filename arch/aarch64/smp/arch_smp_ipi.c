@@ -1,17 +1,12 @@
 #include <arch/aarch64/gic/gic_v2.h>
-#include <arch/aarch64/trap/trap.h>
 #include <rendezvos/error.h>
 #include <rendezvos/smp/percpu.h>
 #include <rendezvos/smp/smp.h>
 #include <rendezvos/trap/trap.h>
 
-#define ARCH_SMP_IPI_SGI 0u
-
 void arch_smp_ipi_init(void (*handler)(struct trap_frame *tf))
 {
-        register_irq_handler(AARCH64_IRQ_TO_TRAP_ID(ARCH_SMP_IPI_SGI),
-                             handler,
-                             IRQ_NEED_EOI);
+        register_irq_handler(ARCH_IRQ_VEC_IPI, handler, IRQ_NEED_EOI);
 }
 
 error_t arch_smp_ipi_send(cpu_id_t cpu)
@@ -24,13 +19,13 @@ error_t arch_smp_ipi_send(cpu_id_t cpu)
                 return -E_RENDEZVOS;
 
         if (cpu == percpu(cpu_number)) {
-                gic.send_sgi(ARCH_SMP_IPI_SGI, GIC_V2_GICD_SGIR_TARGET_SELF, 0);
+                gic.send_sgi(ARCH_IRQ_INTID_IPI, GIC_V2_GICD_SGIR_TARGET_SELF,
+                             0);
                 return REND_SUCCESS;
         }
 
         target_list = (1u << (u32)cpu) << GIC_V2_GICD_SGIR_TARGET_LIST_SHIFT;
-        gic.send_sgi(ARCH_SMP_IPI_SGI,
-                     GIC_V2_GICD_SGIR_TARGET_SPECIFIED,
+        gic.send_sgi(ARCH_IRQ_INTID_IPI, GIC_V2_GICD_SGIR_TARGET_SPECIFIED,
                      target_list);
         return REND_SUCCESS;
 }

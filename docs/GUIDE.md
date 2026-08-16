@@ -83,6 +83,7 @@ flowchart TD
 | User return from syscall path | [`task-thread.md`](task-thread.md), `arch/*/tcb_arch.h` |
 
 Prefer `register_fixed_trap(TRAP_CLASS_*, …)` over hard-coded vector numbers.
+Device IRQs: `irq_vector_alloc` → `register_irq_handler` ([USING_CORE §3.10](USING_CORE.md)).
 
 ---
 
@@ -132,6 +133,7 @@ Update this table when adding or changing public symbols.
 | Syscall | Dispatch hook | `syscall(trap_frame*)` weak in core | [`trap.md`](trap.md) | `stable` |
 | MM | Destroy vspace | `del_vspace` `unregister_vspace` | [`memory.md`](memory.md) | `code-only` |
 | Trap | Handlers | `trap/trap.h` | [`trap.md`](trap.md) | `doc` |
+| Trap | IRQ vector USED + pool | `irq_vector_reserve_range_*` / `set_alloc_pool` / `alloc` / `free` | [USING §3.10](USING_CORE.md) | `stable` |
 | Time | Timers | `time.h` | [`timer.md`](timer.md) | `doc` |
 | SMP | Per-CPU | `smp/percpu.h` `smp/smp.h` | §5, [`smp.md`](smp.md) | `doc` |
 | SMP | Soft IPI doorbell | `smp_ipi_register` / `smp_ipi_send` / `smp_ipi_init`（每 arch 一 HW 线） | §5 · USING §3.9 | `stable` |
@@ -199,3 +201,4 @@ All **how to use core from outside this tree** documentation lives in **[`USING_
 | 2026-06 | `page-slice.md`; GUIDE §6 page_slice API |
 | 2026-05 | External usage → `USING_CORE.md`; §9–§10 slimmed |
 | 2026-08 | Soft IPI: §5 / §6–§7 `smp/ipi.h` stable; see USING §3.9 |
+| 2026-08 | IRQ vector USED bit + alloc pool: [USING §3.10](USING_CORE.md) |

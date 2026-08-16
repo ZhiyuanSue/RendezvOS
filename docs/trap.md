@@ -35,7 +35,7 @@ __attribute__((weak)) void syscall(struct trap_frame* syscall_ctx);
 |------|----------|----------|
 | Syscall | 架构入口 + `syscall()` 覆盖（aarch64 经 `arch_syscall_helper`） | 系统调用表 |
 | Fault / trap class | `register_fixed_trap(TRAP_CLASS_*, handler, flags)` | `#PF`、非法指令、**aarch64 SVC** |
-| Device IRQ | `register_irq_handler(irq_num, handler, attr)` | 定时器、块设备 |
+| Device IRQ | `irq_vector_alloc` → `register_irq_handler`（[USING §3.10](USING_CORE.md)） | 设备中断；timer / IPI 等由 arch `reserve`，勿私拣裸号 |
 
 Portable 代码应使用 **`trap_class`** 和 `arch_populate_trap_info()`，避免硬编码 IRQ 号或向量号（见下文「上层使用方式」）。
 
@@ -305,8 +305,8 @@ void register_fixed_trap(enum trap_class trap_class,
 
 **优先级和互斥**（详见trap_common.h）：
 - ❌ **不要混用**：`register_fixed_trap()`和`register_irq_handler()`注册同一个trap_id
-- ✅ **推荐做法**：使用`register_fixed_trap()`进行架构无关处理
-- ✅ **特殊情况**：仅在需要架构特定处理时使用`register_irq_handler()`
+- ✅ **推荐做法**：fault / syscall class 用 `register_fixed_trap()`
+- ✅ **设备 IRQ**：`irq_vector_alloc` 后再 `register_irq_handler`（[USING §3.10](USING_CORE.md)）；仅架构 glue 才对固定号直接 `register_irq_handler`
 
 **使用示例**：
 ```c
@@ -569,8 +569,8 @@ register_irq_handler(14, handler, attr);  // x86 #PF
 
 **互斥规则**：
 - ❌ **不要混用**：对同一trap_id同时使用fixed和direct注册
-- ✅ **推荐**：优先使用`register_fixed_trap()`
-- ✅ **例外**：仅在架构特定处理时使用`register_irq_handler()`
+- ✅ **推荐**：fault / syscall class 优先 `register_fixed_trap()`
+- ✅ **设备 IRQ**：`irq_vector_alloc` → `register_irq_handler`（[USING §3.10](USING_CORE.md)）
 
 **如果需要两种handler**：
 - 方案1：先注册direct，再注册fixed（fixed覆盖）

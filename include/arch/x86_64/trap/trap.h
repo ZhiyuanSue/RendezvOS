@@ -8,6 +8,16 @@
 
 #define NR_IRQ             256
 #define TRAP_ID(trap_info) (trap_info)
+
+/*
+ * The core have used irq vec number
+ */
+#define ARCH_IRQ_VEC_TIMER    0x20u
+#define ARCH_IRQ_VEC_SPURIOUS 0x27u
+#define ARCH_IRQ_VEC_IPI      0x30u
+#define ARCH_IRQ_VEC_ALLOC_LO 0x40u
+#define ARCH_IRQ_VEC_ALLOC_HI 0xEFu
+
 enum TRAP_NUM {
         TRAP_DE, /* 0: Divide Error */
         TRAP_DB, /* 1: Debug Exception */
@@ -130,6 +140,7 @@ struct trap_frame {
 #define ARCH_SYSCALL_ARG_6 r9
 
 void arch_init_interrupt(void);
+void arch_init_irq_vector_state(void);
 void arch_unknown_trap_handler(struct trap_frame *tf);
 static inline bool arch_int_from_kernel(struct trap_frame *tf)
 {

@@ -3,6 +3,7 @@
 #include <arch/x86_64/cpuinfo.h>
 #include <arch/x86_64/msr.h>
 #include <arch/x86_64/sys_ctrl.h>
+#include <arch/x86_64/trap/trap.h>
 #include <common/types.h>
 #include <common/bit.h>
 #include <modules/log/log.h>
@@ -78,7 +79,7 @@ void reset_APIC(void)
 void software_enable_APIC(void)
 {
         u32 spurious_vec_reg_val;
-        u32 spurious_vec_irq_num = _8259A_MASTER_IRQ_NUM_ + _8259A_LPT_1_;
+        u32 spurious_vec_irq_num = ARCH_IRQ_VEC_SPURIOUS;
         spurious_vec_reg_val = APIC_RD_REG(SVR, KERNEL_VIRT_OFFSET);
 
         spurious_vec_reg_val =

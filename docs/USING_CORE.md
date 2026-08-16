@@ -139,7 +139,36 @@ smp_ipi_register(&ipi, example_ipi_fn); /* once: logical table row */
 smp_ipi_send(target_cpu, ipi);          /* pending bit + arch HW send */
 ```
 
-Each CPU: `smp_ipi_init()` → `arch_smp_ipi_init(dispatch)` after the interrupt controller is ready. Do **not** call `APIC_send_IPI` / `gic.send_sgi` from outside `arch/`. Table rows: `RENDEZVOS_SMP_IPI_MAX` in `limits.h` (not HW vector count). Same shape as future riscv SSIP. Remaining platform debt: IDT/vector ownership registry (not another IPI API).
+Each CPU: `smp_ipi_init()` → `arch_smp_ipi_init(dispatch)` after the interrupt controller is ready. Do **not** call `APIC_send_IPI` / `gic.send_sgi` from outside `arch/`. Table rows: `RENDEZVOS_SMP_IPI_MAX` in `limits.h` (not HW vector count). Same shape as future riscv SSIP. HW vector state: see §3.10.
+
+### 3.10 IRQ vector use + alloc pool (`trap/trap.h`) — shipped
+
+Per-CPU `irq_vector[]`. Ownership is one bit in `irq_attr`: **`IRQ_VEC_USED`**
+(taken vs free). EOI and other flags share the same word (`IRQ_NEED_EOI`, …).
+
+| Action | API |
+|--------|-----|
+| Mark ids USED on one CPU | `irq_vector_reserve_range_for_cpu` |
+| Mark ids USED on all CPUs | `irq_vector_reserve_range_for_all_cpus` |
+| Publish alloc window `[lo, hi]` | `irq_vector_set_alloc_pool` |
+| Take / release a pool id (all CPUs) | `irq_vector_alloc` / `irq_vector_free` |
+| Install handler (all CPUs; id must be USED) | `register_irq_handler` |
+
+Boot: each `arch_start_core` → `init_interrupt` → `arch_init_irq_vector_state`
+(reserves this CPU’s core vectors, then `set_alloc_pool`). Arch constants:
+`ARCH_IRQ_VEC_*` in arch `trap.h`.
+
+Device / upper-layer path:
+
+```c
+u32 vec;
+irq_vector_alloc(&vec);
+register_irq_handler((int)vec, fn, IRQ_NEED_EOI);
+/* … */
+irq_vector_free(vec);
+```
+
+Do not pick bare vector numbers outside the arch reserve set / alloc pool.
 
 ---
 
@@ -189,3 +218,4 @@ Mechanism choice is **caller architecture**; core does not mandate servers.
 |------|--------|
 | 2026-05 | Created; consolidated external-caller material from repo upper-layer docs |
 | 2026-08 | §3.9 soft IPI shipped (`smp_ipi_register` / `send` / `init`) |
+| 2026-08 | §3.10 IRQ vectors: `IRQ_VEC_USED` + alloc pool (`trap/trap.h`) |

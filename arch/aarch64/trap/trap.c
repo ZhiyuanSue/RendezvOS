@@ -1,4 +1,5 @@
 #include <rendezvos/trap/trap.h>
+#include <rendezvos/smp/percpu.h>
 #include <arch/aarch64/sys_ctrl.h>
 #include <arch/aarch64/trap/trap.h>
 #include <modules/log/log.h>
@@ -6,6 +7,19 @@
 #include <common/string.h>
 
 extern u64 trap_vec_table;
+
+void arch_init_irq_vector_state(void)
+{
+        cpu_id_t me = percpu(cpu_number);
+
+        irq_vector_reserve_range_for_cpu(me, 0, AARCH64_IRQ_OFFSET - 1);
+        irq_vector_reserve_range_for_cpu(
+                me,
+                AARCH64_IRQ_TO_TRAP_ID(GIC_V2_SGI_START),
+                AARCH64_IRQ_TO_TRAP_ID(GIC_V2_PPI_END));
+        irq_vector_set_alloc_pool(ARCH_IRQ_VEC_ALLOC_LO, ARCH_IRQ_VEC_ALLOC_HI);
+}
+
 void arch_init_interrupt(void)
 {
         set_vbar_el1((vaddr)(&trap_vec_table));

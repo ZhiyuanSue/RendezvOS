@@ -34,7 +34,8 @@
 44、进程/线程资源回收(Done with cursor)  
 54、x86 用户态 trap 路径上的 swapgs（已实现；`trap_vec.S` 过时 TODO 注释已删）(done)  
 55、core 测试以内核线程跑（modules/test → gen_thread_from_func）(done)  
-56、软件 IPI 统一薄封装（done）：`rendezvos/smp/ipi.h`——每 arch 一个 HW 门铃 + 逻辑表（`RENDEZVOS_SMP_IPI_MAX`）+ per-CPU pending demux；对外 `smp_ipi_register` / `smp_ipi_send` / `smp_ipi_init`；`smp_ipi_init` → `arch_smp_ipi_init(dispatch)`；x86 TLB flush 已迁到此路径。剩余债是 IDT 向量登记（仍在 `TODO.md`），不是接口本身。  
+56、软件 IPI 统一薄封装（done）：`rendezvos/smp/ipi.h`——每 arch 一个 HW 门铃 + 逻辑表（`RENDEZVOS_SMP_IPI_MAX`）+ per-CPU pending demux；对外 `smp_ipi_register` / `smp_ipi_send` / `smp_ipi_init`；`smp_ipi_init` → `arch_smp_ipi_init(dispatch)`；x86 TLB flush 已迁到此路径。  
+57、IRQ 向量登记（done）：`irq_attr` 上 `IRQ_VEC_USED`；`irq_vector_set_alloc_pool` + `irq_vector_alloc` / `free`；core 用 `irq_vector_reserve_range_for_cpu`（boot）；`register_irq_handler` 写全核。见 USING §3.10。  
 
 ---
 

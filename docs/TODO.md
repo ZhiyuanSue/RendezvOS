@@ -5,7 +5,9 @@
 
 2026-08-09 对照源码与 log / lockfree-ipc 文档核过一遍：下面按「平台 → 内存 → 日志与 IPC」列，方便一项项收窄。编号沿用旧清单（中间空号是历史留下的）。明确不做 / 归上层见 [`archive/TODO_DONE.md`](archive/TODO_DONE.md) 文末。
 
-建议收尾顺序：先平台（IOAPIC / 外设中断 / **IDT 向量登记** / UART 收包），再内存（改页属性、boot 栈、分配失败 hook），再日志前后端与 IPC 输出（#37–38、#46），**冻结前补 Port 准入/可见性 hook（A+B）**，最后清文档和过时注释。
+建议收尾顺序：先平台（UART 收包；外设中断若要接设备再谈控制器路由 / IOAPIC），再内存（改页属性、boot 栈、分配失败 hook），再日志前后端与 IPC 输出（#37–38、#46），**冻结前补 Port 准入/可见性 hook（A+B）**，最后清文档和过时注释。
+
+trap_id 保留与分配池已完成（[`USING_CORE`](USING_CORE.md) §3.10）。IOAPIC **不是**冻结必做项。
 
 ---
 
@@ -25,7 +27,6 @@
 
 - x2APIC 路径收尾（`IRQ.c` 已 enable，注释仍 TODO）  
 - APIC timer 是否 always-running（CPUID 0x06 / ARAT，`LocalAPIC.c`、`cpuinfo.h`）  
-- **IDT 向量占用未登记（timer / soft IPI HW 槽同债）**：soft IPI **逻辑框架已完成**（见归档）；x86 仍硬编码单门铃向量 `0x30`、timer 约 `0x20`、spurious 等，**没有**给兼容层 / IOAPIC 看的保留集。应做：（1）core 保留 IPI/timer 等到高位或单一登记表；（2）设备向量走分配接口；（3）上层禁止私拣裸 vector。本项是**向量所有权**，不是再实现一套 IPI。  
 - UART 16550A：`getc` 恒返回 0，IER=0（收包中断关着）  
 - UART PL011：`getc` 恒返回 0；开了 RXIM 但没有 handler / 真读 DR  
 - PCI：使能设备、分配 IRQ、BAR 直接复用 BIOS、ROM device（`pci_ops.c`）  
@@ -34,7 +35,7 @@
 - `get_cpu_var` / `put_cpu_var` 仍是空宏（`percpu.h`）  
 - `start_arch.c` 重写 CPUID 检查（和上面 3 一条线）  
 
-外设中断怎么挂：先在控制器上 unmask / 路由（x86 走 APIC 就必须把 IOAPIC 做起来），再 `register_irq_handler`（写法见 `trap.md`，不要只看 `interrupt.md` 硬件笔记），需要进线程再走现有的 IRQ→IPC。设备向量号必须避开上一则 core 保留集，勿与 timer / IPI 硬编码槽冲突。
+外设中断怎么挂（非冻结必做）：控制器 unmask / 路由（x86 接设备时再做 IOAPIC）→ `irq_vector_alloc` → `register_irq_handler`（[`trap.md`](trap.md)、[USING §3.10](USING_CORE.md)）。勿私拣裸 vector。
 
 ---
 
