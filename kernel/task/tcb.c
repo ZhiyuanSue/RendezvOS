@@ -24,7 +24,6 @@ void* idle_thread(void* arg)
 {
         (void)arg;
         while (1) {
-                /*TODO:might close the int*/
                 schedule(percpu(core_tm));
         }
 }

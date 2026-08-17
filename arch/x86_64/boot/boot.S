@@ -5,7 +5,7 @@
 #define multiboot2_arch_i386	0
 #define multiboot2_header_magic	0xE85250D6
 #define multiboot2_header_tag_end	0
-#define multiboot2_header_tag_option	1
+#define multiboot2_header_tag_required	0
 #define multiboot2_header_tag_address	2
 #define multiboot2_header_tag_entry_address	3
 #define	align_2m	0x200000
@@ -83,18 +83,18 @@ multiboot2_header:
 	.p2align 3
 multiboot2_address_tag_start:
 	.short	multiboot2_header_tag_address
-	.short	multiboot2_header_tag_option
+	.short	multiboot2_header_tag_required
 	.long	multiboot2_address_tag_end-multiboot2_address_tag_start
 	.long	multiboot2_header - kernel_virt_offset
 	.long	_start - kernel_virt_offset
-	.long	_end - kernel_virt_offset
+	.long	_edata - kernel_virt_offset
 	.long	_end - kernel_virt_offset
 multiboot2_address_tag_end:
 
 	.p2align 3
 multiboot2_entry_address_tag_start:
 	.short	multiboot2_header_tag_entry_address
-	.short	multiboot2_header_tag_option
+	.short	multiboot2_header_tag_required
 	.long	multiboot2_entry_address_tag_end-multiboot2_entry_address_tag_start
 	.long	multiboot_entry - kernel_virt_offset
 multiboot2_entry_address_tag_end:
@@ -103,8 +103,8 @@ multiboot2_entry_address_tag_end:
 multiboot2_end_tag_start:
 	.short	multiboot2_header_tag_end
 	.short	0
-	.long	mulitboot2_end_tag_end-multiboot2_end_tag_start
-mulitboot2_end_tag_end:
+	.long	multiboot2_end_tag_end-multiboot2_end_tag_start
+multiboot2_end_tag_end:
 
 multiboot2_header_end:
 

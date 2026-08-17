@@ -26,10 +26,7 @@ inline bool TSC_DDL_support(void)
 }
 inline bool ARAT_support(void)
 {
-        /*
-                TODO: cpuid is 0x06 and eax.bit2 == 1 means the apic timer will
-           not be changed regardless of P-state
-        */
+        return (cpu_info.thermal_eax & X86_CPUID_THERMAL_EAX_ARAT);
 }
 inline void enable_xAPIC(void)
 {
@@ -431,7 +428,8 @@ void APIC_send_IPI(u8 dest_field, u32 dest_sh, u32 trigger_mode, u32 level,
                        & APIC_ICR_DELIVERY_STATUS) {
                         arch_cpu_relax();
                 }
-                /*The write of ICR LOW will send ipi, so we must write high first*/
+                /*The write of ICR LOW will send ipi, so we must write high
+                 * first*/
                 xAPIC_WR_REG(ICR_HIGH, KERNEL_VIRT_OFFSET, icr_high_value);
                 xAPIC_WR_REG(ICR, KERNEL_VIRT_OFFSET, icr_low_value);
         } else if (arch_irq_type == x2APIC_IRQ) {

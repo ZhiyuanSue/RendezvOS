@@ -1,7 +1,7 @@
 # 中断控制器笔记
 
 > 硬件笔记（PIC/APIC/GIC）。软件怎么挂外设中断见 [`trap.md`](trap.md) 的 `register_irq_handler`；先控制器 unmask/路由，需要再 IRQ→IPC。  
-> 现状：x86 走 APIC 时 IOAPIC 还是空的，外设中断（含 COM1）基本挂不上，见 [`TODO.md`](TODO.md) 第 2 条。  
+> **Local APIC / 8259A 选择路径已落地**（timer、IPI、EOI）。**IOAPIC**（外设如 COM1）仍是空壳，明确远期，见 [`archive/TODO_DONE.md`](archive/TODO_DONE.md)「明确不做」#14。  
 > 另见 [`traps-and-irq.md`](traps-and-irq.md)。
 
 ---
@@ -73,7 +73,7 @@ current count寄存器
 LVT timer寄存器
 
 首先是否支持还是需要看CPUID
-CPUID.06H.EAX.ARAT[bit2]
+CPUID.06H.EAX.ARAT[bit2]（原始值在 `cpu_info.thermal_eax`，`ARAT_support()` 按位读）
 
 APIC的频率是CPU的bus clock，然后divide了divide configure寄存器配置的值
 

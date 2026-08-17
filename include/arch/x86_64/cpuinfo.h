@@ -3,11 +3,13 @@
 #include <common/types.h>
 /*
     A reference website is https://www.felixcloutier.com/x86/cpuid, Thanks for
-   that
+   that.
+   And we should not deal with all the cpuids, for it's toooo many for us to
+   realize it. So we only deal with the info that we need.
 */
 struct cpuinfo {
 #define X86_CPUID_VENDOR 0x0
-        u8 MaxBasicCPUID[0x4];
+        u32 MaxBasicCPUID;
         u8 Vendor[0xC];
 #define X86_CPUID_FAMILY_MODEL 0x1
         u8 SteppingID;
@@ -83,15 +85,24 @@ struct cpuinfo {
 #define X86_CPUID_CACHE 0x2
         u8 cache_tlb_info[16]; /*not all used, and might in unexpected order,so
                                     check them all*/
-#define x84_CPUID_THERMAL_AND_POWER 0x6
-        // cpuid 0x06 is TODO
+#define X86_CPUID_THERMAL_AND_POWER 0x6
+#define X86_CPUID_THERMAL_EAX_ARAT  (1 << 2)
+        u32 thermal_eax;
+        u32 thermal_ebx;
+        u32 thermal_ecx;
+        u32 thermal_edx;
 #define X86_CPUID_MODEL_NAME_1 0x80000002
 #define X86_CPUID_MODEL_NAME_2 0x80000003
 #define X86_CPUID_MODEL_NAME_3 0x80000004
         u8 ModelName[48];
+#define X86_CPUID_EXT_MAX 0x80000000
+        u32 MaxExtCPUID;
 #define X86_CPUID_Invariant_TSC     0x80000007
 #define X86_CPUID_Invariant_TSC_EDX (1 << 8)
-        u8 invariant_tsc_support;
+        u32 ext_pwr_eax;
+        u32 ext_pwr_ebx;
+        u32 ext_pwr_ecx;
+        u32 ext_pwr_edx;
 #define X86_CPUID_ADDR 0x80000008
         u8 VirtAddrBits;
         u8 PhyAddrBits;

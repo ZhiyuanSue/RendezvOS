@@ -36,19 +36,40 @@ static void get_cpu_info(void)
         u32 ecx;
         u32 edx;
 
-        /*TODO :rewite the check of cpuid*/
-        /*first get the number that cpuid support*/
-        cpuid(0x0, &eax, &ebx, &ecx, &edx);
-        cpuid(0x1, &eax, &ebx, &ecx, &edx);
-        cpu_info.APICID = ebx >> 24;
+        cpuid(X86_CPUID_VENDOR, &eax, &ebx, &ecx, &edx);
+        cpu_info.MaxBasicCPUID = eax;
+        *(u32 *)(cpu_info.Vendor + 0) = ebx;
+        *(u32 *)(cpu_info.Vendor + 4) = edx;
+        *(u32 *)(cpu_info.Vendor + 8) = ecx;
+
+        cpuid(X86_CPUID_FAMILY_MODEL, &eax, &ebx, &ecx, &edx);
+        cpu_info.APICID = (u8)(ebx >> 24);
         cpu_info.feature_1 = ecx;
         cpu_info.feature_2 = edx;
-        /*detect invariant tsc*/
-        cpuid(X86_CPUID_Invariant_TSC, &eax, &ebx, &ecx, &edx);
-        if (edx & X86_CPUID_Invariant_TSC_EDX) {
-                cpu_info.invariant_tsc_support = 1;
-        } else {
-                cpu_info.invariant_tsc_support = 0;
+
+        if (cpu_info.MaxBasicCPUID >= X86_CPUID_THERMAL_AND_POWER) {
+                cpuid(X86_CPUID_THERMAL_AND_POWER, &eax, &ebx, &ecx, &edx);
+                cpu_info.thermal_eax = eax;
+                cpu_info.thermal_ebx = ebx;
+                cpu_info.thermal_ecx = ecx;
+                cpu_info.thermal_edx = edx;
+        }
+
+        cpuid(X86_CPUID_EXT_MAX, &eax, &ebx, &ecx, &edx);
+        cpu_info.MaxExtCPUID = eax;
+
+        if (cpu_info.MaxExtCPUID >= X86_CPUID_Invariant_TSC) {
+                cpuid(X86_CPUID_Invariant_TSC, &eax, &ebx, &ecx, &edx);
+                cpu_info.ext_pwr_eax = eax;
+                cpu_info.ext_pwr_ebx = ebx;
+                cpu_info.ext_pwr_ecx = ecx;
+                cpu_info.ext_pwr_edx = edx;
+        }
+
+        if (cpu_info.MaxExtCPUID >= X86_CPUID_ADDR) {
+                cpuid(X86_CPUID_ADDR, &eax, &ebx, &ecx, &edx);
+                cpu_info.PhyAddrBits = (u8)(eax & 0xff);
+                cpu_info.VirtAddrBits = (u8)((eax >> 8) & 0xff);
         }
 }
 static void enable_cache(void)

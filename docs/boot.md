@@ -37,7 +37,7 @@ https://www.gnu.org/software/grub/manual/multiboot/multiboot.html
 在32位模式下的一个选择在于，是否使用PAE进行地址扩展，尽管目前绝大多数的处理器都支持，但是仍然希望能够进行适配。
 首先是通过CPUID来查看是否支持这个扩展
 然后再分情况考虑是否适配。
-但是既然都用了CPUID指令了，还是需要在这里做一套完整的代码用于记录CPUID所获得的众多info
+CPUID并不试图把所有的cpuid都探测，RendezvOS 只保留部分必要的的cpuid，不追求全覆盖。如果上层有需求，需要进一步维护。
 
 
 # 从boot到64位模式

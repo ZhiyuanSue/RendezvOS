@@ -20,11 +20,6 @@ extern cpu_id_t cpu_number;
 #define percpu(var)                                                      \
         (*((__typeof__(var)*)(((vaddr)(&var) - (vaddr)(&_per_cpu_start)) \
                               + get_per_cpu_base())))
-#define get_cpu_var(var)
-// TODO
-
-#define put_cpu_var(var)
-// TODO
 
 void arch_enable_percpu(cpu_id_t cpu_id);
 vaddr get_per_cpu_base();

@@ -59,11 +59,14 @@ static error_t arch_get_memory_regions(struct setup_info *arch_setup_info)
                         multiboot_insert_memory_region(mmap);
                 }
         } else if (mtb_magic == MULTIBOOT2_MAGIC) {
+                bool have_mem_info = false;
                 mtb2_info = GET_MULTIBOOT2_INFO(arch_setup_info);
+                m_regions.memory_regions_init(&m_regions);
                 for_each_tag(mtb2_info)
                 {
                         switch (tag->type) {
                         case MULTIBOOT2_TAG_TYPE_MMAP: {
+                                have_mem_info = true;
                                 addr_ptr =
                                         (vaddr)(((struct multiboot2_tag_mmap *)
                                                          tag)
@@ -75,6 +78,12 @@ static error_t arch_get_memory_regions(struct setup_info *arch_setup_info)
                         } break;
                         }
                 }
+                if (!have_mem_info) {
+                        print("no mem info\n");
+                        goto arch_init_pmm_error;
+                }
+        } else {
+                goto arch_init_pmm_error;
         }
         return (0);
 arch_init_pmm_error:

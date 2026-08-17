@@ -21,10 +21,6 @@ void init_irq(void)
                         print("support and use x2APIC\n");
                         arch_irq_type = x2APIC_IRQ;
                         disable_PIC();
-                        // TODO: x2APIC
-                        // seems the same like the xAPIC
-                        // but no need to map the apic, and the address search
-                        // is not the same
                         enable_x2APIC();
                         reset_APIC();
                 } else {
