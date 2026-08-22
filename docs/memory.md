@@ -26,6 +26,16 @@
 | Radix API | `mm/vmm_radix_tree.h` | 用户 VA 区间的真源（映射记录、锁、fault） |
 | `mm_user_utils_*` | `mm/mm_user_utils.h` | 多后端编排（radix + PTE + PMM），**非**随意封装 |
 
+**`VSpace.refcount` 角色（见 `mm/vmm.h` 注释）：**
+
+| 持有者 | 含义 |
+|--------|------|
+| 线程 ownership | `create_thread` / `copy_thread` 成功后由 `thread->vs` 持有；teardown 时 `ref_put`（不切换 HW AS） |
+| CPU schedule 额外 ref | 切到**另一** user `vs` 时 `ref_get`；切到另一个 user AS 时 drop 旧 extra；切 kernel/idle **不** drop |
+| `root_vspace` 基线 ref | 启动 `ref_init(1)`；内核线程经 `gen_thread_from_func` 再 get 一条 ownership；boot 线程无 `vs` |
+
+RB 注册键为 **`vspace_root_addr`**，无 `vspace_id`。`tid_manager` / `pid_manager` 仅分配 id，与 vspace 注册无关。线程/VSpace 生命周期细则：[`task-thread.md`](task-thread.md) § VSpace ownership。
+
 ### 0.2 锁：L0（big）与 L2（small）
 
 | 层级 | API | 作用 |
@@ -43,8 +53,8 @@
 
 | 场景 | 推荐 API | 说明 |
 |------|----------|------|
-| 新建用户地址空间 | `create_vspace` → `register_vspace` | 任务绑定 `Tcb_Base->vs` |
-| 复制地址空间（fork 类） | `clone_vspace(src, &dst, flags)` | `VSPACE_CLONE_F_*` 见 §0.4 |
+| 新建用户地址空间 | `create_vspace` → `register_vspace` → `create_thread(..., vs, ...)` | `create_thread` 将 caller 的 live ref **转移**到 `thread->vs` |
+| 复制地址空间（fork 类） | `clone_vspace(..., flags)` → `register_vspace` → `copy_thread` / `create_thread` | 标志见 §0.4；共享父 AS 时先 `ref_get` |
 | 清空用户映射（exec 类） | `vspace_clear_user_mappings(vs, &percpu(Map_Handler), true)` | 保留内核高半部；调用前任务内无其他线程跑在此 `vs` 上 |
 | 映射 ELF PT_LOAD | `load_elf_to_vs`（`thread_loader.h`） | 内部走 radix/map |
 | 分配连续用户页并清零 | `mm_user_utils_set_range_and_fill` | 需先 L0；区间不得与已有 insertable 重叠 |
@@ -81,7 +91,7 @@
 
 ### 0.6 TLB
 
-修改映射或 ASID 后，遵循 `vs_tlb_cpu_mask` 与 arch TLBI（见 [`cache&tlb.md`](cache&tlb.md)）。切换 `current_vspace` 时由调度器处理本 CPU 的 shootdown 位图。
+修改映射或 ASID 后，遵循 `vs_tlb_cpu_mask` 与 arch TLBI（硬件指令见 [`cache&tlb.md`](cache&tlb.md)）。schedule / teardown 与 mask 的**运行时策略**见 [`task-thread.md`](task-thread.md) § VSpace ownership；本节只记 MM 侧要点：切到 user AS 时 extra-get + 置 mask；切 kernel/idle 不强制离开 user AS；teardown 只 drop ownership，CPU extra 可能钉住 leftover 直至之后 user→user 切换。
 
 aarch64 上各 `arch_tlb_invalidate_*` helper **自包含** barrier（`dsb` + `tlbi` + `dsb` + `isb`），调用方无需再配对 `begin/end`。`map_handler` 的窗口 slot 仅在 PTE 变更时 TLBI；`map`/`unmap` 成功路径只 invalid 目标 VPN 对应 VA。
 
@@ -128,6 +138,22 @@ while (search_start < search_end) {
 **调试：** `vmm_radix_tree_query_range` 检查 LAZY/VALID；确认 L0/L2 成对释放。
 
 外部调用方总览：[`USING_CORE.md`](USING_CORE.md)。
+
+### 0.8 `register_vspace` / 全局 vspace 表
+
+```c
+error_t register_vspace(VSpace* vs, VSpace* root_vs);
+error_t unregister_vspace(VSpace* vs);
+error_t del_vspace(VSpace** vs);   /* 通常经 free_vspace_ref → 末次 ref */
+```
+
+| API | 调用方义务 |
+|-----|------------|
+| `register_vspace(vs, root_vs)` | `create_vspace` / `clone_vspace` 之后、thread ownership 之前。`root_vs` 一般为 `&root_vspace`。 |
+| `unregister_vspace` | `del_vspace` 之前；未 register 的 vs 为 no-op。 |
+| `del_vspace` | 清 user 映射、删 radix；见 §0.5 与 `tlb_cpu_mask`。 |
+
+典型顺序：`create_vspace` → `register_vspace` → `create_thread` → … → teardown → `free_vspace_ref`（内部 `unregister_vspace` + `del_vspace`；末 ref 可能因 CPU extra 延迟）。
 
 ---
 
@@ -527,11 +553,11 @@ VSpace 与 radix tree 的关联（`include/rendezvos/mm/vmm.h`）：
 
 ```c
 typedef struct {
-        paddr vspace_root_addr;   /* 页表根物理地址 */
-        u64 vspace_id;
+        paddr vspace_root_addr;   /* 页表根物理地址（RB 注册键） */
         void *root_radix;         /* 指向 Radix_entry_t* L0 表 */
         struct pmm *pmm;          /* 物理内存管理器 */
         spin_lock_t vspace_lock;  /* 保护页表修改（map/unmap） */
+        /* 另有 refcount、vs_tlb_cpu_mask、ASID 等 — 见 mm/vmm.h */
 } VSpace;
 ```
 

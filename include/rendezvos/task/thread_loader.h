@@ -9,7 +9,11 @@
 #include <rendezvos/mm/page_slice.h>
 
 /**
- * @brief ELF load metadata passed to @c thread_append_hooks.init.
+ * @brief ELF load metadata (personality may use when building user image).
+ *
+ * Passed to @c thread_append_hooks.init from @c run_elf_program (Path B /
+ * incbin harness). Personality exec paths may fill an equivalent struct
+ * themselves.
  */
 typedef struct elf_load_info {
         struct page_slice* slice;
@@ -21,30 +25,38 @@ typedef struct elf_load_info {
 } elf_load_info_t;
 
 /**
- * @brief Map ELF PT_LOAD/PT_DYNAMIC into @p vs on the current thread, run
- * @p thread append @c init hook when set, then drop to userspace.
+ * @brief Map ELF PT_LOAD/PT_DYNAMIC into the current thread’s vs, run
+ *        @c thread_append_hooks.init when set, then drop to userspace.
  * @param slice Populated page_slice of the ELF file image; caller retains
  *        ownership (core does not destroy).
- * @param vs Address space to map into.
  * @return REND_SUCCESS if control returns; -E_IN_PARAM or -E_RENDEZVOS on
  *         failure. Does not modify slice lifetime.
+ *
+ * Intended as the body of a user thread created by @c gen_thread_from_elf
+ * (incbin / bare-core harness). Linux PID1 / execve use personality load
+ * instead.
  */
-error_t run_elf_program(struct page_slice* slice, VSpace* vs);
+error_t run_elf_program(struct page_slice* slice);
 
 /**
- * @brief Create task and user thread, map ELF, set user stack, thread_join.
+ * @brief Create a user thread from an ELF @p slice (no FS / no personality).
+ *
+ * Flow (close to the old @c gen_task_from_elf, without a TCB):
+ * create/register @c VSpace → @c create_thread(@c run_elf_program) (takes
+ * ownership of vs) → @c generate_user_stack → @c THREAD_FLAG_USER →
+ * @c add_thread_to_manager.
+ *
  * @param elf_thread_ptr Optional out pointer for the new thread.
- * @param task_append_hooks Optional task append lifecycle hooks (NULL ok).
- * @param thread_append_hooks Optional thread append lifecycle hooks (NULL ok).
+ * @param thread_append_hooks Optional lifecycle hooks (NULL ok). @c init is
+ *        invoked later from @c run_elf_program with @c elf_load_info_t.
  * @param slice Populated page_slice of the ELF file image.
- * @return REND_SUCCESS on success; negative error on failure (rolls back task).
- * @p slice is passed through to the new thread; upper @c init hook decides
- * when to release it (core does not destroy).
+ * @return REND_SUCCESS on success; negative error on failure (rolls back).
+ * @p slice is passed through to the new thread; caller / hooks decide when
+ * to release it (core does not destroy).
  */
-error_t gen_task_from_elf(Thread_Base** elf_thread_ptr,
-                          const task_append_hooks_t* task_append_hooks,
-                          const thread_append_hooks_t* thread_append_hooks,
-                          struct page_slice* slice);
+error_t gen_thread_from_elf(Thread_Base** elf_thread_ptr,
+                            const thread_append_hooks_t* thread_append_hooks,
+                            struct page_slice* slice);
 
 /**
  * @brief Map ELF64 PT_LOAD and handle PT_DYNAMIC into @p vs.
@@ -69,14 +81,17 @@ vaddr generate_user_stack(VSpace* vs);
 typedef void* (*kthread_func)(void*);
 
 /**
- * @brief Create a kernel thread and thread_join it to @p tm root task.
+ * @brief Create a kernel thread on @c root_vspace and add it to @p tm.
  * @param func_thread_ptr Optional out pointer for the new thread.
  * @param thread Entry function.
  * @param thread_name Name string (not copied).
  * @param tm Task manager hosting the thread.
  * @param arg Single integer argument passed to @p thread.
  * @return REND_SUCCESS; -E_IN_PARAM if name or tm is NULL; -E_RENDEZVOS if
- *         create_thread fails.
+ *         root get or create_thread fails.
+ *
+ * Gets @c root_vspace then passes that live ref to @c create_thread
+ * (ownership transfer). On create failure the get is put back.
  */
 error_t gen_thread_from_func(Thread_Base** func_thread_ptr, kthread_func thread,
                              char* thread_name, Task_Manager* tm, void* arg);

@@ -29,7 +29,6 @@ Task_Manager* new_task_manager(void)
                 cpu_kallocator, sizeof(Task_Manager)));
         choose_schedule(tm);
         lock_init_cas(&tm->sched_lock);
-        INIT_LIST_HEAD(&(tm->sched_task_list));
         INIT_LIST_HEAD(&(tm->sched_thread_list));
         tm->owner_cpu = percpu(cpu_number);
         return tm;
@@ -127,49 +126,39 @@ void schedule(Task_Manager* tm)
                 if target thread is not a kernel thread,
                 try to change the vspace
                 */
-                Tcb_Base* prev_tcb = (Tcb_Base*)atomic64_load(
-                        (volatile const u64*)&curr->belong_tcb);
-                Tcb_Base* next_tcb = (Tcb_Base*)atomic64_load(
-                        (volatile const u64*)&tm->current_thread->belong_tcb);
-                if (!prev_tcb || !next_tcb || !next_tcb->vs) {
+                VSpace* new_vs = tm->current_thread->vs;
+                if (!new_vs || new_vs == &root_vspace) {
                         pr_error("[ Error ] unexpect thread config\n");
                         goto use_old_thread;
                 }
-                if (prev_tcb != next_tcb) {
-                        /*
-                         * we think every task have a vspace
-                         */
-                        VSpace* old_vs = percpu(current_vspace);
-                        VSpace* new_vs = next_tcb->vs;
-                        if (old_vs != new_vs) {
-                                if (!ref_get_not_zero(&new_vs->refcount)) {
-                                        pr_error(
-                                                "[ Error ] ref_get_not_zero failed: new_vs=%p\n",
-                                                (void*)new_vs);
-                                        goto use_old_thread;
-                                }
+                VSpace* old_vs = percpu(current_vspace);
+                if (old_vs != new_vs) {
+                        if (!ref_get_not_zero(&new_vs->refcount)) {
+                                pr_error(
+                                        "[ Error ] ref_get_not_zero failed: new_vs=%p\n",
+                                        (void*)new_vs);
+                                goto use_old_thread;
+                        }
 
-                                /* Mask the new vs's cpu mask*/
-                                lock_cas(&new_vs->tlb_cpu_mask_lock);
-                                vs_tlb_cpu_mask_set(new_vs, percpu(cpu_number));
-                                unlock_cas(&new_vs->tlb_cpu_mask_lock);
+                        /* Mask the new vs's cpu mask*/
+                        lock_cas(&new_vs->tlb_cpu_mask_lock);
+                        vs_tlb_cpu_mask_set(new_vs, percpu(cpu_number));
+                        unlock_cas(&new_vs->tlb_cpu_mask_lock);
 
-                                /* Switch to new vspace first. */
-                                arch_set_current_user_vspace_root_asid(
-                                        new_vs->vspace_root_addr, new_vs->asid);
-                                percpu(current_vspace) = new_vs;
-                                /*If necessary, clean the old vs*/
-                                if (old_vs != &root_vspace) {
-                                        arch_tlb_invalidate_vspace_page(
-                                                old_vs->asid, 0);
+                        /* Switch to new vspace first. */
+                        arch_set_current_user_vspace_root_asid(
+                                new_vs->vspace_root_addr, new_vs->asid);
+                        percpu(current_vspace) = new_vs;
+                        /*If necessary, clean the old vs*/
+                        if (old_vs != &root_vspace) {
+                                arch_tlb_invalidate_vspace_page(
+                                        old_vs->asid, 0);
 
-                                        lock_cas(&old_vs->tlb_cpu_mask_lock);
-                                        vs_tlb_cpu_mask_clear(
-                                                old_vs, percpu(cpu_number));
-                                        unlock_cas(&old_vs->tlb_cpu_mask_lock);
-                                        ref_put(&old_vs->refcount,
-                                                free_vspace_ref);
-                                }
+                                lock_cas(&old_vs->tlb_cpu_mask_lock);
+                                vs_tlb_cpu_mask_clear(
+                                        old_vs, percpu(cpu_number));
+                                unlock_cas(&old_vs->tlb_cpu_mask_lock);
+                                ref_put(&old_vs->refcount, free_vspace_ref);
                         }
                 }
         }

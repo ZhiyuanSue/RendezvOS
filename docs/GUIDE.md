@@ -56,7 +56,7 @@ flowchart TD
 | Subsystem | Model | Guide / reference |
 |-----------|--------|-------------------|
 | Memory | PMM → map handler → radix (see [`memory.md`](memory.md)) → kmalloc | [`cache&tlb.md`](cache&tlb.md) |
-| Tasks | `Task_Manager` → `Tcb_Base` → `Thread_Base` | [`task-thread.md`](task-thread.md) |
+| Tasks | `Task_Manager` → `Thread_Base` + `thread->vs` | [`task-thread.md`](task-thread.md) |
 | IPC | Ports, MS queues, `kmsg` + TLV | [`ipc.md`](ipc.md), [`lockfree-ipc.md`](lockfree-ipc.md) |
 | Traps | `trap_class`, arch `trap_frame` | [`trap.md`](trap.md) |
 | Time | Arch timers + `time.h` | [`timer.md`](timer.md) |
@@ -110,18 +110,21 @@ Update this table when adding or changing public symbols.
 | Subsystem | Task | Headers / symbols | More | Status |
 |-----------|------|-------------------|------|--------|
 | Init | Module hooks | `task/initcall.h` | §2 | `doc` |
+| Thread | Create thread | `tcb.h` `create_thread` | [`task-thread.md`](task-thread.md) | `stable` |
 | Thread | Kernel thread | `thread_loader.h` `gen_thread_from_func` | [`task-thread.md`](task-thread.md) | `stable` |
+| Thread | User ELF (incbin / no FS) | `thread_loader.h` `gen_thread_from_elf` / `run_elf_program` | [`task-thread.md`](task-thread.md) | `stable` |
 | Thread | Duplicate thread | `tcb.h` `copy_thread` `run_copied_thread` | [`task-thread.md`](task-thread.md) | `stable` |
-| Thread | ELF / user stack | `load_elf_to_vs` `generate_user_stack` `gen_task_from_elf` | [`task-thread.md`](task-thread.md) | `stable` |
+| Thread | ELF / user stack | `load_elf_to_vs` `generate_user_stack` | [`task-thread.md`](task-thread.md) | `stable` |
 | Thread | Syscall-frame return | `arch_syscall_*` in `arch/*/tcb_arch.h` | [`task-thread.md`](task-thread.md) | `stable` |
 | Thread | Context merge | `arch_ctx_refresh` `arch_ctx_merge_from_src` | [`task-thread.md`](task-thread.md) | `stable` |
-| Thread | Teardown | `delete_thread` `delete_task` | [`task-thread.md`](task-thread.md) | `stable` |
+| Thread | Teardown / run queue | `delete_thread` `add_thread_to_manager` | [`task-thread.md`](task-thread.md) | `stable` |
 | Scheduler | Block / run | `thread_set_status` `schedule` | [`task-thread.md`](task-thread.md) | `code-only` |
 | IPC | Port table | `global_port_table` `port_table_lookup` `register_port` | [`ipc.md`](ipc.md) | `stable` |
 | IPC | Send / recv (blocking) | `enqueue_msg_for_send` `send_msg` `recv_msg` `dequeue_recv_msg` | [`ipc.md`](ipc.md) | `stable` |
 | IPC | Send / recv (non-blocking) | `ipc_try_send_msg` `ipc_try_recv_msg` | [`ipc.md`](ipc.md) | `stable` |
 | IPC | Payload | `ipc/kmsg.h` `ipc/kmsg_system.h` `ipc/ipc_serial.h` | [`ipc.md`](ipc.md) | `doc` |
 | Registry | Name index | `registry/name_index.h` | §7 | `code-only` |
+| MM | Register vspace | `mm/vmm.h` `register_vspace` `unregister_vspace` | [`memory.md`](memory.md) §0.8 | `stable` |
 | MM | Clone address space | `mm/vmm.h` `clone_vspace` | [`memory.md`](memory.md) | `stable` |
 | MM | Clear user mappings | `mm/vmm.h` `vspace_clear_user_mappings` | [`memory.md`](memory.md) | `doc` |
 | MM | Radix lock/query/insert | `vmm_radix_tree_lock_range_big`, `insert_range`, `query_range`, … | [`memory.md`](memory.md) §0.3 | `doc` |
@@ -203,3 +206,4 @@ All **how to use core from outside this tree** documentation lives in **[`USING_
 | 2026-05 | External usage → `USING_CORE.md`; §9–§10 slimmed |
 | 2026-08 | Soft IPI: §5 / §6–§7 `smp/ipi.h` stable; see USING §3.9 |
 | 2026-08 | IRQ vector USED bit + alloc pool: [USING §3.10](USING_CORE.md) |
+| 2026-08 | Thread + VSpace: `create_thread` ownership, `register_vspace(vs, root_vs)`, schedule/teardown AS policy — §3 Tasks, §6, [`task-thread.md`](task-thread.md) |

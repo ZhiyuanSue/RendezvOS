@@ -1,5 +1,7 @@
 #include <common/align.h>
 #include <common/mm.h>
+#include <common/stdbool.h>
+#include <common/refcount.h>
 #include <rendezvos/task/thread_loader.h>
 #include <modules/log/log.h>
 #include <rendezvos/mm/mm_user_utils.h>
@@ -7,25 +9,6 @@
 #include <rendezvos/mm/vmm.h>
 #include <rendezvos/mm/vmm_radix_tree.h>
 #include <rendezvos/smp/percpu.h>
-
-/* Owner ref drop: may trigger free_vspace_ref -> del_vspace. */
-static void elf_task_release_vspace_ref(Tcb_Base *elf_task)
-{
-        if (!elf_task || !elf_task->vs)
-                return;
-        VSpace *vs = elf_task->vs;
-        elf_task->vs = NULL;
-        if (vs != vs->root_vs)
-                ref_put(&vs->refcount, free_vspace_ref);
-}
-
-static void elf_task_delete_tcb(Tcb_Base *elf_task)
-{
-        if (!elf_task)
-                return;
-        if (delete_task(elf_task) != REND_SUCCESS)
-                pr_error("[ Error ] delete_task cleanup failed\n");
-}
 
 static vaddr elf_slice_file_base(struct page_slice *slice)
 {
@@ -209,16 +192,19 @@ error_t load_elf_to_vs(struct page_slice *slice, VSpace *vs,
                 *max_load_end_out = ROUND_UP(load_end, PAGE_SIZE);
         return e;
 }
-error_t run_elf_program(struct page_slice *slice, VSpace *vs)
+error_t run_elf_program(struct page_slice *slice)
 {
-        pr_info("start gen task from elf slice %lx vs %lx\n", slice, vs);
+        pr_info("start gen thread from elf slice %lx\n", slice);
+        Thread_Base *elf_thread = get_cpu_current_thread();
+        VSpace *vs;
         vaddr max_load_end;
         vaddr elf_start;
         error_t e;
 
-        if (!slice || !vs) {
+        if (!slice || !elf_thread || !elf_thread->vs) {
                 return -E_IN_PARAM;
         }
+        vs = elf_thread->vs;
 
         e = load_elf_to_vs(slice, vs, &max_load_end);
         if (e != REND_SUCCESS) {
@@ -228,7 +214,6 @@ error_t run_elf_program(struct page_slice *slice, VSpace *vs)
         elf_start = elf_slice_file_base(slice);
         if (!elf_start)
                 return -E_RENDEZVOS;
-        Thread_Base *elf_thread = get_cpu_current_thread();
 
         Elf64_Ehdr *elf_header = ELF64_HEADER(elf_start);
         vaddr entry_addr = elf_header->e_entry;
@@ -263,54 +248,42 @@ error_t run_elf_program(struct page_slice *slice, VSpace *vs)
                 &elf_drop_tf, &elf_thread->ctx, entry_addr, user_sp, 0);
         arch_return_to_user(current_thread->kstack_bottom, &elf_drop_tf, 0);
         /*unreachable*/
-        pr_error("[run_elf_thread] goto unreachable\n");
+        pr_error("[run_elf_program] goto unreachable\n");
         return -E_RENDEZVOS;
 }
-error_t gen_task_from_elf(Thread_Base **elf_thread_ptr,
-                          const task_append_hooks_t *task_append_hooks,
-                          const thread_append_hooks_t *thread_append_hooks,
-                          struct page_slice *slice)
+error_t gen_thread_from_elf(Thread_Base **elf_thread_ptr,
+                            const thread_append_hooks_t *thread_append_hooks,
+                            struct page_slice *slice)
 {
         if (!slice) {
                 return -E_IN_PARAM;
         }
         error_t e = REND_SUCCESS;
-        Tcb_Base *elf_task =
-                new_task_structure(percpu(kallocator), task_append_hooks);
-        if (!elf_task)
+        /*--- vspace part ---*/
+        VSpace *vs = create_vspace(root_vspace.pmm);
+        if (!vs)
                 return -E_RENDEZVOS;
 
-        elf_task->pid = get_new_id(&pid_manager);
-        /*--- vspace part ---*/
-        elf_task->vs = create_vspace(root_vspace.pmm);
-        if (!elf_task->vs) {
-                e = -E_RENDEZVOS;
-                elf_task_delete_tcb(elf_task);
-                return e;
-        }
-        e = register_vspace(elf_task->vs, &root_vspace, elf_task->pid);
+        e = register_vspace(vs, &root_vspace);
         if (e != REND_SUCCESS) {
                 pr_error("[Error] register vspace fail\n");
-                goto clean_vs_and_tcb;
+                goto create_thread_error;
         }
         /*--- end vspace part ---*/
-        e = add_task_to_manager(percpu(core_tm), elf_task);
-        if (e != REND_SUCCESS) {
-                pr_error("[Error] register task fail\n");
-                goto clean_vs_and_tcb;
-        }
 
         Thread_Base *elf_thread = create_thread((void *)run_elf_program,
                                                 thread_append_hooks,
+                                                vs,
                                                 true,
-                                                2,
-                                                slice,
-                                                elf_task->vs);
+                                                1,
+                                                slice);
         if (!elf_thread) {
                 e = -E_RENDEZVOS;
                 goto create_thread_error;
         }
-        vaddr user_sp = generate_user_stack(elf_task->vs);
+        vs = NULL;
+
+        vaddr user_sp = generate_user_stack(elf_thread->vs);
         if (!user_sp) {
                 e = -E_RENDEZVOS;
                 goto generate_user_stack_error;
@@ -320,24 +293,19 @@ error_t gen_task_from_elf(Thread_Base **elf_thread_ptr,
         thread_set_flags(elf_thread, THREAD_FLAG_USER);
         if (elf_thread_ptr)
                 *elf_thread_ptr = elf_thread;
-        e = thread_join(elf_task, elf_thread);
+        e = add_thread_to_manager(percpu(core_tm), elf_thread);
         if (e != REND_SUCCESS) {
-                goto thread_join_error;
+                goto add_thread_error;
         }
         return REND_SUCCESS;
-thread_join_error:
+add_thread_error:
         del_thread_from_manager(elf_thread);
-        del_thread_from_task(elf_thread);
 generate_user_stack_error:
         del_thread_structure(elf_thread);
 create_thread_error:
-        if (del_task_from_manager(elf_task) != REND_SUCCESS) {
-                pr_error(
-                        "fail to delete task from task manager, please check\n");
+        if (vs) {
+                ref_put(&vs->refcount, free_vspace_ref);
         }
-clean_vs_and_tcb:
-        elf_task_release_vspace_ref(elf_task);
-        elf_task_delete_tcb(elf_task);
         return e;
 }
 error_t gen_thread_from_func(Thread_Base **func_thread_ptr, kthread_func thread,
@@ -347,14 +315,19 @@ error_t gen_thread_from_func(Thread_Base **func_thread_ptr, kthread_func thread,
                 return -E_IN_PARAM;
         }
         Thread_Base *func_t;
-        func_t = create_thread((void *)thread, NULL, false, 1, arg);
+        if (!ref_get_not_zero(&root_vspace.refcount)) {
+                pr_error("[Error] root_vspace ref_get failed\n");
+                return -E_RENDEZVOS;
+        }
+        func_t = create_thread(
+                (void *)thread, NULL, &root_vspace, false, 1, arg);
         if (!func_t) {
                 pr_error("[Error] create kernel thread fail\n");
+                ref_put(&root_vspace.refcount, free_vspace_ref);
                 return -E_RENDEZVOS;
         }
         thread_set_name(thread_name, func_t);
         if (func_thread_ptr)
                 *func_thread_ptr = func_t;
-        error_t e = thread_join(tm->root_task, func_t);
-        return e;
+        return add_thread_to_manager(tm, func_t);
 }

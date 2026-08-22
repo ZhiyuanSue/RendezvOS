@@ -44,45 +44,12 @@ it is a percpu structure and have a percpu schedule algorithm
 #define TASK_MANAGER_SCHE_COMMON                     \
         struct {                                     \
                 cas_lock_t sched_lock;               \
-                struct list_entry sched_task_list;   \
                 struct list_entry sched_thread_list; \
         };
 typedef struct task_manager Task_Manager;
 extern Task_Manager* core_tm;
 
-struct Tcb_Base;
 struct Thread_Base;
-
-/**
- * @brief Optional hook after append tail is allocated (first-time setup).
- */
-typedef error_t (*task_append_init_t)(struct Tcb_Base* tcb);
-
-/**
- * @brief Optional hook before freeing @c append_tcb_info tail (ABI-neutral).
- * Called from delete_task() immediately before the TCB allocation is returned
- * to the allocator. Upper layers release heap objects referenced from append.
- */
-typedef void (*task_append_fini_t)(struct Tcb_Base* tcb);
-
-/**
- * @brief Optional hook after task duplication (caller invokes on dst TCB).
- */
-typedef error_t (*task_append_copy_t)(struct Tcb_Base* dst,
-                                      struct Tcb_Base* src);
-
-/**
- * @brief Task append lifecycle hooks (init / copy / fini).
- *
- * Stored as a pointer on each TCB; upper layers usually pass one static table.
- * Any member may be NULL.
- */
-typedef struct task_append_hooks {
-        size_t append_info_len;
-        task_append_init_t init;
-        task_append_copy_t copy;
-        task_append_fini_t fini;
-} task_append_hooks_t;
 
 struct elf_load_info;
 
@@ -121,26 +88,6 @@ typedef struct thread_append_hooks {
         thread_append_fini_t fini;
 } thread_append_hooks_t;
 
-/* task */
-#define TASK_SCHE_COMMON                           \
-        struct {                                   \
-                struct list_entry sched_task_list; \
-        };
-#define TCB_COMMON                          \
-        pid_t pid;                          \
-        Task_Manager* tm;                   \
-        cas_lock_t thread_list_lock;        \
-        i64 thread_number;                  \
-        struct list_entry thread_head_node; \
-        VSpace* vs;                         \
-        TASK_SCHE_COMMON
-/* as the base class of tcb */
-typedef struct Tcb_Base {
-        TCB_COMMON
-        const task_append_hooks_t* append_hooks;
-        u64 append_tcb_info[];
-} Tcb_Base;
-
 /* Thread port cache */
 #define THREAD_MAX_KNOWN_PORTS 16
 
@@ -170,10 +117,9 @@ extern u64 thread_kstack_page_num;
         char* name;                                                 \
         tid_t tid;                                                  \
         u64 flags;                                                  \
-        Tcb_Base* belong_tcb;                                       \
+        VSpace* vs;                                                 \
         Task_Manager* tm;                                           \
         u64 status;                                                 \
-        struct list_entry thread_list_node;                         \
         u64 kstack_bottom; /*for stack,it's high addr*/             \
         u64 kstack_num;                                             \
         Arch_Task_Context ctx;                                      \
@@ -212,12 +158,6 @@ struct Thread_Base {
 };
 typedef struct Thread_Base Thread_Base;
 
-static inline size_t task_append_info_len(const Tcb_Base* tcb)
-{
-        return (tcb && tcb->append_hooks) ? tcb->append_hooks->append_info_len :
-                                            0;
-}
-
 static inline size_t thread_append_info_len(const Thread_Base* thread)
 {
         return (thread && thread->append_hooks) ?
@@ -252,7 +192,6 @@ error_t kernel_handle_msg(void);
 struct task_manager {
         TASK_MANAGER_SCHE_COMMON
         cpu_id_t owner_cpu;
-        Tcb_Base* root_task;
         Thread_Base* current_thread;
         Thread_Base* (*scheduler)(Task_Manager* tm);
 };
@@ -284,22 +223,11 @@ Thread_Base* round_robin_schedule(Task_Manager* tm);
 void choose_schedule(Task_Manager* tm);
 
 /**
- * @brief Bootstrap per-CPU task manager, root task, boot and idle threads;
- * switches from idle to boot thread context.
+ * @brief Bootstrap per-CPU task manager, boot and idle threads; switches from
+ * idle to boot thread context.
  * @return Per-CPU core_tm on success, or NULL on failure.
  */
 Task_Manager* init_proc();
-
-/**
- * @brief Allocate and zero-initialize a task control block (plus optional
- * tail).
- * @param cpu_allocator Allocator for the TCB allocation.
- * @param append_hooks Optional lifecycle hooks (NULL if unused). Append tail
- *        size comes from @p append_hooks->append_info_len (0 when NULL).
- * @return New TCB, or NULL if @p cpu_allocator is NULL or allocation fails.
- */
-Tcb_Base* new_task_structure(struct allocator* cpu_allocator,
-                             const task_append_hooks_t* append_hooks);
 
 /**
  * @brief Allocate a per-CPU task manager and set default scheduler.
@@ -315,7 +243,7 @@ void del_task_manager_structure(Task_Manager* tm);
 
 /**
  * @brief Free thread structure after last refcount drop (detaches from
- * task/manager rings, drains IPC queues and kstack).
+ * manager ring, drops VSpace ref, drains IPC queues and kstack).
  * @param thread Thread to destroy (no-op if NULL).
  */
 void del_thread_structure(Thread_Base* thread);
@@ -350,39 +278,6 @@ Thread_Init_Para* new_init_parameter_structure();
 void del_init_parameter_structure(Thread_Init_Para* pm);
 
 /**
- * @brief Link @p thread into @p task's thread list and set belong_tcb.
- * @param task Owning task.
- * @param thread Thread to attach.
- * @return REND_SUCCESS; -E_IN_PARAM if either pointer is NULL; -E_RENDEZVOS if
- *         thread already belongs to another task.
- */
-error_t add_thread_to_task(Tcb_Base* task, Thread_Base* thread);
-
-/**
- * @brief Unlink @p thread from its task's thread list (idempotent if detached).
- * @param thread Thread to detach.
- * @return REND_SUCCESS, or -E_IN_PARAM if @p thread is NULL.
- */
-error_t del_thread_from_task(Thread_Base* thread);
-
-/**
- * @brief Link @p task into @p core_tm sched_task_list.
- * @param core_tm Task manager.
- * @param task Task to schedule.
- * @return REND_SUCCESS; -E_IN_PARAM if pointers invalid; -E_RENDEZVOS if task
- *         already has a manager.
- */
-error_t add_task_to_manager(Task_Manager* core_tm, Tcb_Base* task);
-
-/**
- * @brief Unlink @p task from its task manager sched_task_list.
- * @param task Task to detach.
- * @return REND_SUCCESS; -E_IN_PARAM if @p task is NULL; -E_RENDEZVOS if task
- * has no manager.
- */
-error_t del_task_from_manager(Tcb_Base* task);
-
-/**
  * @brief Link @p thread into @p core_tm sched_thread_list.
  * @param core_tm Task manager.
  * @param thread Thread to schedule.
@@ -402,12 +297,18 @@ error_t add_thread_to_manager(Task_Manager* core_tm, Thread_Base* thread);
 error_t del_thread_from_manager(Thread_Base* thread);
 
 /**
- * @brief Create a kernel thread that enters via thread_entry then run_thread.
+ * @brief Create a thread that enters via thread_entry then run_thread.
  * @param __func Target function pointer stored in init_parameter.
  * @param append_hooks Optional lifecycle hooks (NULL ok). Append tail size and
- *        @p init/@p copy/@p fini come from the table. @p init runs from
- *        @c run_elf_program after PT_LOAD; copy_thread attaches hooks before
- *        @p copy.
+ *        @p init/@p copy/@p fini come from the table. @p init is optional
+ *        (core does not call it at create_thread time; @c run_elf_program
+ *        may); copy_thread attaches hooks before @p copy.
+ * @param vs Address space; must be non-NULL. This call **takes ownership** of
+ *        the caller’s live ref onto @c thread->vs (no extra get) — same for
+ *        user AS and @c &root_vspace. Kernel threads: caller
+ *        @c ref_get_not_zero(@c &root_vspace.refcount) first (e.g.
+ *        @c gen_thread_from_func). On success the caller must not @c ref_put
+ *        @p vs. On failure the caller still owns @p vs.
  * @param reserve_trap_frame Whether arch context reserves a trap frame slot.
  * @param nr_parameter Number of u64 varargs (capped by
  * NR_ABI_PARAMETER_INT_REG).
@@ -415,24 +316,17 @@ error_t del_thread_from_manager(Thread_Base* thread);
  */
 Thread_Base* create_thread(void* __func,
                            const thread_append_hooks_t* append_hooks,
-                           bool reserve_trap_frame, int nr_parameter, ...);
+                           VSpace* vs, bool reserve_trap_frame,
+                           int nr_parameter, ...);
 
 /**
- * @brief Mark thread exiting, detach from manager and task, drop refcount.
- * @param thread Thread to delete (no-op if NULL or not attached to a task).
- * @return REND_SUCCESS on success; -E_IN_PARAM if @p thread is NULL or has no
- *         task; other errors from del_thread_from_* (manager detach retries
- *         -E_REND_AGAIN internally by scheduling on the owner CPU).
+ * @brief Mark thread exiting, detach from manager, drop refcount.
+ * @param thread Thread to delete (no-op if NULL).
+ * @return REND_SUCCESS on success; -E_IN_PARAM if @p thread is NULL;
+ *         other errors from del_thread_from_manager (retries -E_REND_AGAIN
+ *         internally by scheduling on the owner CPU).
  */
 error_t delete_thread(Thread_Base* thread);
-
-/**
- * @brief Remove task from manager and free TCB when it has no threads.
- * @param tcb Task to delete.
- * @return REND_SUCCESS; -E_IN_PARAM if @p tcb is NULL; -E_RENDEZVOS if threads
- *         remain or vspace teardown fails.
- */
-error_t delete_task(Tcb_Base* tcb);
 
 /**
  * @brief Look up a message port by name for the current thread (per-thread LRU
@@ -464,20 +358,6 @@ static inline void set_cpu_current_thread(Thread_Base* thread)
         if (!tm)
                 return;
         tm->current_thread = thread;
-}
-
-/**
- * @brief Task owning the current thread, or root_task if belong_tcb is unset.
- * @return Owning TCB, or NULL if no task manager or current thread.
- */
-static inline Tcb_Base* get_cpu_current_task(void)
-{
-        Task_Manager* tm = percpu(core_tm);
-        if (!tm || !tm->current_thread)
-                return NULL;
-        if (tm->current_thread->belong_tcb)
-                return tm->current_thread->belong_tcb;
-        return tm->root_task;
 }
 
 /**
@@ -561,17 +441,6 @@ static inline void thread_set_name(char* name, Thread_Base* thread)
 }
 
 /**
- * @brief Attach @p thread to @p task and per-CPU manager; mark ready for
- * scheduling. Not a blocking wait-for-exit: does not reap the thread. Adds to
- * task list, adds to percpu(core_tm), and sets thread_status_ready.
- * @param task Task that will own the thread.
- * @param thread Detached or new thread to register.
- * @return REND_SUCCESS; -E_IN_PARAM if pointers are NULL; error from
- *         add_thread_to_task or add_thread_to_manager on failure.
- */
-error_t thread_join(Tcb_Base* task, Thread_Base* thread);
-
-/**
  * @brief User-thread bootstrap after copy_thread: return to user with the given
  * value in the trap frame.
  * @param syscall_return_value Value written into the copied thread user trap
@@ -580,15 +449,18 @@ error_t thread_join(Tcb_Base* task, Thread_Base* thread);
 void run_copied_thread(u64 syscall_return_value);
 
 /**
- * @brief Duplicate a user thread into @p target_task (trap frame and arch ctx).
+ * @brief Duplicate a user thread (trap frame and arch ctx).
  * @param src_thread Source user thread (must have THREAD_FLAG_USER).
- * @param target_task Task that will own the copy (linked via
- * add_thread_to_task).
+ * @param vs Address space for the copy (shared or freshly cloned). This call
+ *        takes ownership of @p vs onto the new thread on success (no extra
+ *        get), or drops @p vs on any failure. The caller must not ref_put
+ *        @p vs after copy_thread returns. To share an existing AS, the
+ *        caller ref_get first and passes that extra reference.
  * @param custom_return_value Stored in dst init int_para[0] for
  * run_copied_thread.
- * @return New thread in ready status, or NULL on error.
+ * @return New thread (not yet on the run queue), or NULL on error.
  */
-struct Thread_Base* copy_thread(Thread_Base* src_thread, Tcb_Base* target_task,
+struct Thread_Base* copy_thread(Thread_Base* src_thread, VSpace* vs,
                                 u64 custom_return_value);
 
 #endif

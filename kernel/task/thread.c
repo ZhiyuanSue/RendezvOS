@@ -102,8 +102,7 @@ Thread_Base* new_thread_structure(struct allocator* cpu_kallocator,
         arch_task_ctx_init(&(thread->ctx));
         thread_set_status(thread, thread_status_init);
         INIT_LIST_HEAD(&(thread->sched_thread_list));
-        INIT_LIST_HEAD(&(thread->thread_list_node));
-        thread->belong_tcb = NULL;
+        thread->vs = NULL;
         thread->tm = NULL;
         thread->kstack_bottom = 0;
         thread->kstack_num = thread_kstack_page_num;
@@ -143,8 +142,8 @@ alloc_thread_error:
  * through delete_thread (e.g. create_thread failure).
  *
  * Do not call from delete_thread before ref_put: delete_thread already runs
- * del_thread_from_* then ref_put, and del_thread_structure runs again on last
- * ref. A second drain after head/tail were zeroed makes msq_dequeue spin
+ * del_thread_from_manager then ref_put, and del_thread_structure runs again on
+ * last ref. A second drain after head/tail were zeroed makes msq_dequeue spin
  * forever (!head_node branch + continue). MSQ dummy is ref_put by msq_dequeue
  * on the empty-queue path; msq_clean_queue only zeroes head/tail—never
  * ref_put(dummy) twice.
@@ -152,9 +151,9 @@ alloc_thread_error:
  * Teardown contract:
  * 1) delete_thread: detach from Task_Manager sched ring
  * (del_thread_from_manager; retries -E_REND_AGAIN by scheduling on owner CPU),
- * then del_thread_from_task, then ref_put — thread struct may survive if IPC
- * etc. still holds a ref. 2) Last ref -> free_thread_ref ->
- * del_thread_structure -> here + init + free.
+ * then ref_put — thread struct may survive if IPC etc. still holds a ref.
+ * 2) Last ref -> free_thread_ref -> del_thread_structure: personality fini
+ * (detach proc while thread->vs is still valid) then here (drop vs) then free.
  */
 static void thread_release_owned_resources(Thread_Base* thread)
 {
@@ -184,6 +183,16 @@ static void thread_release_owned_resources(Thread_Base* thread)
         }
         atomic64_store((volatile u64*)&thread->port_ptr, (u64)NULL);
         thread_port_cache_clear(&thread->port_cache);
+
+        if (thread->vs) {
+                /*
+                 * same as the scheduler. This function must not be used by the
+                 * target thread, and the current thread is allowed running at
+                 * the old vspace. So only ref put is needed.
+                 */
+                ref_put(&thread->vs->refcount, free_vspace_ref);
+                thread->vs = NULL;
+        }
 }
 
 void del_thread_structure(Thread_Base* thread)
@@ -192,16 +201,15 @@ void del_thread_structure(Thread_Base* thread)
         if (!thread || !cpu_kallocator)
                 return;
         /*
-         * Last-chance: ensure not still linked on task or scheduler ring before
+         * Last-chance: ensure not still linked on the scheduler ring before
          * freeing Thread_Base (refcount path may skip delete_thread).
          */
-        (void)del_thread_from_task(thread);
         (void)del_thread_from_manager(thread);
+        if (thread->append_hooks && thread->append_hooks->fini)
+                thread->append_hooks->fini((struct Thread_Base*)thread);
         thread_release_owned_resources(thread);
         del_init_parameter_structure(thread->init_parameter);
         thread->init_parameter = NULL;
-        if (thread->append_hooks && thread->append_hooks->fini)
-                thread->append_hooks->fini((struct Thread_Base*)thread);
         cpu_kallocator->m_free(cpu_kallocator, thread);
 }
 error_t free_thread_ref(ref_count_t* ref_count_ptr)
@@ -235,9 +243,14 @@ void del_init_parameter_structure(Thread_Init_Para* pm)
 /*general thread create function*/
 Thread_Base* create_thread(void* __func,
                            const thread_append_hooks_t* append_hooks,
-                           bool reserve_trap_frame, int nr_parameter, ...)
+                           VSpace* vs, bool reserve_trap_frame,
+                           int nr_parameter, ...)
 {
         struct allocator* cpu_kallocator = percpu(kallocator);
+
+        if (!vs)
+                return NULL;
+
         Thread_Base* thread =
                 new_thread_structure(cpu_kallocator, append_hooks);
         if (!thread) {
@@ -272,6 +285,7 @@ Thread_Base* create_thread(void* __func,
         }
         thread->init_parameter->thread_func_ptr = __func;
         va_end(arg_list);
+        thread->vs = vs;
         return thread;
 get_kstack_error:
         del_thread_structure(thread);
@@ -280,7 +294,7 @@ new_thread_structure_error:
 }
 error_t delete_thread(Thread_Base* thread)
 {
-        if (!thread || !thread->belong_tcb)
+        if (!thread)
                 return -E_IN_PARAM;
         atomic64_store(&thread->status, thread_status_exit);
         /* Heap/queues/kstack: released in del_thread_structure on last ref
@@ -304,27 +318,8 @@ error_t delete_thread(Thread_Base* thread)
                         break;
                 }
         }
-        e = del_thread_from_task(thread);
-        if (e != REND_SUCCESS) {
-                pr_error(
-                        "[ Error ] delete thread from task fail, please check\n");
-                return e;
-        }
         ref_put(&thread->refcount, free_thread_ref);
         return REND_SUCCESS;
-}
-error_t thread_join(Tcb_Base* task, Thread_Base* thread)
-{
-        if (!task || !thread) {
-                return -E_IN_PARAM;
-        }
-        error_t res = 0;
-        res = add_thread_to_task(task, thread);
-        if (res)
-                return res;
-        res = add_thread_to_manager(percpu(core_tm), thread);
-        thread_set_status(thread, thread_status_ready);
-        return res;
 }
 
 /*
@@ -529,31 +524,35 @@ run_thread_end:
         schedule(percpu(core_tm));
 }
 
-Thread_Base* copy_thread(Thread_Base* src_thread, Tcb_Base* target_task,
+Thread_Base* copy_thread(Thread_Base* src_thread, VSpace* vs,
                          u64 custom_return_value)
 {
         struct trap_frame* src_trap_frame;
         struct trap_frame* dst_trap_frame;
         struct allocator* cpu_allocator = percpu(kallocator);
 
-        if (!src_thread || !target_task || !cpu_allocator) {
+        if (!vs)
                 return NULL;
-        }
+        if (!src_thread || !cpu_allocator)
+                goto drop_vs_error;
 
         if (!(src_thread->flags & THREAD_FLAG_USER)) {
                 pr_error("[copy_thread] src is not a user thread\n");
-                return NULL;
+                goto drop_vs_error;
         }
 
-        /* Merge user-visible context while preserving kernel bootstrap regs. */
+        /* Merge user-visible context while preserving kernel bootstrap regs.
+         * create_thread takes ownership of vs (onto dst, or still with the
+         * caller if create fails). */
         Thread_Base* dst_thread = create_thread((void*)run_copied_thread,
                                                 src_thread->append_hooks,
+                                                vs,
                                                 true,
                                                 1,
                                                 custom_return_value);
         if (!dst_thread) {
                 pr_error("[copy_thread] create_thread failed\n");
-                return NULL;
+                goto drop_vs_error;
         }
 
         src_trap_frame = ((struct trap_frame*)(src_thread->kstack_bottom)) - 1;
@@ -588,13 +587,8 @@ Thread_Base* copy_thread(Thread_Base* src_thread, Tcb_Base* target_task,
                             (struct Thread_Base*)src_thread)
                     != REND_SUCCESS) {
                         pr_error("[copy_thread] append copy hook failed\n");
-                        goto copy_thread_error;
+                        goto del_dst_error;
                 }
-        }
-
-        if (add_thread_to_task(target_task, dst_thread) != REND_SUCCESS) {
-                pr_error("[copy_thread] add_thread_to_task failed\n");
-                goto copy_thread_error;
         }
 
         /* we do not set it as ready here(and expect init status), but set it at
@@ -604,7 +598,10 @@ Thread_Base* copy_thread(Thread_Base* src_thread, Tcb_Base* target_task,
                  dst_thread->tid);
 
         return dst_thread;
-copy_thread_error:
+del_dst_error:
         del_thread_structure(dst_thread);
+        return NULL;
+drop_vs_error:
+        ref_put(&vs->refcount, free_vspace_ref);
         return NULL;
 }

@@ -4,6 +4,8 @@ Core scheduling units and program load helpers.
 
 External callers: [`USING_CORE.md`](USING_CORE.md) · API index: [`GUIDE.md`](GUIDE.md) §6
 
+Core’s object model is **thread + address space**. There is no first-class process / TCB object. A personality that needs pid/wait/fd/signal keeps that state itself (Linux: a heap `linux_proc` pointed from thread append).
+
 ---
 
 ## Runtime context（当前 CPU / 线程）
@@ -13,7 +15,6 @@ External callers: [`USING_CORE.md`](USING_CORE.md) · API index: [`GUIDE.md`](GU
 | Need | API | Header |
 |------|-----|--------|
 | Current thread | `get_cpu_current_thread()` | `task/tcb.h` |
-| Current task (`Tcb_Base`) | `get_cpu_current_task()` | `task/tcb.h` |
 | This CPU’s scheduler | `percpu(core_tm)` → `Task_Manager*` | `task/tcb.h`, `smp/percpu.h` |
 | Running thread in TM | `percpu(core_tm)->current_thread` | `task/tcb.h` |
 | Active address space on CPU | `percpu(current_vspace)` | `mm/vmm.h` |
@@ -38,9 +39,34 @@ External callers: [`USING_CORE.md`](USING_CORE.md) · API index: [`GUIDE.md`](GU
 | Type | Header | Role |
 |------|--------|------|
 | `Task_Manager` | `task/tcb.h` | Per-CPU scheduler and run queues |
-| `Tcb_Base` | `task/tcb.h` | Address space (`VSpace`) and thread group |
-| `Thread_Base` | `task/tcb.h` | Schedulable thread (kernel or user) |
+| `Thread_Base` | `task/tcb.h` | Schedulable unit. After successful `create_thread` / `copy_thread`, `thread->vs` is non-NULL (user AS or `&root_vspace`). **Exception:** boot thread from `create_boot_thread` — `new_thread_structure` only; `thread->vs` stays NULL |
+| `VSpace` | `mm/vmm.h` | Address space (radix + page tables). Registered with `register_vspace(vs, root_vs)`; RB key is `vspace_root_addr` (no numeric vspace id). `create_thread` / `copy_thread` take ownership onto `Thread_Base->vs` |
 | `Arch_Task_Context` | `arch/*/tcb_arch.h` | Saved registers, user SP, TLS fields |
+
+Kernel threads do **not** attach to a fake root task. **`thread->vs`** 与 ownership / schedule 细则见下节 **VSpace ownership**（boot thread 例外：`vs == NULL`）。
+
+---
+
+## VSpace ownership
+
+权威注释：`task/tcb.h`（`create_thread` / `copy_thread`）、`mm/vmm.h`（`VSpace.refcount`）。TLB / `tlb_cpu_mask` 见 [`memory.md`](memory.md) §0.6。
+
+| API | Caller obligation |
+|-----|-------------------|
+| `create_thread(..., vs, ...)` | `vs` **non-NULL**；传入 caller 的 **live ref**（create/clone/`ref_get`，或 kernel 对 `&root_vspace` 的 `ref_get_not_zero`）。成功则 ref 转移到 `thread->vs`，**无二次 get**；caller 不得再 `ref_put`。失败且尚未 assign 时 caller 仍持有 `vs`。 |
+| `copy_thread(src, vs, ret)` | 同上。共享父 AS：caller 先 `ref_get(&parent->vs->refcount)`。部分失败路径 core 会 `ref_put` 传入的 `vs`。 |
+| `gen_thread_from_func` | `ref_get_not_zero(&root_vspace.refcount)` → `create_thread(..., &root_vspace, ...)`；`create_thread` 失败则 put 回滚。 |
+| `gen_thread_from_elf` | `create_vspace` → `register_vspace(vs, &root_vspace)` → `create_thread(run_elf_program, vs, …)` → stack → `THREAD_FLAG_USER` → `add_thread_to_manager`。 |
+| `run_elf_program(slice)` | 仅用 **`current_thread->vs`**（无 `vs` 参数）。Path B 加载 + 可选 `append_hooks->init`。 |
+| `register_vspace(vs, root_vs)` | `create_vspace` / `clone_vspace` 之后、thread 取得 ownership 之前。RB 键 = `vspace_root_addr`（无 vspace id）。 |
+| Thread teardown | `del_thread_structure` 路径：先 `append_hooks->fini`，再对 `thread->vs` **ownership `ref_put` only** — 不切换 CR3/TTBR，不卸 leftover user AS。 |
+| `schedule` | 仅当 **next** 为 `THREAD_FLAG_USER` 且 user `vs`（非 `&root_vspace`）时切换 HW AS 并 extra-get + 置本 CPU `tlb_cpu_mask`。切到 kernel/idle：**不**清 mask、**不** drop extra ref、**不**强制换 AS。user→user（不同 `vs`）：换 AS，清旧 mask，drop 旧 extra ref。 |
+
+**Invariant:** `percpu(current_vspace) ==` user `vs` ⇒ 本 CPU 持有 schedule extra ref 且 mask 位置位；末线程 ownership put 后 `del_vspace` 可能仍被 CPU extra 推迟，直到之后 user→user 切换。
+
+**USER + AS:** `THREAD_FLAG_USER` 不得搭配 `&root_vspace`（`schedule` 视为 misconfig）。
+
+**Path A / B:** A = 同线程 syscall 内 exec（`load_elf_to_vs` + `arch_syscall_set_user_return`）；B = 新线程体 `run_elf_program`。
 
 ---
 
@@ -75,9 +101,12 @@ One-shot helpers:
 
 | API | Role |
 |-----|------|
-| `gen_task_from_elf` | New task + thread + load; runs @c thread_append_hooks.init |
-| `run_elf_program` | Load into an existing `VSpace` and run |
-| `load_elf_to_vs` | Map ELF PT_LOAD into a `VSpace` (preferred) |
+| `load_elf_to_vs` | Map ELF PT_LOAD into a `VSpace` |
+| `generate_user_stack` | Map user stack at `USER_SPACE_TOP` |
+| `gen_thread_from_elf` | Bare-core / incbin: create vs + user thread + enqueue; body is `run_elf_program` (Path B) |
+| `run_elf_program` | Load ELF into current thread’s vs, optional `append_hooks.init`, drop to user |
+
+Linux personalities usually load images with `linux_exec_replace_image` (PID1 / `sys_execve`). Use `gen_thread_from_elf` when there is no FS yet and the image is already a `page_slice` (embedded tests).
 
 `elf_load_info_t` in `thread_loader.h` carries load metadata (entry, stack, phdr info) without ABI-specific policy.
 
@@ -86,27 +115,22 @@ One-shot helpers:
 ## Thread duplication
 
 ```c
-struct Thread_Base* copy_thread(Thread_Base* src_thread, Tcb_Base* target_task,
+struct Thread_Base* copy_thread(Thread_Base* src_thread, VSpace* vs,
                                 u64 return_value);
 void run_copied_thread(u64 return_value);
 ```
 
-Before copy, ensure the source thread’s user context is current when entering from a syscall path (`arch_ctx_refresh` / `arch_ctx_merge_from_src` on the source `Arch_Task_Context`).
+Before copy, ensure the source thread’s user context is current when entering from a syscall path (`arch_ctx_refresh` / `arch_ctx_merge_from_src` on the source `Arch_Task_Context`). **`vs` ownership** 见 § VSpace ownership。
 
 Core does not copy append tail bytes. After attaching `append_hooks` from the source thread, core invokes `dst_thread->append_hooks->copy(dst, src)` when present. Upper layers build dst append state (shared vs fresh heap, inherited scalars, etc.).
 
-For task-level append, upper layers invoke `dst_task->append_hooks->copy(dst, src)` after initializing static proc-append fields.
-
 | Hook | When core / caller runs it |
 |------|----------------------------|
-| `task_append_hooks.init` | `new_task_structure` after kallocator alloc |
-| `task_append_hooks.copy` | Caller after task duplication |
-| `task_append_hooks.fini` | `delete_task` |
-| `thread_append_hooks.init` | `run_elf_program` after PT_LOAD + user SP (@p elf_info set) |
+| `thread_append_hooks.init` | `run_elf_program` after load + stack (Path B / `gen_thread_from_elf`); not used by Linux exec today |
 | `thread_append_hooks.copy` | `copy_thread` after hooks attached from src |
-| `thread_append_hooks.fini` | `del_thread_structure` |
+| `thread_append_hooks.fini` | `del_thread_structure` (before owned resources including `vs` are dropped) |
 
-Pass hook tables via `new_task_structure` / `create_thread` / `gen_task_from_elf`; `copy_thread` inherits `append_hooks` from the source thread.
+Pass the hook table via `create_thread`; `copy_thread` inherits `append_hooks` from the source thread.
 
 ---
 
@@ -114,17 +138,15 @@ Pass hook tables via `new_task_structure` / `create_thread` / `gen_task_from_elf
 
 | API | Use |
 |-----|-----|
-| `delete_thread` | Remove one thread |
-| `delete_task` | Remove task and its threads |
-| `del_*_from_manager` | Detach from scheduler structures |
+| `delete_thread` | Detach from the run queue and drop the thread ref |
+| `add_thread_to_manager` | Attach to a `Task_Manager` and set `ready` |
+| `del_thread_from_manager` | Unlink from the scheduler ring |
 
-`delete_thread` order: `del_thread_from_manager` (sched ring) → `del_thread_from_task` → `ref_put`.
+`delete_thread` order: `del_thread_from_manager` (sched ring) → `ref_put`. Last ref runs `del_thread_structure`: `append_hooks->fini` first, then drop `vs` / drain IPC/kstack.
 
 `del_thread_from_manager` returns `-E_REND_AGAIN` when the thread is still `tm->current_thread` on the owner CPU (checked under `sched_lock`). `delete_thread` retries that case: on the owner CPU it calls `schedule(tm)`; remote callers spin-retry while the owner’s exit path runs `schedule`.
 
 Follow usual refcount and cross-CPU teardown discipline for the calling environment.
-
-`schedule` clears `vs->tlb_cpu_mask` and drops a vspace ref when switching between user threads with different `VSpace` objects. User → kernel/idle transitions do not clear the mask; `del_vspace` then waits until `tlb_cpu_mask` is zero (see [`memory.md`](memory.md)).
 
 ---
 
@@ -134,7 +156,9 @@ Follow usual refcount and cross-CPU teardown discipline for the calling environm
 |-----|------|
 | `schedule` / `choose_schedule` | Run next ready thread on this CPU |
 | `thread_set_status` | Block (e.g. on port wait) |
-| `thread_join` | Attach thread to task + per-CPU manager and set `ready` (not a blocking wait-for-exit) |
+| `add_thread_to_manager` | Attach thread to a manager and set `ready` |
+
+`schedule(percpu(core_tm))` 仅在 **owner CPU** 调用。AS 切换与 `tlb_cpu_mask` 见 § VSpace ownership · [`memory.md`](memory.md) §0.6。
 
 IPC receive paths typically block until a message is available; see [`ipc.md`](ipc.md).
 

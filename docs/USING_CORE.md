@@ -7,7 +7,7 @@ Core docs describe **mechanisms only**—not Linux syscall numbers, errno tables
 | If you need… | Read |
 |--------------|------|
 | API index + headers | [`GUIDE.md`](GUIDE.md) §6–§7 |
-| Memory / radix / COW mechanics | [`memory.md`](memory.md) §0–§0.7 |
+| Memory / radix / COW mechanics | [`memory.md`](memory.md) §0–§0.8 |
 | Kernel sparse page index (page_slice) | [`page-slice.md`](page-slice.md) |
 | Threads / ELF / fork primitives | [`task-thread.md`](task-thread.md) |
 | IPC ports + messages | [`ipc.md`](ipc.md) · design [`lockfree-ipc.md`](lockfree-ipc.md) |
@@ -23,6 +23,7 @@ Core docs describe **mechanisms only**—not Linux syscall numbers, errno tables
 3. **Per-CPU access**: `percpu(core_tm)`, `percpu(current_vspace)`, `&percpu(Map_Handler)` ([`task-thread.md`](task-thread.md)).
 4. **SMP / teardown**: follow your tree’s invariant doc; core does not duplicate it here.
 5. **Changing `core/` code** requires maintainer approval; extend **this doc** when you depend on new public APIs.
+6. **VSpace ownership:** 见 §3.0；细则 [`task-thread.md`](task-thread.md) § VSpace ownership，`register_vspace` 见 [`memory.md`](memory.md) §0.8。
 
 ---
 
@@ -30,7 +31,8 @@ Core docs describe **mechanisms only**—not Linux syscall numbers, errno tables
 
 | Task | Order |
 |------|--------|
-| New kernel **server** thread | §3.1 → [`ipc.md`](ipc.md) → [`task-thread.md`](task-thread.md) |
+| New **user or kernel** thread (ownership rules) | §3.0 → [`task-thread.md`](task-thread.md) § VSpace ownership |
+| New kernel **server** thread | §3.0 → §3.1 → [`ipc.md`](ipc.md) → [`task-thread.md`](task-thread.md) |
 | **Exec** / replace user image | §3.2 → [`memory.md`](memory.md) §0.3 |
 | **Fork**-style thread + address space | §3.3 → [`memory.md`](memory.md) §0.4 |
 | **mmap** / unmap / mprotect-style | [`memory.md`](memory.md) §0.3, §0.7 |
@@ -42,6 +44,25 @@ Core docs describe **mechanisms only**—not Linux syscall numbers, errno tables
 ---
 
 ## 3. Call patterns
+
+### 3.0 Thread creation & VSpace ownership
+
+**Contract (all personalities):**
+
+1. **`vs` is never NULL** at `create_thread` / `copy_thread`.
+2. Caller holds exactly **one live ref** to pass in (from `create_vspace`, `clone_vspace`, or `ref_get` / `ref_get_not_zero`).
+3. Successful call **transfers** that ref to `thread->vs` — caller must not `ref_put` it afterward.
+4. **`register_vspace(vs, &root_vspace)`** after `create_vspace` / `clone_vspace`, before the thread owns the ref (RB key = `vspace_root_addr`; no vspace id field).
+5. Mark user threads with **`THREAD_FLAG_USER`** only when `vs` is a **user** address space (not `&root_vspace`).
+
+| Goal | Pattern |
+|------|---------|
+| Kernel server / idle-style thread | `gen_thread_from_func` (gets root, then `create_thread`) |
+| First user thread from embedded ELF | `gen_thread_from_elf` (see §3.2b) |
+| Fork-style child | `clone_vspace` → `register_vspace`（新建子树）→ `ref_get` 若共享父 AS → `copy_thread`（§3.3） |
+| Exec in place | Keep thread + `vs`; §3.2 Path A |
+
+Schedule / teardown AS 行为：[`task-thread.md`](task-thread.md) § VSpace ownership · [`memory.md`](memory.md) §0.6。
 
 ### 3.1 Kernel service thread
 
@@ -58,23 +79,36 @@ Details: [`ipc.md`](ipc.md).
 1. `vspace_clear_user_mappings(vs, &percpu(Map_Handler), true)` — obligations: [`memory.md`](memory.md) §0.5.
 2. Populate a `page_slice` (create + `page_slice_insert_page`, or compat `linux_page_slice_copy_from_kva`).
 3. `load_elf_to_vs(slice, vs, &max_end)`.
-3. `generate_user_stack(vs)`.
-4. Caller lays out argv/env on user stack (policy).
-5. If returning from **syscall**: `arch_ctx_refresh` if needed → `arch_syscall_set_user_return(tf, ctx, entry, sp, ret)`. (TLS via `arch_set_user_tls_base` when needed).
+4. `generate_user_stack(vs)`.
+5. Caller lays out argv/env on user stack (policy).
+6. If returning from **syscall**: `arch_ctx_refresh` if needed → `arch_syscall_set_user_return(tf, ctx, entry, sp, ret)`. (TLS via `arch_set_user_tls_base` when needed).
 
 Use path A on the in-flight `trap_frame`; do not invent a separate “first entry” jump if already in syscall context.
 
+### 3.2b Spawn user ELF with no FS (incbin harness)
+
+```c
+error_t gen_thread_from_elf(Thread_Base** out,
+                            const thread_append_hooks_t* hooks,
+                            struct page_slice* slice);
+```
+
+Creates a user `VSpace`, `create_thread(run_elf_program, …)` (takes ownership of vs), maps the stack, sets `THREAD_FLAG_USER`, and `add_thread_to_manager`. The new thread’s body loads the image and Path-B drops to user; optional `hooks->init` gets `elf_load_info_t`. Core does not destroy `@p slice`.
+
 ### 3.3 Fork-style thread
 
-1. Optional new AS: `clone_vspace(parent, &child, flags)` — [`memory.md`](memory.md) §0.4.
+1. Optional new AS: `clone_vspace(parent_vs, &child_vs, flags)` → `register_vspace(child_vs, &root_vspace)` when the child gets a new tree — [`memory.md`](memory.md) §0.4.
 2. In syscall context: `arch_ctx_refresh` / `arch_ctx_merge_from_src` on parent before `copy_thread`.
-3. `copy_thread(parent, child_task, child_ret, append_len)`; child may `run_copied_thread(child_ret)`.
+3. `copy_thread(parent, child_vs, child_ret)` takes ownership of `child_vs`; then `add_thread_to_manager(percpu(core_tm), child)`. Child may `run_copied_thread(child_ret)`.
+   To share a parent AS: `ref_get(&parent->vs->refcount)` then pass that ref. Do not `ref_put` after successful `copy_thread`.
+   Kernel-only threads: use `gen_thread_from_func` (§3.1); do not pass NULL `vs`.
 
 ### 3.4 Duplicate address space (no new ELF)
 
 1. `clone_vspace(src, &dst, flags)`.
 2. L0 lock → walk with `vmm_radix_tree_find_first_occupied_interval` → adjust via `mm_user_utils_*` or radix bind/unbind ([`memory.md`](memory.md) §0.7).
-3. `register_vspace(dst, root_vs, id)` when appropriate.
+3. `register_vspace(dst, &root_vspace)` before any thread takes ownership of `dst`.
+4. Pass the live ref into `create_thread` or `copy_thread` (§3.0).
 
 ### 3.5 Page fault / trap handler
 
@@ -215,6 +249,8 @@ Mechanism choice is **caller architecture**; core does not mandate servers.
 
 - [ ] Uses only public headers under `rendezvos/` + required `arch/*` hooks
 - [ ] No duplicate of IPC / `copy_thread` / radix orchestration already in §6
+- [ ] `create_thread` / `copy_thread`: non-NULL `vs`, ownership transfer understood (§3.0); user threads use user `vs` + `THREAD_FLAG_USER`
+- [ ] New user `VSpace`: `register_vspace(vs, &root_vspace)` before thread owns ref
 - [ ] MM paths hold L0 before `mm_user_utils_*` ([`memory.md`](memory.md) §0.2)
 - [ ] IPC send/recv uses `enqueue_msg_for_send` / `dequeue_recv_msg` ([`ipc.md`](ipc.md))
 - [ ] Syscall return uses `arch_syscall_set_user_return` when on syscall path
@@ -229,3 +265,4 @@ Mechanism choice is **caller architecture**; core does not mandate servers.
 | 2026-05 | Created; consolidated external-caller material from repo upper-layer docs |
 | 2026-08 | §3.9 soft IPI shipped (`smp_ipi_register` / `send` / `init`) |
 | 2026-08 | §3.10 IRQ vectors: `IRQ_VEC_USED` + alloc pool (`trap/trap.h`) |
+| 2026-08 | Thread + VSpace model: §1 rule 6 / §3.0 ownership; `register_vspace(vs, root_vs)`; schedule/teardown AS policy ([`task-thread.md`](task-thread.md)) |

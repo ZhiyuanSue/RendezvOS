@@ -17,8 +17,8 @@ VSpace root_vspace;
 
 static error_t vspace_rb_tree_insert(VSpace* vs, VSpace* root_vs)
 {
-        struct rb_node** new = &root_vs->_vspace_rb_root.rb_root,
-                         *parent = NULL;
+        struct rb_node **new = &root_vs->_vspace_rb_root.rb_root,
+                       *parent = NULL;
         u64 key = vs->vspace_root_addr;
         while (*new) {
                 parent = *new;
@@ -109,7 +109,6 @@ error_t init_root_vspace(VSpace* root_vs, cpu_id_t cpu_id)
 
         root_vs->pmm = mem_zones[ZONE_NORMAL].pmm;
 
-        root_vs->vspace_id = 0;
         root_vs->vspace_lock = NULL;
         root_vs->asid = 0;
         root_vs->vspace_root_addr = arch_get_current_kernel_vspace_root();
@@ -541,7 +540,7 @@ free_vspace_no_unlock:
         return e;
 }
 
-error_t register_vspace(VSpace* vs, VSpace* root_vs, u64 vspace_id)
+error_t register_vspace(VSpace* vs, VSpace* root_vs)
 {
         if (!vs || !root_vs || vs->registered)
                 return -E_IN_PARAM;
@@ -552,7 +551,6 @@ error_t register_vspace(VSpace* vs, VSpace* root_vs, u64 vspace_id)
         if (e == REND_SUCCESS) {
                 vs->registered = true;
                 vs->root_vs = root_vs;
-                vs->vspace_id = vspace_id;
         }
         return e;
 }

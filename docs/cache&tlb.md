@@ -1,7 +1,7 @@
 # Cache and TLB
 
 > **文档角色：** 硬件/MM 参考 · **读者：** 改页表属性或 TLB shootdown 时  
-> **相关：** [`memory.md`](memory.md) · [`sync-and-smp.md`](sync-and-smp.md)
+> **相关：** [`memory.md`](memory.md) §0.6 · [`sync-and-smp.md`](sync-and-smp.md)
 
 ---
 

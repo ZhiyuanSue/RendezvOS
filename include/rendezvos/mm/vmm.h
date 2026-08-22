@@ -40,14 +40,19 @@ struct VSpace {
         struct pmm* pmm;
         /*
          * Reference count for vspace lifetime.
-         * - Owner (task) holds one reference.
+         * - User thread: after create_vspace / clone / CLONE_VM get,
+         *   create_thread or copy_thread takes ownership of that live ref
+         *   onto thread->vs (no extra get). Kernel threads: caller gets
+         *   root_vspace first (gen_thread_from_func), then same transfer;
+         *   teardown put matches (boot keeps the base ref from ref_init).
          * - CPUs hold active references while CR3/TTBR points to this vspace.
          * - Kernel vspace(root) is always exist during the system running time.
-         * Last ref_put runs del_vspace(): radix destroy, user PT reclaim, root
-         * frame free, RB unregister, and VSpace struct free.
+         * We init it to 1, and the kernel thread only get/put, but the ref
+         * is always > 1.
+         * Last ref_put runs del_vspace(): radix destroy, user PT
+         * reclaim, root frame free, RB unregister, and VSpace struct free.
          */
         ref_count_t refcount;
-        u64 vspace_id;
         /*
          * CPUs that may have live TLB entries for this ASID.
          * schedule: set on switch-in, local TLBI + clear on switch-away.
@@ -121,7 +126,7 @@ VSpace* create_vspace(struct pmm* pmm);
 error_t clone_vspace(VSpace* src_vs, VSpace** dst_vs_out,
                      enum vspace_clone_flags flags);
 /*remember register the vspace after create/clone user vspace*/
-error_t register_vspace(VSpace* vs, VSpace* root_vs, u64 vspace_id);
+error_t register_vspace(VSpace* vs, VSpace* root_vs);
 error_t free_vspace_ref(ref_count_t* refcount);
 error_t unregister_vspace(VSpace* vs);
 /*remember unregister the vs before del vspace*/

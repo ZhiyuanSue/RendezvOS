@@ -14,7 +14,7 @@
 
 | Topic | Document |
 |-------|----------|
-| Memory (+ §0 caller contract, §0.7 radix) | [`memory.md`](memory.md) |
+| Memory (+ §0 caller contract, §0.7 radix, §0.8 register_vspace) | [`memory.md`](memory.md) |
 | Kernel sparse page index (page_slice) | [`page-slice.md`](page-slice.md) |
 | Cache / TLB | [`cache&tlb.md`](cache&tlb.md) |
 | Tasks / ELF | [`task-thread.md`](task-thread.md) |
