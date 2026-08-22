@@ -1,9 +1,9 @@
-#include <arch/aarch64/tcb_arch.h>
+#include <arch/aarch64/thread_arch.h>
 #include <arch/aarch64/sys_ctrl.h>
 #include <arch/aarch64/sync/barrier.h>
 #include <common/string.h>
 
-void arch_ctx_refresh(Arch_Task_Context* ctx)
+void arch_ctx_refresh(Arch_Thread_Context* ctx)
 {
         if (!ctx) {
                 return;
@@ -14,7 +14,7 @@ void arch_ctx_refresh(Arch_Task_Context* ctx)
         mrs("TPIDR_EL0", ctx->tpidr_el0);
 }
 
-void arch_set_user_tls_base(Arch_Task_Context* ctx, u64 tls_base)
+void arch_set_user_tls_base(Arch_Thread_Context* ctx, u64 tls_base)
 {
         if (!ctx) {
                 return;
@@ -23,7 +23,7 @@ void arch_set_user_tls_base(Arch_Task_Context* ctx, u64 tls_base)
         msr("TPIDR_EL0", tls_base);
 }
 
-void switch_to(Arch_Task_Context* old_context, Arch_Task_Context* new_context)
+void switch_to(Arch_Thread_Context* old_context, Arch_Thread_Context* new_context)
 {
         mrs("TPIDR_EL0", old_context->tpidr_el0);
         msr("TPIDR_EL0", new_context->tpidr_el0);
@@ -38,8 +38,8 @@ void switch_to(Arch_Task_Context* old_context, Arch_Task_Context* new_context)
         isb();
 }
 
-void arch_ctx_merge_from_src(Arch_Task_Context* dst_ctx,
-                             const Arch_Task_Context* src_ctx)
+void arch_ctx_merge_from_src(Arch_Thread_Context* dst_ctx,
+                             const Arch_Thread_Context* src_ctx)
 {
         u64 sp_el1;
         u64 lr;
@@ -54,7 +54,7 @@ void arch_ctx_merge_from_src(Arch_Task_Context* dst_ctx,
         dst_ctx->regs[aarch64_task_ctx_lr] = lr;
 }
 
-void arch_syscall_set_user_return(struct trap_frame* tf, Arch_Task_Context* ctx,
+void arch_syscall_set_user_return(struct trap_frame* tf, Arch_Thread_Context* ctx,
                                   vaddr user_pc, vaddr user_sp, u64 syscall_ret)
 {
         if (!tf) {
@@ -70,7 +70,7 @@ void arch_syscall_set_user_return(struct trap_frame* tf, Arch_Task_Context* ctx,
 }
 
 void arch_syscall_get_user_return(const struct trap_frame* tf,
-                                  const Arch_Task_Context* ctx, vaddr* user_pc,
+                                  const Arch_Thread_Context* ctx, vaddr* user_pc,
                                   vaddr* user_sp, u64* syscall_ret)
 {
         (void)ctx;

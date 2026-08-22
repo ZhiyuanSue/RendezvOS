@@ -1,5 +1,5 @@
 #include <common/atomic.h>
-#include <rendezvos/task/tcb.h>
+#include <rendezvos/task/thread.h>
 #include <rendezvos/smp/percpu.h>
 #include <rendezvos/sync/cas_lock.h>
 #include <modules/log/log.h>

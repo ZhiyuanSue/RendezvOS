@@ -1308,7 +1308,7 @@ include/rendezvos/ipc/ipc.h:包含了ipc中用到的的一些数据结构和函�
 
 include/rendezvos/ipc/message.h:包含了message相关的定义
 
-include/rendezvos/task/tcb.h:线程控制块相关的接口、实现等
+include/rendezvos/task/thread.h：线程与 per-CPU 调度（`Thread_Base`、`Task_Manager`、IPC 队列字段等）
 
 kernel/ipc/ipc.c:包含了上面说的原语和阻塞式接口
 

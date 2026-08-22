@@ -1,5 +1,5 @@
-#ifndef _RENDEZVOS_TCB_ARCH_
-#define _RENDEZVOS_TCB_ARCH_
+#ifndef _RENDEZVOS_THREAD_ARCH_
+#define _RENDEZVOS_THREAD_ARCH_
 
 #include <common/types.h>
 #include <common/string.h>
@@ -39,7 +39,7 @@ typedef struct {
         u64 user_gs;
         u64 user_fs;
         u64 user_rsp;
-} Arch_Task_Context;
+} Arch_Thread_Context;
 
 /*
  * Per-CPU scratch for saving the live user RSP on syscall/trap entry.
@@ -54,22 +54,22 @@ extern vaddr user_rsp_scratch;
 
 /* Declared in arch-specific task/arch_thread.c (context merge & syscall-trap
  * return). */
-void arch_ctx_merge_from_src(Arch_Task_Context* dst_ctx,
-                             const Arch_Task_Context* src_ctx);
+void arch_ctx_merge_from_src(Arch_Thread_Context* dst_ctx,
+                             const Arch_Thread_Context* src_ctx);
 /*
  * Refresh context fields from the live CPU state while running in kernel
  * during a user->kernel transition (e.g. syscall handling).
  *
  * Motivation: some user-mode visible state is captured by the arch entry path
- * into per-CPU scratch/MSRs, and `Arch_Task_Context` may only be synchronized
+ * into per-CPU scratch/MSRs, and `Arch_Thread_Context` may only be synchronized
  * on context switch. Fork/copy performed inside syscall context must use the
  * live values to avoid returning to user mode with stale state.
  */
-void arch_ctx_refresh(Arch_Task_Context* ctx);
+void arch_ctx_refresh(Arch_Thread_Context* ctx);
 /** Update ctx TLS base (FS_BASE) and program the live CPU when on this thread.
  */
-void arch_set_user_tls_base(Arch_Task_Context* ctx, u64 tls_base);
-static inline u64 arch_get_user_tls_base(const Arch_Task_Context* ctx)
+void arch_set_user_tls_base(Arch_Thread_Context* ctx, u64 tls_base);
+static inline u64 arch_get_user_tls_base(const Arch_Thread_Context* ctx)
 {
         return ctx ? ctx->user_fs : 0;
 }
@@ -79,11 +79,11 @@ void arch_return_to_user(u64 kstack_bottom,
  * Path A: in-flight syscall trap_frame (syscall_ctx). User PC in rcx, RSP in
  * percpu(user_rsp_scratch), syscall return value in rax.
  */
-void arch_syscall_set_user_return(struct trap_frame* tf, Arch_Task_Context* ctx,
+void arch_syscall_set_user_return(struct trap_frame* tf, Arch_Thread_Context* ctx,
                                   vaddr user_pc, vaddr user_sp,
                                   u64 syscall_ret);
 void arch_syscall_get_user_return(const struct trap_frame* tf,
-                                  const Arch_Task_Context* ctx, vaddr* user_pc,
+                                  const Arch_Thread_Context* ctx, vaddr* user_pc,
                                   vaddr* user_sp, u64* syscall_ret);
 /*
  * Set SysV AMD64 user integer argument reg (0..NR_ABI_PARAMETER_INT_REG-1):
@@ -106,7 +106,7 @@ typedef struct {
         void* thread_func_ptr;
         u64 int_para[NR_ABI_PARAMETER_INT_REG];
 } Thread_Init_Para;
-static inline void arch_task_ctx_init(Arch_Task_Context* ctx)
+static inline void arch_task_ctx_init(Arch_Thread_Context* ctx)
 {
         ctx->rsp = ctx->stack_bottom = ctx->user_rsp = 0;
         ctx->rbp = ctx->rbx = 0;
@@ -114,7 +114,7 @@ static inline void arch_task_ctx_init(Arch_Task_Context* ctx)
         ctx->r13 = ctx->r12 = 0;
         ctx->user_gs = ctx->user_fs = 0;
 }
-static inline void arch_set_new_thread_ctx(Arch_Task_Context* ctx,
+static inline void arch_set_new_thread_ctx(Arch_Thread_Context* ctx,
                                            void* func_ptr, void* kstack_bottom,
                                            bool reserve_trap_frame)
 {
@@ -134,17 +134,17 @@ static inline void arch_set_new_thread_ctx(Arch_Task_Context* ctx,
         ctx->rsp = sp;
         ctx->stack_bottom = bottom;
 }
-static inline vaddr arch_get_thread_user_sp(Arch_Task_Context* ctx)
+static inline vaddr arch_get_thread_user_sp(Arch_Thread_Context* ctx)
 {
         return ctx->user_rsp;
 }
-static inline void arch_set_thread_user_sp(Arch_Task_Context* ctx,
+static inline void arch_set_thread_user_sp(Arch_Thread_Context* ctx,
                                            vaddr user_sp)
 {
         ctx->user_rsp = user_sp;
 };
-extern void context_switch(Arch_Task_Context* old_context,
-                           Arch_Task_Context* new_context);
-void switch_to(Arch_Task_Context* old_context, Arch_Task_Context* new_context);
+extern void context_switch(Arch_Thread_Context* old_context,
+                           Arch_Thread_Context* new_context);
+void switch_to(Arch_Thread_Context* old_context, Arch_Thread_Context* new_context);
 void arch_drop_to_user(struct trap_frame* tf);
 #endif

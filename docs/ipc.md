@@ -320,7 +320,7 @@ Timer and device IRQ paths have **no legitimate sender** `Thread_Base*`. Using `
 
 **Solution:** stage outbound messages in the sender's `send_pending_msg` (single slot, compatible with `ipc_transfer_message`). Pick sender via `use_system_proxy`:
 
-- **`true`:** per-CPU idle persona (`idle_thread_ptr`); `try_deliver` also `set_cpu_current_thread(proxy)` around `ipc_try_send_msg` (see `get_cpu_current_thread` / `set_cpu_current_thread` in `task/tcb.h`).
+- **`true`:** per-CPU idle persona (`idle_thread_ptr`); `try_deliver` also `set_cpu_current_thread(proxy)` around `ipc_try_send_msg` (see `get_cpu_current_thread` / `set_cpu_current_thread` in `task/thread.h`).
 - **`false`:** current thread (`get_cpu_current_thread()`); no `current_thread` change; do **not** `enqueue_msg_for_send` — staging only (e.g. timer cancel).
 
 **Inbound core mail** (something sends *to* core) uses a **dedicated kthread** + blocking `recv_msg` on its port (same as `powerd` / servers). There is **no** `ipc_system_try_recv` — persona recv in IRQ was intentionally omitted.
@@ -422,7 +422,7 @@ Receiver **must** poll `dequeue_recv_msg()` (and `ref_put`) in thread context; m
 | `include/rendezvos/ipc/ipc.h` | Public declarations (incl. system async §10) |
 | `kernel/ipc/message.c` | `Message_t` lifecycle |
 | `include/rendezvos/ipc/port.h` | `Message_Port_t`, port table |
-| `include/rendezvos/task/tcb.h` | `get_cpu_current_thread`, `set_cpu_current_thread` |
+| `include/rendezvos/task/thread.h` | `get_cpu_current_thread`, `set_cpu_current_thread` |
 | `kernel/time/time.c` | Timer queue; `rendezvos_timer_event_cancel` |
 | `include/rendezvos/ipc/kmsg.h` | Envelope: `kmsg_create`, `kmsg_from_msg` |
 | `include/rendezvos/ipc/kmsg_system.h` | System opcodes (power, timer) |

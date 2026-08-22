@@ -1,5 +1,5 @@
-#ifndef _RENDEZVOS_TCB_H_
-#define _RENDEZVOS_TCB_H_
+#ifndef _RENDEZVOS_THREAD_H_
+#define _RENDEZVOS_THREAD_H_
 
 #include <common/types.h>
 #include <common/dsa/list.h>
@@ -9,15 +9,15 @@
 #include <rendezvos/smp/cpu_id.h>
 #include <rendezvos/sync/cas_lock.h>
 #ifdef _AARCH64_
-#include <arch/aarch64/tcb_arch.h>
+#include <arch/aarch64/thread_arch.h>
 #elif defined _LOONGARCH_
-#include <arch/loongarch/tcb_arch.h>
+#include <arch/loongarch/thread_arch.h>
 #elif defined _RISCV64_
-#include <arch/riscv64/tcb_arch.h>
+#include <arch/riscv64/thread_arch.h>
 #elif defined _X86_64_
-#include <arch/x86_64/tcb_arch.h>
+#include <arch/x86_64/thread_arch.h>
 #else /*for default config is x86_64*/
-#include <arch/x86_64/tcb_arch.h>
+#include <arch/x86_64/thread_arch.h>
 #endif
 
 #include "id.h"
@@ -122,7 +122,7 @@ extern u64 thread_kstack_page_num;
         u64 status;                                                 \
         u64 kstack_bottom; /*for stack,it's high addr*/             \
         u64 kstack_num;                                             \
-        Arch_Task_Context ctx;                                      \
+        Arch_Thread_Context ctx;                                     \
         Thread_Init_Para* init_parameter;                           \
         ref_count_t refcount;                                       \
         ms_queue_t recv_msg_queue;                                  \

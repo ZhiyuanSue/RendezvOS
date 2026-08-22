@@ -2,7 +2,7 @@
 #include <common/stddef.h>
 #include <rendezvos/limits.h>
 #include <rendezvos/smp/percpu.h>
-#include <rendezvos/task/tcb.h>
+#include <rendezvos/task/thread.h>
 #include <rendezvos/trap/trap.h>
 #include <rendezvos/common.h>
 #include <rendezvos/system/panic.h>

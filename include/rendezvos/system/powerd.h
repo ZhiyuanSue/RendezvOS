@@ -11,7 +11,7 @@
 #include <rendezvos/ipc/port.h>
 #include <rendezvos/mm/allocator.h>
 #include <rendezvos/smp/percpu.h>
-#include <rendezvos/task/tcb.h>
+#include <rendezvos/task/thread.h>
 
 #define RENDEZVOS_POWERD_PORT_NAME "powerd"
 

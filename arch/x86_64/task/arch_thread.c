@@ -1,4 +1,4 @@
-#include <arch/x86_64/tcb_arch.h>
+#include <arch/x86_64/thread_arch.h>
 #include <rendezvos/smp/percpu.h>
 #include <arch/x86_64/desc.h>
 #include <arch/x86_64/trap/tss.h>
@@ -10,7 +10,7 @@
 extern struct TSS cpu_tss;
 DEFINE_PER_CPU(vaddr, user_rsp_scratch);
 
-void switch_to(Arch_Task_Context* old_context, Arch_Task_Context* new_context)
+void switch_to(Arch_Thread_Context* old_context, Arch_Thread_Context* new_context)
 {
         old_context->stack_bottom = get_rsp(&percpu(cpu_tss), 0);
         set_rsp(&percpu(cpu_tss), 0, new_context->stack_bottom);
@@ -23,8 +23,8 @@ void switch_to(Arch_Task_Context* old_context, Arch_Task_Context* new_context)
         context_switch(old_context, new_context);
 }
 
-void arch_ctx_merge_from_src(Arch_Task_Context* dst_ctx,
-                             const Arch_Task_Context* src_ctx)
+void arch_ctx_merge_from_src(Arch_Thread_Context* dst_ctx,
+                             const Arch_Thread_Context* src_ctx)
 {
         if (!dst_ctx || !src_ctx) {
                 return;
@@ -40,7 +40,7 @@ void arch_ctx_merge_from_src(Arch_Task_Context* dst_ctx,
         dst_ctx->user_rsp = src_ctx->user_rsp;
 }
 
-void arch_ctx_refresh(Arch_Task_Context* ctx)
+void arch_ctx_refresh(Arch_Thread_Context* ctx)
 {
         if (!ctx) {
                 return;
@@ -54,7 +54,7 @@ void arch_ctx_refresh(Arch_Task_Context* ctx)
         ctx->user_gs = rdmsrq(MSR_KERNEL_GS_BASE);
 }
 
-void arch_set_user_tls_base(Arch_Task_Context* ctx, u64 tls_base)
+void arch_set_user_tls_base(Arch_Thread_Context* ctx, u64 tls_base)
 {
         if (!ctx) {
                 return;
@@ -63,7 +63,7 @@ void arch_set_user_tls_base(Arch_Task_Context* ctx, u64 tls_base)
         wrmsrq(MSR_FS_BASE, tls_base);
 }
 
-void arch_syscall_set_user_return(struct trap_frame* tf, Arch_Task_Context* ctx,
+void arch_syscall_set_user_return(struct trap_frame* tf, Arch_Thread_Context* ctx,
                                   vaddr user_pc, vaddr user_sp, u64 syscall_ret)
 {
         if (!tf) {
@@ -78,7 +78,7 @@ void arch_syscall_set_user_return(struct trap_frame* tf, Arch_Task_Context* ctx,
 }
 
 void arch_syscall_get_user_return(const struct trap_frame* tf,
-                                  const Arch_Task_Context* ctx, vaddr* user_pc,
+                                  const Arch_Thread_Context* ctx, vaddr* user_pc,
                                   vaddr* user_sp, u64* syscall_ret)
 {
         (void)ctx;

@@ -64,7 +64,7 @@
 12、`get_cpu_var` / `put_cpu_var`：Linux 式关抢占取 per-cpu 指针；本内核用 `percpu()` + GS/TPIDR，无调用方，已删除空宏。勿再当「缺锁」补  
 13、页表 isolation / domain bits 更深复查（原 #10）：`ENTRY_FLAGS` 统一（#4/#5）已够；MAIR/PAT 等更深属性域是可选扩展，不做冻结项  
 14、x86 IOAPIC / APIC 模式下外设 IRQ 路由（原 #2 后半）：`IOAPIC.h` 空、MADT IO_APIC 未消费；接 COM1 等时再做，**明确远期**，非冻结。软件侧 `irq_vector_alloc` + `register_irq_handler` 已齐（#57）  
-15、idle「或许关中断」（原 `tcb.c` TODO）：busy `schedule` 可接受。真正省电应是 **开中断 + hlt/wfi** 以便 timer 唤醒；在 idle 里关中断会妨碍唤醒。可选优化，非冻结  
+15、idle「或许关中断」（原 `thread_boot.c` TODO）：busy `schedule` 可接受。真正省电应是 **开中断 + hlt/wfi** 以便 timer 唤醒；在 idle 里关中断会妨碍唤醒。可选优化，非冻结  
 16、系统化 call→IPC wrapper（原 #52）：原语在 core；compat 已有 RPC。产品化 wrapper 归上层，勿当 core 债  
 17、Multiboot2 在 QEMU 下校验（原 #39）：日常 `-kernel` + **Multiboot1**（`boot.S` header + bin）。MB2 头与解析代码保留（cmdline/mmap），但 `boot.md` 已记 QEMU 对 MB2/x86_64 支持别扭；**不强制做 QEMU 校验**，非冻结  
 18、中断嵌套策略 / timer RT 标志（原 #25）：现状已是 **IRQ 默认不嵌套**——x86 全表 interrupt gate（进门清 IF）；aarch64 异常入口置 DAIF。timer 用 `IRQ_NEED_EOI` 登记即可。syscall 窗口会 `sti`，与 timer 的竞态靠 `arch_save_and_disable_irq` 护 per-CPU 事件树（见 `time.c`），**不需要**再造 RT/不可嵌套 flag。若将来在 IRQ handler 里主动开中断才重开本项  

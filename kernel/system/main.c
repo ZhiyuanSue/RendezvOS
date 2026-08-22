@@ -1,7 +1,7 @@
 #include <modules/log/log.h>
 #include <rendezvos/common.h>
 #include <rendezvos/mm/pmm.h>
-#include <rendezvos/task/tcb.h>
+#include <rendezvos/task/thread.h>
 #include <rendezvos/task/initcall.h>
 #include <rendezvos/system/panic.h>
 #include <rendezvos/system/powerd.h>

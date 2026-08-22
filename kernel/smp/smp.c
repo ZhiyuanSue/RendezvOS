@@ -3,7 +3,7 @@
 #include <rendezvos/smp/smp.h>
 #include <rendezvos/smp/percpu.h>
 #include <rendezvos/common.h>
-#include <rendezvos/task/tcb.h>
+#include <rendezvos/task/thread.h>
 #include <rendezvos/task/initcall.h>
 #include <rendezvos/system/powerd.h>
 int NR_CPU = 1;

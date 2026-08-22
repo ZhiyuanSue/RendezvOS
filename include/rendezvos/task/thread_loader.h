@@ -4,7 +4,7 @@
 #include <modules/elf/elf.h>
 #include <rendezvos/error.h>
 #include <modules/elf/elf_print.h>
-#include <rendezvos/task/tcb.h>
+#include <rendezvos/task/thread.h>
 #include <rendezvos/mm/allocator.h>
 #include <rendezvos/mm/page_slice.h>
 
@@ -41,7 +41,6 @@ error_t run_elf_program(struct page_slice* slice);
 /**
  * @brief Create a user thread from an ELF @p slice (no FS / no personality).
  *
- * Flow (close to the old @c gen_task_from_elf, without a TCB):
  * create/register @c VSpace → @c create_thread(@c run_elf_program) (takes
  * ownership of vs) → @c generate_user_stack → @c THREAD_FLAG_USER →
  * @c add_thread_to_manager.

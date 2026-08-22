@@ -3,7 +3,7 @@
 #include <rendezvos/ipc/kmsg.h>
 #include <rendezvos/ipc/kmsg_system.h>
 #include <rendezvos/ipc/message.h>
-#include <rendezvos/task/tcb.h>
+#include <rendezvos/task/thread.h>
 #include <rendezvos/smp/percpu.h>
 #include <rendezvos/mm/allocator.h>
 #include <rendezvos/sync/spin_lock.h>

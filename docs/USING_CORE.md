@@ -265,4 +265,5 @@ Mechanism choice is **caller architecture**; core does not mandate servers.
 | 2026-05 | Created; consolidated external-caller material from repo upper-layer docs |
 | 2026-08 | §3.9 soft IPI shipped (`smp_ipi_register` / `send` / `init`) |
 | 2026-08 | §3.10 IRQ vectors: `IRQ_VEC_USED` + alloc pool (`trap/trap.h`) |
-| 2026-08 | Thread + VSpace model: §1 rule 6 / §3.0 ownership; `register_vspace(vs, root_vs)`; schedule/teardown AS policy ([`task-thread.md`](task-thread.md)) |
+| 2026-08 | Thread + VSpace model: §1 rule 6 / §3.0 ownership ([`task-thread.md`](task-thread.md)) |
+| 2026-08 | Core rename: `thread.h`, `thread_arch.h`, `thread_boot.c`, `Arch_Thread_Context` |

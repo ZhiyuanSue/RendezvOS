@@ -1,5 +1,5 @@
 #include <modules/test/test.h>
-#include <rendezvos/task/tcb.h>
+#include <rendezvos/task/thread.h>
 #include <rendezvos/task/thread_loader.h>
 #include <rendezvos/system/powerd.h>
 

@@ -14,9 +14,9 @@ Core’s object model is **thread + address space**. There is no first-class pro
 
 | Need | API | Header |
 |------|-----|--------|
-| Current thread | `get_cpu_current_thread()` | `task/tcb.h` |
-| This CPU’s scheduler | `percpu(core_tm)` → `Task_Manager*` | `task/tcb.h`, `smp/percpu.h` |
-| Running thread in TM | `percpu(core_tm)->current_thread` | `task/tcb.h` |
+| Current thread | `get_cpu_current_thread()` | `task/thread.h` |
+| This CPU’s scheduler | `percpu(core_tm)` → `Task_Manager*` | `task/thread.h`, `smp/percpu.h` |
+| Running thread in TM | `percpu(core_tm)->current_thread` | `task/thread.h` |
 | Active address space on CPU | `percpu(current_vspace)` | `mm/vmm.h` |
 | Page-table helper on CPU | `&percpu(Map_Handler)` | `mm/map_handler.h` |
 
@@ -38,10 +38,10 @@ Core’s object model is **thread + address space**. There is no first-class pro
 
 | Type | Header | Role |
 |------|--------|------|
-| `Task_Manager` | `task/tcb.h` | Per-CPU scheduler and run queues |
-| `Thread_Base` | `task/tcb.h` | Schedulable unit. After successful `create_thread` / `copy_thread`, `thread->vs` is non-NULL (user AS or `&root_vspace`). **Exception:** boot thread from `create_boot_thread` — `new_thread_structure` only; `thread->vs` stays NULL |
+| `Task_Manager` | `task/thread.h` | Per-CPU scheduler and run queues |
+| `Thread_Base` | `task/thread.h` | Schedulable unit. After successful `create_thread` / `copy_thread`, `thread->vs` is non-NULL (user AS or `&root_vspace`). **Exception:** boot thread from `create_boot_thread` — `new_thread_structure` only; `thread->vs` stays NULL |
 | `VSpace` | `mm/vmm.h` | Address space (radix + page tables). Registered with `register_vspace(vs, root_vs)`; RB key is `vspace_root_addr` (no numeric vspace id). `create_thread` / `copy_thread` take ownership onto `Thread_Base->vs` |
-| `Arch_Task_Context` | `arch/*/tcb_arch.h` | Saved registers, user SP, TLS fields |
+| `Arch_Thread_Context` | `arch/*/thread_arch.h` | Saved registers, user SP, TLS fields |
 
 Kernel threads do **not** attach to a fake root task. **`thread->vs`** 与 ownership / schedule 细则见下节 **VSpace ownership**（boot thread 例外：`vs == NULL`）。
 
@@ -49,7 +49,7 @@ Kernel threads do **not** attach to a fake root task. **`thread->vs`** 与 owner
 
 ## VSpace ownership
 
-权威注释：`task/tcb.h`（`create_thread` / `copy_thread`）、`mm/vmm.h`（`VSpace.refcount`）。TLB / `tlb_cpu_mask` 见 [`memory.md`](memory.md) §0.6。
+权威注释：`task/thread.h`（`create_thread` / `copy_thread`）、`mm/vmm.h`（`VSpace.refcount`）。TLB / `tlb_cpu_mask` 见 [`memory.md`](memory.md) §0.6。
 
 | API | Caller obligation |
 |-----|-------------------|
@@ -120,7 +120,7 @@ struct Thread_Base* copy_thread(Thread_Base* src_thread, VSpace* vs,
 void run_copied_thread(u64 return_value);
 ```
 
-Before copy, ensure the source thread’s user context is current when entering from a syscall path (`arch_ctx_refresh` / `arch_ctx_merge_from_src` on the source `Arch_Task_Context`). **`vs` ownership** 见 § VSpace ownership。
+Before copy, ensure the source thread’s user context is current when entering from a syscall path (`arch_ctx_refresh` / `arch_ctx_merge_from_src` on the source `Arch_Thread_Context`). **`vs` ownership** 见 § VSpace ownership。
 
 Core does not copy append tail bytes. After attaching `append_hooks` from the source thread, core invokes `dst_thread->append_hooks->copy(dst, src)` when present. Upper layers build dst append state (shared vs fresh heap, inherited scalars, etc.).
 

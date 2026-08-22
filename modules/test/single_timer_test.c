@@ -4,7 +4,7 @@
  */
 #include <modules/test/test.h>
 #include <modules/log/log.h>
-#include <rendezvos/task/tcb.h>
+#include <rendezvos/task/thread.h>
 #include <rendezvos/task/thread_loader.h>
 #include <rendezvos/smp/percpu.h>
 #include <rendezvos/time.h>

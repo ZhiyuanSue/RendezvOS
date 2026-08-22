@@ -6,7 +6,7 @@
 #include <rendezvos/ipc/port.h>
 #include <rendezvos/mm/allocator.h>
 #include <common/string.h>
-#include <rendezvos/task/tcb.h>
+#include <rendezvos/task/thread.h>
 
 /*ipc request structure*/
 typedef struct {

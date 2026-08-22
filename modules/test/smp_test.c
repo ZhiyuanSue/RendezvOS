@@ -1,6 +1,6 @@
 #include <modules/test/test.h>
 #include <rendezvos/limits.h>
-#include <rendezvos/task/tcb.h>
+#include <rendezvos/task/thread.h>
 #include <rendezvos/time.h>
 
 extern int NR_CPU;

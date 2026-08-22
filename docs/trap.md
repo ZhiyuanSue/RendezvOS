@@ -1,7 +1,7 @@
 # Trap中断处理文档
 
 > **文档角色：** 子系统参考（maintained） · **导航：** [`GUIDE.md`](GUIDE.md) §4  
-> **相关：** [`task-thread.md`](task-thread.md) · `arch/*/tcb_arch.h`
+> **相关：** [`task-thread.md`](task-thread.md) · `arch/*/thread_arch.h`
 
 本文档记录硬件的trap/interrupt处理行为，以及core/中的架构无关抽象层设计。
 

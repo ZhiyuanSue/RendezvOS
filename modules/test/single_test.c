@@ -1,5 +1,5 @@
 #include <modules/test/test.h>
-#include <rendezvos/task/tcb.h>
+#include <rendezvos/task/thread.h>
 #include <rendezvos/time.h>
 
 static struct single_test_case single_test[MAX_SINGLE_TEST_CASE] = {

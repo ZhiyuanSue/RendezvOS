@@ -6,7 +6,7 @@
  */
 #include <modules/test/test.h>
 #include <modules/log/log.h>
-#include <rendezvos/task/tcb.h>
+#include <rendezvos/task/thread.h>
 #include <rendezvos/ipc/ipc.h>
 #include <rendezvos/ipc/message.h>
 #include <rendezvos/smp/percpu.h>

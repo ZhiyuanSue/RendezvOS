@@ -1,5 +1,5 @@
-#ifndef _RENDEZVOS_TCB_ARCH_
-#define _RENDEZVOS_TCB_ARCH_
+#ifndef _RENDEZVOS_THREAD_ARCH_
+#define _RENDEZVOS_THREAD_ARCH_
 
 #include <common/types.h>
 #include <common/string.h>
@@ -36,12 +36,12 @@ typedef struct {
         u64 tpidr_el0;
         u64 sp_el0;
         u64 daif;
-} Arch_Task_Context;
+} Arch_Thread_Context;
 
 /* Declared in arch-specific task/arch_thread.c (context merge & syscall-trap
  * return). */
-void arch_ctx_merge_from_src(Arch_Task_Context* dst_ctx,
-                             const Arch_Task_Context* src_ctx);
+void arch_ctx_merge_from_src(Arch_Thread_Context* dst_ctx,
+                             const Arch_Thread_Context* src_ctx);
 /*
  * Refresh context fields from the live CPU state while running in kernel
  * during a user->kernel transition (e.g. syscall handling).
@@ -50,11 +50,11 @@ void arch_ctx_merge_from_src(Arch_Task_Context* dst_ctx,
  * It is intended for fork/copy performed inside syscall context so that the
  * child does not inherit stale EL0-visible state.
  */
-void arch_ctx_refresh(Arch_Task_Context* ctx);
+void arch_ctx_refresh(Arch_Thread_Context* ctx);
 /** Update ctx TLS base (TPIDR_EL0) and program the live CPU when on this
  * thread. */
-void arch_set_user_tls_base(Arch_Task_Context* ctx, u64 tls_base);
-static inline u64 arch_get_user_tls_base(const Arch_Task_Context* ctx)
+void arch_set_user_tls_base(Arch_Thread_Context* ctx, u64 tls_base);
+static inline u64 arch_get_user_tls_base(const Arch_Thread_Context* ctx)
 {
         return ctx ? ctx->tpidr_el0 : 0;
 }
@@ -67,11 +67,11 @@ void arch_return_to_user(u64 kstack_bottom,
  * Path A: in-flight syscall trap_frame (syscall_ctx). User PC in ELR, user SP
  * in SP_EL0 (and ctx->sp_el0); tf->SP is the kernel trap save-area pointer.
  */
-void arch_syscall_set_user_return(struct trap_frame* tf, Arch_Task_Context* ctx,
+void arch_syscall_set_user_return(struct trap_frame* tf, Arch_Thread_Context* ctx,
                                   vaddr user_pc, vaddr user_sp,
                                   u64 syscall_ret);
 void arch_syscall_get_user_return(const struct trap_frame* tf,
-                                  const Arch_Task_Context* ctx, vaddr* user_pc,
+                                  const Arch_Thread_Context* ctx, vaddr* user_pc,
                                   vaddr* user_sp, u64* syscall_ret);
 /*
  * Set AAPCS64 user integer argument reg (0..NR_ABI_PARAMETER_INT_REG-1): xN in
@@ -93,13 +93,13 @@ typedef struct {
         void* thread_func_ptr;
         u64 int_para[NR_ABI_PARAMETER_INT_REG];
 } Thread_Init_Para;
-static inline void arch_task_ctx_init(Arch_Task_Context* ctx)
+static inline void arch_task_ctx_init(Arch_Thread_Context* ctx)
 {
         ctx->sp_el1 = ctx->spsr_el1 = ctx->tpidr_el0 = ctx->sp_el0 = 0;
         ctx->daif = 0;
         memset(&(ctx->regs), 0, sizeof(u64) * NR_AARCH64_CALLEE_SAVED_REGS);
 }
-static inline void arch_set_new_thread_ctx(Arch_Task_Context* ctx,
+static inline void arch_set_new_thread_ctx(Arch_Thread_Context* ctx,
                                            void* func_ptr, void* kstack_bottom,
                                            bool reserve_trap_frame)
 {
@@ -117,17 +117,17 @@ static inline void arch_set_new_thread_ctx(Arch_Task_Context* ctx,
         ctx->spsr_el1 = SPSR_EL1_M_64_EL1H;
         ctx->daif = 0;
 }
-static inline vaddr arch_get_thread_user_sp(Arch_Task_Context* ctx)
+static inline vaddr arch_get_thread_user_sp(Arch_Thread_Context* ctx)
 {
         return ctx->sp_el0;
 }
-static inline void arch_set_thread_user_sp(Arch_Task_Context* ctx,
+static inline void arch_set_thread_user_sp(Arch_Thread_Context* ctx,
                                            vaddr user_sp)
 {
         ctx->sp_el0 = user_sp;
 };
-extern void context_switch(Arch_Task_Context* old_context,
-                           Arch_Task_Context* new_context);
-void switch_to(Arch_Task_Context* old_context, Arch_Task_Context* new_context);
+extern void context_switch(Arch_Thread_Context* old_context,
+                           Arch_Thread_Context* new_context);
+void switch_to(Arch_Thread_Context* old_context, Arch_Thread_Context* new_context);
 void arch_drop_to_user(struct trap_frame* tf);
 #endif

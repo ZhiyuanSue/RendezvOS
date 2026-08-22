@@ -80,7 +80,7 @@ flowchart TD
 | Page fault, syscall frame, trap classes | [`trap.md`](trap.md) |
 | 8259 / APIC / GIC wiring | [`interrupt.md`](interrupt.md) |
 | TLB after unmap | [`cache&tlb.md`](cache&tlb.md) |
-| User return from syscall path | [`task-thread.md`](task-thread.md), `arch/*/tcb_arch.h` |
+| User return from syscall path | [`task-thread.md`](task-thread.md), `arch/*/thread_arch.h` |
 
 Prefer `register_fixed_trap(TRAP_CLASS_*, …)` over hard-coded vector numbers.
 Device IRQs: `irq_vector_alloc` → `register_irq_handler` ([USING_CORE §3.10](USING_CORE.md)).
@@ -110,12 +110,12 @@ Update this table when adding or changing public symbols.
 | Subsystem | Task | Headers / symbols | More | Status |
 |-----------|------|-------------------|------|--------|
 | Init | Module hooks | `task/initcall.h` | §2 | `doc` |
-| Thread | Create thread | `tcb.h` `create_thread` | [`task-thread.md`](task-thread.md) | `stable` |
+| Thread | Create thread | `thread.h` `create_thread` | [`task-thread.md`](task-thread.md) | `stable` |
 | Thread | Kernel thread | `thread_loader.h` `gen_thread_from_func` | [`task-thread.md`](task-thread.md) | `stable` |
 | Thread | User ELF (incbin / no FS) | `thread_loader.h` `gen_thread_from_elf` / `run_elf_program` | [`task-thread.md`](task-thread.md) | `stable` |
-| Thread | Duplicate thread | `tcb.h` `copy_thread` `run_copied_thread` | [`task-thread.md`](task-thread.md) | `stable` |
+| Thread | Duplicate thread | `thread.h` `copy_thread` `run_copied_thread` | [`task-thread.md`](task-thread.md) | `stable` |
 | Thread | ELF / user stack | `load_elf_to_vs` `generate_user_stack` | [`task-thread.md`](task-thread.md) | `stable` |
-| Thread | Syscall-frame return | `arch_syscall_*` in `arch/*/tcb_arch.h` | [`task-thread.md`](task-thread.md) | `stable` |
+| Thread | Syscall-frame return | `arch_syscall_*` in `arch/*/thread_arch.h` | [`task-thread.md`](task-thread.md) | `stable` |
 | Thread | Context merge | `arch_ctx_refresh` `arch_ctx_merge_from_src` | [`task-thread.md`](task-thread.md) | `stable` |
 | Thread | Teardown / run queue | `delete_thread` `add_thread_to_manager` | [`task-thread.md`](task-thread.md) | `stable` |
 | Scheduler | Block / run | `thread_set_status` `schedule` | [`task-thread.md`](task-thread.md) | `code-only` |
@@ -157,7 +157,7 @@ Under `core/include/`.
 | `common.h`, `error.h`, `limits.h` | Types, `error_t` |
 | `time.h` | Timekeeping |
 | `mm/pmm.h`, `mm/vmm.h`, `mm/vmm_radix_tree.h`, `mm/map_handler.h`, `mm/mm_user_utils.h`, `mm/kmalloc.h`, `mm/page_slice.h`, `mm/page_slice_copy.h`, `mm/allocator.h`, `mm/asid.h` | Memory（含 per-pmm reclaim；boot zone：`configure_pmm_zones_hook`） |
-| `task/tcb.h`, `task/thread_loader.h`, `task/initcall.h`, `task/id.h`, `task/ebr.h` | Tasks |
+| `task/thread.h`, `task/thread_loader.h`, `task/initcall.h`, `task/id.h`, `task/ebr.h` | Tasks |
 | `ipc/port.h`, `ipc/ipc.h`, `ipc/message.h`, `ipc/kmsg.h`, `ipc/kmsg_system.h`, `ipc/ipc_serial.h` | IPC |
 | `smp/percpu.h`, `smp/smp.h`, `smp/cpu_id.h`, `smp/ipi.h` | SMP（`ipi.h` 含 `ipi_id_t` / soft IPI） |
 | `sync/spin_lock.h`, `sync/cas_lock.h`, `sync/barrier.h` | Sync |
@@ -167,7 +167,7 @@ Under `core/include/`.
 
 ### `arch/<ARCH>/`, `modules/`, `common/`
 
-- **arch/:** boot, MM, trap, `tcb_arch.h`, IRQ controllers — use when portable API is insufficient.
+- **arch/:** boot, MM, trap, `thread_arch.h`, IRQ controllers — use when portable API is insufficient.
 - **modules/:** ELF, log, DTB, ACPI, drivers — mainly boot/platform.
 - **common/:** internal DSA/atomics; not a second public API unless listed above.
 
@@ -207,3 +207,4 @@ All **how to use core from outside this tree** documentation lives in **[`USING_
 | 2026-08 | Soft IPI: §5 / §6–§7 `smp/ipi.h` stable; see USING §3.9 |
 | 2026-08 | IRQ vector USED bit + alloc pool: [USING §3.10](USING_CORE.md) |
 | 2026-08 | Thread + VSpace: `create_thread` ownership, `register_vspace(vs, root_vs)`, schedule/teardown AS policy — §3 Tasks, §6, [`task-thread.md`](task-thread.md) |
+| 2026-08 | Rename `tcb.h` → `thread.h`, `tcb_arch.h` → `thread_arch.h`, `tcb.c` → `thread_boot.c`; `Arch_Thread_Context` |
