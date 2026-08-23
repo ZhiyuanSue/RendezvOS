@@ -61,10 +61,70 @@
 
 /*port structure*/
 typedef struct Msg_Port Message_Port_t;
+
+/**
+ * @brief Optional hook on first port allocation (before @c register_port).
+ * @param port Port to initialize; append bytes at @c port->append_port_info when
+ *        @c append_info_len is non-zero.
+ */
+typedef error_t (*port_append_init_t)(Message_Port_t* port);
+
+/**
+ * @brief Optional hook before port memory is freed (@c delete_message_port_structure).
+ * @param port Port being destroyed.
+ */
+typedef void (*port_append_fini_t)(Message_Port_t* port);
+
+/**
+ * @brief Gate operation kinds for @c port_ops_allow_t / @c port_ops_begin.
+ *
+ * Not to be confused with @c PORT_OPS_LIFE_* (port lifecycle).
+ */
+enum port_ops_type {
+        PORT_OPS_LOOKUP,
+        PORT_OPS_SEND,
+        PORT_OPS_RECV,
+        PORT_OPS_REGISTER,
+};
+
+/**
+ * @brief Optional admission gate (NULL = all allow).
+ *
+ * Invoked on the **accessor CPU context**: policy must use
+ * @c get_cpu_current_thread() (and thread append) to identify who is acting.
+ * Core does not pass a separate actor and does not implement namespace/capability
+ * tables; the @c name index key is whatever string was registered.
+ *
+ * @param port Target port (always the port being looked up, sent to, received
+ *        on, or registered).
+ * @param op_type Which gate fired.
+ * @param lookup_name Index key string for @c PORT_OPS_LOOKUP only; **NULL** for
+ *        @c PORT_OPS_SEND, @c PORT_OPS_RECV, and @c PORT_OPS_REGISTER.
+ * @return @c REND_SUCCESS to allow; any other @c error_t denies (lookup → NULL;
+ *         send/recv → @c port_ops_begin fails; register → error from
+ *         @c register_port).
+ */
+typedef error_t (*port_ops_allow_t)(Message_Port_t* port,
+                                    enum port_ops_type op_type,
+                                    const char* lookup_name);
+
+/**
+ * @brief Port append lifecycle + IPC admission gates.
+ *
+ * Stored as a pointer on each port; upper layers usually pass one static table.
+ * @c ops_allow and @c init/@c fini may be NULL (allow / no-op).
+ */
+typedef struct port_append_hooks {
+        size_t append_info_len;
+        port_append_init_t init;
+        port_append_fini_t fini;
+        port_ops_allow_t ops_allow;
+} port_append_hooks_t;
 struct Msg_Port {
         ms_queue_t thread_queue; /* thread wait queue */
         ref_count_t refcount; /* port refcount */
-        struct Port_Table* table; /* belonging register table（if registered） */
+        struct Port_Table* table; /* belonging register table（if registered）
+                                   */
         char name[PORT_NAME_LEN_MAX]; /* port name */
         /*
          * Service id bound to this port name.
@@ -75,6 +135,8 @@ struct Msg_Port {
         atomic64_t ops_life; /* PORT_OPS_LIFE_* status */
         atomic64_t ops_count; /* count for how much the receiver/sender are
                                  operating */
+        const struct port_append_hooks* append_hooks;
+        char append_port_info[];
 };
 
 /* ---- ops basic funcs ---- */
@@ -138,14 +200,31 @@ static inline void port_ops_count_dec(Message_Port_t* port)
                 return;
         atomic64_dec(&port->ops_count);
 }
+
+static inline size_t port_append_info_len(const Message_Port_t* port)
+{
+        return (port && port->append_hooks) ?
+                       port->append_hooks->append_info_len :
+                       0;
+}
+
+static inline size_t message_port_total_size(const port_append_hooks_t* hooks)
+{
+        size_t n = sizeof(Message_Port_t);
+
+        if (hooks && hooks->append_info_len)
+                n += hooks->append_info_len;
+        return n;
+}
 /**
- * @brief Enter a send/recv/try critical section on @p port (reader side of the
- * ops gate). Does not serialize send against recv.
- * @return true if entered; false if port is closing/closed (caller returns
- *         -E_REND_PORT_CLOSED). Must pair with port_ops_end before schedule()
- *         on the blocking wait path.
+ * @brief Enter a send/recv/try critical section on @p port (lifecycle gate +
+ *        @c ops_allow for @p op_type).
+ * @param op_type @c PORT_OPS_SEND or @c PORT_OPS_RECV only.
+ * @return true if entered; false if port is closing/closed or @c ops_allow
+ *         denied (caller returns @c -E_REND_PORT_CLOSED). Pair with
+ *         @c port_ops_end before @c schedule() on the blocking wait path.
  */
-bool port_ops_begin(Message_Port_t* port);
+bool port_ops_begin(Message_Port_t* port, enum port_ops_type op_type);
 
 /**
  * @brief Leave the critical section started by port_ops_begin.
@@ -174,11 +253,14 @@ static inline u16 ipc_get_queue_state(Message_Port_t* port)
 
 /**
  * @brief Allocate and initialize an unregistered message port.
- * @param name Port name (non-empty, shorter than PORT_NAME_LEN_MAX).
- * @return New port with refcount 1, or NULL on invalid name or allocation
- *         failure.
+ * @param name Port name / name_index key (non-empty, shorter than
+ * PORT_NAME_LEN_MAX).
+ * @param hooks Optional append table; NULL for no append and all gates open.
+ * @return New port with refcount 1, or NULL on invalid name, init failure, or
+ *         allocation failure.
  */
-Message_Port_t* create_message_port(const char* name);
+Message_Port_t* create_message_port(const char* name,
+                                    const port_append_hooks_t* hooks);
 
 /**
  * @brief Free port memory after the wait queue has been drained.

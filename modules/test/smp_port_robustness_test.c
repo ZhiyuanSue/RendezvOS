@@ -131,7 +131,7 @@ static int smp_port_table_test(cpu_id_t cpu_id)
                 char port_name[SMP_PORT_NAME_LEN] __attribute__((aligned(16)));
                 make_port_name(port_name, sizeof(port_name), cpu_id, round);
 
-                Message_Port_t* port = create_message_port(port_name);
+                Message_Port_t* port = create_message_port(port_name, NULL);
                 if (!port) {
                         state->error_count++;
                         if (state->error_count <= 5) {
@@ -251,7 +251,7 @@ static int smp_port_cache_test(u32 cpu_id)
                                i); /* Use different base to avoid conflicts */
 
                 Message_Port_t* port =
-                        create_message_port(state->port_names[i]);
+                        create_message_port(state->port_names[i], NULL);
                 if (!port) {
                         state->error_count++;
                         if (state->error_count <= 5) {
@@ -390,7 +390,7 @@ static int smp_port_mixed_test(u32 cpu_id)
                                        cpu_id + 2000,
                                        round);
 
-                        Message_Port_t* port = create_message_port(port_name);
+                        Message_Port_t* port = create_message_port(port_name, NULL);
                         if (!port) {
                                 state->error_count++;
                                 if (state->error_count <= 5) {
@@ -556,7 +556,7 @@ static int smp_port_ht_shrink_test(u32 cpu_id)
                 make_port_name(
                         port_names[i], SMP_PORT_NAME_LEN, cpu_id + 3000, i);
 
-                ports[i] = create_message_port(port_names[i]);
+                ports[i] = create_message_port(port_names[i], NULL);
                 if (!ports[i]) {
                         error_count++;
                         continue;

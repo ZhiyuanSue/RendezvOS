@@ -431,6 +431,59 @@ Receiver **must** poll `dequeue_recv_msg()` (and `ref_put`) in thread context; m
 
 ---
 
+## 11. Port append hooks (admission + visibility)
+
+Mirror [`thread_append_hooks_t`](task-thread.md): each port may carry **`port_append_hooks_t`** and trailing **`append_port_info[]`** (flexible array; size from `append_info_len`).
+
+**Header:** `rendezvos/ipc/port.h` · **Implementation:** `kernel/ipc/port.c` (`port_lookup_finish`, `register_port`, `port_ops_begin`).
+
+### `ops_allow` gates (`enum port_ops_type`)
+
+Not to be confused with **`PORT_OPS_LIFE_*`** (port lifecycle in the same header).
+
+| Gate | When | Deny |
+|------|------|------|
+| `init` / `fini` | `create_message_port` / `delete_message_port_structure` | create fails / — |
+| `ops_allow(PORT_OPS_REGISTER, NULL)` | `register_port`, before `name_index_register` | `register_port` errno |
+| `ops_allow(PORT_OPS_LOOKUP, lookup_name)` | after index hit, before lookup ref returned to caller | lookup APIs → `NULL` + drop index hold (`ref_put`) |
+| `ops_allow(PORT_OPS_SEND/RECV, NULL)` | `port_ops_begin` from `send_msg` / `recv_msg` / `ipc_try_*` | `-E_REND_PORT_CLOSED` |
+
+**Accessor:** `ops_allow` runs in the **current CPU thread** context — policy uses **`get_cpu_current_thread()`** (and thread append); core does **not** pass a separate actor parameter.
+
+**`lookup_name`:** required for `PORT_OPS_LOOKUP` (the index key string); **NULL** for `SEND`, `RECV`, `REGISTER`.
+
+**Default:** `hooks = NULL` or `ops_allow = NULL` → same behavior as pre-hook core (`create_message_port(name, NULL)` at all legacy call sites).
+
+**Index key:** the registered `name` string; upper layers may encode tenant/id in that string. Core has no namespace type.
+
+### Lookup APIs (all run the `LOOKUP` gate)
+
+| API | Role |
+|-----|------|
+| `port_table_lookup(table, name)` | Cold lookup by name |
+| `port_table_lookup_with_token(table, name, tok_out)` | Cold lookup + optional `(row_index, row_gen)` token |
+| `port_table_resolve_token(table, tok, name)` | Validate cached token under table lock; `tok == NULL` → same as `port_table_lookup` |
+| `thread_lookup_port(name)` | Per-thread cache: `resolve_token` on hit, `lookup_with_token` on miss — both end in the same `LOOKUP` gate |
+
+Success returns a port with refcount held; caller **`ref_put`** when done.
+
+### Allocation API
+
+- `message_port_total_size(hooks)` — bytes for `Message_Port_t` + FAM tail.
+- `create_message_port(name, hooks)` — optional `hooks->init` before first `register_port`.
+- `port_ops_begin(port, PORT_OPS_SEND | PORT_OPS_RECV)` — pair with `port_ops_end` on success paths in `ipc.c`.
+
+**Policy note:** `register_port` calls `ops_allow` while holding the port-table lock; hooks must not recurse into lookup on the same table.
+
+### Tests
+
+`modules/test/single_port_test.c`:
+
+- **`port_discovery`** — `hooks = NULL`; register / `thread_lookup_port` / IPC / unregister.
+- **`port_hook_gate_self_test`** — deny `LOOKUP` (`port_table_lookup` + `thread_lookup_port`), token-cache resolve path, deny `SEND` / `RECV` / `REGISTER`.
+
+---
+
 ## 12. kmsg (minimal)
 
 - Create payloads: `kmsg_create(module, opcode, fmt, ...)`; `module` is the destination port `service_id`, not a fixed core constant.

@@ -195,7 +195,7 @@ int smp_ipc_test(void)
         if (cpu_id == BSP_ID) {
                 is_print_sche_info = false;
                 pr_info("BSP creating message port\n");
-                smp_ipc_port = create_message_port("smp_ipc_port");
+                smp_ipc_port = create_message_port("smp_ipc_port", NULL);
                 if (!smp_ipc_port) {
                         pr_error("[smp_ipc_test] create_message_port failed\n");
                         return -E_REND_TEST;

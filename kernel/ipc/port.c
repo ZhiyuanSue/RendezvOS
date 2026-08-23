@@ -87,7 +87,8 @@ static u16 service_id_from_name(const char* name)
         return id;
 }
 
-Message_Port_t* create_message_port(const char* name)
+Message_Port_t* create_message_port(const char* name,
+                                    const port_append_hooks_t* hooks)
 {
         if (!name)
                 return NULL;
@@ -96,8 +97,9 @@ Message_Port_t* create_message_port(const char* name)
                 return NULL;
 
         struct allocator* cpu_kallocator = percpu(kallocator);
+        size_t port_bytes = message_port_total_size(hooks);
         Message_Port_t* mp = (Message_Port_t*)cpu_kallocator->m_alloc(
-                cpu_kallocator, sizeof(Message_Port_t));
+                cpu_kallocator, port_bytes);
         if (!mp)
                 return NULL;
 
@@ -109,7 +111,6 @@ Message_Port_t* create_message_port(const char* name)
                 return NULL;
         }
 
-        memset(dummy_request_node, 0, sizeof(Ipc_Request_t));
         memcpy(mp->name, name, name_len + 1);
         msq_init(&mp->thread_queue,
                  &dummy_request_node->ms_queue_node,
@@ -117,8 +118,20 @@ Message_Port_t* create_message_port(const char* name)
         ref_init(&mp->refcount); /* creator holds one ref */
         mp->table = NULL;
         mp->service_id = service_id_from_name(mp->name);
+        mp->append_hooks = hooks;
         port_ops_life_init(mp);
         port_ops_count_init(mp);
+
+        if (hooks && hooks->init) {
+                error_t init_e = hooks->init(mp);
+
+                if (init_e != REND_SUCCESS) {
+                        cpu_kallocator->m_free(cpu_kallocator,
+                                               dummy_request_node);
+                        cpu_kallocator->m_free(cpu_kallocator, mp);
+                        return NULL;
+                }
+        }
 
         return mp;
 }
@@ -128,12 +141,20 @@ Message_Port_t* create_message_port(const char* name)
  * and in a port's life we only have one unregister
  * So we can use this try-redo begin function and needn't complex lock
  */
-bool port_ops_begin(Message_Port_t* port)
+bool port_ops_begin(Message_Port_t* port, enum port_ops_type op_type)
 {
         if (!port)
                 return false;
+        if (op_type != PORT_OPS_SEND && op_type != PORT_OPS_RECV)
+                return false;
         if (!port_is_registered(port))
                 return false;
+        if (port->append_hooks && port->append_hooks->ops_allow
+            && port->append_hooks->ops_allow(port, op_type, NULL)
+                       != REND_SUCCESS) {
+                return false;
+        }
+
         port_ops_count_inc(port);
         if (!port_is_registered(port)) {
                 port_ops_count_dec(port);
@@ -228,6 +249,8 @@ void delete_message_port_structure(Message_Port_t* port)
 {
         if (!port)
                 return;
+        if (port->append_hooks && port->append_hooks->fini)
+                port->append_hooks->fini(port);
         /*
          *         port_clean_thread_queue is just a defensive clean here.
          */
@@ -340,6 +363,15 @@ error_t register_port(struct Port_Table* table, Message_Port_t* port)
                 unlock_mcs(&table->by_name.lock, my_lock);
                 return -E_RENDEZVOS;
         }
+        if (port->append_hooks && port->append_hooks->ops_allow) {
+                error_t e;
+                if ((e = port->append_hooks->ops_allow(
+                             port, PORT_OPS_REGISTER, NULL))
+                    != REND_SUCCESS) {
+                        unlock_mcs(&table->by_name.lock, my_lock);
+                        return e;
+                }
+        }
 
         u64 reg_row_idx = 0;
         if (name_index_register(&table->by_name, (void*)port, &reg_row_idx)
@@ -406,33 +438,60 @@ error_t unregister_port(struct Port_Table* table, const char* name)
         return REND_SUCCESS;
 }
 
+static Message_Port_t* port_lookup_finish(Message_Port_t* port,
+                                          const char* lookup_name)
+{
+        if (!port)
+                return NULL;
+
+        if (port->append_hooks && port->append_hooks->ops_allow) {
+                if (port->append_hooks->ops_allow(
+                            port, PORT_OPS_LOOKUP, lookup_name)
+                    != REND_SUCCESS) {
+                        ref_put(&port->refcount, free_message_port_ref);
+                        return NULL;
+                }
+        }
+        return port;
+}
 Message_Port_t* port_table_lookup(struct Port_Table* table, const char* name)
 {
+        Message_Port_t* port;
+
         if (!table || !name)
                 return NULL;
-        return (Message_Port_t*)name_index_lookup(&table->by_name, name, NULL);
+        port = (Message_Port_t*)name_index_lookup(&table->by_name, name, NULL);
+        return port_lookup_finish(port, name);
 }
 
 Message_Port_t* port_table_lookup_with_token(struct Port_Table* table,
                                              const char* name,
                                              name_index_token_t* tok_out)
 {
+        Message_Port_t* port;
+
         if (!table || !name)
                 return NULL;
-        return (Message_Port_t*)name_index_lookup(
+        port = (Message_Port_t*)name_index_lookup(
                 &table->by_name, name, tok_out);
+        return port_lookup_finish(port, name);
 }
 
 Message_Port_t* port_table_resolve_token(struct Port_Table* table,
                                          const name_index_token_t* tok,
                                          const char* name)
 {
+        Message_Port_t* port;
+
         if (!table || !name)
                 return NULL;
-        if (!tok)
-                return (Message_Port_t*)name_index_lookup(
+        if (!tok) {
+                port = (Message_Port_t*)name_index_lookup(
                         &table->by_name, name, NULL);
-        return (Message_Port_t*)name_index_resolve(&table->by_name, tok, name);
+                return port_lookup_finish(port, name);
+        }
+        port = (Message_Port_t*)name_index_resolve(&table->by_name, tok, name);
+        return port_lookup_finish(port, name);
 }
 
 struct Port_Table* global_port_table;

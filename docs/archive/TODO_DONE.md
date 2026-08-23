@@ -1,6 +1,6 @@
 # Core 已完成项（归档）
 
-从 `TODO.md` 挪过来的历史清单。新完成的项请追加在下面，并同步改 [`../TODO.md`](../TODO.md)。
+从 [`../TODO.md`](../TODO.md) 挪入。新完成项：**追加本文件一条，并从 TODO 删掉对应条目**（TODO 只保留未完成工作）。
 
 ---
 
@@ -45,6 +45,7 @@
 64、ACPI 布局（原 #19，done-enough）：通用 RSDP/签名/MADT 遍历在 `modules/acpi/`；x86 的 map + 消费 MADT（CPU 列表）在 `arch/x86_64/acpi/`。aarch64 用 DTB，不走 ACPI。不必再强行整表搬进 modules。  
 65、CPUID / ARAT（原 #3，done）：`get_cpu_info` 按 max basic/ext leaf 填 Vendor、feature、leaf `06H`/`80000007H` 原始寄存器、`80000008` 地址宽；`ARAT_support()` 对 `thermal_eax` 按位判断（与 `xAPIC_support` 同风格）。  
 66、Multiboot2 header / mmap 路径硬化（done，非「QEMU 校验」）：address/entry tag 改为 required；load_end=`_edata`、bss_end=`_end`；MB2 mmap 前 `memory_regions_init`，无 mmap tag 显式失败。真机 GRUB 再验；日常仍 MB1。  
+67、Port append hooks + admission gates（冻结 A，done）：`port_append_hooks_t`（`append_info_len` + init/fini + `ops_allow`）；`enum port_ops_type`（`LOOKUP`/`SEND`/`RECV`/`REGISTER`，与 `PORT_OPS_LIFE_*` 生命周期无关）；FAM `append_port_info[]`；`message_port_total_size`；`create_message_port(name, hooks)`；`port_ops_begin(port, PORT_OPS_SEND|RECV)`。Gate：`register_port` → `REGISTER`；`port_table_lookup*` / `port_table_resolve_token` → `LOOKUP`（deny 时 `ref_put`）；send/recv/try → `port_ops_begin`。`ops_allow` NULL = 全放行；accessor = `get_cpu_current_thread()`（无单独 actor 参数）；`lookup_name` 仅 `LOOKUP` 非 NULL。索引键仍为 `name` 字符串（上层可编码 tenant，core 无 namespace 类型）。测：`single_port_test`（`port_discovery` + `port_hook_gate_self_test`：冷 lookup、`thread_lookup_port` token 热路径、SEND/RECV/REGISTER deny）。见 `ipc.md` §11。
 
 ---
 

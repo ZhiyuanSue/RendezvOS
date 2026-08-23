@@ -127,7 +127,7 @@ int ipc_test(void)
         single_ipc_receiver_done = 0;
         single_ipc_received_type = -1;
         is_print_sche_info = false;
-        port = create_message_port("test_port");
+        port = create_message_port("test_port", NULL);
         if (!port) {
                 pr_error("[single_ipc_test] create_message_port failed\n");
                 return -E_REND_TEST;
@@ -342,7 +342,7 @@ int ipc_multi_round_test(void)
         pr_info("[single_ipc_multi_round_test] starting multi-round IPC test (%u rounds)\n",
                 IPC_MULTI_ROUND_COUNT);
         is_print_sche_info = false;
-        port = create_message_port("test_port");
+        port = create_message_port("test_port", NULL);
         if (!port) {
                 pr_error(
                         "[single_ipc_multi_round_test] create_message_port failed\n");

@@ -120,6 +120,7 @@ Update this table when adding or changing public symbols.
 | Thread | Teardown / run queue | `delete_thread` `add_thread_to_manager` | [`task-thread.md`](task-thread.md) | `stable` |
 | Scheduler | Block / run | `thread_set_status` `schedule` | [`task-thread.md`](task-thread.md) | `code-only` |
 | IPC | Port table | `global_port_table` `port_table_lookup` `register_port` | [`ipc.md`](ipc.md) | `stable` |
+| IPC | Port append + gates | `port_append_hooks_t` `message_port_total_size` `create_message_port(name, hooks)` `port_ops_begin` | [`ipc.md`](ipc.md) §11 | `stable` |
 | IPC | Send / recv (blocking) | `enqueue_msg_for_send` `send_msg` `recv_msg` `dequeue_recv_msg` | [`ipc.md`](ipc.md) | `stable` |
 | IPC | Send / recv (non-blocking) | `ipc_try_send_msg` `ipc_try_recv_msg` | [`ipc.md`](ipc.md) | `stable` |
 | IPC | Payload | `ipc/kmsg.h` `ipc/kmsg_system.h` `ipc/ipc_serial.h` | [`ipc.md`](ipc.md) | `doc` |
@@ -206,5 +207,5 @@ All **how to use core from outside this tree** documentation lives in **[`USING_
 | 2026-05 | External usage → `USING_CORE.md`; §9–§10 slimmed |
 | 2026-08 | Soft IPI: §5 / §6–§7 `smp/ipi.h` stable; see USING §3.9 |
 | 2026-08 | IRQ vector USED bit + alloc pool: [USING §3.10](USING_CORE.md) |
-| 2026-08 | Thread + VSpace: `create_thread` ownership, `register_vspace(vs, root_vs)`, schedule/teardown AS policy — §3 Tasks, §6, [`task-thread.md`](task-thread.md) |
+| 2026-08 | Port append hooks — API 见 [`ipc.md`](ipc.md) §11；归档 #67 |
 | 2026-08 | Rename `tcb.h` → `thread.h`, `tcb_arch.h` → `thread_arch.h`, `tcb.c` → `thread_boot.c`; `Arch_Thread_Context` |

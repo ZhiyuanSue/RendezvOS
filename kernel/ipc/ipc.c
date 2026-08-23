@@ -346,7 +346,7 @@ error_t send_msg(Message_Port_t* port)
         if (!sender) {
                 return -E_RENDEZVOS;
         }
-        if (!port_ops_begin(port)) {
+        if (!port_ops_begin(port, PORT_OPS_SEND)) {
                 /*before there's a enqueue_msg_for_send, so we must try clean
                  * it, the same as ipc_try_send_msg*/
                 ipc_drop_one_orphan_send_msg(sender);
@@ -458,7 +458,7 @@ error_t recv_msg(Message_Port_t* port)
         if (!receiver) {
                 return -E_RENDEZVOS;
         }
-        if (!port_ops_begin(port)) {
+        if (!port_ops_begin(port, PORT_OPS_RECV)) {
                 return -E_REND_PORT_CLOSED;
         }
 
@@ -560,7 +560,7 @@ error_t ipc_try_send_msg(Message_Port_t* port)
                 return -E_REND_AGAIN;
         }
         Ipc_Request_t* receiver_request = NULL;
-        if (!port_ops_begin(port)) {
+        if (!port_ops_begin(port, PORT_OPS_SEND)) {
                 ipc_drop_one_orphan_send_msg(sender);
                 return -E_REND_PORT_CLOSED;
         }
@@ -609,7 +609,7 @@ error_t ipc_try_recv_msg(Message_Port_t* port)
                 return -E_REND_AGAIN;
         }
         Ipc_Request_t* sender_request = NULL;
-        if (!port_ops_begin(port)) {
+        if (!port_ops_begin(port, PORT_OPS_RECV)) {
                 return -E_REND_PORT_CLOSED;
         }
 

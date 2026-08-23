@@ -111,7 +111,7 @@ int single_timer_test(void)
         timer_waiter_failed = 0;
         is_print_sche_info = false;
 
-        port = create_message_port("single_timer_test_port");
+        port = create_message_port("single_timer_test_port", NULL);
         if (!port) {
                 pr_error("[single_timer_test] create_message_port failed\n");
                 return -E_REND_TEST;

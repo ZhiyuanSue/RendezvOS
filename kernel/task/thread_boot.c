@@ -75,7 +75,7 @@ error_t kernel_port_register(void)
                 return -E_RENDEZVOS;
         }
 
-        port = create_message_port(KERNEL_PORT_NAME);
+        port = create_message_port(KERNEL_PORT_NAME, NULL);
         if (!port) {
                 pr_error("[kernel_port] create_message_port '%s' failed\n",
                          KERNEL_PORT_NAME);
