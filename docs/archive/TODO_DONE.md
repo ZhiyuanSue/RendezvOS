@@ -69,3 +69,6 @@
 16、系统化 call→IPC wrapper（原 #52）：原语在 core；compat 已有 RPC。产品化 wrapper 归上层，勿当 core 债  
 17、Multiboot2 在 QEMU 下校验（原 #39）：日常 `-kernel` + **Multiboot1**（`boot.S` header + bin）。MB2 头与解析代码保留（cmdline/mmap），但 `boot.md` 已记 QEMU 对 MB2/x86_64 支持别扭；**不强制做 QEMU 校验**，非冻结  
 18、中断嵌套策略 / timer RT 标志（原 #25）：现状已是 **IRQ 默认不嵌套**——x86 全表 interrupt gate（进门清 IF）；aarch64 异常入口置 DAIF。timer 用 `IRQ_NEED_EOI` 登记即可。syscall 窗口会 `sti`，与 timer 的竞态靠 `arch_save_and_disable_irq` 护 per-CPU 事件树（见 `time.c`），**不需要**再造 RT/不可嵌套 flag。若将来在 IRQ handler 里主动开中断才重开本项  
+
+37、Log 与 VGA 解耦（#37）：`log_init` 不再 `CONSOLE_CLEAN_SCREEN`；`pr_*` 仍经 `uart_set_color`（串口 ANSI），x86 上 `SET_CONSOLE_COLOR` 为可选 VGA。(done)  
+38、Log 最小收尾（#38 缩小）：去掉未使用的 `LOG_BUFFER` 与 boot `log_buffer` 段；`log_init(level)` + `printk`→`uart_putc` 同步路径。(done)  

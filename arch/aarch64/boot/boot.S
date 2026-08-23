@@ -202,7 +202,7 @@ set_stack:
 	.global ap_entry
 ap_entry:
 	adr	x4,setup_info
-	add x4,x4,#0x48
+	add x4,x4,#0x40
 	str x0,[x4]
 	bl drop_to_el1
 	bl sel_stack
@@ -218,7 +218,7 @@ ap_entry:
 	.global ap_set_stack
 ap_set_stack_phy:
 	adr	x4,setup_info
-	add x4,x4,#0x40
+	add x4,x4,#0x38
 	ldr x0,[x4]
 	mov x4,#kernel_virt_offset
 	sub x0,x0,x4
@@ -228,7 +228,7 @@ ap_set_stack_phy:
 	.global ap_set_stack
 ap_set_stack_virt:
 	adr	x4,setup_info
-	add x4,x4,#0x40
+	add x4,x4,#0x38
 	ldr x0,[x4]
 	mov sp,x0
 	ret
@@ -244,7 +244,6 @@ setup_info:
 	.quad	0	/*x1,reserved*/
 	.quad	0	/*x2,reserved*/
 	.quad	0	/*x3,reserved*/
-	.quad	log_buffer
 	.quad	0	/*the map address end*/
 	.quad	0	/*boot uart base addr*/
 	.quad	0	/*boot dtb header base addr*/
@@ -272,11 +271,7 @@ boot_Error:
 	b	boot_Error
 
 	.section .boot.log
-	.global log_buffer
-log_buffer:
-	.zero 0x10000
-stack_field:
-	.p2align 12	/*2^12=4096*/
+	.p2align	12	/*2^12=4096*/
 	.global boot_stack
 boot_stack:
 	.zero 0x10000

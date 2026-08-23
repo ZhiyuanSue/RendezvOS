@@ -5,7 +5,6 @@
 #include <modules/driver/uart/uart.h>
 #include <rendezvos/smp/percpu.h>
 
-struct log_buffer LOG_BUFFER;
 DEFINE_PER_CPU(struct spin_lock_t, log_spin_lock);
 spin_lock log_spin_lock_ptr = NULL;
 #ifdef _LOG_OFF_
@@ -30,18 +29,10 @@ int log_level = LOG_DEBUG;
 int log_level = LOG_OFF;
 #endif
 
-void log_init(void *log_buffer_addr, u64 log_level)
+void log_init(u64 msg_level)
 {
         uart_putc('\n');
-        CONSOLE_CLEAN_SCREEN(&X86_CHAR_CONSOLE);
-        for (int i = 0; i < LOG_BUFFER_SIZE; ++i) {
-                LOG_BUFFER.LOG_BUF[i].start_addr =
-                        log_buffer_addr + i * LOG_BUFFER_SINGLE_SIZE;
-                LOG_BUFFER.LOG_BUF[i].length = LOG_BUFFER_SINGLE_SIZE;
-        }
-        LOG_BUFFER.log_level = log_level;
-        LOG_BUFFER.cur_buffer_idx = 0;
-        LOG_BUFFER.cur_buffer_offset = 0;
+        log_level = msg_level;
 }
 /* Convert unsigned integer to string with given base (2-36) */
 static void uitostr(char *buf, u64 value, int base, int uppercase)
@@ -341,9 +332,8 @@ static void format_unsigned(u64 value, int base, int uppercase, int flags,
         }
 }
 
-void log_print(char *buffer, const char *format, va_list arg_list)
+static void log_print(const char *format, va_list arg_list)
 {
-        (void)buffer;
         const char *p = format;
 
         while (*p) {
@@ -492,17 +482,13 @@ void log_print(char *buffer, const char *format, va_list arg_list)
         }
 }
 
-void printk(const char *format, u64 log_level, ...)
+void printk(const char *format, u64 msg_level, ...)
 {
         va_list arg_list;
 
-        if (log_level <= LOG_BUFFER.log_level) {
-                va_start(arg_list, log_level);
-                log_print(
-                        LOG_BUFFER.LOG_BUF[LOG_BUFFER.cur_buffer_idx].start_addr
-                                + LOG_BUFFER.cur_buffer_offset,
-                        format,
-                        arg_list);
+        if (msg_level <= (u64)log_level) {
+                va_start(arg_list, msg_level);
+                log_print(format, arg_list);
                 va_end(arg_list);
         }
 }

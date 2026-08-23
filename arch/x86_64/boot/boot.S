@@ -297,7 +297,6 @@ setup_info:
 	.long 0	/* multiboot info struct ptr */
 	.long 0	/* phy addr width */
 	.long 0	/* linear addr width*/
-	.quad log_buffer /*log buffer position*/
 	.quad 0	/*rsdp ptr*/
 ap_boot_stack_ptr:
     .quad 0 /*ap_boot_stack_ptr*/;
@@ -409,9 +408,6 @@ L2_table:
 	*/
 	.section .boot.log
 	.p2align 12
-	.global log_buffer
-log_buffer:
-	.zero 0x10000
 	/*stack*/
 stack_field:
 	.p2align 12

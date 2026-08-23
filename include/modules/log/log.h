@@ -2,13 +2,11 @@
 #define _RENDEZVOS_LOG_H_
 #include <common/stdarg.h>
 #include <common/types.h>
-#include <common/dsa/list.h>
 #include <rendezvos/sync/spin_lock.h>
 #include <rendezvos/smp/percpu.h>
-#include <modules/driver/driver.h>
+#include <modules/driver/uart/uart.h>
 #include <modules/driver/x86_char_console/char_console.h>
-#define LOG_BUFFER_SIZE        0x10
-#define LOG_BUFFER_SINGLE_SIZE 0x1000
+
 enum log_level {
         LOG_OFF,
         LOG_EMERG,
@@ -20,19 +18,11 @@ enum log_level {
         LOG_INFO,
         LOG_DEBUG
 };
-struct log_buffer_desc {
-        void *start_addr;
-        u64 length;
-};
-struct log_buffer {
-        u64 log_level;
-        u64 cur_buffer_idx;
-        u64 cur_buffer_offset;
-        struct log_buffer_desc LOG_BUF[LOG_BUFFER_SIZE];
-};
 
-void log_init(void *log_buffer_addr, u64 log_level);
-void printk(const char *format, u64 log_level, ...);
+extern int log_level;
+
+void log_init(u64 msg_level);
+void printk(const char *format, u64 msg_level, ...);
 void log_put_byte(char ch);
 void log_put_locked(const u8 *buf, u64 len);
 

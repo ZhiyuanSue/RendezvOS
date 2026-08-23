@@ -594,8 +594,8 @@ Thread_Base* copy_thread(Thread_Base* src_thread, VSpace* vs,
         /* we do not set it as ready here(and expect init status), but set it at
          * add_thread_to_manager*/
 
-        pr_debug("[copy_thread] Created dst_thread thread tid=%d\n",
-                 dst_thread->tid);
+        // pr_debug("[copy_thread] Created dst_thread thread tid=%d\n",
+        //          dst_thread->tid);
 
         return dst_thread;
 del_dst_error:

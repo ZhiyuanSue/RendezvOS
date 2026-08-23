@@ -3,6 +3,7 @@
 
 #include <modules/log/log.h>
 #include <rendezvos/error.h>
+#include <common/stdbool.h>
 // #define DEBUG
 #ifdef DEBUG
 #define debug pr_debug

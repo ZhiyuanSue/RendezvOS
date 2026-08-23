@@ -18,7 +18,6 @@ struct setup_info {
         u32 multiboot_info_struct_ptr;
         u32 phy_addr_width;
         u32 vir_addr_width;
-        u64 log_buffer_addr;
         vaddr rsdp_addr;
         vaddr ap_boot_stack_ptr;
         cpu_id_t cpu_id;
