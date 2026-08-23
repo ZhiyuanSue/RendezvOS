@@ -34,7 +34,7 @@
 | CPU schedule 额外 ref | 切到**另一** user `vs` 时 `ref_get`；切到另一个 user AS 时 drop 旧 extra；切 kernel/idle **不** drop |
 | `root_vspace` 基线 ref | 启动 `ref_init(1)`；内核线程经 `gen_thread_from_func` 再 get 一条 ownership；boot 线程无 `vs` |
 
-RB 注册键为 **`vspace_root_addr`**，无 `vspace_id`。`tid_manager` / `pid_manager` 仅分配 id，与 vspace 注册无关。线程/VSpace 生命周期细则：[`task-thread.md`](task-thread.md) § VSpace ownership。
+RB 注册键为 **`vspace_root_addr`**，无 `vspace_id`。`tid_manager`仅分配 id，与 vspace 注册无关。线程/VSpace 生命周期细则：[`task-thread.md`](task-thread.md) § VSpace ownership。
 
 ### 0.2 锁：L0（big）与 L2（small）
 

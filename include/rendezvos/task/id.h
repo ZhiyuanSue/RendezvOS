@@ -12,8 +12,8 @@ typedef id_t tid_t;
 
 #define INVALID_ID U64_MAX
 /*
-as for the tid and pid , which must be global
-we cannot expect two thread or task have same tid or pid
+as for the tid, which must be global，
+we cannot expect two thread have same tid or pid，
 however, multicore system might need to lock it
 */
 typedef struct {
@@ -22,12 +22,10 @@ typedef struct {
 } Id_Manager;
 void init_id_manager(Id_Manager* idmng);
 id_t get_new_id(Id_Manager* idmng);
-void init_id_managers();
+void init_core_id_system(void);
 
-extern spin_lock_t pid_spin_lock;
 extern spin_lock_t tid_spin_lock;
 
-extern Id_Manager pid_manager;
 extern Id_Manager tid_manager;
 
 #endif

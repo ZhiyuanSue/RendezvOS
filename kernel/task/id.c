@@ -1,5 +1,5 @@
 #include <rendezvos/task/id.h>
-Id_Manager pid_manager;
+
 Id_Manager tid_manager;
 DEFINE_PER_CPU(struct spin_lock_t, id_spin_lock);
 
@@ -23,8 +23,7 @@ id_t get_new_id(Id_Manager* idmng)
         unlock_mcs(&idmng->spin_ptr, &percpu(id_spin_lock));
         return id;
 }
-void init_id_managers()
+void init_core_id_system(void)
 {
-        init_id_manager(&pid_manager);
         init_id_manager(&tid_manager);
 }

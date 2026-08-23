@@ -38,13 +38,10 @@ void cmain(struct setup_info *arch_setup_info)
         if (arch_start_platform(arch_setup_info)) {
                 kernel_panic("[ERROR]cmain: arch_start_platform failed");
         }
-        /*TODO:after we init the pmm module, we can alloc some pages for
-         * stack,and no more boot stack：in x86,please use LSS, see
-         * manual 6.8.3*/
         if (arch_start_core(BSP_ID)) {
                 kernel_panic("[ERROR]cmain: arch_start_core failed");
         }
-        init_id_managers();
+        init_core_id_system();
         if (global_port_init()) {
                 kernel_panic("[ERROR]cmain: global_port_init failed");
         }
