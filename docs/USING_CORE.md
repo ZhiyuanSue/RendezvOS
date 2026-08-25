@@ -216,6 +216,21 @@ irq_vector_free(vec);
 
 Do not pick bare vector numbers outside the arch reserve set / alloc pool.
 
+### 3.12 CPU affinity（线程，创建时绑核）
+
+| Need | API |
+|------|-----|
+| 目标 CPU 是否上线 | `cpu_id_is_online(cpu)` |
+| 目标 run queue | `task_manager_for_cpu(cpu)` |
+| 查询线程在哪颗 CPU 排队 | `thread_owner_cpu(thread)` |
+| 已有线程挂到指定 CPU | `add_thread_to_cpu(thread, cpu)` |
+| 新建并绑核 | `gen_thread_from_func(..., task_manager_for_cpu(cpu), ...)` |
+| 设置线程名（拷贝） | `thread_set_name_with_copy(name, thread)` |
+
+当前 CPU：`gen_thread_from_func(..., percpu(core_tm), ...)`。**无**运行期迁移 API。
+
+设备 IRQ affinity **不在本节**（见 [`trap.md`](trap.md)；portable API 仍为 backlog）。细节与测例：[`task-thread.md`](task-thread.md)。
+
 ---
 
 ## 4. `error_t` (caller mapping)
@@ -268,4 +283,6 @@ Mechanism choice is **caller architecture**; core does not mandate servers.
 | 2026-08 | §3.9 soft IPI shipped (`smp_ipi_register` / `send` / `init`) |
 | 2026-08 | §3.10 IRQ vectors: `IRQ_VEC_USED` + alloc pool (`trap/trap.h`) |
 | 2026-08 | Thread + VSpace model: §1 rule 6 / §3.0 ownership ([`task-thread.md`](task-thread.md)) |
+| 2026-08-25 | §3.12 创建时线程 affinity 落地（DONE #72）；IRQ affinity 仍见 trap.md |
+| 2026-08-23 | §3.12 初稿（曾与 IRQ 待办并列） |
 | 2026-08 | Core rename: `thread.h`, `thread_arch.h`, `thread_boot.c`, `Arch_Thread_Context` |

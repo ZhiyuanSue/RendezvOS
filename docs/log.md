@@ -1,6 +1,6 @@
 # log模块的设计
 
-> 短参考，可能滞后于代码。头文件 `modules/log/log.h`，打印见 `rendezvos/stdio.h`。待办见 [`TODO.md`](TODO.md)（冻结：#37/#38 最小；冻后：#46 server）。
+> 短参考，可能滞后于代码。头文件 `modules/log/log.h`，打印见 `rendezvos/stdio.h`。待办见 [`TODO.md`](TODO.md)；**#37/#38/#46 已关闭**见 [`archive/TODO_DONE.md`](archive/TODO_DONE.md) #68–#71。
 
 log模块作为最重要的一个调试手段，在boot完成之后应当放在最开始进行。否则不利于后面的调试
 
@@ -23,4 +23,4 @@ log模块作为最重要的一个调试手段，在boot完成之后应当放在�
 - 运行期目标：log 或 UART server 经 IPC 管串口，常规打印和 console 走它  
 - panic / 紧急：允许直写，免得卡在 IPC 上  
 
-还没拍板：是全部 pr_* 都走 IPC，还是只有用户 console。收包先依赖驱动 getc；x86 若要 IRQ 收包再谈远期 IOAPIC（见 TODO / TODO_DONE）。
+还没拍板：是全部 pr_* 都走 IPC，还是只有用户 console。**RX：** `uart_getc()` 已为阻塞轮询（16550 / PL011）；无 IRQ、无 stdin 接线。外设 IRQ / IOAPIC 见 DONE #14。

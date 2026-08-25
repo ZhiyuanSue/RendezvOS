@@ -48,7 +48,10 @@ void uart_16550A_putc(u_int8_t ch)
 }
 u_int8_t uart_16550A_getc(void)
 {
-        return (0);
+        /* Poll LSR Data Ready, then read RHR. */
+        while (!(uart_read_reg(LSR) & (1 << 0)))
+                ;
+        return uart_read_reg(RHR);
 }
 void uart_16550A_close(void)
 {

@@ -24,6 +24,29 @@ Core’s object model is **thread + address space**. There is no first-class pro
 
 `gen_thread_from_func(..., tm, ...)` 的 `tm` 通常为 `percpu(core_tm)`。跨 CPU 操作其他 CPU 的 run queue 或 per-CPU 结构需要项目约定的 SMP 同步（见仓库协作文档中的 teardown 规则）。
 
+### CPU affinity（线程绑核）
+
+**创建时绑核（已实现，DONE #72）：**
+
+| API | 作用 |
+|-----|------|
+| `cpu_id_is_online(cpu)` | `@p cpu` 是否已上线且有 `core_tm`（**不**表示可把运行中线程迁过去） |
+| `task_manager_for_cpu(cpu)` | 取目标 CPU 的 `Task_Manager*` |
+| `thread_owner_cpu(thread)` | 查询线程所在 run queue 的 `owner_cpu` |
+| `add_thread_to_cpu(thread, cpu)` | **首次**入队：须 `thread_status_init` 且 `thread->tm == NULL` |
+
+**惯例：** `gen_thread_from_func(..., percpu(core_tm), ...)`（本核）；跨核则 `gen_thread_from_func(..., task_manager_for_cpu(cpu), ...)`（先确认 `tm` 非 NULL）。
+
+**未实现：** 运行期迁移（须在线程已下 CPU、从原 queue 摘下后再挂新核；`running` / `block` / `exit` 禁止 `add_thread_to_cpu`）。IRQ 绑核见 [`trap.md`](trap.md)，勿与本节混淆。
+
+**测（`modules/test/thread_affinity_test.c`，挂在 `smp_test[]`）：**  
+`smp_thread_affinity_test` — CPU `i` 在 `(i+1)%NR_CPU` 上创建探针，arg=creator；探针写 `affinity_seen[ran_on]=creator`。  
+`smp_thread_affinity_check` — 断言 `affinity_seen[j]==(j+NR_CPU-1)%NR_CPU`（有 `check_result` 时框架忽略各核 `test()` 返回值）。
+
+### Thread display name
+
+`thread_set_name_with_copy(name, thread)`：内核 alloc 拷贝（`strncpy`）；线程拥有缓冲区，teardown 路径 `m_free`。字面量 / 静态串 / 堆串均可传入；**勿**再假设「只挂指针、不拷贝」。
+
 ### Thread status and flags
 
 | Mechanism | API |

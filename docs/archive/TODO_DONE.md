@@ -45,7 +45,17 @@
 64、ACPI 布局（原 #19，done-enough）：通用 RSDP/签名/MADT 遍历在 `modules/acpi/`；x86 的 map + 消费 MADT（CPU 列表）在 `arch/x86_64/acpi/`。aarch64 用 DTB，不走 ACPI。不必再强行整表搬进 modules。  
 65、CPUID / ARAT（原 #3，done）：`get_cpu_info` 按 max basic/ext leaf 填 Vendor、feature、leaf `06H`/`80000007H` 原始寄存器、`80000008` 地址宽；`ARAT_support()` 对 `thermal_eax` 按位判断（与 `xAPIC_support` 同风格）。  
 66、Multiboot2 header / mmap 路径硬化（done，非「QEMU 校验」）：address/entry tag 改为 required；load_end=`_edata`、bss_end=`_end`；MB2 mmap 前 `memory_regions_init`，无 mmap tag 显式失败。真机 GRUB 再验；日常仍 MB1。  
-67、Port append hooks + admission gates（冻结 A，done）：`port_append_hooks_t`（`append_info_len` + init/fini + `ops_allow`）；`enum port_ops_type`（`LOOKUP`/`SEND`/`RECV`/`REGISTER`，与 `PORT_OPS_LIFE_*` 生命周期无关）；FAM `append_port_info[]`；`message_port_total_size`；`create_message_port(name, hooks)`；`port_ops_begin(port, PORT_OPS_SEND|RECV)`。Gate：`register_port` → `REGISTER`；`port_table_lookup*` / `port_table_resolve_token` → `LOOKUP`（deny 时 `ref_put`）；send/recv/try → `port_ops_begin`。`ops_allow` NULL = 全放行；accessor = `get_cpu_current_thread()`（无单独 actor 参数）；`lookup_name` 仅 `LOOKUP` 非 NULL。索引键仍为 `name` 字符串（上层可编码 tenant，core 无 namespace 类型）。测：`single_port_test`（`port_discovery` + `port_hook_gate_self_test`：冷 lookup、`thread_lookup_port` token 热路径、SEND/RECV/REGISTER deny）。见 `ipc.md` §11。
+67、Port append hooks + admission gates（冻结 A，done）：`port_append_hooks_t`（`append_info_len` + init/fini + `ops_allow`）；`enum port_ops_type`（`LOOKUP`/`SEND`/`RECV`/`REGISTER`，与 `PORT_OPS_LIFE_*` 生命周期无关）；FAM `append_port_info[]`；`message_port_total_size`；`create_message_port(name, hooks)`；`port_ops_begin(port, PORT_OPS_SEND|RECV)`。Gate：`register_port` → `REGISTER`；`port_table_lookup*` / `port_table_resolve_token` → `LOOKUP`（deny 时 `ref_put`）；send/recv/try → `port_ops_begin`。`ops_allow` NULL = 全放行；accessor = `get_cpu_current_thread()`（无单独 actor 参数）；`lookup_name` 仅 `LOOKUP` 非 NULL。索引键仍为 `name` 字符串（上层可编码 tenant，core 无 namespace 类型）。测：`single_port_test`（`port_discovery` + `port_hook_gate_self_test`：冷 lookup、`thread_lookup_port` 热路径、SEND/RECV/REGISTER deny）。见 `ipc.md` §11。
+
+68、UART 轮询 `getc`（原 TODO B.1）：2026-08-23 曾关闭为空壳；**2026-08-25 补完**——16550 轮询 LSR Data Ready 读 RHR；PL011 轮询 FR RXFE 清后读 DR；阻塞。不接 stdin/server/IOAPIC；仅提供 `uart_getc()`。PL011 `IMSC` 可仍开 RXIM（设备侧），GIC SPI 屏蔽时 CPU 收不到，与轮询并存无妨。
+
+69、Log 最小收尾 #37 / #38（原 TODO B.2，**2026-08-23 关闭**）：**均未落地**。#37：`log_init` 仍 `CONSOLE_CLEAN_SCREEN(&X86_CHAR_CONSOLE)`，`pr_*` 仍绑 VGA 色。**#38**：热路径仍同步 `log_put_byte` → `uart_putc`，`LOG_BUFFER` 仅骨架。曾写 console ring + drain 提案，**未合入 core、已回撤**。现行凑合：sync debug 直写 UART；compat 可用 `log_put_locked` 接 `write(1/2)`。前后端分离、多核 IPI 汇聚 **不再作为 core 冻前债**。
+
+70、Core「冻结收尾」主线（**2026-08-23 关闭，未达成**）：原计划冻前完成 B.1 + B.2 再打 tag；**无 `core-v0.1-frozen`**。UART / log server 整包列为上层 backlog（compat `NEXT_PLAN.md` §3）；勿在 v0 上 incremental 合入 ring/server。**core 侧 console 工作本阶段视为收工**（维持现状即可）。
+
+71、专用 Log IPC server（#46，**2026-08-23 关闭**）：与上层 uart_server 同向；core early / panic 须保留直写。**归上层**；core 不维护 log server。是否全部 `pr_*` 走 IPC 未拍板，且短期不推进。
+
+72、创建时线程 CPU affinity（**2026-08-25，maintainer 同意**）：`cpu_id_is_online` · `task_manager_for_cpu` · `thread_owner_cpu` · `add_thread_to_cpu`；新建绑核用已有 `gen_thread_from_func(..., tm, ...)`（本核 `percpu(core_tm)` / 跨核 `task_manager_for_cpu`）。**无**运行期迁移、**无** affinity mask。顺带：`thread_set_name` 改为 `thread_set_name_with_copy`（alloc+`strncpy`，teardown 仍 `m_free`），避免字面量/只读名被释放。测：`smp_test` 环测例 `smp_thread_affinity_test` + `smp_thread_affinity_check`（CPU `i` → `(i+1)%n`；`affinity_seen[j]==(j+n-1)%n`）。见 [`USING_CORE.md`](../USING_CORE.md) §3.12 · [`task-thread.md`](../task-thread.md)。
 
 ---
 
@@ -69,3 +79,6 @@
 16、系统化 call→IPC wrapper（原 #52）：原语在 core；compat 已有 RPC。产品化 wrapper 归上层，勿当 core 债  
 17、Multiboot2 在 QEMU 下校验（原 #39）：日常 `-kernel` + **Multiboot1**（`boot.S` header + bin）。MB2 头与解析代码保留（cmdline/mmap），但 `boot.md` 已记 QEMU 对 MB2/x86_64 支持别扭；**不强制做 QEMU 校验**，非冻结  
 18、中断嵌套策略 / timer RT 标志（原 #25）：现状已是 **IRQ 默认不嵌套**——x86 全表 interrupt gate（进门清 IF）；aarch64 异常入口置 DAIF。timer 用 `IRQ_NEED_EOI` 登记即可。syscall 窗口会 `sti`，与 timer 的竞态靠 `arch_save_and_disable_irq` 护 per-CPU 事件树（见 `time.c`），**不需要**再造 RT/不可嵌套 flag。若将来在 IRQ handler 里主动开中断才重开本项  
+19、core 冻前 UART `getc` / log #37 / #38 / console ring（2026-08-23）：见 DONE #68–#70；维持 sync `uart_putc` + 上层 `log_put_locked` 即可  
+20、core 专用 Log IPC server（#46，2026-08-23）：见 DONE #71；early/panic 直写；server 归上层  
+21、core「冻结 tag / 冻前 console 主线」（2026-08-23）：未打 tag、未做完冻前项；不阻塞 compat 收尾；见 DONE #70

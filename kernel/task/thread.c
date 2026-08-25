@@ -7,7 +7,7 @@
 #include <rendezvos/mm/allocator.h>
 #include <rendezvos/ipc/port.h>
 #include <rendezvos/sync/spin_lock.h>
-#include <rendezvos/system/panic.h>
+#include <rendezvos/limits.h>
 
 /*
 we first generate a context that after the return will goto thread entry（this
@@ -565,21 +565,10 @@ Thread_Base* copy_thread(Thread_Base* src_thread, VSpace* vs,
 
         dst_thread->flags = src_thread->flags;
 
-        if (src_thread->name) {
-                size_t name_len = strlen(src_thread->name) + 1;
-                char* name_copy =
-                        cpu_allocator->m_alloc(cpu_allocator, name_len);
-
-                if (name_copy) {
-                        memcpy(name_copy, src_thread->name, name_len);
-                        dst_thread->name = name_copy;
-                } else {
-                        pr_error("[copy_thread] name alloc failed\n");
-                        dst_thread->name = NULL;
-                }
-        } else {
+        if (src_thread->name)
+                thread_set_name_with_copy(src_thread->name, dst_thread);
+        else
                 dst_thread->name = NULL;
-        }
 
         if (dst_thread->append_hooks && dst_thread->append_hooks->copy) {
                 if (dst_thread->append_hooks->copy(
@@ -604,4 +593,65 @@ del_dst_error:
 drop_vs_error:
         ref_put(&vs->refcount, free_vspace_ref);
         return NULL;
+}
+
+void thread_set_name_with_copy(const char* name, Thread_Base* thread)
+{
+        if (!name || !thread)
+                return;
+
+        size_t name_len = strlen(name) + 1;
+        struct allocator* cpu_kallocator = percpu(kallocator);
+        if (!cpu_kallocator)
+                return;
+
+        char* name_copy =
+                (char*)cpu_kallocator->m_alloc(cpu_kallocator, name_len);
+        if (!name_copy) {
+                pr_error("[thread_set_name_with_copy] name alloc failed\n");
+                return;
+        }
+        strncpy(name_copy, name, name_len);
+
+        if (thread->name) {
+                void* old = (void*)thread->name;
+                thread->name = NULL;
+                cpu_kallocator->m_free(cpu_kallocator, old);
+        }
+        thread->name = name_copy;
+}
+
+extern int NR_CPU;
+
+bool cpu_id_is_online(cpu_id_t cpu)
+{
+        if (cpu >= (cpu_id_t)RENDEZVOS_MAX_CPU_NUMBER)
+                return false;
+        if (NR_CPU <= 0 || cpu >= (cpu_id_t)NR_CPU)
+                return false;
+        return per_cpu(core_tm, (u32)cpu) != NULL;
+}
+
+Task_Manager* task_manager_for_cpu(cpu_id_t cpu)
+{
+        if (!cpu_id_is_online(cpu))
+                return NULL;
+        return per_cpu(core_tm, (u32)cpu);
+}
+
+error_t add_thread_to_cpu(Thread_Base* thread, cpu_id_t cpu)
+{
+        Task_Manager* tm;
+
+        if (!thread)
+                return -E_IN_PARAM;
+        if (thread->tm)
+                return -E_RENDEZVOS;
+        if (thread_get_status(thread) != thread_status_init)
+                return -E_RENDEZVOS;
+
+        tm = task_manager_for_cpu(cpu);
+        if (!tm)
+                return -E_IN_PARAM;
+        return add_thread_to_manager(tm, thread);
 }

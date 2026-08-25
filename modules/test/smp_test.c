@@ -39,6 +39,12 @@ static struct smp_test_case smp_test[MAX_SMP_TEST_CASE] = {
                 smp_port_robustness_test,
                 "smp port robustness test",
                 NULL,
+        },
+        {
+                /* ring create-time bind i→(i+1)%n; check_result: seen[j]==prev */
+                smp_thread_affinity_test,
+                "smp thread affinity",
+                smp_thread_affinity_check,
         }};
 enum multi_cpu_test_state {
         multi_cpu_test_not_start,

@@ -1,9 +1,9 @@
-# Core 待办（冻结收尾）
+# Core 待办
 
-归档：[`archive/TODO_DONE.md`](archive/TODO_DONE.md)（含「明确不做」）  
+归档：[`archive/TODO_DONE.md`](archive/TODO_DONE.md)（含「明确不做」与已关闭项）  
 接口：[`GUIDE.md`](GUIDE.md) §6 · [`USING_CORE.md`](USING_CORE.md) · [`log.md`](log.md)
 
-**规则：** 完成一项 → 写入 DONE 归档，**从本文件删掉该项**；本文件只列未完成工作。
+**规则：** 完成或关闭一项 → 写入 DONE 归档，**从本文件删掉**；本文件只列未完成工作。
 
 ---
 
@@ -11,97 +11,66 @@
 
 | 档 | 含义 |
 |----|------|
-| **B** | 冻结前尽量完成 |
-| **C** | 非冻结；有需要再开 |
+| **B** | 值得做、可排期 |
+| **C** | 远期；有需要再开 |
 
-**冻结前主线：** UART `getc` + log 最小收尾（#37 / #38）。
+**2026-08-25：** 轮询 `uart_getc`（DONE #68）与 **创建时线程 CPU affinity**（DONE #72）已落地并经 maintainer 同意。**无** `core-v0.1-frozen` tag 时，剩余冻前债以本文件 B 档为准；IRQ affinity **不**再挡 freeze（与 IOAPIC 同档远期，见 DONE #14）。
 
-**范围：** 专用 Log IPC server（#46）**不算**冻结主线，与 B.2 拆开；`log_put_byte` 现仍同步 `uart_putc`，early / panic 须保留直写（见 [`log.md`](log.md)）。
-
----
-
-## B. 冻结前
-
-### 1. UART 轮询 `getc`（16550 / PL011）
-
-**现状**
-
-- 门面：`uart_getc()` → `uart_16550A_getc` / `uart_pl011_getc`（`modules/driver/uart/`）。
-- 两实现均为 **`return 0` 空壳**，未轮询 LSR / FR。
-- `putc` 已忙等 THR / TXFF；收包应对称为 **轮询 RX 就绪再读**。**不要**开 RX IRQ（x86 需 IOAPIC，非冻结项）。
-
-**要做**
-
-- **16550**：等 `LSR` data-ready，读 `RBR`；约定无数据行为（冻结最小集：阻塞轮询一字节；或另提供非阻塞变体——二选一并写进头文件）。
-- **PL011**：等 `FR` 非 RXFE，读 `DR`（错误位按驱动惯例处理）。
-- 不改中断模型；不大改 console 子系统。
-
-**验收**
-
-- QEMU 串口：外部输入一字节，`uart_getc` 能读到。
+**现行 log（够用即可）：** `printk` / `pr_*` → 同步 `uart_putc`；上层 `write(1/2)` 可走 `log_put_locked`（compat 接线）。见 [`log.md`](log.md)。
 
 ---
 
-### 2. Log 最小收尾（#37 / #38）
+## B. 可排期
 
-背景：[`log.md`](log.md)。冻结目标为 **最小可用** 前后端分离，**不要求**多核 IPI 汇聚刷屏。
+### 1. 中断 CPU affinity（IRQ 绑哪个 CPU 处理）
 
-**现状**
+**现状：** `irq_vector[]` per-CPU；`register_irq_handler` 全核安装。aarch64 `gicd_v2_set_affinity` 仅 arch 内部；x86 IOAPIC 路由空（见 [`interrupt.md`](interrupt.md)、DONE「明确不做」#14）。线程侧创建时绑核见 DONE #72 / [`USING_CORE.md`](USING_CORE.md) §3.12。
 
-- `struct log_buffer` / `LOG_BUFFER` 有骨架；`log_init` 初始化 buffer 描述符。
-- 热路径仍 **同步直写**：`log_put_byte` → `uart_putc`；`printk` 几乎未当环形缓冲用。
-- `log_init` 调 `CONSOLE_CLEAN_SCREEN(&X86_CHAR_CONSOLE)`；`pr_*` 绑 x86 VGA → 非 x86 被拖进 x86 头。
+**要做：**
 
-**要做**
+1. Portable API（如 `irq_set_affinity(irq_num, cpu_mask)` / `irq_get_affinity`），arch 实现 GIC ITARGETSR、将来 IOAPIC 等。
+2. 文档：软件向量 per-CPU 登记 vs 硬件路由目标 CPU 的一致性；SGI / timer / 设备 SPI 分工。
+3. 与 [`trap.md`](trap.md)、`register_irq_handler` 关系写清（是否允许仅部分 CPU 装 handler）。
 
-1. **#37**：VGA / `X86_CHAR_CONSOLE` 与 `log_init`、通用 `pr_*` 解耦（arch 可选 sink 或 `#ifdef` / 弱符号）；log 只认字节输出抽象。
-2. **#38（缩小版）**：`pr_*` 写 `LOG_BUFFER`，提供 flush 到 uart（`log_flush` 或满页时刷）；**不必**多核 IPI 汇聚。
-3. early / panic：**继续允许直写 uart**。
-
-**不在本项**
-
-- #46 专用 Log IPC server（见 C.4）。
-- 多核 log 汇聚（冻后）。
-
-**验收**
-
-- 非 x86 构建不因 log 强依赖 VGA 头而别扭（或 x86-only 路径隔离清楚）。
-- 常规 `pr_*` 进 buffer 并能刷到串口；panic / early 仍能出字。
+**验收：** aarch64 上可将一 SPI 绑到单 CPU 并实测只在该核进 handler；API 写入 [`USING_CORE.md`](USING_CORE.md)（新小节，勿塞进 §3.12 线程条目）与 [`trap.md`](trap.md)。
 
 ---
 
-### 3. 关键 API Doxygen（#50）
+### 2. 关键 API Doxygen（#50）
 
-- 冻结对外承诺的入口：`port.h`、`pmm_set_reclaim_hook`、`configure_pmm_zones_hook`、trap vector alloc 等。
+- 对外承诺的入口：`port.h`、`pmm_set_reclaim_hook`、`configure_pmm_zones_hook`、trap vector alloc、**已落地的线程 affinity 头注释**（`thread.h`）、将来 IRQ affinity。
 - 改到哪个头就补 `@brief` / 参数约定；与 `GUIDE.md` §6、`USING_CORE.md` 一致。
 - 不必全仓库扫一遍。
 
 ---
 
-## C. 非冻结
-
-### 4. Log / 输出走专用 IPC server（#46）
-
-- 与上层 uart_server 同向；core early / panic 仍直写。
-- 未拍板：全部 `pr_*` 走 IPC，还是仅用户 console。
-- **依赖**：可用 `getc`（B.1）；x86 RX IRQ 另需 IOAPIC（远期）。
-
-### 5. 其它远期
+## C. 远期
 
 | 项 | 说明 |
 |----|------|
-| #22 CPU topology | `cpu_topology.h` 等有头未接线 |
+| 线程运行期迁移 / affinity mask | create-time 已够（DONE #72）；迁核须先下 CPU 再 `del`+`add`；mask / `gen_thread_from_elf` 绑核变体另开 |
+| #22 CPU topology | `cpu_topology.h` 等有头未接线；与 IRQ affinity 相关时可合并 |
 | #43 aarch64 DTB vs PCI | 两套节点描述并存 |
 | PCI 使能 / IRQ / BAR | `pci_ops.c` 等 |
 | aarch64 `boot.S` EL3/SPSR/ELR | 仅从 EL3 进内核时需要 |
 | lockfree-ipc §8.3–8.5 | 批量 / 广播 / 调度感知 IPC |
 | 真 capability / 本地 port handle | 上层策略模型 |
+| UART RX IRQ / IOAPIC | 轮询 `uart_getc` 已有（DONE #68）；IRQ 路由仍见 DONE #14 |
+| Log 前后端 / IPC server（#46） | 见 DONE #69–#71；归上层 + panic 直写 |
 
 ---
 
 ## 建议顺序
 
-1. UART `getc`  
-2. Log #37 / #38  
-3. Doxygen 随手  
-4. 冻后再开 #46  
+1. 中断 affinity（B.1），有设备 IRQ 绑核需求时再开；依赖 GIC / 将来 IOAPIC  
+2. Doxygen（B.2）随手补  
+
+---
+
+## Changelog
+
+| 日期 | 变更 |
+|------|------|
+| 2026-08-25 | 创建时线程 affinity → DONE #72；IRQ affinity 改 B（不挡 freeze）；运行期迁移进 C |
+| 2026-08-23 | 关闭 UART/log 冻前主线；曾列 B.1/B.2 affinity 为冻结范围 |
+| 2026-08-23 | 初版重构：剩 #50 + C 表 |
