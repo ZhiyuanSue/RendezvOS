@@ -118,6 +118,8 @@ Update this table when adding or changing public symbols.
 | Thread | Syscall-frame return | `arch_syscall_*` in `arch/*/thread_arch.h` | [`task-thread.md`](task-thread.md) | `stable` |
 | Thread | Context merge | `arch_ctx_refresh` `arch_ctx_merge_from_src` | [`task-thread.md`](task-thread.md) | `stable` |
 | Thread | Teardown / run queue | `delete_thread` `add_thread_to_manager` | [`task-thread.md`](task-thread.md) | `stable` |
+| Thread | Create-time CPU affinity | `cpu_id_is_online` `task_manager_for_cpu` `thread_owner_cpu` `add_thread_to_cpu` | [`USING_CORE.md`](USING_CORE.md) §3.12 · [`task-thread.md`](task-thread.md) | `stable` |
+| Thread | Display name (owned copy) | `thread_set_name_with_copy` | [`task-thread.md`](task-thread.md) | `stable` |
 | Scheduler | Block / run | `thread_set_status` `schedule` | [`task-thread.md`](task-thread.md) | `code-only` |
 | IPC | Port table | `global_port_table` `port_table_lookup` `register_port` | [`ipc.md`](ipc.md) | `stable` |
 | IPC | Port append + gates | `port_append_hooks_t` `message_port_total_size` `create_message_port(name, hooks)` `port_ops_begin` | [`ipc.md`](ipc.md) §11 | `stable` |
@@ -209,3 +211,4 @@ All **how to use core from outside this tree** documentation lives in **[`USING_
 | 2026-08 | IRQ vector USED bit + alloc pool: [USING §3.10](USING_CORE.md) |
 | 2026-08 | Port append hooks — API 见 [`ipc.md`](ipc.md) §11；归档 #67 |
 | 2026-08 | Rename `tcb.h` → `thread.h`, `tcb_arch.h` → `thread_arch.h`, `tcb.c` → `thread_boot.c`; `Arch_Thread_Context` |
+| 2026-08-25 | §6 create-time CPU affinity + `thread_set_name_with_copy` (DONE #72) |

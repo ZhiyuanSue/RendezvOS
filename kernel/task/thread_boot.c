@@ -51,7 +51,7 @@ error_t create_boot_thread(void)
         boot_t->kstack_bottom = percpu(boot_stack_bottom);
         thread_set_status(boot_t, thread_status_running); /*boot thread is the
                                                              running thread*/
-        thread_set_name(boot_thread_name, boot_t);
+        thread_set_name_with_copy(boot_thread_name, boot_t);
         return REND_SUCCESS;
 add_thread_to_manager_fail:
         del_thread_structure(boot_t);

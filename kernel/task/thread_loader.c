@@ -326,7 +326,7 @@ error_t gen_thread_from_func(Thread_Base **func_thread_ptr, kthread_func thread,
                 ref_put(&root_vspace.refcount, free_vspace_ref);
                 return -E_RENDEZVOS;
         }
-        thread_set_name(thread_name, func_t);
+        thread_set_name_with_copy(thread_name, func_t);
         if (func_thread_ptr)
                 *func_thread_ptr = func_t;
         return add_thread_to_manager(tm, func_t);

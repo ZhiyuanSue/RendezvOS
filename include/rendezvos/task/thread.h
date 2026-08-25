@@ -278,6 +278,26 @@ Thread_Init_Para* new_init_parameter_structure();
 void del_init_parameter_structure(Thread_Init_Para* pm);
 
 /**
+ * @brief True if @p cpu is an online SMP CPU with a per-CPU @c core_tm.
+ *
+ * Does **not** mean a thread may be migrated while running/blocking/exiting;
+ * use only to pick a target CPU for **first** enqueue (@c add_thread_to_cpu /
+ * @c gen_thread_from_func with @c task_manager_for_cpu).
+ */
+bool cpu_id_is_online(cpu_id_t cpu);
+
+/** @brief Per-CPU run queue for @p cpu; NULL if @c cpu_id_is_online is false. */
+Task_Manager* task_manager_for_cpu(cpu_id_t cpu);
+
+/** @brief Owner CPU of @p thread's run queue, or @c CPU_ID_INVALID. */
+static inline cpu_id_t thread_owner_cpu(const Thread_Base* thread)
+{
+        if (!thread || !thread->tm)
+                return CPU_ID_INVALID;
+        return thread->tm->owner_cpu;
+}
+
+/**
  * @brief Link @p thread into @p core_tm sched_thread_list.
  * @param core_tm Task manager.
  * @param thread Thread to schedule.
@@ -285,6 +305,18 @@ void del_init_parameter_structure(Thread_Init_Para* pm);
  *         pointer is NULL, returns REND_SUCCESS without linking.
  */
 error_t add_thread_to_manager(Task_Manager* core_tm, Thread_Base* thread);
+
+/**
+ * @brief First-time enqueue of @p thread on CPU @p cpu's run queue.
+ *
+ * @p thread must be freshly @c create_thread'd: @c thread_status_init and
+ * @c thread->tm == NULL. No runtime migration; running / blocked / exiting
+ * threads must not be moved (future migration is a separate API).
+ *
+ * @return REND_SUCCESS; @c -E_IN_PARAM if CPU invalid or @p thread is NULL;
+ *         @c -E_RENDEZVOS if already on a manager or wrong thread status.
+ */
+error_t add_thread_to_cpu(Thread_Base* thread, cpu_id_t cpu);
 
 /**
  * @brief Unlink @p thread from its task manager sched_thread_list (idempotent).
@@ -429,16 +461,15 @@ static inline bool thread_set_status_with_expect(Thread_Base* thread,
 }
 
 /**
- * @brief Set thread display name (does not copy string).
- * @param name Name buffer owned by caller.
- * @param thread Thread (no-op if either pointer is NULL).
+ * @brief Set thread display name: allocate a copy with @c strncpy.
+ *
+ * Thread owns the buffer; @c thread_release_owned_resources frees it.
+ * On alloc failure the previous name is left unchanged.
+ *
+ * @param name Source C string (literal / static / heap all OK).
+ * @param thread Target thread (no-op if either pointer is NULL).
  */
-static inline void thread_set_name(char* name, Thread_Base* thread)
-{
-        if (!name || !thread)
-                return;
-        thread->name = name;
-}
+void thread_set_name_with_copy(const char* name, Thread_Base* thread);
 
 /**
  * @brief User-thread bootstrap after copy_thread: return to user with the given

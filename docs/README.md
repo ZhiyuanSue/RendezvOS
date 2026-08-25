@@ -26,6 +26,8 @@
 | SMP | [`smp.md`](smp.md) |
 | Timers | [`timer.md`](timer.md) |
 | Log | [`log.md`](log.md) |
+| CPU affinity（线程 create-time） | [`USING_CORE.md`](USING_CORE.md) §3.12 · [`task-thread.md`](task-thread.md) |
+| CPU affinity（IRQ，backlog） | [`trap.md`](trap.md) · [`TODO.md`](TODO.md) B.1 |
 
 ## Platform / misc
 

@@ -31,13 +31,11 @@ int single_port_test(void);
 int single_timer_test(void);
 int page_slice_test(void);
 
-/*in smp case
-one test function cannot easily be checked
-so we designed two ways
-if each smp_test can return a value,just check all the values for every cpu
-else if the smp test case check function can work,
-we use that check the result at cpu 0
-*/
+/*
+ * SMP cases: either every CPU's test() return is checked, or (when
+ * check_result != NULL) only BSP runs check_result() and per-CPU returns
+ * are ignored — see smp_thread_affinity_* for the latter.
+ */
 int smp_lock_test(void);
 bool smp_lock_check(void);
 int smp_kmalloc_test(void);
@@ -51,6 +49,8 @@ int smp_log_test(void);
 bool smp_log_check(void);
 int smp_ipc_test(void);
 int smp_port_robustness_test(void);
+int smp_thread_affinity_test(void);
+bool smp_thread_affinity_check(void);
 
 struct single_test_case {
         int (*test)(void);

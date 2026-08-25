@@ -37,6 +37,17 @@ __attribute__((weak)) void syscall(struct trap_frame* syscall_ctx);
 | Fault / trap class | `register_fixed_trap(TRAP_CLASS_*, handler, flags)` | `#PF`、非法指令、**aarch64 SVC** |
 | Device IRQ | `irq_vector_alloc` → `register_irq_handler`（[USING §3.10](USING_CORE.md)） | 设备中断；timer / IPI 等由 arch `reserve`，勿私拣裸号 |
 
+**CPU affinity（中断绑核）：** backlog，见 [`TODO.md`](TODO.md) B.1。**不**挡 v0.1 freeze（x86 IOAPIC 见 DONE #14）。线程创建时绑核是另一条契约：[`USING_CORE.md`](USING_CORE.md) §3.12。
+
+| 现状（v0） | 说明 |
+|------------|------|
+| 软件向量 | `irq_vector[id]` **per-CPU**；`register_irq_handler` 在 **所有 CPU** 安装同一 handler |
+| aarch64 GIC | `gicd_v2_set_affinity` 存在，仅 arch 内部；SPI 可写 `GICD_ITARGETSR`，**无** portable `irq_set_affinity` |
+| x86 | IOAPIC 路由未实现（[`interrupt.md`](interrupt.md)）；外设 IRQ 无法规范绑核 |
+| IPI | `smp_ipi_send(target_cpu, ipi)` 可指定目标 CPU（逻辑门铃，非设备 IRQ affinity） |
+
+**目标（有设备 IRQ 绑核需求时）：** arch 中立 API（如 `irq_set_affinity(vector, cpu_mask)`）+ 文档约定：handler 仍 per-CPU 登记时，硬件路由与软件向量如何一致。
+
 Portable 代码应使用 **`trap_class`** 和 `arch_populate_trap_info()`，避免硬编码 IRQ 号或向量号（见下文「上层使用方式」）。
 
 ### Trap 返回与调度
