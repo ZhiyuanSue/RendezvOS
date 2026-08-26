@@ -1,0 +1,478 @@
+# v0.1 全量文档索引
+
+对应 core v0.1 冻结代码。生成规则见 `core/docs/文档生成操作计划.md`。
+
+下面列出 38 篇正文（不含本 README）。每篇标题前有两个方框，从左到右：
+
+- 第一个 `[x]`：初稿已生成（撰写者 / AI 完成并自查后勾选）
+- 第二个 `[x]`：Maintainer 审定通过
+
+两个都是 `[x]`，该篇才算完成；仅第一个 `[x]` 表示待审定。每篇的「源码」是该篇负责讲清楚的文件。
+
+示例：`### [x] [ ] 03-…/….md` — 已有初稿，等你审定。
+
+---
+
+## 目录树
+
+```text
+v0.1/full/
+├── README.md                          ← 本文件
+├── 00-总览/
+│   └── 架构与源码布局.md
+├── 01-启动与初始化/
+│   ├── 启动流程总览.md
+│   ├── 模块初始化与内核入口.md
+│   ├── 平台启动-x86_64.md
+│   └── 平台启动-aarch64.md
+├── 02-内存管理/
+│   ├── 物理内存与Buddy分配器.md
+│   ├── 虚拟地址空间与页表.md
+│   ├── Radix树与用户映射.md
+│   ├── kmalloc与内核堆.md
+│   ├── page_slice稀疏页索引.md
+│   ├── TLB与缓存一致性.md
+│   └── ASID与地址空间标识.md
+├── 03-任务与调度/
+│   ├── 线程与Task_Manager.md
+│   ├── 线程创建与ELF加载.md
+│   ├── VSpace所有权与调度切换.md
+│   ├── CPU亲和性-创建时绑核.md
+│   └── EBR与线程资源回收.md
+├── 04-IPC/
+│   ├── Port与消息模型.md
+│   ├── 阻塞与非阻塞收发.md
+│   ├── kmsg与TLV序列化.md
+│   ├── Port钩子与准入门.md
+│   └── 无锁队列与EBR设计.md
+├── 05-陷阱与中断/
+│   ├── Trap抽象与分类.md
+│   ├── 系统调用入口.md
+│   ├── IRQ向量分配与处理.md
+│   ├── 平台中断-x86_64-APIC与PIC.md
+│   └── 平台中断-aarch64-GIC.md
+├── 06-SMP与同步/
+│   ├── SMP启动与处理器拓扑.md
+│   ├── per-CPU数据与访问约定.md
+│   ├── 软IPI机制.md
+│   ├── 锁与内存屏障.md
+│   └── TLB_shootdown与跨核一致性.md
+├── 07-时间与定时器/
+│   └── 时间与定时器子系统.md
+├── 08-日志与控制台/
+│   └── 日志与UART控制台.md
+├── 09-平台模块/
+│   ├── ACPI与MADT-x86_64.md
+│   ├── DTB与设备树-aarch64.md
+│   ├── ELF加载辅助模块.md
+│   ├── PCI枚举与配置空间.md
+│   └── PSCI与处理器电源-aarch64.md
+├── 10-基础设施/
+│   ├── 错误码与panic.md
+│   ├── 名称索引注册表.md
+│   └── 公共基础库与数据结构.md
+└── 11-测试/
+    └── 内核测试框架与测例索引.md
+```
+
+共 11 分区、38 篇正文。
+
+---
+
+## 00-总览
+
+### [ ] [ ] 00-总览/架构与源码布局.md
+
+职责：core 树分区、`include/` vs `kernel/` vs `arch/` vs `modules/` 关系；公开 API 边界；与 compat 的分层
+
+源码：`include/rendezvos/`（目录级） · `include/common/` · `include/modules/modules.h` · `kernel/system/main.c` · `include/rendezvos/task/initcall.h`
+
+说明：各子系统细节不在此展开，仅指向本目录树下对应篇章
+
+---
+
+## 01-启动与初始化
+
+### [ ] [ ] 01-启动与初始化/启动流程总览.md
+
+职责：从固件/引导器到 `main` 的阶段划分；BSP/AP 分工；与内存/trap/SMP 的先后关系
+
+源码：`kernel/system/main.c` · `arch/x86_64/boot/boot.S` · `arch/aarch64/boot/boot.S` · `arch/x86_64/boot/start_arch.c` · `arch/aarch64/boot/start_arch.c` · `include/arch/x86_64/boot/arch_setup.h` · `include/arch/aarch64/boot/arch_setup.h` · `include/arch/x86_64/boot/multiboot.h` · `include/arch/x86_64/boot/multiboot2.h`
+
+---
+
+### [ ] [ ] 01-启动与初始化/模块初始化与内核入口.md
+
+职责：`DEFINE_INIT` / `do_init_call`；boot 线程创建；idle；首个用户/测试线程
+
+源码：`include/rendezvos/task/initcall.h` · `kernel/task/thread_boot.c` · `kernel/task/task_manager.c` · `kernel/system/main.c` · `modules/helloworld/helloworld.c` · `include/modules/helloworld/helloworld.h`
+
+---
+
+### [ ] [ ] 01-启动与初始化/平台启动-x86_64.md
+
+职责：Multiboot1/2、GDT、实模式→长模式、低地址 AP 跳板、MADT 消费入口
+
+源码：`arch/x86_64/boot/boot.S` · `arch/x86_64/boot/gdt.c` · `arch/x86_64/boot/start_arch.c` · `arch/x86_64/boot/smp.c` · `arch/x86_64/acpi/acpi.c` · `arch/x86_64/acpi/madt.c` · `include/arch/x86_64/desc.h` · `include/arch/x86_64/boot/arch_setup.h`
+
+---
+
+### [ ] [ ] 01-启动与初始化/平台启动-aarch64.md
+
+职责：EL 级、PSCI secondary boot、DTB 入口、GIC/timer 早期初始化
+
+源码：`arch/aarch64/boot/boot.S` · `arch/aarch64/boot/boot_map.c` · `arch/aarch64/boot/start_arch.c` · `arch/aarch64/boot/smp.c` · `arch/aarch64/psci/psci.c` · `arch/aarch64/psci/psci_call.S` · `include/arch/aarch64/psci/psci.h` · `include/arch/aarch64/psci/psci_error.h`
+
+---
+
+## 02-内存管理
+
+### [ ] [ ] 02-内存管理/物理内存与Buddy分配器.md
+
+职责：zone、`phy_mm_init`、buddy 算法、reclaim hook、多 zone 骨架
+
+源码：`kernel/mm/pmm.c` · `kernel/mm/buddy_pmm.c` · `include/rendezvos/mm/pmm.h` · `include/rendezvos/mm/buddy_pmm.h` · `arch/x86_64/mm/pmm.c` · `arch/aarch64/mm/pmm.c` · `include/arch/x86_64/mm/pmm.h` · `include/arch/aarch64/mm/pmm.h` · `include/arch/riscv64/mm/pmm.h` · `include/arch/loongarch/mm/pmm.h`
+
+---
+
+### [ ] [ ] 02-内存管理/虚拟地址空间与页表.md
+
+职责：`VSpace`、`Map_Handler`、`map()`、自映射、kernel/user 映射策略
+
+源码：`kernel/mm/vmm.c` · `kernel/mm/map_handler.c` · `kernel/mm/map_util_page.S` · `include/rendezvos/mm/vmm.h` · `include/rendezvos/mm/map_handler.h` · `arch/x86_64/mm/vmm.c` · `arch/aarch64/mm/vmm.c` · `include/arch/x86_64/mm/vmm.h` · `include/arch/aarch64/mm/vmm.h` · `include/arch/x86_64/mm/page_table_def.h` · `include/arch/aarch64/mm/page_table_def.h` · `include/arch/x86_64/mm/mm.h` · `include/arch/aarch64/mm/mm.h`
+
+---
+
+### [ ] [ ] 02-内存管理/Radix树与用户映射.md
+
+职责：radix 真源、`mm_user_utils_*`、锁层级 L0/L2、`register_vspace`、page fault 协作
+
+源码：`kernel/mm/vmm_radix_tree.c` · `kernel/mm/mm_user_utils.c` · `include/rendezvos/mm/vmm_radix_tree.h` · `include/rendezvos/mm/mm_user_utils.h`
+
+说明：`register_vspace` 使用的 name 索引见 `10-基础设施/名称索引注册表.md`，本篇不展开
+
+---
+
+### [ ] [ ] 02-内存管理/kmalloc与内核堆.md
+
+职责：per-CPU `kallocator`、slab/页路径、`root_vspace` 关系
+
+源码：`kernel/mm/kmalloc.c` · `kernel/mm/string.c` · `include/rendezvos/mm/kmalloc.h` · `include/rendezvos/mm/allocator.h`
+
+---
+
+### [ ] [ ] 02-内存管理/page_slice稀疏页索引.md
+
+职责：pgoff→kva、与 VSpace 边界、copy 辅助
+
+源码：`kernel/mm/page_slice.c` · `kernel/mm/page_slice_copy.c` · `include/rendezvos/mm/page_slice.h` · `include/rendezvos/mm/page_slice_copy.h`
+
+---
+
+### [ ] [ ] 02-内存管理/TLB与缓存一致性.md
+
+职责：`tlb_cpu_mask`、unmap/shootdown、arch flush 钩子
+
+源码：`include/rendezvos/mm/tlb_cpu_mask.h` · `include/arch/x86_64/sync/tlb.h` · `include/arch/aarch64/sync/tlb.h` · `include/arch/x86_64/sync/cache.h` · `include/arch/aarch64/sync/cache.h` · `arch/x86_64/mm/arch_smp_tlb_flush.c`
+
+---
+
+### [ ] [ ] 02-内存管理/ASID与地址空间标识.md
+
+职责：ASID 分配/回收、与 schedule 切换关系
+
+源码：`kernel/mm/asid.c` · `include/rendezvos/mm/asid.h` · `include/arch/x86_64/mm/asid.h` · `include/arch/aarch64/mm/asid.h`
+
+---
+
+## 03-任务与调度
+
+### [ ] [ ] 03-任务与调度/线程与Task_Manager.md
+
+职责：`Thread_Base`、`Task_Manager`、状态机、`schedule`、run queue
+
+源码：`kernel/task/thread.c` · `kernel/task/task_manager.c` · `include/rendezvos/task/thread.h` · `include/rendezvos/task/id.h` · `kernel/task/id.c`
+
+---
+
+### [ ] [ ] 03-任务与调度/线程创建与ELF加载.md
+
+职责：`create_thread` / `copy_thread` / `gen_thread_from_func` / `gen_thread_from_elf` / `run_elf_program` / user stack
+
+源码：`kernel/task/thread_loader.c` · `include/rendezvos/task/thread_loader.h` · `modules/elf/elf.c` · `modules/elf/elf_print.c` · `include/modules/elf/elf.h` · `include/modules/elf/elf_common.h` · `include/modules/elf/elf_32.h` · `include/modules/elf/elf_64.h` · `include/modules/elf/elf_print.h` · `arch/x86_64/task/arch_thread.c` · `arch/aarch64/task/arch_thread.c` · `arch/x86_64/task/arch_switch.S` · `arch/aarch64/task/arch_switch.S` · `arch/x86_64/task/arch_run_thread.S` · `arch/aarch64/task/arch_run_thread.S` · `arch/x86_64/task/arch_user_switch.S` · `arch/aarch64/task/arch_user_switch.S` · `include/arch/x86_64/thread_arch.h` · `include/arch/aarch64/thread_arch.h`
+
+---
+
+### [ ] [ ] 03-任务与调度/VSpace所有权与调度切换.md
+
+职责：`thread->vs` refcount、schedule 时 HW AS 切换、teardown、boot 线程例外
+
+源码：`kernel/task/thread.c`（schedule/teardown 相关） · `kernel/task/task_manager.c` · `include/rendezvos/task/thread.h` · `include/rendezvos/mm/vmm.h`
+
+---
+
+### [ ] [ ] 03-任务与调度/CPU亲和性-创建时绑核.md
+
+职责：`cpu_id_is_online` · `task_manager_for_cpu` · `thread_owner_cpu` · `add_thread_to_cpu`；**无**运行期迁移
+
+源码：`kernel/task/thread.c`（affinity  helpers） · `include/rendezvos/task/thread.h` · `modules/test/thread_affinity_test.c` · `modules/test/smp_test.c` · `include/modules/test/test.h`
+
+---
+
+### [ ] [ ] 03-任务与调度/EBR与线程资源回收.md
+
+职责：EBR 在 IPC/线程路径的用法；`delete_thread` 与资源释放顺序
+
+源码：`kernel/task/ebr.c` · `include/rendezvos/task/ebr.h` · `kernel/task/thread.c`（`thread_set_name_with_copy`、release）
+
+---
+
+## 04-IPC
+
+### [ ] [ ] 04-IPC/Port与消息模型.md
+
+职责：两层模型（port rendezvous + per-thread 队列）；`Message_Port_t`；全局 port 表
+
+源码：`kernel/ipc/port.c` · `kernel/ipc/message.c` · `include/rendezvos/ipc/port.h` · `include/rendezvos/ipc/message.h` · `kernel/registry/name_index.c`
+
+---
+
+### [ ] [ ] 04-IPC/阻塞与非阻塞收发.md
+
+职责：`send_msg` / `recv_msg` / try 变体；push vs pull；返回码
+
+源码：`kernel/ipc/ipc.c` · `include/rendezvos/ipc/ipc.h`
+
+---
+
+### [ ] [ ] 04-IPC/kmsg与TLV序列化.md
+
+职责：`kmsg_t`、TLV、`ipc_serial`、system async outbound
+
+源码：`kernel/ipc/kmsg.c` · `kernel/ipc/ipc_serial.c` · `include/rendezvos/ipc/kmsg.h` · `include/rendezvos/ipc/kmsg_system.h` · `include/rendezvos/ipc/ipc_serial.h`
+
+---
+
+### [ ] [ ] 04-IPC/Port钩子与准入门.md
+
+职责：`port_append_hooks_t`、`ops_allow`、`port_ops_begin`、FAM append
+
+源码：`kernel/ipc/port.c` · `include/rendezvos/ipc/port.h` · `modules/test/single_port_test.c`
+
+---
+
+### [ ] [ ] 04-IPC/无锁队列与EBR设计.md
+
+职责：MS queue、tagged ptr、ABA、与 IPC 的结合；**设计**为主
+
+源码：`include/common/dsa/ms_queue.h` · `include/common/taggedptr.h` · `kernel/task/ebr.c` · `kernel/ipc/ipc.c` · `kernel/ipc/message.c`
+
+---
+
+## 05-陷阱与中断
+
+### [ ] [ ] 05-陷阱与中断/Trap抽象与分类.md
+
+职责：`trap_class`、`register_fixed_trap`、`trap_frame`、与 personality 弱符号边界
+
+源码：`kernel/trap/trap.c` · `include/rendezvos/trap/trap.h` · `include/rendezvos/trap/trap_common.h` · `include/rendezvos/trap.h` · `arch/x86_64/trap/trap_vec.S` · `arch/aarch64/trap/trap_vec.S`
+
+---
+
+### [ ] [ ] 05-陷阱与中断/系统调用入口.md
+
+职责：弱符号 `syscall`、`arch_syscall_*`、从 syscall 返回用户
+
+源码：`kernel/system/syscall.c` · `arch/x86_64/trap/trap.c` · `arch/aarch64/trap/trap.c` · `arch/x86_64/trap/kernel_entry.S` · `arch/aarch64/trap/kernel_entry.S` · `arch/x86_64/trap/tss.c` · `include/arch/x86_64/trap/tss.h` · `include/arch/x86_64/trap/trap.h` · `include/arch/aarch64/trap/trap.h` · `include/arch/x86_64/trap/trap_def.h` · `include/arch/aarch64/trap/trap_def.h`
+
+---
+
+### [ ] [ ] 05-陷阱与中断/IRQ向量分配与处理.md
+
+职责：`irq_vector_alloc`、`register_irq_handler`、`IRQ_NEED_EOI`、per-CPU `irq_vector[]`
+
+源码：`kernel/trap/trap.c` · `include/rendezvos/trap/trap.h` · `kernel/time/time.c`
+
+---
+
+### [ ] [ ] 05-陷阱与中断/平台中断-x86_64-APIC与PIC.md
+
+职责：8259、Local APIC/x2APIC、PIT/HPET、timer IPI、**IOAPIC 空壳现状**
+
+源码：`arch/x86_64/PIC/PIC.c` · `arch/x86_64/PIC/LocalAPIC.c` · `arch/x86_64/PIC/IRQ.c` · `arch/x86_64/PIC/PIT.c` · `arch/x86_64/time/time.c` · `arch/x86_64/time/rtc.c` · `include/arch/x86_64/PIC/*.h` · `include/arch/x86_64/time.h` · `include/arch/x86_64/io.h` · `include/arch/x86_64/io_port.h` · `include/arch/x86_64/msr.h`
+
+---
+
+### [ ] [ ] 05-陷阱与中断/平台中断-aarch64-GIC.md
+
+职责：GICv2 驱动、SPI/SGI、EOI、`gicd_v2_set_affinity`（arch 内部）
+
+源码：`arch/aarch64/gic/gic_v2.c` · `include/arch/aarch64/gic/gic_v2.h` · `include/arch/aarch64/gic/gic_v3.h` · `arch/aarch64/time/generic_time.c` · `include/arch/aarch64/time.h`
+
+---
+
+## 06-SMP与同步
+
+### [ ] [ ] 06-SMP与同步/SMP启动与处理器拓扑.md
+
+职责：`smp_start`、NR_CPU、BSP/AP、拓扑头文件现状
+
+源码：`kernel/smp/smp.c` · `include/rendezvos/smp/smp.h` · `include/rendezvos/cpu_topology.h` · `include/rendezvos/smp/cpu_id.h` · `include/arch/x86_64/smp.h` · `include/arch/aarch64/smp.h` · `include/arch/x86_64/arch_bitmap.h` · `include/arch/aarch64/arch_bitmap.h`
+
+---
+
+### [ ] [ ] 06-SMP与同步/per-CPU数据与访问约定.md
+
+职责：`percpu()`、`core_tm`、`current_vspace`、MCS `me` 必须本 CPU
+
+源码：`kernel/smp/percpu.c` · `include/rendezvos/smp/percpu.h` · `arch/x86_64/percpu.c` · `arch/aarch64/percpu.c`
+
+---
+
+### [ ] [ ] 06-SMP与同步/软IPI机制.md
+
+职责：`smp_ipi_register/send/init`、arch 门铃
+
+源码：`kernel/smp/ipi.c` · `include/rendezvos/smp/ipi.h` · `arch/x86_64/smp/arch_smp_ipi.c` · `arch/aarch64/smp/arch_smp_ipi.c`
+
+---
+
+### [ ] [ ] 06-SMP与同步/锁与内存屏障.md
+
+职责：spinlock、CAS lock、barrier、与 IPC 的关系
+
+源码：`include/rendezvos/sync/spin_lock.h` · `include/rendezvos/sync/cas_lock.h` · `include/rendezvos/sync/barrier.h` · `include/common/atomic.h` · `include/common/spin.h` · `include/arch/x86_64/sync/barrier.h` · `include/arch/aarch64/sync/barrier.h` · `include/arch/x86_64/sync/sync.h` · `arch/x86_64/atomic.c` · `arch/aarch64/atomic.c`
+
+---
+
+### [ ] [ ] 06-SMP与同步/TLB_shootdown与跨核一致性.md
+
+职责：跨核 TLB flush 路径、与 MM 的协作
+
+源码：`arch/x86_64/mm/arch_smp_tlb_flush.c` · `include/arch/x86_64/sync/tlb.h` · `include/arch/aarch64/sync/tlb.h` · `kernel/smp/ipi.c`
+
+---
+
+## 07-时间与定时器
+
+### [ ] [ ] 07-时间与定时器/时间与定时器子系统.md
+
+职责：`time.h` 抽象、per-CPU 事件树、arch timer 后端
+
+源码：`kernel/time/time.c` · `include/rendezvos/time.h` · `arch/x86_64/time/time.c` · `arch/x86_64/time/rtc.c` · `arch/aarch64/time/generic_time.c` · `include/arch/x86_64/time.h` · `include/arch/aarch64/time.h` · `modules/driver/timer/8254.c`
+
+---
+
+## 08-日志与控制台
+
+### [ ] [ ] 08-日志与控制台/日志与UART控制台.md
+
+职责：`pr_*` → UART、`uart_getc` 轮询、VGA console（x86）、v0.1 冻结现状
+
+源码：`modules/log/log.c` · `include/modules/log/log.h` · `include/rendezvos/stdio.h` · `modules/driver/uart/uart.c` · `modules/driver/uart/uart_16550A.c` · `modules/driver/uart/uart_pl011.c` · `include/modules/driver/uart/uart.h` · `include/modules/driver/uart/uart_16550A.h` · `include/modules/driver/uart/uart_pl011.h` · `modules/driver/x86_char_console/char_console.c` · `include/modules/driver/x86_char_console/char_console.h` · `include/modules/driver/driver.h`
+
+---
+
+## 09-平台模块
+
+### [ ] [ ] 09-平台模块/ACPI与MADT-x86_64.md
+
+职责：RSDP/MADT 遍历、CPU 枚举
+
+源码：`modules/acpi/acpi.c` · `modules/acpi/acpi_madt.c` · `include/modules/acpi/acpi.h` · `include/modules/acpi/acpi_madt.h` · `include/modules/acpi/acpi_table.h` · `include/modules/acpi/acpi_defs.h` · `include/modules/acpi/acpi_fadt.h` · `arch/x86_64/acpi/acpi.c` · `arch/x86_64/acpi/madt.c`
+
+---
+
+### [ ] [ ] 09-平台模块/DTB与设备树-aarch64.md
+
+职责：FDT 解析、设备节点、与 PCI 节点并存问题
+
+源码：`modules/dtb/dtb.c` · `modules/dtb/dev_tree.c` · `modules/dtb/property.c` · `modules/dtb/print_property.c` · `include/modules/dtb/dtb.h` · `include/modules/dtb/dev_tree.h` · `include/modules/dtb/property.h` · `include/modules/dtb/fdt.h` · `include/modules/dtb/libfdt.h` · `include/modules/dtb/print_property.h`
+
+---
+
+### [ ] [ ] 09-平台模块/ELF加载辅助模块.md
+
+职责：与 §03 loader 的边界：纯 ELF 解析/打印
+
+源码：`modules/elf/elf.c` · `modules/elf/elf_print.c` · `include/modules/elf/*.h`
+
+---
+
+### [ ] [ ] 09-平台模块/PCI枚举与配置空间.md
+
+职责：PCI 扫描、config 访问、设备树
+
+源码：`modules/pci/pci_ops.c` · `modules/pci/pci_dev_tree.c` · `include/modules/pci/pci.h` · `include/modules/pci/pci_ops.h` · `include/modules/pci/pci_dev_tree.h`
+
+---
+
+### [ ] [ ] 09-平台模块/PSCI与处理器电源-aarch64.md
+
+职责：PSCI 调用约定、secondary boot 与 idle
+
+源码：`arch/aarch64/psci/psci.c` · `arch/aarch64/psci/psci_call.S` · `include/arch/aarch64/psci/psci.h` · `include/arch/aarch64/psci/psci_error.h` · `include/arch/aarch64/power_ctrl.h` · `include/arch/x86_64/power_ctrl.h` · `kernel/system/powerd.c` · `include/rendezvos/system/powerd.h`
+
+---
+
+## 10-基础设施
+
+### [ ] [ ] 10-基础设施/错误码与panic.md
+
+职责：`error_t`、panic、powerd
+
+源码：`include/rendezvos/error.h` · `kernel/system/panic.c` · `include/rendezvos/system/panic.h` · `kernel/system/powerd.c` · `include/rendezvos/system/powerd.h` · `include/rendezvos/common.h` · `include/rendezvos/limits.h`
+
+---
+
+### [ ] [ ] 10-基础设施/名称索引注册表.md
+
+职责：全局 name → object 索引（port、vspace 等）
+
+源码：`kernel/registry/name_index.c` · `include/rendezvos/registry/name_index.h`
+
+---
+
+### [ ] [ ] 10-基础设施/公共基础库与数据结构.md
+
+职责：`common/` 类型、refcount、rb_tree、list、bitmap、endian
+
+源码：`include/common/types.h` · `include/common/refcount.h` · `include/common/string.h` · `include/common/dsa/rb_tree.h` · `include/common/dsa/list.h` · `include/common/dsa/bitmap.h` · `include/common/dsa/tree.h` · `include/common/endianness.h` · `include/common/bit.h` · `include/common/align.h` · `include/common/limits.h` · `include/common/stddef.h` · `include/common/stdbool.h` · `include/common/stdarg.h` · `include/common/rand.h` · `include/common/mm.h` · `include/common/assemble.h` · `include/arch/x86_64/sys_ctrl.h` · `include/arch/x86_64/sys_ctrl_def.h` · `include/arch/aarch64/sys_ctrl.h` · `include/arch/aarch64/sys_ctrl_def.h` · `include/arch/x86_64/cpuinfo.h` · `include/arch/aarch64/cpuinfo.h` · `include/arch/x86_64/arch_common.h` · `include/arch/aarch64/arch_common.h` · `include/arch/riscv64/arch_common.h` · `include/arch/loongarch/arch_common.h` · `arch/riscv64/kernel/sbi.c` · `arch/riscv64/kernel/sbi.h`
+
+说明：riscv64 / loongarch 仅为占位；`sbi` 无完整 bring-up，正文注明即可
+
+---
+
+## 11-测试
+
+### [ ] [ ] 11-测试/内核测试框架与测例索引.md
+
+职责：`BSP_test`/`AP_test`、`single_test`/`smp_test`、`check_result` 语义
+
+源码：`modules/test/test.c` · `modules/test/single_test.c` · `modules/test/smp_test.c` · `include/modules/test/test.h` · `modules/test/single_*.c` · `modules/test/smp_*.c` · `modules/test/thread_affinity_test.c`
+
+---
+
+## 查漏
+
+implementation 文件应各归一篇「源码」列表，头文件随对应 `.c` 计入同一篇，不重复展开。
+
+- `kernel/`（约 28 个文件）→ 02–07、10 各篇
+- `modules/` 除 test（约 20）→ 01、03、08、09
+- `modules/test/`（约 20）→ 11
+- `arch/x86_64/`（约 25）→ 01、03、05–07
+- `arch/aarch64/`（约 18）→ 01、03、05–07、09
+- `arch/riscv64/` 仅 `sbi.c` / `sbi.h` → `10-基础设施/公共基础库与数据结构.md`（占位）
+
+`nexus.h`、`tcb.h` 等历史头文件在 00 总览或 02 Radix 篇用一行说明即可，不单独开文。
+
+---
+
+## 建议撰写顺序
+
+1. `00-总览/架构与源码布局.md`
+2. `03-任务与调度/VSpace所有权与调度切换.md`
+3. `04-IPC/Port与消息模型.md`
+4. `02-内存管理/Radix树与用户映射.md`
+
+其余顺序由 Maintainer 定。初稿完成勾第一个 `[x]`，审定通过勾第二个 `[x]`。

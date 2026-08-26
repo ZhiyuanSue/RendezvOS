@@ -1,42 +1,45 @@
-# Core documentation
+# Core 文档
 
-| Document | Audience |
-|----------|----------|
-| **[`USING_CORE.md`](USING_CORE.md)** | **Code outside `core/`** — how to use public APIs (start here) |
-| [`GUIDE.md`](GUIDE.md) | In-tree map: layout, §6 API index, §7 headers |
-| Topic files below | Deep dives |
+代码 v0.1 已冻结；文档正在重写，尚未冻结。
 
-**Boundary:** Core only. Compat / AI workflow: [`../../doc/README.md`](../../doc/README.md).
+现行文档在 `v0.1/` 下，分 full、compat、evolution 三块。怎么写、写哪些章节，见 [`文档生成操作计划.md`](文档生成操作计划.md)。全量篇目与源码对应关系见 [`v0.1/full/README.md`](v0.1/full/README.md)。
+
+仓库上层（Linux 兼容层、AI 协作流程）的文档入口在 [`../../doc/README.md`](../../doc/README.md)。core 文档只描述 core，不包含 Linux syscall 语义。
 
 ---
 
-## Topic references (deep dives)
+## 目录
 
-| Topic | Document |
-|-------|----------|
-| Memory (+ §0 caller contract, §0.7 radix, §0.8 register_vspace) | [`memory.md`](memory.md) |
-| Kernel sparse page index (page_slice) | [`page-slice.md`](page-slice.md) |
-| Cache / TLB | [`cache&tlb.md`](cache&tlb.md) |
-| Tasks / ELF | [`task-thread.md`](task-thread.md) |
-| IPC usage | [`ipc.md`](ipc.md) |
-| IPC design | [`lockfree-ipc.md`](lockfree-ipc.md) |
-| Traps | [`trap.md`](trap.md) |
-| IRQ hardware | [`interrupt.md`](interrupt.md) |
-| Boot | [`boot.md`](boot.md) |
-| SMP | [`smp.md`](smp.md) |
-| Timers | [`timer.md`](timer.md) |
-| Log | [`log.md`](log.md) |
-| CPU affinity（线程 create-time） | [`USING_CORE.md`](USING_CORE.md) §3.12 · [`task-thread.md`](task-thread.md) |
-| CPU affinity（IRQ，backlog） | [`trap.md`](trap.md) · [`TODO.md`](TODO.md) B.1 |
+```
+core/docs/
+├── README.md                 （本文件）
+├── 文档生成操作计划.md
+└── v0.1/
+    ├── full/                 与代码对应的全量说明
+    ├── compat/               给调用 core 的上层用的操作说明
+    └── evolution/            待办、归档、远期设计
+```
 
-## Platform / misc
+**full** — 维护 core 或需要实现细节时读。  
+**compat** — 在 `linux_layer/`、`servers/` 里调 core 时读；任务导向，细节回链 full。  
+**evolution** — 待办和远期项；不是现行 API 契约。
 
-[`x86_sys_ctrl.md`](x86_sys_ctrl.md) · [`little_endian.md`](little_endian.md) · [`ROCm.md`](ROCm.md) · [`hardware/README.md`](hardware/README.md)
+---
 
-## Work tracking
+## 进度
 
-[`TODO.md`](TODO.md) · [`archive/TODO_DONE.md`](archive/TODO_DONE.md)
+- [x] 建立 v0.1 目录与 full 篇目索引  
+- [x] 文档生成操作计划  
+- [ ] 按篇撰写 full 正文  
+- [ ] 从 full 抽出 compat  
+- [ ] 整理 evolution（TODO、archive、design）
 
-## Merged stubs (do not edit)
+---
 
-`ARCHITECTURE.md` · `CAPABILITY_INDEX.md` · `HEADERS.md` · `MAINTENANCE.md` · `traps-and-irq.md` · `sync-and-smp.md` → see [`GUIDE.md`](GUIDE.md).
+## 写文档时注意
+
+- 不改 core 代码；与代码矛盾处记 evolution/TODO。  
+- full 不新增 README 以外的文件名。  
+- compat 不复制 full 长段。  
+- 正文中文；文件名、路径、API 名用英文。  
+- 每写完一篇 full：自查后勾 README **第一个** `[x]`，你审定通过后勾**第二个** `[x]`（见操作计划「每篇审查」）。
