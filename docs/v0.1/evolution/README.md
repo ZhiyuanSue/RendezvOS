@@ -16,4 +16,4 @@ v0.1/evolution/
     └── 日志与console-server.md
 ```
 
-进度：目录已规划；正文未写。
+进度：full 初稿 44 篇已完成，待 Maintainer 审定。`TODO.md` 已汇总远期项（E1–E11）；`archive/`、`design/*.md` 仍仅规划、正文未写。

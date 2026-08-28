@@ -22,4 +22,4 @@ v0.1/compat/
 
 依赖关系示例：`02` 依赖 full 的 `VSpace所有权与调度切换`；`03` 依赖 full 的 IPC 两篇；`11` 汇总各 full 篇中的「分层与调用方」一节。
 
-进度：目录已规划；正文未写。
+进度：目录已规划。**full 44 篇初稿已完成**（见 `v0.1/full/README.md`），compat 正文须待 full 全部 Maintainer 审定（第二格 `[x]`）后再撰写。

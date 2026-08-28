@@ -4,7 +4,7 @@
 
 现行文档在 `v0.1/` 下，分 full、compat、evolution 三块。怎么写、写哪些章节，见 [`文档生成操作计划.md`](文档生成操作计划.md)。全量篇目与源码对应关系见 [`v0.1/full/README.md`](v0.1/full/README.md)。
 
-仓库上层（Linux 兼容层、AI 协作流程）的文档入口在 [`../../doc/README.md`](../../doc/README.md)。core 文档只描述 core，不包含 Linux syscall 语义。
+仓库上层（兼容层实现、与具体 OS 拟合相关的文档）若存在，应独立于 core 文档维护。**core 文档只描述 core**，不包含用户态 syscall 语义表或某一具体兼容层的模块清单。
 
 ---
 
@@ -21,18 +21,19 @@ core/docs/
 ```
 
 **full** — 维护 core 或需要实现细节时读。  
-**compat** — 在 `linux_layer/`、`servers/` 里调 core 时读；任务导向，细节回链 full。  
+**compat** — 上层集成方在实现兼容层、调用 core 时读；任务导向，细节回链 full。
 **evolution** — 待办和远期项；不是现行 API 契约。
 
 ---
 
 ## 进度
 
-- [x] 建立 v0.1 目录与 full 篇目索引  
+- [x] 建立 v0.1 目录与 full 篇目索引（44 篇正文 + full/README）  
 - [x] 文档生成操作计划  
-- [ ] 按篇撰写 full 正文  
-- [ ] 从 full 抽出 compat  
-- [ ] 整理 evolution（TODO、archive、design）
+- [x] full 正文初稿（44 篇第一格 `[x]` 已勾；第二格 `[ ]` 待 Maintainer 审定）  
+- [ ] full 全部审定通过（`v0.1/full/README.md` 每篇第二格 `[x]`）  
+- [ ] 从 full 抽出 compat（须等 full 审定完成）  
+- [ ] 整理 evolution（TODO 已建；`archive/`、`design/` 正文未写）
 
 ---
 
@@ -41,5 +42,6 @@ core/docs/
 - 不改 core 代码；与代码矛盾处记 evolution/TODO。  
 - full 不新增 README 以外的文件名。  
 - compat 不复制 full 长段。  
+- full / compat 不得绑定具体上层仓库目录；术语见操作计划「上层与 compat 的写法」「术语」。
 - 正文中文；文件名、路径、API 名用英文。  
 - 每写完一篇 full：自查后勾 README **第一个** `[x]`，你审定通过后勾**第二个** `[x]`（见操作计划「每篇审查」）。
