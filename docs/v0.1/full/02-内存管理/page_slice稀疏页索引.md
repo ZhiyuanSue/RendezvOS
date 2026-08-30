@@ -1,57 +1,70 @@
 # page_slice 稀疏页索引
 
-v0.1 · 2026-08-26
+v0.1 · 2026-08-29
 
 本篇覆盖：`kernel/mm/page_slice.c`、`kernel/mm/page_slice_copy.c`、`include/rendezvos/mm/page_slice.h`、`include/rendezvos/mm/page_slice_copy.h`。
 
-内核堆页来源见 `kmalloc与内核堆.md`；VSpace 用户映射边界见 `Radix树与用户映射.md`（page_slice **仅内核用**，不替代用户 radix）。
+内核堆见 `kmalloc与内核堆.md`；用户 VA 真源见 `Radix树与用户映射.md`（**page_slice 只服务内核侧逻辑缓冲，不替代用户 radix**）。
 
 ---
 
 ## 1. 概述
 
-**page_slice** 解决 buddy **最大 2 MiB 连续物理分配**与内核需要 **大于 2 MiB 的逻辑连续虚拟缓冲**之间的矛盾：在固定大小的内核虚拟窗口内，用 **稀疏多级索引**（leaf + index 页，tagged_ptr 高度）把 **pgoff（页文件偏移）** 映射到 **离散内核 KVA**。
+Buddy 单次连续物理分配大约顶在 **2 MiB**。内核还想按「文件偏移 / 大数组下标」那种**逻辑连续**方式摸一块可以远大于 2 MiB 的缓冲——但物理上、甚至 KVA 上都不要求连成一片。
 
-典型用途：大块内核缓冲区、页缓存式稀疏映射；**不**用于用户进程 VA（用户用 VSpace radix + `mm_user_utils_*`）。
+**page_slice** 干的就是这件事：在一个 slice 里用稀疏多级索引，把 **pgoff（页号偏移）** 绑到调用方已经准备好的 **离散内核 KVA**。连续性只在「偏移算术」上成立。
+
+分工：
+
+| 你要 | 用 |
+|------|-----|
+| 用户 VA、mmap、COW | VSpace + `mm_user_utils_*` |
+| 小对象 / 整页内核堆 | `percpu(kallocator)` |
+| **逻辑连续、物理按页稀疏** 的内核缓冲（页缓存一类） | **page_slice** |
+
+**谁分配什么：** 内容页由**调用方** `m_alloc` 再 `insert`；slice 只养自己的 **index/leaf 壳页**。不要指望 `insert` 顺手给你内容页。
 
 ---
 
 ## 2. 目标与边界
 
-core 提供：slice 创建/销毁、按 pgoff insert/lookup/remove、grow/shrink 索引树、**copy/clone** 辅助（`page_slice_copy.c`）。
+**提供：** create/destroy、按 pgoff insert/lookup/remove、逻辑 `size` 伸缩、copy/clone 辅助。
 
-core 不做：文件系统 page cache 策略；用户态 `mmap`；MMU pin（`PIN` flag 仅为 slice 层语义，非硬件 PIN）。
+**不做：** 文件系统页缓存策略；用户 `mmap`；硬件 MMU pin（`PIN` 只表示 destroy/remove 时**不要** `m_free` 内容 kva）。
+
+**不是 COW：** `page_slice_clone` 是对新页 **memcpy 深拷贝**，只物化 VALID pgoff；没有共享再 fault。
 
 ---
 
 ## 3. 分层与调用方
 
-兼容层（如 future 页缓存或大块 kernel API）持有 `struct page_slice*`：
+上层（例如兼容层页缓存）持 `struct page_slice*`：`insert` 绑定已有 kva → `lookup` / `copy_to_*` 读 → 需要副本时 `clone`。与用户缓冲交互另走 `map_handler_user_kernel_copy` 等，不进 `thread->vs` radix。
 
-- 绑定 pgoff → 先 `page_slice` insert（分配 backing 页，通常 kallocator + 内核 direct map 或等价）。
-- 读连续字节 → `page_slice_copy_to_buffer` 或逐 pgoff lookup。
-- fork 式复制稀疏内容 → `page_slice_clone`（只复制 VALID pgoff）。
-
-**与 VSpace 边界**：slice 使用 **内核虚拟地址** 与 pgoff 键，不进入 `thread->vs` 的用户 radix；若需与用户缓冲交互，由兼容层通过 `map_handler_user_kernel_copy` 等单独路径。
+每 slice 一把 `cas_lock`；API 内部加锁。**lookup 返回前会放锁**——并发 remove 可能让指针失效，调用方勿假设指针长期有效。copy 路径同样是「lookup 后 memcpy」，不跨拷贝持锁。
 
 ---
 
 ## 4. 数据结构与不变量
 
-### 4.1 地址布局（逻辑）
+### 4.1 位布局（逻辑）
 
-索引位划分（见 `page_slice.h` 注释）：最多 3 层 index + leaf，pgoff 拆为 L2/L1/L0/leaf_idx + page_off（12 bit 页内）。
+```text
+[ L2:9 | L1:9 | L0:9 | leaf_idx:7 | page_off:12 ]
+```
 
-### 4.2 条目类型
+叶页约 128 槽；索引页 512 个 tagged_ptr。高度上限使逻辑跨度可达约 64 TiB（以头文件常量为准）。
 
-- **leaf entry** — `page_slice_entry`：KVA、`VALID`/`PIN` flags、可选 `page_list_node`。
-- **index entry** — `tagged_ptr`：`ptr` + `live` 计数 + `height`（0=空 root，1=直接 leaf root，2+=索引页）。
+### 4.2 空槽与高度
 
-`slice->mapped_entries` — 兼容层统计 VALID pgoff 数，不参与 radix 内部 reclaim。
+空索引槽必须是 `tp_new_none()`，不要塞「空 entry 伪对象」。root height：`0` 空、`1` 直接叶、`2+` 索引。`live` 计数含义随 height 变（root height 2 数索引槽，非 root height 2 数叶绑定）——以 `ps_entry_live_max_table` 为准。
 
-### 4.3 锁
+`mapped_entries`：上层统计用，grow/shrink **不**靠它回收。
 
-slice 带 `cas_lock`；grow/shrink 与 insert/remove 须遵守头文件中的 live 计数规则，避免释放仍被引用的 index 页。
+FAM `append_page_slice_info[]` 给上层元数据；**clone 不拷 append**（`create(0, size)`）。
+
+### 4.3 PIN
+
+`PAGE_SLICE_FLAG_PIN`：默认 remove/destroy **跳过**对内容 kva 的 `m_free`。不是页表 pin。
 
 ---
 
@@ -59,68 +72,77 @@ slice 带 `cas_lock`；grow/shrink 与 insert/remove 须遵守头文件中的 li
 
 | 文件 | 职责 |
 |------|------|
-| `page_slice.h` | 布局常量、entry、API 声明 |
-| `page_slice.c` | 索引树 grow/shrink、insert/lookup/remove（radix-only） |
-| `page_slice_copy.h` | 组合 copy API |
-| `page_slice_copy.c` | buffer/slice 间拷贝、deep clone |
+| `page_slice.h` / `.c` | 稀疏 radix、锁、insert/lookup/remove、size |
+| `page_slice_copy.h` / `.c` | buffer/slice/user 拷贝与 clone |
+
+测例：`modules/test/single_page_slice_test.c`。
 
 ---
 
 ## 6. 流程
 
-### 6.1 插入 pgoff
+### 6.1 绑定一页
 
-1. 根据 pgoff 计算各级 index；必要时 allocate index 页（kallocator）并 grow 树。
-2. 在 leaf 页找槽位，填 KVA + `PAGE_SLICE_FLAG_VALID`。
-3. 更新父级 `live` 与 `mapped_entries`。
+调用方准备 kva → `page_slice_insert_page`（缺壳则分配 index/leaf）→ 槽标 VALID。
 
-### 6.2 copy_to_buffer
+### 6.2 copy / clone
 
- walk 源 slice 的 pgoff 范围，对每个 VALID 叶 map/lookup KVA，`memcpy` 到连续 `dst`（跨洞跳过或零填由 API 定义，见实现注释）。
+| API | 行为 |
+|-----|------|
+| `copy_to_buffer` | 区间须**全部已映射**，否则 `-E_RENDEZVOS`（**不**跳洞、不零填） |
+| `copy_to_slice` | 目标 pgoff 须**已绑定**；拒绝危险自重叠 |
+| `copy_to_user` | 同样要求已映射 + `map_handler_user_kernel_copy` |
+| `clone` | 新 slice、同 `size`；只深拷 VALID；剥 PIN；洞不物化 |
 
-### 6.3 page_slice_clone
+### 6.3 shrink
 
-新建 slice（同 `size`），仅对 src 中 VALID pgoff 分配新页并复制内容；**不**复制 `append_page_slice_info`（兼容层 hook 自行 copy 元数据）。
+`set_size` 变小：拆高 pgoff，再按规则 unwrap 空壳（零路径细节见实现）。
 
 ---
 
 ## 7. 公开 API
 
 ```c
-/* 见 page_slice.h — 创建/销毁/insert/lookup/remove 等 */
+struct page_slice *page_slice_create(usize append_info_size, u64 slice_size);
+void page_slice_destroy(struct page_slice *);
+u64 page_slice_get_size(...);
+error_t page_slice_set_size(...);
+error_t page_slice_insert_page(...);
+error_t page_slice_lookup(...);   /* 返回前已解锁 */
+error_t page_slice_remove_page(...);
 
-error_t page_slice_copy_to_buffer(struct page_slice* slice, u64 byte_off,
-                                  void* dst, size_t len);
-error_t page_slice_copy_to_slice(struct page_slice* dst, u64 dst_byte_off,
-                                 struct page_slice* src, u64 src_byte_off,
-                                 size_t len);
-error_t page_slice_clone(struct page_slice** dst_out, struct page_slice* src);
+error_t page_slice_copy_to_buffer(...);
+error_t page_slice_copy_to_slice(...);
+error_t page_slice_copy_to_user(...);
+error_t page_slice_clone(...);
 ```
 
-完整符号列表以头文件为准。
+签名以头文件为准。
 
 ---
 
 ## 8. 多架构
 
-pgoff 与 KVA 均为 64 位逻辑地址；backing 页来自 buddy/kmalloc，与 ISA 无关。页大小假定 4 KiB（`PAGE_SIZE`）。
+与 ISA 无关；依赖本核 `kallocator` 与内核可访问的内容 kva。
 
 ---
 
 ## 9. 测试
 
-`page_slice` 专用测例若启用则在 core test 套件中；本篇与当前源码一致，尚未单独复测。
+`page_slice_test`；`make ARCH=x86_64 config && make all && make run`。本篇未复测。
 
 ---
 
 ## 10. 限制与后续
 
-- 仅内核；与用户 VSpace 正交。
-- 深度与容量受 `PAGE_SLICE_MAX_INDEX_HEIGHT` 等编译常量限制。
-- 大稀疏区遍历效率依赖 index 形状；无硬件 huge page 聚合。
+- lookup 指针生命周期短。  
+- copy **遇洞即失败**。  
+- 无内置 COW / 页缓存策略。  
+- 跨 CPU 共享同一 slice 只有粗锁，上层宜串行化。
 
 ---
 
 ## 11. 变更记录
 
-- 2026-08-26：v0.1 初稿，稀疏 pgoff 索引与 copy/clone 辅助。
+- 2026-08-29：整篇重做——纠正「insert 分配内容页」；copy 遇洞失败；clone=深拷非 COW；补全 API；分工表。
+- 2026-08-26：v0.1 初稿。

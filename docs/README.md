@@ -29,17 +29,19 @@ core/docs/
 ## 进度
 
 - [x] 建立 v0.1 目录与 full 篇目索引（44 篇正文 + full/README）  
-- [x] 文档生成操作计划  
-- [x] full 正文初稿（44 篇第一格 `[x]` 已勾；第二格 `[ ]` 待 Maintainer 审定）  
-- [ ] full 全部审定通过（`v0.1/full/README.md` 每篇第二格 `[x]`）  
-- [ ] 从 full 抽出 compat（须等 full 审定完成）  
-- [ ] 整理 evolution（TODO 已建；`archive/`、`design/` 正文未写）
+- [x] 文档生成操作计划（含 **深度读代码** + **设计动机五问** + **逐篇整篇重做**，2026-08-29）  
+- [x] full 正文初稿（44 篇第一格 `[x]`）  
+- [ ] **full 逐篇深读重做**（进行中；进度 [`full重做进度.md`](full重做进度.md)）  
+- [ ] full 全部审定通过（每篇第二格 `[x]`）  
+- [ ] 从 full 抽出 compat  
+- [ ] 整理 evolution（`archive/`、`design/` 正文未写）
 
 ---
 
 ## 写文档时注意
 
 - 不改 core 代码；与代码矛盾处记 evolution/TODO。  
+- full 须写清**设计为何有效**（五问），见操作计划「设计动机与有效性论证」；不得只交 API 清单。  
 - full 不新增 README 以外的文件名。  
 - compat 不复制 full 长段。  
 - full / compat 不得绑定具体上层仓库目录；术语见操作计划「上层与 compat 的写法」「术语」。

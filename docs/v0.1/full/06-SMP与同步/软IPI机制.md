@@ -1,36 +1,45 @@
 # 软 IPI 机制
 
-v0.1 · 2026-08-27
+v0.1 · 2026-08-29
 
-本篇覆盖：`kernel/smp/ipi.c`、`include/rendezvos/smp/ipi.h`、`arch/x86_64/smp/arch_smp_ipi.c`、`arch/aarch64/smp/arch_smp_ipi.c`。
+本篇覆盖：`kernel/smp/ipi.c`、`include/rendezvos/smp/ipi.h`、`arch/{x86_64,aarch64}/smp/arch_smp_ipi.c`。
 
-IRQ 向量 reserved IPI 槽见 `05-陷阱与中断/IRQ向量分配与处理.md`；TLB shootdown 使用 IPI 见 `TLB_shootdown与跨核一致性.md`。
+向量 reserve 见 IRQ 篇；门铃硬件（ICR / SGI）见 APIC / GIC 篇；**x86 TLB shootdown 握手**见 `TLB_shootdown与跨核一致性.md`（及 MM 的 TLB 策略篇）。本篇不把 aarch64 TLB 写成「也走 IPI」。
 
 ---
 
 ## 1. 概述
 
-**软 IPI** 在 core 层提供 **`smp_ipi_register`** / **`smp_ipi_send(cpu, id)`**：回调在 **目标 CPU 的 IPI 中断上下文** 执行（arch 门铃 → trap → **`smp_ipi_dispatch`**）。每 CPU **`smp_ipi_pending`** 位图记录待处理 slot；dispatch 交换清零后调用各 **`smp_ipi_fn_t`**。
+硬件只打一扇门铃；真正工作用 slot 表 + 每核 pending 位图。
 
-**`smp_ipi_init`** 在 arch 启动中注册 arch-specific handler（LAPIC ICR / GIC SGI）。
+| | x86 | aarch64 |
+|--|-----|---------|
+| 门铃 | LAPIC ICR FIXED，向量 **`0x30`** | GICD SGI **0** → trap id **64** |
+| 注册 | `register_irq_handler(ARCH_IRQ_VEC_IPI, …)` | 同左（宏叠 offset） |
+
+Bring-up 的 INIT/SIPI **不是** soft IPI（delivery mode 不同，只是共用 `APIC_send_IPI` 一类原语）。
+
+**唯一 in-tree 默认消费者：x86 TLB shootdown。** aarch64 TLB 用 `tlbi *is`，**不**注册 TLB IPI，也 **无** `arch_smp_flush_tlb_init`。两端都会 `smp_ipi_init`——机制在，aarch64 几乎无第二消费者。
 
 ---
 
 ## 2. 目标与边界
 
-v0.1 为 **轻量 cross-CPU 回调**，非 Linux generic IPI multiplexer。slot 数 **`RENDEZVOS_SMP_IPI_MAX`**（头文件）；耗尽返回 `-E_REND_OVERFLOW`。
+**提供：** `smp_ipi_register` / `smp_ipi_send`；pending CAS；dispatch；arch 发送。
 
-不做：优先级 IPI、IPI 统计、延迟 IPI 队列（除 pending 位 OR）。
+**不做：** 优先级 IPI；unregister；延迟队列（除 pending OR）；Linux generic IPI mux。
+
+slot 上限 **`RENDEZVOS_SMP_IPI_MAX`（16）**；耗尽 `-E_REND_OVERFLOW`。
 
 ---
 
 ## 3. 分层与调用方
 
-**TLB shootdown** — 注册 IPI handler，在 remote CPU 上 flush TLB。
+**TLB（x86）** — `arch_smp_flush_tlb_init` 全局一次 `smp_ipi_register`；remote 填 per-CPU msg 再 `smp_ipi_send`。
 
-**兼容层** — 可注册 IPI 做 cross-CPU TCB 或 scheduler 唤醒（慎用：handler 须极短）。
+**compat** — 可注册短回调；handler 在 IRQ 上下文，末尾可能 `schedule`（用户态被打断时）——须极短、勿重入长逻辑。
 
-调用前 **`cpu_is_online(target)`**（ipi.c 内检查）。
+发送前：`cpu_is_online`（看 `CPU_STATE`，适合稀疏 APIC）。
 
 ---
 
@@ -38,65 +47,75 @@ v0.1 为 **轻量 cross-CPU 回调**，非 Linux generic IPI multiplexer。slot 
 
 ```c
 struct smp_ipi_slot { smp_ipi_fn_t fn; bool used; };
-static struct smp_ipi_slot smp_ipi_slots[RENDEZVOS_SMP_IPI_MAX];
+/* 全局 slots[RENDEZVOS_SMP_IPI_MAX]；无 unregister */
 DEFINE_PER_CPU(atomic64_t, smp_ipi_pending);
 ```
 
-- **`smp_ipi_send`**：OR 目标 CPU pending 位 → **`arch_smp_ipi_send(cpu)`** 触发硬件 IPI。
-- handler 内 **不可 block**；不可再入同一 CPU 未清 pending 的路径需 arch 保证 EOI。
+- `smp_ipi_send`：online → CAS OR pending bit → `arch_smp_ipi_send`；失败则 **清回该 bit**。  
+- dispatch：`atomic64_exchange(pending, 0)` 循环，对置位 slot 调 `fn()`（**无参**；上下文在 per-CPU 消息槽）。exchange 循环避免 handler 中途再 OR 丢 bit。
+
+**aarch64 发送假设：** GIC target list 用 **`(1<<cpu)`**，且 `cpu < GIC_V2_NR_CPU_MAX`（**8**）；假定 **GIC CPU IF 编号 == 逻辑 cpu_id**。稠密 Aff0 时碰巧成立；affinity 稀疏会打错核。
 
 ---
 
 ## 5. 代码对应
 
-| 文件 | 职责 |
+| 路径 | 职责 |
 |------|------|
-| `ipi.c` | register/send/dispatch/init |
-| `arch_smp_ipi.c` | LAPIC/GIC 发送与 vector 绑定 |
+| `kernel/smp/ipi.c` | register / send / dispatch |
+| `arch_smp_ipi.c` | ICR / SGI |
+| `arch_smp_tlb_flush.c` | x86 唯一默认 registrant |
 
 ---
 
 ## 6. 流程
 
-```mermaid
-sequenceDiagram
-  participant S as Sender CPU
-  participant T as Target CPU
-  S->>T: smp_ipi_send OR pending bit
-  S->>T: arch_smp_ipi_send
-  T->>T: IPI vector smp_ipi_dispatch
-  T->>T: run registered fn
+```text
+smp_ipi_init → arch_smp_ipi_init(dispatch)
+  → register_irq_handler(IPI_VEC, …, NEED_EOI)  // 写全 CPU 槽
+
+smp_ipi_register(&id, fn)   // 线性占 slot
+smp_ipi_send(cpu, id)       // pending OR + 门铃
+
+IRQ → trap_handler → dispatch → fn() → EOI → 或 schedule
 ```
+
+x86 dest = APIC id ≡ 逻辑下标。aarch64 self 用 TARGET_SELF；remote 用 target list。
 
 ---
 
 ## 7. 公开 API
 
-`smp_ipi_init`、`smp_ipi_register`、`smp_ipi_send`（`ipi.h`）。
+```c
+void smp_ipi_init(void);
+error_t smp_ipi_register(u32 *id_out, smp_ipi_fn_t fn);
+error_t smp_ipi_send(cpu_id_t cpu, u32 id);
+```
 
 ---
 
 ## 8. 多架构
 
-x86：LAPIC self-IPI/ICR；aarch64：GIC SGI。向量号 arch reserve。
+门铃不同；逻辑协议相同。TLB 是否走 IPI：**仅 x86**。
 
 ---
 
 ## 9. 测试
 
-SMP 测例、TLB flush 路径。
-
-与当前源码一致，尚未复测。
+间接：x86 SMP + 用户 map/unmap。本篇未复测。
 
 ---
 
 ## 10. 限制与后续
 
-- 固定 slot 表；无 unregister
-- IPI storm 需上层节流
+- 无 unregister；16 slot。  
+- aarch64 ≤8 核 target 假设。  
+- handler 短；可能 schedule。  
+- 与 TLB 篇分工：本篇门铃；TLB 篇 mask/握手/`*is`。
 
 ---
 
 ## 11. 变更记录
 
-| 2026-08-27 | 初稿 |
+- 2026-08-29：整篇重做——门铃叙述；0x30/SGI0→64；pending 协议；仅 x86 TLB 注册；纠正「aarch64 TLB via IPI」；GIC≤8。
+- 2026-08-27：初稿。

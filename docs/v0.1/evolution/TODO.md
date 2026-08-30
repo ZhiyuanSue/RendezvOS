@@ -34,6 +34,7 @@ full 正文缺口：（当前无；新增篇目或整篇重写需求在此表格
 | E9 | 日志异步 / console-server | `08-日志与控制台/日志与UART控制台.md` | 热路径同步 UART；design 占位 `design/日志与console-server.md` |
 | E10 | riscv64 / loongarch 主线化 | `00-总览/架构与源码布局.md` | 启动与测例覆盖弱于 x86_64/aarch64 |
 | E11 | EBR / MSQ slot 扩展 | `03-任务与调度/EBR与线程资源回收.md` | 更大 retire 表或 generational 方案 |
+| E12 | 清理 `common.h` 死声明 `interrupt_init` | `00-总览/架构与源码布局.md` | 树内无定义/无调用；真实路径为 `init_interrupt` |
 
 新增条目：在此表追加一行，并在对应 full 篇 §10 加一句回链本表 ID。
 
@@ -44,3 +45,4 @@ full 正文缺口：（当前无；新增篇目或整篇重写需求在此表格
 - 2026-08-27：新增「构建与链接」专篇待办（Maintainer 审阅总览时提出）。
 - 2026-08-27：`00-总览/构建与链接.md` 初稿完成，移除上表对应待办。
 - 2026-08-27：full 44 篇初稿全部完成；本节改为「文档状态 + 远期项」；汇总 E1–E11。
+- 2026-08-29：追加 E12（`interrupt_init` 死声明）；full 进入「按操作计划逐篇深读重做」（进度不在 evolution，见 `core/docs/full重做进度.md`）。

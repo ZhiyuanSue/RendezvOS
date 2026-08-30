@@ -1,133 +1,111 @@
 # PSCI 与处理器电源（aarch64）
 
-v0.1 · 2026-08-27
+v0.1 · 2026-08-29
 
-本篇覆盖：`arch/aarch64/psci/psci.c`、`arch/aarch64/psci/psci_call.S`、`include/arch/aarch64/psci/*.h`、`include/arch/aarch64/power_ctrl.h`、`include/arch/x86_64/power_ctrl.h`、`kernel/system/powerd.c`、`include/rendezvos/system/powerd.h`。
+本篇覆盖：`arch/aarch64/psci/*`（**不是** `modules/psci`）、以及与 SMP `cpu_on`、**powerd / `arch_shutdown`** 的边界。
 
-SMP AP 启动见 `06-SMP与同步/SMP启动与处理器拓扑.md`；DTB `arm,psci` 节点见 `09-平台模块/DTB与设备树-aarch64.md`；panic/halt 见 `10-基础设施/错误码与panic.md`。
+DTB 查找见 DTB 篇；SMP 串行启核见拓扑篇；关机 IPC/opcodes 见 kmsg + 模块初始化 / 错误码·panic 篇（本篇只钉「终点 = PSCI system_off」）。
 
 ---
 
 ## 1. 概述
 
-aarch64 **PSCI**（Power State Coordination Interface）通过 **SMC/HVC** 调用固件完成 **CPU_ON**、**CPU_OFF**、**system off/reset** 等。`psci_init()` 从 DTB 读 **`method`**，绑定 **`psci_smc`** 或 **`psci_hvc`**，填充 **`psci_func`** 函数表。
+aarch64 AP 上电与关机走固件 **SMCCC**（SMC/HVC）。内核绑 method + 标准 function id 包装。
 
-**Secondary CPU 启动** — arch SMP 在 **`psci_cpu_on`**（或封装）传入 entry 物理地址与 context。  
-**关机关** — **`kernel_panic`/`kernel_halt`** → **`arch_shutdown()`**（aarch64 常调 **`psci_system_off`**）；测例结束 **`rendezvos_request_poweroff()`** → **powerd** IPC → **`kernel_halt()`**。
+PSCI 懂固件；powerd 只懂「谁请求关机」——两者解耦。
 
-x86 对应 **`arch/x86_64/power_ctrl.h`**（`arch_shutdown` 实现不同），本篇重点 aarch64 PSCI。
+```text
+优雅关机：request_poweroff → port "powerd" → SHUTDOWN kmsg
+  → powerd_thread → kernel_halt → arch_shutdown → psci_func.system_off()
+panic：直接 arch_shutdown，不经 powerd
+REBOOT opcode：现多只打 log；arch_reset() 空
+```
 
 ---
 
 ## 2. 目标与边界
 
-core 封装 **DTB 驱动的 PSCI 0.2/1.x 常用子集**，不是完整 ARM SMCCC 服务框架。v0.1 **reboot** 在 powerd 中 **未实现**（打 log）。
+**提供：** `psci_init`；`cpu_on/off/suspend`；`system_off/reset` 包装；SMC/HVC 桩。
 
-**CPU hotplug/off** — API 存在，SMP bring-up 主要用 **CPU_ON**。
+**不做：** 从 DT **单元格**读 function id（属性**存在性**检查后挂**硬编码** id）；完整 1.x 全家桶；把 powerd 协议写进本篇正文。
 
 ---
 
 ## 3. 分层与调用方
 
-**Boot** — DTB 建树后 **`psci_init()`**；失败则 `psci_func.enable = false`，SMP 可能无法启动 AP。
+| 调用方 | 用法 |
+|--------|------|
+| `arch_start_platform` | `psci_init()` |
+| `arch_start_smp` | `psci_func.cpu_on(affinity, PHY(ap_entry), context=逻辑id)` |
+| powerd / halt | `system_off` |
+| panic | `arch_shutdown` |
 
-**SMP** — `arch/aarch64/boot/smp.c` 调 PSCI 唤醒 AP 到 **`start_secondary_cpu`** 入口。
-
-**Powerd** — BSP **`DEFINE_INIT(powerd_init)`** 创建 **`powerd`** 内核线程，listen **`RENDEZVOS_POWERD_PORT_NAME`**（`"powerd"`），处理 **`KMSG_OP_SYSTEM_POWER_SHUTDOWN`**。
-
-**测例** — `BSP_test` 完成后 **`rendezvos_request_poweroff()`**（`powerd.h` inline：lookup port → kmsg → send_msg）。
+`psci_func.enable`：**smp.c 不检查**——`cpu_on` 空指针即可炸（启动篇已警告）。
 
 ---
 
 ## 4. 数据结构与不变量
 
-### 4.1 psci_func_64
-
-函数指针：`version`、`cpu_on`、`cpu_off`、`cpu_suspend`、`system_off`、`system_reset`、`migrate` 等；**`enable`** 标志。
-
-### 4.2 调用约定
-
-`psci_call.S` 提供 **`psci_smc`/`psci_hvc`**，遵循 SMCCC 寄存器约定（x0=function id，x1-x3 参数，返回值 x0）。
-
-### 4.3 powerd
-
-单线程、阻塞 **`recv_msg`**；仅 **BSP init** 创建（`percpu(cpu_number) != BSP_ID` 则 return）。
+- DTB：`compatible` 前缀 `arm,psci`（可命中 `-0.2`）；`method` = `smc|hvc`。  
+- 若缺 `migrate` / `cpu_on` / `cpu_off` / `cpu_suspend` 等**属性存在性** → print 并 return（**不**读单元格值）——依赖 QEMU 旧式 DT 常带这些属性。  
+- `cpu_on`：`reg`=MPIDR affinity；`context_id`=稠密逻辑 id（与 x86「APIC=下标」不同）。
 
 ---
 
 ## 5. 代码对应
 
-| 文件 | 职责 |
+| 路径 | 职责 |
 |------|------|
-| `psci.c` | DTB probe、init、API 包装 |
-| `psci_call.S` | SMC/HVC 桩 |
-| `powerd.c` | shutdown IPC server |
-| `powerd.h` | `rendezvos_request_poweroff` |
-| `panic.c` | `arch_shutdown` 调用链 |
+| `arch/aarch64/psci/` | init、SMC/HVC、包装函数 |
+| `arch/.../smp` / start_arch | cpu_on 循环 |
+| powerd（kernel/server） | IPC 关机策略 |
 
 ---
 
 ## 6. 流程
 
-### 6.1 AP 启动（概念）
+### 6.1 `psci_init`
 
-```mermaid
-sequenceDiagram
-  participant BSP
-  participant FW as EL3 PSCI
-  participant AP
+找节点 → method → `enable=true` → 绑 version/off/reset → 检查 cpu_* 属性存在 → 挂硬编码 id 包装。
 
-  BSP->>FW: CPU_ON mpidr, entry, ctx
-  FW->>AP: reset @ entry
-  AP->>AP: start_secondary_cpu
-```
+### 6.2 启核
 
-### 6.2 关机
+见拓扑篇：串行 `cpu_on` + wait `CPU_STATE`。`enable-method` 必须 `"psci"`（拒绝 spin-table）。
 
-`rendezvos_request_poweroff` → powerd recv → **`kernel_halt`** → **`arch_shutdown`** → PSCI SYSTEM_OFF。
+### 6.3 关机
+
+powerd（BSP 门控 init）→ `arch_shutdown` → `system_off`。reboot 路径未齐。
 
 ---
 
 ## 7. 公开 API
 
-| API | 说明 |
-|-----|------|
-| `psci_init()` | DTB probe |
-| `psci_cpu_on` 等 | 经 `psci_func` 间接 |
-| `rendezvos_request_poweroff()` | 客户端 inline |
-| `kernel_halt` / `kernel_panic` | 直接停机的 |
-| `RENDEZVOS_POWERD_PORT_NAME` | `"powerd"` |
+以 `psci_func` 函数指针表与 `psci_init` 为准。上层关机走 `rendezvos_request_poweroff` 一类 IPC，勿直接乱调 `cpu_off`。
 
 ---
 
 ## 8. 多架构
 
-| aarch64 | x86_64 |
-|---------|--------|
-| PSCI SMC/HVC | ACPI PM or QEMU exit |
-| DTB `arm,psci` | 无 PSCI |
+仅 aarch64。x86 关机不经 PSCI。
 
 ---
 
 ## 9. 测试
 
-- SMP boot 成功即 **CPU_ON** 路径验证。
-- 测例 **`rendezvos_request_poweroff`** 结束 QEMU。
-
-与当前源码一致，尚未复测。
+间接：SMP + shutdown。本篇未复测。
 
 ---
 
 ## 10. 限制与后续
 
-- **Reboot opcode 未实现**
-- **Migrate/suspend 少用**
-- **无 EL3 错误重试策略**
+- DT 属性存在性脆弱；标准 0.2 可能无 `cpu_on` 属性单元格。  
+- smp 不查 `enable`。  
+- reboot/`arch_reset` 空。  
+- powerd 协议细节回链其他篇。
 
 ---
 
 ## 11. 变更记录
 
-| 日期 | 摘要 |
-|------|------|
-| 2026-08-27 | 初稿：PSCI init、SMP、powerd 关机链 |
+- 2026-08-29：整篇重做——arch 路径；属性 vs 硬编码 id；powerd 边界；smp 不查 enable；与拓扑 id 模型。
+- 2026-08-27：初稿。

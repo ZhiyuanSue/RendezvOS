@@ -1,120 +1,101 @@
 # PCI 枚举与配置空间
 
-v0.1 · 2026-08-27
+v0.1 · 2026-08-29
 
-本篇覆盖：`modules/pci/pci_ops.c`、`modules/pci/pci_dev_tree.c`、`include/modules/pci/pci.h`、`include/modules/pci/pci_ops.h`、`include/modules/pci/pci_dev_tree.h`。
+本篇覆盖：`modules/pci/*`（若启用）、`include/modules/pci/*.h`、x86 `arch_start_platform` 里的 `pci_scan_all`。
 
-DTB PCI host 节点见 `09-平台模块/DTB与设备树-aarch64.md`（与 ECAM 路径并存问题）；测例 `single_pci_test` 见 `11-测试/内核测试框架与测例索引.md`。
+**仅 x86 PIO（CF8/CFC）；无 MMIO ECAM；aarch64 无 pci 模块。**  
+config：`config_x86_64.json` 可 `modules.pci.use=true`；aarch64 JSON 通常无。头文件硬依赖 `arch/x86_64/io.h`。
+
+ACPI 在同次平台启动中先跑，但 **PCI 不读 MCFG**。DTB 里的 `pci-host-ecam-generic` **未接线**。
 
 ---
 
 ## 1. 概述
 
-`modules/pci/` 实现 **PCI/PCIe 配置空间访问** 与 **递归总线扫描**，结果挂到 **`pci_node` 设备树**（嵌入 `tree_node`）。扫描入口 **`pci_scan_bus`**：对每个 bus/device/function 读 config header，识别 **bridge**，分配 secondary/subordinate bus 号，递归子总线；叶设备通过 **`pci_scan_callback`** 交给调用方填充 `pci_node`。
+x86 bring-up 级发现：扫总线 → 建 `pci_node` 树 → 打印/查找。配置空间走 **legacy PIO**，不是 ECAM。
 
-v0.1 **注释 TODO**：enable device、分配 IRQ——当前 **只枚举**，不自动 `register_irq_handler`。
+能看见设备；enable 骨架被 IRQ stub 卡死；BAR 能测 size，不能分配。
+
+旧稿「PIO 或 ECAM」「aarch64 virt ECAM」「与 DTB 双源」——**全部作废**。
 
 ---
 
 ## 2. 目标与边界
 
-core 提供 **bring-up 级 PCI 发现**，供调试或兼容层挂驱动。不做：MSI/MSI-X 完整、PCIe hotplug、IOMMU、资源 BAR 分配与 MMIO 映射（caller 或 compat 负责 `map()`）。
+**提供：** 递归扫描、bridge 总线号、BAR size probe、树回调、`pci_get_device`、command 位 enable/disable 骨架。
 
-**Config 访问方式** — 由 `pci_config_read_IO_dword` 等实现（端口 I/O 或 MMIO ECAM），平台 init 须在扫描前配置好 host bridge。
+**不做：** ECAM；BAR 资源分配；IRQ 路由（`pci_assign_irq` 恒失败）；电源管理真实现；aarch64 扫描。
 
 ---
 
 ## 3. 分层与调用方
 
-**测例** — `test_pci_scan()` in `single_pci_test.c` 注册 callback，打印 vendor/device。
+`arch_start_platform`：`pci_scan_all(pci_tree_build_callback, root)`。  
+测例：`single_pci_test` 包在 `#ifdef PCI`。
 
-**兼容层** — 在 initcall 中 `pci_scan_bus(callback, 0, root)`，callback 内记录 BAR、挂 compat 驱动表。
-
-**与 DTB** — aarch64 virt 可能同时有 **DT `pci-host-ecam`** 与本扫描器；须避免重复或地址冲突（DTB 篇 §10）。
+驱动若要 `pci_enable_device`：现路径 `power_up(stub)` → command(IO|MEM|MASTER) → **`assign_irq` 恒 -1 → 失败回滚**。
 
 ---
 
 ## 4. 数据结构与不变量
 
-### 4.1 pci_node
-
-`pci_dev_tree.c`：树节点 + bus/dev/fn、header 缓存、bridge 的 primary/secondary/subordinate。
-
-### 4.2 扫描控制
-
-- **`next_bus_number`** — 全局递增 secondary bus。
-- **`recursion_depth`** — 上限 **`PCI_MAX_RECURSION_DEPTH`**，防故障拓扑死递归。
-- **`pci_bridge_need_scan`** — class 0x06 subclass 0x04/0x07。
-
-### 4.3 Bridge 编程
-
-**`configure_pci_bridge_bus`** 写 config offset **0x18** primary/secondary/subordinate；扫描后更新 subordinate 为 **`next_bus_number - 1`**。
+- 树：`pci_node` + BAR 信息（probe size，复用 BIOS 地址）。  
+- Bridge（class 06, sub 04/07）：配 0x18 总线号并递归。  
+- `pci.h` 有 `/*MMIO way*/` 注释——**未实现**。
 
 ---
 
 ## 5. 代码对应
 
-| 文件 | 职责 |
+| 路径 | 职责 |
 |------|------|
-| `pci_ops.c` | scan_bus、scan_device、bridge 配置 |
-| `pci_dev_tree.c` | 节点分配、树链接、bus 信息 |
-| `pci.h` | 常量、header 布局 |
+| `modules/pci` 扫描/树 | `pci_scan_all` / `pci_scan_bus` / `pci_scan_device` |
+| config 访问 | x86 PIO |
+| `pci_enable_device` | 骨架；IRQ stub |
 
 ---
 
 ## 6. 流程
 
-```mermaid
-flowchart TD
-  A[pci_scan_bus bus0] --> B{device exists?}
-  B -->|yes| C[read 64B config]
-  C --> D{bridge?}
-  D -->|yes| E[assign secondary bus]
-  E --> F[pci_scan_bus secondary]
-  F --> G[fix subordinate]
-  D -->|no| H[callback leaf]
-  H --> I[tree_node_insert]
+```text
+bus0 → scan_bus → scan_device
+  bridge：设 secondary/subordinate，递归
+  leaf：callback 填节点 + scan_bar
 ```
+
+**已知代码味：** `pci_scan_device` 读 config 时 function 曾写死 0（多功能风险）；type1 BAR 上界字段疑似笔误——文档标为缺口，以源码为准。
 
 ---
 
 ## 7. 公开 API
 
-| API | 说明 |
-|-----|------|
-| `pci_scan_bus(callback, bus, parent)` | 递归扫描 |
-| `pci_device_exists` | 快速探测 |
-| `pci_config_read/write_IO_*` | config 访问 |
-| `pci_tree_set_pci_bus_info` | bridge 元数据 |
-| `pci_scan_callback` | 调用方 typedef |
+以 `include/modules/pci` 为准：`pci_scan_all`、`pci_get_device`、`pci_enable_device`、command helpers。仅 `#ifdef PCI` 构建有意义。
 
 ---
 
 ## 8. 多架构
 
-x86 QEMU 常用 **PIO config** 或 **MMCFG**；aarch64 virt **ECAM** 映射后同一 ops 可 MMIO 读。具体访问函数在 `pci_ops.c` / arch glue。
+**仅 x86_64** 启用。aarch64：无模块；ECAM 未支持。
 
 ---
 
 ## 9. 测试
 
-- **`single_pci_test.c`** / `test_pci_scan` in `single_test` 表。
-- 返回 0  pass，非 0 fail。
-
-与当前源码一致，尚未复测。
+`single_pci_test`（PCI 开时）。本篇未复测。
 
 ---
 
 ## 10. 限制与后续
 
-- **无 IRQ 分配**、**无 BAR 编程** — 见 `v0.1/evolution/TODO.md`（E6）
-- **与 DTB 双源**
-- **recursion 深度限制** — 复杂拓扑可能截断
+- 无 ECAM / MSI / 热插拔。  
+- enable 被 IRQ stub 挡住。  
+- BAR 分配 API stub。  
+- 多功能 / type1 笔误风险。
 
 ---
 
 ## 11. 变更记录
 
-| 日期 | 摘要 |
-|------|------|
-| 2026-08-27 | 初稿：扫描、bridge、设备树、边界 |
+- 2026-08-29：整篇重做——删 ECAM/aarch64/双源；钉 PIO-only；enable/IRQ/BAR 真相；func0 风险。
+- 2026-08-27：初稿（叙事过时）。

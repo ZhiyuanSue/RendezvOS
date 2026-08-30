@@ -1,143 +1,147 @@
 # 日志与 UART 控制台
 
-v0.1 · 2026-08-27
+v0.1 · 2026-08-29
 
-本篇覆盖：`modules/log/log.c`、`include/modules/log/log.h`、`include/rendezvos/stdio.h`、`modules/driver/uart/uart.c`、`modules/driver/uart/uart_16550A.c`、`modules/driver/uart/uart_pl011.c`、`include/modules/driver/uart/*.h`、`modules/driver/x86_char_console/char_console.c`、`include/modules/driver/x86_char_console/char_console.h`、`include/modules/driver/driver.h`。
+本篇覆盖：`modules/log/log.c`、`include/modules/log/log.h`、`modules/driver/uart/uart.c`、`uart_16550A.c`、`uart_pl011.c`、`modules/driver/x86_char_console/char_console.c`。
 
-SMP 下 log 锁见 `06-SMP与同步/锁与内存屏障.md`；`print` 与 early boot 见 `01-启动与初始化/启动流程总览.md`。
+SMP 下 MCS 见锁篇；`cmain` early 时序见启动总览；aarch64 PL011 基址 early map 见平台启动 / DTB 篇。compat `write(1/2)` 可汇合到 `log_put_locked`。
 
 ---
 
 ## 1. 概述
 
-RendezvOS v0.1 控制台输出主路径：**`pr_*` / `printk` → `log.c` 格式化 → `uart_putc`**。UART 后端由编译配置 **`_UART_16550A_`** 或 **`_UART_PL011_`** 选择（`uart.c` 分发）。日志级别由编译宏 **`_LOG_*_`** 或运行时 **`log_init(level)`** 控制。
+Boot/调试需要 **同步、不依赖 IPC** 的字符输出——MM/调度/port 起来之前就能打字。
 
-x86 另可选 **VGA 文本控制台**（`char_console.c`）写显存缓冲；v0.1 日常 **`pr_info` 仍走 UART**（QEMU `-serial stdio`）。**`uart_getc`** 轮询读单字符，供早期或简单交互，无行 discipline 驱动栈。
+直写 UART；不是 syslog，也不是 console server。
+
+主路径：`pr_*` / `printk` → 格式化 → `uart_putc`。后端由编译宏 **`_UART_16550A_`** 或 **`_UART_PL011_`** 选择。  
+x86 另有 VGA 文本层——但 **`log_put_byte` 从不写显存**：`pr_*` 只改 VGA **颜色**，正文仍只在串口（QEMU `-serial stdio`）。「只盯 VGA」会看不到日志。
+
+Ring buffer / uart_server / `/dev/console` 留给上层；panic 仍允许直写。
 
 ---
 
 ## 2. 目标与边界
 
-core/modules 提供 **内核态 printf 子集** 与 **字符设备 UART 抽象**，不是 termios、pty 或 printk 多 sink 框架。兼容层扩展 console 时复用 `log_put_byte` 或另注册 hook，core 不定义 `/dev/console`  vnode。
+**提供：** printf 子集；级别过滤；UART open/putc/getc；x86 VGA 颜色辅助；SMP 下 `pr_*` / `log_put_locked` 加锁。
 
-**不做：** 异步 log 缓冲 flush 线程；syslog；串口 DMA。
+**不做：** termios、pty、异步 flush 线程、串口 DMA、多 sink 框架。
 
 ---
 
 ## 3. 分层与调用方
 
-**任意 core / 测例** — `#include <modules/log/log.h>`，`pr_err("...\n")` 等。SMP 下 **`log_put_locked`** 用 MCS 锁 **`log_spin_lock_ptr`** + per-CPU `me`。
+| 场景 | 用法 |
+|------|------|
+| 任意内核 | `#include <modules/log/log.h>`，`pr_err` / `pr_info`… |
+| Early / panic 友好 | `print(...)` = `printk(..., LOG_OFF)`——级别过滤下 LOG_OFF 仍可出 |
+| compat stdout | `log_put_locked(buf,len)`（整段 MCS） |
+| Boot | `cmain`：`uart_open(...)` → `log_init(log_level)` → … |
 
-**Boot 极早期** — 可能直接用 **`print`**（stdio 或 arch 薄封装）在 UART init 之前；`log_init` 通常 UART open 之后。
-
-**x86 VGA** — 调试/本地显示：`char_console_putc` 写 **`0xB8000`** 彩色单元；与 UART 并行存在，log 默认不自动双写。
-
-**链接方** — 通过 `config_*.json` / Makefile 选 UART 型号与 `LOG=true` 等；见 `00-总览/构建与链接.md`。
+**纠正：** `stdio.h` 只有未实现的 `printf` 声明；真正入口是 **`log.h`**。
 
 ---
 
 ## 4. 数据结构与不变量
 
-### 4.1 日志级别
+### 4.1 级别
 
-`log.h` 定义 `LOG_EMERG` … `LOG_DEBUG`、`LOG_OFF`。编译期默认 **`log_level`** 由 `_LOG_INFO_` 等宏择一；否则 `LOG_OFF`。
+`LOG_OFF … LOG_DEBUG`。默认由 `_LOG_*_` 编译宏；否则 `LOG_OFF`。  
+`printk`：仅当 **`msg_level <= log_level`** 输出。  
+现行 config 多为 `_LOG_DEBUG_` / `_LOG_INFO_`。
 
-`printk(format, msg_level, ...)` 仅当 **`msg_level <= log_level`** 时输出。
+### 4.2 锁
 
-### 4.2 printf 子集
+SMP：`COLOR_SET`/`CLR`（`pr_*`）与 `log_put_locked` 用 MCS：`log_spin_lock_ptr` + `percpu(log_spin_lock)`。  
+**`printk`/`print` 本身不加锁**——无 `pr_*` 包装的并发 `print` 可交错。
 
-支持：`d/i/u/x/X/o/p/c/s`、长度修饰 `hh/h/l/ll/j/z/t`、部分 `-+ #0` 与宽度。不支持 `*` 动态宽度、`n`、`f` 浮点。
+### 4.3 printf 子集
 
-### 4.3 UART 抽象
-
-```c
-void uart_open(void *base_addr);
-void uart_putc(u_int8_t ch);
-u_int8_t uart_getc(void);
-void uart_close(void);
-```
-
-PL011 需传入 **`base_addr`**（DTB/平台映射）；16550A 常用固定 I/O 或 MMIO 配置在 `uart_16550A.c`。
-
-### 4.4 SMP
-
-`#ifdef SMP` 时 `log_put_locked` 加锁；单核构建无锁直写 UART。
+`d/i/u/x/X/o/p/c/s` + 部分长度/flags；无 `*`/`n`/浮点；未知 specifier 原样吐 `%X`。
 
 ---
 
 ## 5. 代码对应
 
-| 文件 | 职责 |
+| 路径 | 职责 |
 |------|------|
-| `log.c` | 格式化、`printk`、`log_init`、`log_put_locked` |
-| `log.h` | `pr_*` 宏、`log_level` |
-| `uart.c` | 后端分发 |
-| `uart_16550A.c` | PC/QEMU COM |
-| `uart_pl011.c` | aarch64 virt PL011 |
-| `char_console.c` | VGA 文本 |
-| `stdio.h` | `print` 等声明（若与 log 并存） |
+| `log.c` / `log.h` | `printk`/`pr_*`/`print`/`log_put_*` |
+| `uart.c` | 编译期分发 |
+| `uart_16550A.c` | COM1 I/O；115200 轮询 |
+| `uart_pl011.c` | MMIO；可开 RXIM，但 **GIC SPI 仍 mask → getc 仍轮询** |
+| `char_console.c` | x86 VGA 0xB8000；颜色 |
+
+`driver.h` 几乎只 include uart——不是驱动框架。
 
 ---
 
 ## 6. 流程
 
-```mermaid
-flowchart LR
-  A[pr_info / printk] --> B{level filter}
-  B -->|pass| C[log_print va_format]
-  C --> D[log_put_byte]
-  D --> E[uart_putc]
-  E --> F[16550A or PL011 HW]
+### 6.1 Boot
+
+```text
+cmain:
+  uart_open(ROUND_UP(&_end, MIDDLE_PAGE_SIZE))  // aarch64：early map 的虚址；x86：忽略，用 COM1 port
+  log_init(log_level)   // 实质多半换行 + 重设当前级别
 ```
 
-SMP：`log_put_locked` 包裹多字节 write。
+### 6.2 打印
+
+```text
+pr_* → COLOR_SET（锁+ANSI[+VGA色]）→ printk(level) → log_put_byte → uart_putc → COLOR_CLR
+```
+
+### 6.3 UART
+
+- **16550：** 轮询 THR/RHR；`getc` 阻塞等 LSR。  
+- **PL011：** 清 ICR、开 UARTEN|TXE|RXE；RX 无接到 IRQ 向量（DONE #68）。  
+
+`uart_set_color` 发 ANSI；参数命名与宏略错位，常用 `COLOR_SET(0,32,40)` 仍得绿字。
 
 ---
 
 ## 7. 公开 API
 
-| API | 说明 |
-|-----|------|
-| `printk(fmt, level, ...)` | 带级别格式化输出 |
-| `pr_emerg` … `pr_debug` / `pr_off` | 宏包装 |
-| `log_init(level)` | 运行时改级别 + 换行 |
-| `log_put_byte` / `log_put_locked` | 原始字节 |
-| `uart_*` | 驱动入口 |
-| `char_console_*` | VGA（x86） |
+```c
+void print(const char *fmt, ...);
+void pr_err/pr_info/pr_debug/...(...);  /* 宏 → printk */
+void printk(const char *fmt, int msg_level, ...);
+void log_init(int level);
+void log_put_locked(const char *buf, size_t len);
+
+void uart_open(vaddr base);
+void uart_putc(char c);
+int uart_getc(void);   /* 无限阻塞轮询 */
+```
 
 ---
 
 ## 8. 多架构
 
-| 平台 | 典型 UART | 附加 console |
-|------|-----------|--------------|
-| x86_64 QEMU | 16550A (`0x3F8` 或 MMIO) | VGA optional |
-| aarch64 virt | PL011 @ DTB `uart` reg | 无 VGA |
-
-由 **`configure.py` / config json** 选择 `-D_UART_*`。
+| | UART | VGA |
+|--|------|-----|
+| x86 | 16550 COM1 port | 有（颜色 only vs log） |
+| aarch64 | PL011 MMIO（DTB early map） | 无（颜色宏空） |
+| riscv 头 | 有 16550 MMIO 宏 | — |
 
 ---
 
 ## 9. 测试
 
-- **`smp_log_test`**（smp_test 表内可选注释）— 多核并发 `pr_*`。
-- 人工：`make run` 观察 serial 输出。
-
-与当前源码一致，尚未复测。
+间接：全程启动日志。无独立 log 单测。本篇未复测。
 
 ---
 
 ## 10. 限制与后续
 
-- **printf 不完整** — 复杂格式需避免。
-- **uart_getc 阻塞轮询** — 无 timeout API。
-- **VGA 与 log 未统一** — 双输出需上层组合。
-- **LOG_OFF 默认** — 部分 config 需显式开 log 宏。
+- 同步轮询；SMP 下裸 `print` 不安全。  
+- VGA 与正文解耦。  
+- 无行规程；`getc` 无 timeout。  
+- 上层 uart_server handoff 后 panic 仍可直写。
 
 ---
 
 ## 11. 变更记录
 
-| 日期 | 摘要 |
-|------|------|
-| 2026-08-27 | 初稿：log、UART 双后端、VGA、SMP 锁 |
+- 2026-08-29：整篇重做——直写叙述；纠正 stdio.h；VGA 只改色；锁在 pr_*；PL011 无 IRQ；early open 时序。
+- 2026-08-27：初稿。

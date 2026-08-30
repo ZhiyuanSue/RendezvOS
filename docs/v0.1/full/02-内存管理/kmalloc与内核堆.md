@@ -1,54 +1,66 @@
 # kmalloc 与内核堆
 
-v0.1 · 2026-08-26
+v0.1 · 2026-08-29
 
 本篇覆盖：`kernel/mm/kmalloc.c`、`kernel/mm/string.c`、`include/rendezvos/mm/kmalloc.h`、`include/rendezvos/mm/allocator.h`。
 
-物理页来源见 `物理内存与Buddy分配器.md`；`root_vspace` 上 radix 操作见 `Radix树与用户映射.md` 与 `虚拟地址空间与页表.md`。
+物理页见 `物理内存与Buddy分配器.md`；`root_vspace` radix/`map` 见 Radix 篇与页表篇；跨核 free 用的 MSQ 见 `04-IPC/无锁队列与EBR设计.md`。
 
 ---
 
 ## 1. 概述
 
-内核堆由 **per-CPU `kallocator`**（`struct mem_allocator`）实现：小对象走 **slab 式 chunk**（多 slot 尺寸、每 chunk 多页），大分配走 **整页路径**，在 **`&root_vspace`** 的 radix 上 insert/bind 并 `map()`，不经 `mm_user_utils_*`。
+内核堆是 **每 CPU 一个 `kallocator`（`struct mem_allocator`）**：小对象走 chunk/slot；大块走整页，在 **`&root_vspace`** 上 insert/bind/`map()`——**绝不**走 `mm_user_utils_*`（utils 显式拒绝 root）。
 
-`string.c` 提供内核侧 `memcpy`/`memset` 等，供 kmalloc 与 map 窗口 zero 使用。
+### 1.1 堆也不能再变成那把大锁
+
+无锁 IPC 的常态是：**对象在 A 核分配，消息到 B 核 server，再在 B 上释放**。若堆仍是全局一把锁，业务锁迁走、IPC 无锁之后，瓶颈换个马甲回来。
+
+所以每核本地堆：同核 alloc/free 不抢别人。异核释放时，**不要直接改他核的 chunk 链表**，而是把对象（或整页回收请求）丢进**归属核**的无锁队列，让归属核自己 drain。承认「所有权在分配核」，用和 IPC 同一套 MSQ 哲学归还。
+
+### 1.2 两条跨核队列（以源码为准）
+
+| 队列 | 何时用 | 怎么找到主人 |
+|------|--------|----------------|
+| `buffer_msq` | 小对象（指针**非** 4K 对齐） | `object_header.allocator_id` |
+| `kfree_page_msq` | 整页（指针 **4K 对齐**） | `root_vspace` 上该 VA 的 **radix owner 标签**（插入时写入的 alloc CPU），不是 header |
+
+drain 顺序：先 `kfree_page_msq`，再 `buffer_msq`。触发点：**每次 `kalloc`/`kfree` 入口**，以及 `schedule()` 里的 `kalloc_process_cross_cpu_frees`（闲核也要清）。
 
 ---
 
 ## 2. 目标与边界
 
-core 提供：`kalloc`/`kfree` 族（通过 `struct allocator` vtable）、跨 CPU 释放队列（MSQ + `kalloc_process_cross_cpu_frees`）、`root_vspace` 内核堆 radix 路径。
+**提供：** per-CPU allocator vtable、chunk 小对象、整页 RB 跟踪、双 MSQ 跨核 free、`m_alloc` 成功路径清零。
 
-core 不做：用户态 malloc；general-purpose 跨进程共享堆；SLUB  sysfs 统计。
+**不做：** 用户态 malloc；跨进程共享堆；SLUB sysfs。
+
+**权衡：** 无全局堆锁 ↔ 必须 drain、必须标对 owner；整页与小对象用对齐区分，误判会走错 free 路径。
 
 ---
 
 ## 3. 分层与调用方
 
-- **线程/IPC/PMM** — 通过 `percpu(kallocator)->m_alloc/m_free` 分配 `Thread_Base`、消息、port 等。
-- **page_slice** — 索引页/叶页通过 kallocator 获取 backing 页。
-- **schedule** — 每次上下文切换调用 `kalloc_process_cross_cpu_frees()` 处理它核投递的 free。
-
-调用方 **must** 在正确 CPU 上 free 归属该 CPU allocator 的对象，或使用已路由的 `kfree` 路径；跨核 raw free 依赖 MSQ  drain。
+调用：`percpu(kallocator)->m_alloc / m_free`（没有单独导出的 `kalloc()` 符号）。`kinit(cpu_id)` 在 `virt_mm_init`。线程/IPC/port/page_slice 都吃这个堆。
 
 ---
 
 ## 4. 数据结构与不变量
 
-### 4.1 allocator 接口
+### 4.1 尺寸
 
-`include/rendezvos/mm/allocator.h` 定义 `struct allocator` 函数指针：`m_alloc`、`m_free` 等。`mem_allocator` 为 kmalloc 具体实现。
+- `1 ≤ Bytes ≤ MIDDLE_PAGE_SIZE`（2 MiB）。  
+- slot：约 `8…2048` 共 12 档；**`>2048` → 整页路径**。
 
-### 4.2 chunk 与 slot
+### 4.2 chunk / group
 
-- `MAX_GROUP_SLOTS`（12）种对象尺寸；每 group 有 partial/full/empty 链表。
-- `mem_chunk` 带 magic `CHUNK_MAGIC`；chunk 内多页（`PAGE_PER_CHUNK` 等）减少内部碎片。
-- 大于约 2048 字节的请求走 **整页 RB 树** `page_chunk_root` 跟踪（`page_chunk_node`）。
+- `PAGE_PER_CHUNK == 4`：chunk 起始页对齐，但 **object 载荷刻意非 4K 对齐**，供 free 分支。  
+- 每 group：**`full_list` + `empty_list` 两套**（有空位的 chunk 也在 empty 侧计数体系里，不是三套 partial/full/empty 命名）。  
+- chunk 元数据**只许 owner CPU 改**；`page_chunk_root` RB 用 `cas_lock`。
 
-### 4.3 root_vspace 关系
+### 4.3 整页与 `root_vspace`
 
-整页分配：`vmm_radix_tree_insert_range` + `map()` + `leaf_bind` 在 **`&root_vspace`** 上执行；L0 锁由 kmalloc 内部按范围持有。与 user AS 的 radix 树分离，但共享内核高半 PTE。
+`pmm_alloc` → radix `insert_range`（owner tag = 本 CPU）→ `map` → `leaf_bind` → 可选 zero。跟踪节点 `page_chunk_node` 本身也来自小对象分配。free：unbind → unmap → DELETE 锁模式清叶 → `pmm_free`。
 
 ---
 
@@ -56,69 +68,68 @@ core 不做：用户态 malloc；general-purpose 跨进程共享堆；SLUB  sysf
 
 | 文件 | 职责 |
 |------|------|
-| `kmalloc.h` | chunk、object_header、mem_allocator 布局 |
-| `kmalloc.c` | per-CPU 初始化、alloc/free、整页 radix、跨核 free 队列 |
-| `string.c` | 内核字符串/内存例程 |
-| `allocator.h` | 通用 allocator vtable |
+| `kmalloc.h` / `kmalloc.c` | mem_allocator、双 MSQ、chunk/页路径、`kinit` |
+| `allocator.h` | vtable |
+| `string.c` | `memcpy`/`memset` 等（工具，非堆策略） |
 
 ---
 
 ## 6. 流程
 
-### 6.1 小对象分配
+### 6.1 `m_alloc`
 
-1. 按 size 选 slot group。
-2. 从 partial 链表取 `object_header`；无则向 empty 或新 chunk 要页。
-3. chunk 缺页时可能从其他 group 偷页或 `pmm_alloc` + root_vspace 映射。
+1. `mem_allocator_remote_frees(this)`（先清积压）。  
+2. `>2048`：分配 `page_chunk_node` → `core_get_free_pages` → memset → RB 插入。  
+3. 否则：从 group/`empty_list` 取；可偷别 group 的全空 chunk；再不行 `core_get_free_pages(PAGE_PER_CHUNK)` 建 chunk → `chunk_get_obj`。
 
-### 6.2 整页分配（core_free_pages 反向）
+### 6.2 `m_free`
 
-1. buddy 分配连续物理页（可能多于请求，多余立即归还）。
-2. 在 root_vspace radix 上 reserve + map + bind。
-3. 在 RB 树登记 `[page_addr, page_num)` 供 free 查找。
+1. 先 remote_frees。  
+2. **页对齐** → 查 radix owner CPU；异核则 `kfree_page_msq` 投递；本核 `kfree_page_local`。  
+3. **非对齐** → 读 `allocator_id`；本核 `group_free_obj`（可回收多余空 chunk）；异核 `buffer_msq`。
 
-### 6.3 跨 CPU 释放
+### 6.3 与 IPC/调度
 
-远程 CPU `m_free` 可能把 chunk/object 入 MSQ；owner CPU 在 **`schedule()`** 或 kalloc 入口 drain，避免 idle 核永不回收。
+消息/TCB 常跨核释放 → 依赖本篇 MSQ；idle 循环 `schedule` 保证低分配核也会 drain。
 
 ---
 
 ## 7. 公开 API
 
 ```c
-extern DEFINE_PER_CPU(struct allocator*, kallocator);
-
-/* 典型用法 */
-void* p = percpu(kallocator)->m_alloc(percpu(kallocator), size);
+/* 使用方式 */
+percpu(kallocator)->m_alloc(percpu(kallocator), n);
 percpu(kallocator)->m_free(percpu(kallocator), p);
 
-void kalloc_process_cross_cpu_frees(void);
+void kinit(cpu_id_t cpu_id);
+void kalloc_process_cross_cpu_frees(void); /* schedule 调用 */
 ```
 
-具体 `kalloc`/`kfree` 符号与 size class 表见 `kmalloc.h` / `kmalloc.c` 实现；兼容层多通过 `allocator` vtable 间接调用。
+`DEFINE_PER_CPU(struct allocator *, kallocator)` 在 `kmalloc.c`。
 
 ---
 
 ## 8. 多架构
 
-kmalloc 主体架构无关；依赖 `Map_Handler`、`root_vspace` 与 buddy，均已 per-arch 初始化。`string.c` 可能含 arch 优化拷贝（若有）。
+逻辑与 ISA 无关；依赖 arch 原子与 `root_vspace` 映射。
 
 ---
 
 ## 9. 测试
 
-`single_kmalloc_test.c`、`smp_kmalloc_test.c`。本篇与当前源码一致，尚未单独复测。
+kmalloc/SMP 相关测例；`make ARCH=x86_64 config && make all && make run`。本篇未复测。
 
 ---
 
 ## 10. 限制与后续
 
-- 单次整页请求上限 2 MiB（buddy 限制）；更大需拆分。
-- 跨 allocator 误 free 未定义（依赖 magic/allocator_id 检测有限）。
-- 与 user radix 锁顺序：见 INVARIANTS / AI_CHECKLIST（zone lock vs vspace）。
+- owner 标错 / 对齐误判 → 错队列或泄漏。  
+- 引导期 `tmp_k_alloctor` 自举后再换成正式 percpu 实例。  
+- 与 radix DELETE/owner 过滤的头文件叙述差异，以 `.c` 为准（见 Radix 篇）。
 
 ---
 
 ## 11. 变更记录
 
-- 2026-08-26：v0.1 初稿，per-CPU kallocator、chunk/整页路径与 root_vspace。
+- 2026-08-29：整篇重做——双 MSQ、页走 radix owner、drain 在 kalloc/kfree/schedule；纠正 group 列表命名；堆不再变大锁。
+- 2026-08-26：v0.1 初稿；曾定点补 percpu 动机。

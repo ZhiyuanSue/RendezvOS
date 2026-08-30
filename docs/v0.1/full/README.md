@@ -107,7 +107,7 @@ v0.1/full/
 
 ---
 
-### [x] [ ] 00-总览/构建与链接.md
+### [x] [x] 00-总览/构建与链接.md
 
 职责：`make config` / **`make all`** / `make run` 流程；standalone 与链接方 `make -C core all` + `EXTRA_OBJECTS` 两种目标；`configure.py` 与 `config_*.json`；`gen_makefile.py`；链接脚本段布局（含 `.init.call.*`）；`modules.h` 生成；与启动/initcall 的构建侧关系
 

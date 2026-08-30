@@ -10,25 +10,49 @@ EBR 在调度与线程 teardown 中的用法见 `03-任务与调度/EBR与线程
 
 ## 1. 概述
 
-RendezvOS v0.1 的并发队列核心是 **Michael–Scott 无锁 MSQ**（`ms_queue_t`），通过 **tagged pointer** 在指针低位编码 small tag（port 会合状态、check 条件等），配合 **EBR（Epoch-Based Reclamation）** 延迟释放节点，避免 dequeue 读者与 `kfree` 的 UAF。
+RendezvOS v0.1 的并发队列核心是 **Michael–Scott 无锁 MSQ**（`ms_queue_t`），用 **tagged pointer** 在指针里塞 small tag（port 会合状态等），再配 **EBR** 延迟释放节点，避免「队列上还能看见、堆里已经 free」的 UAF。
 
-三处主要用法：
+三处主要用法：port 的 `thread_queue`；每线程 send/recv 消息队列；kmalloc 跨核 free（见 kmalloc 篇）。本篇是 **「为啥 IPC 必须无锁」** 与 **MSQ/tag/EBR 怎么咬合** 的权威篇；Port 对象模型见 Port 篇。
 
-1. **Port `thread_queue`** — 元素为 `Ipc_Request_t`；tail tag = `IPC_PORT_STATE_*`。
-2. **Per-thread `send_msg_queue` / `recv_msg_queue`** — 元素为 `Message_t` 嵌入的 `ms_queue_node_t`。
-3. **kmalloc 跨核 free 队列** 等（见 kmalloc 篇）— 同一 MSQ 原语。
+### 1.1 同步没有消失，只是搬家了
 
-本篇侧重 **设计意图、ABA/tag 策略、EBR 与 MSQ 的配合**；API 逐行说明以头文件为准。
+想象宏内核里两核都要碰同一块网卡硬件：一核进临界区，另一核自旋——核一多，大家轮流等，总等待能涨到大约 **O(n²)** 那种感觉。
+
+混合内核常见做法：网卡变成**一个 server 线程**，协议栈线程只发 IPC。业务代码可以写成「单线程循环收消息」，好写很多。但多核同步**没消失**：两个协议栈同时给网卡线程塞请求，**谁先谁后、会不会丢配**，全变成 **IPC 框架自己的同步问题**。
+
+所以：若 IPC 还用一把大锁做会合，核数上去时争用故事和宏内核大锁差不多——混合内核「换扩展性」的叙事在底层塌掉。v0.1 的选择是 port 会合与消息队列走 **无锁 MSQ**：每核付自己那份操作成本（相对更接近 **O(n)**），再加上调度切换。核少时，精心细锁往往更便宜（切换比抢锁贵）；**核变多、临界区都线程化之后**，可扩展的无锁 IPC 才是前提。
+
+对比：有的系统用大内核锁换验证简单；有的环假设 SPSC。我们面对的是混合内核里常见的 **MPMC 会合**（多客户端对一个 server port 等），所以要可带 tag 约束的 MS 队列。
+
+再补一层定位：本框架里用户线程进内核有**自己的内核栈**，内核态延伸流也可以当「能收发 IPC 的执行流」看——**基于 IPC 的混合内核与微内核在这条轴上是同构的**；IPC + 能感知阻塞的调度因此是核心件，不是边角插件。
+
+### 1.2 单状态队列 + MSQ「假出队」
+
+Port 用**一条**线程队列（同一时刻要么全 sender 等、要么全 recv 等），避免双队列「检查+插入」无法单 CAS 原子完成——见 Port 篇。
+
+实现上还要啃 MSQ 自己的怪癖（直接影响消息结构）：
+
+1. **MPMC**，带 **dummy**；空队列时 head/tail 都指 dummy。  
+2. **出队不是真拿走节点**：逻辑上弹出的是旧 dummy，后面那个节点变成**新 dummy，还必须留在队列里**；它的 `next` 还可能被别人读着。所以 **不能**把「刚 dequeue 的 Message 节点」整段挪到对方 recv 队列——只能**新建壳 + 复制/共享载荷指针**。这就是 `Msg_Data_t` / `Message_t` 拆开的根因（Port 篇 §4.2）。  
+3. enqueue/dequeue 失败时都会**帮忙推进 tail**（帮助机制）。
+
+单状态扩展：`msq_enqueue_check_tail` / `msq_dequeue_check_head` 用 tag 卡住「只允许同侧入队 / 只允许对侧出队」。
 
 ---
 
 ## 2. 目标与边界
 
-core 选择在 **单生产者/多消费者或 MPMC 会合场景** 用 MSQ + EBR，而不是全局锁保护链表，以便 IPC hot path 在 SMP 下扩展。
+core 选择在 port 会合与消息移动路径上用 **MSQ + EBR**，而不是全局自旋锁保护链表，以便 SMP 下 IPC hot path 可扩展，并支撑「临界区线程化 → 同步沉入 IPC」的混合内核模型（§1.1）。
 
-**有意不包含：** 通用阻塞队列；优先级队列；内核 malloc 层对 EBR 的隐藏（caller 显式 `ebr_retire_ref`）；跨进程队列。
+**有意不包含：** 通用阻塞队列；优先级队列；内核 malloc 层对 EBR 的隐藏（caller 显式 `ebr_retire_ref`）；跨进程队列；形式化验证完备性声明。
 
-**设计权衡：** MSQ dequeue 会 **移动 dummy 节点** 并 `ref_put` 旧 dummy，故 message 拆成 `Msg_Data_t` + `Message_t` shell（Port 篇 §4.2）。EBR retire 表 overflow 时 **leak** 而非 UAF（见 EBR 篇 §6.2）。
+**设计权衡：**
+
+- MSQ dequeue 会 **移动 dummy 节点** 并 `ref_put` 旧 dummy，故 message 拆成 `Msg_Data_t` + `Message_t` shell（Port 篇 §4.2）。
+- EBR retire 表 overflow 时 **leak** 而非 UAF（见 EBR 篇 §6.2）——用可观测泄漏换并发安全上界。
+- 无锁正确性依赖 tag/EBR 纪律；写错 `free_func` 或缺 `ebr_enter` 会导致稀有崩溃，框架把难度留在少数原语实现者，而不是每个 server 作者。
+
+**与相邻子系统：** 跨核传递的消息/对象常在 **A 核 `kallocator` 分配、B 核释放**，堆必须承认所有权（见 kmalloc 篇跨核 free MSQ）。单执行流 server 依赖本篇原语，而不是在业务里自写多核锁协议。
 
 ---
 
@@ -176,7 +200,7 @@ cd core && make ARCH=x86_64 config && make all && make run
 - **append_info_bits 上限 15** — tag 空间受限；port 仅用 2 bit。
 - **无 hazard pointer 备选** — 全库统一 EBR；其他子系统复用须遵守 enter/exit 纪律。
 
-更形式化正确性论证不在 v0.1 文档范围；若替换队列实现须更新 IPC 与 EBR 篇。
+更形式化正确性论证不在本篇展开范围；若替换队列实现须同步更新本篇与 EBR/IPC 相关 full。性能与队列扩展等**尚未实现**的项见 `v0.1/evolution/TODO.md`（E2）——**现行设计动机与契约以本篇正文为准**，不外链到已废弃的工程审计稿。
 
 ---
 
@@ -184,4 +208,6 @@ cd core && make ARCH=x86_64 config && make all && make run
 
 | 日期 | 摘要 |
 |------|------|
-| 2026-08-27 | 初稿：MSQ、tagged ptr、EBR 与 IPC 结合 |
+| 2026-08-27 | 初稿：MSQ、tag、EBR 配合与三处用法 |
+| 2026-08-29 | 回灌设计动机：同步转化、相对大锁/O(n²)、单队列会合、与 kmalloc 咬合 |
+| 2026-08-29 | 叙述加强：同步搬家、混合≈微内核同构、MSQ 假出队→Msg 拆分；去掉审计稿外链 |

@@ -1,156 +1,173 @@
-# 物理内存与 Buddy 分配器
+# 物理内存与Buddy分配器
 
-v0.1 · 2026-08-26
+v0.1 · 2026-08-29
 
-本篇覆盖：`kernel/mm/pmm.c`、`kernel/mm/buddy_pmm.c`、`include/rendezvos/mm/pmm.h`、`include/rendezvos/mm/buddy_pmm.h`、`arch/x86_64/mm/pmm.c`、`arch/aarch64/mm/pmm.c` 及对应 arch 头文件（riscv64/loongarch 仅占位头）。
+本篇覆盖：`kernel/mm/pmm.c`、`kernel/mm/buddy_pmm.c`、`include/rendezvos/mm/pmm.h`、`include/rendezvos/mm/buddy_pmm.h`、`arch/x86_64/mm/pmm.c`、`arch/aarch64/mm/pmm.c` 及对应 `include/arch/*/mm/pmm.h`。
 
-虚拟映射与 `map()` 见 `02-内存管理/虚拟地址空间与页表.md`；radix 用户路径见 `Radix树与用户映射.md`。
+调用时机见 `01-启动与初始化/启动流程总览.md`（`phy_mm_init` 在 `virt_mm_init` 之前）。页表 / Map_Handler 见同分区虚拟地址篇；内核堆见 `kmalloc与内核堆.md`。
 
 ---
 
 ## 1. 概述
 
-RendezvOS 物理内存由 **memory_regions**（平台提供的可用 RAM 区间）经启动期保留（内核、per-CPU、PMM 元数据、ACPI 等）后，划分为若干 **MemZone**，每 zone 绑定一个 `struct pmm` 实现。v0.1 默认仅 **ZONE_NORMAL**，后端为 **buddy** 分配器（最大 order 10，即 2¹⁰ 页 = 2 MiB 块）。
+物理内存子系统在 boot 早期把固件给出的可用区收成 `m_regions`，抠出内核、percpu、PMM 元数据占用，再按 **zone** 切成若干 `MemSection`，每个 zone 挂一个 `struct pmm` 实现（默认 **buddy**）。之后所有「要物理连续页」的路径（页表大页、kmalloc 整页等）都从选定 zone 的 `pmm->pmm_alloc` 来。
 
-`phy_mm_init()` 在 `cmain` 中于虚拟内存子系统之前运行，完成区域保留、zone 配置、PMM 数据结构映射与 buddy 初始化。
+**设计意图：**
+
+- **Buddy 而不是单纯 bump** — 需要可释放、可合并的 2ⁿ 连续块；最大 order **10** → 单次最大 **2 MiB**（与大页/注释中的 Linux 习惯对齐）。
+- **`Page` 与 `buddy_page` 并行** — 前者管 ref / section / rmap；后者管 free 链与 order。分配先抬 `Page` ref 再改 buddy，失败可回滚，避免「半分配」。
+- **Zone 可扩展但默认单 NORMAL** — weak `configure_pmm_zones_hook`；非法配置**回退**到单 `ZONE_NORMAL`+buddy（不是硬失败）。多 zone 的 manage 元数据打包在源码里仍是骨架（各 zone 可能共用同一 manage 窗口）——文档如实写，不假装 NUMA 已完工（E1）。
+- **Reclaim 钩子预留** — OOM 时放锁调 hook；树内**尚无注册者**。
 
 ---
 
 ## 2. 目标与边界
 
-core 提供：页帧分配/释放、每页 `Page::ref_count`、zone 级 MCS 锁、可选 **reclaim hook**（分配失败时同步回调，由兼容层释放页回 buddy）。
+**提供：** 区域表、reserve、zone 切分、buddy alloc/free、可选 reclaim、arch 的 memmap/RSDP 或 DTB memory 入口。
 
-core 不做：swap、NUMA 自动迁移、某 OS 的内存 zone 分类语义（若兼容层沿用 DMA32/DirectMap 等名称，仅为兼容命名，不等同于 core 分区）；OOM kill 策略（reclaim 回调仅返回是否重试）。
+**不做：** 完整 NUMA/多 zone 产品策略；页面换出；自动跨 zone 借页（调用方必须选对 `zone->pmm`）。
+
+**失败语义（须记清）：**
+
+| 情况 | 典型返回 |
+|------|----------|
+| 请求页数 `> 2^MAXORDER` | `-E_RENDEZVOS`（不进 reclaim） |
+| 无空闲合适 order，且无 hook / 重试耗尽 | `-E_REND_RETRY` |
+| hook 返回 false | `-E_REND_NO_MEM` |
+| `page_number==0` | `0`（成功空操作） |
+| 内部 cursor / 双重 free 等 | `-E_RENDEZVOS` |
 
 ---
 
 ## 3. 分层与调用方
 
-- **arch `arch_init_pmm`** — 从 Multiboot/DTB 填充 `m_regions`，保留 arch 专有区（x86 RSDP 等）。
-- **`configure_pmm_zones_hook`** — weak 符号；平台可在链接时用 **strong 符号** 覆盖，设置 `nr_mem_zones` 与各区 `[lower, upper)`、`pmm` 指针（须为静态 `struct buddy` 等）。
-- **`pmm_alloc` / `pmm_free`** — `map_handler`、`kmalloc` 整页路径、`mm_user_utils` 等调用。
-- **`pmm_set_reclaim_hook`** — 兼容层注册同步 reclaim；回调 **不得** 在持锁时调用 `pmm_alloc`。
+- **arch `*_init_pmm` / `arch_get_memory_regions`** — 填 `m_regions`；x86 顺带 RSDP 保留；aarch64 打印 mem_rsvmap **但不 reserve**。
+- **portable `phy_mm_init`** — percpu 保留、PMM blob 布局、zone 配置、buddy init。
+- **调用方** — 持 `struct pmm *`（通常 `mem_zones[ZONE_NORMAL].pmm`）调方法；勿假设「NORMAL 失败自动试其他 zone」。
 
 ---
 
 ## 4. 数据结构与不变量
 
-### 4.1 memory_regions 与 MemZone
+### 4.1 区域与 zone
 
-- `struct region { paddr addr; u64 len; }` 数组，最多 `RENDEZVOS_MAX_MEMORY_REGIONS`。
-- `memory_regions_reserve_region` — 从某 region 扣掉 `[phy_start, phy_end)`（可分裂 region）。
-- `MemZone` — `lower_addr`/`upper_addr`、`zone_total_pages`、`section_list`、`pmm` 指针、`zone_id`。
+- `m_regions`：最多 128 槽；reserve 用切分/掏空，删除置零槽（不紧凑）。
+- `ZONE_NR_MAX=16`；枚举目前实质使用 `ZONE_NORMAL`。每个 zone：`lower/upper`、`struct pmm *`、section 链。
+- **不变量：** 内核 + percpu 物理范围须落在**同一 1 GiB** 窗口，否则 `phy_mm_init` 失败（boot L2 映射约束）。
 
-### 4.2 MemSection 与 Page
+### 4.2 PMM blob 布局（物理）
 
-每个 zone 拆成多个 **MemSection**（连续物理段）；`sec->pages[]` 为每物理页的 `Page`（`ref_count`、`rmap_list`）。Buddy 的 `buddy_page` 与 `Page` 一一对应索引。
-
-### 4.3 struct pmm / buddy
-
-```c
-struct pmm {
-        pmm_init, pmm_alloc, pmm_free, pmm_calculate_manage_space, pmm_show_info;
-        spin_lock spin_ptr;
-        MemZone* zone;
-        u64 total_avaliable_pages;
-        pmm_reclaim_fn_t reclaim_fn;
-};
+```
+[pmm_start …)     扩展 boot L2 表页
+[…)               各 zone 的 MemSection + Page[]
+[…)               buddy_page[] 管理元数据（多 zone 时偏移累加未完成）
 ```
 
-Buddy：`buckets[0..BUDDY_MAXORDER]` 空闲链表；`pages[i].order` — 当前块 order，**-1 表示已分配**。
+其后把 `[pmm_end, ROUND_UP(..., 2MiB))` 再 reserve，避免 buddy 把仍映在 2 MiB boot 映射里的尾页分出去。
 
-### 4.4 锁
+### 4.3 Buddy
 
-`pmm_lock(pmm)` 使用 zone_id 索引的 per-CPU MCS 节点 `pmm_spin_lock[zone_id]`。
+- `MAXORDER` 对应最大 2¹⁰ 页 = 2 MiB。
+- 每 zone 一把 MCS：`lock_mcs(..., &percpu(pmm_spin_lock[zone_id]))`——`me` 必须是本核 slot。
+- free：仅当 `Page.ref_count` 降到 0 才回链；合并要求 buddy 索引合法且同 section（跨洞不合并）。
+- `invalid_ppn(ppn)`：`ppn <= 0` 视为非法（**PPN 0 不可用**）。注意 `phy_Page_ppn` 一类命名可能返回的是 paddr，调用时核对头文件。
+
+### 4.4 Reclaim
+
+```c
+typedef bool (*pmm_reclaim_fn_t)(struct pmm *pmm, u64 need_pages, int attempts);
+```
+
+调用时 **zone 锁已释放**；hook 可对本 `pmm` `pmm_free`，**禁止 `pmm_alloc`**（会死锁/重入）。最多约 64 次尝试。树内无 `pmm_set_reclaim_hook` 调用方。
 
 ---
 
 ## 5. 代码对应
 
-| 文件 | 职责 |
+| 路径 | 职责 |
 |------|------|
-| `pmm.h` | zone、Page、cursor、`pmm_change_pages_ref`、reclaim 类型 |
-| `pmm.c` | `phy_mm_init`、`split_pmm_zones`、`generate_zone_data`、regions 操作 |
-| `buddy_pmm.c` | buddy 合并/分裂、`pmm_alloc`/`pmm_free`、全局 `buddy_pmm` |
-| `arch/*/mm/pmm.c` | `arch_init_pmm`、`arch_get_memory_regions`、`reserve_arch_region` |
+| `kernel/mm/pmm.c` | `phy_mm_init`、regions、zone 切分、Page 生成、弱 hook |
+| `kernel/mm/buddy_pmm.c` | buddy 算法、reclaim 循环 |
+| `arch/x86_64/mm/pmm.c` | Multiboot memmap、ACPI 保留、boot 映射辅助 |
+| `arch/aarch64/mm/pmm.c` | DTB `/memory`、以 `map_end` 为内核后游标 |
+| `pmm.h` / `buddy_pmm.h` | `struct pmm`、`Page`、`buddy_page`、API |
+
+riscv/loongarch 的 `pmm.h` 为空桩，无实现。
 
 ---
 
 ## 6. 流程
 
-### 6.1 phy_mm_init 顺序
+### 6.1 `phy_mm_init`（精确骨架）
 
-```mermaid
-flowchart TD
-  A[arch_init_pmm 填充 regions] --> B[reserve kernel + percpu]
-  B --> C[arch_map_percpu_data_space]
-  C --> D[calculate_avaliable + configure_pmm_zones_hook]
-  D --> E[split_pmm_zones 建 section]
-  E --> F[reserve PMM L2表 + 元数据区]
-  F --> G[arch_map_pmm_data_space]
-  G --> H[generate_zone_data + pmm_init per zone]
-```
+1. `arch_init_pmm` → `m_regions` + `per_cpu_phy_start`  
+2. `reserve_per_cpu_region`；整段 `[kernel, percpu_end)` reserve  
+3. 校验同 1 GiB；`arch_map_percpu_data_space` + clean  
+4. 算可用窗口；`pmm_configure_zones`（非法 → 默认 NORMAL）  
+5. `split_pmm_zones`；估算 Page/section/manage/L2 页数  
+6. `reserve_region_with_length` 拿 PMM blob；2 MiB 对齐 pad  
+7. `arch_map_pmm_data_space`；`generate_zone_data`；每 zone `pmm_init`
 
-约束：内核与 per-CPU 区须落在 **同一 1 GiB** 窗口内（代码检查）。
+### 6.2 alloc / free
 
-### 6.2 Buddy 分配
+- alloc：持锁找 ≥order 块 → 分裂 → 抬 `Page` ref → 填 ppn/页数（**向上取整到 2ⁿ**）。  
+- free：降 ref；为 0 则合并回链。  
+- 空闲总量够但无连续 2ⁿ → 走 reclaim（若已注册）。
 
-1. `pmm_lock`；检查 `total_avaliable_pages >= page_number`。
-2. `alloc_order = log2_of_next_power_of_two(page_number)`，上限 `BUDDY_MAXORDER`。
-3. 从 `alloc_order` 向上找非空 bucket，取下块后 **向下分裂** 至目标 order。
-4. 失败 → `try_reclaim`：`reclaim_fn(pmm, page_number, attempts)` 返回 true 则 retry（最多 64 次）。
+### 6.3 与上层咬合
 
-### 6.3 多 zone 骨架
-
-`mem_zones[ZONE_NR_MAX]`、`nr_mem_zones` 活跃区数。默认 hook 只填 `ZONE_NORMAL`。第二 zone（如 DMA）需 strong `configure_pmm_zones_hook` 在 `split_pmm_zones` 前写好各区地址范围；**无**自动回退到 NORMAL。
+`virt_mm_init` / Map_Handler / kmalloc 依赖本阶段已可分配物理页；平台 ACPI/PCI 映射也用 NORMAL pmm。因果链：本篇 → 虚拟地址篇 → kmalloc 篇。
 
 ---
 
 ## 7. 公开 API
 
 ```c
-error_t phy_mm_init(struct setup_info *arch_setup_info);
+error_t phy_mm_init(struct setup_info *);
 
-void configure_pmm_zones_hook(paddr avail_lo, paddr avail_hi);  /* weak */
+/* 方法在 struct pmm 上；默认实现为 buddy_pmm */
+error_t pmm_alloc(struct pmm *, u64 page_number, u64 *alloced, paddr *out);
+error_t pmm_free(struct pmm *, paddr p, u64 page_number);
+void pmm_set_reclaim_hook(struct pmm *, pmm_reclaim_fn_t);
 
-ppn_t pmm_alloc(struct pmm *pmm, size_t page_number, size_t *alloced_page_number);
-error_t pmm_free(struct pmm *pmm, ppn_t ppn, size_t page_number);
-
-void pmm_set_reclaim_hook(struct pmm *pmm, pmm_reclaim_fn_t fn);
-error_t pmm_change_pages_ref(struct pmm *pmm, ppn_t start_ppn, size_t n, bool inc);
-
-extern MemZone mem_zones[ZONE_NR_MAX];
-extern int nr_mem_zones;
-extern struct buddy buddy_pmm;
+error_t memory_regions_reserve_region(paddr start, paddr end);
+/* arch */
+error_t arch_init_pmm(struct setup_info *, paddr *per_cpu_phy_start);
 ```
+
+zone 表：`mem_zones[]` / `nr_mem_zones`（以头文件为准）。
 
 ---
 
 ## 8. 多架构
 
-- **x86_64** — Multiboot memmap + `acpi_probe_rsdp` 保留 ACPI；`arch_get_memory_regions` 读 Multiboot 区段。
-- **aarch64** — DTB `/memory` reg；无 RSDP。
-- **riscv64 / loongarch** — 头文件占位，PMM 实现未纳入 v0.1 主线测例。
+| | x86_64 | aarch64 |
+|--|--------|---------|
+| 来源 | Multiboot mmap（跳过 ≤1 MiB） | DTB `/memory` |
+| 额外保留 | RSDP/RSDT 窗口（rev0） | rsvmap 仅打印 |
+| 内核后游标 | `PHY(_end)` | `PHY(map_end_virt_addr)` |
 
-Buddy 算法与 `pmm.c` 主体架构无关。
+算法本体与 ISA 无关。
 
 ---
 
 ## 9. 测试
 
-`modules/test/single_pmm_test.c`、`smp_kmalloc_test.c` 等间接压测 buddy。在 `core/` 内 `make ARCH=x86_64 config && make all && make run`。本篇与当前源码一致，尚未单独复测。
+`modules/test/` 下 pmm/single 相关测例；`make ARCH=x86_64 config && make all && make run`（需 `RENDEZVOS_TEST`）。注意旧测例若假定 OOM 一定是 `-E_RENDEZVOS`，与现今 `-E_REND_RETRY` 路径可能不一致——以源码与测例更新为准。本篇未复测。
 
 ---
 
 ## 10. 限制与后续
 
-- 单次 `pmm_alloc` 最大 2 MiB（order 10）。
-- reclaim 同步、无优先级；`-E_REND_RETRY` / `-E_REND_NO_MEM` 由 hook 行为决定。
-- region 删除为「置零」而非紧凑数组。
-- 第二 zone 需平台 strong hook，文档与 evolution 跟踪 DMA 等场景。
+- 多 zone manage 偏移未累加；NUMA 真源见 **E1**。  
+- reclaim 未接线。  
+- `reserve_region_with_length` 对区域长度更新存疑（以代码审查为准，可疑处可记 TODO）。  
+- aarch64 firmware reserved 未从 buddy 挖掉。  
+- `pmm_show_info` 打印桶可能不含最大 order。
 
 ---
 
 ## 11. 变更记录
 
-- 2026-08-26：v0.1 初稿，zone、phy_mm_init、buddy 与 reclaim hook。
+- 2026-08-29：整篇重做——完整 init/PMM 布局；纠正「非法 zone 无回退」；errno 矩阵与 reclaim 契约；多 zone 骨架诚实说明；arch 差异与已知坑。
+- 2026-08-26：v0.1 初稿。
