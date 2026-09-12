@@ -4,7 +4,7 @@ v0.1 · 2026-08-29
 
 本篇覆盖：`kernel/trap/trap.c`（reserve / pool / alloc / `register_irq_handler` / `trap_handler`）、`include/rendezvos/trap/trap.h`、`arch_init_irq_vector_state`（各 arch `trap.c`）、timer/IPI 注册衔接（点到为止）。
 
-Trap class / fixed 见 `Trap抽象与分类.md`；APIC/PIC、GIC 寄存器与 EOI 细节见平台两篇；timer 语义见 `07-时间与定时器`；软 IPI 协议见 `06-SMP与同步/软IPI机制.md`。
+Trap class / fixed 见 `23-Trap抽象与分类.md`；APIC/PIC、GIC 寄存器与 EOI 细节见平台两篇；timer 语义见 `07-时间与定时器`；软 IPI 协议见 `06-SMP与同步/30-软IPI机制.md`。
 
 ---
 

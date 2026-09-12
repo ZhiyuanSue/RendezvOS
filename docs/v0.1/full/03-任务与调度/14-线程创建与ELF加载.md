@@ -4,7 +4,7 @@ v0.1 · 2026-08-29
 
 本篇覆盖：`kernel/task/thread_loader.c`、`include/rendezvos/task/thread_loader.h`、`kernel/task/thread.c`（`create_thread` / `copy_thread` / `run_copied_thread`）、`modules/elf/*`、`include/arch/*/thread_arch.h` 与各 arch `arch_thread.c` / `arch_user_switch.S` / `arch_run_thread.S`。
 
-通用调度与 `thread_entry` 见 `线程与Task_Manager.md`；VSpace 所有权 / clear / schedule 换根见 `VSpace所有权与调度切换.md`；`page_slice` 见 `page_slice稀疏页索引.md`；纯 ELF 头解析模块见 `09-平台模块/ELF加载辅助模块.md`。
+通用调度与 `thread_entry` 见 `13-线程与Task_Manager.md`；VSpace 所有权 / clear / schedule 换根见 `15-VSpace所有权与调度切换.md`；`page_slice` 见 `10-page_slice稀疏页索引.md`；纯 ELF 头解析模块见 `09-平台模块/37-ELF加载辅助模块.md`。
 
 ---
 

@@ -2,7 +2,7 @@
 
 v0.1 · 2026-08-29
 
-本篇覆盖：`include/rendezvos/mm/tlb_cpu_mask.h`、`include/arch/x86_64/sync/tlb.h`、`include/arch/aarch64/sync/tlb.h`、`arch/x86_64/mm/arch_smp_tlb_flush.c`；与 schedule / `map_handler` 的交界。软 IPI 协议细节见 `06-SMP与同步/软IPI机制.md` 与 `TLB_shootdown与跨核一致性.md`。
+本篇覆盖：`include/rendezvos/mm/tlb_cpu_mask.h`、`include/arch/x86_64/sync/tlb.h`、`include/arch/aarch64/sync/tlb.h`、`arch/x86_64/mm/arch_smp_tlb_flush.c`；与 schedule / `map_handler` 的交界。软 IPI 协议细节见 `06-SMP与同步/30-软IPI机制.md` 与 `32-TLB_shootdown与跨核一致性.md`。
 
 **缓存：** aarch64 `sync/cache.h` 目前为空，树内无对称的 x86 `cache.h`。本篇**不假装**有通用 cache 维护 API；设备/DMA 路径以后另写。标题里的「缓存」仅表示与 TLB 同属「CPU 侧翻译/可见性」话题。
 

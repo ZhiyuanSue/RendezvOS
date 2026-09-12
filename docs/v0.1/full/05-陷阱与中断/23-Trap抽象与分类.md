@@ -4,7 +4,7 @@ v0.1 · 2026-08-29
 
 本篇覆盖：`kernel/trap/trap.c`、`include/rendezvos/trap/trap.h`、`include/rendezvos/trap/trap_common.h`、`arch/{x86_64,aarch64}/trap/trap.c`、`trap_vec.S`、`kernel_entry.S`（x86 syscall 旁路）、`arch/*/boot/start_arch.c` 里的装表时机。
 
-IRQ 池/alloc 细节见 `IRQ向量分配与处理.md`；弱符号 `syscall` / ABI 见 `系统调用入口.md`；APIC/PIC、GIC 编程见平台中断两篇。**不存在**扁平路径 `include/rendezvos/trap.h`——真源是 `include/rendezvos/trap/trap.h`。
+IRQ 池/alloc 细节见 `25-IRQ向量分配与处理.md`；弱符号 `syscall` / ABI 见 `24-系统调用入口.md`；APIC/PIC、GIC 编程见平台中断两篇。**不存在**扁平路径 `include/rendezvos/trap.h`——真源是 `include/rendezvos/trap/trap.h`。
 
 ---
 

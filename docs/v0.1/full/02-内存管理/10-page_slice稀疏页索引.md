@@ -4,7 +4,7 @@ v0.1 · 2026-08-29
 
 本篇覆盖：`kernel/mm/page_slice.c`、`kernel/mm/page_slice_copy.c`、`include/rendezvos/mm/page_slice.h`、`include/rendezvos/mm/page_slice_copy.h`。
 
-内核堆见 `kmalloc与内核堆.md`；用户 VA 真源见 `Radix树与用户映射.md`（**page_slice 只服务内核侧逻辑缓冲，不替代用户 radix**）。
+内核堆见 `09-kmalloc与内核堆.md`；用户 VA 真源见 `08-Radix树与用户映射.md`（**page_slice 只服务内核侧逻辑缓冲，不替代用户 radix**）。
 
 ---
 

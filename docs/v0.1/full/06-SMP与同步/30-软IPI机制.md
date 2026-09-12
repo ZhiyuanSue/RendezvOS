@@ -4,7 +4,7 @@ v0.1 · 2026-08-29
 
 本篇覆盖：`kernel/smp/ipi.c`、`include/rendezvos/smp/ipi.h`、`arch/{x86_64,aarch64}/smp/arch_smp_ipi.c`。
 
-向量 reserve 见 IRQ 篇；门铃硬件（ICR / SGI）见 APIC / GIC 篇；**x86 TLB shootdown 握手**见 `TLB_shootdown与跨核一致性.md`（及 MM 的 TLB 策略篇）。本篇不把 aarch64 TLB 写成「也走 IPI」。
+向量 reserve 见 IRQ 篇；门铃硬件（ICR / SGI）见 APIC / GIC 篇；**x86 TLB shootdown 握手**见 `32-TLB_shootdown与跨核一致性.md`（及 MM 的 TLB 策略篇）。本篇不把 aarch64 TLB 写成「也走 IPI」。
 
 ---
 

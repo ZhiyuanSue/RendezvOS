@@ -4,7 +4,7 @@ v0.1 · 2026-08-29
 
 本篇覆盖：`kernel/ipc/kmsg.c`、`kernel/ipc/ipc_serial.c`、`include/rendezvos/ipc/kmsg.h`、`include/rendezvos/ipc/kmsg_system.h`、`include/rendezvos/ipc/ipc_serial.h`。
 
-`Msg_Data` / Port 会合见 `Port与消息模型.md`；send/recv 与 system 投递见 `阻塞与非阻塞收发.md`；MSQ/EBR 见无锁篇；compat RPC（追加 `'t'`、coop）属上层文档，本篇只钉 core 边界。
+`Msg_Data` / Port 会合见 `18-Port与消息模型.md`；send/recv 与 system 投递见 `19-阻塞与非阻塞收发.md`；MSQ/EBR 见无锁篇；compat RPC（追加 `'t'`、coop）属上层文档，本篇只钉 core 边界。
 
 ---
 

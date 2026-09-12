@@ -4,7 +4,7 @@ v0.1 · 2026-08-29
 
 本篇覆盖：`kernel/task/thread.c`、`kernel/task/task_manager.c`、`kernel/task/thread_boot.c`（入队/`init_proc`）、`kernel/task/id.c`、`include/rendezvos/task/thread.h`、`include/rendezvos/task/id.h`；以及 arch `switch_to` / `run_thread` 边界。
 
-`init_proc`、boot/idle 与 `cmain` 编排见 `01-启动与初始化/模块初始化与内核入口.md`；用户 AS 切换细节见 `VSpace所有权与调度切换.md`；ELF/`gen_thread_from_*`/`copy_thread` 见 `线程创建与ELF加载.md`；创建时绑核见 `CPU亲和性-创建时绑核.md`；EBR/`del_thread_structure` 见 `EBR与线程资源回收.md`；IPC 阻塞见 `04-IPC/阻塞与非阻塞收发.md`。
+`init_proc`、boot/idle 与 `cmain` 编排见 `01-启动与初始化/03-模块初始化与内核入口.md`；用户 AS 切换细节见 `15-VSpace所有权与调度切换.md`；ELF/`gen_thread_from_*`/`copy_thread` 见 `14-线程创建与ELF加载.md`；创建时绑核见 `16-CPU亲和性-创建时绑核.md`；EBR/`del_thread_structure` 见 `17-EBR与线程资源回收.md`；IPC 阻塞见 `04-IPC/19-阻塞与非阻塞收发.md`。
 
 ---
 

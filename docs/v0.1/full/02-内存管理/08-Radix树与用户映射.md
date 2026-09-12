@@ -2,7 +2,7 @@
 
 v0.1 · 2026-08-29
 
-本篇覆盖：`kernel/mm/vmm_radix_tree.c`、`kernel/mm/mm_user_utils.c`、`include/rendezvos/mm/vmm_radix_tree.h`、`include/rendezvos/mm/mm_user_utils.h`；与 clone/register 紧耦合处见 `kernel/mm/vmm.c`（交叉说明，完整 VSpace 生命周期仍以 `虚拟地址空间与页表.md` 为准）。
+本篇覆盖：`kernel/mm/vmm_radix_tree.c`、`kernel/mm/mm_user_utils.c`、`include/rendezvos/mm/vmm_radix_tree.h`、`include/rendezvos/mm/mm_user_utils.h`；与 clone/register 紧耦合处见 `kernel/mm/vmm.c`（交叉说明，完整 VSpace 生命周期仍以 `07-虚拟地址空间与页表.md` 为准）。
 
 PTE 手术见同分区页表篇；故障策略在兼容层（本篇只钉 core 契约）。名称字符串索引与 `register_vspace` **不是**同一机制——后者按页表根地址挂 RB，见文末。
 

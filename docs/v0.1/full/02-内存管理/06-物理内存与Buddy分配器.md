@@ -4,7 +4,7 @@ v0.1 · 2026-08-29
 
 本篇覆盖：`kernel/mm/pmm.c`、`kernel/mm/buddy_pmm.c`、`include/rendezvos/mm/pmm.h`、`include/rendezvos/mm/buddy_pmm.h`、`arch/x86_64/mm/pmm.c`、`arch/aarch64/mm/pmm.c` 及对应 `include/arch/*/mm/pmm.h`。
 
-调用时机见 `01-启动与初始化/启动流程总览.md`（`phy_mm_init` 在 `virt_mm_init` 之前）。页表 / Map_Handler 见同分区虚拟地址篇；内核堆见 `kmalloc与内核堆.md`。
+调用时机见 `01-启动与初始化/02-启动流程总览.md`（`phy_mm_init` 在 `virt_mm_init` 之前）。页表 / Map_Handler 见同分区虚拟地址篇；内核堆见 `09-kmalloc与内核堆.md`。
 
 ---
 

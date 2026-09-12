@@ -4,7 +4,7 @@ v0.1 · 2026-08-29
 
 本篇覆盖：`arch/x86_64/PIC/PIC.c`、`LocalAPIC.c`、`IRQ.c`、`include/arch/x86_64/PIC/*.h`（含**空壳** `IOAPIC.h`）、以及与 `arch_start_core` / timer / IPI 的衔接。
 
-向量 reserve / `register_irq_handler` 见 `IRQ向量分配与处理.md`；IDT/`trap_handler` 见 Trap 篇；软 IPI 协议见 `06-SMP与同步/软IPI机制.md`；MADT 枚举见 `09-平台模块/ACPI与MADT-x86_64.md`；timer 校准语义见时间子系统篇。
+向量 reserve / `register_irq_handler` 见 `25-IRQ向量分配与处理.md`；IDT/`trap_handler` 见 Trap 篇；软 IPI 协议见 `06-SMP与同步/30-软IPI机制.md`；MADT 枚举见 `09-平台模块/35-ACPI与MADT-x86_64.md`；timer 校准语义见时间子系统篇。
 
 **纠正：** 仓库**无** `PIC/PIT.c`；8254 在 `modules/driver/timer/8254`（及 `arch/.../time/time.c` 调用）。`IRQ.c` **不**「连接 HW IRQ 号与 trap id」——只做控制器选型。
 

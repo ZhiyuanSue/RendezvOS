@@ -4,7 +4,7 @@ v0.1 · 2026-08-29
 
 本篇覆盖：`arch/aarch64/gic/gic_v2.c`、`include/arch/aarch64/gic/gic_v2.h`、`gic_v3.h`（占位）、以及与 `arch_start_platform` / `arch_start_core`、timer、IPI 的衔接。
 
-DTB 节点见 `09-平台模块/DTB与设备树-aarch64.md`；trap id=`intid+64` 与 reserve 见 `IRQ向量分配与处理.md`；VBAR/`get_curr_el_trap_info` 见 Trap 篇；软 IPI 见 SMP 篇；PSCI 拉核见 `PSCI与处理器电源-aarch64.md`（本篇不展开）。
+DTB 节点见 `09-平台模块/36-DTB与设备树-aarch64.md`；trap id=`intid+64` 与 reserve 见 `25-IRQ向量分配与处理.md`；VBAR/`get_curr_el_trap_info` 见 Trap 篇；软 IPI 见 SMP 篇；PSCI 拉核见 `39-PSCI与处理器电源-aarch64.md`（本篇不展开）。
 
 ---
 

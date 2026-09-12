@@ -4,7 +4,7 @@ v0.1 · 2026-08-29
 
 本篇覆盖：`add_thread_to_cpu` / `cpu_id_is_online` / `task_manager_for_cpu` / `thread_owner_cpu`（`thread.c` / `thread.h`）、`modules/test/thread_affinity_test.c`。
 
-调度环见 `线程与Task_Manager.md`；`create_thread` / `gen_thread_from_*` 见创建篇；`NR_CPU` / SMP 拓扑见 `06-SMP与同步/`；IRQ/GIC affinity **不是**本篇。
+调度环见 `13-线程与Task_Manager.md`；`create_thread` / `gen_thread_from_*` 见创建篇；`NR_CPU` / SMP 拓扑见 `06-SMP与同步/`；IRQ/GIC affinity **不是**本篇。
 
 ---
 

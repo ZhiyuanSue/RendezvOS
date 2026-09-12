@@ -4,7 +4,7 @@ v0.1 · 2026-08-29
 
 本篇覆盖：`kernel/mm/asid.c`、`include/rendezvos/mm/asid.h`、`include/arch/x86_64/mm/asid.h`、`include/arch/aarch64/mm/asid.h`（及 aarch64 boot 里与 TCR.AS 相关的探针）。
 
-TLB mask / shootdown 见 `TLB与缓存一致性.md`；调度装根见 `03-任务与调度/VSpace所有权与调度切换.md`；`create_vspace` 见页表篇。
+TLB mask / shootdown 见 `11-TLB与缓存一致性.md`；调度装根见 `03-任务与调度/15-VSpace所有权与调度切换.md`；`create_vspace` 见页表篇。
 
 ---
 

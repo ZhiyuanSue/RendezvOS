@@ -4,7 +4,7 @@ v0.1 · 2026-08-29
 
 本篇覆盖：`kernel/mm/kmalloc.c`、`kernel/mm/string.c`、`include/rendezvos/mm/kmalloc.h`、`include/rendezvos/mm/allocator.h`。
 
-物理页见 `物理内存与Buddy分配器.md`；`root_vspace` radix/`map` 见 Radix 篇与页表篇；跨核 free 用的 MSQ 见 `04-IPC/无锁队列与EBR设计.md`。
+物理页见 `06-物理内存与Buddy分配器.md`；`root_vspace` radix/`map` 见 Radix 篇与页表篇；跨核 free 用的 MSQ 见 `04-IPC/22-无锁队列与EBR设计.md`。
 
 ---
 

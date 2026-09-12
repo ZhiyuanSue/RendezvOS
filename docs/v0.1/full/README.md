@@ -9,7 +9,9 @@
 
 两个都是 `[x]`，该篇才算完成；仅第一个 `[x]` 表示待审定。每篇的「源码」是该篇负责讲清楚的文件。
 
-示例：`### [x] [ ] 03-…/….md` — 已有初稿，等你审定。
+文件名在 **整个 full 目录内统一按阅读顺序编号（`00`–`43`）**，分区目录只做归类；因此引用里看到 `04-平台启动-x86_64.md` 即全局第 5 篇，不会与其他分区的「第 4 篇」撞号。
+
+示例：`### [x] [ ] 01-启动与初始化/04-平台启动-x86_64.md` — 已有初稿，等你审定。
 
 ---
 
@@ -19,73 +21,73 @@
 v0.1/full/
 ├── README.md                          ← 本文件
 ├── 00-总览/
-│   ├── 架构与源码布局.md
-│   └── 构建与链接.md
+│   ├── 00-架构与源码布局.md
+│   └── 01-构建与链接.md
 ├── 01-启动与初始化/
-│   ├── 启动流程总览.md
-│   ├── 模块初始化与内核入口.md
-│   ├── 平台启动-x86_64.md
-│   └── 平台启动-aarch64.md
+│   ├── 02-启动流程总览.md
+│   ├── 03-模块初始化与内核入口.md
+│   ├── 04-平台启动-x86_64.md
+│   └── 05-平台启动-aarch64.md
 ├── 02-内存管理/
-│   ├── 物理内存与Buddy分配器.md
-│   ├── 虚拟地址空间与页表.md
-│   ├── Radix树与用户映射.md
-│   ├── kmalloc与内核堆.md
-│   ├── page_slice稀疏页索引.md
-│   ├── TLB与缓存一致性.md
-│   └── ASID与地址空间标识.md
+│   ├── 06-物理内存与Buddy分配器.md
+│   ├── 07-虚拟地址空间与页表.md
+│   ├── 08-Radix树与用户映射.md
+│   ├── 09-kmalloc与内核堆.md
+│   ├── 10-page_slice稀疏页索引.md
+│   ├── 11-TLB与缓存一致性.md
+│   └── 12-ASID与地址空间标识.md
 ├── 03-任务与调度/
-│   ├── 线程与Task_Manager.md
-│   ├── 线程创建与ELF加载.md
-│   ├── VSpace所有权与调度切换.md
-│   ├── CPU亲和性-创建时绑核.md
-│   └── EBR与线程资源回收.md
+│   ├── 13-线程与Task_Manager.md
+│   ├── 14-线程创建与ELF加载.md
+│   ├── 15-VSpace所有权与调度切换.md
+│   ├── 16-CPU亲和性-创建时绑核.md
+│   └── 17-EBR与线程资源回收.md
 ├── 04-IPC/
-│   ├── Port与消息模型.md
-│   ├── 阻塞与非阻塞收发.md
-│   ├── kmsg与TLV序列化.md
-│   ├── Port钩子与准入门.md
-│   └── 无锁队列与EBR设计.md
+│   ├── 18-Port与消息模型.md
+│   ├── 19-阻塞与非阻塞收发.md
+│   ├── 20-kmsg与TLV序列化.md
+│   ├── 21-Port钩子与准入门.md
+│   └── 22-无锁队列与EBR设计.md
 ├── 05-陷阱与中断/
-│   ├── Trap抽象与分类.md
-│   ├── 系统调用入口.md
-│   ├── IRQ向量分配与处理.md
-│   ├── 平台中断-x86_64-APIC与PIC.md
-│   └── 平台中断-aarch64-GIC.md
+│   ├── 23-Trap抽象与分类.md
+│   ├── 24-系统调用入口.md
+│   ├── 25-IRQ向量分配与处理.md
+│   ├── 26-平台中断-x86_64-APIC与PIC.md
+│   └── 27-平台中断-aarch64-GIC.md
 ├── 06-SMP与同步/
-│   ├── SMP启动与处理器拓扑.md
-│   ├── per-CPU数据与访问约定.md
-│   ├── 软IPI机制.md
-│   ├── 锁与内存屏障.md
-│   └── TLB_shootdown与跨核一致性.md
+│   ├── 28-SMP启动与处理器拓扑.md
+│   ├── 29-per-CPU数据与访问约定.md
+│   ├── 30-软IPI机制.md
+│   ├── 31-锁与内存屏障.md
+│   └── 32-TLB_shootdown与跨核一致性.md
 ├── 07-时间与定时器/
-│   └── 时间与定时器子系统.md
+│   └── 33-时间与定时器子系统.md
 ├── 08-日志与控制台/
-│   └── 日志与UART控制台.md
+│   └── 34-日志与UART控制台.md
 ├── 09-平台模块/
-│   ├── ACPI与MADT-x86_64.md
-│   ├── DTB与设备树-aarch64.md
-│   ├── ELF加载辅助模块.md
-│   ├── PCI枚举与配置空间.md
-│   └── PSCI与处理器电源-aarch64.md
+│   ├── 35-ACPI与MADT-x86_64.md
+│   ├── 36-DTB与设备树-aarch64.md
+│   ├── 37-ELF加载辅助模块.md
+│   ├── 38-PCI枚举与配置空间.md
+│   └── 39-PSCI与处理器电源-aarch64.md
 ├── 10-基础设施/
-│   ├── 错误码与panic.md
-│   ├── 名称索引注册表.md
-│   └── 公共基础库与数据结构.md
+│   ├── 40-错误码与panic.md
+│   ├── 41-名称索引注册表.md
+│   └── 42-公共基础库与数据结构.md
 └── 11-测试/
-    └── 内核测试框架与测例索引.md
+    └── 43-内核测试框架与测例索引.md
 ```
 
 共 11 分区、44 篇正文。
 
 ---
 
-## 当前状态（2026-08-27）
+## 当前状态（2026-09-12）
 
-- **初稿**：44 篇均已撰写并勾第一格 `[x]`；**尚未**勾第二格 `[x]`（Maintainer 审定中）。
-- **compat**：规划见 `v0.1/compat/README.md`；正文待 full 全部审定后再写。
-- **evolution**：远期项已汇总至 `v0.1/evolution/TODO.md`；`design/`、`archive/` 正文未建。
-- **审阅入口**：建议按分区顺序 `00 → 11` 通读；总览两篇（`00-总览/`）优先核对交叉引用与索引计数。
+- **初稿 / 深读重做**：44 篇第一格均为 `[x]`；逐篇深读重做已完成。
+- **Maintainer 审定**：看各篇标题前第二格。已通过：`00-总览/01-构建与链接.md`。
+- **compat**：规划见 `v0.1/compat/README.md`；正文待 full 全部第二格通过后再写。
+- **evolution**：远期项见 `v0.1/evolution/TODO.md`；`design/`、`archive/` 正文未建。
 
 审定前自查（撰写侧已做一轮，Maintainer 可复验）：
 
@@ -97,7 +99,7 @@ v0.1/full/
 
 ## 00-总览
 
-### [x] [ ] 00-总览/架构与源码布局.md
+### [x] [ ] 00-总览/00-架构与源码布局.md
 
 职责：core 树分区、`include/` vs `kernel/` vs `arch/` vs `modules/` 关系；公开 API 边界；与 compat 的分层
 
@@ -107,19 +109,19 @@ v0.1/full/
 
 ---
 
-### [x] [x] 00-总览/构建与链接.md
+### [x] [x] 00-总览/01-构建与链接.md
 
 职责：`make config` / **`make all`** / `make run` 流程；standalone 与链接方 `make -C core all` + `EXTRA_OBJECTS` 两种目标；`configure.py` 与 `config_*.json`；`gen_makefile.py`；链接脚本段布局（含 `.init.call.*`）；`modules.h` 生成；与启动/initcall 的构建侧关系
 
 源码：`Makefile` · `Makefile.env`（生成） · `script/config/configure.py` · `script/config/config_*.json` · `script/make/gen_makefile.py` · `script/make/build.mk` · `script/make/qemu.mk` · `script/link/*_linker.ld`
 
-说明：链接方树顶 Makefile 不在 core 树内；core 只文档化 `EXTRA_OBJECTS`/`OVERRIDE_CFLAGS` 等挂接点。运行时 initcall 见 `01-启动与初始化/模块初始化与内核入口.md`
+说明：链接方树顶 Makefile 不在 core 树内；core 只文档化 `EXTRA_OBJECTS`/`OVERRIDE_CFLAGS` 等挂接点。运行时 initcall 见 `01-启动与初始化/03-模块初始化与内核入口.md`
 
 ---
 
 ## 01-启动与初始化
 
-### [x] [ ] 01-启动与初始化/启动流程总览.md
+### [x] [ ] 01-启动与初始化/02-启动流程总览.md
 
 职责：从固件/引导器到 `main` 的阶段划分；BSP/AP 分工；与内存/trap/SMP 的先后关系
 
@@ -127,7 +129,7 @@ v0.1/full/
 
 ---
 
-### [x] [ ] 01-启动与初始化/模块初始化与内核入口.md
+### [x] [ ] 01-启动与初始化/03-模块初始化与内核入口.md
 
 职责：`DEFINE_INIT` / `do_init_call`；boot 线程创建；idle；首个用户/测试线程
 
@@ -135,7 +137,7 @@ v0.1/full/
 
 ---
 
-### [x] [ ] 01-启动与初始化/平台启动-x86_64.md
+### [x] [ ] 01-启动与初始化/04-平台启动-x86_64.md
 
 职责：Multiboot1/2、GDT、实模式→长模式、低地址 AP 跳板、MADT 消费入口
 
@@ -143,7 +145,7 @@ v0.1/full/
 
 ---
 
-### [x] [ ] 01-启动与初始化/平台启动-aarch64.md
+### [x] [ ] 01-启动与初始化/05-平台启动-aarch64.md
 
 职责：EL 级、PSCI secondary boot、DTB 入口、GIC/timer 早期初始化
 
@@ -153,7 +155,7 @@ v0.1/full/
 
 ## 02-内存管理
 
-### [x] [ ] 02-内存管理/物理内存与Buddy分配器.md
+### [x] [ ] 02-内存管理/06-物理内存与Buddy分配器.md
 
 职责：zone、`phy_mm_init`、buddy 算法、reclaim hook、多 zone 骨架
 
@@ -161,7 +163,7 @@ v0.1/full/
 
 ---
 
-### [x] [ ] 02-内存管理/虚拟地址空间与页表.md
+### [x] [ ] 02-内存管理/07-虚拟地址空间与页表.md
 
 职责：`VSpace`、`Map_Handler`、`map()`、自映射、kernel/user 映射策略
 
@@ -169,17 +171,17 @@ v0.1/full/
 
 ---
 
-### [x] [ ] 02-内存管理/Radix树与用户映射.md
+### [x] [ ] 02-内存管理/08-Radix树与用户映射.md
 
 职责：radix 真源、`mm_user_utils_*`、锁层级 L0/L2、`register_vspace`、page fault 协作
 
 源码：`kernel/mm/vmm_radix_tree.c` · `kernel/mm/mm_user_utils.c` · `include/rendezvos/mm/vmm_radix_tree.h` · `include/rendezvos/mm/mm_user_utils.h`
 
-说明：`register_vspace` 使用的 name 索引见 `10-基础设施/名称索引注册表.md`，本篇不展开
+说明：`register_vspace` 使用的 name 索引见 `10-基础设施/41-名称索引注册表.md`，本篇不展开
 
 ---
 
-### [x] [ ] 02-内存管理/kmalloc与内核堆.md
+### [x] [ ] 02-内存管理/09-kmalloc与内核堆.md
 
 职责：per-CPU `kallocator`、slab/页路径、`root_vspace` 关系
 
@@ -187,7 +189,7 @@ v0.1/full/
 
 ---
 
-### [x] [ ] 02-内存管理/page_slice稀疏页索引.md
+### [x] [ ] 02-内存管理/10-page_slice稀疏页索引.md
 
 职责：pgoff→kva、与 VSpace 边界、copy 辅助
 
@@ -195,7 +197,7 @@ v0.1/full/
 
 ---
 
-### [x] [ ] 02-内存管理/TLB与缓存一致性.md
+### [x] [ ] 02-内存管理/11-TLB与缓存一致性.md
 
 职责：`tlb_cpu_mask`、unmap/shootdown、arch flush 钩子
 
@@ -203,7 +205,7 @@ v0.1/full/
 
 ---
 
-### [x] [ ] 02-内存管理/ASID与地址空间标识.md
+### [x] [ ] 02-内存管理/12-ASID与地址空间标识.md
 
 职责：ASID 分配/回收、与 schedule 切换关系
 
@@ -213,7 +215,7 @@ v0.1/full/
 
 ## 03-任务与调度
 
-### [x] [ ] 03-任务与调度/线程与Task_Manager.md
+### [x] [ ] 03-任务与调度/13-线程与Task_Manager.md
 
 职责：`Thread_Base`、`Task_Manager`、状态机、`schedule`、run queue
 
@@ -221,7 +223,7 @@ v0.1/full/
 
 ---
 
-### [x] [ ] 03-任务与调度/线程创建与ELF加载.md
+### [x] [ ] 03-任务与调度/14-线程创建与ELF加载.md
 
 职责：`create_thread` / `copy_thread` / `gen_thread_from_func` / `gen_thread_from_elf` / `run_elf_program` / user stack
 
@@ -229,7 +231,7 @@ v0.1/full/
 
 ---
 
-### [x] [ ] 03-任务与调度/VSpace所有权与调度切换.md
+### [x] [ ] 03-任务与调度/15-VSpace所有权与调度切换.md
 
 职责：`thread->vs` refcount、schedule 时 HW AS 切换、teardown、boot 线程例外
 
@@ -237,7 +239,7 @@ v0.1/full/
 
 ---
 
-### [x] [ ] 03-任务与调度/CPU亲和性-创建时绑核.md
+### [x] [ ] 03-任务与调度/16-CPU亲和性-创建时绑核.md
 
 职责：`cpu_id_is_online` · `task_manager_for_cpu` · `thread_owner_cpu` · `add_thread_to_cpu`；**无**运行期迁移
 
@@ -245,7 +247,7 @@ v0.1/full/
 
 ---
 
-### [x] [ ] 03-任务与调度/EBR与线程资源回收.md
+### [x] [ ] 03-任务与调度/17-EBR与线程资源回收.md
 
 职责：EBR 在 IPC/线程路径的用法；`delete_thread` 与资源释放顺序
 
@@ -255,7 +257,7 @@ v0.1/full/
 
 ## 04-IPC
 
-### [x] [ ] 04-IPC/Port与消息模型.md
+### [x] [ ] 04-IPC/18-Port与消息模型.md
 
 职责：两层模型（port rendezvous + per-thread 队列）；`Message_Port_t`；全局 port 表
 
@@ -263,7 +265,7 @@ v0.1/full/
 
 ---
 
-### [x] [ ] 04-IPC/阻塞与非阻塞收发.md
+### [x] [ ] 04-IPC/19-阻塞与非阻塞收发.md
 
 职责：`send_msg` / `recv_msg` / try 变体；push vs pull；返回码
 
@@ -271,7 +273,7 @@ v0.1/full/
 
 ---
 
-### [x] [ ] 04-IPC/kmsg与TLV序列化.md
+### [x] [ ] 04-IPC/20-kmsg与TLV序列化.md
 
 职责：`kmsg_t`、TLV、`ipc_serial`、system async outbound
 
@@ -279,7 +281,7 @@ v0.1/full/
 
 ---
 
-### [x] [ ] 04-IPC/Port钩子与准入门.md
+### [x] [ ] 04-IPC/21-Port钩子与准入门.md
 
 职责：`port_append_hooks_t`、`ops_allow`、`port_ops_begin`、FAM append
 
@@ -287,7 +289,7 @@ v0.1/full/
 
 ---
 
-### [x] [ ] 04-IPC/无锁队列与EBR设计.md
+### [x] [ ] 04-IPC/22-无锁队列与EBR设计.md
 
 职责：MS queue、tagged ptr、ABA、与 IPC 的结合；**设计**为主
 
@@ -297,7 +299,7 @@ v0.1/full/
 
 ## 05-陷阱与中断
 
-### [x] [ ] 05-陷阱与中断/Trap抽象与分类.md
+### [x] [ ] 05-陷阱与中断/23-Trap抽象与分类.md
 
 职责：`trap_class`、`register_fixed_trap`、`trap_frame`、与 personality 弱符号边界
 
@@ -305,7 +307,7 @@ v0.1/full/
 
 ---
 
-### [x] [ ] 05-陷阱与中断/系统调用入口.md
+### [x] [ ] 05-陷阱与中断/24-系统调用入口.md
 
 职责：弱符号 `syscall`、`arch_syscall_*`、从 syscall 返回用户
 
@@ -313,7 +315,7 @@ v0.1/full/
 
 ---
 
-### [x] [ ] 05-陷阱与中断/IRQ向量分配与处理.md
+### [x] [ ] 05-陷阱与中断/25-IRQ向量分配与处理.md
 
 职责：`irq_vector_alloc`、`register_irq_handler`、`IRQ_NEED_EOI`、per-CPU `irq_vector[]`
 
@@ -321,7 +323,7 @@ v0.1/full/
 
 ---
 
-### [x] [ ] 05-陷阱与中断/平台中断-x86_64-APIC与PIC.md
+### [x] [ ] 05-陷阱与中断/26-平台中断-x86_64-APIC与PIC.md
 
 职责：8259、Local APIC/x2APIC、PIT/HPET、timer IPI、**IOAPIC 空壳现状**
 
@@ -329,7 +331,7 @@ v0.1/full/
 
 ---
 
-### [x] [ ] 05-陷阱与中断/平台中断-aarch64-GIC.md
+### [x] [ ] 05-陷阱与中断/27-平台中断-aarch64-GIC.md
 
 职责：GICv2 驱动、SPI/SGI、EOI、`gicd_v2_set_affinity`（arch 内部）
 
@@ -339,7 +341,7 @@ v0.1/full/
 
 ## 06-SMP与同步
 
-### [x] [ ] 06-SMP与同步/SMP启动与处理器拓扑.md
+### [x] [ ] 06-SMP与同步/28-SMP启动与处理器拓扑.md
 
 职责：`smp_start`、NR_CPU、BSP/AP、拓扑头文件现状
 
@@ -347,7 +349,7 @@ v0.1/full/
 
 ---
 
-### [x] [ ] 06-SMP与同步/per-CPU数据与访问约定.md
+### [x] [ ] 06-SMP与同步/29-per-CPU数据与访问约定.md
 
 职责：`percpu()`、`core_tm`、`current_vspace`、MCS `me` 必须本 CPU
 
@@ -355,7 +357,7 @@ v0.1/full/
 
 ---
 
-### [x] [ ] 06-SMP与同步/软IPI机制.md
+### [x] [ ] 06-SMP与同步/30-软IPI机制.md
 
 职责：`smp_ipi_register/send/init`、arch 门铃
 
@@ -363,7 +365,7 @@ v0.1/full/
 
 ---
 
-### [x] [ ] 06-SMP与同步/锁与内存屏障.md
+### [x] [ ] 06-SMP与同步/31-锁与内存屏障.md
 
 职责：spinlock、CAS lock、barrier、与 IPC 的关系
 
@@ -371,7 +373,7 @@ v0.1/full/
 
 ---
 
-### [x] [ ] 06-SMP与同步/TLB_shootdown与跨核一致性.md
+### [x] [ ] 06-SMP与同步/32-TLB_shootdown与跨核一致性.md
 
 职责：跨核 TLB flush 路径、与 MM 的协作
 
@@ -381,7 +383,7 @@ v0.1/full/
 
 ## 07-时间与定时器
 
-### [x] [ ] 07-时间与定时器/时间与定时器子系统.md
+### [x] [ ] 07-时间与定时器/33-时间与定时器子系统.md
 
 职责：`time.h` 抽象、per-CPU 事件树、arch timer 后端
 
@@ -391,7 +393,7 @@ v0.1/full/
 
 ## 08-日志与控制台
 
-### [x] [ ] 08-日志与控制台/日志与UART控制台.md
+### [x] [ ] 08-日志与控制台/34-日志与UART控制台.md
 
 职责：`pr_*` → UART、`uart_getc` 轮询、VGA console（x86）、v0.1 冻结现状
 
@@ -401,7 +403,7 @@ v0.1/full/
 
 ## 09-平台模块
 
-### [x] [ ] 09-平台模块/ACPI与MADT-x86_64.md
+### [x] [ ] 09-平台模块/35-ACPI与MADT-x86_64.md
 
 职责：RSDP/MADT 遍历、CPU 枚举
 
@@ -409,7 +411,7 @@ v0.1/full/
 
 ---
 
-### [x] [ ] 09-平台模块/DTB与设备树-aarch64.md
+### [x] [ ] 09-平台模块/36-DTB与设备树-aarch64.md
 
 职责：FDT 解析、设备节点、与 PCI 节点并存问题
 
@@ -417,7 +419,7 @@ v0.1/full/
 
 ---
 
-### [x] [ ] 09-平台模块/ELF加载辅助模块.md
+### [x] [ ] 09-平台模块/37-ELF加载辅助模块.md
 
 职责：与 §03 loader 的边界：纯 ELF 解析/打印
 
@@ -425,7 +427,7 @@ v0.1/full/
 
 ---
 
-### [x] [ ] 09-平台模块/PCI枚举与配置空间.md
+### [x] [ ] 09-平台模块/38-PCI枚举与配置空间.md
 
 职责：PCI 扫描、config 访问、设备树
 
@@ -433,7 +435,7 @@ v0.1/full/
 
 ---
 
-### [x] [ ] 09-平台模块/PSCI与处理器电源-aarch64.md
+### [x] [ ] 09-平台模块/39-PSCI与处理器电源-aarch64.md
 
 职责：PSCI 调用约定、secondary boot 与 idle
 
@@ -443,7 +445,7 @@ v0.1/full/
 
 ## 10-基础设施
 
-### [x] [ ] 10-基础设施/错误码与panic.md
+### [x] [ ] 10-基础设施/40-错误码与panic.md
 
 职责：`error_t`、panic、powerd
 
@@ -451,7 +453,7 @@ v0.1/full/
 
 ---
 
-### [x] [ ] 10-基础设施/名称索引注册表.md
+### [x] [ ] 10-基础设施/41-名称索引注册表.md
 
 职责：全局 name → object 索引（port、vspace 等）
 
@@ -459,7 +461,7 @@ v0.1/full/
 
 ---
 
-### [x] [ ] 10-基础设施/公共基础库与数据结构.md
+### [x] [ ] 10-基础设施/42-公共基础库与数据结构.md
 
 职责：`common/` 类型、refcount、rb_tree、list、bitmap、endian
 
@@ -471,7 +473,7 @@ v0.1/full/
 
 ## 11-测试
 
-### [x] [ ] 11-测试/内核测试框架与测例索引.md
+### [x] [ ] 11-测试/43-内核测试框架与测例索引.md
 
 职责：`BSP_test`/`AP_test`、`single_test`/`smp_test`、`check_result` 语义
 
@@ -483,13 +485,13 @@ v0.1/full/
 
 implementation 文件应各归一篇「源码」列表，头文件随对应 `.c` 计入同一篇，不重复展开。
 
-- `script/`（config、make、link）→ `00-总览/构建与链接.md`
+- `script/`（config、make、link）→ `00-总览/01-构建与链接.md`
 - `kernel/`（约 28 个文件）→ 02–07、10 各篇
 - `modules/` 除 test（约 20）→ 01、03、08、09
 - `modules/test/`（约 20）→ 11
 - `arch/x86_64/`（约 25）→ 01、03、05–07
 - `arch/aarch64/`（约 18）→ 01、03、05–07、09
-- `arch/riscv64/` 仅 `sbi.c` / `sbi.h` → `10-基础设施/公共基础库与数据结构.md`（占位）
+- `arch/riscv64/` 仅 `sbi.c` / `sbi.h` → `10-基础设施/42-公共基础库与数据结构.md`（占位）
 
 `nexus.h`、`tcb.h` 等历史头文件在 00 总览或 02 Radix 篇用一行说明即可，不单独开文。
 
@@ -499,7 +501,7 @@ implementation 文件应各归一篇「源码」列表，头文件随对应 `.c`
 
 初稿已全部完成。Maintainer 可按下列顺序审定（第二格 `[x]`）：
 
-1. `00-总览/架构与源码布局.md`、`00-总览/构建与链接.md`（索引与交叉引用）
+1. `00-总览/00-架构与源码布局.md`、`00-总览/01-构建与链接.md`（索引与交叉引用）
 2. `01-启动与初始化/` → `02-内存管理/` → `03-任务与调度/`
 3. `04-IPC/` → `05-陷阱与中断/` → `06-SMP与同步/`
 4. `07-时间与定时器/` → `08-日志与控制台/` → `09-平台模块/`

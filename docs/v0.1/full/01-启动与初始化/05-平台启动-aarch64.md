@@ -4,7 +4,7 @@ v0.1 · 2026-08-29
 
 本篇覆盖：`arch/aarch64/boot/boot.S`、`arch/aarch64/boot/boot_map.c`、`arch/aarch64/boot/start_arch.c`、`arch/aarch64/boot/smp.c`、`arch/aarch64/psci/psci.c`、`arch/aarch64/psci/psci_call.S`、`include/arch/aarch64/psci/psci.h`、`include/arch/aarch64/psci/psci_error.h`、`include/arch/aarch64/boot/arch_setup.h`。
 
-通用编排见 `启动流程总览.md`；DTB 模块见 `09-平台模块/DTB与设备树-aarch64.md`；GIC 见 `05-陷阱与中断/平台中断-aarch64-GIC.md`；PSCI 电源见 `09-平台模块/PSCI与处理器电源-aarch64.md`。
+通用编排见 `02-启动流程总览.md`；DTB 模块见 `09-平台模块/36-DTB与设备树-aarch64.md`；GIC 见 `05-陷阱与中断/27-平台中断-aarch64-GIC.md`；PSCI 电源见 `09-平台模块/39-PSCI与处理器电源-aarch64.md`。
 
 ---
 
@@ -86,7 +86,7 @@ struct setup_info {
 
 ### 4.5 链接 → 加载 → 早期物理布局 → 早期页表（本 ISA 精确）
 
-跨架构地图见 `启动流程总览.md` §4.4。
+跨架构地图见 `02-启动流程总览.md` §4.4。
 
 **链接（`aarch64_linker.ld`）：**
 

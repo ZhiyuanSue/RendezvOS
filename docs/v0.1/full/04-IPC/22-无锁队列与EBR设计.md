@@ -4,7 +4,7 @@ v0.1 · 2026-08-27
 
 本篇覆盖：`include/common/dsa/ms_queue.h`、`include/common/taggedptr.h`、`kernel/task/ebr.c`、`kernel/ipc/ipc.c`、`kernel/ipc/message.c`。
 
-EBR 在调度与线程 teardown 中的用法见 `03-任务与调度/EBR与线程资源回收.md`；IPC 会合语义见 `Port与消息模型.md` 与 `阻塞与非阻塞收发.md`；tagged pointer 位布局亦见 `taggedptr.h` 注释。
+EBR 在调度与线程 teardown 中的用法见 `03-任务与调度/17-EBR与线程资源回收.md`；IPC 会合语义见 `18-Port与消息模型.md` 与 `19-阻塞与非阻塞收发.md`；tagged pointer 位布局亦见 `taggedptr.h` 注释。
 
 ---
 

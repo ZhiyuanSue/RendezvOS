@@ -4,7 +4,7 @@ v0.1 · 2026-08-29
 
 本篇覆盖：`kernel/ipc/port.c`、`kernel/ipc/message.c`、`include/rendezvos/ipc/port.h`、`include/rendezvos/ipc/message.h`、`kernel/registry/name_index.c`（经 `Port_Table` 使用的部分）。
 
-收发状态机与 push/pull 见 `阻塞与非阻塞收发.md`；kmsg 见 `kmsg与TLV序列化.md`；钩子见 `Port钩子与准入门.md`；MSQ/EBR 见 `无锁队列与EBR设计.md`；name_index 通用契约见 `10-基础设施/名称索引注册表.md`。
+收发状态机与 push/pull 见 `19-阻塞与非阻塞收发.md`；kmsg 见 `20-kmsg与TLV序列化.md`；钩子见 `21-Port钩子与准入门.md`；MSQ/EBR 见 `22-无锁队列与EBR设计.md`；name_index 通用契约见 `10-基础设施/41-名称索引注册表.md`。
 
 ---
 

@@ -4,7 +4,7 @@ v0.1 · 2026-08-29
 
 本篇覆盖：`schedule()` 的用户 AS 块（`kernel/task/task_manager.c`）、`thread->vs` 转入/放出（`thread.c` / `thread.h`）、`vspace_clear_user_mappings` / `del_vspace` 与 mask 门闩（`vmm.c` / `vmm.h`）、`percpu(current_vspace)`。
 
-Radix / `create`/`clone` 细节见页表与 Radix 篇；mask 跨核怎么刷见 `TLB与缓存一致性.md`；ASID 号码见 ASID 篇；RR / zombie 见 `线程与Task_Manager.md`；ELF/Path A·B 见创建篇。
+Radix / `create`/`clone` 细节见页表与 Radix 篇；mask 跨核怎么刷见 `11-TLB与缓存一致性.md`；ASID 号码见 ASID 篇；RR / zombie 见 `13-线程与Task_Manager.md`；ELF/Path A·B 见创建篇。
 
 ---
 

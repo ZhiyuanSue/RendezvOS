@@ -4,7 +4,7 @@ v0.1 · 2026-08-29
 
 本篇覆盖：`modules/elf/elf.c`、`elf_print.c`、`include/modules/elf/*.h`。
 
-**映射、栈、回用户、Path A/B、`gen_thread_from_elf`** 全在 `03-任务与调度/线程创建与ELF加载.md`——本篇只做格式库边界，禁止再抄一套加载流程。
+**映射、栈、回用户、Path A/B、`gen_thread_from_elf`** 全在 `03-任务与调度/14-线程创建与ELF加载.md`——本篇只做格式库边界，禁止再抄一套加载流程。
 
 ---
 
