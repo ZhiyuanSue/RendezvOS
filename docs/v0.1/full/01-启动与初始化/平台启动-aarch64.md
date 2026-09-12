@@ -92,7 +92,7 @@ struct setup_info {
 
 - `kernel_virt_offset = 0xffff800000000000`
 - `kernel_start_offset = 0x40080000` → 与 QEMU virt 常见加载地址对齐
-- `.data` 含 `.boot.data` / `.boot.page`（页表页）/ `.boot.log`（早期栈等）/ `.boot.map_util`
+- `.data` 含 `.boot.data` / `.boot.page`（页表页）/ `.boot_stack`（早期栈等）/ `.boot.map_util`
 - `.percpu..data`；**无** x86 那套链接期 GS offset 符号
 
 **加载：** Linux arm64 Image 头；固件/QEMU 将镜像放到 **`kernel_start_offset` 对应 PA**；**x0=DTB**，x1–x3 写入 `setup_info`。

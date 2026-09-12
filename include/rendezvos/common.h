@@ -26,12 +26,5 @@
 #endif
 
 void interrupt_init(void);
-/*
-        the main_init is used for the outer kernel module init,
-        remember that the rendezvos is a kernel that only include some necessery
-   part, and other part of the kernel should all put into the outer module like
-   rendezvos_linux, so this part init is done here
-*/
-void main_init();
 
 #endif

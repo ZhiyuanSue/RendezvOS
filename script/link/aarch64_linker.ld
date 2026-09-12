@@ -43,7 +43,7 @@ SECTIONS {
 		*(.boot.data)
 		. = ALIGN(4K);
 		*(.boot.page)
-		*(.boot.log)
+		*(.boot_stack)
 		*(.boot.map_util)
 		*(.data .data.*)
 		*(.ldata .ldata.*)

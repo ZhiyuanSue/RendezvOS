@@ -406,8 +406,6 @@ L2_table:
 		and then                                       |000 0000 00| is the PDPT addr, which will find the first entry of PDE
 		and find the L2_table,and set this entry's PS bit 
 	*/
-	.section .boot.log
-	.p2align 12
 	/*stack*/
 stack_field:
 	.p2align 12

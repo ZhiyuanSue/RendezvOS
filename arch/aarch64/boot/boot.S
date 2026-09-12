@@ -270,7 +270,7 @@ L3_table:
 boot_Error:
 	b	boot_Error
 
-	.section .boot.log
+	.section .boot_stack
 	.p2align	12	/*2^12=4096*/
 	.global boot_stack
 boot_stack:

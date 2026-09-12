@@ -34,6 +34,10 @@ ifeq ($(DBG), true)
 	QemuFlags	+= -s -S
 endif
 
+ifneq ($(strip $(EXTRA_QEMU_FLAGS)),)
+	QemuFlags	+= $(EXTRA_QEMU_FLAGS)
+endif
+
 qemu: all
 	@echo "starting Qemu semulation..."
 	$(Qemulator) $(QemuFlags)
