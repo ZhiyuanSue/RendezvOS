@@ -31,7 +31,7 @@ endif
 
 KERNELVERSION=0.1
 
-Linker	:=	$(SCRIPT_CONFIG_DIR)/$(ARCH)_linker.ld
+Linker	:=	$(SCRIPT_LINK_DIR)/$(ARCH)_linker.ld
 CC	:=$(CROSS_COMPLIER)gcc
 LD	:=$(CROSS_COMPLIER)ld
 AR	:=$(CROSS_COMPLIER)ar
@@ -62,7 +62,7 @@ endif
 CFLAGS	+=	-I $(INCLUDE_DIR) -DNR_CPUS=$(SMP)
 CFLAGS	+= $(EXTRA_CFLAGS)
 
-LDFLAGS	+=	-T $(SCRIPT_LINK_DIR)/$(ARCH)_linker.ld
+LDFLAGS	+=	-T $(Linker)
 
 ARFLAGS	+=	-rcs
 
