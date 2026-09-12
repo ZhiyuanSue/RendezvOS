@@ -38,7 +38,7 @@ Ring buffer / uart_server / `/dev/console` 留给上层；panic 仍允许直写�
 | compat stdout | `log_put_locked(buf,len)`（整段 MCS） |
 | Boot | `cmain`：`uart_open(...)` → `log_init(log_level)` → … |
 
-**纠正：** `stdio.h` 只有未实现的 `printf` 声明；真正入口是 **`log.h`**。
+内核打印入口在 **`modules/log/log.h`**（`pr_*` / `printk`）。
 
 ---
 
@@ -143,5 +143,6 @@ int uart_getc(void);   /* 无限阻塞轮询 */
 
 ## 11. 变更记录
 
+- 2026-09-12：删除空壳 `rendezvos/stdio.h` / `stdlib.h`；文档改为只指向 `log.h`。
 - 2026-08-29：整篇重做——直写叙述；纠正 stdio.h；VGA 只改色；锁在 pr_*；PL011 无 IRQ；early open 时序。
 - 2026-08-27：初稿。

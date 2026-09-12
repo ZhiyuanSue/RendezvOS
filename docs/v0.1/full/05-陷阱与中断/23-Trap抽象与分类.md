@@ -33,8 +33,6 @@ IRQ 池/alloc 细节见 `25-IRQ向量分配与处理.md`；弱符号 `syscall` /
 
 **不做：** POSIX signal / ptrace / Linux `do_page_fault`；APIC/GIC 寄存器细节；syscall 参数宏与弱符号实现；IRQ alloc 池策略全文。
 
-`common.h` 里的 `interrupt_init` 是**死声明**（无定义、无调用）；现行符号是 **`init_interrupt`**（evolution E12）。本篇只交代现行路径。
-
 ---
 
 ## 3. 分层与调用方
@@ -119,7 +117,6 @@ DEFINE_PER_CPU(struct irq, irq_vector[NR_IRQ]);
 | `arch/aarch64/trap/*` | VBAR、EC 映射、GIC 读号、`trap_vec.S` |
 | `arch/*/boot/start_arch.c` | 装表 / enable / `init_syscall` 顺序 |
 | `kernel/system/syscall.c` | weak `syscall` |
-| `common.h` | 死声明 `interrupt_init` |
 
 ---
 
@@ -198,7 +195,7 @@ EC 映射：`0x20/21/24/25→PAGE_FAULT`（DFSC `0x21` 在 populate 可再标 AL
 
 ```c
 void trap_handler(struct trap_frame *tf);
-void init_interrupt(void);   /* ≠ 死声明 interrupt_init */
+void init_interrupt(void);
 
 error_t register_fixed_trap(enum trap_class c,
                             void (*handler)(struct trap_frame *),
@@ -236,12 +233,12 @@ void arch_eoi_irq(u64 trap_info);
 - aarch64 开中断早于 GIC CPU iface / syscall 注册。  
 - `fixed_trap_attrs[]` 只写不读（死存储）。  
 - FIQ / unexpected_trap 缺口。  
-- `interrupt_init` 死声明（E12）。  
 - IST 未用。
 
 ---
 
 ## 11. 变更记录
 
+- 2026-09-12：删除对已清除的 `interrupt_init` 死声明 / E12 的叙述。
 - 2026-08-29：整篇重做——硬件深度（IDT/VBAR/CPL/EL）；双入口与 schedule 不对称；装表/开中断时序；NMI≡IRQ；EC 命名空间；纠正扁平 trap.h 路径与「x86 也 fixed SYSCALL」误写；IST=0。
 - 2026-08-27：初稿（偏 API 清单）。

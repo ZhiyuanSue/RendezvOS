@@ -397,7 +397,7 @@ v0.1/full/
 
 职责：`pr_*` → UART、`uart_getc` 轮询、VGA console（x86）、v0.1 冻结现状
 
-源码：`modules/log/log.c` · `include/modules/log/log.h` · `include/rendezvos/stdio.h` · `modules/driver/uart/uart.c` · `modules/driver/uart/uart_16550A.c` · `modules/driver/uart/uart_pl011.c` · `include/modules/driver/uart/uart.h` · `include/modules/driver/uart/uart_16550A.h` · `include/modules/driver/uart/uart_pl011.h` · `modules/driver/x86_char_console/char_console.c` · `include/modules/driver/x86_char_console/char_console.h` · `include/modules/driver/driver.h`
+源码：`modules/log/log.c` · `include/modules/log/log.h` · `modules/driver/uart/uart.c` · `modules/driver/uart/uart_16550A.c` · `modules/driver/uart/uart_pl011.c` · `include/modules/driver/uart/uart.h` · `include/modules/driver/uart/uart_16550A.h` · `include/modules/driver/uart/uart_pl011.h` · `modules/driver/x86_char_console/char_console.c` · `include/modules/driver/x86_char_console/char_console.h` · `include/modules/driver/driver.h`
 
 ---
 

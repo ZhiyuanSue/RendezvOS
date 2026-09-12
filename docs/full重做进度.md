@@ -16,7 +16,7 @@
 
 | 顺序 | 篇目 | 状态 | 备注（本篇从代码挖出的要点，随做随记） |
 |------|------|------|----------------------------------------|
-| 1 | 00-总览/00-架构与源码布局.md | 已重做 | common.h 伞+默认 x86；cmain≠main_init；BSP→kernel_handle_msg；interrupt_init 死声明；weak syscall；initcall 注册≠运行；powerd BSP 门控；挂接点以 thread_boot 为准 |
+| 1 | 00-总览/00-架构与源码布局.md | 已重做 | common.h 伞+默认 x86；cmain≠main_init；BSP→kernel_handle_msg；weak syscall；initcall 注册≠运行；powerd BSP 门控；挂接点以 thread_boot 为准 |
 | 2 | 00-总览/01-构建与链接.md | 已重做 | 模块feature→kernel/arch；手写顶层Makefile；DBG/MEM_SIZE/DUMP持久化；SMP双义；find顺序；loongarch空ld；双勾保留待你是否复审 |
 | 3 | 01-启动与初始化/02-启动流程总览.md | 已重做+补布局链 | 含 §4.4 链接→加载→早期PA→页表→运行演化；仍须随 trap/APIC 篇回灌硬件深度 |
 | 4 | 01-启动与初始化/03-模块初始化与内核入口.md | 已重做 | |

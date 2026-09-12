@@ -6,7 +6,6 @@
 #include <common/types.h>
 #include <common/spin.h>
 #include <rendezvos/error.h>
-#include <rendezvos/stdio.h>
 
 #ifdef _AARCH64_
 #include <arch/aarch64/arch_common.h>
@@ -24,7 +23,5 @@
 #ifdef SMP
 #include <rendezvos/smp/smp.h>
 #endif
-
-void interrupt_init(void);
 
 #endif
