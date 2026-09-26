@@ -82,10 +82,10 @@ v0.1/full/
 
 ---
 
-## 当前状态（2026-09-12）
+## 当前状态（2026-09-19）
 
 - **初稿 / 深读重做**：44 篇第一格均为 `[x]`；逐篇深读重做已完成。
-- **Maintainer 审定**：看各篇标题前第二格。已通过：`00-总览/01-构建与链接.md`。
+- **Maintainer 审定**：看各篇标题前第二格。已通过：`00-总览/00-架构与源码布局.md`、`00-总览/01-构建与链接.md`。
 - **compat**：规划见 `v0.1/compat/README.md`；正文待 full 全部第二格通过后再写。
 - **evolution**：远期项见 `v0.1/evolution/TODO.md`；`design/`、`archive/` 正文未建。
 
@@ -99,7 +99,7 @@ v0.1/full/
 
 ## 00-总览
 
-### [x] [ ] 00-总览/00-架构与源码布局.md
+### [x] [x] 00-总览/00-架构与源码布局.md
 
 职责：core 树分区、`include/` vs `kernel/` vs `arch/` vs `modules/` 关系；公开 API 边界；与 compat 的分层
 
@@ -123,7 +123,7 @@ v0.1/full/
 
 ### [x] [ ] 01-启动与初始化/02-启动流程总览.md
 
-职责：从固件/引导器到 `main` 的阶段划分；BSP/AP 分工；与内存/trap/SMP 的先后关系
+职责：BSP 上 `cmain` 的调用顺序；以及链接→加载→早期页表→进入 `cmain` 的跨架构地图（§4.4）。某一 ISA 的表项见平台篇
 
 源码：`kernel/system/main.c` · `arch/x86_64/boot/boot.S` · `arch/aarch64/boot/boot.S` · `arch/x86_64/boot/start_arch.c` · `arch/aarch64/boot/start_arch.c` · `include/arch/x86_64/boot/arch_setup.h` · `include/arch/aarch64/boot/arch_setup.h` · `include/arch/x86_64/boot/multiboot.h` · `include/arch/x86_64/boot/multiboot2.h`
 
@@ -131,7 +131,7 @@ v0.1/full/
 
 ### [x] [ ] 01-启动与初始化/03-模块初始化与内核入口.md
 
-职责：`DEFINE_INIT` / `do_init_call`；boot 线程创建；idle；首个用户/测试线程
+职责：`DEFINE_INIT` / `do_init_call`；兼容层在启动顺序上如何挂进来；注册与真正被调度运行的差别。boot/idle 的切换见线程篇
 
 源码：`include/rendezvos/task/initcall.h` · `kernel/task/thread_boot.c` · `kernel/task/task_manager.c` · `kernel/system/main.c` · `modules/helloworld/helloworld.c` · `include/modules/helloworld/helloworld.h`
 
@@ -139,7 +139,7 @@ v0.1/full/
 
 ### [x] [ ] 01-启动与初始化/04-平台启动-x86_64.md
 
-职责：Multiboot1/2、GDT、实模式→长模式、低地址 AP 跳板、MADT 消费入口
+职责：x86 `boot.S` 到 `cmain`；只做一次的 `prepare_arch` / `arch_cpu_info` / `arch_start_platform`；每核 `arch_start_core`。AP 唤醒见 SMP 篇
 
 源码：`arch/x86_64/boot/boot.S` · `arch/x86_64/boot/gdt.c` · `arch/x86_64/boot/start_arch.c` · `arch/x86_64/boot/smp.c` · `arch/x86_64/acpi/acpi.c` · `arch/x86_64/acpi/madt.c` · `include/arch/x86_64/desc.h` · `include/arch/x86_64/boot/arch_setup.h`
 
@@ -147,7 +147,7 @@ v0.1/full/
 
 ### [x] [ ] 01-启动与初始化/05-平台启动-aarch64.md
 
-职责：EL 级、PSCI secondary boot、DTB 入口、GIC/timer 早期初始化
+职责：aarch64 `boot.S` 到 `cmain`；只做一次的 `prepare_arch` / `arch_cpu_info` / `arch_start_platform`；每核 `arch_start_core`。AP 的 `cpu_on` 见 SMP 篇
 
 源码：`arch/aarch64/boot/boot.S` · `arch/aarch64/boot/boot_map.c` · `arch/aarch64/boot/start_arch.c` · `arch/aarch64/boot/smp.c` · `arch/aarch64/psci/psci.c` · `arch/aarch64/psci/psci_call.S` · `include/arch/aarch64/psci/psci.h` · `include/arch/aarch64/psci/psci_error.h`
 
@@ -387,7 +387,7 @@ v0.1/full/
 
 职责：`time.h` 抽象、per-CPU 事件树、arch timer 后端
 
-源码：`kernel/time/time.c` · `include/rendezvos/time.h` · `arch/x86_64/time/time.c` · `arch/x86_64/time/rtc.c` · `arch/aarch64/time/generic_time.c` · `include/arch/x86_64/time.h` · `include/arch/aarch64/time.h` · `modules/driver/timer/8254.c`
+源码：`kernel/time/time.c` · `include/rendezvos/time.h` · `arch/x86_64/time/time.c` · `arch/x86_64/time/rtc.c` · `arch/x86_64/PIC/PIT.c` · `arch/aarch64/time/generic_time.c` · `include/arch/x86_64/time.h` · `include/arch/aarch64/time.h`
 
 ---
 
@@ -413,9 +413,9 @@ v0.1/full/
 
 ### [x] [ ] 09-平台模块/36-DTB与设备树-aarch64.md
 
-职责：FDT 解析、设备节点、与 PCI 节点并存问题
+职责：FDT 两阶段（raw / device_node）、查找 API；明确无 ACPI、无 aarch64 PCI 消费
 
-源码：`modules/dtb/dtb.c` · `modules/dtb/dev_tree.c` · `modules/dtb/property.c` · `modules/dtb/print_property.c` · `include/modules/dtb/dtb.h` · `include/modules/dtb/dev_tree.h` · `include/modules/dtb/property.h` · `include/modules/dtb/fdt.h` · `include/modules/dtb/libfdt.h` · `include/modules/dtb/print_property.h`
+源码：`modules/dtb/dtb.c` · `modules/dtb/dev_tree.c` · `modules/dtb/property.c` · `modules/dtb/print_property.c` · `include/modules/dtb/dtb.h` · `include/modules/dtb/dev_tree.h` · `include/modules/dtb/property.h` · `include/modules/dtb/fdt.h` · `include/modules/dtb/libfdt.h` · `include/modules/dtb/print_property.h` · `arch/aarch64/boot/start_arch.c` · `arch/aarch64/boot/boot_map.c`
 
 ---
 
@@ -493,7 +493,7 @@ implementation 文件应各归一篇「源码」列表，头文件随对应 `.c`
 - `arch/aarch64/`（约 18）→ 01、03、05–07、09
 - `arch/riscv64/` 仅 `sbi.c` / `sbi.h` → `10-基础设施/42-公共基础库与数据结构.md`（占位）
 
-`nexus.h`、`tcb.h` 等历史头文件在 00 总览或 02 Radix 篇用一行说明即可，不单独开文。
+早期独立中间层 `nexus` 已移除；现行契约见 `08-Radix树与用户映射.md`（`vmm_radix_tree` / `mm_user_utils`）。`tcb.h` 等若仍见历史名，以当前 `thread.h` 等为准，不单独开文。
 
 ---
 

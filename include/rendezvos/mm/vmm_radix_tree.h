@@ -30,9 +30,10 @@
  * -# @ref vmm_radix_tree_calculate_end_check for each VA band, then @ref
  *    vmm_radix_tree_insert_range on @c [ @p vaddr_start , @p vaddr_end ):
  *    grows path as needed (@ref RADIX_RL_INSERT), reserves each crossed leaf as
- *    LAZY, sets `owner` to the caller vspace for L0 index &lt; 256, else to
- *    `root_vspace` for the shared high half (L0 index &gt;= 256). Callers do
- *    not need PTEs yet.
+ *    LAZY, and writes the caller-supplied @c owner_info into each leaf .
+ *    Convention: user low-half paths pass a tagged pointer to the owning vspace (+
+ *    optional CPU tag); kernel high-half / heap paths typically tag @c root_vspace
+ *    (+ allocating CPU). Callers do not need PTEs yet.
  * -# @ref vmm_radix_tree_leaf_bind_range (or @ref vmm_radix_tree_leaf_bind for
  *    one page): one internal range lock over the same VA span
  *    (@ref RADIX_RL_QUERY_OR_CHANGE). Caller must have mapped PTEs; PPNs must
@@ -91,11 +92,14 @@
  * `radix_entry_update` with lock semantics (I4).
  *
  * @par Shared high-half (I5)
- * L0[256..511] may alias shared L1/L3. An L2 band lock with @ref
- * RADIX_RL_DELETE clears only leaves whose `owner` matches the
- * caller; @ref vmm_radix_tree_leaf_bind_range
- * and @ref vmm_radix_tree_leaf_unbind_range do not compare `owner` to `vs`.
- * @c change_* APIs follow their documented `owner` rules.
+ * L0[256..511] may alias shared L1/L3 across address spaces. Leaf `owner` is
+ * bookkeeping for the inserter (routing cross-CPU heap free, debugging); it is
+ * **not** a DELETE filter. @ref RADIX_RL_DELETE clears every crossed leaf that
+ * is not @c PAGE_ENTRY_VALID (same as Phase 4 above)—callers must unbind
+ * first. @ref vmm_radix_tree_leaf_bind_range /
+ * @ref vmm_radix_tree_leaf_unbind_range and @c change_* do not compare `owner`
+ * to @c vs and do not rewrite `owner` (except DELETE's @c radix_node_clear,
+ * which zeroes the leaf including `owner`).
  *
  * @par Child occupancy and reclaim
  * L0/L1/L2 counts count used slots in the next level, not cross-vspace
@@ -144,7 +148,8 @@
  * - I3: Nested grow L0→L1→L2; no lock-order inversion vs other radix locks.
  * - I4: Writes to a held row's value go through `radix_entry_update` (with
  *   INHERIT_LOCK when the CAS lock must survive the store).
- * - I5: Shared high-half: respect `owner` on leaves (see above).
+ * - I5: Shared high-half L1/L3 may alias; leaf `owner` is a tag, not a
+ *   DELETE predicate (see Shared high-half).
  * - I6: Multi-band: acquire all crossed L2 locks ascending, unlock descending.
  * - I7: Table pages grown on failed insert are not freed until destroy (shared
  *   L1 slab excepted).
@@ -189,10 +194,11 @@ typedef struct {
  * Links this leaf into @c Page reverse-map lists when wired to PMM.
  *
  * @par owner
- * Reservation owner from @ref vmm_radix_tree_insert_range (`vs` for L0 index
- * &lt; 256, `root_vspace` for L0 index &gt;= 256 / shared high-half).
- * @ref vmm_radix_tree_leaf_bind_range and @ref vmm_radix_tree_leaf_unbind_range
- * do not change `owner`.
+ * Opaque reservation tag from @ref vmm_radix_tree_insert_range's
+ * @c owner_info (pointer + optional CPU tag). Typical conventions: user
+ * low-half → owning @c VSpace*; kernel heap on @c root_vspace → @c root_vspace
+ * with allocating CPU in the tag. Bind/unbind do not change `owner`; DELETE
+ * clears it with the rest of the leaf.
  */
 typedef struct {
         ENTRY_FLAGS_t flags;
@@ -435,9 +441,9 @@ error_t vmm_radix_tree_unlock_range_small(VSpace* vs, vaddr vaddr_start,
  *       vmm_radix_tree_lock_range_big + @ref
  *       vmm_radix_tree_lock_range_small_with_big_locked.
  *
- * @note Per leaf, `owner` is the caller vspace for low-half VA (L0 index &lt;
- *       256) and `root_vspace` for shared kernel high half (L0 index &gt;=
- * 256).
+ * @note Each reserved leaf gets @p owner_info verbatim; this function does not
+ *       pick owner from L0 index. Callers choose the tag (see file @par owner /
+ *       Recommended call order).
  */
 error_t vmm_radix_tree_insert_range(VSpace* vs, tagged_ptr_t owner_info,
                                     vaddr vaddr_start, ENTRY_FLAGS_t flags,

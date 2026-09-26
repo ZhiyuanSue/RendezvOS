@@ -1,121 +1,131 @@
 # 平台启动-aarch64
 
-v0.1 · 2026-08-29
+v0.1 · 2026-09-25
 
-本篇覆盖：`arch/aarch64/boot/boot.S`、`arch/aarch64/boot/boot_map.c`、`arch/aarch64/boot/start_arch.c`、`arch/aarch64/boot/smp.c`、`arch/aarch64/psci/psci.c`、`arch/aarch64/psci/psci_call.S`、`include/arch/aarch64/psci/psci.h`、`include/arch/aarch64/psci/psci_error.h`、`include/arch/aarch64/boot/arch_setup.h`。
+本篇覆盖：`arch/aarch64/boot/boot.S`、`arch/aarch64/boot/boot_map.c`、`arch/aarch64/boot/start_arch.c`、`arch/aarch64/boot/smp.c`（`cpu_on` 的架构侧；整机编排见 `06-SMP与同步/28-SMP启动与处理器拓扑.md`）、`arch/aarch64/psci/psci.c`、`include/arch/aarch64/boot/arch_setup.h`。链接脚本侧见 `00-总览/01-构建与链接.md`；`cmain` 何时调用下面的钩子见 `02-启动流程总览.md`。设备树解析见 `09-平台模块/36-DTB与设备树-aarch64.md`。GIC 运行期见 `05-陷阱与中断/27-平台中断-aarch64-GIC.md`。PSCI 见 `09-平台模块/39-PSCI与处理器电源-aarch64.md`。
 
-通用编排见 `02-启动流程总览.md`；DTB 模块见 `09-平台模块/36-DTB与设备树-aarch64.md`；GIC 见 `05-陷阱与中断/27-平台中断-aarch64-GIC.md`；PSCI 电源见 `09-平台模块/39-PSCI与处理器电源-aarch64.md`。
+本篇同样分三块：`boot.S` + `boot_map.c` 如何交到 `cmain`；全机一次的平台钩子；每个核的 `arch_start_core`。
 
 ---
 
 ## 1. 概述
 
-aarch64 以 Linux arm64 **Image 头**被固件/QEMU 加载：入口保存 x0–x3（含 DTB）到 `setup_info`，在 **MMU off** 下用 `boot_map_pg_table` 建内核 2 MiB identity + UART 设备页，并把 DTB **物理拷贝**到内核末尾之后；开 EL1 MMU 进高半核 VA 后调 `cmain`。平台阶段构建设备树、读 `chosen/bootargs`、绑 PSCI、探 GIC 分发器。SMP 遍历 DTB `cpu` 节点，要求 `enable-method = "psci"`，用 **`cpu_on(affinity=reg, entry=phys(ap_entry), context=逻辑 id)`** 串行拉起 AP。
+aarch64 走的是 **Linux arm64 Image 引导约定**：固件 / QEMU 把镜像装到板级入口（QEMU virt 上常见是物理 `0x40080000`），入口时 **x0 指向 DTB**，x1–x3 保留（当前多为 0，但仍要存进 `setup_info`，以免将来协议启用）。`boot.S` 在 MMU 关闭时做完内核区间的 2 MiB 恒等映射、UART 的 4 KiB Device 页、以及 DTB 的物理拷贝，再打开 EL1 的 MMU，把返回地址加上高半偏移跳上链接 VA，最后 `bl cmain`。
 
-**设计意图：**
+设备树整树、`bootargs`、PSCI 方法表、GIC 分发器都不在汇编里完成——它们要等 `kallocator` 就绪，由 `arch_start_platform` 全机做一次。每个核自己的 GIC CPU interface、时间和 syscall 固定 trap，则在 `arch_start_core`。用 PSCI `cpu_on` 拉 AP 见 SMP 篇。
 
-- **协议跟 Linux Image + DTB** — 与 x86 Multiboot 对称的「固件契约」；不实现 spin-table / UEFI 直启。
-- **逻辑 id ≠ affinity** — PSCI 目标用 DTB `reg`；`per_cpu` / `cpu_number` 用递增逻辑 id（经 context 传入 AP）。这样稀疏 affinity 与稠密 percpu 槽分离。
-- **`BSP_ID` 固定 0** — 简化；要求 BSP 的 DTB `reg` 也为 0，否则 skip 规则失效。
-- **平台一次 / 核心每核** — DTB 树 + PSCI + GIC distributor 只在 BSP；每核 GIC CPU IF + trap/syscall。
+跟 x86「历史包袱盯死 1 MiB」不同，ARM 板级入口地址可以随平台变化；core 用链接脚本的 `kernel_start_offset` 对齐当前目标（QEMU virt 的 `0x40080000`），并用 Image 头里的 `text_offset` / magic 让装载器认这是一份合法 arm64 内核镜像。EL2/EL3 降到 EL1 的完整路径还没做完（evolution **E8**）；QEMU virt 上进来时往往已经在 EL1，所以日常路径几乎不踩降级代码。
 
 ---
 
 ## 2. 目标与边界
 
-**覆盖：** Image 入口 → `arch_start_core`，以及 `arch_start_smp` 的 PSCI 启核。
+**本篇要讲清：** Image 头与入口寄存器约定；`drop_to_el1` / `init_mmu` / `boot_map_pg_table` 各自做了什么；`setup_info` 各字段的填写时机；`prepare_arch` 如何补上 DTB 的内核虚地址；平台钩子与每核钩子在 GIC 上的分界（分发器一次，CPU interface 每核）。
 
-**不做：** 完整 EL3/EL2 下降（`drop_to_el1` 多为 stub，E8）；`arm,psci-0.2` 等其它 compatible（只认 `"arm,psci"`）；非 PSCI `enable-method`；GICv3 ITS / SMMU。
+**本篇不展开：** GICv3 ITS、SMMU；`cpu_on` 遍历循环（SMP 篇）；DTB 属性解码细则（DTB 篇）。
 
-**失败边界：** 早期找不到 PL011 → `boot_Error`；`prepare_arch` 校验 DTB header 失败 → panic 路径；PSCI 未成功 enable 时 `smp.c` **仍可能调** `cpu_on`（未先查 `psci_func.enable`）——集成须保证 DTB 正确。AP 失败不整机 panic（见启动总览）。
+失败路径：早期找不到 `"arm,pl011"`，或内核起止不在同一个 1 GiB 窗口，`boot_map_pg_table` 进 `boot_Error`（死循环）；`prepare_arch` 里 `fdt_check_header` 失败则 `cmain` panic；`arch_start_platform` 即使没有 `chosen`/`bootargs` 也返回成功。
 
 ---
 
 ## 3. 分层与调用方
 
-| 组件 | 角色 |
-|------|------|
-| `boot.S` | Image 头、`bsp_entry` / `ap_entry`、MMU/栈、跳 `cmain` / `start_secondary_cpu` |
-| `boot_map.c` | MMU off 下写页表（paddr）；探 PL011；物理 relocate DTB |
-| `start_arch.c` | `map_dtb`/`prepare_arch`；设备树 + cmdline；`psci_init`；GIC；`arch_start_core` |
-| `smp.c` | DTB `cpu` walk + `psci_func.cpu_on` |
-| `psci.*` | method=smc/hvc；函数指针表；`smc`/`hvc` 桩 |
+`boot.S` 加 `boot_map.c` 结束于 `cmain`。`start_arch.c` 的四个钩子由 `cmain` / `start_secondary_cpu` 按与 x86 相同的名字调用。GIC **分发器**是全机一份，所以只在 `arch_start_platform`；**CPU interface** 跟着核走，所以在 `arch_start_core`。若把 CPU interface 塞进平台钩子，AP 上来时自己的接口还没初始化，中断路径会缺半边。
 
-portable 顺序见启动总览；更换 DTB 时须保持 **BSP `reg==0`** 与逻辑 id 约定。
+链接方若换板级加载地址，需要同时改链接脚本的 `kernel_start_offset` 与 Image 头约定；`cmain` 编排本身不变。
 
 ---
 
 ## 4. 数据结构与不变量
 
-### 4.1 `setup_info`
+### 4.1 Image 头与 `struct setup_info`
 
-```c
-struct setup_info {
-        u64 dtb_ptr;
-        u64 res_x1, res_x2, res_x3;
-        u64 map_end_virt_addr;
-        u64 boot_uart_base_addr;
-        u64 boot_dtb_header_base_addr;
-        vaddr ap_boot_stack_ptr;
-        cpu_id_t cpu_id;           /* AP: PSCI context → 逻辑 id */
-};
-```
+Image 头在 `.boot` 最前面（`include/arch/aarch64/boot/arch_setup.h` 的 `struct boot_header` 与汇编一致）：两条跳到 `bsp_entry` 的指令、`text_offset = 0x80000`、magic `0x644d5241`（`"ARM\x64"` 小端）。装载器认这个头，入口落在镜像开头。
 
-位于 `.boot.data`。UART 基址由 `boot_map` 填；DTB **头 VA** 由 `prepare_arch`→`map_dtb` 填（不是 early L3 映射 DTB）。
+`setup_info` 在 `.boot.data`，字段按偏移：
 
-### 4.2 早期映射（纠正常见误解）
+| 偏移 | 字段 | 谁写 | 含义 |
+|------|------|------|------|
+| 0x00–0x18 | `dtb_ptr` / `res_x1..x3` | `bsp_entry`（MMU 关闭时 `adr`） | 固件传来的 x0–x3；x0 为 DTB 物理指针 |
+| 0x20 | `map_end_virt_addr` | `boot_map_pg_table` | 早期映射已用到的高半末端 |
+| 0x28 | `boot_uart_base_addr` | 同上 | 早期 UART 窗口的高半基址 |
+| 0x30 | `boot_dtb_header_base_addr` | `prepare_arch` 的 `map_dtb` | DTB 头的内核虚地址 |
+| 0x38 | `ap_boot_stack_ptr` | SMP 路径 | AP 栈顶（高半虚地址） |
+| 0x40 | `cpu_id` | `ap_entry`（固件传入的 x0） | 逻辑 CPU id |
 
-`boot_map_pg_table`（全 paddr）：
+注意：汇编在 MMU 关闭时用 `adr` 得到的是**物理**地址写表、写 `setup_info`；开 MMU 并跳上高半之后，同一符号的 `adr` 才是虚地址。
 
-1. 内核 `[start,end)` → L2 **2 MiB** identity。
-2. 在 `kernel_end` 后挂 L3，按页映射 UART（compatible `"arm,pl011"` 的 `reg`）；写 `boot_uart_base_addr` / `map_end_virt_addr`。
-3. 高半 L0 指向同一套表，供开 MMU 后跑高 VA。
-4. 将 DTB **物理 memcpy** 到 UART 映射区之后，更新 `dtb_ptr`——**此时页表尚无 DTB VA**。
+### 4.2 链接、加载与早期物理布局
 
-`prepare_arch`：`map_dtb` 用 2 MiB L2 把 DTB 映到 `ROUND_UP(map_end_virt_addr, …)`，再 `fdt_check_header`。
+`script/link/aarch64_linker.ld`：
 
-### 4.3 PSCI
+- `kernel_virt_offset = 0xffff800000000000`（与 x86 相同的高半窗口）
+- `kernel_start_offset = 0x40080000`（对齐 QEMU virt 常见加载点）
+- `ENTRY(_start)`，VMA 从二者之和起排
 
-- DTB 节点 `compatible == "arm,psci"`；`method` → `psci_smc` / `psci_hvc`。
-- 属性名存在与否决定是否挂上 `cpu_on` 等包装；**FID 为编译期常量**，不读 DTB 单元格。
-- `arch_shutdown` 可走 `system_off`；`arch_reset` 空。
+页表页在 `.boot.page`（L0–L3 各一页，启动前全零）；boot 栈在 `.boot_stack`，大小 `0x10000`。镜像占用的物理区间就是加载点起、到 `_end` 对应的物理地址；早期 DTB 还会再被拷到「内核末尾 + UART 窗口之后、按 2 MiB 对齐」的物理位置，避免和镜像、UART 映射打架。
 
-### 4.4 双 id 与 `NR_CPU`
+### 4.3 早期页表（四层、4 KiB granule）
 
-`arch_start_smp`：`NR_CPU=1`，BSP `CPU_STATE[0]=enable`。对每个 `cpu` 节点：读 `reg`；`enable-method` 须为 `psci`；`reg==(u32)BSP_ID` 则跳过；否则 kalloc 16 页栈写入 `ap_boot_stack_ptr`，`cpu_on(reg, PHY(ap_entry), NR_CPU)`，等 `CPU_STATE[NR_CPU]==enable`，再 `NR_CPU++`。逻辑 id 稠密；affinity 可稀疏。
+`boot_map_pg_table`（`boot_map.c`）全程用**物理地址**写表，因为此时 MMU 还关着：
 
-### 4.5 链接 → 加载 → 早期物理布局 → 早期页表（本 ISA 精确）
+1. 要求内核起止落在同一个 1 GiB（`>> 30` 相同），否则一张 L1 项盖不住，直接 `boot_Error`。
+2. **L0 → L1 → L2**：对内核起始页建 table 描述符；L2 上对 `[kernel_start, kernel_end)` 按 2 MiB 写 **block** 描述符（不置 table 位，属性 Normal + AF），做恒等映射。
+3. 在内核末尾再挂一张 **L3**（经 L2 的 table 项），按 4 KiB 映射 `"arm,pl011"` 的 `reg`，属性为 **Device**。UART 基址与长度来自 DTB 的 raw 属性遍历（兼容串手写在栈上的 `"arm,pl011"`，因为此时还不能依赖已映射的只读数据段约定）。找不到 PL011，或长度超过一个 middle page，进 `boot_Error`。
+4. 再写一条高半 L0 项，指向同一张 L1，使 `KERNEL_PHY_TO_VIRT` 后的地址也能走同一套下层表。
+5. 把 DTB 从原来的 `dtb_ptr` 起拷 **2 MiB** 到「UART 窗口按 2 MiB 对齐之后」的物理位置（按源/目的先后选择正向或反向字节拷，避免重叠破坏），并改写 `dtb_ptr`。此时还没有 DTB 的**内核虚地址**——那是 `prepare_arch` 的事。
 
-跨架构地图见 `02-启动流程总览.md` §4.4。
+`map_end_virt_addr` / `boot_uart_base_addr` 在这一步被写成高半虚地址，供后面的 C 代码接着往上长映射。
 
-**链接（`aarch64_linker.ld`）：**
+### 4.4 打开 MMU：`init_mmu`
 
-- `kernel_virt_offset = 0xffff800000000000`
-- `kernel_start_offset = 0x40080000` → 与 QEMU virt 常见加载地址对齐
-- `.data` 含 `.boot.data` / `.boot.page`（页表页）/ `.boot_stack`（早期栈等）/ `.boot.map_util`
-- `.percpu..data`；**无** x86 那套链接期 GS offset 符号
+`init_mmu` 在汇编里完成，对应 AArch64 开 MMU 的最小集合：
 
-**加载：** Linux arm64 Image 头；固件/QEMU 将镜像放到 **`kernel_start_offset` 对应 PA**；**x0=DTB**，x1–x3 写入 `setup_info`。
+- 从 `ID_AA64MMFR0_EL1` 取 PARange，填入 `TCR_EL1.IPS`；若大于 40 位则**压到 40 位**（实现的有意上限）。
+- **TTBR0_EL1 与 TTBR1_EL1 都指向同一张 `L0_table`**：低半（TTBR0）走恒等，高半（TTBR1）走链接 VA；与 x86「PML4 两项进同一张 L1」是同一思路。
+- TCR：两侧 inner shareable、写回分配、硬件更新 AF/DB（`HA`/`HD`）、4 KiB granule；若硬件宣称支持 16-bit ASID，则置 `TCR_EL1.AS`。
+- `SCTLR_EL1` 置 `M`（MMU）、`C`（数据 cache）、`I`（指令 cache），`isb` 后把返回地址和 `lr` 都加上 `kernel_virt_offset`，`br` 到高半标签再 `ret`。此后 PC 落在链接 VA 上。
 
-**早期物理快照（`boot_map` 后）：**
+开 MMU 前后要注意屏障与 TLB；实现里在写 TTBR/TCR/SCTLR 处用了 `isb`。MAIR 由先前的 `mair_init` 填好，页表描述符里的 AttrIndx 才有意义。
 
-```text
-PA = 0x40080000…     内核镜像（含 L0_table 等）
-其后（kernel_end 对齐后）
-  L3 窗口            PL011 UART 设备页（按 reg 长度按页映射）
-  再后               DTB 物理拷贝（一截 2 MiB 量级）
-```
+### 4.5 异常级与栈
 
-此时 **DTB 往往还没有内核 VA**；`prepare_arch`→`map_dtb` 才在 `map_end_virt_addr` 之上挂 2 MiB L2。
+`drop_to_el1`：读 `CurrentEL`。已在 EL1 则直接返回。EL3 / EL2 分支目前是空壳（注释里留了 SPSR/ELR/`eret` 的位置），EL3 甚至会落到 EL2 路径——这就是 **E8** 未完成的部分。QEMU virt 上常见进来就是 EL1，所以日常能跑。
 
-**早期页表与 EL/MMU（硬件）：**
+`sel_stack` 置 `SPSel` 选用 `SP_ELx`（当前 EL 自己的栈指针）。`set_stack` 把 SP 设为 `boot_stack + 0x10000`；开 MMU 前这是物理地址，开 MMU 并跳高半后再调一次时，`adr` 已是虚地址。手册侧含义见 §4.6。
 
-1. `drop_to_el1`：查 CurrentEL；EL1 直接返回；EL2/EL3 路径多为 TODO（E8）。QEMU virt+cortex-a72 常见已在 EL1。  
-2. MMU off：用 **paddr** 写 `L0/L1/L2/L3`——内核 **2 MiB identity**；UART **Device** 属性 4 KiB；高半 L0 槽指向同一套表。  
-3. `mair_init`；`TTBR0_EL1`=`TTBR1_EL1`=`L0_table`；配 TCR（含 ASID/T0SZ 等，以源码为准）；开 SCTLR.M（及 C/I）；**屏障与 TLB 维护**后，把 PC/LR 加上 `0xffff800000000000`。  
-4. 清 BSS；栈切到高 VA；`cmain`。
+### 4.6 与官方文档的对照（启动必知）
 
-**与 x86 对比：** 无「先 32 位再长模式」；无低址 AP 跳板；加载地址随 SoC/QEMU 变，故链接偏移写成 `0x40080000` 而非 1 MiB。SPSel/SPSR 等细节以 `boot.S` 注释与实现为准，成稿不把整本寄存器手册搬进来，但**降 EL / 开 MMU 的必要寄存器写入必须在本篇或源码注释中可查**。
+下面只摘与本实现直接相关的条款。ARM 侧以 *Arm Architecture Reference Manual for A-profile architecture*（常称 **ARM ARM**）为准；引导寄存器约定跟 Linux 的 arm64 booting 文档（本内核有意兼容该装载契约，但并非 Linux 内核）。
+
+**Linux arm64 引导协议（装载契约）**
+
+官方说明见：[Booting AArch64 Linux](https://docs.kernel.org/arch/arm64/booting.html)。与本实现对齐的要点：
+
+- 主 CPU 跳进镜像**第一条指令**时：MMU off；**x0 = DTB 物理地址**；**x1–x3 = 0**（保留给将来）。本实现把四者都存进 `setup_info`，即使后三者当前为 0。
+- DTB 须 8 字节对齐，且不超过 2 MiB；文档还要求它不要落在「必须以特殊属性映射的 2 MiB 区」里——本实现在早期把 DTB **拷到**内核末尾 + UART 窗口之后的 2 MiB 对齐物理位置，再在 `prepare_arch` 用一张 Normal 的 2 MiB 大页映射，就是为了满足「可 cacheable 映射、尺寸上限」这类约定。
+- Image 头 magic `0x644d5241`、`text_offset` 等字段属于同一套 Image 格式约定；链接脚本的 `kernel_start_offset` 须与装载器实际放置的物理基址一致（QEMU virt 上常见 `0x40080000`）。
+
+**异常级与栈（ARM ARM，Exception levels / SPSel）**
+
+- AArch64 有 EL0…EL3。内核常态跑在 **EL1**；EL2 是 hypervisor，EL3 是 secure monitor。从更高 EL 降下来必须配置目标 EL 的 `SPSR_ELx` / `ELR_ELx` 再 `ERET`。本实现的 `drop_to_el1` 在 EL2/EL3 上尚未按手册填完这些寄存器（**E8**）。
+- `CurrentEL` 的编码可区分当前异常级。`SPSel.SP`：0 表示使用 `SP_EL0`，1 表示使用当前 EL 的 `SP_ELx`。boot 置 1，避免早期还没准备好 EL0 栈时误用 `SP_EL0`。
+
+**翻译体制与开 MMU（ARM ARM，VMSAv8-64）**
+
+- EL1&0 翻译体制下，**TTBR0_EL1** 覆盖低半 VA，**TTBR1_EL1** 覆盖高半 VA；分界由 `TCR_EL1` 的 `T0SZ`/`T1SZ` 等决定。本实现两侧 TTBR 都指向同一张 L0，再靠 L0 项分别挂低址恒等与高半窗口——与手册「两个 TTBR、两套根」的模型一致，只是软件选择让两棵树共享下层。
+- 开 MMU 前通常要求：已写好 **MAIR_EL1**（内存属性）、**TCR_EL1**（粒度、可共享性、IPS、是否 16-bit ASID 等）、TTBR，再置 **SCTLR_EL1.M**；同时常开 `C`/`I` 以启用数据和指令 cache。写系统寄存器后需要合适的上下文同步（本实现用 `isb`）。
+- 4 KiB granule 下四级描述符：L0/L1/L2 可以是 **table** 或 **block**；到 L3 才是 **page**。UART 用 Device 属性的 page、内核用 Normal 的 2 MiB block，对应的是手册里 AttrIndx → MAIR 的那条链，而不是「随便写个 P 位」。
+- `ID_AA64MMFR0_EL1.PARange` 告诉软件硬件支持的物理地址宽度上限；`TCR_EL1.IPS` 必须设成不超过该能力。本实现额外把 IPS 压到不超过 40 位。
+- 置了 `TCR_EL1.HA`（硬件更新 Access Flag）时，页表项需要按手册准备好 AF 等相关位；本早期映射在 Normal/Device 描述符里置了 AF 相关标志，与之对应。
+
+**CPU 标识（ARM ARM，MPIDR_EL1）**
+
+- `MPIDR_EL1` 提供 affinity 与 MT/U 等拓扑提示。本实现的 `arch_cpu_info` **只记录** MT/U，软件 `BSP_ID` 仍固定为 0，并不把 affinity 直接当 `cpu_id`——这是软件约定，不是手册强制。
+
+**次级核（协议侧，细节见 SMP / PSCI 篇）**
+
+- Linux arm64 booting 文档要求 DTB 为每个 cpu 节点提供 `enable-method`；常见路径是 PSCI。次级核入口时 x0–x3 在 Linux 约定里为 0；本实现的 `ap_entry` 则把传入的 x0 存进 `cpu_id`（由本内核的 `cpu_on` 路径约定），与「纯 Linux AP 入口寄存器」不完全相同，读代码时不要混为一谈。
 
 ---
 
@@ -123,58 +133,63 @@ PA = 0x40080000…     内核镜像（含 L0_table 等）
 
 | 文件 | 职责 |
 |------|------|
-| `boot.S` | Image、`drop_to_el1`、`init_mmu`、BSP/AP 栈切换、入口 |
-| `boot_map.c` | 早期页表、UART、DTB 物理拷贝 |
-| `start_arch.c` | DTB VA、设备树、cmdline、PSCI、GIC、每核 core |
-| `smp.c` | PSCI 串行启核 |
-| `psci.c` / `psci_call.S` | 探测与 SMC/HVC |
+| `boot.S` | Image 头、`drop_to_el1`、`init_mmu`、BSS、BSP/AP 入口、`setup_info` |
+| `boot_map.c` | MMU 关闭时的四级表、UART Device 映射、DTB 物理拷贝 |
+| `start_arch.c` | `prepare_arch`、`arch_cpu_info`、`arch_start_platform`、`arch_start_core` |
+| `boot/smp.c` | 遍历 DTB `cpu` 节点并 `cpu_on`；见 SMP 篇 |
+| `psci.c` | `psci_init` 填的方法表；细节见 PSCI 篇 |
 
 ---
 
 ## 6. 流程
 
-### 6.1 BSP：MMU off → on → `cmain`
+### 6.1 `bsp_entry` 到 `cmain`
 
-```mermaid
-flowchart TD
-  A[Firmware: Image + DTB in x0] --> B[Save x0-x3 to setup_info]
-  B --> C[drop_to_el1 stub]
-  C --> D[boot_map: kernel 2MiB + UART L3 + DTB phys copy]
-  D --> E[init_mmu high VA]
-  E --> F[clear_bss + stack]
-  F --> G[cmain]
-```
+1. **保存入口寄存器**：`adr setup_info`，把 x0–x3 存进去（x0 = DTB 物理指针）。
+2. **`drop_to_el1`**：见 §4.5；多数 QEMU 路径此处直接返回。
+3. **选栈并设栈**（物理地址）、`mair_init`、`prepare_page_table` → 调 `boot_map_pg_table`（§4.3）。
+4. **`init_mmu`**：写 TCR/TTBR/SCTLR，跳上高半（§4.4）。
+5. **`enable_fp`**：`CPACR_EL1` 打开 FP/SIMD 访问，避免后面 C 代码碰浮点即同步异常。
+6. **清 BSS**：这里的比较是正确的，会从 `_bss_start` 清到 `_bss_end`（与 x86 那段「比较条件导致循环不跑」不同）。再设一次栈。
+7. `x0 = setup_info`，`bl cmain`。若返回则进 `boot_Error` 死循环。
 
-`cmain` 里：`prepare_arch`（map+check DTB）→ … → `arch_start_platform`（树、**bootargs→cmdline**、PSCI、GIC dist）→ `arch_start_core`。完整 portable 序见启动总览。
+### 6.2 AP 入口（与 BSP 分叉）
 
-### 6.2 `arch_start_core`（每核）
+`ap_entry` 不是上面那条链：把固件传入的 x0 存进 `setup_info.cpu_id`（偏移 0x40），自己降 EL、开 MMU（**不再**跑 `boot_map_pg_table`，页表已由 BSP 建好），栈先用 `ap_boot_stack_ptr` 减去高半偏移得到物理地址，开 MMU 后再改成虚地址，然后 `bl start_secondary_cpu`。谁写 `ap_boot_stack_ptr`、谁调 PSCI，见 SMP 篇。
 
-`cpu_number=cpu_id` → `init_interrupt` → `gic.init_cpu_interface` → `smp_ipi_init` → `rendezvos_time_init` → `init_syscall`（固定 trap 注册 syscall helper）。
+### 6.3 `prepare_arch`：给 DTB 一张高半大页
 
-### 6.3 SMP：PSCI + 逻辑 id
+此时 MMU 已开，可以用高半地址访问早期表。`map_dtb`：
 
-```mermaid
-sequenceDiagram
-  participant BSP as arch_start_smp
-  participant FW as PSCI/firmware
-  participant AP as ap_entry
-  participant SS as start_secondary_cpu
+- 虚地址取 `map_end_virt_addr` 按 2 MiB **向上**对齐；
+- 物理地址取当前 `dtb_ptr` 按 2 MiB **向下**对齐；
+- 在已有的 `L2_table` 上写一条 2 MiB huge 映射；
+- `boot_dtb_header_base_addr = dtb_ptr + (vaddr - paddr)`，`map_end` 再往后推一个 2 MiB。
 
-  BSP->>BSP: NR_CPU=1; walk DTB cpu nodes
-  loop each non-BSP PSCI cpu
-    BSP->>BSP: kalloc stack; ap_boot_stack_ptr
-    BSP->>FW: cpu_on(reg, phys(ap_entry), logical=NR_CPU)
-    FW->>AP: enter ap_entry(x0=context)
-    AP->>AP: setup_info.cpu_id=x0; MMU; stacks
-    AP->>SS: start_secondary_cpu
-    SS->>SS: CPU_STATE[id]=enable（早于 init_proc）
-    BSP->>BSP: wait enable; NR_CPU++
-  end
-```
+然后对这个虚地址做 `fdt_check_header`。这里**不**遍历整棵树，也**不**读 `bootargs`——那些要等 `arch_start_platform` 里用分配器建 `device_root`。
 
-AP portable 尾：`init_proc` → 等 **`all_enabled`**（BSP 在 `arch_start_smp` 返回后置位）→ **整表 `do_init_call`** → `kernel_handle_msg`。不是「AP 只到 init_proc」。
+### 6.4 `arch_cpu_info` 与 `BSP_ID`
 
-**为何 context 传逻辑 id：** AP 无法从 affinity 可靠反推稠密下标；PSCI 允许带 context，正好写入 `cpu_id` 供 `arch_enable_percpu` / `virt_mm_init`。
+参数不用。读 `MPIDR_EL1`，只记录 MT（多线程）与 U（单核）两位到 `cpu_info`。**`BSP_ID` 固定写 0**，不用 affinity 当软件 id。后面 SMP 若约定「BSP 在 DTB 里的 `reg` 也是 0」，依赖的就是这个约定；和 x86「APIC ID 可能非 0」形成对照。
+
+### 6.5 `arch_start_platform`（全机一次）
+
+使用 `per_cpu(kallocator, BSP_ID)`：
+
+1. 从已映射的 DTB 头递归 `build_device_tree`，得到全局 `device_root`。
+2. 在名为 `chosen` 的节点里找 `bootargs`，赋给 `cmdline_ptr`；没有节点或没有属性只打印，**不失败**。
+3. `psci_init()` 填 PSCI 调用方法。
+4. `gic.probe()` + `gic.init_distributor()`——只初始化分发器。
+
+CPU interface **不在这里**。函数返回成功；AP 不会再调用。
+
+### 6.6 每个核：`arch_start_core(cpu_id)`
+
+`cpu_number = cpu_id` 后 `isb`，然后：`init_interrupt` → `gic.init_cpu_interface` → `smp_ipi_init` → `rendezvos_time_init` → `register_fixed_trap(TRAP_CLASS_SYSCALL, …)`。
+
+syscall helper 的细节：来自用户态（EL0 SVC）时，按陷入时的 SPSR 把用户的 DAIF.I 继承进当前 DAIF，调用可移植的 `syscall()`，返回前恢复；同 EL 的 SVC 不改内核的 DAIF 策略。这与 x86 在 syscall 窗口对 IF 的处理意图对齐，机制细节见系统调用入口篇。
+
+本函数没有失败返回路径。线程和 port 不在这里建。
 
 ---
 
@@ -182,43 +197,46 @@ AP portable 尾：`init_proc` → 等 **`all_enabled`**（BSP 在 `arch_start_sm
 
 ```c
 error_t prepare_arch(struct setup_info *);
-error_t arch_cpu_info(struct setup_info *);  /* BSP_ID = 0 */
+error_t arch_cpu_info(struct setup_info *); /* BSP_ID = 0 */
 error_t arch_start_platform(struct setup_info *);
 error_t arch_start_core(cpu_id_t cpu_id);
-void arch_start_smp(struct setup_info *);
-
-error_t psci_init(void);
-/* psci_func.cpu_on / system_off / … */
 ```
 
-DTB 遍历 API 见 DTB 专篇；GIC 对象见 GIC 专篇。
+`arch_start_smp` 见 SMP 篇。`psci_init` 见 PSCI 篇。
 
 ---
 
 ## 8. 多架构
 
-仅 aarch64。对比 x86：Image+DTB+PSCI，无低址跳板与 Multiboot；`BSP_ID` 固定 0；CPU 拓扑是 **逻辑稠密 + affinity 稀疏**，不是 APIC id 直索引。
+仅 aarch64。与 x86 对照：引导是 Image + DTB（x0），没有低 1 MiB 的 16 位跳板；`BSP_ID` 固定 0；平台一次初始化是设备树、PSCI 与 GIC 分发器，不是 ACPI + PCI。交给 `cmain` 的钩子名字相同。riscv64 仅占位，不在本篇。
 
 ---
 
 ## 9. 测试
 
-`core/`：`make ARCH=aarch64 config && make all && make run`（QEMU virt + DTB）。`SMP>1` 依赖正确 `arm,psci` 与 `cpu` 节点。本篇与源码对齐，本轮未单独复测。
+在 `core/` 目录内：
+
+```bash
+make ARCH=aarch64 config && make all && make run
+```
+
+无单独的 `boot.S` 单测。本篇按源码整理，本轮未单独复测。
 
 ---
 
 ## 10. 限制与后续
 
-- `drop_to_el1` 不完整（E7/E8 相关）。
-- 早期 UART 仅 PL011；DTB compatible 过窄（`arm,psci` only）。
-- BSP `reg` 必须为 0；多 cluster / 非零 BSP affinity 未支持。
-- `smp.c` 若干错误路径上的节点推进 / `NR_CPU` 与等待条件以源码为准，有脆弱处可记 evolution。
-- `psci_func.enable` 未在启核前强制检查。
+- `drop_to_el1` 在 EL2/EL3 未完成（evolution **E8**）。
+- 早期 UART 只认兼容串 `"arm,pl011"`；其它控制台需后续扩展。
+- 内核镜像必须落在同一个 1 GiB 窗口内，否则早期 L1 一张表盖不住。
+- `arch_start_platform` 不因缺少 `bootargs` 失败。
+- TCR IPS 有意限制到不超过 40 位物理地址宽度。
 
 ---
 
 ## 11. 变更记录
 
-- 2026-08-29：整篇重做——纠正 early map（DTB 物理拷贝 vs `prepare_arch` VA）；双 id 模型；cmdline 仅 platform；AP 尾对齐启动总览（`all_enabled` / 二次 initcall / IPC）；PSCI FID/compatible 边界。
-- 2026-08-29：补 §4.5 链接/加载/早期 PA/TTBR+SCTLR 开 MMU 步骤与物理快照。
-- 2026-08-26：v0.1 初稿。
+- 2026-09-25：增补 §4.6（ARM ARM 翻译/EL/SPSel，以及 Linux arm64 booting 装载契约引用）。
+- 2026-09-25：按操作计划补全链接→加载→早期布局→页表→开 MMU 链条；写清 Image/DTB 动机、EL 降级现状与 GIC 分界；流程节加详。
+- 2026-09-20：三块分开（汇编 / 平台一次 / 每核），放回 full 十一节。
+- 2026-08-29：曾按源码重做，并补过早期映射。

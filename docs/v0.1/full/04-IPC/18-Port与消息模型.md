@@ -1,6 +1,6 @@
 # Port 与消息模型
 
-v0.1 · 2026-08-29
+v0.1 · 2026-09-25
 
 本篇覆盖：`kernel/ipc/port.c`、`kernel/ipc/message.c`、`include/rendezvos/ipc/port.h`、`include/rendezvos/ipc/message.h`、`kernel/registry/name_index.c`（经 `Port_Table` 使用的部分）。
 
@@ -10,19 +10,19 @@ v0.1 · 2026-08-29
 
 ## 1. 概述
 
-把消息交给另一个线程，就两步——**先找到对方，再把东西递过去**（「大象放进冰箱」那两步）。core 把这两步拆成两层，而不是「一个邮箱队列里直接堆消息」：
+把消息交给另一个线程，就两步——**先找到对方，再把东西递过去**。core 把这两步拆成两层，而不是「一个邮箱队列里直接堆消息」：
 
-1. **Port 会合层** — port 上挂的是**在等的线程**（`Ipc_Request_t` → `Thread_Base`），不是消息本体。像总机：先接通通话双方。  
+1. **Port 会合层** — port 上挂的是**在等的线程**（`Ipc_Request_t` → `Thread_Base`），不是消息本体。像总机：先接通通话双方。
 2. **Per-thread 消息层** — 每个线程自己的 `send_msg_queue` / `recv_msg_queue` 上才是 `Message_t`。接通之后由 `ipc_transfer_message` 做投递。
 
-**为何不做成「纯消息邮箱」：** 同步阻塞语义（谁在等回复）、与线程状态/调度的绑定，都会变扭——你还得另建一套「消息 ↔ 阻塞线程」索引。吸收 endpoint 一类设计：内核先做**路由与配对**，数据怎么拷由 transfer 路径决定。
+**为何不做成「纯消息邮箱」：** 同步阻塞语义（谁在等回复）、与线程状态 / 调度的绑定，都会变扭——你还得另建一套「消息 ↔ 阻塞线程」索引。吸收 endpoint 一类设计：内核先做**路由与配对**，数据怎么拷由 transfer 路径决定。
 
-**为何只有一条线程队列（不是 sender 队列 + recv 队列）：**  
+**为何只有一条线程队列（不是 sender 队列 + recv 队列）：**
 「看对面有没有人 → 取出或把自己挂上」若跨两个队列，**单次 CAS 做不到原子**。典型事故：发送方看 recv 空，准备挂自己；接收方同时看 send 空，也挂自己——两边都睡死。单队列不变量简单：**要么全是 sender 在等，要么全是 recv 在等（或空）**；一对上就能配对，剩下来的仍然同一侧。这才好做无锁扩展（单状态 MSQ，见无锁篇）。
 
 **和「无锁 IPC」主张怎么接：** 混合内核把业务临界区线程化之后，多核同步沉到「怎么把请求正确交给 server 线程」。若 port 仍用大锁，扩展性故事在 IPC 层塌掉——动机全文在无锁篇 §1；本篇只钉对象模型。
 
-全局按名找 port：`global_port_table`（内部 `name_index_t`）。
+本篇本身没有架构相关的硬件寄存器；会合靠软件 MSQ / CAS，调度唤醒走 `schedule`（任务篇）。全局按名找 port：`global_port_table`（内部 `name_index_t`）。
 
 ---
 
@@ -113,7 +113,7 @@ Message_t *create_message_with_msg(...);
 void free_message_ref(ref_count_t *);
 ```
 
-完整签名以头文件为准。`global_port_init` 在 `cmain` 中、`init_proc` 前调用。
+完整签名以头文件为准。`global_port_init()` 没有参数，只做 `global_port_table = port_table_create()`。成功时表是空的，上面还没有任何 port；分配失败返回 `-E_RENDEZVOS`，`cmain` 对此 panic。`cmain` 把它放在 `init_proc` 之前，这样随后 initcall 里的 `register_port` 有表可挂。`"kernel_port"` 要等 initcall 结束才由 BSP 登记，不在这次调用里创建。
 
 ---
 
@@ -139,5 +139,6 @@ void free_message_ref(ref_count_t *);
 
 ## 11. 变更记录
 
+- 2026-09-25：语言整理；标明无硬件寄存器依赖，与任务 / 无锁篇分工不变。
 - 2026-08-29：整篇按源码+设计笔记重做——两步模型、单队列 vs 双队列事故、Msg_Data 拆分与 MSQ dummy 真相；动机与无锁篇分工。
 - 2026-08-26：v0.1 初稿。

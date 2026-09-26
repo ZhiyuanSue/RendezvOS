@@ -1,10 +1,10 @@
 # kmsg 与 TLV 序列化
 
-v0.1 · 2026-08-29
+v0.1 · 2026-09-25
 
 本篇覆盖：`kernel/ipc/kmsg.c`、`kernel/ipc/ipc_serial.c`、`include/rendezvos/ipc/kmsg.h`、`include/rendezvos/ipc/kmsg_system.h`、`include/rendezvos/ipc/ipc_serial.h`。
 
-`Msg_Data` / Port 会合见 `18-Port与消息模型.md`；send/recv 与 system 投递见 `19-阻塞与非阻塞收发.md`；MSQ/EBR 见无锁篇；compat RPC（追加 `'t'`、coop）属上层文档，本篇只钉 core 边界。
+`Msg_Data` / Port 会合见 `18-Port与消息模型.md`；send / recv 与 system 投递见 `19-阻塞与非阻塞收发.md`；MSQ / EBR 见无锁篇；compat RPC（追加 `'t'`、coop）属上层文档，本篇只钉 core 边界。
 
 ---
 
@@ -14,9 +14,9 @@ Port 只接通「谁」；`Message_t` 只是队列壳。业务还需要「哪种
 
 kmsg 是**可选的结构化信封**：
 
-- 固定头 `kmsg_hdr_t` + **`ipc_serial` TLV**（文档里常叫 TLV；API 名是 `ipc_serial`）  
-- 打成 `Msg_Data_t`，`msg_type == MSG_DATA_TAG_KMSG`  
-- **不是** RPC、不路由、不解释 compat opcode  
+- 固定头 `kmsg_hdr_t` + **`ipc_serial` TLV**（文档里常叫 TLV；API 名是 `ipc_serial`）
+- 打成 `Msg_Data_t`，`msg_type == MSG_DATA_TAG_KMSG`
+- **不是** RPC、不路由、不解释 compat opcode
 
 | 字段 | 含义 |
 |------|------|
@@ -26,7 +26,7 @@ kmsg 是**可选的结构化信封**：
 
 无 in-band version：layout 变就 **bump `KMSG_MAGIC` 并全量同步**。适合同镜像内核协作，不适合开放跨版本 wire。
 
-拆 `ipc_serial` / `kmsg`：前者只管字节流；后者只管 hdr + 打进 `Msg_Data`。热路径一次分配 hdr+payload，payload 区直接 `encode_into`。
+拆 `ipc_serial` / `kmsg`：前者只管字节流；后者只管 hdr + 打进 `Msg_Data`。热路径一次分配 hdr + payload，payload 区直接 `encode_into`。
 
 ---
 
@@ -46,11 +46,11 @@ kmsg 是**可选的结构化信封**：
 
 **收：** `recv` → dequeue → `kmsg_from_msg` → 看 opcode → `ipc_serial_decode(payload, len, fmt, …)`。
 
-**core 生产点很少：** `port.c`（PORT_CLOSED）、`time.c`（timer）、`powerd`（shutdown）。海量 call site 在 linux_layer/servers。
+**core 生产点很少：** `port.c`（PORT_CLOSED）、`time.c`（timer）、`powerd`（shutdown）。海量 call site 在 linux_layer / servers。
 
 **测例注意：** `single_ipc_test` / port / smp IPC 多用**裸** `create_message_data`；真正走 kmsg 的 core 测例主要是 timer 等。不是「IPC 测例都用 kmsg」。
 
-解码得到的 `s`/`t` 指针指向 **message buffer 内**；异步处理须拷贝。
+解码得到的 `s` / `t` 指针指向 **message buffer 内**；异步处理须拷贝。
 
 ---
 
@@ -100,13 +100,13 @@ u32 param_count
 
 ### 4.3 `kmsg_from_msg` 校验
 
-查：非空、`msg_type==KMSG`、缓冲 ≥ hdr、magic、`payload_len == data_len - 12`。  
+查：非空、`msg_type==KMSG`、缓冲 ≥ hdr、magic、`payload_len == data_len - 12`。
 **不**查 module / opcode / TLV 合法性（接收方自比、自 decode）。
 
 ### 4.4 所有权
 
-`kmsg_create`：分配 hdr+payload → encode → `create_message_data(..., free_msgdata_ref_default)`，refcount=1。失败 `NULL`。  
-`Message_t` 与 `Msg_Data` **独立** ref；释放经 EBR 后再 put Msg_Data（见 EBR/Port 篇）。
+`kmsg_create`：分配 hdr + payload → encode → `create_message_data(..., free_msgdata_ref_default)`，refcount=1。失败 `NULL`。
+`Message_t` 与 `Msg_Data` **独立** ref；释放经 EBR 后再 put Msg_Data（见 EBR / Port 篇）。
 
 ### 4.5 System opcode（`kmsg_system.h`）
 
@@ -144,11 +144,11 @@ u32 param_count
 
 ### 6.2 decode
 
-要求 `param_count` == fmt 参数数、tag/len 匹配、**整缓冲吃干净**（`off==buf_len`）；`s`/`t` 非零长末字节须 `'\0'`。错误几乎统一 `-E_IN_PARAM`。
+要求 `param_count` == fmt 参数数、tag / len 匹配、**整缓冲吃干净**（`off==buf_len`）；`s` / `t` 非零长末字节须 `'\0'`。错误几乎统一 `-E_IN_PARAM`。
 
 ### 6.3 与 compat RPC（边界一句）
 
-上层可先 `encode_into(业务 fmt)`，再 **原地 `param_count++` 追加 `'t'`**。此时 core `decode(业务 fmt)` 会因 count/残留失败——须带 `t` 解码或先扫 reply。细节不进本篇。
+上层可先 `encode_into(业务 fmt)`，再 **原地 `param_count++` 追加 `'t'`**。此时 core `decode(业务 fmt)` 会因 count / 残留失败——须带 `t` 解码或先扫 reply。细节不进本篇。
 
 ---
 
@@ -168,7 +168,7 @@ error_t ipc_serial_decode(const u8 *buf, u32 buf_len, const char *fmt, ...);
 
 ## 8. 多架构
 
-本机 endian + 本机指针宽；无跨 ISA wire ABI。
+本机 endian + 本机指针宽；无跨 ISA wire ABI。`p` 在 x86_64 / aarch64 都是 8 字节指针槽，但跨架构镜像之间仍不能当稳定 ABI。
 
 ---
 
@@ -180,14 +180,15 @@ timer 等 system kmsg；裸 Msg_Data IPC 测例**不**覆盖本篇。本篇未�
 
 ## 10. 限制与后续
 
-- 无版本字段；错 fmt = UB。  
-- deny/错误粒度粗。  
-- opcode 数字可跨协议「撞号」——靠 port 隔离。  
+- 无版本字段；错 fmt = UB。
+- deny / 错误粒度粗。
+- opcode 数字可跨协议「撞号」——靠 port 隔离。
 - RPC / reply 命名 / nest token → compat。
 
 ---
 
 ## 11. 变更记录
 
-- 2026-08-29：整篇重做——信封叙述；MAGIC=`LMSG`；`s` 含 NUL；空 fmt 仍有 4 字节；`t`/`s` 不可混解；system 表；encode_alloc 近死；测例与 RPC 边界。
+- 2026-09-25：语言整理；§8 补指针宽说明。
+- 2026-08-29：整篇重做——信封叙述；MAGIC=`LMSG`；`s` 含 NUL；空 fmt 仍有 4 字节；`t` / `s` 不可混解；system 表；encode_alloc 近死；测例与 RPC 边界。
 - 2026-08-27：初稿。

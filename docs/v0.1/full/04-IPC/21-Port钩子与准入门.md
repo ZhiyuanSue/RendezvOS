@@ -1,10 +1,10 @@
 # Port 钩子与准入门
 
-v0.1 · 2026-08-29
+v0.1 · 2026-09-25
 
 本篇覆盖：`kernel/ipc/port.c`、`include/rendezvos/ipc/port.h`（ops_life / ops_count / `port_append_hooks_t` / `port_ops_begin|end`）、以及 `ipc.c` 里对 begin 的调用点。测例：`modules/test/single_port_test.c`。
 
-Port 对象与两层会合见 `18-Port与消息模型.md`；send/recv 阻塞时序、醒后 flag、orphan drop、PORT_CLOSED **行为细节**见 `19-阻塞与非阻塞收发.md`；`KMSG_OP_SYSTEM_PORT_CLOSED` 登记见 kmsg 篇；名称索引见基础设施篇。
+Port 对象与两层会合见 `18-Port与消息模型.md`；send / recv 阻塞时序、醒后 flag、orphan drop、PORT_CLOSED **行为细节**见 `19-阻塞与非阻塞收发.md`；`KMSG_OP_SYSTEM_PORT_CLOSED` 登记见 kmsg 篇；名称索引见基础设施篇。
 
 ---
 
@@ -12,16 +12,16 @@ Port 对象与两层会合见 `18-Port与消息模型.md`；send/recv 阻塞时�
 
 Port 热路径要同时做两件不相干的事：
 
-1. **生命周期门** — unregister 与正在进行的 send/recv 互斥（`ops_life` + `ops_count`）。  
+1. **生命周期门** — unregister 与正在进行的 send / recv 互斥（`ops_life` + `ops_count`）。
 2. **策略门** — 谁可以 register / 看见名字 / send / recv。
 
-若把 Linux credential、namespace 焊进 `send_msg`，core 就绑死一种安全模型。线程侧已有 `thread_append_hooks`，调度可换 `scheduler`——port 侧对称做 **`port_append_hooks_t`**：FAM 尾区 + `init`/`fini` + **`ops_allow`**。
+若把 Linux credential、namespace 焊进 `send_msg`，core 就绑死一种安全模型。线程侧已有 `thread_append_hooks`，调度可换 `scheduler`——port 侧对称做 **`port_append_hooks_t`**：FAM 尾区 + `init` / `fini` + **`ops_allow`**。
 
 core 保持 capability-neutral；策略外置，默认全放行。
 
 `hooks=NULL` / `ops_allow=NULL` = 与「没钩子」时一样全放行。索引键仍是 **name 字符串**；actor 只靠 `get_cpu_current_thread()`，不传额外主体参数。
 
-**现状：** 机制已冻结；**生产路径（linux_layer/servers）一律 `create_message_port(..., NULL)`**。非 NULL hooks **仅**测例安装。不是「compat 已在 ops_allow 做 credential」。
+**现状：** 机制已冻结；**生产路径（linux_layer / servers）一律 `create_message_port(..., NULL)`**。非 NULL hooks **仅**测例安装。不是「compat 已在 ops_allow 做 credential」。
 
 ---
 
@@ -29,7 +29,7 @@ core 保持 capability-neutral；策略外置，默认全放行。
 
 **提供：** unregister vs begin 的互斥；统一 admission 回调；可选 FAM 尾区。
 
-**不做：** 默认 deny；audit log；在 hook 里阻塞/`schedule`（应快速返回）；把 MSQ 并发改成串行——`ops_count` **不**串行化 send/send。
+**不做：** 默认 deny；audit log；在 hook 里阻塞 / `schedule`（应快速返回）；把 MSQ 并发改成串行——`ops_count` **不**串行化 send / send。
 
 ---
 
@@ -40,7 +40,7 @@ core 保持 capability-neutral；策略外置，默认全放行。
 | create | `create_message_port(name, hooks)` → 可选 `init` → 再 `register_port` |
 | register | 表锁内 `ops_allow(REGISTER, NULL)` → 通过才 `name_index_register` |
 | lookup | 表命中后 `ops_allow(LOOKUP, name)`；拒绝 → put + 返回 NULL（errno **丢弃**） |
-| send/recv | `port_ops_begin`：life 须 REGISTERED → `ops_allow(SEND|RECV, NULL)` → `ops_count++` → 再查 life |
+| send / recv | `port_ops_begin`：life 须 REGISTERED → `ops_allow(SEND|RECV, NULL)` → `ops_count++` → 再查 life |
 | unregister | 摘表 → CLOSING → 等 `ops_count==0`（可 schedule）→ `port_clean_thread_queue` → CLOSED → put |
 
 测例：`port_hook_gate_self_test` 等拆开 LOOKUP vs SEND、token 再门禁。
@@ -59,7 +59,7 @@ enum port_ops_type {
 /* ops_life：ACTIVE → REGISTERED → CLOSING → CLOSED */
 ```
 
-`port_ops_begin` **只接受** SEND/RECV；传 LOOKUP/REGISTER 直接失败。
+`port_ops_begin` **只接受** SEND / RECV；传 LOOKUP / REGISTER 直接失败。
 
 ### 4.2 hooks
 
@@ -96,9 +96,9 @@ typedef struct port_append_hooks {
 
 不变量：
 
-- 仅 REGISTERED 可 begin；失败路径 **不得** `ops_count++`。  
-- begin 后双重检查仍 REGISTERED，否则 dec 并失败。  
-- 阻塞 send/recv：**`schedule` 前必须 `port_ops_end`**（否则 unregister 等 count 会死等）。  
+- 仅 REGISTERED 可 begin；失败路径 **不得** `ops_count++`。
+- begin 后双重检查仍 REGISTERED，否则 dec 并失败。
+- 阻塞 send / recv：**`schedule` 前必须 `port_ops_end`**（否则 unregister 等 count 会死等）。
 - 清队必须在 unregister 路径、**不能**拖到 final free（见 port 注释 deadlock case）。
 
 ---
@@ -107,7 +107,7 @@ typedef struct port_append_hooks {
 
 | 路径 | 职责 |
 |------|------|
-| `port.h` / `port.c` | life、begin/end、hooks、clean_thread_queue |
+| `port.h` / `port.c` | life、begin / end、hooks、clean_thread_queue |
 | `ipc.c` | 四入口先 begin；失败折叠 errno |
 | `thread.c` `thread_lookup_port` | token 也走 LOOKUP 门 |
 | `single_port_test.c` | 唯一非 NULL hooks 生产式用法 |
@@ -126,25 +126,25 @@ typedef struct port_append_hooks {
 | `ops_allow(LOOKUP, name)` | `port_lookup_finish`（含 resolve_token） | put + NULL |
 | `ops_allow(SEND/RECV, NULL)` | `port_ops_begin` | begin false → ipc **统一** `-E_REND_PORT_CLOSED` |
 
-REGISTER 在表锁内调 hook：**禁止**在 hook 里同表 lookup/register（死锁）。
+REGISTER 在表锁内调 hook：**禁止**在 hook 里同表 lookup / register（死锁）。
 
-### 6.2 send/recv（ipc）
+### 6.2 send / recv（ipc）
 
-`send_msg` / `ipc_try_send_msg` → begin(SEND)；失败时 drop orphan + `-E_REND_PORT_CLOSED`。  
+`send_msg` / `ipc_try_send_msg` → begin(SEND)；失败时 drop orphan + `-E_REND_PORT_CLOSED`。
 `recv_msg` / `ipc_try_recv_msg` → begin(RECV)；失败直接 CLOSED。
 
 成功：match 后 end；阻塞：enqueue 成功后 **先 end 再 schedule**；醒后看 `THREAD_FLAG_IPC_PORT_CLOSED`。
 
-`ipc_system_try_deliver` → 内部 try_send → **会**过 SEND 门。  
+`ipc_system_try_deliver` → 内部 try_send → **会**过 SEND 门。
 `ipc_system_deliver_to` → 直打线程队列 → **不**过 port_ops（清队注入用这条）。
 
-### 6.3 与真关闭的差异（短）
+### 6.3 与真关闭的差异
 
 | | ops_allow deny | unregister 清队 |
 |--|----------------|-----------------|
 | 注入 PORT_CLOSED kmsg | 否 | recv 等待者可能有 |
 | 置 `IPC_PORT_CLOSED` flag | 否 | send 等待者；recv 视 pending |
-| 对外 errno | SEND/RECV 伪装 CLOSED | 真关闭路径 |
+| 对外 errno | SEND / RECV 伪装 CLOSED | 真关闭路径 |
 
 **Deny ≠ 关港**：port 仍 REGISTERED；LOOKUP deny 只是「这次拿不到」。已 begin 的阻塞等待者醒后**不再**跑 ops_allow——关港靠 unregister。细节链到阻塞篇。
 
@@ -169,7 +169,7 @@ void port_ops_end(Message_Port_t *port);
 
 ## 8. 多架构
 
-与 ISA 无关。
+与 ISA 无关。门禁是软件回调，不碰中断控制器或页表。
 
 ---
 
@@ -185,14 +185,15 @@ cd core && make ARCH=x86_64 config && make all && make run
 
 ## 10. 限制与后续
 
-- 生产未接 hooks；扩展点已在，契约未强制上层使用。  
-- SEND/RECV deny 与真关闭不可区分。  
-- REGISTER 持锁约束严格。  
+- 生产未接 hooks；扩展点已在，契约未强制上层使用。
+- SEND / RECV deny 与真关闭不可区分。
+- REGISTER 持锁约束严格。
 - 将来若挂 deny-SEND，连 `ipc_system_try_deliver` 也会被挡；`deliver_to` 不会。
 
 ---
 
 ## 11. 变更记录
 
-- 2026-08-29：整篇重做——外置叙述；纠正 REGISTER/`lookup_name`；生产零 hooks 诚实；deny vs 真关闭；四门表；与清队/`deliver_to` 边界。
+- 2026-09-25：语言整理；与阻塞篇 / 清队边界不变。
+- 2026-08-29：整篇重做——外置叙述；纠正 REGISTER / `lookup_name`；生产零 hooks 诚实；deny vs 真关闭；四门表；与清队 / `deliver_to` 边界。
 - 2026-08-27：初稿。

@@ -1,8 +1,8 @@
 # TLB shootdown 与跨核一致性
 
-v0.1 · 2026-08-29
+v0.1 · 2026-09-25
 
-本篇覆盖：`arch/x86_64/mm/arch_smp_tlb_flush.c`、x86/aarch64 `include/arch/*/sync/tlb.h` 中 all_core 路径与软 IPI 的衔接。
+本篇覆盖：`arch/x86_64/mm/arch_smp_tlb_flush.c`、x86 / aarch64 `include/arch/*/sync/tlb.h` 中 all_core 路径与软 IPI 的衔接。
 
 **与 `02-内存管理/11-TLB与缓存一致性.md` 分工（写死）：**
 
@@ -15,6 +15,8 @@ v0.1 · 2026-08-29
 | 门铃 / pending | → 软 IPI 篇 | 只写 TLB 消息槽如何用 IPI |
 
 软 IPI：唯一 in-tree 默认 registrant 是 **x86 TLB**。VSpace teardown 门闩见 VSpace 所有权篇。
+
+**官方手册：** Intel SDM — `invlpg`、换 CR3 对 TLB 的影响（无 PCID 时）；ARM ARM — `TLBI …IS`、`DSB`/`ISB`。
 
 ---
 
@@ -32,6 +34,11 @@ x86 敲门刷；aarch64 广播刷。
 
 没有可靠 mask + 刷干净，页表篇「按需 unmap 后应 fault」在多核上兑不了现。
 
+### 1.1 硬件差异为何逼出两套协议
+
+- **x86：** 没有「一条总线广播让所有核 `invlpg`」的通用指令。改别人核上的 TLB 必须 **IPI 过去让对方自己执行** `invlpg`（或重载 CR3）。门铃 = 软 IPI 向量 `0x30`；参数 = 目标核 per-CPU 消息槽。
+- **aarch64：** `TLBI …IS`（Inner Shareable）可让本 shareability domain 内的 PE 失效对应项，再配 `DSB`/`ISB`。因此 all_core **不走**软 IPI；mask 仍卡 teardown。
+
 ---
 
 ## 2. 目标与边界
@@ -44,8 +51,8 @@ x86 敲门刷；aarch64 广播刷。
 
 ## 3. 分层与调用方
 
-**MM** — remap/unmap 后 `arch_tlb_invalidate_*_all_core(..., &vs->tlb_cpu_mask)`。  
-**schedule** — 本地刷旧 AS + set/clear mask（02 / VSpace）。  
+**MM** — remap / unmap 后 `arch_tlb_invalidate_*_all_core(..., &vs->tlb_cpu_mask)`。
+**schedule** — 本地刷旧 AS + set / clear mask（02 / VSpace）。
 **规则：** 改 PTE 持适当锁；IPI handler **只刷**，不锁、不 sleep。
 
 ---
@@ -64,7 +71,7 @@ struct smp_tlb_flush_msg {
 };
 ```
 
-- 单槽 + `busy`：同目标 CPU 上并发 shootdown **串行化**；无 batching。  
+- 单槽 + `busy`：同目标 CPU 上并发 shootdown **串行化**；无 batching。
 - **无 PCID**：页级=`invlpg`；vspace 级≈ reload CR3 / 全刷；asid 参数 `(void)`。
 
 ### 4.2 mask 与并发
@@ -134,26 +141,27 @@ void arch_smp_flush_all_tlb(...);
 
 ## 8. 多架构
 
-上表。riscv/loongarch 非主线。
+上表。riscv / loongarch 非主线。
 
 ---
 
 ## 9. 测试
 
-间接：SMP + 用户 map/unmap。本篇未复测。
+间接：SMP + 用户 map / unmap。本篇未复测。
 
 ---
 
 ## 10. 限制与后续
 
-- x86 send 失败无重试。  
-- 单槽串行；无 batching。  
-- aarch64 广播成本与 mask 解耦。  
+- x86 send 失败无重试。
+- 单槽串行；无 batching。
+- aarch64 广播成本与 mask 解耦。
 - 无 PCID。
 
 ---
 
 ## 11. 变更记录
 
-- 2026-08-29：整篇重做——删「aarch64 via IPI」；x86 gen/busy/done；与 02/软 IPI 边界；send 失败与单槽限制。
+- 2026-09-25：语言整理；§1.1 补「为何 x86 必须 IPI、aarch64 用 tlbi is」。
+- 2026-08-29：整篇重做——删「aarch64 via IPI」；x86 gen/busy/done；与 02 / 软 IPI 边界；send 失败与单槽限制。
 - 2026-08-27：初稿（误写 aarch64 IPI）。

@@ -1,56 +1,84 @@
 # ACPI 与 MADT（x86_64）
 
-v0.1 · 2026-08-29
+v0.1 · 2026-09-25
 
-本篇覆盖：`modules/acpi/acpi.c`（RSDP 探测 helper）、`arch/x86_64/acpi/acpi.c`（`acpi_init`）、`arch/x86_64/acpi/madt.c`（`parser_apic`）、相关头文件。
+本篇覆盖：`modules/acpi/acpi.c`（RSDP 探测 / 签名表）、`modules/acpi/acpi_madt.c`（MADT 条目游标）、`arch/x86_64/acpi/acpi.c`（`acpi_init`）、`arch/x86_64/acpi/madt.c`（`parser_apic`）、`include/modules/acpi/*.h`。
 
-SMP 消费 `NR_CPU`/`CPU_STATE` 见拓扑篇；FEE00000 检查见 APIC 篇；平台时序见 `01-启动/平台启动-x86_64`。IOAPIC 空壳交叉引用 APIC 篇。
+SMP 如何消费 `NR_CPU` / `CPU_STATE` 见 `28-SMP启动与处理器拓扑.md`；`0xFEE00000` 检查与 IOAPIC 空壳见 `26-平台中断-x86_64-APIC与PIC.md`；`reserve_arch_region` 落在 `phy_mm_init` 的时序见物理内存篇与 `04-平台启动-x86_64.md`。
+
+**规范对照：** ACPI Specification — RSDP 签名 `"RSD PTR "`、BIOS 区搜索、RSDT（32 位表指针）、MADT（APIC）表头与 Local APIC / IOAPIC / Interrupt Source Override 结构。本仓库只实现 **ACPI 1.0 风格 RSDP（revision 0）+ RSDT**；不做 XSDT / AML。
 
 ---
 
 ## 1. 概述
 
-x86 在无 UEFI 运行时下，用 **ACPI 1.0 RSDP/RSDT** 发现 CPU 拓扑，喂给 SMP INIT/SIPI。
+在无 UEFI 运行时服务的 QEMU / BIOS 路径上，x86 用 **ACPI 表**发现「有几颗带 Local APIC 的 CPU、LAPIC MMIO 基址写在哪」。这些信息喂给后面的 INIT-SIPI 与 xAPIC 映射，不是给电源管理用的。
 
-只认真读 MADT 里的 Local APIC；其余多半跳过。
+认真消费的只有一件：**MADT 里的 Local APIC 条目** → 填 `NR_CPU` / `CPU_STATE[apic_id]`。FACP 挂个全局指针，parser 空成功。IOAPIC、Source Override、其余条目全部 **空 `break`**——与中断篇「IOAPIC 真空壳」一致。
 
-两段式：
+### 1.1 两段式为什么拆开
 
-1. **早期** `reserve_arch_region`：扫物理区找 RSDP，可能 reserve RSDT 所在页。  
-2. **`arch_start_platform`**：`acpi_init` → 遇 MADT 调 **`parser_apic()`** 填 `NR_CPU` / `CPU_STATE[apic_id]`。
+1. **`phy_mm_init` → `reserve_arch_region`：** 还在早期，页表 / 堆不完整。任务是在物理低区找到 RSDP，把 `setup_info->rsdp_addr` 记下来，并（revision 0 时）把 RSDT 所在 2 MiB 窗从 buddy 可用区 **reserve** 掉，免得后面被当普通页分掉。  
+2. **`arch_start_platform` → `acpi_init`：** 此时 BSP 已有 VSpace / Map_Handler。再按需 map RSDT，walk 表，调 `parser_apic`。
 
-不做 AML、hotplug、sleep 状态机。IOAPIC / Source Override 等条目 **空 `break`**——与 IOAPIC 真空壳一致。
+AML 解释器、设备热插拔、sleep 状态机都不在 v0.1 边界内——需要「有几颗核」时，MADT Local APIC 列表就够。
 
 ---
 
 ## 2. 目标与边界
 
-**提供：** RSDP 扫描；RSDT rev0 walk；MADT Local APIC → 拓扑表；FACP 挂表（parser 空成功）。
+**提供：** BIOS 区 RSDP 扫描；RSDT rev0 walk；MADT Local APIC → 拓扑表；FACP 挂表（空 parser）；MADT `Local_int_ctrl_address` 供 xAPIC 基址核对。
 
-**不做：** XSDT/ACPI 2+；checksum 严格策略（以源码为准）；读 Local APIC **enable flags**（**完全不看**——disabled 条目也会进计数）；IOAPIC 编程。
+**不做：**
+
+- XSDT / RSDP revision ≥ 1（代码直接 `[ ACPI ] unsupported vision` 失败）。  
+- RSDP / 表 **checksum** 校验（只比签名字符串）。  
+- 读 Local APIC 条目的 **enable / online_capable flags**（**完全不看**——firmware 标 disabled 的条目也会 `NR_CPU++` 并被 SIPI 尝试）。  
+- IOAPIC 编程、Interrupt Source Override、x2APIC MADT 条目（type 9）。  
+- 任何 AML / DSDT。
 
 ---
 
 ## 3. 分层与调用方
 
-| 阶段 | 谁 |
-|------|-----|
-| RSDP 探测 | `modules` + pmm `reserve_arch_region` |
-| 表解析 | `arch/.../acpi_init` |
-| 填 CPU 表 | `parser_apic` |
-| 消费 | `arch_start_smp`、xAPIC 基址检查 |
+| 阶段 | 谁 | 产出 |
+|------|-----|------|
+| RSDP 探测 + reserve | `arch/.../mm/pmm.c` → `acpi_probe_rsdp` | `setup_info->rsdp_addr`；可能扣掉 RSDT 页 |
+| 表解析 | `arch_start_platform` → `acpi_init` | `madt_table` / `fadt_table`；`parser_apic` |
+| 消费拓扑 | `arch_start_smp` | 对 `cpu_disable` 核发 INIT-SIPI |
+| 消费 LAPIC 基址 | `init_irq` → `xapic_check_base_addr` | 必须 `== 0xFEE00000` |
 
-PCI 在同一次 `arch_start_platform` 随后扫描，但 **不读** ACPI/MCFG。
+同一次 `arch_start_platform` 里随后还有 PCI 扫描，但 **不读** ACPI MCFG——PCI 走 PIO 配置空间，见 PCI 篇。
 
 ---
 
 ## 4. 数据结构与不变量
 
-- **APIC id ≡ 逻辑 `cpu_id` 下标**（可稀疏）。  
-- **`NR_CPU`** = 合法 Local APIC 条目**个数**（`apic_id < MAX` 时 `++`），**不是** `max_id+1`。  
-- `CPU_STATE[apic_id] = cpu_disable`，SIPI 后变 enable。  
-- MADT `Local_int_ctrl_address` 须 **`== 0xFEE00000`**（xAPIC 路径），否则 init_irq 直接 return。  
-- `Local_APIC_flags_online_capable` 一类宏若写成 `(1<1)` 且未用——不是运行契约。
+### 4.1 RSDP / RSDT（ACPI 1.0）
+
+`struct acpi_table_rsdp`：签名 8 字节 `"RSD PTR "`（含尾空格）、checksum、OEM、**revision**、**rsdt_address**（32 位物理）。revision 0 = 仅前 20 字节有效；本仓库拒绝带 `xsdt_address` 的新版路径。
+
+RSDT：标准表头 + 一串 **u32** 物理指针（`ACPI_RSDT_ENTRY_SIZE`）。条目数 = `(length - header) / 4`。
+
+### 4.2 MADT
+
+```text
+acpi_table_madt:
+  ACPI_TABLE_HEAD
+  Local_int_ctrl_address   // 期望 0xFEE00000（xAPIC MMIO）
+  flags                    // MADT_PCAT_COMPAT 等；本仓库不消费
+  int_ctrl_structure[]     // 变长 type/length 记录
+```
+
+Local APIC 记录（type 0）：`_ACPI_P_UID`、`_APIC_ID`、`flags`。  
+**不变量（实现）：** `apic_id` 直接当逻辑 `cpu_id` 下标（可稀疏）；`NR_CPU` = 合法条目**个数**（`apic_id < MAX` 时 `++`），**不是** `max_id+1`。  
+`CPU_STATE[apic_id]` 先置 `cpu_disable`，SIPI 成功后再变 `cpu_enable`。
+
+头文件里 `Local_APIC_flags_online_capable (1 < 1)` 是笔误（恒为 0），且 **flags 字段运行时未读**——不是契约。
+
+### 4.3 签名表脏点
+
+`acpi_table_sigs[]` 里 `ACPI_ECDT` 一行绑的是 `ACPI_SIG_DSDT`（复制笔误）。影响「未知表分类」打印，不挡 MADT 主路径；改码时勿当规范。
 
 ---
 
@@ -58,54 +86,112 @@ PCI 在同一次 `arch_start_platform` 随后扫描，但 **不读** ACPI/MCFG�
 
 | 路径 | 职责 |
 |------|------|
-| `modules/acpi/acpi.c` | `acpi_probe_rsdp`、签名分类 |
-| `arch/.../acpi/acpi.c` | `acpi_init`、RSDT walk |
-| `arch/.../acpi/madt.c` | `parser_apic`、`for_each_madt_ctrl_head` |
+| `modules/acpi/acpi.c` | `acpi_probe_rsdp`；`acpi_table_sig_check`；签名枚举 |
+| `modules/acpi/acpi_madt.c` | `get_next_ctrl_head` / `final_madt_int_ctrl_head` |
+| `arch/.../acpi/acpi.c` | `acpi_init`；RSDT map + walk；`parser_facp` 空 |
+| `arch/.../acpi/madt.c` | `parser_apic`；填 `NR_CPU` / `CPU_STATE` |
+| `arch/.../mm/pmm.c` | `reserve_arch_region` 调探测 |
+| `arch/.../PIC/IRQ.c` | 读 `madt_table->Local_int_ctrl_address` |
 
 ---
 
 ## 6. 流程
 
+### 6.1 硬件 / 规范：RSDP 在哪
+
+ACPI 要求在特定 BIOS 区域按 **16 字节对齐** 搜 `"RSD PTR "`。本实现：
+
+| 窗 | 地址（相对 identity / `KERNEL_VIRT_OFFSET`） |
+|----|-----------------------------------------------|
+| 第一段 | `[0x80000, 0x80400)`（简化的 EBDA 附近窗；非完整「读 BDA 0x40E 再跟 EBDA」） |
+| 第二段 | `[0xE0000, 0x100000)`（BIOS ROM 区） |
+
+步进 16。找到即返回指针；**不校验** 20 字节 checksum。找不到时 `reserve_arch_region` 仍 `SUCCESS`，只打印 `not find any rsdp`，`rsdp_addr` 保持 0——随后 `acpi_init(0)` 会把 0 当 RSDP 解，属危险缺口（启动篇已点过）。
+
+revision ≠ 0：reserve 与 `acpi_init` 都失败返回。
+
+### 6.2 reserve（早期）
+
 ```text
-acpi_probe_rsdp：扫 [0x80000,0x80400) 与 [0xE0000,0x100000)，步进16，"RSD PTR "
-  → setup_info->rsdp_addr；rev==0 才 reserve RSDT 页
-acpi_init：rev!=0 失败；仅 RSDT
-  → APIC → parser_apic：NR_CPU=0；清 STATE；Local_APIC → ++NR_CPU / disable
-  → FACP → parser_facp 空成功
-  → IOAPIC/ISO/… → break
+acpi_probe_rsdp(KERNEL_VIRT_OFFSET)
+  → setup_info->rsdp_addr = rsdp 虚址
+  → rev==0：ROUND_DOWN(rsdt_address, 2MiB) 起一窗 reserve
+  → rev!=0：失败
 ```
 
-RSDP 找不到时 reserve 仍可能 SUCCESS、`rsdp_addr=0`——后续 `acpi_init(0)` 危险（启动篇已点，本篇回链）。
+只 lock 住 **RSDT 所在页**，不预留整棵表树。其它 ACPI 表依赖它们仍落在已映射 / 未进 buddy 的物理区（QEMU 常见）；换真机若表落在可分配 RAM，有被踩风险。
+
+### 6.3 `acpi_init`（平台阶段）
+
+```text
+rev==0:
+  若 RSDT 高半未 map → BSP Map_Handler 映 2MiB（GLOBAL|R|W|V）
+  验 RSDT 签名
+  for each u32 entry:
+    KERNEL_PHY_TO_VIRT → 表头
+    按签名分类 → FACP / APIC 调 parser；其它打印或 -E（返回值被忽略）
+rev!=0: 失败
+```
+
+注意：`parser_acpi_tables` 的错误码在 walk 循环里 **未检查**；没有 MADT 时 `acpi_init` 仍可能 `SUCCESS`，`madt_table` 保持 NULL——`init_irq` 里解引用会炸。正常 QEMU 镜像会带 MADT。
+
+### 6.4 `parser_apic`
+
+```text
+NR_CPU = 0
+CPU_STATE[*] = no_cpu
+for_each_madt_ctrl_head:
+  Local_APIC → 若 apic_id < MAX: NR_CPU++; STATE[id]=cpu_disable
+  IO_APIC / Source_Override / default → break
+```
+
+之后 SMP 篇扫 `0..MAX-1`，对 `cpu_disable` 发 INIT-SIPI。稀疏 APIC id（如 0,2）与 `cpu_id_is_online` 稠密假设的冲突见拓扑篇。
+
+### 6.5 与中断控制器的接点
+
+xAPIC 路径：`madt_table->Local_int_ctrl_address` 必须等于 **`xAPIC_MMIO_BASE`（0xFEE00000）**，否则 `init_irq` 直接 return，不 map LAPIC。x2APIC 路径不走这道基址检查（MSR 访问）。MADT 里若有 Local APIC Address Override（type 5），本仓库 **不解析**——非默认基址的机器会挂在这道检查上。
 
 ---
 
 ## 7. 公开 API
 
-以 `acpi_probe_rsdp` / `acpi_init` / `parser_apic` / MADT walk 宏为准（arch/modules 头）。上层勿直接改 `NR_CPU`。
+```c
+struct acpi_table_rsdp *acpi_probe_rsdp(vaddr search_start_vaddr);
+error_t acpi_init(vaddr rsdp_addr);
+error_t parser_apic(void);
+/* walk: for_each_madt_ctrl_head(madt_table) */
+```
+
+上层 / 其它模块只应读 `NR_CPU`、`CPU_STATE`、`madt_table` 的只读字段；勿在业务路径里改 `NR_CPU`。
 
 ---
 
 ## 8. 多架构
 
-仅 x86_64。aarch64 用 DTB，见下一篇。
+仅 x86_64。aarch64 用 DTB 枚举 CPU / GIC / UART，见下一篇 `36-DTB与设备树-aarch64.md`。MADT 头里虽枚举了 GICC/GICD 等 type，**x86 解析器不走那些分支**。
 
 ---
 
 ## 9. 测试
 
-间接：SMP 启动。本篇未复测。
+间接：多核 QEMU SMP 启动。无单独 ACPI 测例。本篇未复测。
 
 ---
 
 ## 10. 限制与后续
 
-- 忽略 enable flags；稀疏 id 与 `cpu_id_is_online` 冲突见拓扑篇。  
-- 无 XSDT；IOAPIC 未消费。  
-- ECDT 等签名表可能有脏数据（弱相关）。
+- 忽略 Local APIC enable flags；disabled 条目仍可能被 SIPI。  
+- 无 XSDT；无 checksum；RSDP 缺失仍可能走到 `acpi_init(0)`。  
+- IOAPIC / ISO / Address Override 未消费。  
+- ECDT 签名表笔误；`online_capable` 宏笔误。  
+- RSDT walk 忽略 parser 返回值；无 MADT 时仍可能报成功。
+
+远期项记 `v0.1/evolution/TODO.md`。
 
 ---
 
 ## 11. 变更记录
 
-- 2026-08-29：整篇重做——两段式；消费/忽略表；忽略 enable；FEE00000；与 SMP id 模型。
+- 2026-09-25：语言轮——补 ACPI 规范搜索窗 / RSDT / MADT 字段与 OS 依赖；两段式因果；enable 忽略与 FEE00000；签名表与 flags 宏脏点。  
+- 2026-08-29：整篇重做——两段式；消费/忽略表；与 SMP id 模型。  
 - 2026-08-27：初稿。
