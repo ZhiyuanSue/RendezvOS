@@ -15,6 +15,15 @@
 
 #define RENDEZVOS_POWERD_PORT_NAME "powerd"
 
+/**
+ * @brief send KMSG_OP_SYSTEM_POWER_SHUTDOWN to "powerd" thread.
+ *
+ * Prefer this over @c kernel_panic for orderly teardown when powerd is
+ * registered.
+ *
+ * @return @c send_msg result, or @c -E_RENDEZVOS if the port is missing or
+ *         message construction / enqueue fails.
+ */
 static inline error_t rendezvos_request_poweroff(void)
 {
         Message_Port_t* port = thread_lookup_port(RENDEZVOS_POWERD_PORT_NAME);

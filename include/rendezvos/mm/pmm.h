@@ -110,7 +110,11 @@ struct mem_section {
              page < &sec_ptr->pages[sec_ptr->page_count]; \
              page++)
 
-static inline i64 phy_Page_ppn(Page* page)
+/**
+ * @brief Physical address of @p page's first byte.
+ * @return @c sec->lower_addr + PAGE_SIZE * index, or @c -E_RENDEZVOS.
+ */
+static inline i64 phy_Page_first_addr(Page* page)
 {
         if (page && page->sec) {
                 return page->sec->lower_addr
@@ -258,6 +262,25 @@ typedef bool (*pmm_reclaim_fn_t)(struct pmm* pmm, size_t need_pages,
         u64 total_avaliable_pages;                                            \
         pmm_reclaim_fn_t reclaim_fn;
 
+/**
+ * @brief Per-zone physical page allocator ops + state.
+ * Callers pick a zone's @c pmm (usually @c mem_zones[ZONE_NORMAL].pmm );
+ *
+ * @par pmm_alloc
+ * Request @p page_number pages; on success returns starting @c ppn_t and
+ * writes the actual count (rounded up to 2^n) to @p alloced_page_number.
+ * @c page_number == 0 → returns 0 and sets alloced to 0.
+ * Failures return a negative @c error_t.
+ * Use @c invalid_ppn() (@c ppn <= 0) to detect failure
+ *
+ * @par pmm_free
+ * Release @p page_number pages starting at @p ppn (must match a prior alloc
+ * span). Returns @c REND_SUCCESS (0) or negative error_t.
+ *
+ * @par Locking
+ * Implementations take the zone MCS lock via @c pmm_lock / @c pmm_unlock;
+ * @c me must be the current CPU's @c pmm_spin_lock[zone_id] slot.
+ */
 struct pmm {
         PMM_COMMON;
 };
@@ -289,14 +312,13 @@ static inline void pmm_unlock(struct pmm* pmm)
         unlock_mcs(&pmm->spin_ptr, &percpu(pmm_spin_lock[pmm->zone->zone_id]));
 }
 
-/*
- * @brief Increase or decrease reference counts for a range of physical pages
- * @param pmm: physical memory manager
- * @param start_ppn: starting physical page number
- * @param page_number: number of pages to modify
- * @param increment: true to increase ref_count, false to decrease
- * @return: REND_SUCCESS on success, error code on failure
- *
+/**
+ * @brief Increase or decrease reference counts for a range of physical pages.
+ * @param pmm Zone allocator owning the pages.
+ * @param start_ppn Starting physical page number.
+ * @param page_number Number of pages to modify.
+ * @param increment @c true to increase @c ref_count, @c false to decrease.
+ * @return @c REND_SUCCESS, or a negative @c error_t
  * On failure, automatically rolls back any changes made during this call.
  */
 static inline error_t pmm_change_pages_ref(struct pmm* pmm, ppn_t start_ppn,
@@ -364,6 +386,18 @@ static inline void pmm_zone_unlock(MemZone* zone)
         unlock_mcs(&zone->pmm->spin_ptr, &percpu(pmm_spin_lock[zone->zone_id]));
 }
 
+/**
+ * @brief BSP bring-up: build zones and enable physical page allocation.
+ *
+ * Must run before @c virt_mm_init / @c arch_start_platform. After success,
+ * zone @c pmm pointers are usable for page alloc/free.
+ *
+ * @param arch_setup_info Boot setup struct (arch fills memmap / DTB fields).
+ * @return @c REND_SUCCESS if success, or @c -E_RENDEZVOS on reserve / layout
+ * failure.
+ *
+ * @note Fatal arch bring-up failures may @c kernel_halt and not return.
+ */
 error_t phy_mm_init(struct setup_info* arch_setup_info);
 
 #endif

@@ -4,6 +4,10 @@
 #include "pmm.h"
 #include <common/dsa/list.h>
 
+/**
+ * @brief Max buddy order (inclusive). Largest block is 2^BUDDY_MAXORDER pages
+ *        (= 4 MiB when PAGE_SIZE is 4 KiB; order 10 covers a 4 MiB leaf).
+ */
 #define BUDDY_MAXORDER 10
 /*for buddy in linux, this number is 10, but I think the page table will map a
  * 2Mb page, which need the order 9, however, I have to compat with the linux,
@@ -25,6 +29,11 @@ struct buddy_bucket {
         struct list_entry avaliable_frame_list;
 };
 
+/**
+ * @brief Default @c struct pmm implementation (buddy allocator).
+ *
+ * global instance @c buddy_pmm is ZONE_NORMAL's pmm.
+ */
 struct buddy {
         PMM_COMMON;
 

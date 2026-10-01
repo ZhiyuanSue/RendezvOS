@@ -15,12 +15,34 @@
 #include "barrier.h"
 
 typedef struct spin_lock_t spin_lock_t;
+/**
+ * @brief Per-waiter MCS queue node (must be CPU-private for the holder).
+ */
 struct spin_lock_t {
         spin_lock_t *next;
         u64 spin;
 };
+/**
+ * @brief Queue head pointer (NULL = unlocked).
+ */
 typedef struct spin_lock_t *spin_lock;
 
+/**
+ * @brief Acquire an MCS lock.
+ *
+ * @param m  Address of the lock head pointer
+ * @param me This CPU's waiter node (per-CPU / holder-private).
+ *
+ * Waiting path spins with @c atomic64_load on @c me->spin (pairs with
+ * unlock's @c atomic64_store handoff).
+ *
+ * [中文临时对照 — 审阅后可删]
+ * @brief 获取一把 MCS 锁。
+ * @param m  锁头指针的地址
+ * @param me 本 CPU 的 waiter 节点（per-CPU / 持有者私有）。
+ * 等待路径对 @c me->spin 用 @c atomic64_load 自旋（与 unlock 的
+ * @c atomic64_store 交棒配对）。
+ */
 static inline void lock_mcs(spin_lock *m, spin_lock_t *me)
 {
         spin_lock_t *tail;
@@ -40,13 +62,16 @@ static inline void lock_mcs(spin_lock *m, spin_lock_t *me)
         /* Make sure we do the above setting of next. */
         barrier();
 
-        /* Spin on my spin variable */
-        while (!me->spin)
+        /* Spin on my spin variable (acquire vs unlock store). */
+        while (!atomic64_load((volatile u64 *)&me->spin))
                 arch_cpu_relax();
 
         return;
 }
 
+/**
+ * @brief Release an MCS lock held with @p me.
+ */
 static inline void unlock_mcs(spin_lock *m, spin_lock_t *me)
 {
         /* No successor yet? */
@@ -57,14 +82,19 @@ static inline void unlock_mcs(spin_lock *m, spin_lock_t *me)
                         return;
 
                 /* Wait for successor to appear */
-                while (!me->next)
+                while (!atomic64_load((volatile u64 *)&me->next))
                         arch_cpu_relax();
         }
 
         /* Unlock next one */
-        me->next->spin = 1;
+        atomic64_store((volatile u64 *)&me->next->spin, 1);
 }
 
+/**
+ * @brief Non-blocking MCS try: acquire only if the queue is empty.
+ *
+ * @return 0 if acquired, 1 if busy
+ */
 static inline int trylock_mcs(spin_lock *m, spin_lock_t *me)
 {
         spin_lock_t *tail;
@@ -74,7 +104,7 @@ static inline int trylock_mcs(spin_lock *m, spin_lock_t *me)
 
         /* Try to lock */
         tail = (spin_lock_t *)atomic64_cas(
-                (volatile u64 *)m, (u64)NULL, (u64)&me);
+                (volatile u64 *)m, (u64)NULL, (u64)me);
         /* No one was there - can quickly return */
         if (!tail)
                 return 0;

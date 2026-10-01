@@ -66,9 +66,9 @@ struct VSpace;
  * radix INSERT lock sees **any** already-insertable overlap in that range, the
  * whole call **fails** (no overwrite, no partial range). PMM alloc before lock
  *   failure is rolled back.
- * - @ref mm_user_utils_fill_page_with_exist_range: exactly **one** page; radix
- * leaf must already exist and be LAZY without VALID. Otherwise **fails** — no
- * implicit grow.
+ * - @ref mm_user_utils_fill_page_with_exist_range: exactly **one** page; if the
+ * leaf is already VALID, succeeds as a no-op; otherwise the leaf must already
+ * exist and be LAZY (not VALID). Other cases **fail** — no implicit grow.
  * - Sparse or multi-hole VA: **not** hidden inside these functions; the
  *   orchestrator composes multiple interval walks / per-page calls.
  * - @ref mm_user_utils_set_range_flags: every page in the half-open range must
@@ -101,11 +101,9 @@ typedef enum {
  * @brief Allocate contiguous physical pages, map+bind @p page_count user pages.
  *
  * **Pre:** caller holds @ref vmm_radix_tree_lock_range_big on the range's L0
- * span; uses L2 @ref RADIX_RL_INSERT → insert_range → map loop →
- * leaf_bind_range → unlock L2 → zero @p page_count bytes at @p range_start.
- * Buddy may satisfy more than @p page_count; excess physical pages are freed
- * immediately after alloc; only @p page_count pages are mapped. On failure:
- * unmap prefix, DELETE range, pmm_free.
+ * span. Uses L2 @ref RADIX_RL_INSERT, then maps and binds @p page_count pages
+ * (zero-filled). On failure: unmaps any prefix, deletes the radix range, and
+ * frees physical pages.
  *
  * @return @p range_start on success, or 0 on failure.
  */
@@ -122,8 +120,8 @@ vaddr mm_user_utils_set_range_and_fill(struct VSpace* vs, vaddr range_start,
 /**
  * @brief Turn one LAZY radix leaf into a zero-filled mapped page (VALID).
  *
- * Leaf must exist, be LAZY, not VALID. Zeros @p page_va after L2 unlock (mapped
- * user VA). **Pre:** same L0 contract as @ref mm_user_utils_set_range_and_fill.
+ * Already-VALID leaf → success no-op. Otherwise leaf must exist and be LAZY.
+ * **Pre:** same L0 contract as @ref mm_user_utils_set_range_and_fill.
  */
 error_t mm_user_utils_fill_page_with_exist_range(struct VSpace* vs,
                                                  vaddr page_va,
