@@ -22,6 +22,12 @@ static inline void arch_set_current_kernel_vspace_root(paddr k_root)
         msr("TTBR1_EL1", k_root);
         isb();
 }
+/**
+ * @brief Load user page-table root into TTBR0_EL1 with ASID in bits [63:48].
+ * @param u_root Physical address of the user L0 table.
+ * @param asid   Software ASID.
+ * @note Does not flush TLB.
+ */
 static inline void arch_set_current_user_vspace_root_asid(paddr u_root,
                                                           asid_t asid)
 {

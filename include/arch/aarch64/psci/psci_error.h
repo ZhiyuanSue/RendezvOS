@@ -1,6 +1,12 @@
 #ifndef _RENDEZVOS_PSCI_ERROR_H_
 #define _RENDEZVOS_PSCI_ERROR_H_
 
+/**
+ * @brief PSCI return status list.
+ *
+ * Hardware fail returns negative error codes; like -psci_* , Success return
+ * psci_succ(0).
+ */
 enum psci_error_code {
         psci_succ = 0,
         psci_not_support,

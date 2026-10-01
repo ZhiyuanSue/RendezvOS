@@ -99,7 +99,12 @@ struct x86_64_trap_info {
         } pf_ec;
 };
 
-/* Parse tf into architecture-specific trap info (used by fixed-trap wrapper).
+/**
+ * @brief Parser and fill x86_64_trap_info from a trap_frame 
+ * including TRAP_COMMON and pf_ec fields.
+ *
+ * @param tf Trap frame need to parser
+ * @param info output infos
  */
 void arch_populate_trap_info(struct trap_frame *tf,
                              struct x86_64_trap_info *info);
@@ -130,6 +135,10 @@ struct trap_frame {
         u64 rsp;
         u64 ss;
 };
+/* 
+ * Cross arch macro for kernel using the same macro.
+ * which means the syscall args and syscall id using what reg.
+ */
 #define ARCH_SYSCALL_ID    rax
 #define ARCH_SYSCALL_RET   rax
 #define ARCH_SYSCALL_ARG_1 rdi
@@ -139,15 +148,49 @@ struct trap_frame {
 #define ARCH_SYSCALL_ARG_5 r8
 #define ARCH_SYSCALL_ARG_6 r9
 
+/**
+ * @brief Load this CPU's IDT (lidt).
+ */
 void arch_init_interrupt(void);
+
+/**
+ * @brief Reserve x86 fixed vectors on this CPU; publish device alloc pool.
+ * 
+ * The maintainer must understand the layout of irq_vector.
+ * It's percpu.
+ * Every cpu have a irq vector. But some irqs are global.
+ * So there must have a broadcast——of course not here.
+ * For init, cpu is boot one by one.
+ * so it should also reserve the namespace of current cpu. 
+ * and maintain the global namespace for global irq. 
+ * The later enabled cpu should not confict with the prev cpu.
+ * 
+ * Per-CPU USED: [0, TRAP_ARCH_USED), timer 0x20, spurious 0x27, IPI 0x30.
+ * Global pool: [ARCH_IRQ_VEC_ALLOC_LO, ARCH_IRQ_VEC_ALLOC_HI].
+ * Handler install is later (except spurious often stays empty).
+ */
 void arch_init_irq_vector_state(void);
+
+/**
+ * @brief if this trap have not register a handler, using this default handler.
+ * it just print the trap frame and just return.
+ * a panic is recommend after this function.
+ */
 void arch_unknown_trap_handler(struct trap_frame *tf);
+
+/**
+ * @brief whether this trap comes from kernel, if so, return true, else false.
+ *
+ * @note Compares @c tf->cs to the kernel CS descriptor selector.
+ */
 static inline bool arch_int_from_kernel(struct trap_frame *tf)
 {
         return tf->cs == sizeof(union desc) * GDT_KERNEL_CS_INDEX;
 }
 
-/* Faulting virtual address for #PF (x86_64: CR2). */
+/**
+ * @brief get faulting VA for #PF from CR2; @p tf unused on x86_64.
+ */
 static inline vaddr arch_get_fault_addr(struct trap_frame *tf)
 {
         (void)tf;

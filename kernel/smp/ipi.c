@@ -4,10 +4,6 @@
 #include <rendezvos/smp/smp.h>
 #include <rendezvos/trap/trap.h>
 
-/* Arch hooks — not in the public ipi.h. */
-void arch_smp_ipi_init(void (*handler)(struct trap_frame *tf));
-error_t arch_smp_ipi_send(cpu_id_t cpu);
-
 struct smp_ipi_slot {
         smp_ipi_fn_t fn;
         bool used;

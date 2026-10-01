@@ -15,14 +15,23 @@ https://developer.aliyun.com/article/1532907
 #define GIC_V2_SPI_START 32
 #define GIC_V2_SPI_END   1019
 
+/**
+ * @brief @p irq_num is a SGI interrupt (0–15).
+ */
 static inline bool gic_v2_is_sgi(u32 irq_num)
 {
         return irq_num <= GIC_V2_SGI_END;
 }
+/**
+ * @brief @p irq_num is a PPI interrupt (16–31).
+ */
 static inline bool gic_v2_is_ppi(u32 irq_num)
 {
         return (irq_num >= GIC_V2_PPI_START && irq_num <= GIC_V2_PPI_END);
 }
+/**
+ * @brief @p irq_num is a SPI interrupt (32–1019).
+ */
 static inline bool gic_v2_is_spi(u32 irq_num)
 {
         return (irq_num >= GIC_V2_SPI_START && irq_num <= GIC_V2_SPI_END);
@@ -148,6 +157,13 @@ struct gic_virtual_interface {
         volatile u32 GICH_LR[0x40]; /*RW	0x100-0x1FC*/
 } __attribute__((packed));
 
+/**
+ * @brief Pack GICC_IAR / EOIR value.
+ *
+ * The value read from GICC_IAR or the value write to GICC_EOIR is the same:
+ * INTID[9:0] + CPUID[12:10]
+ * The CPUID[12:10] is used for SGI(ipi) to classify which cpu send it.
+ */
 union irq_source {
         u64 irq_source_value;
         struct {
@@ -156,24 +172,107 @@ union irq_source {
         } __attribute__((packed));
 } __attribute__((packed));
 
+/**
+ * @brief GICv2 driver object (global @c gic ).
+ *
+ * BSP call order:
+ * - probe
+ * - init_distributor (platform init once)
+ * 
+ * per CPU call after init_interrupt:
+ * - init_cpu_interface
+ * - IPI/timer register.
+ * 
+ * Device SPI alloc: 
+ * irq_vector_alloc: just get a number from the global pool
+ * - register_irq_handler 
+ * - unmask_irq
+ * - optional set_affinity.
+ *
+ * @note compatible is hard-coded "arm,cortex-a15-gic"; if mismatch → probe
+ *       returns without setting gicd/gicc.
+ */
 struct gic_v2 {
-        struct gic_distributor* gicd;
-        struct gic_cpu_interface* gicc;
-        char* compatible;
+        struct gic_distributor* gicd; /**< Distributor MMIO mapped address*/
+        struct gic_cpu_interface* gicc; /**< Per-CPU interface MMIO mapped address*/
+        char* compatible; /** DTB compatible string for probe */
+
+        /**
+         * @brief probe: Find DTB node, map GICD/GICC DEVICE and set gicd/gicc pointers.
+         *
+         * @return Expects reg = [gicd_phys, len, gicc_phys, len]. Silent return on
+         * missing node/property.
+         */
         void (*probe)(void);
+
+        /**
+         * @brief SPI bring-up
+         */
         void (*init_distributor)(void);
+
+        /**
+         * @brief Per-CPU cpu interface bring-up
+         *
+         * Called after init_interrupt has already enabled IRQ (DAIF)
+         */
         void (*init_cpu_interface)(void);
+
+        /**
+         * @brief Set GICD_ISENABLER bit for @p irq_num.
+         */
         void (*unmask_irq)(u32 irq_num);
+
+        /**
+         * @brief Set GICD_ICENABLER bit for @p irq_num.
+         */
         void (*mask_irq)(u32 irq_num);
+
+        /**
+         * @brief Program GICD_ICFGR edge/level trigged for @p irq_num.
+         * @param type Use GIC_V2_GICD_EDGE_TRIGGER / LEVEL_TRIGGER.
+         */
         void (*set_type)(u32 irq_num, u32 type);
+
+        /**
+         * @brief set priority to GICD_IPRIORITYR for @p irq_num.
+         */
         void (*set_priority)(u32 irq_num, u32 prio);
+
+        /**
+         * @brief Set CPU affinity to GICD_ITARGETSR for an SPI.
+         * @param irq_num Must be SPI (≥32); SGI/PPI ignored
+         * @param cpu_id_mask ITARGETSR byte bitmask; values ≥ 0xff rejected
+         *        (@c >= GIC_V2_ITARGETSR_MASK)
+         */
         void (*set_affinity)(u32 irq_num, u32 cpu_id_mask);
+
+        /**
+         * @brief Write GICD_SGIR to generate SGI to @p irq_num (must be SGI 0–15).
+         * @param target_mode GIC_V2_GICD_SGIR_TARGET_* (specified/other/self)
+         * @param target_list_bit Pre-shifted TargetList field (bits [23:16])
+         *        when mode is TARGET_SPECIFIED; ignored for OTHER/SELF
+         */
         void (*send_sgi)(u32 irq_num, u32 target_mode, u32 target_list_bit);
+
+        /**
+         * @brief Read GICC_IAR (acknowledges the IRQ); returns INTID+CPUID union irq_source.
+         */
         union irq_source (*read_irq_num)(void);
+
+        /**
+         * @brief Write GICC_EOIR with @p source (typically the value raed from IAR).
+         */
         void (*eoi)(union irq_source source);
+
+        /**
+         * @brief Clear pending via GICD_ICPENDR for @p irq_number.
+         */
         void (*pending_clr)(u32 irq_number);
 };
 
+/**
+ * @brief GICv2 object instance.
+ */
 extern struct gic_v2 gic;
 
 #endif

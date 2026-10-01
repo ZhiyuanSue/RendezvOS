@@ -16,6 +16,14 @@
 #error "A KERNEL_VIRT_OFFSET micro must be defined"
 #endif
 
+/**
+ * @brief get memory info from multiboot into @c m_regions.
+ *
+ * @param arch_setup_info Boot setup info including Multiboot fields.
+ * @param next_region_phy_start Output physical start for next region.
+ *
+ * @note if no usable memory regions, run @c kernel_halt() and does not return.
+ */
 void arch_init_pmm(struct setup_info *arch_setup_info,
                    vaddr *next_region_phy_start);
 

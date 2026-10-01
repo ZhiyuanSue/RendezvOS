@@ -6,7 +6,6 @@
 // As for this file, although the print function for dtb is useless
 // but it logic is the same as that in dtb parse, so it can be reused and used
 // for check
-extern struct property_type property_types[255];
 void print_property_value_empty(enum property_type_enum p_type, void *data,
                                 u32 len)
 {

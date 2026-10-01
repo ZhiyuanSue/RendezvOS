@@ -20,6 +20,10 @@ void set_console_color(struct x86_char_console* console, u64 color);
 void set_console_size(struct x86_char_console* console, u64 xlimit, u64 ylimit);
 void clear_screen(struct x86_char_console* console);
 void clear_line(struct x86_char_console* console, u64 line);
+/**
+ * @brief Write one character to VGA text at @c CHAR_CONSOLE_PHY_BASE
+ *        (+ @c KERNEL_VIRT_OFFSET ). Handles \\n/\\r, tab, wrap, scroll.
+ */
 void char_console_putc(struct x86_char_console* console, char c);
 
 #define X86_CHAR_CONSOLE_FORWORD_NONE   0
@@ -29,6 +33,9 @@ void char_console_putc(struct x86_char_console* console, char c);
 #define X86_CHAR_CONSOLE_FORWORD_RED    4
 #define X86_CHAR_CONSOLE_FORWORD_YELLOW 6
 
+/**
+ * @brief Map ANSI-ish fg/bg codes (30+/40+) to VGA attribute nibble pair.
+ */
 u8 map_color(u64 forward_color, u64 backword_color);
 #ifdef _X86_64_
 

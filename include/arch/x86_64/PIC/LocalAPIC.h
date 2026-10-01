@@ -181,11 +181,26 @@ bool x2APIC_support(void);
 bool TSC_DDL_support(void);
 bool ARAT_support(void);
 
+/**
+ * @brief Set IA32_APIC_BASE global enable (xAPIC MMIO mode).
+ */
 void enable_xAPIC(void);
+/**
+ * @brief Set IA32_APIC_BASE enable + x2APIC enable bits.
+ */
 void enable_x2APIC(void);
+/**
+ * @brief Clear APIC enable bits in IA32_APIC_BASE.
+ */
 void disable_APIC(void);
 
+/**
+ * @brief let the APIC to a init state
+ */
 void reset_APIC(void);
+/**
+ * @brief xAPIC only: set DFR as flat, set LDR bit0.
+ */
 void reset_xAPIC_LDR(void);
 
 /*apic timer part*/
@@ -197,9 +212,41 @@ tick_t APIC_timer_hz(enum timer_type sys_timer_type);
 tick_t APIC_timer_read(enum timer_type sys_timer_type);
 void APIC_timer_reset(enum timer_type sys_timer_type, tick_t next_event_gap);
 
+/**
+ * @brief enable APIC : set SW_ENABLE and spurious vector = ARCH_IRQ_VEC_SPURIOUS (0x27).
+ */
 void software_enable_APIC(void);
+
+/**
+ * @brief Map physical 0xFEE00000 UNCACHED into the kernel VSpace (xAPIC only).
+ * @return true on success / already mapped; false if not xAPIC or map fails
+ */
 bool map_LAPIC(void);
+
+/**
+ * @brief Write Local APIC EOI register
+ */
 void APIC_EOI(void);
+
+/**
+ * @brief Send an IPI via ICR (bring-up INIT/SIPI or soft IPI).
+ *
+ * xAPIC: 
+ * - wait Delivery Status clear
+ * - write ICR_HIGH (dest) then ICR_LOW(fires). 
+ * x2APIC: single 64-bit MSR write (no Delivery Status poll).
+ *
+ * @param dest_field Destination APIC ID when shorthand is NO
+ * @param dest_sh    APIC_ICR_DEST_SH_* 
+ * @param trigger_mode APIC_ICR_TRIGGER_*
+ * @param level      APIC_ICR_LEVEL_*
+ * @param dest_mode  APIC_ICR_DEST_PHYSICAL / LOGICAL
+ * @param del_mode   APIC_ICR_DEL_MODE_* (FIXED / INIT / START_UP / …)
+ * @param vector     IDT vector
+ *
+ * @note @p dest_field is u8: placed at ICR bits [63:56], so x2APIC's 32-bit
+ *       dest field [63:32] keeps [55:32] zero (and APIC id > 255 unsupported).
+ */
 void APIC_send_IPI(u8 dest_field, u32 dest_sh, u32 trigger_mode, u32 level,
                    u32 dest_mode, u32 del_mode, u32 vector);
 

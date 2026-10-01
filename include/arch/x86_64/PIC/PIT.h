@@ -14,11 +14,28 @@
 #define _8254_CTL_SC_OFF_  (6)
 #define _8254_CTL_SC_MASK_ (0b11 << _8254_CTL_SC_OFF_)
 
+/**
+ * @brief Program 8254 channel 0 as rate generator at @p freq Hz.
+ */
 void init_8254_cyclical(int freq);
+/**
+ * @brief One-shot countdown of @p t PIT ticks on channel 0.
+ */
 void init_8254_one_shot(u16 t);
 void init_8254_read();
 u16 read_8254_val();
+
+/**
+ * @brief Busy-wait @p ms using 8254 one-shot.
+ * @note Practical upper bound ~25 ms per call (16-bit counter).
+ */
 void PIT_mdelay(int ms);
+
+/**
+ * @brief Advance software PIT base by previous gap; store next @p step.
+ *
+ * Used when arch_irq_type == PIC_IRQ as the timer backend.
+ */
 void PIT_update_timer(u16 step);
 u64 PIT_timer_read(void);
 #define PIT_TICK_RATE 1193181

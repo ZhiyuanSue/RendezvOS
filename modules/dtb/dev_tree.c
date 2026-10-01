@@ -1,8 +1,8 @@
 #include <modules/dtb/dev_tree.h>
 #include <modules/dtb/dtb.h>
+#include <modules/dtb/property.h>
 #include <modules/log/log.h>
 #include <rendezvos/error.h>
-extern struct property_type property_types[PROPERTY_TYPE_NUM];
 struct device_node* device_root;
 void _print_device_tree(struct device_node* node, int depth)
 {

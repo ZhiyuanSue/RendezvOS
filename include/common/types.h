@@ -37,9 +37,9 @@ typedef u_int64_t uint64_t;
 typedef unsigned long uintptr_t;
 
 typedef u64 addr_t;
-typedef addr_t vaddr;
-typedef addr_t paddr;
-typedef u16 asid_t;
-typedef int error_t;
+typedef addr_t vaddr; /* Virtual address type */
+typedef addr_t paddr; /* Physical address type */
+typedef u16 asid_t; /* Address-space id type */
+typedef int error_t; /* error type */
 
 #endif

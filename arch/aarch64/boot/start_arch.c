@@ -16,6 +16,7 @@
 #include <rendezvos/mm/vmm.h>
 #include <rendezvos/mm/allocator.h>
 #include <rendezvos/trap/trap.h>
+#include <rendezvos/system/syscall.h>
 #include <rendezvos/time.h>
 #include <arch/aarch64/sys_ctrl.h>
 #include <arch/aarch64/sync/barrier.h>
@@ -24,8 +25,6 @@ extern u64 L2_table;
 extern char* cmdline_ptr;
 cpu_id_t BSP_ID = 0;
 struct cpuinfo cpu_info = {0};
-
-extern void syscall(struct trap_frame *syscall_ctx);
 
 /*
  * Merge user PSTATE I (from SPSR at trap entry) into live DAIF.

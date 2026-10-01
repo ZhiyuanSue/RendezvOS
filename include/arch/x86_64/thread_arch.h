@@ -73,23 +73,65 @@ static inline u64 arch_get_user_tls_base(const Arch_Thread_Context* ctx)
 {
         return ctx ? ctx->user_fs : 0;
 }
+/**
+ * Return-to-user have two path (Path A vs Path B)
+ *
+ * Path A — same thread already inside a syscall/trap and want to change the exit info:
+ *   rewrite the live @c trap_frame with @c arch_syscall_set_user_return
+ *   (optional @c arch_syscall_set_user_int_arg ). Hardware exit ( @c eret ) reloads that same frame.
+ *   Do not call @c arch_return_to_user afterward.
+ *   Examples: execve replace-image, signal deliver onto the current frame.
+ *
+ * Path B — no usable syscall frame (new thread / first drop):
+ *   prepare a frame under @c kstack_bottom (empty or copy), and using
+ *   @c arch_syscall_set_user_return, then @c arch_return_to_user → drop.
+ *   Examples: PID1 first entry, @c run_elf_program, @c run_copied_thread.
+ */
+/**
+ * @brief Path B: if have template_tf, install user return state under @p kstack_bottom 
+ *        or using the exist trapframe under @p kstack_bottom
+ *        and  leave the kernel via @c arch_drop_to_user.
+ * @param kstack_bottom Thread kernel stack high address; no-op if 0.
+ * @param template_tf If non-NULL, copied onto @c ((trap_frame*)kstack_bottom)-1
+ *        (after zeroing); if NULL, uses the frame already there.
+ * @param syscall_ret Written to @c rax before drop.
+ * @note Does not return on success. Path A must not use this.
+ */
 void arch_return_to_user(u64 kstack_bottom,
                          const struct trap_frame* template_tf, u64 syscall_ret);
-/*
- * Path A: in-flight syscall trap_frame (syscall_ctx). User PC in rcx, RSP in
- * percpu(user_rsp_scratch), syscall return value in rax.
+/**
+ * @brief Commit user PC / SP / syscall return onto a live frame (Path A or B).
+ *
+ * Writes @c tf->rcx = PC, @c tf->rax = ret, @c percpu(user_rsp_scratch) = SP
+ * (and @c ctx->user_rsp if @p ctx non-NULL).
+ * Path A: do not call @c arch_return_to_user afterward—@c sysretq uses this
+ * frame. Path B: call this, then @c arch_return_to_user.
+ *
+ * @param tf target trap_frame (Path A: in-flight syscall_ctx)
+ * @param ctx Optional; updated user_rsp when non-NULL
+ * @param user_pc User RIP loaded into rcx for sysret
+ * @param user_sp User RSP via scratch (not tf->rsp)
+ * @param syscall_ret Value restored from the rax stack slot on exit
  */
 void arch_syscall_set_user_return(struct trap_frame* tf, Arch_Thread_Context* ctx,
                                   vaddr user_pc, vaddr user_sp,
                                   u64 syscall_ret);
+/**
+ * @brief Read back user PC / SP / ret from a live frame.
+ * Opposite of @c arch_syscall_set_user_return.
+ */
 void arch_syscall_get_user_return(const struct trap_frame* tf,
                                   const Arch_Thread_Context* ctx, vaddr* user_pc,
                                   vaddr* user_sp, u64* syscall_ret);
-/*
- * Set SysV AMD64 user integer argument reg (0..NR_ABI_PARAMETER_INT_REG-1):
- * 0=rdi, 1=rsi, 2=rdx, 3=rcx, 4=r8, 5=r9.
- * Path A: index 3 (rcx) is also syscall return PC; do not use after
- * set_user_return.
+/**
+ * @brief Set SysV AMD64 user int arg (0=rdi … 5=r9) on @p tf.
+ *
+ * Complements @c arch_syscall_set_user_return (PC/SP/ret only). Used when the
+ * user entry needs ABI args (e.g. signal: arg0 = sig).
+ *
+ * @note Path A + @c set_user_return: do not touch arg_index 3 (rcx = return
+ *       PC). Prefer calling after @c set_user_return for args that do not
+ *       overlap (arg0–2, 4–5).
  */
 void arch_syscall_set_user_int_arg(struct trap_frame* tf,
                                    unsigned int arg_index, u64 value);
@@ -114,6 +156,18 @@ static inline void arch_task_ctx_init(Arch_Thread_Context* ctx)
         ctx->r13 = ctx->r12 = 0;
         ctx->user_gs = ctx->user_fs = 0;
 }
+/**
+ * @brief set first-time kernel entry context: push return to @p func_ptr on the
+ *        kstack and set @c ctx->rsp / @c stack_bottom.
+ * @param reserve_trap_frame If true, reserve a @c trap_frame space below
+ *        @p kstack_bottom before the RFLAGS/return-address pair.
+ *
+ * [中文临时对照 — 审阅后可删]
+ * 首次内核入口上下文：在 kstack 上压入返回到 @p func_ptr，并设置
+ * @c ctx->rsp / @c stack_bottom。
+ * @param reserve_trap_frame 为真时，在 RFLAGS/返回地址对之前于
+ *        @p kstack_bottom 下预留一个 @c trap_frame 槽。
+ */
 static inline void arch_set_new_thread_ctx(Arch_Thread_Context* ctx,
                                            void* func_ptr, void* kstack_bottom,
                                            bool reserve_trap_frame)
@@ -143,8 +197,22 @@ static inline void arch_set_thread_user_sp(Arch_Thread_Context* ctx,
 {
         ctx->user_rsp = user_sp;
 };
+/**
+ * @brief Assembly: save/restore callee-saved regs + kernel SP (see
+ *        arch_switch.S). Called only from @c switch_to.
+ */
 extern void context_switch(Arch_Thread_Context* old_context,
                            Arch_Thread_Context* new_context);
+
+/**
+ * @brief Arch context switch after @c schedule unlocks @c sched_lock.
+ *
+ * Saves TSS.RSP0, KERNEL_GS_BASE, FS_BASE, and per-CPU user_rsp_scratch into
+ * @p old_context; loads the same from @p new_context; then @c context_switch.
+ * Does not write CR3 / user page-table root (handled by schedule).
+ */
 void switch_to(Arch_Thread_Context* old_context, Arch_Thread_Context* new_context);
+/** @brief using @p tf to drop to user space.
+ */
 void arch_drop_to_user(struct trap_frame* tf);
 #endif

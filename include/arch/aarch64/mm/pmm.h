@@ -11,6 +11,16 @@
 #error "A KERNEL_VIRT_OFFSET micro must be defined"
 #endif
 
+/**
+ * @brief Arch: parse DTB memory nodes get memory range.
+ * and put the memory info into @c m_regions for next stage pmm init.
+ *
+ * @param arch_setup_info Must have @c boot_dtb_header_base_addr from
+ * prepare_arch.
+ * @param next_region_phy_start Output physical start for next region.
+ *
+ * @note if no usable memory regions, run @c kernel_halt() and does not return.
+ */
 void arch_init_pmm(struct setup_info *arch_setup_info,
                    vaddr *next_region_phy_start);
 #endif

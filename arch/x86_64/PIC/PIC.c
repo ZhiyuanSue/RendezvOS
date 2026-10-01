@@ -86,7 +86,9 @@ error_t PIC_EOI(int irq_num)
         } else if (irq_num >= _8259A_SLAVE_IRQ_NUM_
                    && irq_num < _8259A_SLAVE_IRQ_NUM_
                                         + _8259A_IRQ_NUM_) { /*slave irq*/
+                /* first eoi slave then master: slave holds master IRQ2 */
                 outb(_X86_8259A_SLAVE_0_, _8259A_OCW_2_EOI_);
+                outb(_X86_8259A_MASTER_0_, _8259A_OCW_2_EOI_);
         } else { /*wrong irq num*/
                 return (-E_RENDEZVOS);
         }

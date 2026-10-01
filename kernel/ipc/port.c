@@ -170,6 +170,28 @@ void port_ops_end(Message_Port_t* port)
         port_ops_count_dec(port);
 }
 
+/*
+ * clean port->thread_queue on unregister (also a defensive on final free).
+ *
+ * send/recv notification differs:
+ * the two waiters resume into different API shapes after schedule.
+ *
+ *   block_on_send  — wakes inside send_msg. That path never dequeues the
+ *     thread’s recv queue. So when abort it must drop the orphan send msg 
+ *     on the send queue and return -E_REND_PORT_CLOSED. 
+ *     So we just set thread's THREAD_FLAG_IPC_PORT_CLOSED flag.
+ *
+ *   block_on_receive — wakes inside recv_msg. Success means “dequeue a
+ *     message” and server loops are opcode-driven. So we try to send a  
+ *     KMSG_OP_SYSTEM_PORT_CLOSED kmsg via ipc_system_deliver_to.
+ *     Only if recv_pending_cnt still 0 after the attempt,
+ *     which means this deliver failed, we set the thread's 
+ *     THREAD_FLAG_IPC_PORT_CLOSED flag. So the waiter cannot hang 
+ *     on SUCCESS with an empty queue. Or a successful deliver with a error 
+ *     return with THREAD_FLAG_IPC_PORT_CLOSED flag set(and leave a kmsg in queue).
+ *
+ * This function should be aligned with the ipc part and other port part.
+ */
 static void port_clean_thread_queue(Message_Port_t* port)
 {
         tagged_ptr_t dequeued_ptr;

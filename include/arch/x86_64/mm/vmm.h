@@ -33,6 +33,14 @@ static inline void arch_set_current_user_vspace_root(paddr u_root)
 {
         __asm__ __volatile__("movq %0, %%cr3" : : "r"(u_root) :);
 }
+
+/**
+ * @brief Load user root page-table into CR3;
+ * @p u_root physical address of user page-table.
+ * @p asid is ignored (PCID not enabled).software still allocates vs->asid(just
+ * not use it now)
+ * @note Portable name matches aarch64.
+ */
 static inline void arch_set_current_user_vspace_root_asid(paddr u_root,
                                                           asid_t asid)
 {

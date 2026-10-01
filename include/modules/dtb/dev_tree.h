@@ -17,6 +17,9 @@ struct device_node {
         char* name;
         struct property* property;
 };
+/**
+ * @brief Global device-tree root set by @c build_device_tree.
+ */
 extern struct device_node* device_root;
 
 struct property {
@@ -34,19 +37,38 @@ enum dev_node_find_way {
         _dev_node_find_by_type = 2,
         _dev_node_find_by_compatible = 3,
 };
+/**
+ * @brief DFS find by node name. @p node NULL → start at device_root.
+ */
 struct device_node* dev_node_find_by_name(struct device_node* node,
                                           char* dev_node_name);
+/**
+ * @brief Find by device_type property string. NULL node → device_root.
+ */
 struct device_node* dev_node_find_by_type(struct device_node* node,
                                           char* type_name);
+/**
+ * @brief Find by compatible: exact match per NUL-separated list entry.
+ *
+ * Succeeds only when the search string equals one full list entry (both end
+ * at `\0`). Prefix-style matches do not hit.
+ */
 struct device_node* dev_node_find_by_compatible(struct device_node* node,
                                                 char* compatible_name);
 struct device_node* dev_node_get_first_child(struct device_node* node);
 struct device_node* dev_node_get_sibling(struct device_node* node);
+/**
+ * @brief Depth-first next for walking the whole tree.
+ */
 struct device_node* dev_tree_get_next(struct device_node* node);
-/*after we find a node, we should read the property*/
+/**
+ * @brief Linear search property list by name (length @p n ).
+ */
 struct property* dev_node_find_property(const struct device_node* node,
                                         char* prop_name, int n);
-/*when we get the property, we should read the property value*/
+/**
+ * @brief out property as different type.
+ */
 error_t property_read_string(const struct property* prop, char** str);
 
 error_t property_read_u8_arr(const struct property* prop, u8* arr, int n);

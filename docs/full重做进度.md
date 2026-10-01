@@ -18,28 +18,28 @@
 |------|------|------|----------------------------------------|
 | 1 | 00-总览/00-架构与源码布局.md | 已重做 | common.h 伞+默认 x86；cmain≠main_init；BSP→kernel_handle_msg；weak syscall；initcall 注册≠运行；powerd BSP 门控；挂接点以 thread_boot 为准 |
 | 2 | 00-总览/01-构建与链接.md | 已重做 | 模块feature→kernel/arch；手写顶层Makefile；DBG/MEM_SIZE/DUMP持久化；SMP双义；find顺序；loongarch空ld；双勾保留待你是否复审 |
-| 3 | 01-启动与初始化/02-启动流程总览.md | 已重做 | 2026-09-20：概述保留；十一节收回；§4.4 布局链 + §6 `cmain` 编排 |
-| 4 | 01-启动与初始化/03-模块初始化与内核入口.md | 已重做 | 2026-09-20：initcall 内容，十一节 |
-| 5 | 01-启动与初始化/04-平台启动-x86_64.md | 已重做 | 2026-09-25：扩写+§4.6 SDM/Multiboot 官方对照；待 Maintainer 复审 |
-| 6 | 01-启动与初始化/05-平台启动-aarch64.md | 已重做 | 2026-09-25：扩写+§4.6 ARM ARM / arm64 booting 对照；待 Maintainer 复审 |
-| 7 | 02-内存管理/06-物理内存与Buddy分配器.md | 已重做 | 2026-09-25：§6.1 Multiboot mmap / DTB memory+reg；待复审 |
-| 8 | 02-内存管理/07-虚拟地址空间与页表.md | 已重做 | 2026-09-25：§4.5 ENTRY_FLAGS↔硬件 PTE encode/decode；待复审 |
+| 3 | 01-启动与初始化/02-启动流程总览.md | 已重做 | §7 全文审阅：`main.c` Doxygen + 接口说明（无单独 h；2026-09-26） |
+| 4 | 01-启动与初始化/03-模块初始化与内核入口.md | 已重做 | §7 全文审阅：initcall + kernel_port Doxygen/说明（2026-09-26） |
+| 5 | 01-启动与初始化/04-平台启动-x86_64.md | 已重做 | §7 全文审阅：arch_setup 钩子 Doxygen/说明（2026-09-26）；§4.6 SDM 对照保留 |
+| 6 | 01-启动与初始化/05-平台启动-aarch64.md | 已重做 | §7 全文审阅：arch_setup 钩子 Doxygen/说明（2026-09-26）；§4.6 ARM 对照保留 |
+| 7 | 02-内存管理/06-物理内存与Buddy分配器.md | 已重做 | §7 全文审阅：phy_mm_init/pmm/buddy Doxygen/说明（2026-09-26） |
+| 8 | 02-内存管理/07-虚拟地址空间与页表.md | 已重做 | §7 全文审阅：vmm/map_handler Doxygen/说明（2026-09-26）；§4.5 对照保留 |
 
-| 9 | 02-内存管理/08-Radix树与用户映射.md | 已重做 | 2026-09-25：语言整理；API=`vmm_radix_tree_*`/`mm_user_utils_*`；DELETE≠owner过滤 |
-| 10 | 02-内存管理/09-kmalloc与内核堆.md | 已重做 | 2026-09-25：语言整理；双MSQ/drain/slot档 |
-| 11 | 02-内存管理/10-page_slice稀疏页索引.md | 已重做 | 2026-09-25：语言整理；destroy 签名 |
-| 12 | 02-内存管理/11-TLB与缓存一致性.md | 已重做 | 2026-09-25：中文+SDM invlpg/IPI、ARM tlbi/*is；待复审 |
-| 13 | 02-内存管理/12-ASID与地址空间标识.md | 已重做 | 2026-09-25：中文+TTBR0 ASID/TCR.AS、x86 无PCID；待复审 |
-| 14 | 03-任务与调度/13-线程与Task_Manager.md | 已重做 | 2026-09-25：中文+§6.6 TSS/GS/FS、SP_EL0/TPIDR/DAIF；薄RR/zombie/exit |
-| 15 | 03-任务与调度/14-线程创建与ELF加载.md | 已重做 | 2026-09-25：中文+§6.8 sysretq/eret；Path A/B；四API；harness零调用方 |
-| 16 | 03-任务与调度/15-VSpace所有权与调度切换.md | 已重做 | 2026-09-25：中文+§8 CR3/TTBR0；六步为何；user→kernel滞后 |
-| 17 | 03-任务与调度/16-CPU亲和性-创建时绑核.md | 已重做 | 2026-09-25：厘清软件绑核≠中断亲和；online=有TM |
-| 18 | 03-任务与调度/17-EBR与线程资源回收.md | 已重做 | 2026-09-25：语言整理；节点EBR≠TCB；与kfree排水并列 |
-| 19 | 04-IPC/18-Port与消息模型.md | 已重做 | 2026-09-25：语言整理；两步模型/单队列/Msg_Data；无硬件寄存器 |
-| 20 | 04-IPC/19-阻塞与非阻塞收发.md | 已重做 | 2026-09-25：推拉平衡+§6.1文字流；transfer race/IRQ勿阻塞 |
-| 21 | 04-IPC/20-kmsg与TLV序列化.md | 已重做 | 2026-09-25：语言整理；LMSG/`s`含NUL/`t`≠`s`；encode_alloc近死 |
-| 22 | 04-IPC/21-Port钩子与准入门.md | 已重做 | 2026-09-25：外置策略；REGISTER lookup_name=NULL；deny≠关港 |
-| 23 | 04-IPC/22-无锁队列与EBR设计.md | 已重做 | 2026-09-25：同步搬家；假出队；CAS随arch；禁审计外链 |
+| 9 | 02-内存管理/08-Radix树与用户映射.md | 已重做 | §7 全文审阅：radix/utils 说明+编排（头文件 Doxygen 已齐；2026-09-26） |
+| 10 | 02-内存管理/09-kmalloc与内核堆.md | 已重做 | §7 全文审阅：kinit/m_alloc/MSQ 说明（2026-09-26） |
+| 11 | 02-内存管理/10-page_slice稀疏页索引.md | 已重做 | §7 全文审阅：page_slice/copy 说明（2026-09-26） |
+| 12 | 02-内存管理/11-TLB与缓存一致性.md | 已重做 | §7 全文审阅：tlb invalidate/mask Doxygen/说明（2026-09-26） |
+| 13 | 02-内存管理/12-ASID与地址空间标识.md | 已重做 | §7 全文审阅：asid alloc/装根 Doxygen/说明（2026-09-26） |
+| 14 | 03-任务与调度/13-线程与Task_Manager.md | 已重做 | §7 全文审阅：schedule/TM/TCB/tid/switch_to Doxygen/说明（2026-09-26） |
+| 15 | 03-任务与调度/14-线程创建与ELF加载.md | 已重做 | §7 全文审阅：loader/create·copy/Path B Doxygen/说明（2026-09-26） |
+| 16 | 03-任务与调度/15-VSpace所有权与调度切换.md | 已重做 | §7 全文审阅：所有权/六步/clear·del 门闩 Doxygen/说明（2026-09-26） |
+| 17 | 03-任务与调度/16-CPU亲和性-创建时绑核.md | 已重做 | §7 全文审阅：online/add_to_cpu/owner Doxygen/说明（2026-09-26） |
+| 18 | 03-任务与调度/17-EBR与线程资源回收.md | 已重做 | §7 全文审阅：ebr/delete·del_structure Doxygen/说明（2026-09-26） |
+| 19 | 04-IPC/18-Port与消息模型.md | 已重做 | §7 全文审阅：port/message/global_port_init Doxygen/说明（2026-09-26） |
+| 20 | 04-IPC/19-阻塞与非阻塞收发.md | 已重做 | §7 全文审阅：send/recv/try/transfer/system Doxygen/说明（2026-09-26） |
+| 21 | 04-IPC/20-kmsg与TLV序列化.md | 已重做 | §7 全文审阅：kmsg/ipc_serial/system opcode Doxygen/说明（2026-09-26） |
+| 22 | 04-IPC/21-Port钩子与准入门.md | 已重做 | §7 全文审阅：hooks/begin·end/ops_life Doxygen/说明（2026-09-26） |
+| 23 | 04-IPC/22-无锁队列与EBR设计.md | 已重做 | §7 全文审阅：msq/taggedptr Doxygen/说明；EBR 链17（2026-09-26） |
 | 24 | 05-陷阱与中断/23-Trap抽象与分类.md | 已重做 | 2026-09-25：补TSS.RSP0/VBAR16槽/#PF ec；IDT/VBAR；双入口 |
 | 25 | 05-陷阱与中断/24-系统调用入口.md | 已重做 | 2026-09-25：LSTAR旁路 vs SVC；sti/DAIF；exit读栈rax |
 | 26 | 05-陷阱与中断/25-IRQ向量分配与处理.md | 已重做 | 2026-09-25：硬件号↔trap id；per-CPU表/EOI；两侧reserve实表 |
@@ -101,3 +101,27 @@
 - 2026-09-25：`35`/`36` ACPI 与 DTB——RSDP/RSDT/MADT 与 FDT 两阶段；下一篇：`37-ELF加载辅助模块.md`。
 - 2026-09-25：`37`–`39` 收完 09-平台模块（ELF 薄边界、PCI CF8/CFC、PSCI/SMCCC）。下一篇：`40-错误码与panic.md`。
 - 2026-09-26：`40`–`43` 收完基础设施与测试索引——语言轮对齐源码；**full README 顺序 1–44 本轮语言+硬件对照收束**（Maintainer 双勾复审另计；未宣称 QEMU 复测、未提交）。
+- 2026-09-26：澄清 §7「公开 API」= 本篇拥有的导出接口（非「调用了谁」）；改操作计划；修正 `02` §7、`43` 补 §7。
+- 2026-09-26：新开「§7 全文审阅」轮——每篇：拥有判定 + 接口说明（真源=Doxygen；须对照 `.c`；有编排序须写清；仅汇编跳入的入口注释写在 `.c`、不新建 h）；禁止抽查。已完成 `00`–`22`（04-IPC 分区 §7 审阅收束）。下一篇：`23-Trap抽象与分类.md`。
+- 2026-09-26：`23` §7 审阅完成（`register_fixed_trap`/`arch_populate` Doxygen；拥有 vs `24`/`25`）。下一篇：`24-系统调用入口.md`。
+- 2026-09-26：`24` §7 审阅完成（补 `system/syscall.h`；weak/`ARCH_SYSCALL_*` vs `14` Path A）。下一篇：`25-IRQ向量分配与处理.md`。
+- 2026-09-26：`25` §7 审阅完成（`trap_handler` 声明+Doxygen；池/register/分发编排序）。下一篇：`26-平台中断-x86_64-APIC与PIC.md`。
+- 2026-09-26：`26` §9（公开 API）审阅完成（PIC/APIC/PIT Doxygen；IOAPIC 无 API）。下一篇：`27-平台中断-aarch64-GIC.md`。
+- 2026-09-26：`27` §9 审阅完成（`gic` ops Doxygen；SPI checklist；gic_v3 占位）。05-陷阱与中断分区 §7/§9 审阅收束。下一篇：`28-SMP启动与处理器拓扑.md`。
+- 2026-09-26：`28` §7 审阅完成（`start_smp` 签名纠正；AP 入口声明；两套 online）。下一篇：`29-per-CPU数据与访问约定.md`。
+- 2026-09-26：`29` §7 审阅完成（`percpu.h` Doxygen；清零预留 / enable 序 / MCS me）。下一篇：`30-软IPI机制.md`。
+- 2026-09-26：`30` §7 审阅完成（`ipi.h` + arch 门铃 Doxygen；pending 回滚）。下一篇：`31-锁与内存屏障.md`。
+- 2026-09-26：`31` §7 审阅完成（MCS/CAS/atomic/barrier Doxygen；`trylock_mcs` BROKEN）。下一篇：`32-TLB_shootdown与跨核一致性.md`。
+- 2026-09-26：`32` §7 审阅完成（x86 gen/busy/done Doxygen；与 `11`/`30` 边界）。06-SMP 分区 §7 审阅收束。下一篇：`33-时间与定时器子系统.md`。
+- 2026-09-26：`33` §7 审阅完成（`time.h` Doxygen；fini 与实现对齐；vs `26`/`25`/`20`）。下一篇：`34-日志与UART控制台.md`。
+- 2026-09-26：`34` §7 审阅完成（log/uart/VGA Doxygen；COLOR_SET 错位；vs `31`/`02`）。下一篇：`35-ACPI与MADT-x86_64.md`。
+- 2026-09-26：`35` §7 审阅完成（acpi/MADT Doxygen；两段式；vs `28`/`26`）。下一篇：`36-DTB与设备树-aarch64.md`。
+- 2026-09-26：`36` §7 审阅完成（fdt/dev_tree Doxygen；`build_device_tree` 声明；vs `05`）。下一篇：`37-ELF加载辅助模块.md`。
+- 2026-09-26：`37` §7 审阅完成（elf 格式库 Doxygen；vs `14`）。下一篇：`38-PCI枚举与配置空间.md`。
+- 2026-09-26：`38` §7 审阅完成（CF8/CFC + scan Doxygen；enable/IRQ stub）。下一篇：`39-PSCI与处理器电源-aarch64.md`。
+- 2026-09-26：`39` §7 审阅完成（PSCI/SMCCC Doxygen；`arch_shutdown`；vs `28`/`40`）。09-平台模块分区 §7 审阅收束。下一篇：`40-错误码与panic.md`。
+- 2026-09-26：`40` §7 审阅完成（error/panic/powerd Doxygen；vs `39`）。下一篇：`41-名称索引注册表.md`。
+- 2026-09-26：`41` §7 审阅完成（name_index Doxygen；锁分界；仅 port 生产）。下一篇：`42-公共基础库与数据结构.md`。
+- 2026-09-26：`42` §7 审阅完成（common 拥有清单；vs `22`/`31`）。下一篇：`43-内核测试框架与测例索引.md`。
+- 2026-09-26：`43` §7 审阅完成（test 框架 Doxygen；失败收敛说明）。**full 00–43 §7 拥有+说明+Doxygen 轮次收束。**
+

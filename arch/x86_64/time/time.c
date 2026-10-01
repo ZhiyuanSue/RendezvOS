@@ -8,7 +8,23 @@
 
 extern enum IRQ_type arch_irq_type;
 extern enum timer_type sys_timer_type;
-u32 timer_irq_num = ARCH_IRQ_VEC_TIMER;
+
+u32 arch_get_timer_irq_num(bool is_bsp)
+{
+        (void)is_bsp;
+        return ARCH_IRQ_VEC_TIMER;
+}
+
+/**
+ * @brief x86 timer bring-up by arch_irq_type (PIC / xAPIC / x2APIC).
+ *
+ * PIC: BSP only programs 8254 one-shot + enable IRQ0→0x20.
+ * x(2)APIC: 
+ * - BSP calibrates (TSC-DDL if supported else LAPIC)
+ * - APIC_timer_init
+ * - software_enable_APIC to start the timer irq
+ * @return heartbeat gap.
+ */
 u64 arch_init_timer(bool is_bsp)
 {
         u64 heartbeat_gap = 0;
@@ -19,7 +35,7 @@ u64 arch_init_timer(bool is_bsp)
                 if (is_bsp) {
                         init_8254_one_shot(heartbeat_gap);
                         PIT_update_timer((u16)heartbeat_gap);
-                        enable_PIC_IRQ(timer_irq_num);
+                        enable_PIC_IRQ(arch_get_timer_irq_num(is_bsp));
                 }
         } else if (arch_irq_type == xAPIC_IRQ) {
                 if (is_bsp) {

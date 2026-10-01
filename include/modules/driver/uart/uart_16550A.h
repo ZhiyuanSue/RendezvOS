@@ -40,8 +40,18 @@ typedef struct UART_16550A_regs {
  * TXRDY = Low
  * INT = Low
  */
+/**
+ * @brief Open COM1 and set baud to 115200
+ * @note write IER will disable uart irq.
+ */
 void uart_16550A_open(void);
+/**
+ * @brief wait writable and then write THR.
+ */
 void uart_16550A_putc(u_int8_t ch);
+/**
+ * @brief Blocking poll receive one byte
+ */
 u_int8_t uart_16550A_getc(void);
 void uart_16550A_close(void);
 

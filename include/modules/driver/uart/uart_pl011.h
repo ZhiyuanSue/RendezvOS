@@ -39,8 +39,17 @@ typedef struct uart_pl011_pcell {
         volatile u32 ID3;
 } UART_PL011_PCELL;
 
+/**
+ * @brief init and enable PL011 at already-mapped @p base_addr
+ */
 void uart_pl011_open(void *base_addr);
+/**
+ * @brief Polling transmit one byte
+ */
 void uart_pl011_putc(u_int8_t ch);
+/**
+ * @brief Blocking poll receive one byte
+ */
 u_int8_t uart_pl011_getc(void);
 void uart_pl011_close(void);
 

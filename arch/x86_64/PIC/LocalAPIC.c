@@ -10,8 +10,8 @@
 #include <rendezvos/mm/map_handler.h>
 #include <rendezvos/mm/vmm.h>
 #include <rendezvos/smp/percpu.h>
+#include <rendezvos/time.h>
 extern struct cpuinfo cpu_info;
-extern u32 timer_irq_num;
 inline bool xAPIC_support(void)
 {
         return (cpu_info.feature_2 & X86_CPUID_FEATURE_EDX_APIC);
@@ -53,7 +53,7 @@ inline void disable_APIC(void)
         APIC_BASE_val = rdmsr(IA32_APIC_BASE_addr);
         APIC_BASE_val = clear_mask_u64(APIC_BASE_val,
                                        (IA32_APIC_BASE_X_ENABLE
-                                        & IA32_APIC_BASE_X2_ENABLE));
+                                        | IA32_APIC_BASE_X2_ENABLE));
         wrmsr(IA32_APIC_BASE_addr, APIC_BASE_val);
 }
 void reset_xAPIC_LDR(void)
@@ -128,7 +128,7 @@ tick_t APIC_timer_calibration(void)
         u32 hz_cnt = 0;
         u64 total_hz_cnt = 0;
 
-        timer_value = set_mask_u32(timer_value, timer_irq_num);
+        timer_value = set_mask_u32(timer_value, arch_get_timer_irq_num(false));
         // first set to one shot mode
         timer_value = set_mask_u32(timer_value, APIC_LVT_TIMER_MODE_ONE_SHOT);
         APIC_WR_REG(DCR, KERNEL_VIRT_OFFSET, APIC_DCR_DIV_16);
@@ -183,12 +183,14 @@ u64 APIC_timer_init(enum timer_type sys_timer_type)
         u32 init_cnt;
         if (sys_timer_type == TIMER_TYPE_X86_TSC_DDL) {
                 init_cnt = (tsc_hz_per_second / INT_PER_SECOND);
-                lvt_timer_val = set_mask_u32(lvt_timer_val, timer_irq_num);
+                lvt_timer_val = set_mask_u32(lvt_timer_val,
+                                             arch_get_timer_irq_num(false));
                 lvt_timer_val = set_mask_u32(lvt_timer_val,
                                              APIC_LVT_TIMER_MODE_TSC_DDL);
         } else { /* periodic or one shot*/
                 init_cnt = (apic_hz_per_second / INT_PER_SECOND) >> 4;
-                lvt_timer_val = set_mask_u32(lvt_timer_val, timer_irq_num);
+                lvt_timer_val = set_mask_u32(lvt_timer_val,
+                                             arch_get_timer_irq_num(false));
                 if (sys_timer_type == TIMER_TYPE_PERIODIC) {
                         lvt_timer_val = set_mask_u32(
                                 lvt_timer_val, APIC_LVT_TIMER_MODE_PERIODIC);

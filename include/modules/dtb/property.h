@@ -45,5 +45,6 @@ struct property_type {
         int property_type_enum;
         int value_enum[2];
 };
+extern struct property_type property_types[PROPERTY_TYPE_NUM];
 enum property_type_enum get_property_type(const char *property_name);
 #endif

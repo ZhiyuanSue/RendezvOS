@@ -49,7 +49,7 @@ struct madt_Local_APIC { // type = 0
         u8 _APIC_ID;
         u32 flags;
 #define Local_APIC_flags_enable         (1 << 0)
-#define Local_APIC_flags_online_capable (1 < 1)
+#define Local_APIC_flags_online_capable (1 << 1)
 };
 struct madt_IO_APIC {
         MADT_CTRL_HEAD;
@@ -66,11 +66,23 @@ struct madt_Source_Override {
         u16 flags; /*MPS INTI flags*/
 };
 
+/**
+ * @brief Advance to next MADT interrupt-controller record by length.
+ */
 struct madt_int_ctrl_head*
 get_next_ctrl_head(struct madt_int_ctrl_head* curr_ctrl_head);
+/**
+ * @brief True when walking past the last record .
+ */
 bool final_madt_int_ctrl_head(struct acpi_table_madt* madt_table,
                               struct madt_int_ctrl_head* curr_ctrl_head);
+/**
+ * @brief Parse MADT Local APIC records
+ */
 error_t parser_apic(void);
+/**
+ * @brief Iterate MADT @c int_ctrl_structure[] until past table end.
+ */
 #define for_each_madt_ctrl_head(madt_table)                                      \
         for (struct madt_int_ctrl_head* curr_ctrl_head =                         \
                      (struct madt_int_ctrl_head*)(((struct acpi_table_madt*)     \

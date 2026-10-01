@@ -7,6 +7,13 @@
 #include "psci_error.h"
 /*although I think the 32 version will not be used, I still record it*/
 enum psci_call_method { psci_call_none = 0, psci_call_smc, psci_call_hvc };
+
+/**
+ * @brief psci object.
+ *
+ * current version uses cpu_on (SMP) and system_off. we just realize the
+ * interface but others are not used now.
+ */
 struct psci_func_64 {
         bool enable;
         u32 (*version)(void);
@@ -34,9 +41,17 @@ struct psci_func_64 {
         u64 (*state_count)(u64 target_cpu, u32 power_state);
 };
 extern struct psci_func_64 psci_func;
+
+/**
+ * @brief Probe DTB for psci controller ,select SMC/HVC ,fill psci_func.
+ */
 void psci_init(void);
 
 #define psci_version_func_id 0x84000000
+/**
+ * @brief get PSCI_VERSION via current SMC/HVC trampoline ( sometimes for init
+ * test ).
+ */
 u32 psci_version(void);
 
 #define psci_32_cpu_suspend_func_id 0x84000001
@@ -51,6 +66,12 @@ i32 psci_cpu_off(void);
 
 #define psci_32_cpu_on_func_id 0x84000003
 i32 psci_cpu_on_32(u32 target_cpu, u32 entry_point_address, u32 context_id);
+/**
+ * @brief PSCI CPU_ON (64-bit FID 0xC4000003).
+ * @param target_cpu the target cpu that need to boot
+ * @param entry_point_address Physical entry address
+ * @param context_id logical CPU id for AP
+ */
 #define psci_64_cpu_on_func_id 0xC4000003
 i64 psci_cpu_on_64(u64 target_cpu, u64 entry_point_address, u64 context_id);
 
@@ -73,6 +94,10 @@ i32 psci_migrate_info_up_cpu_32(void);
 i64 psci_migrate_info_up_cpu_64(void);
 
 #define psci_system_off_func_id 0x84000008
+/**
+ * @brief PSCI SYSTEM_OFF (0x84000008). Should not return on success.
+ * shutdown the system
+ */
 void psci_system_off(void);
 
 #define psci_32_system_off_2_func_id 0x84000015

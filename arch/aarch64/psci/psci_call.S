@@ -1,7 +1,9 @@
 /*
-    here we think x0-x3 as the input parameter, and x0 as output
-    so we just need one smc or hvc
-*/
+ * SMC/HVC trampolines
+ * the caller should selects psci_smc or psci_hvc.
+ * here we think x0-x3 as the input parameter, and x0 as output
+ * so we just need one smc or hvc
+ */
     .global psci_smc
 psci_smc:
     smc #0

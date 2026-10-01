@@ -77,9 +77,11 @@ void arch_unknown_trap_handler(struct trap_frame *tf)
 }
 void arch_eoi_irq(u64 trap_info)
 {
-        union irq_source source = {.irq_source_value = trap_info};
-        source.irq_id = TRAP_SRC(source.irq_id);
-        source.irq_id = AARCH64_TRAP_ID_TO_IRQ(source.irq_id);
+        union irq_source source = {0};
+
+        /* set GICC_EOIR value from packed trap_info. */
+        source.irq_id = AARCH64_TRAP_ID_TO_IRQ(TRAP_ID(trap_info));
+        source.cpu_id = TRAP_GET_CPU(trap_info);
         gic.eoi(source);
 }
 
@@ -91,7 +93,9 @@ void get_curr_el_trap_info(struct trap_frame *tf)
                 break;
         case TRAP_TYPE_IRQ:
                 union irq_source source = gic.read_irq_num();
+                /* trap id = INTID+64; [12:10] = IAR CPUID (for SGI EOI). */
                 tf->trap_info = AARCH64_IRQ_TO_TRAP_ID(source.irq_id);
+                tf->trap_info = TRAP_SET_CPU(tf->trap_info, source.cpu_id);
                 break;
         case TRAP_TYPE_FIQ:
                 break;

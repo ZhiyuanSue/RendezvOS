@@ -17,14 +17,15 @@ BITMAP_DEFINE_TYPE(asid_bitmap_t, ASID_BITMAP_BITS)
 
 static spin_lock asid_lock;
 DEFINE_PER_CPU(spin_lock_t, asid_mcs_node);
-static asid_t asid_max = U8_MAX;
+static asid_t asid_max;
 
 static asid_bitmap_t asid_bitmap;
 
 void asid_init(void)
 {
+        u32 width = arch_asid_supported_width();
         asid_lock = NULL;
-        asid_max = arch_asid_supports_16bit() ? U16_MAX : U8_MAX;
+        asid_max = (asid_t)((1u << width) - 1u);
 
         BITMAP_OPS(asid_bitmap, zero)(&asid_bitmap);
         /* Reserve ASID 0. */

@@ -1,6 +1,6 @@
-#include <rendezvos/trap/trap.h>
+#include <rendezvos/system/syscall.h>
 
-__attribute__((weak)) void syscall(struct trap_frame* syscall_ctx)
+__attribute__((weak)) void syscall(struct trap_frame *syscall_ctx)
 {
         (void)syscall_ctx;
 }

@@ -47,10 +47,13 @@ typedef struct Michael_Scott_Queue {
         size_t append_info_bits;
 } ms_queue_t;
 /**
- * @brief init the msq
- * @param q the queue structure
- * @param new_node use an empty node as the head, this must be allocated by the
- * caller function
+ * @brief Initialize an empty Michael–Scott queue with a dummy node.
+ * @param q Queue structure.
+ * @param new_node Pre-allocated empty node used as initial head/tail dummy
+ *        (caller allocates; not freed by init).
+ * @param append_info_bits Bits of the 16-bit tag reserved for append state
+ *        (e.g. port SEND/RECV). Must ≤15 so one bit remains for ABA
+ *        counter.
  */
 static inline void msq_init(ms_queue_t* q, ms_queue_node_t* new_node,
                             size_t append_info_bits)
@@ -68,14 +71,12 @@ static inline void msq_init(ms_queue_t* q, ms_queue_node_t* new_node,
         }
 }
 /**
- * @brief enqueue a new_node into the queue
- * @param q the queue structure
- * @param new_node, which should be allocated by the caller function
- * @param append_info, which also store the append_info in the 16bits tag
- * @param free_func called when old tail's ref drops to 0
- * @param refcount_is_zero true: node has refcount 0 (ref_init_zero), use
- * ref_get_claim; false: node has refcount >= 1, use ref_get_not_zero (avoids
- * revival)
+ * @brief Enqueue a @p new_node (Michael–Scott)
+ * @param q Queue.
+ * @param new_node Caller-allocated node with live refcount (≥1).
+ * @param free_func Passed to @c ref_put when releasing.
+ * @note Does not embed payload — use @c container_of .
+ *  No append-tag check (see @c msq_enqueue_check_tail ).
  */
 static inline void msq_enqueue(ms_queue_t* q, ms_queue_node_t* new_node,
                                error_t (*free_func)(ref_count_t*))
@@ -133,12 +134,20 @@ static inline void msq_enqueue(ms_queue_t* q, ms_queue_node_t* new_node,
         ebr_exit();
 }
 /**
- * @brief dequeue a node and return the ptr
- * @param q the ms queue
- * @param free_func called when old dummy's ref drops to 0; may be NULL to
- *        not free (e.g. if dummy is pooled).
- * @return tagged_ptr of the data node (real payload), or tp_new_none() if
- *        queue empty. Caller must ref_put(ptr, free_func) when done.
+ * @brief Dequeue one logical node (Michael–Scott “lazy dequeue”).
+ *
+ * Advances head so the former data node becomes the new dummy and stays
+ * linked
+ * — the returned tagged ptr is that node with an extra ref for the
+ * caller
+ * - the old dummy is @c ref_put( @p free_func ).
+ * - if queue is empty just return tp_new_none() and not put the dummy
+ *
+ * @param free_func May be NULL to skip freeing (pooled dummy).
+ * @return Tagged data node, or none tagged ptr. Caller must @c ref_put when
+ * done if not none.
+ * @note Wrapped in @c ebr_enter / @c ebr_exit. Do not relocate the returned
+ *       node into another MSQ.
  */
 static inline tagged_ptr_t msq_dequeue(ms_queue_t* q,
                                        error_t (*free_func)(ref_count_t*))
@@ -280,16 +289,13 @@ static inline bool msq_queue_check_tp(tagged_ptr_t need_check_tp,
         return true;
 }
 /**
- * @brief enqueue a new_node into the queue,
- * only if the tail node's append info is the same as expected
- * @param q the queue structure
- * @param new_node, which should be allocated by the caller function
- * @param append_info, which also store the append_info in the 16bits tag
- * @param expect_tp expected tail tag for the check
- * @param free_func called when old tail's ref drops to 0
- * @param refcount_is_zero same as msq_enqueue
- * @return REND_SUCCESS on success, -E_REND_AGAIN on check fail or ref acquire
- * fail
+ * @brief Enqueue only if current tail’s append-tag bits match @p expect_tp.
+ *
+ * On append check fail returns @c -E_REND_AGAIN (caller can retry).
+ * If @c append_info_bits==0, just like normal @c msq_enqueue.
+ *
+ * @param append_info New node’s append field written into the tag low bits.
+ * @param expect_tp Expected tail tag (append field compared under mask).
  */
 static inline error_t msq_enqueue_check_tail(ms_queue_t* q,
                                              ms_queue_node_t* new_node,
@@ -376,13 +382,13 @@ static inline error_t msq_enqueue_check_tail(ms_queue_t* q,
 }
 
 /**
- * @brief Dequeue with check: return data node only if next matches expect_tp.
- * @param q the ms queue
- * @param check_field_mask MSQ_CHECK_FIELD_PTR and/or MSQ_CHECK_FIELD_APPEND
- * @param expect_tp expected value for the check
- * @param free_func same as msq_dequeue
- * @return tagged_ptr of data node (ref held) or tp_new_none() if empty or
- *         check failed. Caller must ref_put when done.
+ * @brief Dequeue only if the next node’s tagged fields match @p expect_tp.
+ *
+ * compare ptr and/or append bits according to
+ * @p check_field_mask ( @c MSQ_CHECK_FIELD_PTR / @c MSQ_CHECK_FIELD_APPEND ).
+ * 
+ * Mismatch → return none.
+ * if @c append_info_bits==0, just as normal @c msq_dequeue.
  */
 static inline tagged_ptr_t
 msq_dequeue_check_head(ms_queue_t* q, u64 check_field_mask,

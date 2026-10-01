@@ -3,6 +3,11 @@
 
 #include <rendezvos/smp/cpu_id.h>
 
+/*
+ * For v0.1, this file is a placeholder only — no live topology walkers.
+ * current cpu id comes from MADT Local APIC (x86) or DTB cpu/PSCI
+ * (aarch64)
+ */
 struct cpu_topology_root {
         struct cpu_socket* first_socket;
 };

@@ -238,7 +238,7 @@ retry:
 try_reclaim:
         if (!pmm->reclaim_fn
             || have_tried_reclaim_attempt >= PMM_RECLAIM_MAX_ATTEMPTS)
-                return (-E_REND_RETRY);
+                return (-E_REND_AGAIN);
         if (!pmm->reclaim_fn(pmm, page_number, have_tried_reclaim_attempt))
                 return (-E_REND_NO_MEM);
         have_tried_reclaim_attempt++;

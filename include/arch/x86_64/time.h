@@ -22,5 +22,8 @@ struct rtc_time {
         };
 };
 u64 arch_init_timer(bool is_bsp);
-struct rtc_time get_rtc_time();
+/**
+ * @brief Read CMOS RTC (BCD)
+ */
+struct rtc_time get_rtc_time(void);
 #endif

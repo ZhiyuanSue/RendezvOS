@@ -2,9 +2,17 @@
 
 /*in gic(v2) we only use 0-1019, and we use 64 as the sync trap*/
 #define NR_IRQ             1084
+/**
+ * In order to put 64 sync trap and irqs into one vector, we add this offset.
+ * The first 64 number is used for sync trap, and the later part is irqs.
+ */
 #define AARCH64_IRQ_OFFSET 64
 
-/*the same mask as that in irq source */
+/* the same bits as that in irq source
+ *   [9:0]   trap id = INTID + AARCH64_IRQ_OFFSET
+ *   [12:10] IAR CPUID for SGI EOI
+ *   higher  SRC_EL etc.
+ */
 #define AARCH64_TRAP_ID_MASK   0x2FF
 #define AARCH64_TRAP_SRC_MASK  0x1FFF
 #define AARCH64_TRAP_CPU_MASK  0x1C00

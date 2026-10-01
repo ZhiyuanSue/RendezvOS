@@ -4,6 +4,7 @@
 #include <arch/aarch64/power_ctrl.h>
 #include <common/endianness.h>
 #include <modules/dtb/dtb.h>
+#include <modules/dtb/property.h>
 #include <rendezvos/limits.h>
 #include <rendezvos/mm/pmm.h>
 #include <rendezvos/mm/vmm.h>
@@ -13,7 +14,6 @@
 extern u64 L2_table, L1_table;
 extern struct memory_regions m_regions;
 
-extern struct property_type property_types[PROPERTY_TYPE_NUM];
 static void get_mem_prop_and_insert_region(struct fdt_property *fdt_prop)
 {
         const char *data = (const char *)(fdt_prop->data);
