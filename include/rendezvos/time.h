@@ -30,8 +30,12 @@ enum timer_type {
         TIMER_TYPE_X86_TSC_DDL,
 };
 
+/**
+ * @brief BSP-based time tick count since boot (not per-CPU).
+ *
+ * Returns 0 if the clock is not calibrated.
+ */
 i64 jeffies_get(void);
-extern u32 timer_irq_num;
 /*in rendezvos we only use 64 bit time cnt*/
 #define time_after(a, b)     ((i64)b - (i64)a < 0)
 #define time_after_eq(a, b)  ((i64)b - (i64)a <= 0)
@@ -127,17 +131,53 @@ error_t rendezvos_timer_event_del(rendezvos_timer_event *event);
 /** @brief True if @p event is linked in the current CPU's timer queue. */
 bool rendezvos_timer_event_exist(const rendezvos_timer_event *event);
 /*arch interfaces*/
+/**
+ * @brief software irq id for the programmable timer IRQ.
+ */
+u32 arch_get_timer_irq_num(bool is_bsp);
+/**
+ * @brief enable the arch hardware cpu timer if @p is_bsp is true, get the Hz,
+ * else just bring-up timer.
+ */
 u64 arch_init_timer(bool is_bsp);
+/**
+ * @brief reprogram one-shot hardware timer int for @p next_event_gap ticks.
+ */
 void arch_reset_timer(u64 next_event_gap);
+/**
+ * @brief read hardware counter
+ */
 tick_t arch_timer_read(void);
+/**
+ * @brief Arch: calibrated Hz (used to set the software clock rate on BSP).
+ */
 tick_t arch_timer_get_hz(void);
 
-/*public interfaces*/
+/**
+ * @brief Per-CPU time system bring-up: resolve timer IRQ, register handler,
+ * enable heartbeat. BSP also calibrates the software clock.
+ *
+ * Call once per CPU after the IRQ path allows registration.
+ */
 void rendezvos_time_init(void);
+/**
+ * @brief Timer IRQ handler:
+ * clean due events, update the count, reset next hardware to the next expiry.
+ *
+ * Periodic events (like heartbeat) reset
+ * One-shot events arrive deliver
+ * a @c KMSG_OP_SYSTEM_TIMER_EXPIRE message and cleaned if deliver success. Must
+ * run in IRQ context.
+ */
 void rendezvos_do_time_irq(struct trap_frame *tf);
+/**
+ * @brief Ticks since current CPU’s boot baseline (not BSP-based jeffies).
+ */
 tick_t rendezvos_time_now(void);
 
-/*count<-->us/ms*/
+/**
+ * @brief Convert count to us/ms (0 if clock_hz unset).
+ */
 u64 rendezvos_time_count_to_us(tick_t count);
 u64 rendezvos_time_count_to_ms(tick_t count);
 tick_t rendezvos_time_us_to_count(u64 us);
@@ -151,7 +191,12 @@ tick_t rendezvos_time_ms_to_count(u64 ms);
 #define UDELAY_SHIFT 31
 #define UDELAY_MAX   2000
 
-/*loop delay*/
+/**
+ * @brief Busy-wait @p us using calibrated loop delay (no IRQ sleep).
+ */
 void udelay(u64 us);
+/**
+ * @brief Busy-wait @p ms via udelay(ms * 1000).
+ */
 void mdelay(u64 ms);
 #endif

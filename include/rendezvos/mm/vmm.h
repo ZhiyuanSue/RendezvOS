@@ -45,12 +45,15 @@ struct VSpace {
          *   onto thread->vs (no extra get). Kernel threads: caller gets
          *   root_vspace first (gen_thread_from_func), then same transfer;
          *   teardown put matches (boot keeps the base ref from ref_init).
-         * - CPUs hold active references while CR3/TTBR points to this vspace.
+         * - schedule may hold an extra CPU ref while current_vspace points at
+         *   a user AS (get when switching in another user AS — incl. root→
+         *   first user / leftover A→B; put on switch-away from non-root).
+         *   User→kernel does not drop that extra / clear mask.
          * - Kernel vspace(root) is always exist during the system running time.
          * We init it to 1, and the kernel thread only get/put, but the ref
          * is always > 1.
-         * Last ref_put runs del_vspace(): radix destroy, user PT
-         * reclaim, root frame free, RB unregister, and VSpace struct free.
+         * Last ownership put typically runs free_vspace_ref(): unregister
+         * then del_vspace() .
          */
         ref_count_t refcount;
         /*
@@ -122,14 +125,61 @@ extern VSpace root_vspace;
 extern u64 boot_stack_bottom;
 
 error_t init_root_vspace(VSpace* root_vs, cpu_id_t cpu_id);
+
+/**
+ * @brief Allocate a user VSpace: structure, empty L0 root, radix + shared
+ *        kernel high-half install.
+ * @param pmm Zone pmm stored on the VSpace (typically ZONE_NORMAL).
+ * @return New VSpace*, or NULL on failure (with ASID / root / radix rolled
+ * back).
+ * @note Caller must @ref register_vspace after create (user spaces).
+ */
 VSpace* create_vspace(struct pmm* pmm);
+
+/**
+ * @brief Clone user VSpace from @p src_vs into a new VSpace.
+ *
+ * @param src_vs      Source (must be a user space with radix).
+ * @param dst_vs_out  Out: new VSpace* on success.
+ * @param flags       Must include @c VSPACE_CLONE_F_USER_4K_ONLY, and
+ *                    exactly one of @c VSPACE_CLONE_F_COW_PREP or
+ *                    @c VSPACE_CLONE_F_COPY_PAGES.
+ * @return @c REND_SUCCESS or negative error_t; on failure no live dst.
+ */
 error_t clone_vspace(VSpace* src_vs, VSpace** dst_vs_out,
                      enum vspace_clone_flags flags);
-/*remember register the vspace after create/clone user vspace*/
+
+/**
+ * @brief Insert @p vs into @p root_vs RB registry (sets registered + root_vs).
+ * @note Call after create/clone for user spaces; requires unregistered @p vs.
+ */
 error_t register_vspace(VSpace* vs, VSpace* root_vs);
+
+/**
+ * @brief Refcount destructor for @c VSpace::refcount.
+ * Order: @c unregister_vspace ( @p vs ) then @c del_vspace ( @p &vs ).
+ * @return Result of @c del_vspace.
+ */
 error_t free_vspace_ref(ref_count_t* refcount);
+
+/**
+ * @brief Remove @p vs from its root RB tree; idempotent if already
+ * unregistered.
+ * @note Call before @ref del_vspace , or let @c free_vspace_ref do it(for
+ * defensive).
+ */
 error_t unregister_vspace(VSpace* vs);
-/*remember unregister the vs before del vspace*/
+
+/**
+ * @brief Tear down a VSpace after last ref: clear user mappings, destroy
+ *        radix, free root PT frame / struct / ASID. Sets *@p vs to NULL.
+ *
+ * @return @c REND_SUCCESS; @c -E_IN_PARAM if still @c registered; clear/radix
+ *         errors (notably @c -E_REND_RC_UNEQUAL if @c tlb_cpu_mask non-zero).
+ *
+ * @note Must be unregistered first. 
+ * @note No-op success if *@p vs is NULL or is root vspace.
+ */
 error_t del_vspace(VSpace** vs);
 
 struct map_handler;
@@ -162,9 +212,24 @@ void arch_set_L2_entry(paddr p, vaddr v, union L2_entry* pt_addr,
                        ARCH_PFLAGS_t flags);
 void arch_set_L3_entry(paddr p, vaddr v, union L3_entry* pt_addr,
                        ARCH_PFLAGS_t flags);
-/*use those functions to set page entry flags for every page entry*/
+/** @brief Encode portable ENTRY_FLAGS into arch PTE bits for @p entry_level.
+ */
 ARCH_PFLAGS_t arch_decode_flags(int entry_level, ENTRY_FLAGS_t ENTRY_FLAGS);
+/** @brief Decode arch PTE bits back to portable ENTRY_FLAGS.
+ */
 ENTRY_FLAGS_t arch_encode_flags(int entry_level, ARCH_PFLAGS_t ARCH_PFLAGS);
 
+/**
+ * @brief Per-CPU virtual MM bring-up after @c phy_mm_init.
+ *
+ * BSP also prepares the shared map window, ASID, and root VSpace; APs only
+ * initialize their @c Map_Handler. Both set @c current_vspace to
+ * @c &root_vspace and run @c kinit. AP requires @p arch_setup_info for the
+ * boot stack.
+ *
+ * @param cpu_id            This CPU's id.
+ * @param arch_setup_info   Required on AP for stack; BSP may ignore for stack.
+ * @return @c REND_SUCCESS or negative error_t.
+ */
 error_t virt_mm_init(cpu_id_t cpu_id, struct setup_info* arch_setup_info);
 #endif

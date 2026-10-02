@@ -45,10 +45,24 @@ struct pci_node {
 };
 extern struct pci_node* pci_root;
 
+/**
+ * @brief Enable the PCI device.
+ */
 error_t pci_enable_device(struct pci_node* pci_device);
+/**
+ * @brief DFS print of pci_node tree (indent by @p level).
+ */
 void print_pci_tree(struct pci_node* pci_parent_node, int level);
+/**
+ * @brief Find first node with matching vendor/device ids (DFS from start).
+ * @param start_node if it's NULL, search from pci_root
+ * @note On hit, increments @c ref_count (pair with pci_put_device).
+ */
 struct pci_node* pci_get_device(u16 vendor_id, u16 device_id,
                                 struct pci_node* start_node);
+/**
+ * @brief Drop one reference acquired by @c pci_get_device.
+ */
 void pci_put_device(struct pci_node* pci_device);
 static inline void pci_tree_set_pci_bus_info(struct pci_node* pci_device,
                                              u8 primary, u8 secondary,

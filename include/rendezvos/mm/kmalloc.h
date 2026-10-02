@@ -108,10 +108,25 @@ struct mem_allocator {
         atomic64_t kfree_page_pending;
         cas_lock_t lock;
 } __attribute__((aligned(sizeof(u64))));
-/*chunk*/
+
+/**
+ * @brief Bring up the per-CPU kernel heap for @p allocator_id.
+ *
+ * Installs @c per_cpu(kallocator, allocator_id).
+ *
+ * @param allocator_id CPU id / heap id (must be >= 0; typically equals cpu_id).
+ * @return Pointer to the installed @c struct allocator, or NULL on failure
+ */
 struct allocator* kinit(int allocator_id);
 
-/* Drain cross-CPU kfree work (page MSQ + buffer MSQ) on this CPU. */
+/**
+ * @brief Drain this CPU's cross-CPU free queues ( @c kfree_page_msq then
+ *        @c buffer_msq).
+ * Alloc / free will try to free the queue before the real alloc / free.
+ * This function is designed for if a CPU do not alloc / free for a long time,
+ * tooo much node will be on the queue and not be cleaned.
+ * So this interface is used for CPU clean the queue(espically the OOM case).
+ */
 void kalloc_process_cross_cpu_frees(void);
 
 #endif

@@ -21,7 +21,8 @@ struct MsgData {
 /**
  * @brief Allocate Msg_Data and take ownership of an existing data buffer.
  * @param msg_type Caller-defined type tag for the payload.
- * @param data_len Length of *data_ptr in bytes.
+ * @param data_len Length of *data_ptr in bytes; must be @c > 0 with a non-NULL
+ *        *@p data_ptr (else the allocated shell is put and NULL is returned).
  * @param data_ptr In/out pointer to payload memory; set to NULL on success.
  * @param free_data Refcount destructor for msg_data and its data buffer.
  * @return New Msg_Data with refcount 1, or NULL on invalid input or allocation
@@ -98,7 +99,8 @@ error_t fill_message_data(Message_t* msg, Msg_Data_t* msgdata);
  * @brief Refcount destructor for Message_t; defers reclaim via EBR then frees
  * attached Msg_Data.
  * @param ref_count_ptr Pointer to msg->ms_queue_node.refcount.
- * @return REND_SUCCESS on success; -E_IN_PARAM if ref_count_ptr is NULL.
+ * @return Result of @c ebr_retire_ref ( @c REND_SUCCESS including overflow leak;
+ *         @c -E_IN_PARAM if @p ref_count_ptr is NULL).
  */
 error_t free_message_ref(ref_count_t* ref_count_ptr);
 

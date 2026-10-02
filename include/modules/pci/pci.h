@@ -27,7 +27,11 @@
          | ((device & PCI_ADDR_REG_DEVICE_MASK) << PCI_ADDR_REG_DEVICE_OFF) \
          | ((func & PCI_ADDR_REG_FUNC_MASK) << PCI_ADDR_REG_FUNC_OFF)       \
          | (offset & PCI_ADDR_REG_OFF_MASK))
-/* rd/wr port way */
+
+/**
+ * @brief PCI Configuration Mechanism #1: read one dword via CF8/CFC.
+ * x86-only; ECAM / MMIO config access is not provided.
+ */
 static inline u32 pci_config_read_IO_dword(u8 bus, u8 device, u8 function,
                                            u8 offset)
 {
@@ -36,6 +40,9 @@ static inline u32 pci_config_read_IO_dword(u8 bus, u8 device, u8 function,
         outl(_X86_PCI_ADDR_REG, address);
         return inl(_X86_PCI_DATA_REG);
 }
+/**
+ * @brief Mechanism #1 dword write (outl CF8 then CFC).
+ */
 static inline void pci_config_write_IO_dword(u8 bus, u8 device, u8 function,
                                              u8 offset, u32 value)
 {
@@ -44,12 +51,18 @@ static inline void pci_config_write_IO_dword(u8 bus, u8 device, u8 function,
         outl(_X86_PCI_ADDR_REG, address);
         outl(_X86_PCI_DATA_REG, value);
 }
+/**
+ * @brief pci device is exist if vendor dword at (bus,dev,func) is not
+ * 0xFFFFFFFF. if so return true, else false.
+ */
 static inline bool pci_device_exists(u8 bus, u8 device, u8 func)
 {
         u32 vid = pci_config_read_IO_dword(bus, device, func, 0x00);
         return (vid != 0xFFFFFFFF);
 }
-/*MMIO way*/
+/*
+ * MMIO way — not implemented
+ */
 
 /*pci header*/
 
