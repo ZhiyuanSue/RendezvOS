@@ -311,15 +311,16 @@ create_thread_error:
 error_t gen_thread_from_func(Thread_Base **func_thread_ptr, kthread_func thread,
                              char *thread_name, Task_Manager *tm, void *arg)
 {
+        error_t e = REND_SUCCESS;
+
         if (!thread_name || !tm) {
                 return -E_IN_PARAM;
         }
-        Thread_Base *func_t;
         if (!ref_get_not_zero(&root_vspace.refcount)) {
                 pr_error("[Error] root_vspace ref_get failed\n");
                 return -E_RENDEZVOS;
         }
-        func_t = create_thread(
+        Thread_Base *func_t = create_thread(
                 (void *)thread, NULL, &root_vspace, false, 1, arg);
         if (!func_t) {
                 pr_error("[Error] create kernel thread fail\n");
@@ -327,7 +328,13 @@ error_t gen_thread_from_func(Thread_Base **func_thread_ptr, kthread_func thread,
                 return -E_RENDEZVOS;
         }
         thread_set_name_with_copy(thread_name, func_t);
+        e = add_thread_to_manager(tm, func_t);
+        if (e != REND_SUCCESS) {
+                pr_error("[Error] add kernel thread to manager fail\n");
+                del_thread_structure(func_t);
+                return e;
+        }
         if (func_thread_ptr)
                 *func_thread_ptr = func_t;
-        return add_thread_to_manager(tm, func_t);
+        return e;
 }

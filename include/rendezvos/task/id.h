@@ -11,21 +11,37 @@ typedef id_t pid_t;
 typedef id_t tid_t;
 
 #define INVALID_ID U64_MAX
-/*
-as for the tid, which must be global，
-we cannot expect two thread have same tid or pid，
-however, multicore system might need to lock it
-*/
+
+/**
+ * @brief id allocator protected by MCS.
+ */
 typedef struct {
-        id_t id;
-        spin_lock spin_ptr;
+        id_t id; /* Next id to allocate. */
+        spin_lock spin_ptr; /* MCS lock head for @c get_new_id. */
 } Id_Manager;
+
+/**
+ * @brief Zero @p idmng->id and clear @p idmng->spin_ptr (no-op if NULL).
+ * @note Does not take a lock; @c get_new_id performs MCS locking.
+ */
 void init_id_manager(Id_Manager* idmng);
+
+/**
+ * @brief Allocate the next id under MCS.
+ * @param idmng Manager
+ * @return Previous @c idmng->id, then increment; @c INVALID_ID if @p idmng is
+ *         NULL or the counter already goto @c INVALID_ID.
+ */
 id_t get_new_id(Id_Manager* idmng);
+
+/**
+ * @brief Initialize @c tid_manager for early boot.
+ */
 void init_core_id_system(void);
 
-extern spin_lock_t tid_spin_lock;
-
+/**
+ * @brief Global tid allocator singleton.
+ */
 extern Id_Manager tid_manager;
 
 #endif
