@@ -1,6 +1,6 @@
 # 软 IPI 机制
 
-v0.1 · 2026-09-25
+v0.1 · 2026-09-27
 
 本篇覆盖：`kernel/smp/ipi.c`、`include/rendezvos/smp/ipi.h`、`arch/{x86_64,aarch64}/smp/arch_smp_ipi.c`。
 
@@ -19,7 +19,7 @@ v0.1 · 2026-09-25
 | 门铃 | LAPIC ICR **FIXED**，向量 **`0x30`** | GICD **SGI 0** → trap id **64** |
 | 注册 | `register_irq_handler(ARCH_IRQ_VEC_IPI, …, NEED_EOI)` | 同左（宏叠 +64） |
 
-Bring-up 的 INIT / SIPI **不是** soft IPI（delivery mode 不同，只是共用 `APIC_send_IPI` 一类原语）——见拓扑篇。
+AP 启动拉核用的 INIT / SIPI **不是** soft IPI（delivery mode 不同，只是共用 `APIC_send_IPI` 一类原语）——见拓扑篇。
 
 **唯一 in-tree 默认消费者：x86 TLB shootdown。** aarch64 TLB 用 `tlbi *is`，**不**注册 TLB IPI，也 **无** `arch_smp_flush_tlb_init`。两端都会 `smp_ipi_init`——机制在，aarch64 几乎无第二消费者。
 
@@ -76,7 +76,7 @@ DEFINE_PER_CPU(atomic64_t, smp_ipi_pending);
 - self：`SGIR` TARGET_SELF；
 - remote：TARGET_SPECIFIED，list = `(1<<cpu)`；
 - 要求 `cpu < GIC_V2_NR_CPU_MAX`（**8**）；
-- 假定 **GIC CPU IF 编号 == 逻辑 cpu_id**。稠密 Aff0 时碰巧成立；affinity 稀疏会打错核。
+- 假定 **GIC CPU IF 编号 == 逻辑 cpu_id**。在 Aff0 稠密编号时碰巧成立；若拓扑稀疏（逻辑 id 与 GIC target 位不对齐），SGIR 会打错核。
 
 ---
 
@@ -108,17 +108,62 @@ smp_ipi_send(cpu, id)       // pending OR + 门铃
 
 ## 7. 公开 API
 
+本篇拥有：软 IPI 协议——`smp_ipi_init` / `register` / `send`、`smp_ipi_fn_t` / `ipi_id_t`，以及 arch 门铃 `arch_smp_ipi_init` / `arch_smp_ipi_send`。说明改写自 `ipi.h` + `arch/*/smp.h` Doxygen（已与 `ipi.c`、`arch_smp_ipi.c` 核对）。
+
+**本篇不拥有：** IRQ 向量 reserve / `trap_handler` → `25`；ICR / SGIR 字段细节 → `26`/`27`；x86 TLB 消息槽与握手 → `32`；`cpu_is_online` → `28`。
+
+AP 启动拉核用的 INIT/SIPI **不是** soft IPI（共用发送原语而已）。
+
+### 7.1 编排顺序（调用方须遵守）
+
+| 场景 | 顺序 |
+|------|------|
+| 每核装门铃 | `init_interrupt` → 平台 IRQ iface → **`smp_ipi_init`**（→ `arch_smp_ipi_init` → `register_irq_handler(IPI_VEC, dispatch, NEED_EOI)`） |
+| 注册消费者 | 通常全局一次：`smp_ipi_register(&id, fn)`（x86 TLB 在 `arch_smp_flush_tlb_init`） |
+| 发送 | 填目标核 per-CPU 消息（若需要）→ **`smp_ipi_send(cpu, id)`** |
+| 接收 | IRQ → dispatch：`exchange(pending,0)` 循环 → `fn()` → EOI |
+
+`fn` 无参；上下文在发送方预先写好的槽里。无 unregister；槽上限 `RENDEZVOS_SMP_IPI_MAX`（16）。
+
+### 7.2 协议 API
+
 ```c
+typedef void (*smp_ipi_fn_t)(void);
+error_t smp_ipi_register(ipi_id_t *ipi_id_out, smp_ipi_fn_t fn);
+error_t smp_ipi_send(cpu_id_t cpu, ipi_id_t ipi_id);
 void smp_ipi_init(void);
-error_t smp_ipi_register(u32 *id_out, smp_ipi_fn_t fn);
-error_t smp_ipi_send(cpu_id_t cpu, u32 id);
 ```
+
+| 接口 | 说明 |
+|------|------|
+| `smp_ipi_init` | 每核；挂共享 `smp_ipi_dispatch`。 |
+| `smp_ipi_register` | 线性占 slot。`-E_IN_PARAM` / 满则 `-E_REND_OVERFLOW`。 |
+| `smp_ipi_send` | 要求 `cpu_is_online` + slot used；CAS OR pending bit → arch 门铃；**门铃失败则清回该 bit**。bit 已置仍会再敲门。 |
+
+Dispatch：`atomic64_exchange(pending, 0)` 循环，避免 handler 中途再 OR 丢 bit。
+
+### 7.3 arch 门铃
+
+```c
+void arch_smp_ipi_init(void (*handler)(struct trap_frame *));
+error_t arch_smp_ipi_send(cpu_id_t cpu);
+```
+
+| | x86_64 | aarch64 |
+|--|--------|---------|
+| 向量 / INTID | IDT **`0x30`** | SGI **0** → trap **64** |
+| send | ICR FIXED；非 APIC → `-E_RENDEZVOS` | SGIR self / specified；`cpu≥8` → `-E_IN_PARAM` |
+| 假设 | `cpu` = APIC id | GIC CPU IF 编号 == 逻辑 id |
+
+### 7.4 与 TLB 的分工
+
+唯一 in-tree 默认 registrant：**x86** `arch_smp_flush_tlb_init`（见 `32`）。aarch64 TLB 走 `tlbi *is`，不注册 TLB IPI；两端仍 `smp_ipi_init`（机制在，几乎无第二消费者）。
 
 ---
 
 ## 8. 多架构
 
-门铃不同；逻辑协议相同。TLB 是否走 IPI：**仅 x86**。与 APIC / GIC 篇交叉：本篇不重复 ICR / SGIR 字段表，只钉「soft IPI 用哪一种投递」。
+门铃不同；逻辑协议相同。TLB 是否走 IPI：**仅 x86**。与 APIC / GIC 篇交叉：本篇不重复 ICR / SGIR 字段表，只写清「soft IPI 用哪一种投递」。
 
 ---
 
@@ -139,6 +184,8 @@ error_t smp_ipi_send(cpu_id_t cpu, u32 id);
 
 ## 11. 变更记录
 
+- 2026-09-27：中文措辞整理——Bring-up→AP 启动拉核；affinity/稀疏拓扑句通顺化；弱化「真源 / 钉死」堆砌。
+- 2026-09-26：§7 全文审阅——`ipi.h` / arch 门铃 Doxygen；纠正 `ipi_id_t` 签名；写清 pending 失败回滚与 TLB 分工。
 - 2026-09-25：语言整理；§1.1 门铃 vs 工作拆分；硬件发送假设对照 ICR / SGIR。
 - 2026-08-29：整篇重做——门铃叙述；0x30 / SGI0→64；pending 协议；仅 x86 TLB 注册；纠正「aarch64 TLB via IPI」；GIC≤8。
 - 2026-08-27：初稿。

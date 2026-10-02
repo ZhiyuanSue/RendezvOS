@@ -1,6 +1,6 @@
 # 无锁队列与 EBR 设计
 
-v0.1 · 2026-09-25
+v0.1 · 2026-10-02
 
 本篇覆盖：`include/common/dsa/ms_queue.h`、`include/common/taggedptr.h`、`kernel/task/ebr.c`、`kernel/ipc/ipc.c`、`kernel/ipc/message.c`。
 
@@ -26,17 +26,68 @@ RendezvOS v0.1 的并发队列核心是 **Michael–Scott 无锁 MSQ**（`ms_que
 
 再补一层定位：本框架里用户线程进内核有**自己的内核栈**，内核态延伸流也可以当「能收发 IPC 的执行流」看——**基于 IPC 的混合内核与微内核在这条轴上是同构的**；IPC + 能感知阻塞的调度因此是核心件，不是边角插件。
 
-### 1.2 单状态队列 + MSQ「假出队」
+**代价量级（直觉，非基准）：** 假设 N 个客户端都要碰同一共享资源。宏内核一把大锁：最坏每对客户端互相等，等待像 **O(N²)** 量级堆起来。改成「一 server + 无锁 port」：每人付一次会合 / 切换，总工作更接近 **O(N)**，争用从「自旋烧核」变成「排队进 server」。核少、临界区极短时细锁仍可能更便宜；**核变多、临界区都线程化之后**，可扩展的无锁 IPC 才是前提。
 
-Port 用**一条**线程队列（同一时刻要么全 sender 等、要么全 recv 等），避免双队列「检查 + 插入」无法单 CAS 原子完成——见 Port 篇。
+### 1.2 为何朴素链表做不成无锁队列
 
-实现上还要啃 MSQ 自己的怪癖（直接影响消息结构）：
+固定 dummy 的单链表看起来只要把 `dummy→next` 从 A 改成 B 就能出队。并发下却要在**两次非相邻读**之后再写一次：
 
-1. **MPMC**，带 **dummy**；空队列时 head / tail 都指 dummy。
-2. **出队不是真拿走节点**：逻辑上弹出的是旧 dummy，后面那个节点变成**新 dummy，还必须留在队列里**；它的 `next` 还可能被别人读着。所以 **不能**把「刚 dequeue 的 Message 节点」整段挪到对方 recv 队列——只能**新建壳 + 复制 / 共享载荷指针**。这就是 `Msg_Data_t` / `Message_t` 拆开的根因（Port 篇 §4.2）。
-3. enqueue / dequeue 失败时都会**帮忙推进 tail**（帮助机制）。
+```text
+dummy → A → B → …
+T1 想弹出 A：读 dummy→next(=A)，再读 A→next(=B)，再 CAS/写 dummy→next = B
+```
 
-单状态扩展：`msq_enqueue_check_tail` / `msq_dequeue_check_head` 用 tag 卡住「只允许同侧入队 / 只允许对侧出队」。
+竞态一例：
+
+1. T1 读到 `dummy→next = A`  
+2. T2 先把 A、B 都出队，队列空（`dummy→next = NULL`）  
+3. T1 仍拿着过期的 A，读到 `A→next = B`，再把 `dummy→next` 写成 B  
+
+于是 **已被出队的 B「复活」**。无 dummy 时用独立 `head` 指向首元，矛盾同类。根因：需要**同时**原子更新「dummy→A」与「A→B」两处非相邻指针；硬件 CAS 一次只能动一个字，朴素链表无锁做不到。Michael–Scott 队列用「假出队 + 帮助推进 tail」绕开了这个双指针硬需求。
+
+### 1.3 MSQ 四性质（假出队）
+
+```text
+空：  head ──► dummy ◄── tail          （唯一节点；head==tail）
+非空：head ──► dummy → A → B → … ◄── tail
+出队：旧 dummy 被 put；A 留作新 dummy（逻辑上「弹出」的是 A 的载荷语义，
+      但 A 的节点内存必须继续挂在队列上）。enqueue/dequeue 失败路径都会
+      尝试把 stale tail 推到真正末节点。
+```
+
+四条钉死实现取舍：
+
+| # | 性质 | 后果 |
+|---|------|------|
+| 1 | **MPMC** | 多客户端对一个 server port 合法 |
+| 2 | **空 = 单 dummy，head=tail** | 空判断不能靠「head 是否 NULL」 |
+| 3 | **假出队**：新 dummy **必须留队**；其 `next` 可能仍被别人读 | **不能**把刚 dequeue 的节点整段挪到另一队列；`Message_t` 只能新建壳 + 共享/复制 `Msg_Data_t`（Port 篇 §4.2） |
+| 4 | **帮助推进 stale tail** | 失败不是「立刻放弃」，常需重试 |
+
+Port 再套一层：**单状态**线程队列（同一时刻要么全 SEND、要么全 RECV），避免双队列「检查 + 插入」无法单 CAS——见 Port 篇。扩展原语：`msq_enqueue_check_tail` / `msq_dequeue_check_head`。
+
+### 1.4 ABA 与 tagged pointer
+
+CAS 只看「字是否仍等于期望值」。典型 ABA：
+
+1. T1 读到 head/tail 字 = **A**（某节点地址）  
+2. T2 把该节点 dequeue → free → 分配器又把**同一地址**分给新节点再入队  
+3. T1 的 CAS 仍看见地址 A，以为没人动过，错误成功  
+
+队列里 head/tail/`next` 都是 CAS 目标；节点经 EBR/堆复用后，裸指针 CAS 分不清「同一地址、不同代」。
+
+本仓库：`tagged_ptr_t` = **低 48 位地址 + 高 16 位 tag**（`taggedptr.h`）。`tp_get_ptr` 对 bit47 做 **canonical 符号扩展**，否则内核高半地址解包会错。每次推进 tail / 改链时 tag 单调递增（单状态扩展下步长为 `1 << append_info_bits`，低位留给 port 状态）。即使指针回到同一地址，tag 不同 → CAS 失败 → 重试。EBR 延迟 reclaim，缩短「还挂在别人读路径上的节点被立刻复用」的窗口；**tag 解决 ABA 检测，EBR 解决读侧寿命**——二者互补，不是互相替代。
+
+### 1.5 单状态扩展（EMPTY 枢纽）
+
+标准 MSQ 不区分「队列里现在全是谁」。Port 需要「整条队同一侧」。做法：
+
+- `append_info_bits`（≤15）占用 tag 低位存 `IPC_PORT_STATE_*`；高位仍作 ABA 计数，`tag_step = 1 << bits`。  
+- **状态只写在 tail** 的 append 域（head / next 不作权威）。  
+- `EMPTY` 是 SEND↔RECV 的枢纽：任一侧可从 EMPTY 入队并改状态；对侧 `dequeue_check_head` 才匹配。  
+- 入队 CAS 失败但 tail 状态未变：退化成同侧 MS 竞态，仍正确——对侧进不来。
+
+细节咬合见 §6.2 / §6.3；Port 状态机见 `18`。
 
 ---
 
@@ -90,15 +141,13 @@ typedef struct Michael_Scott_Queue {
 
 ### 4.2 tagged pointer
 
-`taggedptr.h` 将 user pointer 与 tag 打包（低位 tag 位数由 `append_info_bits` 限制）。Port IPC 用 **2 bit** 存 `IPC_PORT_STATE_*`；`msq_enqueue_check_tail` 要求 tail tag 与期望值 CAS 一致才 enqueue。
-
-**ABA：** 依赖 tag 递增（MS 算法标准做法）与 EBR 延迟 reuse；v0.1 不使用 wide counter ABA 除 tag 外。内核堆对齐保证指针低位可腾出 tag。
+布局见 §1.4。Port 用 tag 低 **2 bit**（`IPC_PORT_APPEND_BITS`）存 `IPC_PORT_STATE_*`；`msq_enqueue_check_tail` 要求 tail append 与期望一致才 enqueue。内核堆对齐保证地址域低位可给 MS 方案腾空间。v0.1 **不**另开 wide-CAS ABA 计数。
 
 ### 4.3 refcount 约定
 
-- 入队节点：caller 分配，`ref_init` 或 `ref_get_not_zero` 后 enqueue；enqueue 内可能 claim refcount。
-- dequeue 返回数据 node 时已 **increment** refcount；caller `ref_put(..., free_func)`。
-- `free_func` 对 IPC / message 通常为 `free_ipc_request` / `free_message_ref` → **EBR retire**。
+- 入队节点：caller 分配，`ref_init` 或 **`ref_get_not_zero`** 后 enqueue。后者用 CAS 环：仅当 count ≠ 0 才加一——避免「`fetch_dec` 已到 0、即将 free」与「另一核 `ref_get` 又把死对象救活」的竞态。普通 `ref_get` 在 MS 节点上不够安全。  
+- dequeue 返回数据 node 时已 **increment** refcount；caller `ref_put(..., free_func)`。  
+- `free_func` 对 IPC / message 通常为 `free_ipc_request` / `free_message_ref` → **EBR retire**。EBR 保护读侧仍可能看见的节点；refcount 保护对象逻辑寿命。
 
 ### 4.4 EBR 与 MSQ 协作（摘要）
 
@@ -132,12 +181,12 @@ typedef struct Michael_Scott_Queue {
 ### 6.1 标准 enqueue / dequeue
 
 ```text
-writer:  alloc node → msq_enqueue（链入；通常不需 ebr_enter）
-reader:  ebr_enter → 读 head/tail CAS 环 → ebr_exit
-         → ref_put(旧 dummy, free_func)   // 可能进 EBR
+调用方:  alloc node → msq_enqueue / msq_dequeue（**不必**再自行 ebr_enter；
+         两入口 inline 内部已 ebr_enter…ebr_exit）
+         → 对返回的数据节点 ref_put(..., free_func)   // 可能进 EBR（旧 dummy 亦 put）
 ```
 
-Writer 不需 EBR enter（仅链入新 node）；Reader 必须 enter，保护对 **已 dequeue 但尚未 reclaim** 节点的间接访问。
+概念上「写端只链新节点、读端遍历可能看见已 retire 节点」仍成立；实现上 **enqueue/dequeue 都包了 EBR**，调用方勿双重 enter。
 
 ### 6.2 Port 会合 enqueue（check_tail）
 
@@ -162,9 +211,69 @@ Writer 不需 EBR enter（仅链入新 node）；Reader 必须 enter，保护对
 
 ## 7. 公开 API
 
-MSQ 为 **header inline API**，无独立 `.c`。EBR 公开 API 见 `ebr.h`（EBR 篇 §7）。
+本篇拥有：`ms_queue.h`（MSQ 全套 inline）与 `taggedptr.h`。EBR 符号说明与完整约定见 **`17` §7**（本篇只钉与 MSQ 的咬合）。
 
-IPC 层不暴露 MSQ；扩展阅读 `ms_queue.h` 中各 `msq_*` 参数：`free_func`、`refcount_is_zero`、check 字段枚举 `MSQ_CHECK_FIELD_APPEND`。
+IPC **不**把 MSQ 再包一层公开 API；上层经 `send_msg` / port 会合间接使用。
+
+### 7.1 编排顺序（调用方须遵守）
+
+| 场景 | 顺序 |
+|------|------|
+| 建队列 | 分配 dummy node → **`msq_init(q, dummy, append_info_bits)`** |
+| 普通入/出队 | 节点 `ref_init` → **`msq_enqueue`** / **`msq_dequeue`** → 对返回节点 **`ref_put(..., free_func)`** |
+| Port 单状态会合 | **`msq_enqueue_check_tail`** / **`msq_dequeue_check_head`**（tag=SEND/RECV） |
+| 读临界区 | MSQ 内部已 **`ebr_enter`…`ebr_exit`**；节点 last put → **`ebr_retire_ref`**（message/ipc free） |
+| teardown 排空 | **`msq_clean_queue(q, true, free_*)`** — **勿**对空队列路径的 dummy 再 put |
+
+### 7.2 MSQ（`ms_queue.h`）
+
+```c
+void msq_init(ms_queue_t *q, ms_queue_node_t *dummy, size_t append_info_bits);
+void msq_enqueue(ms_queue_t *q, ms_queue_node_t *node,
+                 error_t (*free_func)(ref_count_t *));
+tagged_ptr_t msq_dequeue(ms_queue_t *q, error_t (*free_func)(ref_count_t *));
+error_t msq_enqueue_check_tail(ms_queue_t *q, ms_queue_node_t *node,
+                               u64 append_info, tagged_ptr_t expect_tp,
+                               error_t (*free_func)(ref_count_t *));
+tagged_ptr_t msq_dequeue_check_head(ms_queue_t *q, u64 check_field_mask,
+                                    tagged_ptr_t expect_tp,
+                                    error_t (*free_func)(ref_count_t *));
+void msq_clean_queue(ms_queue_t *q, bool zero_head_tail,
+                     error_t (*free_func)(ref_count_t *));
+```
+
+| 接口 | 说明 |
+|------|------|
+| `msq_init` | dummy 作初始 head=tail；`append_info_bits` 钳制 ≤15。 |
+| `msq_enqueue` | MS 入队 + EBR 包裹；可帮助推进 stale tail。 |
+| `msq_dequeue` | **假出队**：返回数据节点（持一 ref），旧 dummy put；该节点留作新 dummy。空 → none（已 put 唯一 dummy）。 |
+| `msq_enqueue_check_tail` | tail append-tag 须匹配 `expect_tp`，否则 `-E_REND_AGAIN`。 |
+| `msq_dequeue_check_head` | 对 next 做 PTR/APPEND 检查（`MSQ_CHECK_FIELD_*`）。 |
+| `msq_clean_queue` | 循环 dequeue+put；空路径勿二次 put dummy。 |
+
+队列不内嵌 payload：`container_of` → `Message_t` / `Ipc_Request_t`。
+
+### 7.3 tagged pointer（`taggedptr.h`）
+
+```c
+tagged_ptr_t tp_new(void *ptr, u16 tag);
+void *tp_get_ptr(tagged_ptr_t);
+u16 tp_get_tag(tagged_ptr_t);
+tagged_ptr_t tp_new_none(void);
+bool tp_is_none(tagged_ptr_t);
+```
+
+48-bit 地址 + 16-bit tag；`tp_get_ptr` 做 canonical 符号扩展。Port 用 tag 低 **2 bit** 存 `IPC_PORT_STATE_*`。
+
+### 7.4 EBR（交叉引用 `17`）
+
+```c
+void ebr_enter(void); void ebr_exit(void);
+void ebr_try_reclaim(void);
+error_t ebr_retire_ref(ref_count_t *, error_t (*free_func)(ref_count_t *));
+```
+
+MSQ 读者路径已包 enter/exit；`free_message_ref` / `free_ipc_request` → retire。`schedule` 推进 reclaim。安全条件 `retire_epoch < safe`、overflow leak：见 `17`。
 
 ---
 
@@ -194,12 +303,16 @@ cd core && make ARCH=x86_64 config && make all && make run
 - **append_info_bits 上限 15** — tag 空间受限；port 仅用 2 bit。
 - **无 hazard pointer 备选** — 全库统一 EBR；其他子系统复用须遵守 enter / exit 纪律。
 
-更形式化正确性论证不在本篇展开；若替换队列实现须同步更新本篇与 EBR / IPC 相关 full。性能与队列扩展等**尚未实现**的项见 `v0.1/evolution/TODO.md`（E2）——**现行设计动机与契约以本篇正文为准**，不外链到已废弃的工程审计稿。
+更形式化正确性论证不在本篇展开；若替换队列实现须同步更新本篇与 EBR / IPC 相关 full。性能与队列扩展等**尚未实现**的项见 `v0.1/evolution/TODO.md`（E2）——**现行设计动机与约定以本篇正文为准**，不外链到已废弃的工程审计稿。
 
 ---
 
 ## 11. 变更记录
 
+- 2026-10-02：§1.1 补 O(N²) 锁等待 vs O(N) 无锁会合的代价直觉；回灌设计动机——朴素链表复活竞态、MSQ 四性质、ABA/tagged-ptr、EMPTY 枢纽、`ref_get_not_zero`；成稿不引用归档笔记路径。
+- 2026-09-27：中文表述润色（母语习惯）；「真源 / 契约」改为「以…为准 / 约定」。
+- 2026-09-26：§6.1 纠正「writer 通常不需 ebr_enter」——与 `ms_queue.h` 一致：enqueue/dequeue inline **均**已包裹 enter/exit；调用方勿再包一层。
+- 2026-09-26：§7 全文审阅——`ms_queue.h` / `taggedptr.h` Doxygen（假出队、check_tail、EBR 包裹）；写清编排并链 `17`。
 - 2026-09-25：语言整理；§6.1 改文字流；§8 点明 CAS 随 arch。
 - 2026-08-29：回灌设计动机：同步搬家、混合≈微内核同构、MSQ 假出队→Msg 拆分；去掉审计稿外链。
 - 2026-08-27：初稿：MSQ、tag、EBR 配合与三处用法。

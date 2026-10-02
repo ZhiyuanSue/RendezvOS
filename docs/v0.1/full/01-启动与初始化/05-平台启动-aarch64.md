@@ -14,7 +14,7 @@ aarch64 走的是 **Linux arm64 Image 引导约定**：固件 / QEMU 把镜像�
 
 设备树整树、`bootargs`、PSCI 方法表、GIC 分发器都不在汇编里完成——它们要等 `kallocator` 就绪，由 `arch_start_platform` 全机做一次。每个核自己的 GIC CPU interface、时间和 syscall 固定 trap，则在 `arch_start_core`。用 PSCI `cpu_on` 拉 AP 见 SMP 篇。
 
-跟 x86「历史包袱盯死 1 MiB」不同，ARM 板级入口地址可以随平台变化；core 用链接脚本的 `kernel_start_offset` 对齐当前目标（QEMU virt 的 `0x40080000`），并用 Image 头里的 `text_offset` / magic 让装载器认这是一份合法 arm64 内核镜像。EL2/EL3 降到 EL1 的完整路径还没做完（evolution **E8**）；QEMU virt 上进来时往往已经在 EL1，所以日常路径几乎不踩降级代码。
+跟 x86「历史原因盯住约 1 MiB」不同，ARM 板级入口地址可以随平台变化；core 用链接脚本的 `kernel_start_offset` 对齐当前目标（QEMU virt 的 `0x40080000`），并用 Image 头里的 `text_offset` / magic 让装载器认这是一份合法 arm64 内核镜像。EL2/EL3 降到 EL1 的完整路径还没做完（evolution **E8**）；QEMU virt 上进来时往往已经在 EL1，所以日常路径几乎不踩降级代码。
 
 ---
 
@@ -33,7 +33,6 @@ aarch64 走的是 **Linux arm64 Image 引导约定**：固件 / QEMU 把镜像�
 `boot.S` 加 `boot_map.c` 结束于 `cmain`。`start_arch.c` 的四个钩子由 `cmain` / `start_secondary_cpu` 按与 x86 相同的名字调用。GIC **分发器**是全机一份，所以只在 `arch_start_platform`；**CPU interface** 跟着核走，所以在 `arch_start_core`。若把 CPU interface 塞进平台钩子，AP 上来时自己的接口还没初始化，中断路径会缺半边。
 
 链接方若换板级加载地址，需要同时改链接脚本的 `kernel_start_offset` 与 Image 头约定；`cmain` 编排本身不变。
-
 ---
 
 ## 4. 数据结构与不变量
@@ -96,9 +95,9 @@ Image 头在 `.boot` 最前面（`include/arch/aarch64/boot/arch_setup.h` 的 `s
 
 ### 4.6 与官方文档的对照（启动必知）
 
-下面只摘与本实现直接相关的条款。ARM 侧以 *Arm Architecture Reference Manual for A-profile architecture*（常称 **ARM ARM**）为准；引导寄存器约定跟 Linux 的 arm64 booting 文档（本内核有意兼容该装载契约，但并非 Linux 内核）。
+下面只摘与本实现直接相关的条款。ARM 侧以 *Arm Architecture Reference Manual for A-profile architecture*（常称 **ARM ARM**）为准；引导寄存器约定跟 Linux 的 arm64 booting 文档（本内核有意兼容该装载约定，但并非 Linux 内核）。
 
-**Linux arm64 引导协议（装载契约）**
+**Linux arm64 引导协议（装载约定）**
 
 官方说明见：[Booting AArch64 Linux](https://docs.kernel.org/arch/arm64/booting.html)。与本实现对齐的要点：
 
@@ -195,14 +194,60 @@ syscall helper 的细节：来自用户态（EL0 SVC）时，按陷入时的 SPS
 
 ## 7. 公开 API
 
+本篇拥有的 C 接口在 `include/arch/aarch64/boot/arch_setup.h`（实现 `arch/aarch64/boot/start_arch.c`）。说明与该头注释一致，并已与实现核对。`boot.S` / `boot_map.c` 仅由固件或汇编调用，无单独为文档新建的公开头（入口与早期映射约定见 §6.1–§6.2）。`arch_start_smp` / PSCI `cpu_on` 见 SMP / PSCI 篇；设备树查找 API 与 `build_device_tree` 细节见 `36-DTB与设备树-aarch64.md` §7。
+
+### 7.1 编排顺序（`cmain` / AP，与源码一致）
+
+| 调用方 | 本篇相关顺序 |
+|--------|----------------|
+| BSP `cmain` | … → **`prepare_arch`** → `phy_mm_init` → `arch_enable_percpu` → **`arch_cpu_info`** → `virt_mm_init` → **`arch_start_platform`** → **`arch_start_core(BSP_ID)`** → … |
+| AP `start_secondary_cpu` | … → **`arch_start_core(cpu_id)`** → …（**不**再 `prepare_arch` / `arch_cpu_info` / `arch_start_platform`） |
+
+GIC：**分发器**只在 `arch_start_platform`；**CPU interface** 在每个核的 `arch_start_core`。
+
+### 7.2 `setup_info` 与 Image 头
+
 ```c
-error_t prepare_arch(struct setup_info *);
-error_t arch_cpu_info(struct setup_info *); /* BSP_ID = 0 */
-error_t arch_start_platform(struct setup_info *);
+struct boot_header { /* Linux arm64 Image；见 boot.S */ … };
+
+struct setup_info {
+        u64 dtb_ptr;                 /* 0x0  物理；boot_map 可能改写 */
+        u64 res_x1, res_x2, res_x3;  /* 固件 x1–x3 */
+        u64 map_end_virt_addr;       /* 0x20 早期映射高水位 */
+        u64 boot_uart_base_addr;     /* 0x28 PL011 */
+        u64 boot_dtb_header_base_addr; /* 0x30 prepare_arch 填写的内核 VA */
+        vaddr ap_boot_stack_ptr;     /* 0x38 */
+        cpu_id_t cpu_id;             /* 0x40 */
+};
+```
+
+字段偏移须与 `boot.S` 存取一致。与 x86 不同：无 Multiboot magic/info，入口约定是 Image + DTB（x0）。
+
+### 7.3 可移植钩子（aarch64 实现语义）
+
+```c
+error_t prepare_arch(struct setup_info *arch_setup_info);
+error_t arch_cpu_info(struct setup_info *arch_setup_info);
+error_t arch_start_platform(struct setup_info *arch_setup_info);
 error_t arch_start_core(cpu_id_t cpu_id);
 ```
 
-`arch_start_smp` 见 SMP 篇。`psci_init` 见 PSCI 篇。
+| 接口 | 说明 |
+|------|------|
+| `prepare_arch` | 内部 `map_dtb`：按 `map_end_virt_addr` 向上 / `dtb_ptr` 向下对齐，写一条 2 MiB huge 映射，填 `boot_dtb_header_base_addr` 并推进 `map_end`；再 `fdt_check_header`。**不**建 `device_root`、**不**读 `bootargs`。成功 `0`；头校验失败 → `-E_RENDEZVOS`（`cmain` panic）。 |
+| `arch_cpu_info` | 参数未用。读 `MPIDR_EL1` 填 `cpu_info` 的 MT/U；**`BSP_ID = 0`（固定）**。恒 `REND_SUCCESS`。 |
+| `arch_start_platform` | **全机一次**，须在 `virt_mm_init` 之后。`build_device_tree` → 可选 `chosen`/`bootargs` → `psci_init` → `gic.probe` + `gic.init_distributor`。缺 cmdline **不**失败。当前实现恒返回 `REND_SUCCESS`。AP 不得调用。 |
+| `arch_start_core` | **每核一次**。体内顺序：`cpu_number` → `isb` → `init_interrupt` → `gic.init_cpu_interface` → `smp_ipi_init` → `rendezvos_time_init` → `init_syscall`（`register_fixed_trap(TRAP_CLASS_SYSCALL, …)`）。恒返回 `0`。不建线程/port。 |
+
+### 7.4 本篇源码但不列入本 §7 的符号
+
+| 符号 | 归属 |
+|------|------|
+| `bsp_entry` / `ap_entry` / `drop_to_el1` / `init_mmu`（`boot.S`） | 固件 / PSCI 跳入；无 C 声明头 |
+| `boot_map_pg_table` 等（`boot_map.c`） | 仅汇编早期路径调用 |
+| `build_device_tree` / `device_root` 查找 | DTB 篇 §7（实现落在本篇 `start_arch.c`） |
+| `arch_start_smp`（`smp.h`） | SMP 篇 §7 |
+| `psci_init` | PSCI 篇 §7 |
 
 ---
 
@@ -236,7 +281,9 @@ make ARCH=aarch64 config && make all && make run
 
 ## 11. 变更记录
 
-- 2026-09-25：增补 §4.6（ARM ARM 翻译/EL/SPSel，以及 Linux arm64 booting 装载契约引用）。
+- 2026-09-27：中文表述润色（母语习惯）。
+- 2026-09-26：§7 全文审阅：`arch_setup.h` 补注释；写清钩子编排、GIC 分界与返回约定；去掉 `.c` 里过时/与 x86 串台的旧 brief。
+- 2026-09-25：增补 §4.6（ARM ARM 翻译/EL/SPSel，以及 Linux arm64 booting 装载约定引用）。
 - 2026-09-25：按操作计划补全链接→加载→早期布局→页表→开 MMU 链条；写清 Image/DTB 动机、EL 降级现状与 GIC 分界；流程节加详。
 - 2026-09-20：三块分开（汇编 / 平台一次 / 每核），放回 full 十一节。
 - 2026-08-29：曾按源码重做，并补过早期映射。

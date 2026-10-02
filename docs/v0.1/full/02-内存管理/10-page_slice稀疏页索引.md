@@ -4,7 +4,7 @@ v0.1 · 2026-09-25
 
 本篇覆盖：`kernel/mm/page_slice.c`、`kernel/mm/page_slice_copy.c`、`include/rendezvos/mm/page_slice.h`、`include/rendezvos/mm/page_slice_copy.h`。
 
-内核堆见 `09-kmalloc与内核堆.md`；用户 VA 真源见 `08-Radix树与用户映射.md`。**page_slice 只服务内核侧逻辑缓冲，不替代用户 radix**——两者不要混用。
+内核堆见 `09-kmalloc与内核堆.md`；用户 VA 以 `08-Radix树与用户映射.md` 为准。**page_slice 只服务内核侧逻辑缓冲，不替代用户 radix**——两者不要混用。
 
 ---
 
@@ -12,11 +12,11 @@ v0.1 · 2026-09-25
 
 Buddy 单次连续物理分配大约顶在 **2 MiB**。内核有时还想按「文件偏移 / 大数组下标」那种**逻辑连续**的方式摸一块远大于 2 MiB 的缓冲，但物理上、甚至 KVA 上并不要求连成一片。
 
-**page_slice** 干的就是这件事：在一个 slice 里用稀疏多级索引，把 **pgoff（页号偏移）** 绑到调用方已经准备好的 **离散内核 KVA**。连续性只在偏移算术上成立。
+**page_slice** 做的就是这件事：在一个 slice 里用稀疏多级索引，把 **pgoff（页号偏移）** 绑到调用方已经准备好的 **离散内核 KVA**。连续性只在偏移算术上成立。
 
 分工可以记成三句话：用户 VA、mmap、COW 走 VSpace + `mm_user_utils_*`；小对象 / 整页内核堆走 `percpu(kallocator)`；**逻辑连续、物理按页稀疏** 的内核缓冲（例如页缓存一类）才走 page_slice。
 
-更关键的一条：**内容页由调用方自己 `m_alloc` 再 `insert`**；slice 只养自己的 index / leaf **壳页**。不要指望 `insert` 顺手给你内容页。
+更关键的一条：**内容页由调用方自己 `m_alloc` 再 `insert`**；slice 只维护自己的 index / leaf **壳页**。不要指望 `insert` 顺手给你内容页。
 
 ---
 
@@ -92,21 +92,66 @@ Buddy 单次连续物理分配大约顶在 **2 MiB**。内核有时还想按�
 
 ## 7. 公开 API
 
-```c
-struct page_slice *page_slice_create(usize append_info_size, u64 slice_size);
-error_t page_slice_destroy(struct page_slice **slice);
-error_t page_slice_set_size(struct page_slice **slice, u64 new_size);
-error_t page_slice_insert_page(struct page_slice *slice, u64 pgoff, ...);
-error_t page_slice_lookup(...);    /* 返回前已解锁 */
-error_t page_slice_remove_page(struct page_slice *slice, u64 pgoff);
+本篇拥有：`include/rendezvos/mm/page_slice.h`、`include/rendezvos/mm/page_slice_copy.h`。接口说明以头文件注释为准，并已与实现核对。内容页须调用方先 `m_alloc` 再 `insert`；slice 只维护 index/leaf 壳。不替代用户 radix（见 08）。
 
-error_t page_slice_copy_to_buffer(...);
-error_t page_slice_copy_to_slice(...);
-error_t page_slice_copy_to_user(struct VSpace *vs, u64 user_va, ...);
+**纠正：** `page_slice_lookup` 返回 `struct page_slice_entry *`（不是 `error_t`）；`create` 参数类型为 `size_t`。
+
+### 7.1 编排顺序（典型上层用法）
+
+| 步骤 | API |
+|------|-----|
+| 建空 slice | **`page_slice_create(append_sz, logical_size)`**（`logical_size > 0`） |
+| 绑内容页 | 调用方 `m_alloc` → **`page_slice_insert_page(slice, pgoff, kva, flags)`** |
+| 读 | **`page_slice_lookup`**（返回前已放锁）或 **`copy_to_*`** |
+| 伸缩逻辑长度 | **`page_slice_set_size(&slice, new_size)`**（`0` ≡ destroy） |
+| 副本 | **`page_slice_clone(&dst, src)`**（深拷 VALID；不拷 FAM append） |
+| 卸一页 / 整拆 | **`remove_page`** / **`destroy(&slice)`** |
+
+每 slice 一把 `cas_lock`，上述 API 内部加锁。lookup/copy **不**保证返回指针在 unlock 后仍有效。
+
+### 7.2 生命周期与索引（`page_slice.h`）
+
+```c
+struct page_slice *page_slice_create(size_t append_info_size, size_t slice_size);
+error_t page_slice_destroy(struct page_slice **slice);
+u64 page_slice_get_size(struct page_slice *slice);
+error_t page_slice_set_size(struct page_slice **slice, u64 new_size);
+
+error_t page_slice_insert_page(struct page_slice *slice, u64 pgoff, vaddr kva, u64 flags);
+struct page_slice_entry *page_slice_lookup(struct page_slice *slice, u64 pgoff);
+error_t page_slice_remove_page(struct page_slice *slice, u64 pgoff);
+```
+
+| 接口 | 说明 |
+|------|------|
+| `create` | 空树；`slice_size` 须 ∈ (0, `PAGE_SLICE_MAX_BYTE_SIZE]`。FAM `append_page_slice_info[]` 长度=`append_info_size`（可为 0）。失败 NULL。 |
+| `destroy` | 递归放壳页；对叶 kva 调 `m_free`，除非 `PAGE_SLICE_FLAG_PIN`。成功 `*slice=NULL`。 |
+| `set_size` | `new_size==0` → destroy。变大只改逻辑长度（树长高在后续 insert）。变小拆高 pgoff 并可 unwrap 空壳。超上限 → `-E_REND_OVERFLOW`。 |
+| `insert_page` | 绑定已有 `kva`（非 0）；成功必置 `VALID`。同 kva 幂等；异 kva 已 VALID → `-E_REND_AGAIN`。**不**分配内容页。 |
+| `lookup` | 已绑定返回 entry 指针；缺失/无效/越界 → NULL。**返回前解锁**。 |
+| `remove_page` | 清叶；非 PIN 则 `m_free` kva；可级联放空壳。未映射 → `-E_REND_NOFOUND`。 |
+
+标志：`PAGE_SLICE_FLAG_VALID`（insert 置位）；`PAGE_SLICE_FLAG_PIN` = destroy/remove **跳过**内容 `m_free`（非 MMU pin）。`mapped_entries` 仅上层统计。
+
+### 7.3 拷贝与 clone（`page_slice_copy.h`）
+
+```c
+error_t page_slice_copy_to_buffer(struct page_slice *, u64 byte_off, void *dst, size_t len);
+error_t page_slice_copy_to_slice(struct page_slice *dst, u64 dst_off,
+                                 struct page_slice *src, u64 src_off, size_t len);
+error_t page_slice_copy_to_user(struct VSpace *vs, u64 user_va,
+                                struct page_slice *, u64 file_byte_off, size_t len);
 error_t page_slice_clone(struct page_slice **dst_out, struct page_slice *src);
 ```
 
-完整参数以头文件为准。
+| 接口 | 说明 |
+|------|------|
+| `copy_to_buffer` | 区间须**全部已映射**，遇洞 → `-E_RENDEZVOS`（不零填）。`len==0` 成功。 |
+| `copy_to_slice` | 目标 pgoff 须已绑定；不替 dst insert；拒危险自重叠。 |
+| `copy_to_user` | 同源须已映射；经 `map_handler_user_kernel_copy` 写入 `vs`。 |
+| `clone` | 同 `size` 新 slice；只深拷 VALID（新页归 dst）；洞不物化；剥 PIN；**不**拷 append FAM。**不是 COW**。 |
+
+壳页与 clone 新内容页均来自 `percpu(kallocator)`。
 
 ---
 
@@ -139,6 +184,8 @@ make ARCH=x86_64 config && make all && make run
 
 ## 11. 变更记录
 
+- 2026-09-27：中文用语整理（真源→以…为准；§7「以头文件注释为准」；「养壳」→「维护壳页」）。
+- 2026-09-26：§7 全文审阅——按头文件注释补接口说明与编排；纠正 `lookup` 返回类型；补强 `page_slice_copy.h` 注释（遇洞失败、clone≠COW）。
 - 2026-09-25：语言整理；纠正 `destroy` 签名为 `page_slice **`。
 - 2026-08-29：整篇重做——纠正「insert 分配内容页」；copy 遇洞失败；clone=深拷非 COW。
 - 2026-08-26：v0.1 初稿。

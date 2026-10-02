@@ -1,6 +1,6 @@
 # 线程与 Task_Manager
 
-v0.1 · 2026-09-25
+v0.1 · 2026-09-26
 
 本篇覆盖：`kernel/task/thread.c`、`kernel/task/task_manager.c`、`kernel/task/thread_boot.c`（入队 / `init_proc`）、`kernel/task/id.c`、`include/rendezvos/task/thread.h`、`include/rendezvos/task/id.h`；以及 arch 侧 `switch_to` / `context_switch` / `run_thread` 边界。
 
@@ -133,7 +133,7 @@ struct task_manager {
 
 全局 `Id_Manager tid_manager`；`get_new_id` 用 MCS，`me = &percpu(id_spin_lock)`。从 0 单调递增，到 `INVALID_ID`（`U64_MAX`）后不再自增。**不回收**。
 
-`id.h` 里的 `extern spin_lock_t tid_spin_lock` 是**死声明**（全树无定义）；真锁是 percpu `id_spin_lock`。`init_core_id_system()` 没有参数，只把 `tid_manager` 的 `id` 置 0、锁指针置空；真正加锁发生在后来的 `get_new_id`。它不枚举 CPU。`cmain` 在 `arch_start_core` 之后、`global_port_init` 和 `init_proc` 之前调用，这样后面建线程时管理器已经在。
+MCS 节点是 `DEFINE_PER_CPU(..., id_spin_lock)`（`id.c`）。`init_core_id_system()` 没有参数，只把 `tid_manager` 的 `id` 置 0、锁指针置空；真正加锁发生在后来的 `get_new_id`。它不枚举 CPU。`cmain` 在 `arch_start_core` 之后、`global_port_init` 和 `init_proc` 之前调用，这样后面建线程时管理器已经在。
 
 ### 4.5 append hooks
 
@@ -221,7 +221,7 @@ boot **没有** `arch_set_new_thread_ctx`；首次保存靠这次 `switch_to`。
 `arch/x86_64/task/arch_thread.c` 的 `switch_to`：
 
 1. **TSS.RSP0**：读旧线程的 RSP0 进 `old_context->stack_bottom`，再把新线程的内核栈底写进 per-CPU TSS。环 3→0（或 `syscall` 进入）时，CPU 用 TSS 里的 RSP0 切到该线程的内核栈。
-2. **`MSR_KERNEL_GS_BASE`（0xC0000102）与 `MSR_FS_BASE`（0xC0000100）**：SWAPGS 约定下，内核侧用 KERNEL_GS 存「用户 GS」镜像；FS_BASE 作用户 TLS。切换时成对读写 MSR，避免下一线程 inheriting 上一线程的 TLS。
+2. **`MSR_KERNEL_GS_BASE`（0xC0000102）与 `MSR_FS_BASE`（0xC0000100）**：SWAPGS 约定下，内核侧用 KERNEL_GS 存「用户 GS」镜像；FS_BASE 作用户 TLS。切换时成对读写 MSR，避免下一线程继承上一线程的 TLS。
 3. **`user_rsp_scratch`（per-CPU）**：syscall 入口把用户 RSP 暂存在这里；切换时一并换掉，与 trap frame 里的用户返回现场对齐。
 4. 然后 `context_switch`（`arch_switch.S`）：`pushf` + 保存 `rsp/r15–r12/rbp/rbx`，加载新线程同组寄存器，`popf` 后 `ret`——返回地址在新栈上，等于跳进新线程上次离开的地方。
 
@@ -242,26 +242,128 @@ boot **没有** `arch_set_new_thread_ctx`；首次保存靠这次 `switch_to`。
 
 ## 7. 公开 API
 
-| API | 摘要 |
-|-----|------|
-| `schedule` / `round_robin_schedule` / `choose_schedule` | 调度与默认 RR |
-| `new_task_manager` / `del_task_manager_structure` | TM 结构体 |
-| `new_thread_structure` / `create_thread` / `delete_thread` | TCB 生命周期；create **吞 vs** |
-| `add_thread_to_manager` / `del_thread_from_manager` / `add_thread_to_cpu` | 环 |
-| `get/set_cpu_current_thread` | 本核 current |
-| `thread_get/set_status(_with_expect)` / `thread_set/or_flags` | 状态与 flags |
-| `thread_lookup_port` / `thread_set_name_with_copy` | port 缓存；名字堆拷贝 |
-| `copy_thread` / `run_copied_thread` | 用户复制（创建篇详述） |
-| `cpu_id_is_online` / `task_manager_for_cpu` / `thread_owner_cpu` | 亲和辅助 |
-| `get_new_id` / `init_core_id_system` | tid |
+本篇拥有：`thread.h` / `id.h` 上的调度与 TCB / 入队 / tid，以及 arch `thread_arch.h` 的 `switch_to` / `context_switch`。说明改写自头文件 Doxygen，并已与 `.c` / `.S` 核对。
 
-`gen_thread_from_func` / `gen_thread_from_elf` → 创建篇；`init_proc` / boot IPC → 模块初始化篇。
+**本篇不拥有（只链过去）：** `gen_thread_from_*` / ELF 加载 → `14`；`kernel_port_*` → `03`；亲和性深挖 → `16`；EBR 槽与 `ebr_*` → `17`（`delete_thread` / `del_thread_structure` 的生命周期侧仍在本篇列出）。
+
+### 7.1 编排顺序（调用方必须遵守）
+
+| 场景 | 顺序 |
+|------|------|
+| 每核任务子系统起来 | `init_core_id_system`（`cmain`，早于 `init_proc`）→ **`init_proc`** → … → 之后才可 `create` / `schedule` |
+| `init_proc` 内部 | `new_task_manager` → boot → idle → `switch_to(boot→idle)`；返回时已在 **boot** |
+| 普通内核线程 | `create_thread`（或 `gen_thread_from_func`）→ `add_*` → 某次 **`schedule`** → `switch_to` → `thread_entry` → `run_thread` |
+| 退出 | OR `EXIT_REQUESTED`（或 `delete_thread` 写 `exit`）→ owner 上 `schedule` 切走 → zombie / 摘环 → `ref_put` |
+
+`schedule` 内部七步见 `thread.h` `@note` 与 §6.2。
+
+### 7.2 调度与 Task_Manager
+
+```c
+void schedule(Task_Manager *tm);
+Thread_Base *round_robin_schedule(Task_Manager *tm);
+void choose_schedule(Task_Manager *tm);
+Task_Manager *new_task_manager(void);
+void del_task_manager_structure(Task_Manager *tm);
+Task_Manager *init_proc(void);
+```
+
+| 接口 | 说明 |
+|------|------|
+| `schedule` | 先排掉跨核 kalloc free，再 `ebr_try_reclaim`；持 `sched_lock` 选出 next；仅切入 USER 时换用户页表根；解锁后 `switch_to`。`tm==NULL` 直接返回。切入内核线程时**不会**强制切回 `root_vspace`。 |
+| `round_robin_schedule` | 从 `current` 起沿环找下一个 `thread_status_ready`；环上全无 ready 则死循环（靠 idle 兜底）。`tm` 或 current 为 NULL 时返回 NULL。 |
+| `choose_schedule` | 挂上 RR，并关掉 `is_print_sche_info`。v0.1 **只走**这条路径。 |
+| `new_task_manager` | 分配后挂 RR、初始化 CAS 锁与空环，并把 `owner_cpu` 设为本核。**不**检查 alloc 是否为 NULL（已知缺口）。 |
+| `del_task_manager_structure` | 只 `m_free` 结构体本身；调用方须先拆光环上线程等资源。 |
+| `init_proc` | 见 §7.1 / §6.5；失败返回 NULL，并做部分回滚。 |
+
+### 7.3 TCB 生命周期与入队
+
+```c
+Thread_Base *new_thread_structure(struct allocator *, const thread_append_hooks_t *);
+error_t free_thread_ref(ref_count_t *);
+void del_thread_structure(Thread_Base *);
+Thread_Init_Para *new_init_parameter_structure(void);
+void del_init_parameter_structure(Thread_Init_Para *);
+Thread_Base *create_thread(void *__func, const thread_append_hooks_t *,
+                           VSpace *vs, bool reserve_trap_frame,
+                           int nr_parameter, ...);
+error_t delete_thread(Thread_Base *);
+error_t add_thread_to_manager(Task_Manager *, Thread_Base *);
+error_t del_thread_from_manager(Thread_Base *);
+error_t add_thread_to_cpu(Thread_Base *, cpu_id_t);
+```
+
+| 接口 | 说明 |
+|------|------|
+| `new_thread_structure` | 分配 TCB（含可选 append 尾）、init_parameter 与 IPC dummy；不入队、不发 tid。 |
+| `create_thread` | `vs` **必须非 NULL**；成功则**接管**调用方对 `vs` 的活引用（含 `&root_vspace`）。装好 `thread_entry`、kstack、`arch_set_new_thread_ctx`、参数与 tid。**不**入队；**不**调 append `init`。失败不接管 `vs`。便捷封装见 `14`。 |
+| `delete_thread` | 写 `status=exit`；循环 `del_thread_from_manager`，若返回 `-E_REND_AGAIN` 且本核是 owner 则先 `schedule` 再试；最后 `ref_put`，可能落到 `del_thread_structure`。 |
+| `del_thread_structure` / `free_thread_ref` | 末次引用路径：摘环、放下 vs、排空 IPC、释放 kstack / name，并调 append `fini`（与 `17` 交叉）。 |
+| `add_thread_to_manager` | 挂环、设 `tm`、尝试 init→ready；若已非 init 只打 warn，仍返回成功。任一侧为 NULL → 返回成功但不挂。已有 `tm` → `-E_RENDEZVOS`。 |
+| `del_thread_from_manager` | 幂等摘环；若仍是 `current` → `-E_REND_AGAIN`。 |
+| `add_thread_to_cpu` | 首次入队时选核：要求 `tm==NULL` 且 status 为 `init`；否则 `-E_RENDEZVOS` / `-E_IN_PARAM`。细节见 `16`。 |
+
+### 7.4 current / status / flags / 辅助
+
+```c
+Thread_Base *get_cpu_current_thread(void);
+void set_cpu_current_thread(Thread_Base *);
+void thread_set_flags(Thread_Base *, u64);
+void thread_or_flags(Thread_Base *, u64);
+u64 thread_get_status(Thread_Base *);
+u64 thread_set_status(Thread_Base *, u64);
+bool thread_set_status_with_expect(Thread_Base *, u64 expect, u64 target);
+Message_Port_t *thread_lookup_port(const char *name);
+void thread_set_name_with_copy(const char *name, Thread_Base *);
+bool cpu_id_is_online(cpu_id_t);
+Task_Manager *task_manager_for_cpu(cpu_id_t);
+cpu_id_t thread_owner_cpu(const Thread_Base *);
+```
+
+| 接口 | 说明 |
+|------|------|
+| `get/set_cpu_current_thread` | 读 / 写 `percpu(core_tm)->current_thread`；尚无 TM 时分别返回 NULL / 空操作。 |
+| `thread_set_flags` / `thread_or_flags` | 整字赋值 / 按位 OR；表达退出意图只用 `THREAD_FLAG_EXIT_REQUESTED`。 |
+| `thread_get/set_status*` | 原子读 / 交换 / CAS；IPC 与 `schedule` 共用同一套状态位。 |
+| `thread_lookup_port` | 查本线程 LRU 缓存；返回的 port **必须**再 `ref_put`。 |
+| `thread_set_name_with_copy` | 堆上 `strncpy` 拷贝名字；失败则保留旧名。 |
+| `cpu_id_is_online` / `task_manager_for_cpu` / `thread_owner_cpu` | 选首次入队目标、查所属核；**不是**运行期迁核 API（见 `16`）。 |
+
+### 7.5 tid（`id.h`）
+
+```c
+void init_core_id_system(void);
+void init_id_manager(Id_Manager *idmng);
+id_t get_new_id(Id_Manager *idmng);
+```
+
+| 接口 | 说明 |
+|------|------|
+| `init_core_id_system` | 只做 `init_id_manager(&tid_manager)`；无参数，也不扫 CPU。 |
+| `get_new_id` | 用 MCS（`idmng->spin_ptr` + 本核 `id_spin_lock`）；靠单例 `tid_manager` 保证全局唯一。 |
+
+### 7.6 arch 切换边界
+
+```c
+void switch_to(Arch_Thread_Context *old, Arch_Thread_Context *new);
+extern void context_switch(Arch_Thread_Context *old, Arch_Thread_Context *new);
+extern void run_thread(Thread_Init_Para *para); /* asm；见 thread.h */
+```
+
+| 接口 | x86_64 | aarch64 |
+|------|--------|---------|
+| `switch_to` | TSS.RSP0、KERNEL_GS、FS、`user_rsp_scratch` → 再 `context_switch` | TPIDR_EL0 / SP_EL0；保存 DAIF，返回旧上下文后再恢复 DAIF+ISB |
+| `context_switch` | 保存/恢复 callee-saved + RSP（`arch_switch.S`） | x19–x30、SP、SPSR（`arch_switch.S`） |
+| `run_thread` | SysV：按 `int_para[]` 调 `thread_func_ptr` | AAPCS64 同理 |
+
+页表根**不**在 `switch_to` 里换。`copy_thread` / `run_copied_thread` → `14`。
 
 ---
 
 ## 8. 多架构
 
-`Arch_Thread_Context`、`switch_to`、`run_thread`、`arch_set_new_thread_ctx` 分 arch。v0.1 bring-up 以 x86_64、aarch64 为准；riscv / loongarch 头文件在，未进主线验收。硬件细节见 §6.6；页表 / ASID 换根不在本篇重复。
+`Arch_Thread_Context`、`switch_to`、`run_thread`、`arch_set_new_thread_ctx` 按 arch 分实现。v0.1 主线启动验收以 x86_64、aarch64 为准；riscv / loongarch 头文件在，但未进主线验收。硬件细节见 §6.6；页表 / ASID 换根不在本篇重复。
 
 ---
 
@@ -286,13 +388,16 @@ cd core && make ARCH=x86_64 config && make all && make run
 - `thread_status_suspend` 无完整 wait 子系统。
 - RR 无时间片：长占 CPU 的内核线程饿同核 ready。
 - 环上无 ready → RR 死循环（靠 idle）。
-- `new_task_manager` 缺 alloc NULL 检查；`tid_spin_lock` 死声明。
+- `new_task_manager` 缺 alloc NULL 检查。
 - 远期：迁移 / 可插拔调度见 evolution E3、E4。
 
 ---
 
 ## 11. 变更记录
 
+- 2026-10-02：删除已无定义的死声明 `tid_spin_lock`；tid MCS 仅 `percpu(id_spin_lock)`。
+- 2026-09-27：中文表述润色（母语习惯）。
+- 2026-09-26：§7 全文审阅——按 `thread.h` / `id.h` / arch `switch_to` Doxygen 补接口说明与编排；纠正 `init_proc`「idle→boot」误述、`new_task_manager` 伪 NULL 返回；写清 `add_thread_to_manager` 非 init 仅 warn。
 - 2026-09-25：语言整理；§6.6 扩写 x86 TSS/GS/FS 与 aarch64 SP_EL0/TPIDR/DAIF 对照实现；日期对齐本轮。
 - 2026-08-29：整篇重做——薄调度叙述；status / flag / zombie / exit 三分；内核切入不换根；tid 真锁；append 调用点；`init_proc` 切 idle；RR 死循环与排水副作用；纠正旧稿 `tid_spin_lock`。
 - 2026-08-27：初稿；08-29 曾定点补丁「薄 RR」。

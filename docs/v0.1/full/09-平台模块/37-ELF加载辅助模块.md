@@ -1,6 +1,6 @@
 # ELF 加载辅助模块
 
-v0.1 · 2026-09-25
+v0.1 · 2026-09-27
 
 本篇覆盖：`modules/elf/elf.c`、`elf_print.c`、`include/modules/elf/*.h`（`elf.h` / `elf_common.h` / `elf_32.h` / `elf_64.h` / `elf_print.h`）。
 
@@ -80,18 +80,55 @@ loader:
 
 ## 7. 公开 API
 
+本篇拥有：ELF **格式库**——`check_elf_header` / `get_elf_*`、32/64 Phdr·Shdr 遍历宏（`elf.h`）、调试打印（`elf_print.h`）、常量与结构体（`elf_common.h` / `elf_32.h` / `elf_64.h`）。以头文件注释为准（`elf.h` / `elf_print.h`；已与 `.c` 核对）。
+
+**本篇不拥有：** `load_elf_to_vs` / `gen_thread_from_elf` / `run_elf_program` / 栈 / Path A·B → `14`；`page_slice` 拷贝 → `10`；VSpace map → `07`/`08`。
+
+**不存在于公开面：** `elf64_hash`（`.c` 内实现，未导出、无调用方）。
+
+### 7.1 编排顺序（调用方须遵守）
+
+| 步骤 | API | 说明 |
+|------|-----|------|
+| 1 | **`check_elf_header`** | 仅 magic + `EI_VERSION` |
+| 2 | **`get_elf_class` == `ELFCLASS64`** | loader 拒绝 32-bit |
+| 3 | （可选）`e_phoff` 越界检查 | loader 侧，非本篇 |
+| 4 | **`for_each_program_header_64`** | 扫 `PT_LOAD` / `PT_DYNAMIC`（映射语义在 `14`） |
+
+本篇**不**校验 `e_machine` / endian 与宿主一致——错架构可走到 map 后再炸。
+
+### 7.2 校验与字段
+
 ```c
 bool check_elf_header(vaddr elf_header_ptr);
-u8 get_elf_class / get_elf_data_encode / get_elf_osabi / get_elf_abi_version(...);
-u16 get_elf_type(vaddr); u16 get_elf_machine(vaddr);
+u8  get_elf_class / get_elf_data_encode / get_elf_osabi / get_elf_abi_version(…);
+u16 get_elf_type(vaddr);
+u16 get_elf_machine(vaddr);   /* 坏 class 时返回 ET_NONE（历史哨兵） */
+```
 
+| 接口 | 说明 |
+|------|------|
+| `check_elf_header` | `EI_MAG0..3` + `EV_CURRENT`；不查 class/machine。 |
+| `get_elf_type` / `_machine` | 按 class 读 32 或 64 头。 |
+
+### 7.3 遍历宏
+
+```c
 for_each_program_header_32/64(elf_header_ptr) { /* phdr_ptr */ }
 for_each_section_header_32/64(elf_header_ptr) { /* shdr_ptr */ }
+```
 
+假定 class 已确认、表在可读缓冲内。正式加载路径只用 **64** 程序头宏。
+
+### 7.4 打印（`elf_print.h`）
+
+```c
 void print_elf_header(vaddr);
 void print_elf_ph32/64(...); void print_elf_sh32/64(...);
 void print_elf_machine(u16);
 ```
+
+默认 `DEBUG` 关闭 → `pr_off`；调用无害。loader 调试可偶发 `print_elf_ph64`。
 
 ---
 
@@ -118,6 +155,8 @@ void print_elf_machine(u16);
 
 ## 11. 变更记录
 
+- 2026-09-27：语言润色——「真源 = … Doxygen」改为「以头文件注释为准」；one-shot→单次、bring-up→拉起、非热路径契约→非常用路径，约定从略；符号与技术事实未改。
+- 2026-09-26：§7 全文审阅——`elf.h`/`elf_print.h` Doxygen；与 `14` 硬分工；标明 `elf64_hash` 未导出。  
 - 2026-09-25：语言轮——ELF 格式字段与 loader 消费边界；明确不校验 machine；打印默认 `pr_off`。  
 - 2026-08-29：整篇重做——薄边界；与 03/14 硬分工。  
 - 2026-08-27：初稿。

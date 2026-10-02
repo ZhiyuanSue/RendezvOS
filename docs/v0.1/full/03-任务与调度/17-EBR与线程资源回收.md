@@ -1,6 +1,6 @@
 # EBR 与线程资源回收
 
-v0.1 · 2026-09-25
+v0.1 · 2026-09-26
 
 本篇覆盖：`kernel/task/ebr.c`、`include/rendezvos/task/ebr.h`、`delete_thread` / `free_thread_ref` / `del_thread_structure` / `thread_release_owned_resources`（`thread.c`），以及与 `schedule` 钩子的交汇。
 
@@ -20,14 +20,14 @@ MSQ 算法与队列内 `ebr_enter` / `exit` 见 `04-IPC/22-无锁队列与EBR设
 交汇点：
 
 1. 每次 `schedule`：先 `kalloc_process_cross_cpu_frees()`，再 **`ebr_try_reclaim()`**（idle 重的核也要推进）。两钩子并列，不是同一种排水。
-2. 线程 teardown 排空 send / recv 时调 `free_message_ref` → **队列节点仍进 EBR**。
+2. 线程回收排空 send / recv 时调 `free_message_ref` → **队列节点仍进 EBR**。
 3. `Ipc_Request` 持有 `thread` ref；`free_ipc_request_real` 里 put thread → EBR 延迟可**推迟** TCB 真正释放。
 
 ---
 
 ## 2. 目标与边界
 
-**提供：** minimal EBR（enter / exit、global epoch、固定 retire 表）；线程 teardown 顺序与禁止二次 drain；schedule 推进 reclaim。
+**提供：** 最小 EBR（enter / exit、global epoch、固定 retire 表）；线程回收顺序与禁止二次 drain；schedule 推进 reclaim。
 
 **不做：** 通用 GC；overflow 自动扩容（改 `EBR_RETIRE_SLOTS` 或降 churn）；替上层决定何时 `delete_thread`；把跨核 kfree 算进 EBR。
 
@@ -74,12 +74,12 @@ reclaim iff rec.retire_epoch < safe     // 是 < 不是 ≤
 
 槽满：先 reclaim 腾位；仍满 → **leak + 日志**，仍返回 `REND_SUCCESS`。不是「稍后一定 free」。
 
-### 4.4 线程 teardown 不变量
+### 4.4 线程回收不变量
 
-- **禁止**在 `delete_thread` 里、last ref 之前调 `thread_release_owned_resources`（二次 drain → dummy 双 put / 死转）。
+- **禁止**在 `delete_thread` 里、末次 ref 之前调 `thread_release_owned_resources`（二次 drain → dummy 双 put / 死转）。
 - `fini` 必须在 drop `vs` **之前**（compat 可能还读 vs）。
 - 空队列 dequeue 已 put dummy；`msq_clean_queue` **禁止**再 put dummy。
-- teardown **不**切换当前硬件 AS（只 put ownership）。
+- 回收路径 **不**切换当前硬件 AS（只 put ownership）。
 
 ---
 
@@ -87,11 +87,11 @@ reclaim iff rec.retire_epoch < safe     // 是 < 不是 ≤
 
 | 路径 | 职责 |
 |------|------|
-| `ebr.c` / `ebr.h` | enter / exit / retire / reclaim / stats |
+| `kernel/task/ebr.c` / `ebr.h` | enter / exit / retire / reclaim / stats |
 | `ms_queue.h` | 读侧 enter / exit |
-| `message.c` / `ipc.c` | retire 入口；request 钉 thread |
-| `thread.c` | delete / del_structure / release_owned |
-| `task_manager.c` `schedule` | kfree 排水 + `ebr_try_reclaim` |
+| `kernel/ipc/message.c` / `ipc.c` | retire 入口（`free_message_ref` / `free_ipc_request`）；request 钉 thread |
+| `kernel/task/thread.c` | delete / del_structure / release_owned |
+| `kernel/task/task_manager.c` `schedule` | kfree 排水 + `ebr_try_reclaim` |
 
 ---
 
@@ -136,18 +136,57 @@ ref_put → free_thread_ref → del_thread_structure:
 
 ## 7. 公开 API
 
+本篇拥有：`ebr.h` 全套；线程回收路径上的 `delete_thread` / `free_thread_ref` / `del_thread_structure`（`thread.h`；与 `13` 交叉，本篇钉回收顺序）。说明改写自头文件 Doxygen，并已与 `.c` 核对。
+
+**本篇不拥有：** MSQ inline 算法 → `22`；`kalloc_process_cross_cpu_frees` → kmalloc 篇（与 `ebr_try_reclaim` **并列**于 `schedule`，不是同一种排水）；zombie / `EXIT_REQUESTED` 语义 → `13`。
+
+`thread_release_owned_resources`：**内部 static**；勿在末次 ref 前手调。
+
+### 7.1 编排顺序（调用方必须遵守）
+
+| 场景 | 顺序 |
+|------|------|
+| MSQ 读临界区 | **`ebr_enter`** → 遍历指针 → **`ebr_exit`**（`ms_queue.h` 已包） |
+| 节点末次 put | `free_message_ref` / `free_ipc_request` → **`ebr_retire_ref(..., *_real)`** → 稍后本核 reclaim |
+| 推进 reclaim | 本核 `ebr_exit`(深度 1→0)、再 `retire`、或任意 **`schedule`**（先排跨核 kfree，再 `ebr_try_reclaim`） |
+| 删线程 | **`delete_thread`**：`status=exit` → 摘环（owner 上遇 AGAIN 则 schedule）→ `ref_put` |
+| 末次线程 ref | **`free_thread_ref` → `del_thread_structure`**：fini（vs 仍有效）→ release（消息进 EBR；name/kstack 直接 free；只 put vs）→ free TCB |
+
+### 7.2 EBR（`ebr.h`）
+
 ```c
 void ebr_enter(void);
 void ebr_exit(void);
 void ebr_try_reclaim(void);
 error_t ebr_retire_ref(ref_count_t *ref, error_t (*free_func)(ref_count_t *));
 void ebr_dump_stats(void);
+```
 
+| 接口 | 说明 |
+|------|------|
+| `ebr_enter` | 深度 0→1：把 global 快照到 local，置 active。可嵌套。 |
+| `ebr_exit` | 深度 1→0：清 active，`global++`，再对本核做 `ebr_try_reclaim`。 |
+| `ebr_try_reclaim` | 只扫**本核**槽；`retire_epoch < safe`（**严格小于**）才调 `free_func`。 |
+| `ebr_retire_ref` | 记入本核表（默认 512 槽）；前后会尝试 reclaim。满则 **leak，但仍返回 SUCCESS**（防 UAF）。`ref` / `free_func` 为空 → `-E_IN_PARAM`。 |
+| `ebr_dump_stats` | 打印每核的 retire / reclaim / overflow 统计。 |
+
+`Thread_Base` **不**走 EBR；但 `Ipc_Request` 可钉住 thread ref，从而间接推迟 `del_thread_structure`。
+
+### 7.3 线程回收（`thread.h`）
+
+```c
 error_t delete_thread(Thread_Base *thread);
 error_t free_thread_ref(ref_count_t *ref_count_ptr);
 void del_thread_structure(Thread_Base *thread);
-/* thread_release_owned_resources：内部；勿在 last ref 前手调 */
 ```
+
+| 接口 | 说明 |
+|------|------|
+| `delete_thread` | 写 `exit`；循环摘环（owner 上遇 AGAIN 则 `schedule`）；再 `ref_put`。成功路径**不会**在 put 前 drain。 |
+| `free_thread_ref` | 末次引用的析构入口 → `del_thread_structure`。 |
+| `del_thread_structure` | 见 §7.1 / §6.2。创建失败时可同步直调。name / kstack **直接** `m_free`。 |
+
+禁止：在 `delete_thread` 的末次 ref **之前**再调 release（二次 drain → dummy 双 put / 死转）。
 
 ---
 
@@ -175,6 +214,9 @@ void del_thread_structure(Thread_Base *thread);
 
 ## 11. 变更记录
 
+- 2026-09-27：中文表述润色（母语习惯）。
+- 2026-09-26：§5 路径纠正——retire 入口在 `kernel/ipc/message.c` / `ipc.c`（非 `kernel/task/`）。
+- 2026-09-26：§7 全文审阅——`ebr.h` / delete·del_structure Doxygen；写清 enter/exit/retire/reclaim 编排、`<` 安全条件、overflow leak、与 kfree 排水并列。
 - 2026-09-25：语言整理；强调与跨核 kfree 排水并列、非同一种机制。
-- 2026-08-29：整篇重做——拆开「节点 EBR vs 线程同步 teardown」叙述；`<` 安全条件；overflow leak；schedule 双钩子；request 钉 thread；禁止二次 drain。
+- 2026-08-29：整篇重做——拆开「节点 EBR vs 线程同步回收」叙述；`<` 安全条件；overflow leak；schedule 双钩子；request 钉 thread；禁止二次 drain。
 - 2026-08-27：初稿。

@@ -15,15 +15,21 @@
 #define KMSG_OP_SYSTEM_POWER_SHUTDOWN 1u
 #define KMSG_OP_SYSTEM_POWER_REBOOT   2u
 
-/* Timer one-shot notify (any rendezvos_timer_event wait_port). */
+/**
+ * Timer one-shot notify. Payload: @c KMSG_FMT_SYSTEM_TIMER — one @c i64
+ * cookie / event id.
+ */
 #define KMSG_OP_SYSTEM_TIMER_EXPIRE 3u
 #define KMSG_OP_SYSTEM_TIMER_CANCEL 4u
 #define KMSG_FMT_SYSTEM_TIMER       "q"
 
-/*
- * the port is closed info
+/**
+ * Port-close wake for blocked receivers only. Blocked senders are woken with
+ * @c THREAD_FLAG_IPC_PORT_CLOSED instead — see @c unregister_port /
+ * @c THREAD_FLAG_IPC_PORT_CLOSED.
  */
 #define KMSG_OP_SYSTEM_PORT_CLOSED  5u
+/** Payload: constant 0; no semantic content. */
 #define KMSG_FMT_SYSTEM_PORT_CLOSED "q"
 
 /*

@@ -1,6 +1,6 @@
 # per-CPU 数据与访问约定
 
-v0.1 · 2026-09-25
+v0.1 · 2026-09-27
 
 本篇覆盖：`kernel/smp/percpu.c`、`include/rendezvos/smp/percpu.h`、`arch/{x86_64,aarch64}/percpu.c`（`arch_enable_percpu` / `get_per_cpu_base`）。
 
@@ -102,16 +102,70 @@ x86 选 **GS_BASE**（内核态直接当基址；用户 TLS 另走 FS / KERNEL_G
 
 ## 7. 公开 API
 
+本篇拥有：per-CPU 布局与访问——`DEFINE_PER_CPU` / `percpu` / `per_cpu`、`arch_enable_percpu` / `get_per_cpu_base`、`__per_cpu_offset` / `cpu_number`、以及 boot 侧 `reserve_per_cpu_region` / `clean_per_cpu_region` / `calculate_per_cpu_offset`。说明改写自 `percpu.h` Doxygen（已与 `percpu.c`、`arch/*/percpu.c` 核对）。
+
+**本篇不拥有：** 各住户变量语义（`core_tm`、`irq_vector`、MCS node…）→ 各子系统篇；BSP_ID / 上线时序 → `28`；MCS 锁原语本身 → `31`。
+
+### 7.1 编排顺序（调用方须遵守）
+
+| 场景 | 顺序 |
+|------|------|
+| 物理布局 | `phy_mm_init` → **`reserve_per_cpu_region`** → map → **`clean_per_cpu_region`**（额外区 **memset 0**） |
+| BSP | `cmain` 早期 **`arch_enable_percpu(BSP_ID)`** → 之后才 `percpu()`；`arch_start_core` 写 `cpu_number` |
+| AP | `start_secondary_cpu` **最先** `arch_enable_percpu(cpu_id)` → 再 `virt_mm_init` / `arch_start_core` |
+| MCS | `lock_mcs(lock, me)` 的 `me` = **本核** node（`&percpu(...)`），禁止他核 slot |
+
+未 enable 就 `percpu()` → 基址错。AP 槽无模板初值——勿假定 `DEFINE_PER_CPU(...)= {x}` 在 AP 上成立。
+
+### 7.2 宏与本核访问
+
 ```c
-DEFINE_PER_CPU(type, name);
-percpu(var);
-per_cpu(var, cpu);
-void arch_enable_percpu(cpu_id_t cpu);
-vaddr get_per_cpu_base(void);
-/* reserve/clean：mm/boot 内部 */
+DEFINE_PER_CPU(type, name);   /* → .percpu..data（CPU0 模板） */
+per_cpu(var, cpu);            /* 显式 CPU；可跨核读 */
+percpu(var);                  /* 本核 = get_per_cpu_base() + 偏移 */
 ```
 
+| 宏 | 说明 |
+|----|------|
+| `DEFINE_PER_CPU` | 链接段一份模板；初值只服务 CPU0。 |
+| `per_cpu` | `__per_cpu_offset[cpu] + (&var - &_per_cpu_start)`。跨核改须有协议。 |
+| `percpu` | 依赖 GS_BASE / TPIDR_EL1 已装好。 |
+
+### 7.3 基址寄存器
+
+```c
+void arch_enable_percpu(cpu_id_t cpu_id);
+vaddr get_per_cpu_base(void);
+```
+
+| | x86_64 | aarch64 |
+|--|--------|---------|
+| 写入 | `MSR_GS_BASE = __per_cpu_offset[cpu]` | `TPIDR_EL1 = …` |
+| 读取 | `rdmsr GS_BASE` | `mrs TPIDR_EL1` |
+| 勿混 | 用户 TLS：FS / `KERNEL_GS` | 用户 TLS：`TPIDR_EL0` |
+
+### 7.4 布局辅助（mm/boot 内部）
+
+```c
+void reserve_per_cpu_region(paddr *phy_kernel_end);
+void calculate_per_cpu_offset(void);
+void clean_per_cpu_region(paddr per_cpu_phy_addr);
+```
+
+| 接口 | 说明 |
+|------|------|
+| `reserve` | `offset[0]`=链接段；`offset[1…]` 从对齐后的 `phy_kernel_end` 起预留 `(MAX-1)*size`；推进 end。 |
+| `calculate` | 线性填 `offset[2…]`。 |
+| `clean` | 额外区清零——**不是** memcpy 模板。 |
+
+`cpu_number`：`DEFINE_PER_CPU`；每核在 `arch_start_core` 赋值为本 `cpu_id`。
+
+### 7.5 MCS `me`（硬规则）
+
+`me` 必须指向**当前 CPU** 的队列节点。用 `per_cpu(node, other)` 当 `me` → 链表损坏。细节亦见 INVARIANTS。
+
 ---
+
 
 ## 8. 多架构
 
@@ -142,6 +196,8 @@ vaddr get_per_cpu_base(void);
 
 ## 11. 变更记录
 
+- 2026-09-27：中文措辞整理——弱化「真源 / 钉死」堆砌。
+- 2026-09-26：§7 全文审阅——`percpu.h` 全套 Doxygen；写清「清零预留≠memcpy」「先 enable 再 percpu」与 MCS `me`；划清 vs `28`/`31`。
 - 2026-09-25：语言整理；§1.1 补 GS_BASE / TPIDR_EL1 硬件动机与用户 TLS 分界。
 - 2026-08-29：整篇重做——纠正「复制」→清零预留；MCS me；GS/TPIDR；住户表；与拓扑篇时序交叉。
 - 2026-08-27：初稿。

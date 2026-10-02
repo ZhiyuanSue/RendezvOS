@@ -1,10 +1,10 @@
 # TLB shootdown 与跨核一致性
 
-v0.1 · 2026-09-25
+v0.1 · 2026-09-27
 
 本篇覆盖：`arch/x86_64/mm/arch_smp_tlb_flush.c`、x86 / aarch64 `include/arch/*/sync/tlb.h` 中 all_core 路径与软 IPI 的衔接。
 
-**与 `02-内存管理/11-TLB与缓存一致性.md` 分工（写死）：**
+**与 `02-内存管理/11-TLB与缓存一致性.md` 分工：**
 
 | | 02（策略 / mask） | **本篇（06）** |
 |--|------------------|----------------|
@@ -59,7 +59,7 @@ x86 敲门刷；aarch64 广播刷。
 
 ## 4. 数据结构与不变量
 
-### 4.1 x86 每核消息槽
+### 4.1 x86 每核消息槽（字段所有权）
 
 ```c
 struct smp_tlb_flush_msg {
@@ -70,6 +70,13 @@ struct smp_tlb_flush_msg {
         bool flush_all;
 };
 ```
+
+| 字段 | 谁写 | 谁读 / 约定 |
+|------|------|-------------|
+| `busy` | **发送方** `exchange→1` 抢占；成功路径由 **handler** 清 0；**仅** `smp_ipi_send` 失败时发送方自清 | 同目标串行化 |
+| `flush_va` / `flush_all` | **发送方**在持有 `busy` 后写 | handler 读后执行 `invlpg` / CR3 全刷 |
+| `request_gen` | **仅发送方** `fetch_inc` | handler `load` 作完成标签 `cur` |
+| `done_gen` | **仅 handler** 刷完后 `store(cur)` | 发送方自旋至 `done ≥ expect`（`expect=fetch_inc+1`） |
 
 - 单槽 + `busy`：同目标 CPU 上并发 shootdown **串行化**；无 batching。
 - **无 PCID**：页级=`invlpg`；vspace 级≈ reload CR3 / 全刷；asid 参数 `(void)`。
@@ -126,16 +133,66 @@ Init：`arch_start_core` → `smp_ipi_init` + **`arch_smp_flush_tlb_init`**（�
 
 ## 7. 公开 API
 
-```c
-void arch_tlb_invalidate_page_all_core(u16 asid, vaddr v,
-                                       vs_tlb_cpu_bitmap_t *mask);
-/* page / kernel_page / vspace_page / range / all 等同族 — 见 arch tlb.h */
+本篇拥有：x86 **shootdown 握手**——`arch_smp_flush_tlb_init` / `arch_smp_flush_page_tlb` / `arch_smp_flush_all_tlb`，以及 per-CPU `smp_tlb_flush_msg`（gen/busy/done）字段约定。说明改写自 `arch/x86_64/sync/tlb.h` Doxygen + `arch_smp_tlb_flush.c`（已核对）。
 
-/* x86 */
+**本篇不拥有：** `tlb_cpu_mask` 维护 / schedule set→刷→clear → `11`；可移植 `arch_tlb_invalidate_*` 命名与 aarch64 `tlbi *is` 细节 → `11`；软 IPI pending 位图 → `30`。
+
+aarch64：**无**本篇专属 shootdown API——`*_all_core` 即硬件广播（见 `11`）。
+
+### 7.1 编排顺序（调用方须遵守）
+
+| 场景 | 顺序 |
+|------|------|
+| x86 每核 | `smp_ipi_init` → **`arch_smp_flush_tlb_init`**（首调者全局 `smp_ipi_register`） |
+| MM remap/unmap 用户页 | 改 PTE 后 `arch_tlb_invalidate_page_all_core(…, &mask)` → 内调 **`arch_smp_flush_page_tlb`** |
+| vspace 级 | `…_vspace_page_all_core` → **`arch_smp_flush_all_tlb(mask)`** |
+| 发送路径 | 本地先刷 → 按 mask 对 remote：抢 busy → 写参 → `smp_ipi_send` → **等 done_gen** |
+
+IPI handler **只刷**；不拿 `tlb_cpu_mask_lock`、不 sleep。
+
+### 7.2 x86 shootdown API
+
+```c
 void arch_smp_flush_tlb_init(void);
-void arch_smp_flush_page_tlb(...);
-void arch_smp_flush_all_tlb(...);
+void arch_smp_flush_page_tlb(vaddr addr, const vs_tlb_cpu_bitmap_t *cpu_mask);
+void arch_smp_flush_all_tlb(const vs_tlb_cpu_bitmap_t *cpu_mask);
 ```
+
+| 接口 | 说明 |
+|------|------|
+| `arch_smp_flush_tlb_init` | 初始化本核消息槽；非 APIC 直接 return。`smp_tlb_ipi_ready` 只置一次。 |
+| `arch_smp_flush_page_tlb` | 本地 `invlpg` + 对 mask 内 online 核发页级 IPI。 |
+| `arch_smp_flush_all_tlb` | 本地 CR3 重载式全刷 + remote `flush_all`。 |
+
+前置：`smp_tlb_ipi_ready` 且 `arch_irq_type` 为 xAPIC/x2APIC；否则仅本地。
+
+### 7.3 消息槽约定（`smp_tlb_flush_msg`；所有权见 §4.1）
+
+```c
+struct smp_tlb_flush_msg {
+        atomic64_t request_gen, done_gen, busy;
+        vaddr flush_va;
+        bool flush_all;
+};
+DEFINE_PER_CPU(..., smp_tlb_flush_message);
+```
+
+| 字段 / 步骤 | 说明 |
+|-------------|------|
+| `busy` | 发送方 claim；handler 成功清 0；**发送方只在门铃失败时清**——勿两边随意写。 |
+| `request_gen` | **仅发送方** `fetch_inc`；handler 只 load。 |
+| `done_gen` | **仅 handler** store；发送方只 wait。 |
+| `flush_*` | 发送方在持 busy 后写；handler 只读。 |
+| send 失败 | 发送方清 `busy` 并 return——**不保证**远端已刷（`request_gen` 已递增，无对应 done）。 |
+| 无 PCID | 页级=`invlpg`；全刷≈ reload CR3；`asid` 在可移植包装里被忽略。 |
+
+### 7.4 与 `11` 的对照（勿重复维护）
+
+| 可移植名（`11`） | x86 落到 | aarch64 |
+|------------------|----------|---------|
+| `…_page_all_core` | `arch_smp_flush_page_tlb` | `tlbi vae1is`（忽略 mask） |
+| `…_vspace_page_all_core` | `arch_smp_flush_all_tlb` | `tlbi aside1is` |
+| `kernel_page_all_core` | **仅本地** invlpg | `tlbi vaale1is` |
 
 ---
 
@@ -162,6 +219,9 @@ void arch_smp_flush_all_tlb(...);
 
 ## 11. 变更记录
 
+- 2026-09-27：中文措辞整理——「写死 / 契约 / 真源」改为分工表与「约定」；保留字段所有权语义。
+- 2026-09-26：对照 `tlb.h` Doxygen / `arch_smp_tlb_flush.c`——补 **字段所有权**（busy/request_gen/done_gen/flush_* 谁写谁读）；send 失败时 `request_gen` 已递增无 done。
+- 2026-09-26：§7 全文审阅——强化 `arch_smp_flush_*` Doxygen（gen/busy/done）；划清拥有（握手）vs `11`（mask / 可移植名）vs `30`（门铃）。
 - 2026-09-25：语言整理；§1.1 补「为何 x86 必须 IPI、aarch64 用 tlbi is」。
 - 2026-08-29：整篇重做——删「aarch64 via IPI」；x86 gen/busy/done；与 02 / 软 IPI 边界；send 失败与单槽限制。
 - 2026-08-27：初稿（误写 aarch64 IPI）。

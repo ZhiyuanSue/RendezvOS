@@ -1,6 +1,6 @@
 # CPU 亲和性：创建时绑核
 
-v0.1 · 2026-09-25
+v0.1 · 2026-09-26
 
 本篇覆盖：`add_thread_to_cpu` / `cpu_id_is_online` / `task_manager_for_cpu` / `thread_owner_cpu`（`thread.c` / `thread.h`）、`modules/test/thread_affinity_test.c`。
 
@@ -98,12 +98,38 @@ cpu < RENDEZVOS_MAX_CPU_NUMBER
 
 ## 7. 公开 API
 
+本篇拥有：创建时选核的四个 helper（`thread.h` / `thread.c`）。说明改写自头文件 Doxygen，并已与 `.c` 核对。调度环 / `add_thread_to_manager` 细节见 `13`；`gen_thread_from_*` 见 `14`；`NR_CPU` / 拓扑见 SMP 篇。
+
+**本篇不拥有：** 运行期迁核（无此 API）；IRQ / GIC / IOAPIC 中断亲和；ACPI「CPU online」语义。
+
+### 7.1 编排顺序（调用方必须遵守）
+
+| 场景 | 顺序 |
+|------|------|
+| 同核 | `gen_thread_from_func(..., percpu(core_tm), ...)` |
+| 指定核（便捷） | 确认 `task_manager_for_cpu(cpu)` 非 NULL → `gen_thread_from_func(..., tm, ...)` |
+| 分步绑核 | `create_thread`（status=`init`，`tm==NULL`）→ **`add_thread_to_cpu(t, cpu)`** → 仅在 owner 上被 RR 选中 |
+| 查询 | 入队后 `thread_owner_cpu(t)`；摘环后勿再当标签 |
+
+创建调用所在核 **不必** 等于目标核；首次运行只保证在 **owner**。
+
+### 7.2 选核与入队
+
 ```c
 bool cpu_id_is_online(cpu_id_t cpu);
 Task_Manager *task_manager_for_cpu(cpu_id_t cpu);
 cpu_id_t thread_owner_cpu(const Thread_Base *thread);
 error_t add_thread_to_cpu(Thread_Base *thread, cpu_id_t cpu);
 ```
+
+| 接口 | 说明 |
+|------|------|
+| `cpu_id_is_online` | 条件：`cpu < MAX` ∧ `0 ≤ cpu < NR_CPU` ∧ `per_cpu(core_tm,cpu)≠NULL`。只表示「可以首次入队」；不等于 MADT / GIC 硬件 online。 |
+| `task_manager_for_cpu` | 若 online 则返回该核 `core_tm`，否则 NULL。 |
+| `thread_owner_cpu` | 读 `tm->owner_cpu`；无 tm → `CPU_ID_INVALID`（detach / delete 摘环后失效）。 |
+| `add_thread_to_cpu` | 门禁：NULL → `-E_IN_PARAM`；已有 tm 或 status≠init → `-E_RENDEZVOS`；offline → `-E_IN_PARAM`；否则转调 `add_thread_to_manager`。**没有**运行期迁核。 |
+
+对照：`add_thread_to_manager` 对非 init 只 warn 仍挂环——严格的 status 检查只在本 API。`gen_thread_from_elf` **固定挂本核**，没有跨核 helper。
 
 ---
 
@@ -134,6 +160,8 @@ cd core && make ARCH=x86_64 config && make all && make run
 
 ## 11. 变更记录
 
+- 2026-09-27：中文表述润色（母语习惯）。
+- 2026-09-26：§7 全文审阅——四 helper Doxygen（online 三条件、门禁顺序、owner 非终身标签）；写清编排与「≠中断亲和」。
 - 2026-09-25：语言整理；厘清软件 online / 绑核与中断亲和（GIC / APIC）不是同一概念。
 - 2026-08-29：整篇重做——「亲和=首次入队」；online 完整条件；`add_thread_to_cpu` vs `add_thread_to_manager`；IRQ 不混；owner 非终身标签。
 - 2026-08-27：初稿。

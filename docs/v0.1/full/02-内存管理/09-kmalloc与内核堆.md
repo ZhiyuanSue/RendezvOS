@@ -41,7 +41,7 @@ drain 顺序：先清 `kfree_page_msq`，再清 `buffer_msq`。触发点有两�
 
 ## 3. 分层与调用方
 
-用法是 `percpu(kallocator)->m_alloc / m_free`（没有单独导出的全局 `kalloc()` 符号）。`kinit(cpu_id)` 在 `virt_mm_init` 里调用。线程、IPC、port、page_slice 都吃这个堆。
+用法是 `percpu(kallocator)->m_alloc / m_free`（没有单独导出的全局 `kalloc()` 符号）。`kinit(cpu_id)` 在 `virt_mm_init` 里调用。线程、IPC、port、page_slice 都从这份堆分配。
 
 ---
 
@@ -96,15 +96,61 @@ drain 顺序：先清 `kfree_page_msq`，再清 `buffer_msq`。触发点有两�
 
 ## 7. 公开 API
 
-```c
-percpu(kallocator)->m_alloc(percpu(kallocator), n);
-percpu(kallocator)->m_free(percpu(kallocator), p);
+本篇拥有：`include/rendezvos/mm/allocator.h`、`include/rendezvos/mm/kmalloc.h`（实现 `kernel/mm/kmalloc.c`）。接口说明以头文件注释为准，并已与 `kalloc`/`kfree`/`kinit` 核对。`memcpy`/`memset` 等声明在 `include/common/string.h`（实现可落在 `kernel/mm/string.c`），**不是**堆策略 API，本 §7 不展开。
 
-struct allocator *kinit(int allocator_id); /* virt_mm_init 里按 cpu 调用 */
-void kalloc_process_cross_cpu_frees(void); /* schedule 调用 */
+没有导出名为 `kalloc` / `kfree` 的全局符号；调用方一律走 vtable。
+
+### 7.1 编排顺序（与源码一致）
+
+| 阶段 | 顺序 |
+|------|------|
+| 每核启动 | `virt_mm_init` → **`kinit(cpu_id)`** → `per_cpu(kallocator, cpu_id)` 可用 |
+| 运行期分配 | **`percpu(kallocator)->m_alloc(a, n)`**：入口先 **`mem_allocator_remote_frees`** → 小对象或整页路径 → 成功则载荷已清零 |
+| 运行期释放 | **`percpu(kallocator)->m_free(a, p)`**：先 remote_frees → 按是否 4 KiB 对齐分流（见下） |
+| 调度旁路 drain | **`kalloc_process_cross_cpu_frees()`**（`schedule` 调用）≡ 对本核再跑一轮 remote_frees |
+
+跨核 free：小对象 → 归属核 `buffer_msq`；整页 → 归属核 `kfree_page_msq`（owner 来自 `root_vspace` radix tag）。归属核 drain：**先** `kfree_page_msq`，**再** `buffer_msq`。
+
+### 7.2 Allocator vtable（`allocator.h` / `mem_allocator`）
+
+```c
+struct allocator {
+        struct allocator *(*init)(int allocator_id);
+        void *(*m_alloc)(struct allocator *a, size_t Bytes); /* 成功须清零 */
+        void  (*m_free)(struct allocator *a, void *p);
+        i64 allocator_id;
+};
+/* 生产路径：DEFINE_PER_CPU(struct allocator *, kallocator) */
 ```
 
-`DEFINE_PER_CPU(struct allocator *, kallocator)` 在 `kmalloc.c`。引导期会先用静态的 `tmp_k_alloctor` 自举，再换成正式的 percpu 实例并建好两条 MSQ。
+| 接口 | 说明 |
+|------|------|
+| `m_alloc(a, Bytes)` | 合法：`1 ≤ Bytes ≤ MIDDLE_PAGE_SIZE`（2 MiB）；否则 NULL。`Bytes > 2048`（`slot_size[11]`）走整页：先小对象分配 `page_chunk_node`，再 `core_get_free_pages` 映入 `&root_vspace`，memset，挂 RB。否则走 chunk/`_k_alloc`。失败 NULL。 |
+| `m_free(a, p)` | `p` 页对齐 → 查 radix owner；异核投 `kfree_page_msq`，本核 `kfree_page_local`。非对齐 → 读 `object_header.allocator_id`；本核回 chunk，异核投 `buffer_msq`。`a`/`p` 为空则打日志返回。 |
+| `allocator_id` | 与 CPU id 对齐；写入小对象 header / chunk。 |
+
+典型用法：`percpu(kallocator)->m_alloc(percpu(kallocator), n)`。
+
+### 7.3 初始化与 drain（`kmalloc.h`）
+
+```c
+struct allocator *kinit(int allocator_id);
+void kalloc_process_cross_cpu_frees(void);
+```
+
+| 接口 | 说明 |
+|------|------|
+| `kinit` | `allocator_id < 0` → NULL。用静态 `tmp_k_alloctor` 自举真正的 `mem_allocator` 与两条 MSQ，装入 `per_cpu(kallocator, id)`。同 id 已存在 → NULL。 |
+| `kalloc_process_cross_cpu_frees` | 对本核 `kallocator` 调 `mem_allocator_remote_frees`；`kallocator` 为空则 no-op。 |
+
+尺寸常量（实现）：`slot_size[] = {8…2048}` 共 `MAX_GROUP_SLOTS`(12)；`PAGE_PER_CHUNK == 4`。整页路径 **禁止** `mm_user_utils_*`（只操作 `root_vspace`）。
+
+### 7.4 本篇覆盖但不列入堆约定的符号
+
+| 符号 | 说明 |
+|------|------|
+| `memcpy` / `memset` / `strlen` 等 | `common/string.h`；与 alloc 策略无关 |
+| `tmp_k_alloctor` | 仅 `kinit` 自举；不要当正式堆长期使用 |
 
 ---
 
@@ -136,6 +182,8 @@ make ARCH=x86_64 config && make all && make run
 
 ## 11. 变更记录
 
+- 2026-09-27：中文用语整理（契约→约定；§7「以头文件注释为准」；「吃这个堆」→「从这份堆分配」）。
+- 2026-09-26：§7 全文审阅——补 `kinit` / drain / `m_alloc`·`m_free` 头文件注释与接口说明；写清尺寸门禁、双 MSQ 与编排顺序。
 - 2026-09-25：语言整理；钉死双 MSQ、drain 触发点、slot 档与 utils 禁 root。
 - 2026-08-29：整篇重做——双 MSQ、页走 radix owner、drain 在 alloc/free/schedule；堆不再变大锁。
 - 2026-08-26：v0.1 初稿。

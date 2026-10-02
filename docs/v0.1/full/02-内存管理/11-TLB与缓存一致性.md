@@ -6,18 +6,18 @@ v0.1 · 2026-09-25
 
 关于标题里的「缓存」：aarch64 的 `sync/cache.h` 目前是空的，树里也没有对称的 x86 `cache.h`。本篇**没有**通用 dcache/icache 维护 API；设备 / DMA 路径以后另写。这里说的「一致性」，主要指 **CPU 侧页表翻译（TLB）** 在改 PTE、换地址空间之后还能不能对得上。
 
-何时在 `map` / `unmap` 里调哪一类 invalidate，页表篇 §6.2 已经钉过；本篇把 **mask 是什么意思、跨核怎么送、和调度怎么咬合**，以及两边硬件指令分别对应什么，讲清楚。
+何时在 `map` / `unmap` 里调哪一类 invalidate，页表篇 §6.2 已经钉过；本篇把 **mask 是什么意思、跨核怎么送、和调度怎么衔接**，以及两边硬件指令分别对应什么，讲清楚。
 
 ---
 
 ## 1. 概述
 
-改了 PTE，或者拆了用户映射之后，别的核上的 TLB 里可能还蹲着旧翻译。若不知道「谁跑过这个地址空间」，要么不敢拆 AS，要么只能全机狂刷。
+改了 PTE，或者拆了用户映射之后，别的核上的 TLB 里可能还留着旧翻译。若不知道「谁跑过这个地址空间」，要么不敢拆 AS，要么只能全机狂刷。
 
 core 的答案分两层：
 
 1. **`VSpace::tlb_cpu_mask`**：哪些 CPU **可能**还缓存着这个用户地址空间的翻译。
-2. **arch 的 invalidate API**：本地刷，或者跨核。x86 走 **按 mask 的软 IPI + `invlpg`**；aarch64 在用户 / 跨核路径上多用 **`tlbi …is` 广播**（常常**不理** mask 参数），但 mask 仍然卡着 teardown 能不能放行。
+2. **arch 的 invalidate API**：本地刷，或者跨核。x86 走 **按 mask 的软 IPI + `invlpg`**；aarch64 在用户 / 跨核路径上多用 **`tlbi …is` 广播**（常常**不理** mask 参数），但 mask 仍然卡着拆除能不能放行。
 
 mask 回答「该通知谁、能不能拆」；具体怎么刷是架构的事。少了任一层，要么漏刷，要么 ASID 不敢回收（见 ASID 篇）。
 
@@ -57,7 +57,7 @@ mask 回答「该通知谁、能不能拆」；具体怎么刷是架构的事。
 
 先 set 再装表，是为了避免「人已经跑在新 AS 上了，mask 里却还没有你」——这时别人发 shootdown 会漏掉你。先本地刷再 clear，是为了避免「mask 里已经没你了，本地 TLB 却还脏着」。
 
-还有一处故意的滞后：下一线程若不是用户态，schedule **可以不**清 mask、也可以不换硬件根。位和 CPU 侧引用会留到之后某次用户→用户切换。teardown 必须等 mask 空，细节见所有权篇 / ASID 篇。
+还有一处故意的滞后：下一线程若不是用户态，schedule **可以不**清 mask、也可以不换硬件根。位和 CPU 侧引用会留到之后某次用户→用户切换。拆除回收必须等 mask 空，细节见所有权篇 / ASID 篇。
 
 ### 4.2 map 路径：新 vs 改
 
@@ -89,9 +89,32 @@ AArch64 用 **`TLBI`** 系列指令做 TLB 维护，参数里常带 ASID 与页�
 | 内核页（常不看 ASID） | `tlbi vaale1` / `vaale1is` | 任意 ASID 的该 VA |
 | 全清 | `tlbi vmalle1` | 当前 EL1 翻译 |
 
-前后用 `dsb(ISHST)` / `dsb(ISH)` / `isb` 做同步，这是 ARM 要求的 TLBI 上下文同步套路，不是随便加点装饰。`*_all_core` 路径上 **mask 参数常被 `(void)cpu_mask` 丢掉**——硬件广播已经覆盖 shareable domain 里的观察者；软件 mask 仍然用来卡住 `del_vspace` / `vspace_clear_user_mappings(allow_self_use=false)`，避免「还有人可能揣着旧翻译就拆 AS」。
+前后用 `dsb(ISHST)` / `dsb(ISH)` / `isb` 做同步，这是 ARM 要求的 TLBI 上下文同步套路，不是随便加点装饰。`*_all_core` 路径上 **mask 参数常被 `(void)cpu_mask` 丢掉**——硬件广播已经覆盖 shareable domain 里的观察者；软件 mask 仍然用来卡住 `del_vspace` / `vspace_clear_user_mappings(allow_self_use=false)`，避免「还有人可能带着旧翻译就拆 AS」。
 
 范围失效若要用 `rvae1` 一类，需要更新的 TLBI 扩展；本实现的 range 路径目前仍可能退化为逐页 `vae1`（头文件注释写了）。
+
+### 4.4 附录：内存类型与 cache 维护（尚无通用 API）
+
+树内 **没有** 可移植 `dcache_clean` / `icache_invalidate` 族（aarch64 `sync/cache.h` 为空）。设备 / DMA / 自修改代码接上之前，先把硬件名词钉在这里，避免和 TLB 篇混谈。
+
+**x86 内存类型（SDM；页表粗控）：**
+
+| 类型 | 直观 | 本仓库 |
+|------|------|--------|
+| UC / UC- | 不缓存，强序 | LAPIC 等 MMIO：`UNCACHED` → `PCD\|PWT` |
+| WC | 写合并 | 未单独暴露 |
+| WT / WB / WP | 通写 / 回写 / 写保护 | 普通 RAM 默认走 WB 类路径 |
+
+更细的 **PAT**（Page Attribute Table）可把同一组 PCD/PWT 解成多种类型；v0.1 **未接 PAT 编程**，`07` 已写明粗粒度。全局还有 **CR0.CD / CR0.NW**：正常运行应清零（允许缓存）；置 CD 等于整机关缓存，仅调试用。
+
+**aarch64 PoC / PoU 与 IC/DC（ARM ARM）：**
+
+| 点 | 含义 |
+|----|------|
+| **PoC**（Point of Coherency） | 「对系统里所有观察者都一致」的汇合点（常到内存/互连） |
+| **PoU**（Point of Unification） | 「对本 PE 的 I 与 D 侧一致」的点（常到本核 unification） |
+
+常用指令族（**未**封装进本仓库 API）：`IC IALLU` / `IALLUIS` / `IVAU`（指令 cache）；`DC ZVA` / `IVAC` / `CVAC` / `CIVAC` / `ISW`…（数据 cache 按 VA 或 set/way）。改可执行页、装固件 blob、将来 DMA 缓冲与 CPU 共享时，需要「先 DC 再 IC」一类序列——接到业务路径时再写进 `sync/cache.h`，本篇不假装已有实现。
 
 ---
 
@@ -115,15 +138,69 @@ AArch64 用 **`TLBI`** 系列指令做 TLB 维护，参数里常带 ASID 与页�
 
 ## 7. 公开 API
 
+本篇拥有：`include/rendezvos/mm/tlb_cpu_mask.h`，以及可移植名字下的 arch 实现
+`include/arch/{x86_64,aarch64}/sync/tlb.h`（x86 另有 `arch_smp_flush_*` /
+`arch_smp_flush_tlb_init` 在 `arch/x86_64/mm/arch_smp_tlb_flush.c`）。
+`vs_tlb_cpu_mask_*` inline 在 `vmm.h`（与 `VSpace` 同篇生命周期相关，本篇说明语义）。
+IPI 握手细节见 30 / 32 篇。无通用 dcache/icache API。
+
+### 7.1 编排顺序（与调用方约定）
+
+| 场景 | 顺序 |
+|------|------|
+| 调度切入某用户 AS | **`vs_tlb_cpu_mask_set(vs, cpu)`** → 再装 CR3/TTBR（先 set 再装表，避免漏 shootdown） |
+| 调度切离 | 本地 TLBI / 换根 → **`vs_tlb_cpu_mask_clear`**（先刷再 clear） |
+| `map`/`unmap` 改用户 PTE | 按页表篇：首次/更新选本地或 **`arch_tlb_invalidate_page_all_core(asid, va, &vs->tlb_cpu_mask)`** |
+| 内核临时窗 / 内核叶 | **`arch_tlb_invalidate_kernel_page`**；`*_all_core` 见下表 ISA 差异 |
+| 拆除 / 回收 ASID | 等待 **`vs_tlb_cpu_mask_is_zero`**（mask 空才放行） |
+| x86 每核启动 | `arch_start_core` → **`arch_smp_flush_tlb_init()`**（aarch64 无对等 IPI init） |
+
+### 7.2 Mask（`tlb_cpu_mask.h` / `vmm.h`）
+
 ```c
-/* 概念：vs->tlb_cpu_mask；具体名字见各 arch 的 tlb.h */
-void arch_tlb_invalidate_page(u64 asid, vaddr v);
-void arch_tlb_invalidate_page_all_core(u64 asid, vaddr v,
-                                       const vs_tlb_cpu_bitmap_t *mask);
-/* kernel_page / vspace_page / range / all 等同族 */
+BITMAP_DEFINE_TYPE(vs_tlb_cpu_bitmap_t, RENDEZVOS_MAX_CPU_NUMBER);
+/* VSpace::tlb_cpu_mask + tlb_cpu_mask_lock */
+void vs_tlb_cpu_mask_zero / set / clear(VSpace *, ...);
+bool vs_tlb_cpu_mask_is_zero(const VSpace *);
 ```
 
-以各 arch 头文件为准。x86 侧许多函数会 `(void)asid`——没有 PCID 时硬件不用这个参数。
+含义：哪些 CPU **可能**仍缓存该用户 AS 的翻译。x86 shootdown **按 mask 发 IPI**；aarch64 用户/跨核路径常 **广播 `tlbi *is` 并忽略 mask 参数**，但 mask 仍约束拆除放行。
+
+### 7.3 可移植 invalidate 族（两侧同名；语义分 ISA）
+
+```c
+void arch_tlb_invalidate_all(void);
+void arch_tlb_invalidate_page(u64 asid, vaddr addr);
+void arch_tlb_invalidate_page_all_core(u64 asid, vaddr addr,
+                                       const vs_tlb_cpu_bitmap_t *cpu_mask);
+void arch_tlb_invalidate_kernel_page(vaddr addr);
+void arch_tlb_invalidate_kernel_page_all_core(vaddr addr);
+void arch_tlb_invalidate_vspace_page(u64 asid, vaddr addr);
+void arch_tlb_invalidate_vspace_page_all_core(u64 asid, vaddr addr,
+                                              const vs_tlb_cpu_bitmap_t *cpu_mask);
+void arch_tlb_invalidate_range(u64 asid, vaddr start, vaddr end);
+```
+
+| 接口 | x86_64（无 PCID） | aarch64 |
+|------|-------------------|---------|
+| `invalidate_page` | 本地 `invlpg`；asid 忽略 | `tlbi vae1` + DSB/ISB；打包 asid\|VPN |
+| `…_page_all_core` | **`arch_smp_flush_page_tlb`**：本地 + 按 mask 软 IPI `invlpg` | `tlbi vae1is` 广播；**忽略 mask** |
+| `kernel_page` | 本地 `invlpg` | `tlbi vaale1` |
+| `kernel_page_all_core` | **仍只本地 `invlpg`**（设计如此） | `tlbi vaale1is` 广播 |
+| `vspace_page` | 本地重载 CR3（整刷） | `tlbi aside1`（按 ASID；asid≥2¹⁶ 则 no-op） |
+| `vspace_page_all_core` | **`arch_smp_flush_all_tlb(mask)`** | `tlbi aside1is`；忽略 mask |
+| `invalidate_all` | 重载 CR3 | `tlbi vmalle1` |
+| `invalidate_range` | 循环本地 `invlpg` | 循环本地 `tlbi vae1`（无 ARMv8.4 range） |
+
+### 7.4 x86 专用（本篇覆盖）
+
+```c
+void arch_smp_flush_page_tlb(vaddr addr, const vs_tlb_cpu_bitmap_t *cpu_mask);
+void arch_smp_flush_all_tlb(const vs_tlb_cpu_bitmap_t *cpu_mask);
+void arch_smp_flush_tlb_init(void);
+```
+
+细节（generation / busy、APIC 未就绪仅本地）见 `arch_smp_tlb_flush.c` 与 32 篇。
 
 ---
 
@@ -150,6 +227,9 @@ void arch_tlb_invalidate_page_all_core(u64 asid, vaddr v,
 
 ## 11. 变更记录
 
+- 2026-10-02：§4.4 附录——x86 内存类型/PAT/CR0.CD·NW；aarch64 PoC/PoU 与 IC/DC（标明尚无 API）。
+- 2026-09-27：中文用语整理（teardown→拆除/回收收尾；咬合→衔接；蹲着/揣着→留着/带着）。
+- 2026-09-26：§7 全文审阅——两侧 `tlb.h` / `tlb_cpu_mask.h` 补头文件注释；写清 mask 编排与 x86 IPI vs aarch64 `*is`（含 kernel `*_all_core` 本地-only）。
 - 2026-09-25：补 SDM / ARM ARM 硬件对照（`invlpg`、IPI shootdown、`tlbi`/`*is`、屏障）；语言整理；去掉「待加强」备忘。
 - 2026-08-29：整篇重做——纠正「仅本 CPU」决策叙事；new/remap；x86 IPI vs aarch64 IS；cache 空头诚实说明。
 - 2026-08-26：v0.1 初稿。

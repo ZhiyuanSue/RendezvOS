@@ -1,6 +1,6 @@
 # DTB 与设备树（aarch64）
 
-v0.1 · 2026-09-25
+v0.1 · 2026-09-27
 
 本篇覆盖：`modules/dtb/*`（裁剪 libfdt、`dev_tree`、`property`、`print_property`）、以及 **`build_device_tree` 的真实落点** `arch/aarch64/boot/start_arch.c`；early raw 消费点在 `arch/aarch64/boot/boot_map.c` 与 aarch64 `pmm`。
 
@@ -12,7 +12,7 @@ Early map / DTB 拷贝时序见 `05-平台启动-aarch64.md`；memmap 的 `memor
 
 ## 1. 概述
 
-aarch64 **不用** ACPI 枚举板级资源；**Flattened Device Tree（FDT）** 是硬件描述真源。固件 / QEMU 把 DTB 物理地址放进 `setup_info`（常见在 `x0` 约定路径上），内核分两层消费：
+aarch64 **不用** ACPI 枚举板级资源；**Flattened Device Tree（FDT）** 是板级硬件描述的权威来源。固件 / QEMU 把 DTB 物理地址放进 `setup_info`（常见在 `x0` 约定路径上），内核分两层消费：
 
 | 层 | 何时 | 工具 | 用途 |
 |----|------|------|------|
@@ -42,7 +42,7 @@ aarch64 **不用** ACPI 枚举板级资源；**Flattened Device Tree（FDT）** 
 |--------|----------|--------|
 | early UART | raw compatible | `arm,pl011` → `reg`（假定两格 64-bit addr/size） |
 | pmm | raw `device_type` | `memory` → `reg` |
-| PSCI | 树 + compatible | `arm,psci`（前缀可命中 `arm,psci-0.2`） |
+| PSCI | 树 + compatible | `arm,psci`（list 常另含 `arm,psci-0.2`；查找为逐条全等） |
 | GIC | 树 + compatible | **写死** `arm,cortex-a15-gic`（仅 `arm,gic-400` 的 blob **对不上**） |
 | SMP | 树 + type | `device_type=cpu` + `reg` + `enable-method` |
 | cmdline | 树 + name | `chosen` → `bootargs` |
@@ -66,9 +66,9 @@ arm64 booting：DTB 8 字节对齐、通常 &lt; 2 MiB；本仓库 early 路�
 - `compatible`：NUL 分隔的 string list；匹配逻辑见下。  
 - 未知名属性 → `PROPERTY_TYPE_OTHER`，数据仍保留。
 
-### 4.3 compatible 匹配（前缀）
+### 4.3 compatible 匹配（逐条全等）
 
-`_dev_node_find_by_compatible`：在每条 compatible 字符串上，若搜索串字符用尽（`!*src_ch`）即命中——**不必整串相等**。因此搜 `arm,psci` 可命中 `arm,psci-0.2`。副作用：过短前缀可能误匹配；过长写死串（GIC）可能漏匹配。
+`_dev_node_find_by_compatible`：在 NUL 分隔的 compatible string list 上，对**每条**串做字符全等——仅当搜索串与当前条目同时走到 `\0` 才命中。因此搜 `arm,psci` **不会**命中单条的 `arm,psci-0.2`；常见 DT 会在 list 里同时列出 `arm,psci-0.2` 与 `arm,psci`，从而仍可命中。GIC 写死过长串时，若 blob 只有 `arm,gic-400` 会对不上。
 
 ---
 
@@ -123,23 +123,57 @@ arch_start_smp（稍后）:
 
 ## 7. 公开 API
 
+本篇拥有：FDT / 设备树软件面——裁剪 `fdt_*` / `raw_get_prop_from_dtb`（`dtb.h`）、`build_device_tree` + `device_root` + `dev_node_find_*` / `property_read_*`（`dev_tree.h`；建树实现在 `start_arch.c`）。以头文件注释为准（见上列头文件；已与 `.c` 核对）。
+
+**本篇不拥有：** `map_dtb` / `prepare_arch` / `arch_start_platform` 编排 → `05`；early UART map → `05`/`34`；memmap `memory` 消费 → `06`；GIC / PSCI / SMP 对查找结果的使用 → `27`/`39`/`28`。
+
+### 7.1 编排顺序（调用方须遵守）
+
+| 阶段 | 工具 | 说明 |
+|------|------|------|
+| MMU-off / early | **`raw_get_prop_from_dtb`** | 无堆；物理/早期 VA 上的 blob |
+| `prepare_arch` | **`fdt_check_header`** | 已 map 的 `boot_dtb_header_base_addr` |
+| `arch_start_platform` | **`build_device_tree`** → `device_root` | 须已有 BSP `kallocator` |
+| 驱动 probe | `dev_node_find_*` → `dev_node_find_property` → `property_read_*` | `node==NULL` → 从 `device_root` |
+
+**勿混** early blob 指针与树节点指针。
+
+### 7.2 Raw FDT（`dtb.h`）
+
+```c
+int fdt_check_header(const void *fdt);
+struct fdt_property *raw_get_prop_from_dtb(void *fdt, int offset, …,
+                                           const char *cmp_str,
+                                           const char *cmp_type_str,
+                                           u64 mode, void (*f)(…));
+/* + fdt_next_node / first_subnode / property_offset / fdt_string … */
+```
+
+| 接口 | 说明 |
+|------|------|
+| `fdt_check_header` | magic / size；失败 → `prepare_arch` 返回错 → `cmain` panic。 |
+| `raw_get_prop_from_dtb` | early UART（`arm,pl011`）与 pmm（`memory`）；SINGLE/MUL 模式。 |
+
+### 7.3 建树与查找（`dev_tree.h`）
+
 ```c
 struct device_node *build_device_tree(struct allocator *malloc,
                                       struct device_node *parent,
                                       void *fdt, int offset, int depth);
+extern struct device_node *device_root;
 
-struct device_node *dev_node_find_by_name(struct device_node *node, char *name);
-struct device_node *dev_node_find_by_type(struct device_node *node, char *type);
-struct device_node *dev_node_find_by_compatible(struct device_node *node,
-                                               char *compatible);
-
-struct property *dev_node_find_property(const struct device_node *node,
-                                        const char *name, int name_len);
-int fdt_check_header(const void *fdt);
-struct fdt_property *raw_get_prop_from_dtb(...);
+struct device_node *dev_node_find_by_name / _by_type / _by_compatible(…);
+struct property *dev_node_find_property(node, name, n);
+error_t property_read_string / _u32 / _u64 / _u*_arr(…);
 ```
 
-`device_root` 为全局；查找 API 在 `node==NULL` 时默认从根开始。
+| 接口 | 说明 |
+|------|------|
+| `build_device_tree` | 实现在 **`start_arch.c`**；名字/属性数据仍指向 FDT blob。 |
+| `dev_node_find_by_compatible` | 对 list 中每条 NUL 串**全等**匹配（非前缀）；`arm,psci` 命中靠 list 含该条目（常与 `arm,psci-0.2` 并存）。 |
+| GIC 消费者 | 写死 `arm,cortex-a15-gic`（仅 `arm,gic-400` 的 blob 对不上）。 |
+
+调试：`print_device_tree` / `parse_print_dtb`（非常用路径，约定从略）。
 
 ---
 
@@ -157,7 +191,7 @@ struct fdt_property *raw_get_prop_from_dtb(...);
 
 ## 10. 限制与后续
 
-- compatible **前缀**匹配可能过宽。  
+- compatible 为 string list 上的**逐条全等**（非前缀）；过短搜索串不会“吃掉”长串。  
 - GIC compatible **写死** `arm,cortex-a15-gic`。  
 - PCI host 节点未接线。  
 - early raw 与 `device_root` 两阶段指针域不同，勿混。  
@@ -167,6 +201,9 @@ struct fdt_property *raw_get_prop_from_dtb(...);
 
 ## 11. 变更记录
 
-- 2026-09-25：语言轮——FDT 规范 / arm64 booting；raw vs 树因果；compatible 前缀算法；GIC 写死串；明确无 ACPI、无 PCI 消费。  
+- 2026-09-27：语言润色——「真源 = … Doxygen」改为「以头文件注释为准」；one-shot→单次、bring-up→拉起、非热路径契约→非常用路径，约定从略；符号与技术事实未改。
+- 2026-09-26：§7 全文审阅——`dtb.h`/`dev_tree.h` Doxygen；`build_device_tree` 声明进 `dev_tree.h`；划清 vs `05`/`27`/`39`。  
+- 2026-09-26：核对——changelog 误写「compatible 前缀」改为与正文/Doxygen 一致的**逐条全等**。  
+- 2026-09-25：语言轮——FDT 规范 / arm64 booting；raw vs 树因果；compatible **逐条全等**（非前缀）；GIC 写死串；明确无 ACPI、无 PCI 消费。  
 - 2026-08-29：整篇重做——`build_device_tree` 真位置；删 PCI 双源恐吓；消费者表。  
 - 2026-08-27：初稿。

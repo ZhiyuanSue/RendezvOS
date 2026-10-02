@@ -1,6 +1,6 @@
 # ACPI 与 MADT（x86_64）
 
-v0.1 · 2026-09-25
+v0.1 · 2026-09-27
 
 本篇覆盖：`modules/acpi/acpi.c`（RSDP 探测 / 签名表）、`modules/acpi/acpi_madt.c`（MADT 条目游标）、`arch/x86_64/acpi/acpi.c`（`acpi_init`）、`arch/x86_64/acpi/madt.c`（`parser_apic`）、`include/modules/acpi/*.h`。
 
@@ -14,7 +14,7 @@ SMP 如何消费 `NR_CPU` / `CPU_STATE` 见 `28-SMP启动与处理器拓扑.md`�
 
 在无 UEFI 运行时服务的 QEMU / BIOS 路径上，x86 用 **ACPI 表**发现「有几颗带 Local APIC 的 CPU、LAPIC MMIO 基址写在哪」。这些信息喂给后面的 INIT-SIPI 与 xAPIC 映射，不是给电源管理用的。
 
-认真消费的只有一件：**MADT 里的 Local APIC 条目** → 填 `NR_CPU` / `CPU_STATE[apic_id]`。FACP 挂个全局指针，parser 空成功。IOAPIC、Source Override、其余条目全部 **空 `break`**——与中断篇「IOAPIC 真空壳」一致。
+认真消费的只有一件：**MADT 里的 Local APIC 条目** → 填 `NR_CPU` / `CPU_STATE[apic_id]`。FACP 挂个全局指针，parser 空实现仍返回成功。IOAPIC、Source Override、其余条目全部 **空 `break`**——与中断篇「IOAPIC 空壳」一致。
 
 ### 1.1 两段式为什么拆开
 
@@ -73,8 +73,6 @@ acpi_table_madt:
 Local APIC 记录（type 0）：`_ACPI_P_UID`、`_APIC_ID`、`flags`。  
 **不变量（实现）：** `apic_id` 直接当逻辑 `cpu_id` 下标（可稀疏）；`NR_CPU` = 合法条目**个数**（`apic_id < MAX` 时 `++`），**不是** `max_id+1`。  
 `CPU_STATE[apic_id]` 先置 `cpu_disable`，SIPI 成功后再变 `cpu_enable`。
-
-头文件里 `Local_APIC_flags_online_capable (1 < 1)` 是笔误（恒为 0），且 **flags 字段运行时未读**——不是契约。
 
 ### 4.3 签名表脏点
 
@@ -135,6 +133,8 @@ rev!=0: 失败
 
 注意：`parser_acpi_tables` 的错误码在 walk 循环里 **未检查**；没有 MADT 时 `acpi_init` 仍可能 `SUCCESS`，`madt_table` 保持 NULL——`init_irq` 里解引用会炸。正常 QEMU 镜像会带 MADT。
 
+**已知 bug（walk 未知表分支）：** `get_acpi_table_type_from_sig` 未命中时返回 **`-E_RENDEZVOS`（-1024）**，但 `acpi_init` 写的是 `if (sig == -1)`。条件永不成立 → 未知签名落入 `else`，把 `-1024` 当 `acpi_table_sig_enum` 交给 `parser_acpi_tables`（走 `default` 打印）。`acpi_table_sig_check` 本身返回 `bool`，RSDT 签名校验用 `!` 是对的——问题只在「枚举查找返回值 vs `== -1`」错位。
+
 ### 6.4 `parser_apic`
 
 ```text
@@ -155,14 +155,60 @@ xAPIC 路径：`madt_table->Local_int_ctrl_address` 必须等于 **`xAPIC_MMIO_B
 
 ## 7. 公开 API
 
+本篇拥有：x86 ACPI 表发现与 MADT 消费——`acpi_probe_rsdp` / `acpi_init` / 签名分类、`parser_apic`、MADT 游标（`for_each_madt_ctrl_head`）、全局 `madt_table` / `fadt_table`。以头文件注释为准（`modules/acpi/acpi.h`、`acpi_madt.h`；已与 `.c` 核对）。
+
+**本篇不拥有：** `NR_CPU` / `CPU_STATE` / `start_smp` 唤醒约定 → `28`；`Local_int_ctrl_address` 的 `0xFEE00000` 检查与 IOAPIC → `26`；`reserve_arch_region` 时序 → `06`/`04`；AML / XSDT / PCI MCFG。
+
+### 7.1 编排顺序（调用方须遵守）
+
+| 阶段 | 顺序 |
+|------|------|
+| 早期 PMM | `acpi_probe_rsdp(KERNEL_VIRT_OFFSET)` → 记 `setup_info->rsdp_addr` → rev0 时 reserve RSDT 2 MiB 窗 |
+| 平台 | VSpace 就绪后 **`acpi_init(rsdp_addr)`** → walk RSDT → FACP/APIC |
+| MADT | **`parser_apic`**（由 `acpi_init` 在见 APIC 签名时调用）→ 填拓扑 |
+| 之后 | `init_irq` 读 `madt_table->Local_int_ctrl_address`；`arch_start_smp` 扫 `cpu_disable` |
+
+上层只**读** `NR_CPU` / `CPU_STATE` / `madt_table`；勿在业务路径改 `NR_CPU`。
+
+### 7.2 探测与 init
+
 ```c
 struct acpi_table_rsdp *acpi_probe_rsdp(vaddr search_start_vaddr);
+bool acpi_table_sig_check(char *sig, char *expect);
+enum acpi_table_sig_enum get_acpi_table_type_from_sig(struct acpi_table_head *);
 error_t acpi_init(vaddr rsdp_addr);
-error_t parser_apic(void);
-/* walk: for_each_madt_ctrl_head(madt_table) */
 ```
 
-上层 / 其它模块只应读 `NR_CPU`、`CPU_STATE`、`madt_table` 的只读字段；勿在业务路径里改 `NR_CPU`。
+| 接口 | 说明 |
+|------|------|
+| `acpi_probe_rsdp` | 两段 BIOS 窗、16 字节步进；**无** checksum。找不到返回 NULL。 |
+| `acpi_init` | **仅 revision 0**；map RSDT；walk u32 条目。parser 返回值**被忽略**——无 MADT 仍可能 SUCCESS。 |
+| `get_acpi_table_type_from_sig` | 未命中返回 **`-E_RENDEZVOS`**；`acpi_init` 却判 **`sig == -1`**（已知 bug，未知表误入 parser）。 |
+| `acpi_table_sig_check` | 返回 **`bool`**；RSDT 路径 `!check` 正确。 |
+| 签名分类 | ECDT 行绑 `ACPI_SIG_DSDT`（笔误，只影响打印）。 |
+
+### 7.3 MADT
+
+```c
+error_t parser_apic(void);
+struct madt_int_ctrl_head *get_next_ctrl_head(...);
+bool final_madt_int_ctrl_head(madt, curr);
+/* macro */ for_each_madt_ctrl_head(madt_table)
+extern struct acpi_table_madt *madt_table;
+```
+
+| 接口 / 字段 | 说明 |
+|-------------|------|
+| `parser_apic` | 清 `CPU_STATE`→`no_cpu`；Local APIC：`NR_CPU++`、`STATE[id]=cpu_disable`。**不读** enable flags。 |
+| `Local_int_ctrl_address` | 期望 `0xFEE00000`（消费在 `26`）。 |
+| IOAPIC / ISO / x2APIC / Addr Override | 空 `break`；不解析。 |
+| `online_capable` 宏 | `(1 < 1)` 笔误且未读。 |
+
+### 7.4 不变量（实现）
+
+- `NR_CPU` = 合法 Local APIC 条目**个数**，不是 `max_id+1`。  
+- `apic_id` 直接当下标（可稀疏）——与 `cpu_id_is_online` 稠密假设冲突见 `28`/`16`。  
+- `rsdp_addr==0` 仍调 `acpi_init` 会解引用——启动路径缺口。
 
 ---
 
@@ -184,7 +230,8 @@ error_t parser_apic(void);
 - 无 XSDT；无 checksum；RSDP 缺失仍可能走到 `acpi_init(0)`。  
 - IOAPIC / ISO / Address Override 未消费。  
 - ECDT 签名表笔误；`online_capable` 宏笔误。  
-- RSDT walk 忽略 parser 返回值；无 MADT 时仍可能报成功。
+- RSDT walk 忽略 parser 返回值；无 MADT 时仍可能报成功。  
+- **已知 bug：** 未知表分支判 `sig == -1`，与 `get_acpi_table_type_from_sig` 返回 `-E_RENDEZVOS` 不一致。
 
 远期项记 `v0.1/evolution/TODO.md`。
 
@@ -192,6 +239,9 @@ error_t parser_apic(void);
 
 ## 11. 变更记录
 
+- 2026-09-27：语言润色——「真源 = … Doxygen」改为「以头文件注释为准」；one-shot→单次、bring-up→拉起、非热路径契约→非常用路径，约定从略；符号与技术事实未改。
+- 2026-09-26：核对 `.c`——补记 `get_acpi_table_type_from_sig` 返回 `-E_RENDEZVOS` vs `acpi_init` 判 `== -1`（已知 bug）；厘清 `acpi_table_sig_check` 为 `bool`。  
+- 2026-09-26：§7 全文审阅——`acpi.h` / `acpi_madt.h` Doxygen；两段式编排；vs `28`/`26`；flags 宏笔误标注。  
 - 2026-09-25：语言轮——补 ACPI 规范搜索窗 / RSDT / MADT 字段与 OS 依赖；两段式因果；enable 忽略与 FEE00000；签名表与 flags 宏脏点。  
 - 2026-08-29：整篇重做——两段式；消费/忽略表；与 SMP id 模型。  
 - 2026-08-27：初稿。

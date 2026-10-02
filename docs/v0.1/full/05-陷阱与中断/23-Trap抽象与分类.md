@@ -1,10 +1,10 @@
 # Trap 抽象与分类
 
-v0.1 · 2026-09-25
+v0.1 · 2026-10-02
 
 本篇覆盖：`kernel/trap/trap.c`、`include/rendezvos/trap/trap.h`、`include/rendezvos/trap/trap_common.h`、`arch/{x86_64,aarch64}/trap/trap.c`、`trap_vec.S`、`kernel_entry.S`（x86 syscall 旁路）、**`arch/x86_64/trap/tss.c`（TSS.RSP0）**、`arch/*/boot/start_arch.c` 里的装表时机。
 
-IRQ 池 / alloc 细节见 `25-IRQ向量分配与处理.md`；弱符号 `syscall` / ABI 见 `24-系统调用入口.md`；APIC / PIC、GIC 编程见平台中断两篇。**不存在**扁平路径 `include/rendezvos/trap.h`——真源是 `include/rendezvos/trap/trap.h`。
+IRQ 池 / alloc 细节见 `25-IRQ向量分配与处理.md`；弱符号 `syscall` / ABI 见 `24-系统调用入口.md`；APIC / PIC、GIC 编程见平台中断两篇。**不存在**扁平路径 `include/rendezvos/trap.h`——公开头是 `include/rendezvos/trap/trap.h`。
 
 **不在本篇：** CMOS RTC 读墙钟（`arch/x86_64/time/rtc.c`）——不是中断控制器路径，见时间子系统篇。
 
@@ -155,7 +155,7 @@ Boot 汇编（`boot.S`）**不**提前装 IDT / VBAR。可捕窗口从 `arch_sta
 
 映射要点：`#PF→PAGE_FAULT`，`#UD→ILLEGAL_INSTR`，`#GP→GP_FAULT`，…；**`#NMI(2)→TRAP_CLASS_IRQ`**（无独立 NMI class）；向量 ≥32 在 populate 时标 IRQ。
 
-#### TSS.RSP0（`tss.c`）——用户→内核切栈的硬件钉
+#### TSS.RSP0（`tss.c`）——用户→内核切栈的硬件锚点
 
 SDM：特权级提升进入中断 / 异常时，若 IDT gate 的 **IST=0**，CPU 从当前任务的 **TSS.RSP0** 取内核栈，再压 SS:RSP / RFLAGS / CS:RIP（及可选 error_code）。
 
@@ -163,11 +163,22 @@ SDM：特权级提升进入中断 / 异常时，若 IDT gate 的 **IST=0**，CPU
 
 - `DEFINE_PER_CPU(struct TSS, cpu_tss)`；`prepare_per_cpu_tss` 把 RSP0 写成该核 `boot_stack_bottom`，再 **`ltr`** 装 TSS 选择子。
 - 之后线程切换时 `switch_to` **改写 TSS.RSP0** 为新线程 `kstack_bottom`（见任务篇 §6.6）——否则从用户进核会踩错栈。
-- **IST1–7 未用**；双 fault 等也不走独立 IST 栈。
+- **IST1–7 未用**（见下）；双 fault 等也不走独立 IST 栈。
 
 没有正确的 per-CPU TSS + 切换时更新 RSP0，用户态 IRQ / #PF 会在错误栈上建 `trap_frame`。
 
-#### #PF error_code（SDM；old 笔记保留）
+#### IST（Interrupt Stack Table）——为何预留、为何未用
+
+IDT gate 有 **3 bit IST** 字段：
+
+| IST 值 | 行为 |
+|--------|------|
+| **0** | 走传统特权切换：用 **TSS.RSP0**（本仓库路径） |
+| **1–7** | 强制切到 TSS 里预置的**独立栈**（与当前 RSP 无关） |
+
+独立栈必须是 **per-CPU** 的：NMI / #DF / 机器检查可能在任意栈深度（甚至已在内核栈上）再入；若仍压当前栈，可能叠爆或踩坏正在用的 frame。Linux 等对 NMI/#DF 用 IST；本仓库 v0.1 **全部 IST=0**，依赖每线程内核栈 + RSP0 切换——嵌套深度与 #DF 鲁棒性是已知边界，不是疏忽漏写字段。
+
+#### #PF error_code（SDM）
 
 硬件压在栈上的 error_code 位（populate 会拆进 `TRAP_COMMON` / arch 字段）：
 
@@ -182,6 +193,18 @@ SDM：特权级提升进入中断 / 异常时，若 IDT gate 的 **IST=0**，CPU
 
 故障线性地址在 **CR2**。
 
+#### Fault / Trap / Abort（返回地址）
+
+Intel 把异常按**返回后从哪条指令接着跑**分成三类（影响你怎么解释 `trap_frame` 里的 RIP）：
+
+| 类 | 返回 RIP | 典型 | 本仓库语义桶 |
+|----|----------|------|--------------|
+| **Fault** | **故障指令本身**（可重启） | `#PF`、`#GP`（多数）、`#UD` | `PAGE_FAULT` / `GP_FAULT` / `ILLEGAL_INSTR`… |
+| **Trap** | **下一条指令** | `#BP`（`int3`）、`#OF` | `BREAKPOINT` / `OVERFLOW` |
+| **Abort** | **不可可靠重启** | `#MC` | `MACHINE_CHECK` |
+
+读 `tf` 里的 RIP 时：#PF 处理完若要「重试同一访存」，别人为 +1；断点单步则本来就指向下一条。本篇 `trap_class` 是**语义桶**，不是与手册三类一一映射表——写上层用 class，对手册时再回 arch map。
+
 ### 6.3 x86：syscall 旁路（不经 `trap_handler`）
 
 ```text
@@ -194,6 +217,29 @@ syscall → LSTAR=arch_enter_kernel
 **没有**统一末尾 `schedule`（除非 `syscall()` 或别处自己调）。与 aarch64 SVC **不对称**——同名 `TRAP_CLASS_SYSCALL`，生命周期不同。细节见系统调用入口篇。
 
 ### 6.4 aarch64：VBAR 链（ARM ARM：VBAR / ESR / eret）
+
+#### 异常入口硬件序列（同步 / IRQ 共性）
+
+进入异常级别时，硬件大致按序做完这些事（再才跑到 `trap_vec.S`）：
+
+1. **PSTATE → SPSR_ELx**（保存旧状态，含 DAIF / 模式）。  
+2. **返回地址 → ELR_ELx**（见下表，**不是**一律「下一条」）。  
+3. **强制屏蔽**部分异步（进入 EL1 后 DAIF.I/F 等被置位，直到软件清）。  
+4. 同步异常写 **ESR_ELx**（EC/ISS）；Data/Instr Abort 等再写 **FAR_ELx**。  
+5. 切到 **SP_ELx**（本仓库 Current EL 用 SP_ELx 槽；Lower EL 入口也在 EL1 栈上建 frame）。  
+6. 跳到 **VBAR_EL1 + 槽偏移**。
+
+软件入口再：存通用寄存器 → `get_curr_el_trap_info` 填 `trap_info` → `trap_handler` →（用户来源）`schedule` → `eret`（用 SPSR/ELR 恢复）。
+
+#### ELR 返回地址规则
+
+| 来源 | ELR 指向 | 含义 |
+|------|----------|------|
+| **异步**（IRQ / FIQ / SError） | **下一条**要执行的指令 | 返回后继续被打断处之后 |
+| **同步 abort / fault**（含 page fault 类 EC） | **触发异常的那条指令** | 修页表后可重启同一访存 |
+| **SVC（syscall）** | **`svc` 的下一条** | 与 x86 `syscall` 一样，返回用户时不必再执行 `svc` |
+
+因此：aarch64 `#PF` 类同步异常处理完应让 ELR 保持故障 PC；`SVC` 路径则 ELR 已是「syscall 之后」。改 `tf->ELR` 前先分清是哪一类入口。
 
 VBAR_EL1 指向 2KB 对齐的表；每槽 0x80 字节。本仓库 `trap_vec.S` 接线：
 
@@ -211,7 +257,7 @@ VBAR_EL1 指向 2KB 对齐的表；每槽 0x80 字节。本仓库 `trap_vec.S` �
   → el{0,1}_trap_entry(TRAP_TYPE_*)
   → get_curr_el_trap_info：
        SYNC: trap_info = ESR.EC
-       IRQ:  trap_info = 64 + gic.read_irq_num()   // 读 GICC_IAR
+       IRQ:  trap_info = TRAP_SET_CPU(64 + INTID, IAR.CPUID)
        FIQ:  不改写（解码空）
   → trap_handler → EOI?/schedule?
   → eret
@@ -231,38 +277,96 @@ EC 映射：`0x20/21/24/25→PAGE_FAULT`（DFSC `0x21` 在 populate 可再标 AL
 
 经 `trap_handler` 的用户路径还会顺带 `kalloc_process_cross_cpu_frees` / `ebr_try_reclaim`（见调度 / EBR 篇）。
 
-### 6.6 Fault / Trap / Abort（硬件语感）
+### 6.6 两侧返回地址对照（速查）
 
-旧笔记仍有用：Fault 可重启（如 #PF）；Trap 报在指令后（如 #BP）；Abort / SError 异步。本篇分类表是**语义桶**，不是把 Intel / ARM 手册三类一一对应——写上层时用 `trap_class`，读手册时再回 arch map。
+| | x86 RIP | aarch64 ELR |
+|--|---------|-------------|
+| 页故障等 Fault | 故障指令 | 故障指令 |
+| 断点 Trap / IRQ | 下一条 / 被打断处之后 | 下一条（异步） |
+| 系统调用 | `sysret` 回用户；`syscall` 入口不经本表 | `svc` **之后** |
+| Abort / SError | 不可靠重启 | 异步；本仓库多进 `ASYNC_ABORT` / unknown |
+
+上层改「应回用户」的 PC 时，按上表选对基准，再决定是否 `+insn_len`。
 
 ---
 
 ## 7. 公开 API
 
+本篇拥有：语义分类与 fixed 注册——`enum trap_class`、`TRAP_COMMON` / `*_trap_info`、`fixed_trap_handler_t`、`register_fixed_trap`、`arch_populate_trap_info`、`arch_get_fault_addr`、`arch_int_from_kernel`。说明改写自 `trap_common.h` / `trap.h` / `arch/*/trap/trap.h` Doxygen（已与 `arch/*/trap/trap.c` 核对）。
+
+**本篇不拥有：** `trap_handler` / `init_interrupt` / `register_irq_handler` / `irq_vector_*` / `arch_eoi_irq` → `25`；syscall ABI / 弱符号 / LSTAR → `24`。
+
+签名注意：`register_fixed_trap` 返回 **`void`**（非法 class 静默 return），不是 `error_t`。
+
+### 7.1 编排顺序（调用方须遵守）
+
+| 场景 | 顺序 |
+|------|------|
+| 每核装表 | `arch_start_core` → **`init_interrupt`**（reserve + lidt/VBAR，见 `25`）→ … → 再 `register_fixed_trap` |
+| 兼容层 fault | initcall 后：`register_fixed_trap(PAGE_FAULT, handler, attr)` → handler 内 **`arch_populate_trap_info(tf, &info)`** 读 TRAP_COMMON |
+| aarch64 syscall | `init_interrupt` 之后：`register_fixed_trap(SYSCALL, arch_syscall_helper, …)`（见 `24`/`05`） |
+| 设备 IRQ | **勿** `register_fixed_trap(IRQ)`；用 `irq_vector_alloc` + `register_irq_handler`（`25`） |
+
+同一 trap id 上 fixed 与 direct **后写覆盖**；勿混绑。
+
+### 7.2 分类与 TRAP_COMMON
+
 ```c
-void trap_handler(struct trap_frame *tf);
-void init_interrupt(void);
+enum trap_class {
+        TRAP_CLASS_PAGE_FAULT, /* … */
+        /* … */
+        TRAP_CLASS_UNKNOWN, /* MUST BE LAST — sizes fixed_trap_handlers[] */
+};
 
-error_t register_fixed_trap(enum trap_class c,
-                            void (*handler)(struct trap_frame *),
-                            u64 attr);
-void register_irq_handler(int irq_num,
-                          void (*handler)(struct trap_frame *),
-                          u64 irq_attr);
-
-/* arch */
-void arch_populate_trap_info(struct trap_frame *tf, /* arch_trap_info * */);
-bool arch_int_from_kernel(struct trap_frame *tf);
-void arch_eoi_irq(u64 trap_info);
+#define TRAP_COMMON /* tf*; trap_class; is_user/fatal; fault_addr/…; … */
 ```
 
-向量池 alloc / free / reserve → IRQ 篇。
+| 接口 / 类型 | 说明 |
+|-------------|------|
+| `trap_class` | 跨 arch 语义桶；`UNKNOWN` 必须末项且 ≤255（存 `u8`）。 |
+| `TRAP_COMMON` | 嵌入 `x86_64_trap_info` / `aarch64_trap_info`；`tf` 指针不复制整帧。 |
+| `fixed_trap_handler_t` | `void (*)(struct trap_frame *)`；wrapper 已 populate 后再调。 |
+
+### 7.3 `register_fixed_trap`
+
+```c
+void register_fixed_trap(enum trap_class trap_class,
+                         fixed_trap_handler_t handler, u64 irq_attr);
+```
+
+| 要点 | 行为（对照 `arch/*/trap/trap.c`） |
+|------|----------------------------------|
+| 非法 class | `>= TRAP_CLASS_UNKNOWN` → 直接 return |
+| 表项 | 写入 per-arch `fixed_trap_handlers[class]` / `fixed_trap_attrs[class]` |
+| 反向扫描 | x86：`[0, TRAP_ARCH_USED)`；aarch64：EC `[0, 0x40)`；匹配则 `register_irq_handler(id, *_wrapper, attr)` |
+| wrapper | `arch_populate_trap_info` → 调表项 handler |
+| 陷阱 | x86 上 `TRAP_CLASS_IRQ` 几乎只绑 **NMI(2)**，不绑 ≥32 设备向量 |
+| attrs | `fixed_trap_attrs[]` 今日只写不读（死存储）；attr 仍传给 `register_irq_handler` |
+
+须在目标 id 已 **USED**（`arch_init_irq_vector_state` reserve）之后调用，否则 `register_irq_handler` 拒装。
+
+### 7.4 arch 填充与来源判定
+
+```c
+void arch_populate_trap_info(struct trap_frame *tf, /* arch *_trap_info * */);
+vaddr arch_get_fault_addr(struct trap_frame *tf);
+bool arch_int_from_kernel(struct trap_frame *tf);
+```
+
+| 接口 | 说明 |
+|------|------|
+| `arch_populate_trap_info` | 清零 info → 填 TRAP_COMMON；PF 时再填 CR2/FAR 与 error_code/ESR 位。aarch64 DFSC `0x21` 会把 class 改成 `ALIGNMENT`。 |
+| `arch_get_fault_addr` | x86 读 **CR2**（`tf` 未用）；aarch64 读 **`tf->FAR`**。 |
+| `arch_int_from_kernel` | x86：`cs == kernel CS`；aarch64：`SPSR.M != EL0`。**不要**信 aarch64 `trap_info` 里 OR 的 SRC_EL 位。 |
+
+上层 PF handler：先 populate，再读 `info->fault_addr` / `is_write` / …；勿硬编码向量 14 / EC 0x24。
 
 ---
 
+
 ## 8. 多架构
 
-上表。riscv / loongarch 非 v0.1 主线验收。compat 真相：`linux_page_fault_irq` / `linux_unknown_trap` 用 fixed class——文档化此路径，勿文档化硬编码向量。
+上表。riscv / loongarch 非 v0.1 主线验收。compat 路径：`linux_page_fault_irq` / `linux_unknown_trap` 用 fixed class——文档化此路径，勿文档化硬编码向量。
 
 ---
 
@@ -285,6 +389,9 @@ void arch_eoi_irq(u64 trap_info);
 
 ## 11. 变更记录
 
+- 2026-10-02：补 x86 Fault/Trap/Abort 返回 RIP；IST 用意与为何未用；aarch64 异常入口序列与 ELR（async/sync/SVC）规则；IRQ 路径注明 `TRAP_SET_CPU`；§6.6 双侧速查。
+- 2026-09-27：中文措辞整理——弱化「真源 / 钉」堆砌；公开头路径与 TSS 锚点表述通顺化。
+- 2026-09-26：§7 全文审阅——纠正 `register_fixed_trap` 为 `void`；划清拥有（class/populate）vs `25`（trap_handler/irq 池）；补 Doxygen（反向扫描、USED 前置、IRQ class 陷阱、CR2/FAR/SPSR）。
 - 2026-09-25：补遗漏模块——**TSS.RSP0 / `tss.c`**；VBAR 16 槽接线表；#PF error_code 位；划清 RTC 不属本篇；文首补 SDM / ARM ARM 对照入口。
 - 2026-09-12：删除对已清除的 `interrupt_init` 死声明 / E12 的叙述。
 - 2026-08-29：整篇重做——硬件深度（IDT / VBAR / CPL / EL）；双入口与 schedule 不对称；装表 / 开中断时序；NMI≡IRQ；EC 命名空间；纠正扁平 trap.h 路径与「x86 也 fixed SYSCALL」误写；IST=0。

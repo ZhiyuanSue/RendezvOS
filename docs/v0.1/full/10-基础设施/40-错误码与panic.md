@@ -1,6 +1,6 @@
 # 错误码与 panic
 
-v0.1 · 2026-09-26
+v0.1 · 2026-09-27
 
 本篇覆盖：`include/rendezvos/error.h`、`kernel/system/panic.c`、`include/rendezvos/system/panic.h`、`kernel/system/powerd.c`、`include/rendezvos/system/powerd.h`、两侧 `arch/*/power_ctrl.h`。
 
@@ -52,11 +52,10 @@ core 用两套「出问题」的出口，不要混：
 | `0` | `REND_SUCCESS` | |
 | `-E_IN_PARAM` | `E_IN_PARAM` | 几乎全核；最常用 |
 | `-E_RENDEZVOS` | `E_RENDEZVOS` | 通用失败兜底 |
-| `-E_REND_AGAIN` | `E_REND_AGAIN` | IPC 非阻塞重试 |
+| `-E_REND_AGAIN` | `E_REND_AGAIN` | 可重试：IPC 非阻塞、buddy reclaim 耗尽等（**不是** OOM 同义词；hook 放弃用 `NO_MEM`） |
 | `-E_REND_NOFOUND` | `E_REND_NOFOUND` | page_slice / radix / unmap / timer |
 | `-E_REND_OVERFLOW` | `E_REND_OVERFLOW` | IPI / page_slice / radix（**不仅** IPI） |
 | `-E_REND_NO_MEM` | `E_REND_NO_MEM` | buddy / page_slice |
-| `-E_REND_RETRY` | `E_REND_RETRY` | buddy 少见；勿假定 OOM 一律 `E_RENDEZVOS` |
 | `-E_REND_PORT_CLOSED` | `E_REND_PORT_CLOSED` | send / recv |
 | `-E_REND_IPC` | `E_REND_IPC` | 协议 / 资源 |
 | `-E_REND_NO_MSG` | `E_REND_NO_MSG` | 空队列 |
@@ -108,12 +107,63 @@ powerd 在 port 创建/注册失败时线程直接 return——此后 `request_p
 
 ## 7. 公开 API
 
+本篇拥有：可返回错误约定（`error.h`）、不可恢复出口（`kernel_panic` / `kernel_halt`）、优雅关机客户端与 BSP `powerd` 服务（`powerd.h` / `powerd.c`）、x86 `arch_shutdown`/`arch_reset`（`arch/x86_64/power_ctrl.h`）。以头文件注释为准（见上列头文件；已与 `.c` 核对）。
+
+**本篇不拥有：** aarch64 `arch_shutdown`→PSCI SYSTEM_OFF 细节 → `39`；关机 kmsg opcode 常量正文 → `20`；IPC send/recv 语义 → `19`。
+
+### 7.1 编排顺序（调用方须遵守）
+
+| 场景 | 顺序 |
+|------|------|
+| 可恢复 API | 成功 `0`；失败 **`return -E_*`**（枚举为正，返回为负） |
+| 测例 / 优雅关机 | **`rendezvos_request_poweroff()`** → `"powerd"` SHUTDOWN → `kernel_halt` → `arch_shutdown` |
+| 致命 | **`kernel_panic(msg)`** 或 **`kernel_halt()`**——**不经** powerd |
+| powerd 起服 | BSP `DEFINE_INIT` → `gen_thread_from_func(powerd_thread)` → create+register `"powerd"` → 循环 `recv` |
+
+### 7.2 错误码（`error.h`）
+
 ```c
-/* error.h — enum Error_t；返回用 -E_* */
-void kernel_panic(const char *msg);  /* noreturn */
-void kernel_halt(void);              /* noreturn */
-error_t rendezvos_request_poweroff(void);
+enum Error_t {
+        REND_SUCCESS = 0,
+        E_RENDEZVOS = 1024,  /* 起跳，给小 errno 留位 */
+        E_IN_PARAM, E_REND_IPC, E_REND_AGAIN, E_REND_NOFOUND,
+        E_REND_OVERFLOW, E_REND_NO_MEM, E_REND_PORT_CLOSED, …
+        E_REND_ABANDON,      /* 仅枚举；死码 */
+};
+/* error_t = int（common/types.h） */
 ```
+
+勿把正枚举值当作返回值直接传给调用方。常用码见 §4.1。
+
+### 7.3 Panic / halt
+
+```c
+void kernel_panic(const char *msg);  /* noreturn：pr_error → arch_shutdown → spin */
+void kernel_halt(void);              /* noreturn：同上，固定文案 */
+```
+
+无栈回溯、不停他核。riscv64：`panic.c` 无 `#include` 分支——缺 `arch_shutdown` 会挂。
+
+### 7.4 Powerd
+
+```c
+#define RENDEZVOS_POWERD_PORT_NAME "powerd"
+error_t rendezvos_request_poweroff(void);  /* inline in powerd.h */
+```
+
+| 行为 | 说明 |
+|------|------|
+| SHUTDOWN | → `kernel_halt` |
+| REBOOT | 只 `pr_error`；**不**调 `arch_reset` |
+| port 起败 | 线程 return → 此后 request 得 `-E_RENDEZVOS` |
+
+### 7.5 Arch 关机钩子
+
+| Arch | `arch_shutdown` | `arch_reset` |
+|------|-----------------|--------------|
+| x86 | `outw(0x604, 0x2000)`（本篇） | `outb(0x92, 1)`；reboot 未接 |
+| aarch64 | `psci_func.system_off()`（细节 `39`） | 空 |
+| riscv | **缺失** | — |
 
 ---
 
@@ -140,6 +190,9 @@ error_t rendezvos_request_poweroff(void);
 
 ## 11. 变更记录
 
+- 2026-10-01：删除重复码 `E_REND_RETRY`；buddy reclaim 耗尽并入 `-E_REND_AGAIN`（§4.1）。
+- 2026-09-27：语言润色——「真源 = … Doxygen」改为「以头文件注释为准」；one-shot→单次、bring-up→拉起、非热路径契约→非常用路径，约定从略；符号与技术事实未改。
+- 2026-09-26：§7 全文审阅——error/panic/powerd/x86 power_ctrl Doxygen；负返回惯例；vs `39`/`20`。  
 - 2026-09-26：语言轮——负返回惯例；码表；x86 `0x604`/`0x92`；powerd vs 直接 panic；riscv 缺口。  
 - 2026-08-29：整篇重做。  
 - 2026-08-27：初稿。

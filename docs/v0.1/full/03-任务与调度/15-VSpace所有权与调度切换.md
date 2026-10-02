@@ -1,6 +1,6 @@
 # VSpace 所有权与调度切换
 
-v0.1 · 2026-09-25
+v0.1 · 2026-09-26
 
 本篇覆盖：`schedule()` 的用户 AS 块（`kernel/task/task_manager.c`）、`thread->vs` 转入 / 放出（`thread.c` / `thread.h`）、`vspace_clear_user_mappings` / `del_vspace` 与 mask 门闩（`vmm.c` / `vmm.h`）、`percpu(current_vspace)`。
 
@@ -16,8 +16,8 @@ Radix / `create` / `clone` 细节见页表与 Radix 篇；mask 跨核怎么刷�
 
 | 钉子 | 谁持有 | 干什么 |
 |------|--------|--------|
-| **所有权 ref** | `thread->vs` | 钉住对象生命周期；`create_thread` / `copy_thread` **转入**（无二次 get）；teardown **只 put**，不卸 CR3 / TTBR |
-| **schedule CPU 额外 ref** | 本核逻辑 / `current_vspace` 仍关联该 user AS 时 | 钉住「本核还可能用着这份翻译」；**仅** user→**另一** user 时 get 新、put 旧 |
+| **所有权 ref** | `thread->vs` | 钉住对象生命周期；`create_thread` / `copy_thread` **转入**（无二次 get）；回收时 **只 put**，不卸 CR3 / TTBR |
+| **schedule CPU 额外 ref** | 本核逻辑 / `current_vspace` 仍关联该 user AS 时 | 钉住「本核还可能用着这份翻译」；切入 **另一** user（含 root→首个 user、leftover A→B）时 **get 新**；旧非 `&root_vspace` 才 **put 旧**；user→kernel **不** put |
 
 再加 `tlb_cpu_mask`：哪些核**可能**还缓存着该 AS 的翻译。三者一起，才敢在 `del` / 回收 ASID 前说「没人再用」。
 
@@ -37,7 +37,7 @@ Radix / `create` / `clone` 细节见页表与 Radix 篇；mask 跨核怎么刷�
 
 ## 3. 分层与调用方
 
-**用户 AS** — `create` / `clone` → `register_vspace` → 把 **live ref** 交给 `create_thread` / `copy_thread` / `gen_thread_from_elf`。register 须在线程接管前完成；unregister 在最后 `ref_put` → `free_vspace_ref`。
+**用户 AS** — `create` / `clone` → `register_vspace` → 把 **活引用** 交给 `create_thread` / `copy_thread` / `gen_thread_from_elf`。register 须在线程接管前完成；unregister 在最后 `ref_put` → `free_vspace_ref`。
 
 **内核 / server** — `gen_thread_from_func`：get root → create（不设 USER）→ **永不**走 AS 切换。
 
@@ -84,7 +84,7 @@ Radix / `create` / `clone` 细节见页表与 Radix 篇；mask 跨核怎么刷�
 | 路径 | 职责 |
 |------|------|
 | `task_manager.c` `schedule` USER 块 | get / set mask / 装根 / 清旧 / put |
-| `thread.h` create / copy 注释 | 所有权契约 |
+| `thread.h` create / copy 注释 | 所有权约定 |
 | `thread.c` `thread_release_owned_resources` | 只 put ownership |
 | `vmm.c` clear / del / free_vspace_ref | mask 门闩、asid_free |
 | `virt_mm_init` | `current_vspace = &root_vspace` |
@@ -101,7 +101,7 @@ Radix / `create` / `clone` 细节见页表与 Radix 篇；mask 跨核怎么刷�
 | `copy_thread` | 成功转入；**任意失败 put 传入 vs** |
 | `gen_thread_from_func` | 内部 get root 再 create |
 | `gen_thread_from_elf` | 内部 create + register；USER 在 create **之后**才 set |
-| teardown | `fini`（vs 仍有效）→ put ownership；**不**卸硬件 |
+| 回收路径 | `fini`（vs 仍有效）→ put ownership；**不**卸硬件 |
 | boot | `vs` 保持 NULL |
 
 ### 6.2 `schedule` 决策
@@ -134,7 +134,7 @@ if old != &root_vspace:
 
 为何这样排：
 
-- **先 get 再装表**：避免装上一个已在 teardown 的 AS。
+- **先 get 再装表**：避免装上一个已在回收中的 AS。
 - **先 set 新 mask 再装硬件**：人已经跑在新 AS 上时，别人发 shootdown 不能漏掉本核（TLB 篇同理）。
 - **先刷旧再 clear 再 put**：mask 里已经没你了，本地 TLB 却还脏着，会漏刷。
 - **先装新再丢旧**：中途故障还能退回，不必先把自己变成「无根」。
@@ -164,17 +164,77 @@ in-place exec：远程须 quiesce；**本核位可留**；ASID **不换**。不�
 
 ---
 
-## 7. 公开 API（本篇语义）
+## 7. 公开 API
 
-| API | 本篇关心的契约 |
-|-----|----------------|
-| `create_thread` / `copy_thread` | vs 转入；copy 失败也 put |
-| `schedule` | USER 门闩 + 六步 + 滞后 |
-| `vspace_clear_user_mappings` | `allow_self_use` 精确条件 |
-| `del_vspace` / `free_vspace_ref` | mask 全零；先 unregister |
-| `percpu(current_vspace)` | 逻辑当前 AS |
+本篇**不**单独导出新符号；写清的是「所有权转入 / `schedule` 换根六步 / clear·del 门闩」这套调用约定。符号说明以 `vmm.h` / `thread.h` 的 Doxygen 为准（已按 `.c` 补强本篇关心的部分）。生命周期工厂签名见 `07`；`schedule` 全貌见 `13`；create/copy 转入见 `14`。
 
-装根 / invalidate 符号见 arch 与 TLB 篇。
+### 7.1 编排顺序（调用方必须遵守）
+
+| 场景 | 顺序 |
+|------|------|
+| 用户 AS 交给线程 | `create_vspace` / `clone_vspace` → **`register_vspace`** → 把 **活引用** 交给 `create_thread` / `copy_thread`（**无二次 get**） |
+| 调度切入另一用户 AS | 仅当 next 带 `THREAD_FLAG_USER` 且 `old≠new`：见 §7.3 六步 |
+| user → kernel / idle | **整段跳过**换根：硬件 / `current_vspace` / mask / CPU extra **滞后** |
+| 原地 exec clear | 远程 mask 先 quiesce → **`vspace_clear_user_mappings(vs, h, true)`**（本核位可留）→ load；**不换 ASID** |
+| 末次 ownership put | **`free_vspace_ref`**：`unregister` → `del_vspace`（`clear(..., false)` 要求 mask **全零**）→ `asid_free` |
+
+### 7.2 所有权转入（`thread.h`；细节 `13`/`14`）
+
+| 接口 | 本篇约定 |
+|------|----------|
+| `create_thread` | 成功：`thread->vs = vs`（接管活引用）；失败且尚未赋值时，caller 仍持有 |
+| `copy_thread` | 成功转入；**任意失败路径都会 put 传入的 vs** |
+| `gen_thread_from_func` | 内部 get root 再 create（转入 root） |
+| `gen_thread_from_elf` | 内部 create+register；`THREAD_FLAG_USER` 在 create **之后**才设 |
+| 回收路径 | append `fini` 时 vs 仍有效 → put ownership；**不**卸 CR3/TTBR |
+| boot | `vs` 保持 NULL |
+
+### 7.3 `schedule` 用户 AS 块（`task_manager.c`；API 见 `13`）
+
+仅当 **next** 带 `THREAD_FLAG_USER`：
+
+1. `new_vs` 空或 `== &root_vspace` → 报错，不 switch  
+2. `old_vs == new_vs` → **无操作**（不 get / 不改 mask / 不装根）  
+3. 否则六步（**不可乱序**）：
+
+```text
+ref_get_not_zero(new)
+vs_tlb_cpu_mask_set(new)          // 先 set 新
+arch_set_current_user_vspace_root_asid(new)
+percpu(current_vspace) = new
+if old != &root_vspace:
+    本地 invalidate 旧 AS
+    vs_tlb_cpu_mask_clear(old)
+    ref_put(old)                  // 放 CPU extra；不对 root put
+```
+
+| 转移 | 行为 |
+|------|------|
+| user → kernel/idle | 跳过整段（滞后） |
+| root → 首个 user | get + set + 装根；**不对 root put** |
+| kernel → 另一 user（`current_vspace` 仍为 A） | 按 user→user：get B … put A |
+
+装根硬件见 §8；IPI/`tlbi` 见 `11`；ASID 号码见 `12`。
+
+### 7.4 clear / del / ref（`vmm.h`；工厂见 `07`）
+
+```c
+error_t vspace_clear_user_mappings(VSpace *vs, struct map_handler *h,
+                                   bool allow_self_use);
+error_t free_vspace_ref(ref_count_t *refcount);
+error_t unregister_vspace(VSpace *vs);
+error_t del_vspace(VSpace **vs);
+extern VSpace *current_vspace; /* per-CPU；用 percpu() */
+```
+
+| 接口 | 说明 |
+|------|------|
+| `vspace_clear_user_mappings` | 清用户低半，保留对象 / ASID / 根帧 / 内核半。禁止对 root。门闩：`allow_self_use && current_vspace==vs` → 只许本核一位；否则（含 allow 但 current≠vs）→ mask **全零**；失败返回 `-E_REND_RC_UNEQUAL`（**不是** `-E_REND_AGAIN`）。 |
+| `del_vspace` | 须已 unregister；`clear(..., false)` → 毁 radix → 放根页 → **`asid_free`**（不再查 mask）→ 放结构；`*vs=NULL`。仍 registered → `-E_IN_PARAM`。 |
+| `free_vspace_ref` | **先 unregister 再 del**。若 del 因 mask 失败，会留下已注销、refcount 为 0 的半死对象；**没有公开的重试 / 修复接口**（靠不变量避免）。 |
+| `percpu(current_vspace)` | 逻辑上的当前 AS；user→kernel **不会**清掉。 |
+
+`create` / `clone` / `register` 签名与一般说明见 `07` §7.4；本篇只钉「何时 register、何时转入、何时敢 clear/del」。
 
 ---
 
@@ -191,7 +251,7 @@ in-place exec：远程须 quiesce；**本核位可留**；ASID **不换**。不�
 
 ## 9. 测试
 
-无单独「所有权」测例；随用户 create / 切换 / exec clear / teardown 与 SMP unmap 覆盖。本篇未复测。
+无单独「所有权」测例；随用户 create / 切换 / exec clear / 回收路径与 SMP unmap 覆盖。本篇未复测。
 
 ---
 
@@ -206,6 +266,9 @@ in-place exec：远程须 quiesce；**本核位可留**；ASID **不换**。不�
 
 ## 11. 变更记录
 
+- 2026-09-27：中文表述润色（母语习惯）。
+- 2026-09-26：对照 `schedule` USER 块——纠正 §1「仅 user→另一 user 才 get/put」：实为切入另一 user 即 get 新，旧非 root 才 put；user→kernel 仍不 put。
+- 2026-09-26：§7 全文审阅——补强 `free_vspace_ref` / clear 门闩 / `current_vspace` Doxygen；写清转入·六步·回收编排与半死对象陷阱。
 - 2026-09-25：语言整理；§6.3 补「为何」；§8 扩写 CR3 / TTBR0 装根与「内核可不换根」的硬件前提。
 - 2026-08-29：整篇重做——双引用叙述；六步顺序；user→kernel 滞后写死；`allow_self_use` 精确条件；失败码 `-E_REND_RC_UNEQUAL`；与 TLB / ASID / TM 分工。
 - 2026-08-26：初稿。

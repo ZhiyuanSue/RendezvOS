@@ -1,6 +1,6 @@
 # 日志与 UART 控制台
 
-v0.1 · 2026-09-25
+v0.1 · 2026-09-27
 
 本篇覆盖：`modules/log/log.c`、`include/modules/log/log.h`、`modules/driver/uart/uart.c`、`uart_16550A.c`、`uart_pl011.c`、两侧 UART 头、`modules/driver/x86_char_console/char_console.c`。
 
@@ -94,7 +94,8 @@ SMP：`COLOR_SET` / `COLOR_CLR`（包住 `pr_*`）与 `log_put_locked` 用同一
 ```text
 cmain:
   uart_open(ROUND_UP(&_end, MIDDLE_PAGE_SIZE))
-      // aarch64：应与 early map 的 PL011 高半窗一致（见 boot_map / setup_info）
+      // aarch64：该 VA == early map 的 PL011 高半窗（boot_uart_base_addr）
+      //          uart_pl011_open 只 cast，不再 map
       // x86：参数忽略，固定 COM1 0x3F8
   log_init(log_level)   // '\n' + 设级别
   [HELLO] hello_world()
@@ -124,13 +125,13 @@ PC 经典 **COM1** 基址 **`0x3F8`**（`_X86_16550A_COM1_BASE_`），`inb`/`out
 `putc`：轮询 **LSR bit5（THRE）** 后写 THR。  
 `getc`：轮询 **LSR bit0（DR）** 后读 RHR——无超时。
 
-riscv 头留了 `0x10000000` MMIO 宏；是否编进镜像看 arch 配置，本篇以 x86 PIO 为主责叙述。
+riscv 头留了 `0x10000000` MMIO 宏；是否编进镜像看 arch 配置，本篇以 x86 PIO 为为主叙述。
 
 ### 6.4 硬件：PL011（aarch64）
 
-PrimeCell PL011，MMIO。`uart_open` 传入的虚址即 early 页表映好的窗口（DTB `arm,pl011` 的 `reg`；高半基记在 `boot_uart_base_addr`）。
+PrimeCell PL011，MMIO。`uart_open` 传入的虚址即 early 页表映好的窗口（`boot_map` 把 PL011 映到 `ROUND_UP(kernel_end, 2MiB)` 高半窗；同址写入 `boot_uart_base_addr`；`cmain` 再把该 VA 传给 `uart_open`）。
 
-`uart_pl011_open`：
+`uart_pl011_open`：**仅** `(UART_PL011 *)base_addr` 强转并写寄存器——**不再 map**、不分配页表。
 
 | 动作 | 寄存器 | 含义 |
 |------|--------|------|
@@ -151,20 +152,68 @@ PrimeCell PL011，MMIO。`uart_open` 传入的虚址即 early 页表映好的窗
 
 ## 7. 公开 API
 
+本篇拥有：同步调试输出——`modules/log/log.h`（`printk` / `pr_*` / `log_put_*` / `COLOR_SET`）、可移植 UART 分发（`uart.h`）、16550 / PL011 后端、x86 VGA 文本（`char_console.h`）。以头文件注释为准（见上列头文件；已与 `.c` 核对）。
+
+**本篇不拥有：** MCS 原语本身 → `31`；`cmain` 里 `uart_open`→`log_init` 时序 → `02`；aarch64 early map / `boot_uart_base_addr` → `05`/`36`；GIC SPI mask → `27`。
+
+### 7.1 编排顺序（调用方须遵守）
+
+| 场景 | 顺序 |
+|------|------|
+| BSP boot | **`uart_open(...)`** → **`log_init(level)`** → 此后才可依赖 `pr_*` |
+| 常规日志 | `#include <modules/log/log.h>` → **`pr_info` / `pr_error`…**（SMP 下宏内加锁） |
+| 级别旁路 | **`print(...)`** = `printk(..., LOG_OFF)`——仍**无** MCS |
+| 整段写 | **`log_put_locked(buf, len)`**（持 MCS，逐字节 `uart_putc`） |
+| VGA 出字 | 须另调 **`CONSOLE_PUTC`**——`log_put_byte` **从不**写屏 |
+
+AP 不再 `uart_open`；多核共用同一串口，靠 MCS 串行化。
+
+### 7.2 日志（`log.h`）
+
 ```c
-void print(const char *fmt, ...);
-void pr_error/pr_info/pr_debug/...(...);  /* 宏 → printk */
+void log_init(u64 msg_level);
 void printk(const char *fmt, u64 msg_level, ...);
-void log_init(u64 level);
 void log_put_byte(char ch);
 void log_put_locked(const u8 *buf, u64 len);
-
-void uart_open(void *base_addr);
-void uart_putc(u8 c);
-u8 uart_getc(void);   /* 无限阻塞轮询 */
-void uart_close(void);
-void uart_set_color(u64 forword, u64 backword);
+/* macros */ pr_debug / pr_info / pr_notice / pr_warn / pr_error / …
+             pr_crit / pr_alert / pr_emer / print / COLOR_SET / COLOR_CLR
 ```
+
+| 接口 | 说明 |
+|------|------|
+| `log_init` | 写 `\\n` + 设 `log_level`；非清屏。 |
+| `printk` | 仅当 `msg_level <= log_level` 输出；**自身不加锁**。 |
+| `pr_*` | `COLOR_SET`→`printk`→`COLOR_CLR`；SMP 用 `log_spin_lock_ptr` + `percpu(log_spin_lock)`。 |
+| `print` | `LOG_OFF` 旁路过滤；无锁。 |
+| `log_put_byte` | 直调 `uart_putc`；**不** `CONSOLE_PUTC`。 |
+| `COLOR_SET(d,fg,bg)` | UART 只收 `(d,fg)`——第三参背景**不进 ANSI**（已知错位）。 |
+
+### 7.3 UART（`uart.h` + 后端）
+
+```c
+void uart_open(void *base_addr);
+void uart_putc(u_int8_t ch);
+u_int8_t uart_getc(void);   /* 无限阻塞轮询 */
+void uart_close(void);
+void uart_set_color(u64 forword, u64 backword);  /* ANSI CSI */
+```
+
+| 后端 | 入口 | 要点 |
+|------|------|------|
+| 16550 | `uart_16550A_*` | COM1 `0x3F8`；IER=0；115200；轮询 THRE/DR。 |
+| PL011 | `uart_pl011_*` | **cast 已映 VA**，不再 map；无 IBRD/FBRD；轮询 FR。 |
+
+编译宏 `_UART_16550A_` / `_UART_PL011_` 在 `uart.c` 静态分发。
+
+### 7.4 VGA 文本（仅 x86，`char_console.h`）
+
+```c
+void set_console_color / set_console_size / clear_screen / clear_line(...);
+void char_console_putc(...);   /* 经 CONSOLE_PUTC 宏 */
+u8 map_color(u64 forward, u64 back);
+```
+
+物理 `0xB8000`（+ `KERNEL_VIRT_OFFSET`）。log 热路径只改 `console->color`。
 
 ---
 
@@ -187,7 +236,7 @@ void uart_set_color(u64 forword, u64 backword);
 ## 10. 限制与后续
 
 - 同步轮询；SMP 下裸 `print` 不安全。  
-- VGA 与正文解耦——「串口才是真 console」。  
+- VGA 与正文解耦——真正出字的是串口。  
 - 无行规程；`getc` 无 timeout、无 stdin 接线。  
 - PL011 不开波特编程；换板需确认固件默认或补 IBRD/FBRD。  
 - 链接方若做 UART server：handoff 后 **panic / early 仍应能直写**。
@@ -196,6 +245,9 @@ void uart_set_color(u64 forword, u64 backword);
 
 ## 11. 变更记录
 
+- 2026-09-27：语言润色——「真源 = … Doxygen」改为「以头文件注释为准」；one-shot→单次、bring-up→拉起、非热路径契约→非常用路径，约定从略；符号与技术事实未改。
+- 2026-09-26：核对——`uart_pl011_open` = cast 已映 VA、不再 map；与 `boot_uart_base_addr` / `cmain` 传参对齐；`COLOR_SET` UART 仅 `(d,fg)`。  
+- 2026-09-26：§7 全文审阅——log/uart/char_console Doxygen；划清 vs `31`/`02`/`05`；强调 `log_put_byte` 不写 VGA。  
 - 2026-09-25：语言轮——补 16550/PL011/VGA `0xB8000` 寄存器链；COLOR_SET 参数错位；确认 `log_put_byte` 不写 VGA 字符；RX 轮询与 GIC mask。  
 - 2026-09-12：删除空壳 `rendezvos/stdio.h` / `stdlib.h`；入口只认 `log.h`。  
 - 2026-08-29：整篇重做——直写叙述；VGA 只改色；锁在 `pr_*`；PL011 无有效 IRQ。  
