@@ -122,9 +122,9 @@ clear_bss_start:
 	movl	$(_bss_start-kernel_virt_offset),%eax
 	movl	$(_bss_end-kernel_virt_offset),%ebx
 clear_bss:
-	cmp		%eax,%ebx
-	jg		set_sp
-	movl	$0,(%eax)
+	cmp		%ebx,%eax
+	jge		set_sp
+	movb	$0,(%eax)
 	add		$1,%eax
 	jmp		clear_bss
 set_sp:

@@ -153,7 +153,7 @@ PSCI 本身经 SMC / HVC；属性与 function id 见 PSCI 篇。本篇只写清�
 
 ### 6.6 BSP_ID / percpu 时序注意
 
-`arch_enable_percpu(BSP_ID)` 时 `BSP_ID` 往往仍为 **0**，之后 x86 才写成 APICID。APIC≠0 时 `percpu()` 仍指 slot 0，而大量路径用 `per_cpu(..., BSP_ID)`——依赖「QEMU BSP APIC=0」的隐含假设（启动总览已点）。
+现行 `cmain` 是 `arch_cpu_info`（x86 可能把 `BSP_ID` 写成 APIC ID）→ 再 `arch_enable_percpu(BSP_ID)`。`CPUID（EAX=1）` 只给出 8 位 APIC，和稠密软件下标仍可能对不齐；稀疏或超 8 位时不能把 APIC ID 直接当槽号（启动总览 §10）。
 
 ---
 
@@ -238,6 +238,7 @@ void arch_start_smp(struct setup_info *arch_setup_info);
 
 ## 11. 变更记录
 
+- 2026-10-03：§6.6 对齐现行 `arch_cpu_info` → `arch_enable_percpu(BSP_ID)`（不再写「先 enable(0)」）。
 - 2026-09-27：中文措辞整理——PSCI `affinity` 句通顺化；弱化「钉 / 真源 / 契约」堆砌；空操作标 (no-op)。
 - 2026-09-26：§7 全文审阅——纠正 `start_smp(setup_info*)`；补 `start_secondary_cpu` 声明与 Doxygen；划清 `cpu_is_online` vs `cpu_id_is_online`；拓扑头明确无 API。
 - 2026-09-25：语言整理；§6.3/§6.4 扩写 INIT-SIPI / PSCI 与 ICR·跳板·context 的 OS 依赖；手册入口。

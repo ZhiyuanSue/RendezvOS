@@ -74,7 +74,7 @@ x86 选 **GS_BASE**（内核态直接当基址；用户 TLS 另走 FS / KERNEL_G
 
 | 核 | 何时 `arch_enable_percpu` |
 |----|---------------------------|
-| BSP | 启动早期（常在知道 `BSP_ID` 前后；拓扑篇警告 APIC≠0 时 GS 窗） |
+| BSP | `cmain`：`arch_cpu_info` 之后、`virt_mm_init` 之前（`arch_enable_percpu(BSP_ID)`） |
 | AP | `start_secondary_cpu` **尽早**（在 `virt_mm_init` / `arch_start_core` 之前） |
 
 `percpu()` 早于 enable → 基址错。`get_per_cpu_base()`：x86 `rdmsr GS_BASE`；aarch64 `mrs TPIDR_EL1`。
@@ -111,7 +111,7 @@ x86 选 **GS_BASE**（内核态直接当基址；用户 TLS 另走 FS / KERNEL_G
 | 场景 | 顺序 |
 |------|------|
 | 物理布局 | `phy_mm_init` → **`reserve_per_cpu_region`** → map → **`clean_per_cpu_region`**（额外区 **memset 0**） |
-| BSP | `cmain` 早期 **`arch_enable_percpu(BSP_ID)`** → 之后才 `percpu()`；`arch_start_core` 写 `cpu_number` |
+| BSP | `cmain`：`arch_cpu_info` 之后 **`arch_enable_percpu(BSP_ID)`** → 之后才 `percpu()`；`arch_start_core` 写 `cpu_number` |
 | AP | `start_secondary_cpu` **最先** `arch_enable_percpu(cpu_id)` → 再 `virt_mm_init` / `arch_start_core` |
 | MCS | `lock_mcs(lock, me)` 的 `me` = **本核** node（`&percpu(...)`），禁止他核 slot |
 
@@ -196,6 +196,7 @@ void clean_per_cpu_region(paddr per_cpu_phy_addr);
 
 ## 11. 变更记录
 
+- 2026-10-03：§4.3 / §7.1 BSP enable 时点改为 `arch_cpu_info` 之后。
 - 2026-09-27：中文措辞整理——弱化「真源 / 钉死」堆砌。
 - 2026-09-26：§7 全文审阅——`percpu.h` 全套 Doxygen；写清「清零预留≠memcpy」「先 enable 再 percpu」与 MCS `me`；划清 vs `28`/`31`。
 - 2026-09-25：语言整理；§1.1 补 GS_BASE / TPIDR_EL1 硬件动机与用户 TLS 分界。

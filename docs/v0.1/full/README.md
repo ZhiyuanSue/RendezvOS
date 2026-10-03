@@ -137,7 +137,7 @@ v0.1/full/
 
 ---
 
-### [x] [ ] 01-启动与初始化/04-平台启动-x86_64.md
+### [x] [x] 01-启动与初始化/04-平台启动-x86_64.md
 
 职责：x86 `boot.S` 到 `cmain`；只做一次的 `prepare_arch` / `arch_cpu_info` / `arch_start_platform`；每核 `arch_start_core`。AP 唤醒见 SMP 篇
 
@@ -145,7 +145,7 @@ v0.1/full/
 
 ---
 
-### [x] [ ] 01-启动与初始化/05-平台启动-aarch64.md
+### [x] [x] 01-启动与初始化/05-平台启动-aarch64.md
 
 职责：aarch64 `boot.S` 到 `cmain`；只做一次的 `prepare_arch` / `arch_cpu_info` / `arch_start_platform`；每核 `arch_start_core`。AP 的 `cpu_on` 见 SMP 篇
 

@@ -188,7 +188,7 @@ MSR **`IA32_APIC_BASE`**（SDM 10.4.3）：
 
 `enable_xAPIC` 置 bit 11；`enable_x2APIC` 再置 bit 10（全局使能保持）。`map_LAPIC` **只在 xAPIC**：映成 **UNCACHED | GLOBAL | RW**。缓存页会让 EOI / 读-改-写看到过期镜像。x2APIC 的 MSR 访问不是一定可序列化的；需要顺序时要用 fence。MMIO+UC 路径本身带某种有序性，所以 xAPIC 不另加 fence。
 
-**APIC ID**（xAPIC MMIO `FEE0 0020H`；x2APIC 为 MSR `802H`，整 32 位都是 ID）：多核里我们把它当 CPU 身份。启动决定的 ID 还能从 CPUID.01H EBX[31:24] 读到；**即使软件改了 APIC ID 寄存器，这条 CPUID 仍返回启动时的值**。x2APIC 下 8 位不够：若 CPUID 最大叶 ≥ `0x0B`，且 `0x0B, ECX=0` 时 EBX ≠ 0，用 **CPUID.0BH:EDX** 拿 32 位 ID（低 8 位与 01H 那条一致）。
+**APIC ID**（xAPIC MMIO `FEE0 0020H`；x2APIC 为 MSR `802H`，整 32 位都是 ID）：多核里我们把它当 CPU 身份。启动决定的 ID 还能从 `CPUID（EAX=1）` 的 EBX[31:24] 读到；**即使软件改了 APIC ID 寄存器，这条 CPUID 仍返回启动时的值**。x2APIC 下 8 位不够：若 `CPUID（EAX=0）` 报告的最大功能号 ≥ `0x0B`，且 `EAX=0x0B、ECX=0` 时 EBX ≠ 0，用 `CPUID（EAX=0x0B）` 的 EDX 拿 32 位 ID（低 8 位与 EAX=1 那条一致）。
 
 **VERSION**（SDM 10.4）：[7:0] 版本（`0xH` 为 82489DX，`10H–15H` 为集成 APIC）；[23:16] 最大 LVT 项；bit 24 表示能不能靠 SVR bit 12 **关掉 EOI 广播**。本仓库几乎不读这个寄存器，但解释 TMR/EOI 广播时会用到。
 
