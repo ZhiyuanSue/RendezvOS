@@ -82,10 +82,10 @@ v0.1/full/
 
 ---
 
-## 当前状态（2026-09-19）
+## 当前状态（2026-10-03）
 
 - **初稿 / 深读重做**：44 篇第一格均为 `[x]`；逐篇深读重做已完成。
-- **Maintainer 审定**：看各篇标题前第二格。已通过：`00-总览/00-架构与源码布局.md`、`00-总览/01-构建与链接.md`。
+- **Maintainer 审定**：看各篇标题前第二格。已通过：`00-总览/00-架构与源码布局.md`、`00-总览/01-构建与链接.md`、`01-启动与初始化/02-启动流程总览.md`。
 - **compat**：规划见 `v0.1/compat/README.md`；正文待 full 全部第二格通过后再写。
 - **evolution**：远期项见 `v0.1/evolution/TODO.md`；`design/`、`archive/` 正文未建。
 
@@ -121,7 +121,7 @@ v0.1/full/
 
 ## 01-启动与初始化
 
-### [x] [ ] 01-启动与初始化/02-启动流程总览.md
+### [x] [x] 01-启动与初始化/02-启动流程总览.md
 
 职责：BSP 上 `cmain` 的调用顺序；以及链接→加载→早期页表→进入 `cmain` 的跨架构地图（§4.4）。某一 ISA 的表项见平台篇
 
@@ -257,9 +257,19 @@ v0.1/full/
 
 ## 04-IPC
 
+**表述逻辑（先意图，再对象，再行为，再底座）：**
+
+1. `22` **§1** — 五张设计图（`figures/`）= 整章脊骨：同步搬家、混合≈微、假出队、Msg 壳、单状态  
+2. `18` — Port / Message **对象**（两层模型、单队列、Msg 拆分）  
+3. `19` — **会合与投递行为**（推拉、`Ipc_Request`、transfer、system）  
+4. `20` / `21` — kmsg 与 hooks（横向）  
+5. `22` **§2 起** — MSQ / tagged ptr / EBR **算法与 API**
+
+文件序号仍是 18→…→22；**读的时候按上面顺序**，不要按文件名从 18 盲读到 22。
+
 ### [x] [ ] 04-IPC/18-Port与消息模型.md
 
-职责：两层模型（port rendezvous + per-thread 队列）；`Message_Port_t`；全局 port 表
+职责：两层模型（port rendezvous + per-thread 队列）；`Message_Port_t`；全局 port 表；**承接 `22` §1 推出的对象后果**
 
 源码：`kernel/ipc/port.c` · `kernel/ipc/message.c` · `include/rendezvos/ipc/port.h` · `include/rendezvos/ipc/message.h` · `kernel/registry/name_index.c`
 
@@ -267,7 +277,7 @@ v0.1/full/
 
 ### [x] [ ] 04-IPC/19-阻塞与非阻塞收发.md
 
-职责：`send_msg` / `recv_msg` / try 变体；push vs pull；返回码
+职责：`send_msg` / `recv_msg` / try 变体；push vs pull；`Ipc_Request`；返回码；**承接假出队与推拉行为**
 
 源码：`kernel/ipc/ipc.c` · `include/rendezvos/ipc/ipc.h`
 
@@ -291,9 +301,9 @@ v0.1/full/
 
 ### [x] [ ] 04-IPC/22-无锁队列与EBR设计.md
 
-职责：MS queue、tagged ptr、ABA、与 IPC 的结合；**设计**为主
+职责：**§1 = 04-IPC 设计脊骨**（`figures/` 五图）；§2+ = MS queue、tagged ptr、ABA、EBR 咬合与 API
 
-源码：`include/common/dsa/ms_queue.h` · `include/common/taggedptr.h` · `kernel/task/ebr.c` · `kernel/ipc/ipc.c` · `kernel/ipc/message.c`
+源码：`include/common/dsa/ms_queue.h` · `include/common/taggedptr.h` · `kernel/task/ebr.c`（咬合）；IPC/message 契约见 `18`/`19`
 
 ---
 

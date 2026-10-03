@@ -41,18 +41,19 @@ aarch64 走的是 **Linux arm64 Image 引导约定**：固件 / QEMU 把镜像�
 
 Image 头在 `.boot` 最前面（`include/arch/aarch64/boot/arch_setup.h` 的 `struct boot_header` 与汇编一致）：两条跳到 `bsp_entry` 的指令、`text_offset = 0x80000`、magic `0x644d5241`（`"ARM\x64"` 小端）。装载器认这个头，入口落在镜像开头。
 
-`setup_info` 在 `.boot.data`，字段按偏移：
+`setup_info` 在 `.boot.data`，字段按偏移。前缀是本架构专用字段；尾部 `ap_boot_stack_ptr` / `cpu_id` 是跨 ISA **通用字段**（语义与谁写谁读见 `02-启动流程总览.md` §4.1.1，此处只给本 ISA 偏移与本侧填写路径）。
 
-| 偏移 | 字段 | 谁写 | 含义 |
-|------|------|------|------|
-| 0x00–0x18 | `dtb_ptr` / `res_x1..x3` | `bsp_entry`（MMU 关闭时 `adr`） | 固件传来的 x0–x3；x0 为 DTB 物理指针 |
-| 0x20 | `map_end_virt_addr` | `boot_map_pg_table` | 早期映射已用到的高半末端 |
-| 0x28 | `boot_uart_base_addr` | 同上 | 早期 UART 窗口的高半基址 |
-| 0x30 | `boot_dtb_header_base_addr` | `prepare_arch` 的 `map_dtb` | DTB 头的内核虚地址 |
-| 0x38 | `ap_boot_stack_ptr` | SMP 路径 | AP 栈顶（高半虚地址） |
-| 0x40 | `cpu_id` | `ap_entry`（固件传入的 x0） | 逻辑 CPU id |
+| 偏移 | 字段 | 谁写 | 谁读 / 用途 |
+|------|------|------|-------------|
+| `0x0` | `dtb_ptr` | `bsp_entry`（入口 x0，物理）；`boot_map_pg_table` 拷贝后可能改写 | `prepare_arch` / `arch_init_pmm` 等读 DTB |
+| `0x8`–`0x18` | `res_x1`…`res_x3` | `bsp_entry`（入口 x1–x3，现多为 0） | 协议保留，先存下 |
+| `0x20` | `map_end_virt_addr` | `boot_map_pg_table`；`prepare_arch` 的 `map_dtb` 再推进 | 早期映射高水位；PMM / 后续映射从这往后长 |
+| `0x28` | `boot_uart_base_addr` | `boot_map_pg_table` | 早期 PL011 高半基址 |
+| `0x30` | `boot_dtb_header_base_addr` | `prepare_arch`（`map_dtb`） | DTB 头的内核 VA；`arch_start_platform` 建设备树用 |
+| `0x38` | `ap_boot_stack_ptr` | `arch_start_smp`（`cpu_on` 前） | 通用字段，见总览 §4.1.1 |
+| `0x40` | `cpu_id` | `ap_entry`：把 PSCI `cpu_on` 传入的入口 x0 写入（C 侧不直接写本字段） | 通用字段，见总览 §4.1.1 |
 
-注意：汇编在 MMU 关闭时用 `adr` 得到的是**物理**地址写表、写 `setup_info`；开 MMU 并跳上高半之后，同一符号的 `adr` 才是虚地址。
+注意：汇编在 MMU 关闭时用 `adr` 得到的是**物理**地址写表、写 `setup_info`；开 MMU 并跳上高半之后，同一符号的 `adr` 才是虚地址。`boot_dtb_header_base_addr` 进 `cmain` 时仍为 0，必须等 `prepare_arch` 补上。
 
 ### 4.2 链接、加载与早期物理布局
 
@@ -82,7 +83,7 @@ Image 头在 `.boot` 最前面（`include/arch/aarch64/boot/arch_setup.h` 的 `s
 
 - 从 `ID_AA64MMFR0_EL1` 取 PARange，填入 `TCR_EL1.IPS`；若大于 40 位则**压到 40 位**（实现的有意上限）。
 - **TTBR0_EL1 与 TTBR1_EL1 都指向同一张 `L0_table`**：低半（TTBR0）走恒等，高半（TTBR1）走链接 VA；与 x86「PML4 两项进同一张 L1」是同一思路。
-- TCR：两侧 inner shareable、写回分配、硬件更新 AF/DB（`HA`/`HD`）、4 KiB granule；若硬件宣称支持 16-bit ASID，则置 `TCR_EL1.AS`。
+- TCR：TTBR0 / TTBR1 两侧半区均为 inner shareable、写回分配、硬件更新 AF/DB（`HA`/`HD`）、4 KiB granule；若硬件宣称支持 16-bit ASID，则置 `TCR_EL1.AS`。
 - `SCTLR_EL1` 置 `M`（MMU）、`C`（数据 cache）、`I`（指令 cache），`isb` 后把返回地址和 `lr` 都加上 `kernel_virt_offset`，`br` 到高半标签再 `ret`。此后 PC 落在链接 VA 上。
 
 开 MMU 前后要注意屏障与 TLB；实现里在写 TTBR/TCR/SCTLR 处用了 `isb`。MAIR 由先前的 `mair_init` 填好，页表描述符里的 AttrIndx 才有意义。
@@ -112,7 +113,7 @@ Image 头在 `.boot` 最前面（`include/arch/aarch64/boot/arch_setup.h` 的 `s
 
 **翻译体制与开 MMU（ARM ARM，VMSAv8-64）**
 
-- EL1&0 翻译体制下，**TTBR0_EL1** 覆盖低半 VA，**TTBR1_EL1** 覆盖高半 VA；分界由 `TCR_EL1` 的 `T0SZ`/`T1SZ` 等决定。本实现两侧 TTBR 都指向同一张 L0，再靠 L0 项分别挂低址恒等与高半窗口——与手册「两个 TTBR、两套根」的模型一致，只是软件选择让两棵树共享下层。
+- EL1&0 翻译体制下，**TTBR0_EL1** 覆盖低半 VA，**TTBR1_EL1** 覆盖高半 VA；分界由 `TCR_EL1` 的 `T0SZ`/`T1SZ` 等决定。本实现把 **TTBR0_EL1 与 TTBR1_EL1** 都指向同一张 L0，再靠 L0 项分别挂低址恒等与高半窗口——与手册「两个 TTBR、两套根」的模型一致，只是软件选择让两棵树共享下层。
 - 开 MMU 前通常要求：已写好 **MAIR_EL1**（内存属性）、**TCR_EL1**（粒度、可共享性、IPS、是否 16-bit ASID 等）、TTBR，再置 **SCTLR_EL1.M**；同时常开 `C`/`I` 以启用数据和指令 cache。写系统寄存器后需要合适的上下文同步（本实现用 `isb`）。
 - 4 KiB granule 下四级描述符：L0/L1/L2 可以是 **table** 或 **block**；到 L3 才是 **page**。UART 用 Device 属性的 page、内核用 Normal 的 2 MiB block，对应的是手册里 AttrIndx → MAIR 的那条链，而不是「随便写个 P 位」。
 - `ID_AA64MMFR0_EL1.PARange` 告诉软件硬件支持的物理地址宽度上限；`TCR_EL1.IPS` 必须设成不超过该能力。本实现额外把 IPS 压到不超过 40 位。
@@ -211,13 +212,13 @@ GIC：**分发器**只在 `arch_start_platform`；**CPU interface** 在每个核
 struct boot_header { /* Linux arm64 Image；见 boot.S */ … };
 
 struct setup_info {
-        u64 dtb_ptr;                 /* 0x0  物理；boot_map 可能改写 */
-        u64 res_x1, res_x2, res_x3;  /* 固件 x1–x3 */
-        u64 map_end_virt_addr;       /* 0x20 早期映射高水位 */
-        u64 boot_uart_base_addr;     /* 0x28 PL011 */
+        u64 dtb_ptr;                   /* 0x0  物理；boot_map 可能改写 */
+        u64 res_x1, res_x2, res_x3;    /* 0x8–0x18 固件 x1–x3 */
+        u64 map_end_virt_addr;         /* 0x20 早期映射高水位 */
+        u64 boot_uart_base_addr;       /* 0x28 PL011 */
         u64 boot_dtb_header_base_addr; /* 0x30 prepare_arch 填写的内核 VA */
-        vaddr ap_boot_stack_ptr;     /* 0x38 */
-        cpu_id_t cpu_id;             /* 0x40 */
+        vaddr ap_boot_stack_ptr;       /* 0x38 通用，见总览 §4.1.1 */
+        cpu_id_t cpu_id;               /* 0x40 通用，见总览 §4.1.1 */
 };
 ```
 
@@ -281,6 +282,7 @@ make ARCH=aarch64 config && make all && make run
 
 ## 11. 变更记录
 
+- 2026-10-03：§4.1 `setup_info` 表补「谁读」、`boot_map` 改写 `dtb_ptr`、`cpu_id` 经 PSCI context；通用字段语义链总览 §4.1.1。
 - 2026-09-27：中文表述润色（母语习惯）。
 - 2026-09-26：§7 全文审阅：`arch_setup.h` 补注释；写清钩子编排、GIC 分界与返回约定；去掉 `.c` 里过时/与 x86 串台的旧 brief。
 - 2026-09-25：增补 §4.6（ARM ARM 翻译/EL/SPSel，以及 Linux arm64 booting 装载约定引用）。

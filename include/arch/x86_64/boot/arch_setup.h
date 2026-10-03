@@ -19,29 +19,30 @@
 #define BIOS_MEM_UPPER 0x100000
 
 /**
- * @brief x86_64 boot structure shared by boot.S and cmain and start_secondary_cpu.
- * Offsets in field comments must match boot.S stores
- * 
+ * @brief x86_64 boot structure shared by boot.S and cmain and
+ * start_secondary_cpu. Offsets in field comments must match boot.S stores
+ *
  * Multiboot info pointer is a physical address; convert with
  * GET_MULTIBOOT_INFO / GET_MULTIBOOT2_INFO after the high-half is mapped.
  */
 struct setup_info {
-        u32 multiboot_magic; /**multiboot magic: MB1 0x2BADB002 or MB2 0x36d76289.
-                              * this magic is get from eax when start
+        u32 multiboot_magic; /**0x0: multiboot magic: MB1 0x2BADB002 or MB2
+                              * 0x36d76289. this magic is get from eax when
+                              * start
                               */
-        u32 multiboot_info_struct_ptr; /** Info struct physical address (ebx).
-                                        * This address is get from ebx
+        u32 multiboot_info_struct_ptr; /**0x4: Info struct physical address
+                                        * (ebx). This address is get from ebx
                                         */
-        u32 phy_addr_width; /**get From CPUID 0x80000008 when bsp_entry.
+        u32 phy_addr_width; /**0x8: From CPUID 0x80000008 when bsp_entry.
                              * means the physicall address width
                              */
-        u32 vir_addr_width;
-        vaddr rsdp_addr; /** Filled later by arch_init_pmm, 0 at entry.*/
-        vaddr ap_boot_stack_ptr; /**SMP AP stack top
-                                  * AP start one by one, every time using a new ap_boot_stack
-                                  * so this ptr should update
+        u32 vir_addr_width; /*0xc: linear address width from same CPUID leaf*/
+        vaddr rsdp_addr; /**0x10: Filled later by arch_init_pmm, 0 at entry.*/
+        vaddr ap_boot_stack_ptr; /**0x18: SMP AP stack top
+                                  * AP start one by one, every time using a new
+                                  * ap_boot_stack so this ptr should update
                                   */
-        cpu_id_t cpu_id; /*0x40: BSP/AP start given cpu id*/
+        cpu_id_t cpu_id; /*0x20: BSP/AP start given cpu id*/
 } __attribute__((packed));
 
 /**

@@ -179,7 +179,7 @@ DEFINE_PER_CPU(..., smp_tlb_flush_message);
 
 | 字段 / 步骤 | 说明 |
 |-------------|------|
-| `busy` | 发送方 claim；handler 成功清 0；**发送方只在门铃失败时清**——勿两边随意写。 |
+| `busy` | 发送方 claim；handler 成功清 0；**发送方只在门铃失败时清**——发送方与 handler 勿随意双边写。 |
 | `request_gen` | **仅发送方** `fetch_inc`；handler 只 load。 |
 | `done_gen` | **仅 handler** store；发送方只 wait。 |
 | `flush_*` | 发送方在持 busy 后写；handler 只读。 |

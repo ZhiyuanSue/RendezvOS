@@ -4,7 +4,7 @@ v0.1 · 2026-09-27
 
 本篇覆盖：`kernel/ipc/kmsg.c`、`kernel/ipc/ipc_serial.c`、`include/rendezvos/ipc/kmsg.h`、`include/rendezvos/ipc/kmsg_system.h`、`include/rendezvos/ipc/ipc_serial.h`。
 
-`Msg_Data` / Port 会合见 `18-Port与消息模型.md`；send / recv 与 system 投递见 `19-阻塞与非阻塞收发.md`；MSQ / EBR 见无锁篇；compat RPC（追加 `'t'`、coop）属上层文档，本篇只钉 core 边界。
+`Msg_Data` / Port 会合见 `18`；send / recv 与 system 投递见 `19`；设计脊骨与 MSQ / EBR 见 `22`（建议先读 §1）。compat RPC（追加 `'t'`、coop）属上层文档，本篇只钉 core 边界。
 
 ---
 
@@ -22,7 +22,7 @@ kmsg 是**可选的结构化信封**：
 |------|------|
 | `module` | 惯例 = 目标 port 的 `service_id`（快检「是不是给我的」）；**路由仍靠 port 名** |
 | `opcode` | 操作身份；system 在 `kmsg_system.h`，compat 各自编号 |
-| `payload` | TLV；`(opcode 语境下的) fmt` 两端必须一致——编译器不查 |
+| `payload` | TLV；`(opcode 语境下的) fmt` 编解码双方必须一致——编译器不查 |
 
 无 in-band version：layout 变就 **bump `KMSG_MAGIC` 并全量同步**。适合同镜像内核协作，不适合开放跨版本 wire。
 

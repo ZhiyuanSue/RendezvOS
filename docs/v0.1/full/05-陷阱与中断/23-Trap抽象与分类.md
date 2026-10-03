@@ -277,7 +277,7 @@ EC 映射：`0x20/21/24/25→PAGE_FAULT`（DFSC `0x21` 在 populate 可再标 AL
 
 经 `trap_handler` 的用户路径还会顺带 `kalloc_process_cross_cpu_frees` / `ebr_try_reclaim`（见调度 / EBR 篇）。
 
-### 6.6 两侧返回地址对照（速查）
+### 6.6 x86_64 / aarch64 返回地址对照（速查）
 
 | | x86 RIP | aarch64 ELR |
 |--|---------|-------------|

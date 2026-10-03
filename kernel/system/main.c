@@ -43,10 +43,10 @@ void cmain(struct setup_info *arch_setup_info)
         if (phy_mm_init(arch_setup_info)) {
                 kernel_panic("[ERROR]cmain: phy_mm_init failed");
         }
-        arch_enable_percpu(BSP_ID);
         if (arch_cpu_info(arch_setup_info)) {
                 kernel_panic("[ERROR]cmain: arch_cpu_info failed");
         }
+        arch_enable_percpu(BSP_ID);
         if (virt_mm_init(BSP_ID, arch_setup_info)) {
                 kernel_panic("[ERROR]cmain: virt_mm_init failed");
         }
@@ -74,7 +74,6 @@ void cmain(struct setup_info *arch_setup_info)
         start_smp(arch_setup_info);
 #ifdef RENDEZVOS_TEST
         create_test_thread(true);
-        thread_set_status(get_cpu_current_thread(), thread_status_suspend);
 #endif
         pr_info("[ CPU%d ] boot done, enter boot IPC loop\n", BSP_ID);
         if (kernel_handle_msg() != REND_SUCCESS) {

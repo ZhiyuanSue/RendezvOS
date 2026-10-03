@@ -147,7 +147,7 @@ ISENABLER / ICENABLER / ISPENDR / … 都是 **每 32 个 INTID 占一个 32 位
 | 寄存器 | 干什么 |
 |--------|--------|
 | **GICD_ISPENDR / ICPENDR** | 置 / 清 pending。边沿：写 ISPENDR 等于软件插一枪；电平：线还有效时清 ICPENDR 往往马上被硬件再置回来，写 ISPENDR 也不一定能「代替」那根线。 |
-| **GICD_ISACTIVER / ICACTIVER** | 看 / 改 active。pending 且 active 时两边都会亮。 |
+| **GICD_ISACTIVER / ICACTIVER** | 看 / 改 active。同一 INTID 若既 pending 又 active，则 pending 与 active 位都会亮。 |
 | **GICD_SPENDSGIR / CPENDSGIR** | SGI 专用的 pending 位图（按源 CPU 展开）。 |
 
 对 **SGI** 写普通的 ISPENDR/ICPENDR **没有生成效果**（读还能看见状态）；要发 SGI 得写 **SGIR**，或改 SPENDSGIR/CPENDSGIR。

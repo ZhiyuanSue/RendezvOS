@@ -90,7 +90,6 @@ enum thread_status_base {
         thread_status_zombie,
         thread_status_block_on_send,
         thread_status_block_on_receive,
-        thread_status_suspend,
         thread_status_exit,
 };
 ```
@@ -101,7 +100,6 @@ enum thread_status_base {
 | `block_on_*` | IPC 路径 | 先改 status 再 `schedule`；demote CAS 失败 → 保持阻塞 |
 | `zombie` | owner CPU 在切走带 `EXIT_REQUESTED` 的 ready 线程时 | 仍可挂在环上；clean 观测 |
 | `exit` | `delete_thread` 入口 | **不是** zombie；逻辑拆结构前的标 |
-| `suspend` | 测例等 | 效果 = 非 ready；无完整 wait 子系统 |
 
 三条退出路径不要混：
 
@@ -371,7 +369,7 @@ extern void run_thread(Thread_Init_Para *para); /* asm；见 thread.h */
 
 - `smp_test` — 多核调度 / IPC
 - `thread_affinity_test`（`smp_test[]`）— 创建时绑核
-- 大量测例经 `gen_thread_from_func` 造内核线程；`RENDEZVOS_TEST` 可将 boot 标 `suspend` 使之不再被 RR 选中
+- 大量测例经 `gen_thread_from_func` 造内核线程；`RENDEZVOS_TEST` 下 boot 进 `kernel_handle_msg` 后由 `recv_msg` 阻塞，RR 不会再选中它
 
 ```bash
 cd core && make ARCH=x86_64 config && make all && make run
@@ -385,7 +383,6 @@ cd core && make ARCH=x86_64 config && make all && make run
 
 - 仅 RR；指针预留，无第二套算法。
 - 无运行期迁移；阻塞线程仍属 owner CPU。
-- `thread_status_suspend` 无完整 wait 子系统。
 - RR 无时间片：长占 CPU 的内核线程饿同核 ready。
 - 环上无 ready → RR 死循环（靠 idle）。
 - `new_task_manager` 缺 alloc NULL 检查。
@@ -395,6 +392,7 @@ cd core && make ARCH=x86_64 config && make all && make run
 
 ## 11. 变更记录
 
+- 2026-10-03：去掉未接线的 `thread_status_suspend`（原仅 `cmain` 测例路径写一次，且会被 `recv_msg` 覆盖；RR 只认 `ready`）。
 - 2026-10-02：删除已无定义的死声明 `tid_spin_lock`；tid MCS 仅 `percpu(id_spin_lock)`。
 - 2026-09-27：中文表述润色（母语习惯）。
 - 2026-09-26：§7 全文审阅——按 `thread.h` / `id.h` / arch `switch_to` Doxygen 补接口说明与编排；纠正 `init_proc`「idle→boot」误述、`new_task_manager` 伪 NULL 返回；写清 `add_thread_to_manager` 非 init 仅 warn。

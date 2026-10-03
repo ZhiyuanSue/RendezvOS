@@ -4,7 +4,7 @@ v0.1 · 2026-09-27
 
 本篇覆盖：`kernel/ipc/port.c`、`include/rendezvos/ipc/port.h`（ops_life / ops_count / `port_append_hooks_t` / `port_ops_begin|end`）、以及 `ipc.c` 里对 begin 的调用点。测例：`modules/test/single_port_test.c`。
 
-Port 对象与两层会合见 `18-Port与消息模型.md`；send / recv 阻塞时序、醒后 flag、orphan drop、PORT_CLOSED **行为细节**见 `19-阻塞与非阻塞收发.md`；`KMSG_OP_SYSTEM_PORT_CLOSED` 登记见 kmsg 篇；名称索引见基础设施篇。
+Port 对象与两层会合见 `18`；send / recv 阻塞时序、醒后 flag、orphan drop、PORT_CLOSED **行为细节**见 `19`；设计脊骨见 `22` §1；`KMSG_OP_SYSTEM_PORT_CLOSED` 登记见 kmsg 篇；名称索引见基础设施篇。
 
 ---
 
@@ -140,7 +140,7 @@ REGISTER 在表锁内调 hook：**禁止**在 hook 里同表 lookup / register�
 
 ### 6.3 与真关闭的差异
 
-| | ops_allow deny | unregister 清队（**两侧都 ready**，通知方式不同） |
+| | ops_allow deny | unregister 清队（**send/recv 等待者都 ready**，通知方式不同） |
 |--|----------------|--------------------------------------------------|
 | 注入 PORT_CLOSED kmsg | 否 | **仅**当时 `block_on_receive`（`deliver_to`；成功则 pending↑） |
 | 置 `IPC_PORT_CLOSED` flag | 否 | **send 等待者恒置**；recv **仅当**清队后 `recv_pending_cnt==0`（投递失败） |
@@ -219,7 +219,7 @@ void port_ops_end(Message_Port_t *port);
 | `ipc_system_try_deliver` | 经 try_send → **会**过 SEND |
 | `ipc_system_deliver_to` | **不**过 port_ops（清队注入用此） |
 
-**Deny ≠ 关闭 port**：无 PORT_CLOSED kmsg / flag；port 仍 REGISTERED。LOOKUP deny ≠ SEND deny（可拆开测）。Token resolve **每次**再跑 LOOKUP。真正关闭时两侧都醒，但 send=flag、recv=优先 kmsg（`18` §6.2）。
+**Deny ≠ 关闭 port**：无 PORT_CLOSED kmsg / flag；port 仍 REGISTERED。LOOKUP deny ≠ SEND deny（可拆开测）。Token resolve **每次**再跑 LOOKUP。真正关闭时 send/recv 等待者都醒，但 send=flag、recv=优先 kmsg（`18` §6.2）。
 
 ---
 

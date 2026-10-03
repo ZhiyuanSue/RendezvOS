@@ -131,7 +131,7 @@ riscv / loongarch 的 `pmm.h` 为空桩，无实现。
 
 ### 6.1 从平台描述读出可用物理内存
 
-`arch_init_pmm(setup_info, &next_region_phy_start)` 是整条链的入口。两边最终都往同一个 `m_regions` 里 `insert(addr, len)`，但**输入格式完全不同**。
+`arch_init_pmm(setup_info, &next_region_phy_start)` 是整条链的入口。各 ISA 最终都往同一个 `m_regions` 里 `insert(addr, len)`，但**输入格式因固件协议而异**（下分现行主线路径）。
 
 #### x86_64：Multiboot memory map
 
@@ -156,7 +156,7 @@ riscv / loongarch 的 `pmm.h` 为空桩，无实现。
 4. 接着遍历 FDT 的 **mem_rsvmap**（固件声明的保留项），目前 **只打印**，不 `reserve`——因此这些区间仍可能被 buddy 分出去，是已知缺口。
 5. `next_region_phy_start = PHY(map_end_virt_addr)`——把早期 boot 在镜像后挂上的 UART 窗口、DTB 拷贝等算进「已占用游标」，避免 percpu/PMM blob 压上去。
 
-两端都要求 `m_regions.region_count > 0`，否则 `arch_init_pmm` 直接 `kernel_halt`。
+上述各 ISA 路径都要求 `m_regions.region_count > 0`，否则 `arch_init_pmm` 直接 `kernel_halt`。
 
 ### 6.2 `phy_mm_init`（区域表之后）
 
@@ -184,7 +184,7 @@ alloc：持锁找 ≥ 所需 order 的块 → 分裂 → 先抬 `Page` ref 再�
 
 ## 7. 公开 API
 
-本篇拥有：可移植 `include/rendezvos/mm/pmm.h`（+ buddy 默认实现 `buddy_pmm.h` / `buddy_pmm.c`），以及架构侧 `include/arch/<isa>/mm/pmm.h` 的 `arch_init_pmm`。接口说明以头文件注释为准，并已与 `pmm.c` / `buddy_pmm.c` / 两侧 `arch/*/mm/pmm.c` 核对。页表 / Map_Handler / kmalloc 见同分区后续篇。
+本篇拥有：可移植 `include/rendezvos/mm/pmm.h`（+ buddy 默认实现 `buddy_pmm.h` / `buddy_pmm.c`），以及架构侧 `include/arch/<isa>/mm/pmm.h` 的 `arch_init_pmm`。接口说明以头文件注释为准，并已与 `pmm.c` / `buddy_pmm.c` / 各 ISA 的 `arch/*/mm/pmm.c` 核对。页表 / Map_Handler / kmalloc 见同分区后续篇。
 
 ### 7.1 编排顺序（与源码一致）
 

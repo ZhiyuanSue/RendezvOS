@@ -21,7 +21,7 @@ v0.1 · 2026-09-27
 
 AP 启动拉核用的 INIT / SIPI **不是** soft IPI（delivery mode 不同，只是共用 `APIC_send_IPI` 一类原语）——见拓扑篇。
 
-**唯一 in-tree 默认消费者：x86 TLB shootdown。** aarch64 TLB 用 `tlbi *is`，**不**注册 TLB IPI，也 **无** `arch_smp_flush_tlb_init`。两端都会 `smp_ipi_init`——机制在，aarch64 几乎无第二消费者。
+**唯一 in-tree 默认消费者：x86 TLB shootdown。** aarch64 TLB 用 `tlbi *is`，**不**注册 TLB IPI，也 **无** `arch_smp_flush_tlb_init`。现行主线各 ISA 仍都会 `smp_ipi_init`——机制在，aarch64 几乎无第二消费者。
 
 ### 1.1 OS 为何拆「门铃」和「工作」
 
@@ -157,7 +157,7 @@ error_t arch_smp_ipi_send(cpu_id_t cpu);
 
 ### 7.4 与 TLB 的分工
 
-唯一 in-tree 默认 registrant：**x86** `arch_smp_flush_tlb_init`（见 `32`）。aarch64 TLB 走 `tlbi *is`，不注册 TLB IPI；两端仍 `smp_ipi_init`（机制在，几乎无第二消费者）。
+唯一 in-tree 默认 registrant：**x86** `arch_smp_flush_tlb_init`（见 `32`）。aarch64 TLB 走 `tlbi *is`，不注册 TLB IPI；各 ISA 仍 `smp_ipi_init`（机制在，几乎无第二消费者）。
 
 ---
 

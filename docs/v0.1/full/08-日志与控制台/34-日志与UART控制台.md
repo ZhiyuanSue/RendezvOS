@@ -2,7 +2,7 @@
 
 v0.1 · 2026-09-27
 
-本篇覆盖：`modules/log/log.c`、`include/modules/log/log.h`、`modules/driver/uart/uart.c`、`uart_16550A.c`、`uart_pl011.c`、两侧 UART 头、`modules/driver/x86_char_console/char_console.c`。
+本篇覆盖：`modules/log/log.c`、`include/modules/log/log.h`、`modules/driver/uart/uart.c`、`uart_16550A.c`、`uart_pl011.c`、各 ISA 的 UART 头（`uart_16550A.h` / `uart_pl011.h` 等）、`modules/driver/x86_char_console/char_console.c`。
 
 SMP 下 MCS 见锁篇；`cmain` 里 `uart_open` → `log_init` 时序见启动总览；aarch64 PL011 early map / `boot_uart_base_addr` 见平台启动与 DTB 篇。
 

@@ -2,7 +2,7 @@
 
 v0.1 · 2026-09-27
 
-本篇覆盖：`include/rendezvos/error.h`、`kernel/system/panic.c`、`include/rendezvos/system/panic.h`、`kernel/system/powerd.c`、`include/rendezvos/system/powerd.h`、两侧 `arch/*/power_ctrl.h`。
+本篇覆盖：`include/rendezvos/error.h`、`kernel/system/panic.c`、`include/rendezvos/system/panic.h`、`kernel/system/powerd.c`、`include/rendezvos/system/powerd.h`、各 ISA 的 `arch/*/power_ctrl.h`。
 
 PSCI `system_off` 终点见 `39-PSCI与处理器电源-aarch64.md`；关机 kmsg opcode 见 kmsg 篇；IPC 错误语义见 04 各篇。`common.h` / `limits.h` 非本篇主体。
 

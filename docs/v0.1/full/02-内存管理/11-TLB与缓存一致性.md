@@ -6,7 +6,7 @@ v0.1 · 2026-09-25
 
 关于标题里的「缓存」：aarch64 的 `sync/cache.h` 目前是空的，树里也没有对称的 x86 `cache.h`。本篇**没有**通用 dcache/icache 维护 API；设备 / DMA 路径以后另写。这里说的「一致性」，主要指 **CPU 侧页表翻译（TLB）** 在改 PTE、换地址空间之后还能不能对得上。
 
-何时在 `map` / `unmap` 里调哪一类 invalidate，页表篇 §6.2 已经钉过；本篇把 **mask 是什么意思、跨核怎么送、和调度怎么衔接**，以及两边硬件指令分别对应什么，讲清楚。
+何时在 `map` / `unmap` 里调哪一类 invalidate，页表篇 §6.2 已经钉过；本篇把 **mask 是什么意思、跨核怎么送、和调度怎么衔接**，以及各 ISA 硬件指令分别对应什么，讲清楚。
 
 ---
 
@@ -25,7 +25,7 @@ mask 回答「该通知谁、能不能拆」；具体怎么刷是架构的事。
 
 ## 2. 目标与边界
 
-提供：mask 类型与调度维护约定；与 `map_handler` / `schedule` 对齐的 invalidate 策略；x86 IPI shootdown 入口；两边硬件指令与官方手册的对照。
+提供：mask 类型与调度维护约定；与 `map_handler` / `schedule` 对齐的 invalidate 策略；x86 IPI shootdown 入口；各 ISA 硬件指令与官方手册的对照。
 
 不做：通用 cache 维护 API；把 SMP 篇里的 IPI 握手再写长一遍。
 
@@ -166,7 +166,7 @@ bool vs_tlb_cpu_mask_is_zero(const VSpace *);
 
 含义：哪些 CPU **可能**仍缓存该用户 AS 的翻译。x86 shootdown **按 mask 发 IPI**；aarch64 用户/跨核路径常 **广播 `tlbi *is` 并忽略 mask 参数**，但 mask 仍约束拆除放行。
 
-### 7.3 可移植 invalidate 族（两侧同名；语义分 ISA）
+### 7.3 可移植 invalidate 族（各 ISA 同名；语义分 ISA）
 
 ```c
 void arch_tlb_invalidate_all(void);
@@ -229,7 +229,7 @@ void arch_smp_flush_tlb_init(void);
 
 - 2026-10-02：§4.4 附录——x86 内存类型/PAT/CR0.CD·NW；aarch64 PoC/PoU 与 IC/DC（标明尚无 API）。
 - 2026-09-27：中文用语整理（teardown→拆除/回收收尾；咬合→衔接；蹲着/揣着→留着/带着）。
-- 2026-09-26：§7 全文审阅——两侧 `tlb.h` / `tlb_cpu_mask.h` 补头文件注释；写清 mask 编排与 x86 IPI vs aarch64 `*is`（含 kernel `*_all_core` 本地-only）。
+- 2026-09-26：§7 全文审阅——各 ISA 的 `tlb.h` / `tlb_cpu_mask.h` 补头文件注释；写清 mask 编排与 x86 IPI vs aarch64 `*is`（含 kernel `*_all_core` 本地-only）。
 - 2026-09-25：补 SDM / ARM ARM 硬件对照（`invlpg`、IPI shootdown、`tlbi`/`*is`、屏障）；语言整理；去掉「待加强」备忘。
 - 2026-08-29：整篇重做——纠正「仅本 CPU」决策叙事；new/remap；x86 IPI vs aarch64 IS；cache 空头诚实说明。
 - 2026-08-26：v0.1 初稿。

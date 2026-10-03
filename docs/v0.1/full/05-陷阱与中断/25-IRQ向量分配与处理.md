@@ -318,5 +318,5 @@ void arch_unknown_trap_handler(struct trap_frame *tf);
 - 2026-09-27：中文措辞整理——弱化「钉 / 真源」堆砌；补 `software_enable_APIC` 的「软件使能」对照。
 - 2026-09-26：§7 全文审阅——补 `trap_handler` 声明与 Doxygen；强化 alloc/free/register 全 CPU 语义与「先软件后路由」编排序；划清 vs `23`/`24`/`26`/`27`。
 - 2026-09-25：扩写硬件「号」与软件 trap id 贴合；per-CPU 表为何、EOI 硬件含义；驱动 checklist 强调先软件后路由；手册入口。
-- 2026-08-29：整篇重做——两侧 reserve 实表；NR_IRQ / EC+offset；free / USED 陷阱。
+- 2026-08-29：整篇重做——各 ISA reserve 实表；NR_IRQ / EC+offset；free / USED 陷阱。
 - 2026-08-27：初稿。

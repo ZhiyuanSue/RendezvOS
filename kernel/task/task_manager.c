@@ -49,7 +49,7 @@ void choose_schedule(Task_Manager* tm)
         is_print_sche_info = false;
 }
 
-char thread_status_list[9][20] = {
+char thread_status_list[8][20] = {
         "error",
         "init",
         "running",
@@ -57,7 +57,6 @@ char thread_status_list[9][20] = {
         "zombie",
         "block_on_send",
         "block_on_receive",
-        "suspend",
         "exit",
 };
 

@@ -104,7 +104,7 @@ API 一律带前缀：`vmm_radix_tree_*`、`mm_user_utils_*`。
 要求带 `VSPACE_CLONE_F_USER_4K_ONLY`，且 `COW_PREP` 与 `COPY_PAGES` **二选一**。源上锁住用户半 L0；按占用 interval：
 
 - 目标侧 INSERT（VALID 剥掉，变成 LAZY）；
-- 源叶已 VALID 且走 COW_PREP：共享 PPN，双方 PTE 只读，radix 两侧打 COW；
+- 源叶已 VALID 且走 COW_PREP：共享 PPN，父/子双方 PTE 只读，radix 父叶与子叶都打 COW；
 - COPY_PAGES：新页 + copy + bind + map；
 - 纯 LAZY：只 insert，子地址空间继续 demand-page。
 

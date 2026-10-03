@@ -36,7 +36,7 @@ TLB mask / shootdown 见 `11-TLB与缓存一致性.md`；调度时装根见 `03-
 - 装 TTBR0|ASID 或 CR3：在 `schedule` 里，配合 TLB 篇的 mask 顺序。
 - `asid_free`：在 `del_vspace` 等把用户映射拆干净、mask 已空之后。
 
-`root_vspace.asid = 0`（保留号，不是普通用户 AS）。clone **不会**继承父 ASID，两边各自新号。
+`root_vspace.asid = 0`（保留号，不是普通用户 AS）。clone **不会**继承父 ASID，父子地址空间各自新号。
 
 ---
 
@@ -108,7 +108,7 @@ asid_init (BSP)
 
 本篇拥有：`include/rendezvos/mm/asid.h`（实现 `kernel/mm/asid.c`）与
 `include/arch/<isa>/mm/asid.h` 的 `arch_asid_supported_width`。装根时如何把
-ASID 写入硬件，见两侧 `arch/*/mm/vmm.h` 的
+ASID 写入硬件，见各 ISA 的 `arch/*/mm/vmm.h` 的
 `arch_set_current_user_vspace_root_asid`（调用方在 schedule / 15 篇）。
 `asid_t` = `u16`（`common/types.h`）。
 

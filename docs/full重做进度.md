@@ -18,7 +18,7 @@
 |------|------|------|----------------------------------------|
 | 1 | 00-总览/00-架构与源码布局.md | 已重做 | common.h 伞+默认 x86；cmain≠main_init；BSP→kernel_handle_msg；weak syscall；initcall 注册≠运行；powerd BSP 门控；挂接点以 thread_boot 为准 |
 | 2 | 00-总览/01-构建与链接.md | 已重做 | 模块feature→kernel/arch；手写顶层Makefile；DBG/MEM_SIZE/DUMP持久化；SMP双义；find顺序；loongarch空ld；双勾保留待你是否复审 |
-| 3 | 01-启动与初始化/02-启动流程总览.md | 已重做 | §7 全文审阅：`main.c` Doxygen + 接口说明（无单独 h；2026-09-26） |
+| 3 | 01-启动与初始化/02-启动流程总览.md | 已重做 | Maintainer 审定通过（2026-10-03）；终审对齐 `arch_cpu_info`→`arch_enable_percpu` |
 | 4 | 01-启动与初始化/03-模块初始化与内核入口.md | 已重做 | §7 全文审阅：initcall + kernel_port Doxygen/说明（2026-09-26） |
 | 5 | 01-启动与初始化/04-平台启动-x86_64.md | 已重做 | §7 全文审阅：arch_setup 钩子 Doxygen/说明（2026-09-26）；§4.6 SDM 对照保留 |
 | 6 | 01-启动与初始化/05-平台启动-aarch64.md | 已重做 | §7 全文审阅：arch_setup 钩子 Doxygen/说明（2026-09-26）；§4.6 ARM 对照保留 |
@@ -35,11 +35,11 @@
 | 16 | 03-任务与调度/15-VSpace所有权与调度切换.md | 已重做 | §7 全文审阅：所有权/六步/clear·del 门闩 Doxygen/说明（2026-09-26） |
 | 17 | 03-任务与调度/16-CPU亲和性-创建时绑核.md | 已重做 | §7 全文审阅：online/add_to_cpu/owner Doxygen/说明（2026-09-26） |
 | 18 | 03-任务与调度/17-EBR与线程资源回收.md | 已重做 | §7 全文审阅：ebr/delete·del_structure Doxygen/说明（2026-09-26） |
-| 19 | 04-IPC/18-Port与消息模型.md | 已重做 | §7 全文审阅：port/message/global_port_init Doxygen/说明（2026-09-26） |
-| 20 | 04-IPC/19-阻塞与非阻塞收发.md | 已重做 | §7 全文审阅：send/recv/try/transfer/system Doxygen/说明（2026-09-26） |
+| 19 | 04-IPC/18-Port与消息模型.md | 已重做 | 2026-10-02：§1 从 22§1 五图往下推对象；§7 曾审 port/message（2026-09-26） |
+| 20 | 04-IPC/19-阻塞与非阻塞收发.md | 已重做 | 2026-10-02：§1 承接假出队/推拉；§7 曾审 send/recv/transfer（2026-09-26） |
 | 21 | 04-IPC/20-kmsg与TLV序列化.md | 已重做 | §7 全文审阅：kmsg/ipc_serial/system opcode Doxygen/说明（2026-09-26） |
 | 22 | 04-IPC/21-Port钩子与准入门.md | 已重做 | §7 全文审阅：hooks/begin·end/ops_life Doxygen/说明（2026-09-26） |
-| 23 | 04-IPC/22-无锁队列与EBR设计.md | 已重做 | §7 全文审阅：msq/taggedptr Doxygen/说明；EBR 链17（2026-09-26） |
+| 23 | 04-IPC/22-无锁队列与EBR设计.md | 已重做 | 2026-10-02：§1=章脊骨+图→18/19 后果表；§2+=算法；五图已迁 |
 | 24 | 05-陷阱与中断/23-Trap抽象与分类.md | 已重做 | 2026-09-25：补TSS.RSP0/VBAR16槽/#PF ec；IDT/VBAR；双入口 |
 | 25 | 05-陷阱与中断/24-系统调用入口.md | 已重做 | 2026-09-25：LSTAR旁路 vs SVC；sti/DAIF；exit读栈rax |
 | 26 | 05-陷阱与中断/25-IRQ向量分配与处理.md | 已重做 | 2026-09-25：硬件号↔trap id；per-CPU表/EOI；两侧reserve实表 |
@@ -85,6 +85,9 @@
 - 2026-08-29：篇 36–40 平台模块五篇整篇重做；09 完成。下一篇：`10-基础设施/40-错误码与panic.md`。
 - 2026-08-29：篇 41–44《错误码》《名称索引》《公共库》《测试索引》整篇重做。**full README 顺序 1–44 整篇重做轮次完成**；待 Maintainer 按双勾复审；未宣称 QEMU 全量复测、未提交。
 - 2026-10-02：对照 `old/` 手写笔记迁入高优先缺口（成稿不引用归档路径）：`22`/`19` MSQ 理论与 Ipc_Request 自环；`23` Fault/Trap/Abort·ELR·IST；`06` buddy 树数组与 1 GiB 布局；`31` DMB/DSB 域×序；`26`/`33` ARAT；`42` LE-only + `endianness.h`。Maintainer 双勾复审另计。
+- 2026-10-02：`22` 迁入 lockfree-IPC 五张设计图（`04-IPC/figures/`）并嵌入 §1——用户确认图为整套设计意图精华，非可选装饰。
+- 2026-10-02：04-IPC 表述逻辑修整——读序定为 `22§1`（脊骨）→`18`（对象）→`19`（行为）→`22§2+`（算法）；三篇开篇与 README 章首同步；图→后果权威表写入 `22`。
+- 2026-10-03：full 通扫模糊指代——「两边 / 两架构 / 两侧 / 两端」凡未在句内钉死对象的，改为「各 ISA / BSP 与 AP / send·recv / TTBR0·1」等；保留句内已写明的 send/recv 两侧等。
 - 2026-08-30：通篇去「人话」标签与 AI 腔，改成正常技术笔记语气；进度表同步清理。
 - 2026-09-25：启动区语言轮——`04`/`05` 平台启动按操作计划「硬件链条」扩写（对照源码；动机改写自整理期笔记，成稿无归档路径）；待 Maintainer 复审。
 - 2026-09-25：`04`/`05` 增补官方手册对照（SDM / Multiboot；ARM ARM / [arm64 booting](https://docs.kernel.org/arch/arm64/booting.html)）；`06`/`07` 语言整理并纠正 API 签名笔误。
@@ -125,4 +128,5 @@
 - 2026-09-26：`41` §7 审阅完成（name_index Doxygen；锁分界；仅 port 生产）。下一篇：`42-公共基础库与数据结构.md`。
 - 2026-09-26：`42` §7 审阅完成（common 拥有清单；vs `22`/`31`）。下一篇：`43-内核测试框架与测例索引.md`。
 - 2026-09-26：`43` §7 审阅完成（test 框架 Doxygen；失败收敛说明）。**full 00–43 §7 拥有+说明+Doxygen 轮次收束。**
+- 2026-10-03：`02-启动流程总览` Maintainer 审定通过（full README 第二格 `[x]`）。
 

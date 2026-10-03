@@ -1,26 +1,44 @@
 # Port 与消息模型
 
-v0.1 · 2026-09-27
+v0.1 · 2026-10-02
 
 本篇覆盖：`kernel/ipc/port.c`、`kernel/ipc/message.c`、`include/rendezvos/ipc/port.h`、`include/rendezvos/ipc/message.h`、`kernel/registry/name_index.c`（经 `Port_Table` 使用的部分）。
 
-收发状态机与 push/pull 见 `19-阻塞与非阻塞收发.md`；kmsg 见 `20-kmsg与TLV序列化.md`；钩子见 `21-Port钩子与准入门.md`；MSQ/EBR 见 `22-无锁队列与EBR设计.md`；`name_index` 通用约定见 `10-基础设施/41-名称索引注册表.md`。
+**建议先读** `22-无锁队列与EBR设计.md` **§1**（五图 = 整章设计脊骨），再读本篇。收发状态机与 push/pull 见 `19`；kmsg 见 `20`；钩子见 `21`；MSQ/EBR 算法见 `22` §2 起；`name_index` 通用约定见 `10-基础设施/41-名称索引注册表.md`。
 
 ---
 
 ## 1. 概述
 
-把消息交给另一个线程，就两步——**先找到对方，再把东西递过去**。core 把这两步拆成两层，而不是「一个邮箱队列里直接堆消息」：
+从无锁篇 §1 往下推，本篇只钉 **对象长什么样**。
 
-1. **Port 会合层** — port 上挂的是**在等的线程**（`Ipc_Request_t` → `Thread_Base`），不是消息本体。像总机：先接通通话双方。
-2. **Per-thread 消息层** — 每个线程自己的 `send_msg_queue` / `recv_msg_queue` 上才是 `Message_t`。接通之后由 `ipc_transfer_message` 做投递。
+### 1.1 同步沉进 IPC 之后，还缺什么对象
 
-**为何不做成「纯消息邮箱」：** 同步阻塞语义（谁在等回复）、与线程状态 / 调度的绑定，都会变扭——还得另建一套「消息 ↔ 阻塞线程」索引。这里吸收 endpoint 一类设计：内核先做**路由与配对**，数据怎么拷由 transfer 路径决定。
+临界区线程化之后，多核同步变成「怎么把请求正确交给 server 线程」（`22` §1.1–1.2）。若仍用「一个邮箱队列直接堆消息」，同步阻塞语义（谁在等回复）和线程状态 / 调度的绑定都会变扭——还得另建「消息 ↔ 阻塞线程」索引。
 
-**为何只有一条线程队列（不是 sender 队列 + recv 队列）：**
-「看对面有没有人 → 取出或把自己挂上」若跨两个队列，**单次 CAS 做不到原子**。典型事故：发送方看 recv 空，准备挂自己；接收方同时看 send 空，也挂自己——两边都睡死。单队列不变量简单：**要么全是 sender 在等，要么全是 recv 在等（或空）**；一对上就能配对，剩下来的仍然同一侧。这才好做无锁扩展（单状态 MSQ，见无锁篇）。
+吸收 endpoint 一类设计：内核先做**路由与配对**，数据怎么拷由 transfer 路径决定。把消息交给另一个线程就两步——**先找到对方，再把东西递过去**。core 把这两步拆成两层：
 
-**和「无锁 IPC」主张怎么接：** 混合内核把业务临界区线程化之后，多核同步沉到「怎么把请求正确交给 server 线程」。若 port 仍用大锁，扩展性故事在 IPC 层塌掉——动机全文在无锁篇 §1；本篇只钉对象模型。
+1. **Port 会合层** — port 上挂的是**在等的线程请求**（`Ipc_Request_t` → `Thread_Base`），不是消息本体。像总机：先接通通话双方。  
+2. **Per-thread 消息层** — 每个线程自己的 `send_msg_queue` / `recv_msg_queue` 上才是 `Message_t`。接通之后由 `ipc_transfer_message` 做投递（图解 `22` §1.5）。
+
+「消息入队 / 出队」放在传送步骤之外：`enqueue_msg_for_send` 与 `dequeue_recv_msg` 是独立原语（收发篇）。`send_msg` 返回后，可认为消息已进目标线程的 recv 队列；`recv_msg` 返回后，可认为本线程 recv 队列上至少有一条。
+
+### 1.2 为何只有一条线程队列
+
+直观做法是 port 里各挂一条 sender 队列与 receiver 队列。但「看对面有没有人 → 取出或把自己挂上」跨两个队列时，**单次 CAS 做不到原子**。典型事故：发送方看 recv 空，准备挂自己；接收方同时看 send 空，也挂自己——双方都睡死。
+
+单队列不变量简单：**要么全是 sender 在等，要么全是 recv 在等（或空）**；一对上就能配对，剩下来的仍然同一侧。这才好做无锁扩展（单状态 MSQ，`22` §1.4 / §1.7）。tag 低位存 `EMPTY` / `SEND` / `RECV`，权威在 tail。
+
+会合节点是 **`Ipc_Request_t` 而非 TCB 本体**——假出队自环理由见 `19` §4.1（`22` §1.4 已钉因果）。
+
+### 1.3 假出队如何定下 Msg 拆分
+
+MSQ 假出队（`22` §1.4–1.5）：逻辑上「弹出」的节点仍可能当新 dummy 挂在队上，**不能**整段挪到对方 recv 队列。因此：
+
+- **`Msg_Data_t`** — 载荷与 `free_data`；独立 refcount。  
+- **`Message_t`** — MSQ 壳 + 指向 `Msg_Data_t`；transfer 时**新建**接收方壳、**共享**载荷引用。
+
+字段细节见 §4.2；推拉谁跑 transfer、pending 兜底见 `19`。
 
 本篇本身没有架构相关的硬件寄存器；会合靠软件 MSQ / CAS，调度唤醒走 `schedule`（任务篇）。全局按名找 port：`global_port_table`（内部 `name_index_t`）。
 
@@ -28,9 +46,9 @@ v0.1 · 2026-09-27
 
 ## 2. 目标与边界
 
-**提供：** 创建 / 注册 / 按名查找 / 关闭 port；会合队列与消息壳；与 refcount / EBR 的生命周期。
+**提供：** 创建 / 注册 / 按名查找 / 关闭 port；会合队列与消息壳；与 refcount / EBR 的生命周期。承接无锁篇 §1 推出的两层模型与 Msg 拆分。
 
-**不做：** RPC、reply 命名、具体 server 协议；capability 命名空间（可用钩子 `ops_allow` 由兼容层加）；形式化验证声明。
+**不做：** 收发状态机与 system 投递（`19`）；MSQ CAS / tag 算法（`22`）；RPC、reply 命名、具体 server 协议；capability 命名空间（可用钩子 `ops_allow` 由兼容层加）；形式化验证声明。
 
 ---
 
@@ -58,14 +76,14 @@ v0.1 · 2026-09-27
 
 ### 4.2 为何 `Msg_Data_t` 与 `Message_t` 拆开
 
-MSQ 的出队**不是**把节点从结构里「拿走」——旧 dummy 出队后，跟在后面的节点变成**新 dummy，还必须留在队列里**。若消息内容嵌在队列节点里，没法把「逻辑上已出队」的那块内存整段挪到对方 recv 队列。
+因果在无锁篇 §1.4–1.5（假出队 + `ipc_transfer_message.png`）：旧 dummy 出队后，跟在后面的节点变成**新 dummy，还必须留在队列里**。若消息内容嵌在队列节点里，没法把「逻辑上已出队」的那块内存整段挪到对方 recv 队列。
 
-因此：
+因此本篇对象定成：
 
 - **`Msg_Data_t`** — 真正的载荷与 `free_data`；独立 refcount。  
 - **`Message_t`** — 只含 `ms_queue_node_t` + 指向 `Msg_Data_t` 的指针（再加可选字段）。transfer 时：**新建**接收方 `Message_t` 壳，**共享 / 转移**对 `Msg_Data_t` 的引用，而不是挪 MSQ 节点本身。
 
-这是 debug 里踩过坑之后定下来的结构，不是审美拆分。
+这是 debug 里踩过坑之后定下来的结构，不是审美拆分。行为路径（谁跑 transfer、pending）见 `19` §6.4。
 
 ### 4.3 `Port_Table` / `global_port_table`
 
@@ -108,18 +126,18 @@ MSQ 的出队**不是**把节点从结构里「拿走」——旧 dummy 出队�
 
 #### 为何不对称（因果，不是审美）
 
-两边醒来后回到的 API **形态不同**，所以通知通道只能不同：
+send / recv 等待者醒来后回到的 API **形态不同**，所以通知通道只能不同：
 
 | | Send 等待者 | Recv 等待者 |
 |--|-------------|-------------|
 | 醒在哪 | `send_msg` | `recv_msg` |
 | 正常成功意味着 | 对手已 transfer；本侧 send 队列空了 | 本侧 recv 队列上有一条可 `dequeue` 的消息 |
 | 关闭时该怎么说「完了」 | **errno**：丢掉 send 队列孤儿 → `-E_REND_PORT_CLOSED` | **优先仍是一条消息**：`KMSG_OP_SYSTEM_PORT_CLOSED`（与 TIMER_EXPIRE 一类，server 循环按 opcode 处理） |
-| 为何不用另一边的手段 | 往本线程 recv 塞 kmsg 也没用——`send_msg` **从不** dequeue recv | 仅打 flag → 永远 `-E_REND_PORT_CLOSED`、无消息可看；能投递时反而破坏「事件走消息通道」的习惯。flag 只做 **投递失败兜底**（OOM / `deliver_to` 失败 → `pending==0`），避免 SUCCESS 空队列挂死，也避免「已投上 kmsg 又 OR flag」把消息晾在队列里却走了 errno |
+| 为何不用对方路径的手段 | 往本线程 recv 塞 kmsg 也没用——`send_msg` **从不** dequeue recv | 仅打 flag → 永远 `-E_REND_PORT_CLOSED`、无消息可看；能投递时反而破坏「事件走消息通道」的习惯。flag 只做 **投递失败兜底**（OOM / `deliver_to` 失败 → `pending==0`），避免 SUCCESS 空队列挂死，也避免「已投上 kmsg 又 OR flag」把消息晾在队列里却走了 errno |
 
 **不是**「无锁下 flag 来不及置位所以要发消息」。若只求「别睡死 / 返回已关闭」，recv 也可以像 send 一样 **先 OR flag 再 ready**（send 路径已经证明够用）。发 `PORT_CLOSED` kmsg 的意义是：让 `recv_msg` 走 **SUCCESS + dequeue**，把「port 关了」塞进与其它系统事件同一条 opcode 通道；flag 是 deliver 失败时的备用 errno，不是并发补丁。
 
-两端都变成 `ready`：unregister 必须在此清队（不能拖到 last-ref），否则 `ops` 门外的阻塞者会永远睡死——历史坑见 Pattern Log「unregister must wake waiters」。
+send / recv 等待者都变成 `ready`：unregister 必须在此清队（不能拖到 last-ref），否则 `ops` 门外的阻塞者会永远睡死——历史坑见 Pattern Log「unregister must wake waiters」。
 
 调用方约定（`ipc.c`）：`send_msg` 见 flag → orphan drop + `-E_REND_PORT_CLOSED`；`recv_msg` 见 flag → 同 errno，见无 flag → `REND_SUCCESS`（须 dequeue；关闭 port 的路径上常为 `KMSG_OP_SYSTEM_PORT_CLOSED`）。Doxygen：`port.h` `unregister_port`、`thread.h` `THREAD_FLAG_IPC_PORT_CLOSED`、`ipc.h` `recv_msg`；源码注释：`port.c` `port_clean_thread_queue`。
 
@@ -224,6 +242,8 @@ error_t free_message_ref(ref_count_t *); /* → ebr_retire_ref */
 
 ## 11. 变更记录
 
+- 2026-10-02：§1 按「先读 22§1 五图 → 本篇对象」重写：两层模型 / 单队列 / Msg 拆分都写成从设计脊骨往下推；§4.2 因果归无锁篇、本篇只钉字段。
+- 2026-10-02：§4.2 链无锁篇 §1.5 图解（`ipc_transfer_message.png`）。
 - 2026-10-01：§6.2 补「为何不对称」因果表；明确 **不是** 无锁 flag 竞态补丁（kmsg = recv 成功路径上的可 dequeue 事件；flag = deliver 失败兜底）；与 `port.c` / `port.h` 注释对齐。
 - 2026-09-27：中文表述润色（母语习惯）；「关港」改为「关闭 port」；「真源 / 契约」改为「以…为准 / 约定」；「不对称」改为更顺口的「通知方式不同」。
 - 2026-09-26：对照 `port_clean_thread_queue` 纠正关闭 port 时唤醒两侧不同（send=flag；recv=优先 PORT_CLOSED kmsg，flag 仅 pending==0）；修正 unregister 序（先 CLOSING 再等 count）；§3/§6.2/§7.2 与 `port.h`/`thread.h`/`ipc.h` Doxygen 对齐。
