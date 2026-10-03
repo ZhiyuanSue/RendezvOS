@@ -19,7 +19,7 @@
 | 1 | 00-总览/00-架构与源码布局.md | 已重做 | common.h 伞+默认 x86；cmain≠main_init；BSP→kernel_handle_msg；weak syscall；initcall 注册≠运行；powerd BSP 门控；挂接点以 thread_boot 为准 |
 | 2 | 00-总览/01-构建与链接.md | 已重做 | 模块feature→kernel/arch；手写顶层Makefile；DBG/MEM_SIZE/DUMP持久化；SMP双义；find顺序；loongarch空ld；双勾保留待你是否复审 |
 | 3 | 01-启动与初始化/02-启动流程总览.md | 已重做 | Maintainer 审定通过（2026-10-03）；终审对齐 `arch_cpu_info`→`arch_enable_percpu` |
-| 4 | 01-启动与初始化/03-模块初始化与内核入口.md | 已重做 | §7 全文审阅：initcall + kernel_port Doxygen/说明（2026-09-26） |
+| 4 | 01-启动与初始化/03-模块初始化与内核入口.md | 已重做 | Maintainer 审定通过（2026-10-03）；initcall + kernel_port |
 | 5 | 01-启动与初始化/04-平台启动-x86_64.md | 已重做 | §7 全文审阅：arch_setup 钩子 Doxygen/说明（2026-09-26）；§4.6 SDM 对照保留 |
 | 6 | 01-启动与初始化/05-平台启动-aarch64.md | 已重做 | §7 全文审阅：arch_setup 钩子 Doxygen/说明（2026-09-26）；§4.6 ARM 对照保留 |
 | 7 | 02-内存管理/06-物理内存与Buddy分配器.md | 已重做 | §7 全文审阅：phy_mm_init/pmm/buddy Doxygen/说明（2026-09-26） |
@@ -129,4 +129,5 @@
 - 2026-09-26：`42` §7 审阅完成（common 拥有清单；vs `22`/`31`）。下一篇：`43-内核测试框架与测例索引.md`。
 - 2026-09-26：`43` §7 审阅完成（test 框架 Doxygen；失败收敛说明）。**full 00–43 §7 拥有+说明+Doxygen 轮次收束。**
 - 2026-10-03：`02-启动流程总览` Maintainer 审定通过（full README 第二格 `[x]`）。
+- 2026-10-03：`03-模块初始化与内核入口` Maintainer 审定通过（full README 第二格 `[x]`）。
 
