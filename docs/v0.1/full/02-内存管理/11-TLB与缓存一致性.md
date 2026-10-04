@@ -66,7 +66,27 @@ mask 回答「该通知谁、能不能拆」；具体怎么刷是架构的事。
 - 首次 map（`new_map`）：内核 VA 做本地 kernel invalidate；用户 VA 做本地 `invalidate_page(asid, v)`。假定别人还没缓存过这个翻译。
 - remap / unmap：内核走 `*_kernel_page_all_core`；用户走 `*_page_all_core(asid, v, &mask)`。改过、拆过的翻译，可能跑过的核都得动到。
 
-### 4.3 硬件怎么刷：x86 与 aarch64
+各 ISA 具体用哪条指令刷 TLB，见 §6.1；cache 相关名词（本仓库尚无通用 API）见 §6.3；函数签名见 §7。
+
+---
+
+## 5. 代码对应
+
+| 路径 | 职责 |
+|------|------|
+| `tlb_cpu_mask.h` / `VSpace` 字段 | mask 类型 |
+| `task_manager.c` 里的 `schedule` | set / clear + 本地刷 |
+| `map_handler.c` | new vs all-core 的调用点 |
+| `arch_smp_tlb_flush.c` | x86 IPI shootdown |
+| `arch/*/sync/tlb.h` | 本地 invalidate，以及 aarch64 带 Inner Shareable 的 `tlbi *is` |
+
+---
+
+## 6. 流程
+
+`tlb_cpu_mask`、切地址空间、以及 `map` 何时本地刷、何时跨核刷，约定在 §4。下面补两件事：硬件实际用什么指令；启动时各核还要不要额外 init。cache 维护和 TLB 不是一回事，附录放在 §6.3。
+
+### 6.1 背景：x86_64 / aarch64 怎样让 TLB 丢掉旧项
 
 #### x86_64（Intel SDM：TLB 管理 / Multiprocessor）
 
@@ -93,7 +113,11 @@ AArch64 用 **`TLBI`** 系列指令做 TLB 维护，参数里常带 ASID 与页�
 
 范围失效若要用 `rvae1` 一类，需要更新的 TLBI 扩展；本实现的 range 路径目前仍可能退化为逐页 `vae1`（头文件注释写了）。
 
-### 4.4 附录：内存类型与 cache 维护（尚无通用 API）
+### 6.2 启动时还要做什么
+
+每核都会走到 `arch_start_core`。里面会 `smp_ipi_init`；x86_64 另外再调 `arch_smp_flush_tlb_init`：给本核准备一条 flush 消息槽，并（全局一次）把 TLB 的软 IPI handler 注册上。aarch64 **没有**对等的「靠 IPI 刷 TLB」的 init——跨核靠 `tlbi *is` 广播，不走这条通道。
+
+### 6.3 附录：内存类型与 cache 维护（尚无通用 API）
 
 树内 **没有** 可移植 `dcache_clean` / `icache_invalidate` 族（aarch64 `sync/cache.h` 为空）。设备 / DMA / 自修改代码接上之前，先把硬件名词钉在这里，避免和 TLB 篇混谈。
 
@@ -115,24 +139,6 @@ AArch64 用 **`TLBI`** 系列指令做 TLB 维护，参数里常带 ASID 与页�
 | **PoU**（Point of Unification） | 「对本 PE 的 I 与 D 侧一致」的点（常到本核 unification） |
 
 常用指令族（**未**封装进本仓库 API）：`IC IALLU` / `IALLUIS` / `IVAU`（指令 cache）；`DC ZVA` / `IVAC` / `CVAC` / `CIVAC` / `ISW`…（数据 cache 按 VA 或 set/way）。改可执行页、装固件 blob、将来 DMA 缓冲与 CPU 共享时，需要「先 DC 再 IC」一类序列——接到业务路径时再写进 `sync/cache.h`，本篇不假装已有实现。
-
----
-
-## 5. 代码对应
-
-| 路径 | 职责 |
-|------|------|
-| `tlb_cpu_mask.h` / `VSpace` 字段 | mask 类型 |
-| `task_manager.c` 里的 `schedule` | set / clear + 本地刷 |
-| `map_handler.c` | new vs all-core 的调用点 |
-| `arch_smp_tlb_flush.c` | x86 IPI shootdown |
-| `arch/*/sync/tlb.h` | 本地 / IS API |
-
----
-
-## 6. 流程
-
-§4.1–4.3 已经是主路径。补充一点启动：BSP 在 `arch_start_core` 里初始化软 IPI；x86 还要 `arch_smp_flush_tlb_init`（每核消息槽，并全局注册一次 handler）。AP 同样走 `arch_start_core`。aarch64 **没有**对等的「TLB-IPI init」——它靠 `tlbi *is`，不靠这条 IPI 通道。
 
 ---
 
@@ -206,7 +212,7 @@ void arch_smp_flush_tlb_init(void);
 
 ## 8. 多架构
 
-见 §4.3。riscv / loongarch 未纳入 v0.1 的 TLB 主线。
+见 §6.1。riscv / loongarch 未纳入 v0.1 的 TLB 主线。
 
 ---
 
@@ -227,6 +233,7 @@ void arch_smp_flush_tlb_init(void);
 
 ## 11. 变更记录
 
+- 2026-10-04：§4 只留 mask / map 策略不变量；硬件刷法与 cache 附录迁入 §6.1 / §6.3。
 - 2026-10-02：§4.4 附录——x86 内存类型/PAT/CR0.CD·NW；aarch64 PoC/PoU 与 IC/DC（标明尚无 API）。
 - 2026-09-27：中文用语整理（teardown→拆除/回收收尾；咬合→衔接；蹲着/揣着→留着/带着）。
 - 2026-09-26：§7 全文审阅——各 ISA 的 `tlb.h` / `tlb_cpu_mask.h` 补头文件注释；写清 mask 编排与 x86 IPI vs aarch64 `*is`（含 kernel `*_all_core` 本地-only）。

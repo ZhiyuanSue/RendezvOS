@@ -85,7 +85,7 @@ v0.1/full/
 ## 当前状态（2026-10-03）
 
 - **初稿 / 深读重做**：44 篇第一格均为 `[x]`；逐篇深读重做已完成。
-- **Maintainer 审定**：看各篇标题前第二格。已通过：`00-总览/00-架构与源码布局.md`、`00-总览/01-构建与链接.md`、`01-启动与初始化/02-启动流程总览.md`、`01-启动与初始化/03-模块初始化与内核入口.md`。
+- **Maintainer 审定**：看各篇标题前第二格。已通过：`00-总览/00-架构与源码布局.md`、`00-总览/01-构建与链接.md`、`01-启动与初始化/02-启动流程总览.md`、`01-启动与初始化/03-模块初始化与内核入口.md`、`01-启动与初始化/04-平台启动-x86_64.md`、`01-启动与初始化/05-平台启动-aarch64.md`、`06-SMP与同步/28-SMP启动与处理器拓扑.md`。
 - **compat**：规划见 `v0.1/compat/README.md`；正文待 full 全部第二格通过后再写。
 - **evolution**：远期项见 `v0.1/evolution/TODO.md`；`design/`、`archive/` 正文未建。
 
@@ -351,11 +351,11 @@ v0.1/full/
 
 ## 06-SMP与同步
 
-### [x] [ ] 06-SMP与同步/28-SMP启动与处理器拓扑.md
+### [x] [x] 06-SMP与同步/28-SMP启动与处理器拓扑.md
 
-职责：`smp_start`、NR_CPU、BSP/AP、拓扑头文件现状
+职责：`start_smp` / `start_secondary_cpu`、NR_CPU、两套 cpu_id、INIT-SIPI 与 PSCI `cpu_on`、拓扑头文件现状
 
-源码：`kernel/smp/smp.c` · `include/rendezvos/smp/smp.h` · `include/rendezvos/cpu_topology.h` · `include/rendezvos/smp/cpu_id.h` · `include/arch/x86_64/smp.h` · `include/arch/aarch64/smp.h` · `include/arch/x86_64/arch_bitmap.h` · `include/arch/aarch64/arch_bitmap.h`
+源码：`kernel/smp/smp.c` · `include/rendezvos/smp/smp.h` · `include/rendezvos/smp/cpu_id.h` · `include/rendezvos/cpu_topology.h` · `arch/x86_64/boot/smp.c` · `arch/aarch64/boot/smp.c` · `include/arch/x86_64/smp.h` · `include/arch/aarch64/smp.h`
 
 ---
 

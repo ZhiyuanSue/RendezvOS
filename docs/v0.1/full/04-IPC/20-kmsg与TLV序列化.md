@@ -98,28 +98,28 @@ u32 param_count
 
 空 `""` 仍有 **4 字节** `param_count=0`（不是「无 payload」）。`""` 字符串 len=1 指向 `'\0'`；与 `NULL` 不同。
 
-### 4.3 `kmsg_from_msg` 校验
+### 4.3 `kmsg_from_msg` 校验什么
 
-查：非空、`msg_type==KMSG`、缓冲 ≥ hdr、magic、`payload_len == data_len - 12`。
-**不**查 module / opcode / TLV 合法性（接收方自比、自 decode）。
+`kmsg_from_msg` 检查：消息非空、`msg_type==KMSG`、缓冲至少能放下头、magic 对、`payload_len == data_len - 12`。
+**不**检查 module / opcode / TLV 是否合法——那是接收方自己比对、自己 decode 的事。
 
 ### 4.4 所有权
 
 `kmsg_create`：分配 hdr + payload → encode → `create_message_data(..., free_msgdata_ref_default)`，refcount=1。失败 `NULL`。
 `Message_t` 与 `Msg_Data` **独立** ref；释放经 EBR 后再 put Msg_Data（见 EBR / Port 篇）。
 
-### 4.5 System opcode（`kmsg_system.h`）
+### 4.5 System opcode 约定
 
-| opcode | 值 | fmt | 谁产 |
-|--------|----|-----|------|
+| opcode | 值 | fmt | 谁发出 |
+|--------|----|-----|--------|
 | POWER_SHUTDOWN | 1 | `""` | powerd 路径 |
-| POWER_REBOOT | 2 | `""` | 登记；实现可未齐 |
+| POWER_REBOOT | 2 | `""` | 已经登记；实现可以尚未接齐 |
 | TIMER_EXPIRE | 3 | `"q"` token | timer |
 | TIMER_CANCEL | 4 | `"q"` | timer |
-| PORT_CLOSED | 5 | `"q"`（恒传 0，**无语义载荷**） | `port_clean_thread_queue` → **仅**投给当时 `block_on_receive` 的等待者（send 等待者改走 flag，见 `18` §6.2） |
-| SYSTEM_END | 6 | — | 上层「从 7 起编号」的篱笆 |
+| PORT_CLOSED | 5 | `"q"`（恒传 0，**没有业务载荷**） | `port_clean_thread_queue` → **只**投给当时 `block_on_receive` 的等待者（send 一侧改走 flag，见 `18` §6.2） |
+| SYSTEM_END | 6 | — | 兼容层自己的 opcode 从 7 起编；这是分界，不是一条会发出去的消息 |
 
-不同 compat 协议可各自 `SYSTEM_END+1` 起号——靠 **不同 port / `service_id`** 隔离，**不是**全局唯一 opcode 空间。投递细节归收发篇。
+不同兼容层协议可以各自从 `SYSTEM_END+1` 起号——靠 **不同 port / `service_id`** 隔开，**不是**全机一份全局唯一的 opcode 空间。怎么投递见收发篇。
 
 ---
 
@@ -236,6 +236,7 @@ timer 等 system kmsg；裸 Msg_Data IPC 测例**不**覆盖本篇。本篇未�
 
 ## 11. 变更记录
 
+- 2026-10-04：§4.3 / §4.5 改题为概念名（去掉函数名 / 文件名当小节标题）。
 - 2026-09-27：中文表述润色（母语习惯）；「真源」改为「以…为准」。
 - 2026-09-26：PORT_CLOSED 生产点改写——kmsg **只**面向阻塞 recv；纠正旧稿「仅唤醒 recv」易读成「send 不醒」；与 `18` §6.2 / `kmsg_system.h` 对齐。
 - 2026-09-26：§7 全文审阅——`ipc_serial.h` / `kmsg_create` 编排序 Doxygen；写清空 fmt=4 字节、decode 无残留、`encode_alloc` 近死、system opcode 表。

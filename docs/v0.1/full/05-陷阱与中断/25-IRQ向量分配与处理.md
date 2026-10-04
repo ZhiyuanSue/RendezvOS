@@ -96,23 +96,16 @@ x86 上 Intel 保留 **0–31** 给架构异常（`TRAP_ARCH_USED = 32` 是上�
 
 aarch64 上 CPU **没有** 256 项向量表；GIC 用 INTID 标识中断源。为了复用同一套 `irq_vector[]` 分发，把 EC 塞进前 64 槽、IRQ 整体平移 +64——Trap 篇说的「假统一、真映射」。
 
-### 4.3 `arch_init_irq_vector_state`：向量怎么排、谁占坑
-
-每个核在 `init_interrupt` 里都会调用一次。函数本身很短，只干两件事：
-
-1. 对本核调用若干次 `irq_vector_reserve_range_for_cpu(me, …)`：在**本核**的 `irq_vector[]` 上把固定区间标成 `USED`，**不**挂 handler。
-2. 调用一次 `irq_vector_set_alloc_pool(lo, hi)`：公布设备可分配的闭区间。这个窗口是**全局一份**的，不是 per-CPU；各核 boot 时会写同一对 lo/hi，重复写无妨。
-
-boot 路径**不会**用 `irq_vector_reserve_range_for_all_cpus`。原因很简单：BSP 起来时 AP 往往还没起来，没法替别人标表；等每个核自己跑到 `init_interrupt`，自然会把自己那份固定槽占好。`reserve_for_all_cpus` 留给「所有核都已 online 之后」才需要一次性全局占坑的场景。
+### 4.3 固定槽、设备池与空洞
 
 读布局时，把槽位分成三类就够了：
 
-**① 每核都要有的固定槽（本函数 reserve）**  
-异常 / EC、timer、IPI，以及 aarch64 上整段 SGI+PPI，都会打到「被中断的那颗核」。入口汇编查的是本核表，所以每个核都必须先把这些 id 标成 USED，否则该核上 `register_irq_handler` 会拒装，或者中断来了直接 unknown panic。  
-注意：「每个 CPU 都需要」≠ boot 时调用 `reserve_for_all_cpus`。正确做法是：每核自己 reserve 同一组 id；之后某次 `register_irq_handler(ARCH_IRQ_VEC_*, …)` 再把**同一份** handler 写到所有核。
+**① 每核都要有的固定槽（`irq_vector_reserve_range_for_cpu`）**  
+异常 / EC、timer、IPI，以及 aarch64 上整段 SGI+PPI，都会打到「被中断的那颗核」。入口汇编查的是本核的 `irq_vector[]`，所以每个核都必须先把这些 trap id 标成 `VEC_USED`，否则该核上 `register_irq_handler` 会拒装，或者中断来了走 unknown 再 panic。  
+注意：「每个 CPU 都需要同一组 id」不等于启动时调用 `irq_vector_reserve_range_for_all_cpus`。正确做法是：每核自己 reserve 同一组 id；之后某次 `register_irq_handler(ARCH_IRQ_VEC_*, …)` 再把**同一份** handler 写到所有核。谁在何时调用 `arch_init_irq_vector_state`，见 §6.1。
 
 **② 全局设备池（`set_alloc_pool` + 日后 `alloc`）**  
-外设 SPI / 将来 IOAPIC·MSI 可能被路由到任意核，所以软件 trap id 必须在所有核上同一套。`irq_vector_alloc` 要求「全 CPU 都未 USED」才算空闲，成功后再**全 CPU** 置 USED。
+外设 SPI / 将来 IOAPIC·MSI 可能被路由到任意核，所以软件 trap id 必须在所有核上同一套。`irq_vector_alloc` 要求「全 CPU 都未 USED」才算空闲，成功后再**全 CPU** 置 USED。这个窗口是**全局一份**的，不是 per-CPU。
 
 **③ 空洞（既没 reserve，也不在 pool 里）**  
 例如 x86 上 timer / spurious / IPI 周围那些空隙。既不能 `alloc`，也不该手写进 LVT 或路由——留给以后固定用途，或故意留空。
@@ -133,7 +126,7 @@ aarch64 trap id 布局示意：
                (intid 0–31)      (intid 32–1019)
 ```
 
-#### 本核 `me` 实际 reserve 的区间
+#### 各 ISA 实际占用的区间
 
 **x86（对齐 IDT / LAPIC 固定编程）：**
 
@@ -152,10 +145,10 @@ aarch64 trap id 布局示意：
 | 区间 | 用途 | 硬件 |
 |------|------|------|
 | `[0, 63]` | EC / sync | ESR.EC，不是 GIC |
-| trap **64–95** | SGI+PPI（intid 0–31；含 IPI0、timer PPI） | **整段** reserve：SGI/PPI 的 INTID 固定，不能当地设备池。timer 的具体 trap id 仍由 `arch_get_timer_irq_num` 解析，但槽位已落在本段内 |
+| trap **64–95** | SGI+PPI（intid 0–31；含 IPI0、timer PPI） | **整段** reserve：SGI/PPI 的 INTID 固定，不能拿来当分设备的池。timer 的具体 trap id 仍由 `arch_get_timer_irq_num` 解析，但槽位已经落在这一段里 |
 | pool trap **96–1083** | SPI（intid 32–1019） | Distributor 上可配的外设线 |
 
-和 §1.2 一起看：表是 per-CPU 的，所以固定槽必须**每核各自** reserve；handler 却是全局一份——`register_irq_handler` 负责后半句，本函数只负责前半句的「占坑」。
+和 §1.2 一起看：表是 per-CPU 的，所以固定槽必须**每核各自** reserve；handler 却是全局一份——启动时只占坑，真正挂函数指针是后来的 `register_irq_handler`。
 
 ### 4.4 注册不变量
 
@@ -182,6 +175,13 @@ aarch64 trap id 布局示意：
 
 ### 6.1 Boot（软件表必须先于「能收到中断」）
 
+每个核在 `init_interrupt` 里都会调用一次 `arch_init_irq_vector_state`。函数本身很短，只干两件事：
+
+1. 对本核调用若干次 `irq_vector_reserve_range_for_cpu(me, …)`：在**本核**的 `irq_vector[]` 上把固定区间标成 `USED`，**不**挂 handler（区间表见 §4.3）。
+2. 调用一次 `irq_vector_set_alloc_pool(lo, hi)`：公布设备可分配的闭区间；各核 boot 时会写同一对 lo/hi，重复写无妨。
+
+boot 路径**不会**用 `irq_vector_reserve_range_for_all_cpus`。原因很简单：BSP 起来时 AP 往往还没起来，没法替别人标表；等每个核自己跑到 `init_interrupt`，自然会把自己那份固定槽占好。`reserve_for_all_cpus` 留给「所有核都已 online 之后」才需要一次性全局占坑的场景。
+
 ```text
 init_interrupt
   → arch_init_irq_vector_state   // reserve + set_alloc_pool
@@ -191,7 +191,7 @@ init_interrupt
 → … → rendezvos_time_init        // register timer；x86 路径上才 software_enable_APIC（SVR 软件使能）
 ```
 
-x86：先 lidt、再选 PIC/APIC、再 `sti`（且常在 `init_syscall` 之后）。aarch64：**先开 IRQ 再配 GICC**——窗口可疑，见 GIC 篇。
+x86：先 `lidt`、再选 PIC/APIC、再 `sti`（且常在 `init_syscall` 之后）。aarch64：**先开 IRQ 再配 GIC CPU interface**——中间有一小段窗口，见 GIC 篇。
 
 ### 6.2 `trap_handler`（设备 / IRQ 路径）
 
@@ -313,6 +313,7 @@ void arch_unknown_trap_handler(struct trap_frame *tf);
 
 ## 11. 变更记录
 
+- 2026-10-04：§4.3 改题为「固定槽、设备池与空洞」；`arch_init_irq_vector_state` 调用步骤迁入 §6.1。
 - 2026-10-01：§4.3 按中文阅读习惯重写（保留布局示意）；同步扩写代码侧 Doxygen / 注释。
 - 2026-10-01：§4.3 扩写——`arch_init_irq_vector_state` 的每核 reserve / 全局 pool / 空洞三类槽位与布局示意；澄清为何不用 boot 期 `reserve_for_all_cpus`。
 - 2026-09-27：中文措辞整理——弱化「钉 / 真源」堆砌；补 `software_enable_APIC` 的「软件使能」对照。

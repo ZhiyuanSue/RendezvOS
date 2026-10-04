@@ -67,9 +67,9 @@ L0 按大约 512 GiB（`HUGE_PAGE_SIZE`）一档，管「谁在驱动这段 VA
 
 `create_vspace` / `init_root_vspace` 调 `vmm_radix_tree_install_shared_kernel_high_half`：L0\[256..\] 共享同一套 L1，不是整表 memcpy。用户清洁只走 L0 的 0..255。INSERT 不在 ≥256 的用户路径上生长。
 
-### 4.4 `register_vspace`
+### 4.4 按页表根地址挂到 `root_vspace`
 
-在 `root_vs` 的红黑树上按 **`vspace_root_addr`** 注册，并打上 `registered` / `root_vs`。`create_vspace` **不会**自动注册——`thread_loader` 或兼容层创建后再注册。
+`register_vspace` 在 `root_vs` 的红黑树上按 **`vspace_root_addr`** 登记，并打上 `registered` / `root_vs`。`create_vspace` **不会**自动登记——`thread_loader` 或兼容层创建后再调。
 
 ---
 
@@ -254,6 +254,7 @@ make ARCH=x86_64 config && make all && make run
 
 ## 11. 变更记录
 
+- 2026-10-04：§4.4 改题为「按页表根地址挂到 `root_vspace`」（不再以函数名起题）。
 - 2026-10-02：§1.1 补「对齐硬件页表树 / 不做独立 VMA」动机。
 - 2026-09-27：中文用语整理（真源→以…为准；契约→约定；政策→策略；安装面→MMU 所见；§7「以头文件注释为准」）。
 - 2026-09-26：纠正 `fill_page` VALID 幂等与 `clean_range`（unmap/`pmm_free` 在 DELETE 前）与 `.c` 一致。

@@ -63,15 +63,17 @@ core 用两套「出问题」的出口，不要混：
 | `-E_REND_TEST` | `E_REND_TEST` | 几乎仅 `modules/test` |
 | （无调用） | `E_REND_ABANDON` | **仅枚举**；死码，勿编造语义 |
 
-### 4.2 `arch_shutdown`
+### 4.2 各 ISA 怎么真正关机
+
+`kernel_panic` / `kernel_halt` 最终会调 `arch_shutdown`：
 
 | Arch | 行为 |
 |------|------|
-| x86_64 | `outw(0x604, 0x2000)`——QEMU 上常能关机；**不是** isa-debug-exit（`0x501` 一类） |
-| aarch64 | `psci_func.system_off()`（须 `psci_init` 已绑指针） |
-| riscv64 | `panic.c` 空 `#elif`——编译进 panic 时若无 `arch_shutdown` 会挂 |
+| x86_64 | `outw(0x604, 0x2000)`——QEMU 上常常能关机；**不是** isa-debug-exit（`0x501` 那一类） |
+| aarch64 | `psci_func.system_off()`（须 `psci_init` 已经把函数指针填上） |
+| riscv64 | `panic.c` 里对应分支是空的——没有真正的关机实现 |
 
-`arch_reset`：x86 写 `0x92` bit0 风格复位；aarch64 空；powerd **REBOOT 不调用它**。
+`arch_reset`：x86 按写 `0x92` bit0 那一类方式复位；aarch64 是空函数；powerd 收到 **REBOOT 也不会调它**。签名见 §7。
 
 ---
 
@@ -190,6 +192,7 @@ error_t rendezvos_request_poweroff(void);  /* inline in powerd.h */
 
 ## 11. 变更记录
 
+- 2026-10-04：§4.2 改题为「各 ISA 怎么真正关机」，不再以函数名起题。
 - 2026-10-01：删除重复码 `E_REND_RETRY`；buddy reclaim 耗尽并入 `-E_REND_AGAIN`（§4.1）。
 - 2026-09-27：语言润色——「真源 = … Doxygen」改为「以头文件注释为准」；one-shot→单次、bring-up→拉起、非热路径契约→非常用路径，约定从略；符号与技术事实未改。
 - 2026-09-26：§7 全文审阅——error/panic/powerd/x86 power_ctrl Doxygen；负返回惯例；vs `39`/`20`。  

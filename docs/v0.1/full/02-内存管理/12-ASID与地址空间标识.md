@@ -48,35 +48,18 @@ TLB mask / shootdown 见 `11-TLB与缓存一致性.md`；调度时装根见 `03-
 
 注意 x86 返回 **12** 只表示 PCID 标识位宽；**当前并未启用 PCID**（装 CR3 仍忽略 asid）——不要写成「x86 已经开了 PCID」。
 
-### 4.2 硬件怎么带 ASID（官方对照）
+### 4.2 没有 generation 时，怎样保证旧号已经没人再用
 
-**aarch64（ARM ARM，TTBR / TCR / TLBI）**
+本仓库不为 ASID 做世代号：同一个数字回收后再发给别人，全靠下面这条链保证没有核还带着旧翻译。
 
-- Stage 1 EL1&0 下，用户低半根在 **TTBR0_EL1**。实现里：
+1. `schedule` 只在本核刷完旧地址空间之后，才清掉本核在旧 `tlb_cpu_mask` 上的位；
+2. mask 里还有位时，unmap / 跨核 invalidate / 清用户映射仍然会罩住那些核；
+3. `vspace_clear_user_mappings(allow_self_use=false)` / `del_vspace` 要求 mask 已经为空才放行；
+4. 用户线程切到内核线程时，可以暂时留着 mask 和 CPU 侧引用——ASID 还活着，直到之后某次用户切到另一个用户地址空间再清掉。
 
-  ```c
-  ttbr0 = u_root | ((u64)asid << 48);
-  msr TTBR0_EL1, ttbr0;
-  ```
+原地 exec（`allow_self_use=true`）可以保留本 CPU 这一位，**ASID 不换号**。
 
-  也就是把软件 ASID 放进 TTBR0 的高 16 位字段（与常见 AArch64 ASID 打包方式一致；具体位宽还受 `TCR_EL1.AS` 约束）。
-- `TCR_EL1.AS`：`ID_AA64MMFR0_EL1.ASIDBits` 为 16-bit 时，`boot.S` 的 `init_mmu` **会**置上；否则按 8-bit。`arch_asid_supported_width()` 读同一字段，把 8/16 告诉分配器。
-- 页表叶上的 **nG（非全局）** 位：非全局项才会跟着 ASID 走；全局项换 ASID 也不一定清掉。这和页表篇里 `PAGE_ENTRY_GLOBAL` → 清/置 `nG` 的编解码是对上的。
-- 失效：`tlbi vae1` / `aside1` 等把 ASID 编进操作数（TLB 篇 §4.3）。
-
-**x86_64（Intel SDM，PCID / CR3）**
-
-- 开启 **PCID** 时，CR3 低 **12** 位可带 process-context identifier，换地址空间时可以选择不冲光全部 TLB。本实现：**不写 PCID，不置 `CR4.PCIDE`**；`arch_set_current_user_vspace_root_asid` 直接忽略 asid，只把根物理地址写入 CR3。
-- 软件仍按 12-bit 上界分配 `vs->asid`，为将来开 PCID 预留同一取值范围；跨核仍靠 mask + IPI `invlpg` / 全清（TLB 篇）。
-
-### 4.3 无 generation 时的回收安全链
-
-1. schedule 只在本地刷完旧 AS 之后，才 clear mask 位；
-2. mask 里还有位时，unmap / shootdown / clear 仍然罩得住那些核；
-3. `vspace_clear_user_mappings(allow_self_use=false)` / `del_vspace` 要求 mask 空才放行；
-4. 用户→内核可以暂时留着 mask 和引用——ASID 还活着，直到之后某次用户→用户切换清掉。
-
-in-place exec（`allow_self_use=true`）可以保留本 CPU 位，**ASID 不换号**。
+软件号怎样写进 TTBR0（aarch64）或为何 x86_64 目前不写 PCID，见 §6.1。
 
 ---
 
@@ -94,6 +77,29 @@ in-place exec（`allow_self_use=true`）可以保留本 CPU 位，**ASID 不换�
 ---
 
 ## 6. 流程
+
+### 6.1 背景：硬件怎样带上这个软件号（官方对照）
+
+**aarch64（ARM ARM，TTBR / TCR / TLBI）**
+
+- Stage 1 EL1&0 下，用户低半根在 **TTBR0_EL1**。实现里：
+
+  ```c
+  ttbr0 = u_root | ((u64)asid << 48);
+  msr TTBR0_EL1, ttbr0;
+  ```
+
+  也就是把软件 ASID 放进 TTBR0 的高 16 位字段（与常见 AArch64 ASID 打包方式一致；具体位宽还受 `TCR_EL1.AS` 约束）。
+- `TCR_EL1.AS`：`ID_AA64MMFR0_EL1.ASIDBits` 为 16-bit 时，`boot.S` 的 `init_mmu` **会**置上；否则按 8-bit。`arch_asid_supported_width()` 读同一字段，把 8/16 告诉分配器。
+- 页表叶上的 **nG（非全局）** 位：非全局项才会跟着 ASID 走；全局项换 ASID 也不一定清掉。这和页表篇里 `PAGE_ENTRY_GLOBAL` → 清/置 `nG` 的编解码是对上的。
+- 失效：`tlbi vae1` / `aside1` 等把 ASID 编进操作数（TLB 篇 §6.1）。
+
+**x86_64（Intel SDM，PCID / CR3）**
+
+- 开启 **PCID** 时，CR3 低 **12** 位可带 process-context identifier，换地址空间时可以选择不冲光全部 TLB。本实现：**不写 PCID，不置 `CR4.PCIDE`**；`arch_set_current_user_vspace_root_asid` 直接忽略 asid，只把根物理地址写入 CR3。
+- 软件仍按 12-bit 上界分配 `vs->asid`，为将来开 PCID 预留同一取值范围；跨核仍靠 mask + IPI `invlpg` / 全清（TLB 篇）。
+
+### 6.2 生命周期时间线
 
 ```text
 asid_init (BSP)
@@ -160,7 +166,7 @@ void arch_set_current_user_vspace_root(paddr u_root); /* 兼容；无 ASID 标�
 
 ## 8. 多架构
 
-见 §1 与 §4.2。riscv / loongarch 不是 v0.1 主线。
+见 §1 与 §6.1。riscv / loongarch 不是 v0.1 主线。
 
 ---
 
@@ -180,6 +186,7 @@ void arch_set_current_user_vspace_root(paddr u_root); /* 兼容；无 ASID 标�
 
 ## 11. 变更记录
 
+- 2026-10-04：§4 只留分配器与「没有 generation 时怎样保证旧号没人再用」；硬件 TTBR/PCID 对照迁入 §6.1。
 - 2026-10-01：`arch_asid_supports_16bit` → `arch_asid_supported_width`（返回位宽）；x86 按 PCID 报 12；分配器用 `(1<<width)-1`。
 - 2026-09-27：中文用语整理（一锅端/揣着→整段冲掉/带着；变更记录 teardown→拆除收尾）。
 - 2026-09-26：§7 全文审阅——`asid.h` / arch 探针 / 装根头文件注释；写清 init→alloc→schedule→free 编排与 x86「忽略 asid」事实。

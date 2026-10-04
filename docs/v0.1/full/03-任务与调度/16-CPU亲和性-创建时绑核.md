@@ -47,10 +47,14 @@ compat 若要 `sched_setaffinity`：在自有 proc 记期望 CPU，**创建时**
 
 ## 4. 数据结构与不变量
 
+### 4.1 `owner_cpu`
+
 - `Task_Manager::owner_cpu` — `new_task_manager` 时 = 创建该 TM 的 `percpu(cpu_number)`，固定。
 - `thread_owner_cpu(t)` — `t->tm->owner_cpu`，无 tm → `CPU_ID_INVALID`（detach / `delete` 摘环后**不能**当终身标签）。
 
-**`cpu_id_is_online(cpu)`（完整条件）：**
+### 4.2 能否往这颗核上挂线程（软件 online）
+
+`cpu_id_is_online(cpu)` 的完整条件：
 
 ```text
 cpu < RENDEZVOS_MAX_CPU_NUMBER
@@ -58,9 +62,11 @@ cpu < RENDEZVOS_MAX_CPU_NUMBER
 && per_cpu(core_tm, cpu) != NULL
 ```
 
-**不**表示可 migrate，只表示「可以首次选这核入队」。这里的「online」是软件侧「该核已经有 Task_Manager」，不是 ACPI / MADT 里 Local APIC 是否 enabled，也不是 GIC 的 CPU interface 是否起来——后者见 SMP / 平台中断篇。
+这只表示「可以第一次把线程挂进这颗核的 `Task_Manager`」，**不**表示以后能迁核。这里的 online 是软件侧「该核已经有 `core_tm`」，不是 MADT 里 Local APIC 是否 enabled，也不是 GIC 的 CPU interface 是否起来——硬件侧见 SMP 篇、平台中断篇。函数签名见 §7。
 
-**`add_thread_to_cpu` 门禁：**
+### 4.3 第一次入队时检查什么
+
+`add_thread_to_cpu` 的前置条件：
 
 | 条件 | 返回 |
 |------|------|
@@ -160,6 +166,7 @@ cd core && make ARCH=x86_64 config && make all && make run
 
 ## 11. 变更记录
 
+- 2026-10-04：§4 拆成 `owner_cpu`、软件 online、第一次入队检查三个小节。
 - 2026-09-27：中文表述润色（母语习惯）。
 - 2026-09-26：§7 全文审阅——四 helper Doxygen（online 三条件、门禁顺序、owner 非终身标签）；写清编排与「≠中断亲和」。
 - 2026-09-25：语言整理；厘清软件 online / 绑核与中断亲和（GIC / APIC）不是同一概念。

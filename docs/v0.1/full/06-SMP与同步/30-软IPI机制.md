@@ -58,25 +58,20 @@ slot 上限 **`RENDEZVOS_SMP_IPI_MAX`（16）**；耗尽 `-E_REND_OVERFLOW`。
 
 ## 4. 数据结构与不变量
 
+### 4.1 slot 与 per-CPU pending
+
 ```c
 struct smp_ipi_slot { smp_ipi_fn_t fn; bool used; };
 /* 全局 slots[RENDEZVOS_SMP_IPI_MAX]；无 unregister */
 DEFINE_PER_CPU(atomic64_t, smp_ipi_pending);
 ```
 
+不变量：
+
 - `smp_ipi_send`：online → CAS OR pending bit → `arch_smp_ipi_send`；失败则 **清回该 bit**。
 - dispatch：`atomic64_exchange(pending, 0)` 循环，对置位 slot 调 `fn()`（**无参**）。exchange 循环避免 handler 中途再 OR 丢 bit。
 
-### 4.1 硬件发送假设
-
-**x86：** `APIC_send_IPI(dest=cpu, FIXED, vector=0x30)`；`cpu` 即 APIC id ≡ 逻辑下标（稀疏拓扑下须 `cpu_is_online`）。PIC 模式直接 `-E_RENDEZVOS`（无 LAPIC 门铃）。
-
-**aarch64：**
-
-- self：`SGIR` TARGET_SELF；
-- remote：TARGET_SPECIFIED，list = `(1<<cpu)`；
-- 要求 `cpu < GIC_V2_NR_CPU_MAX`（**8**）；
-- 假定 **GIC CPU IF 编号 == 逻辑 cpu_id**。在 Aff0 稠密编号时碰巧成立；若拓扑稀疏（逻辑 id 与 GIC target 位不对齐），SGIR 会打错核。
+门铃怎么送到目标核（ICR / SGIR），见 §6.1。
 
 ---
 
@@ -86,11 +81,24 @@ DEFINE_PER_CPU(atomic64_t, smp_ipi_pending);
 |------|------|
 | `kernel/smp/ipi.c` | register / send / dispatch |
 | `arch/*/smp/arch_smp_ipi.c` | ICR FIXED / SGIR |
-| `arch_smp_tlb_flush.c` | x86 唯一默认 registrant |
+| `arch_smp_tlb_flush.c` | x86_64 上目前唯一默认注册的软 IPI 消费者 |
 
 ---
 
 ## 6. 流程
+
+### 6.1 门铃送到哪颗核（实现上的假设）
+
+**x86_64：** `APIC_send_IPI(dest=cpu, FIXED, vector=0x30)`。这里的 `cpu` 直接当成 Local APIC id，也当成软件 `cpu_id`（编号不连续时须先用 `cpu_is_online` 排除空号）。若当前是 PIC 模式、没有 LAPIC 门铃，直接返回 `-E_RENDEZVOS`。
+
+**aarch64：**
+
+- 发给自己：`SGIR` 的 TARGET_SELF；
+- 发给别人：TARGET_SPECIFIED，list = `(1 << cpu)`；
+- 要求 `cpu < GIC_V2_NR_CPU_MAX`（**8**）；
+- 假定 **GIC CPU interface 编号等于软件 `cpu_id`**。在 MPIDR Aff0 从 0 连着编号时碰巧成立；若软件编号和 GIC 的 target 位对不齐，SGIR 会打到错误的核。
+
+### 6.2 注册与投递时间线
 
 ```text
 每核 arch_start_core 路径：
@@ -184,6 +192,7 @@ error_t arch_smp_ipi_send(cpu_id_t cpu);
 
 ## 11. 变更记录
 
+- 2026-10-04：§4 只留 slot / pending 不变量；门铃送到哪颗核迁入 §6.1。
 - 2026-09-27：中文措辞整理——Bring-up→AP 启动拉核；affinity/稀疏拓扑句通顺化；弱化「真源 / 钉死」堆砌。
 - 2026-09-26：§7 全文审阅——`ipi.h` / arch 门铃 Doxygen；纠正 `ipi_id_t` 签名；写清 pending 失败回滚与 TLB 分工。
 - 2026-09-25：语言整理；§1.1 门铃 vs 工作拆分；硬件发送假设对照 ICR / SGIR。

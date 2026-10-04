@@ -2,7 +2,9 @@
 
 v0.1 · 2026-10-03
 
-本篇对应的源码是：`arch/aarch64/boot/boot.S`、`boot_map.c`、`start_arch.c`、`boot/smp.c`（只含按设备树 `cpu_on` 的架构侧），以及 `arch/aarch64/psci/psci.c`、`include/arch/aarch64/boot/arch_setup.h`。整机何时调用这些钩子，见启动总览；链接脚本见构建篇。设备树整棵树怎么解析，见 DTB 篇。运行期中断见 GIC 篇。AP 何时被叫醒、`cpu_on` 传什么，见 SMP 篇和 PSCI 篇——本篇只解释入口寄存器和页表由 BSP 先建成什么样。
+本篇对应的源码是：`arch/aarch64/boot/boot.S`、`boot_map.c`、`start_arch.c`、`boot/smp.c`（只含按设备树调用 `cpu_on` 的架构侧），以及 `arch/aarch64/psci/psci.c`、`include/arch/aarch64/boot/arch_setup.h`。
+
+下文把最先起来的核叫 **BSP**，其余核叫 **AP**。整机何时调用 `prepare_arch` 等四个架构函数，见启动总览；链接脚本见构建篇。设备树整棵树怎么解析，见 DTB 篇。运行期中断见 GIC 篇。谁调用 `cpu_on`、第三个参数传什么，见 SMP 篇和 PSCI 篇——本篇只解释入口寄存器和页表由 BSP 先建成什么样。
 
 建议的读法：若对「异常级、TTBR0/TTBR1、设备树、PSCI」不熟，先看 §4.6，再回头看布局和流程；§6 按时间往下走，不必在流程里回头翻手册。
 
@@ -113,7 +115,7 @@ GIC 分成全机一份的**分发器**和跟着核走的 **CPU 接口**。分发
 
 真正让 MMU 走起来的顺序在汇编里：先前 `mair_init` 填好 **MAIR**（页表里的 AttrIndx 才有意义），再写 **TCR / TTBR0 / TTBR1**，最后置 **SCTLR_EL1.M**，`isb` 之后把返回地址和 `lr` 都加上 `kernel_virt_offset`，`br` 到高半再 `ret`。此后程序计数器落在链接虚地址上。这些寄存器各自管什么见 §4.6。
 
-**TTBR0_EL1 与 TTBR1_EL1 都指向同一张 `L0_table`**：低半（TTBR0）走恒等，高半（TTBR1）走链接虚地址；与 x86「PML4 两项进同一张 L1」是同一思路。`T0SZ` / `T1SZ` 都写成 `0x10`（64−16=48 位虚地址），和 `0xffff8000…` 那扇高半窗对齐。
+**TTBR0_EL1 与 TTBR1_EL1 都指向同一张 `L0_table`**：低半（TTBR0）走恒等映射（虚地址等于物理地址），高半（TTBR1）走链接虚地址；与 x86「页表第 0 项和第 256 项进同一张下一层」是同一思路。`T0SZ` / `T1SZ` 都写成 `0x10`（64−16=48 位虚地址），对得上从 `0xffff8000…` 开始的那一段高半虚地址。
 
 从 `ID_AA64MMFR0_EL1` 取 PARange 填 `TCR_EL1.IPS`；若大于 40 位则**压到 40 位**（实现的有意上限）。TTBR0 侧 4 KiB granule 的位域复位值已是 0，汇编不再或进去；TTBR1 侧要显式置 `TG1=4KB`。
 
