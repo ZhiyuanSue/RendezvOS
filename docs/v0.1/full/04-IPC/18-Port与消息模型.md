@@ -21,22 +21,22 @@ v0.1 · 2026-10-02
 1. **Port 会合层** — port 上挂的是**在等的线程请求**（`Ipc_Request_t` → `Thread_Base`），不是消息本体。像总机：先接通通话双方。
 2. **Per-thread 消息层** — 每个线程自己的 `send_msg_queue` / `recv_msg_queue` 上才是 `Message_t`。接通之后由 `ipc_transfer_message` 做投递（图解 `22` §1.5）。
 
-两层模型示意：
+两层模型示意（单状态：同一时刻 `thread_queue` 里不会混 SEND 与 RECV）：
 
 ```text
    ┌──────────── Port 会合层 ────────────┐    ┌── Per-thread 消息层 ──┐
    │  port.thread_queue (单状态 MSQ)     │    │  Thread A             │
-   │  ┌────┬────┬────┬────┐              │    │  send_msg_queue ──┐   │
-   │  │ReqS│ReqS│ReqR│ReqR│              │    │  recv_msg_queue   │   │
-   │  └────┴────┴────┴────┘              │    │  send_pending_msg │   │
-   │  tail tag = SEND / RECV / EMPTY      │    │  recv_pending_cnt │   │
-   └─────────────────────────────────────┘    └──────────────────┘
-                      ▲ 配对成功                   ▲
-                      └──── ipc_transfer_message ──┘
-                       (由没睡在 port 上的一侧跑：推 / 拉)
+   │  例：全是 SEND waiter               │    │  send_pending_msg     │
+   │  ┌────┬────┬────┐                   │    │  send_msg_queue       │
+   │  │ReqS│ReqS│ReqS│  tag=SEND         │    │  recv_msg_queue       │
+   │  └────┴────┴────┘                   │    │  recv_pending_cnt     │
+   │  或全 RECV / 或仅 dummy（EMPTY）     │    └──────────────────────┘
+   └─────────────────────────────────────┘
+                      配对成功后
+                      ipc_transfer_message（没睡在 port 上的一侧跑）
 ```
 
-「消息入队 / 出队」放在传送步骤之外：`enqueue_msg_for_send` 与 `dequeue_recv_msg` 是独立原语（收发篇）。`send_msg` 返回后，可认为消息已进目标线程的 recv 队列；`recv_msg` 返回后，可认为本线程 recv 队列上至少有一条。
+没有 `send_msg(port, msg)`这种模式的接口：消息先 `enqueue` 进本线程队列，再 `send_msg` 去 port 上配对。一次发送的时序（谁先到、谁跑 transfer）见 `19` §1.1。
 
 ### 1.2 为何只有一条线程队列
 
@@ -53,7 +53,7 @@ v0.1 · 2026-10-02
 MSQ 假出队（`22` §1.4–1.5）：逻辑上「弹出」的节点仍可能当新 dummy 挂在队上，**不能**整段迁移到对方 recv 队列。因此：
 
 - **`Msg_Data_t`** — 载荷与 `free_data`；独立 refcount。
-- **`Message_t`** — MSQ 壳 + 指向 `Msg_Data_t`；transfer 时**新建**接收方壳、**共享**载荷引用。
+- **`Message_t`** — 挂在 MSQ 上的那一截（含队列节点 + 指向 `Msg_Data_t`）。transfer 时给接收方**再 new 一条** `Message_t`，载荷那份 `Msg_Data_t` 共享。
 
 字段细节见 §4.2；推拉谁跑 transfer、pending 兜底见 `19`。
 
@@ -63,7 +63,7 @@ MSQ 假出队（`22` §1.4–1.5）：逻辑上「弹出」的节点仍可能当
 
 ## 2. 目标与边界
 
-**提供：** 创建 / 注册 / 按名查找 / 关闭 port；会合队列与消息壳；与 refcount / EBR 的生命周期。承接无锁篇 §1 推出的两层模型与 Msg 拆分。
+**提供：** 创建 / 注册 / 按名查找 / 关闭 port；会合队列与 `Message_t` / `Msg_Data_t`；与 refcount / EBR 的生命周期。承接无锁篇 §1 推出的两层模型与 Msg 拆分。
 
 **不做：** 收发状态机与 system 投递（`19`）；MSQ CAS / tag 算法（`22`）；RPC、reply 命名、具体 server 协议；capability 命名空间（可用钩子 `ops_allow` 由兼容层加）；形式化验证声明。
 
@@ -98,7 +98,7 @@ MSQ 假出队（`22` §1.4–1.5）：逻辑上「弹出」的节点仍可能当
 因此本篇对象定成：
 
 - **`Msg_Data_t`** — 真正的载荷与 `free_data`；独立 refcount。
-- **`Message_t`** — 只含 `ms_queue_node_t` + 指向 `Msg_Data_t` 的指针（再加可选字段）。transfer 时：**新建**接收方 `Message_t` 壳，**共享 / 转移**对 `Msg_Data_t` 的引用，而不是迁移 MSQ 节点本身。
+- **`Message_t`** — 只含 `ms_queue_node_t` + 指向 `Msg_Data_t` 的指针（再加可选字段）。它是**队列节点**，不是载荷本身。transfer 时给接收方**再分配一条** `Message_t`，两边指向同一份 `Msg_Data_t`，不能把 MSQ 节点整段搬到对方队列。
 
 这是调试中遇到问题之后定下来的结构，不是审美拆分。行为路径（谁跑 transfer、pending）见 `19` §6.4。
 
@@ -176,7 +176,7 @@ send / recv 等待者都变成 `ready`：unregister 必须在此清队（不能�
 
 ### 6.3 会合成功后的 transfer（摘要）
 
-配对成功后，**没有在 port 上阻塞的那一侧**跑 `ipc_transfer_message`（推 / 拉平衡，见收发篇）：从 sender 的 send 队列取逻辑消息，在 receiver 的 recv 队列插入新壳。成功路径上可把对方从 `block_on_*` 置为 ready。
+配对成功后，**没有在 port 上阻塞的那一侧**跑 `ipc_transfer_message`（推 / 拉平衡，见收发篇）：从 sender 的 send 队列取出 `Message_t`，给 receiver 的 recv 队列**再 new 一条** `Message_t`（共享 `Msg_Data_t`）。成功路径上可把对方从 `block_on_*` 置为 ready。
 
 ### 6.4 查找
 
@@ -186,7 +186,7 @@ send / recv 等待者都变成 `ready`：unregister 必须在此清队（不能�
 
 ## 7. 公开 API
 
-本篇涉及的接口分布在：`port.h`（port 对象 / `Port_Table` / `global_port_init`）与 `message.h`（`Msg_Data` / `Message_t` 壳）。说明以头文件 Doxygen 为准（已与 `.c` 核对）。
+本篇涉及的接口分布在：`port.h`（port 对象 / `Port_Table` / `global_port_init`）与 `message.h`（`Msg_Data_t` / `Message_t`）。说明以头文件 Doxygen 为准（已与 `.c` 核对）。
 
 **本篇不涉及：** `send_msg` / `recv_msg` / `ipc_transfer_message` → `19`；kmsg → `20`；`ops_allow` / hooks 深挖 → `21`；MSQ/EBR 算法 → `22` / `17`；`name_index` 通用约定 → `41`；`thread_lookup_port` → `13`（本篇只链典型用法）。
 
@@ -229,7 +229,7 @@ void delete_port_table_structure(struct Port_Table *);
 
 `port_ops_begin` / `end`：send/recv 门禁，深挖见 `21`。典型客户端查找：`thread_lookup_port`（`13`）。
 
-### 7.3 消息壳（`message.h`）
+### 7.3 `Message_t` 与 `Msg_Data_t`（`message.h`）
 
 ```c
 Msg_Data_t *create_message_data(i64 msg_type, u64 data_len, void **data_ptr,
@@ -246,8 +246,8 @@ error_t free_message_ref(ref_count_t *); /* → ebr_retire_ref */
 | `create_message_data` | 成功**吞** `*data_ptr`（置 NULL，即取得其所有权）；须 `data_len>0` 且指针有效，否则释放刚建的结构并返回 NULL。 |
 | `free_msgdata_ref_default` | free payload buffer + 结构。 |
 | `create_message_with_msg` | bump `msgdata`；新 `Message_t` ref=1。调用方若不再持 data 指针须再 put 一次。 |
-| `create_message_structure` / `fill_message_data` | 空壳后再挂载 data（fill 会 bump）。 |
-| `free_message_ref` | **EBR** 推迟真释放；real 路径 put `Msg_Data` 再 free 壳。 |
+| `create_message_structure` / `fill_message_data` | 先分配空的 `Message_t` 再挂上 `Msg_Data`（fill 会 bump）。 |
+| `free_message_ref` | **EBR** 推迟真释放；real 路径 put `Msg_Data` 再 free 这条 `Message_t`。 |
 
 为何拆 `Msg_Data` / `Message_t`：见 §4.2（MSQ dummy 不能整节点迁移走）。
 
@@ -268,13 +268,14 @@ error_t free_message_ref(ref_count_t *); /* → ebr_retire_ref */
 ## 10. 限制与后续
 
 - 字符串名 ≠ 权能系统；钩子可加门禁。
-- 队列性能与扩展属**未实现增强**时见 evolution **E2**；现行两层模型与拆分理由以本篇为准。
+- 队列性能、广播、批量绕开会合等 **未实现** 项：行为侧见 `19` §10.1；跟踪见 evolution **E2**（调度依赖见 **E4**）。现行两层模型与拆分理由以本篇为准。
 - try 路径与 blocking 路径在实现上是分支拷贝，不要想当然合并重构（见 `ipc.c` 注释）。
 
 ---
 
 ## 11. 变更记录
 
+- 2026-10-05：§1.1 只留两层对象 ASCII（单状态 waiter）；发送时序图挪到 `19`（本章不是收发状态机）。§10 演进转到 `19` §10.1。
 - 2026-10-04：补两层模型 ASCII 图（§1.1）与 `global_port_table` 结构示意图（§4.3）；为「假出队」首现处加名词解释；口语动词「塞/丢掉」改为「投/丢弃」；与 `21` 的 token→LOOKUP 门关系补一句交叉引用。
 - 2026-10-05：任务 1/3/5 精读——口语动词与翻译腔清理（睡死→永远阻塞、挂上→加入队列/投递/挂载、挪/搬走→迁移、拿到→取得、放掉→释放、晾在→滞留、挂死→阻塞不返回、摘表→从表中摘除、门闩→门禁、加门→加门禁、踩过坑→调试中遇到问题、勿想当然→不要想当然）；为首现缩写补全称（CAS、FNV-1a、LRU、endpoint）；为「自环」补简短定义；§6.3 标题与内容一致，无重复调整。
 - 2026-10-05：最终词句顺畅。

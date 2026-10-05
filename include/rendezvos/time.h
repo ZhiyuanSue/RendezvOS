@@ -73,8 +73,9 @@ typedef struct rendezvos_timer_event {
  * queue or still holds a port ref — disarm with @p del / @p fini first.
  *
  * One-shot (@p periodic_gap == 0): @p wait_port is required; holds one port ref
- * via ref_get_not_zero until fini or IRQ expire teardown. @p delivery_token is
- * sent in KMSG_OP_SYSTEM_TIMER_EXPIRE / KMSG_OP_SYSTEM_TIMER_CANCEL.
+ * via ref_get_not_zero until @c fini. IRQ expire calls @c fini only after a
+ * successful EXPIRE delivery. @p delivery_token is sent in
+ * KMSG_OP_SYSTEM_TIMER_EXPIRE / KMSG_OP_SYSTEM_TIMER_CANCEL.
  *
  * Periodic (@p periodic_gap != 0): @p wait_port must be NULL; @p delivery_token
  * is ignored. Do not call fini on periodic events (use del only).
@@ -93,8 +94,10 @@ error_t rendezvos_timer_event_init(rendezvos_timer_event *event,
  *        wait_port.
  *
  * Do not call on periodic events (e.g. per-CPU heartbeat); use del alone.
- * IRQ expire path calls this after KMSG_OP_SYSTEM_TIMER_EXPIRE delivery
- * (delivery failure still finis — one-shot lifetime ends at expiry).
+ * IRQ expire path calls this only after a successful
+ * KMSG_OP_SYSTEM_TIMER_EXPIRE delivery. Delivery failure does not fini:
+ * @c rendezvos_do_time_irq calls @c rendezvos_timer_event_change(now+1)
+ * and keeps the port ref.
  *
  * @return REND_SUCCESS; -E_IN_PARAM if @p event is periodic.
  */
@@ -161,13 +164,12 @@ tick_t arch_timer_get_hz(void);
  */
 void rendezvos_time_init(void);
 /**
- * @brief Timer IRQ handler:
- * clean due events, update the count, reset next hardware to the next expiry.
+ * @brief Timer IRQ handler: due events, then reprogram hardware.
  *
- * Periodic events (like heartbeat) reset
- * One-shot events arrive deliver
- * a @c KMSG_OP_SYSTEM_TIMER_EXPIRE message and cleaned if deliver success. Must
- * run in IRQ context.
+ * Periodic events (including heartbeat) @c change to now+gap.
+ * One-shot: deliver @c KMSG_OP_SYSTEM_TIMER_EXPIRE
+ * (@c ipc_system_try_deliver(..., true)). Success → @c fini; failure →
+ * @c change(now+1), keep event and port ref. Must run in IRQ context.
  */
 void rendezvos_do_time_irq(struct trap_frame *tf);
 /**

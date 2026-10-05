@@ -22,7 +22,7 @@ struct MsgData {
  * @brief Allocate Msg_Data and take ownership of an existing data buffer.
  * @param msg_type Caller-defined type tag for the payload.
  * @param data_len Length of *data_ptr in bytes; must be @c > 0 with a non-NULL
- *        *@p data_ptr (else the allocated shell is put and NULL is returned).
+ *        *@p data_ptr (else the allocated Msg_Data is put and NULL is returned).
  * @param data_ptr In/out pointer to payload memory; set to NULL on success.
  * @param free_data Refcount destructor for msg_data and its data buffer.
  * @return New Msg_Data with refcount 1, or NULL on invalid input or allocation

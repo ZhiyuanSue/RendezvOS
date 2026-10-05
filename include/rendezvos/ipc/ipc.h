@@ -47,9 +47,10 @@ error_t free_ipc_request(ref_count_t* refcount);
  * the same @c Msg_Data. Does not touch port wait queues.
  *
  * @return @c REND_SUCCESS; @c -E_REND_AGAIN if receiver is exiting (message
- *         kept on sender for retry on the sender-push path);
- *         @c -E_REND_NO_MSG if sender has no message; other negatives on
- *         alloc/param failure.
+ *         parked on @c send_pending_msg — sender-push callers must
+ *         @c ref_put the matched request, clear the pointer, and
+ *         @c try_match another waiter); @c -E_REND_NO_MSG if sender has
+ *         no message; other negatives on alloc/param failure.
  */
 error_t ipc_transfer_message(Thread_Base* sender, Thread_Base* receiver);
 
@@ -66,7 +67,9 @@ error_t ipc_transfer_message(Thread_Base* sender, Thread_Base* receiver);
  *         @c ipc_transfer_message.
  * @note May block (@c block_on_send) until a receiver is matched. Call
  *       @c port_ops_end **before** @c schedule (unregister waits
- *       @c ops_count==0).
+ *       @c ops_count==0). Transfer @c -E_REND_AGAIN (receiver exiting)
+ *       is internal: @c ref_put that request, set it NULL, @c try_match
+ *       again; the message stays on @c send_pending_msg.
  */
 error_t send_msg(Message_Port_t* port);
 
@@ -76,9 +79,12 @@ error_t send_msg(Message_Port_t* port);
  *        receiver is waiting.
  *
  * Caller must @c enqueue_msg_for_send(msg) first. Transfer pulls from the
- * current thread's send queue / @c send_pending_msg. On @c -E_REND_AGAIN the
- * message remains enqueued unless the caller removes it. On begin fail, drops
- * one orphan send msg (same as @c send_msg).
+ * current thread's send queue / @c send_pending_msg. The @c -E_REND_AGAIN
+ * returned to the caller means no waiter (or no current thread); the message
+ * remains enqueued unless the caller removes it. Transfer @c -E_REND_AGAIN
+ * (receiver exiting) is handled like @c send_msg: put the request, match
+ * another waiter. On begin fail, drops one orphan send msg (same as
+ * @c send_msg).
  *
  * On success the matched receiver moves from @c thread_status_block_on_receive
  * to @c thread_status_ready.
@@ -129,8 +135,8 @@ error_t ipc_try_recv_msg(Message_Port_t* port);
  *        have live refcount.
  * @return @c REND_SUCCESS; @c -E_IN_PARAM if @p msg is NULL; @c -E_REND_AGAIN
  *         if no current thread; @c -E_REND_IPC if refcounts invalid.
- * @note After enqueue the queue owns a ref (@c ref_put on the caller's shell
- *       ref). Do not use for @c ipc_system_* deliver (those stage via
+ * @note After enqueue the queue owns a ref (@c ref_put on the caller's
+ *       Message_t). Do not use for @c ipc_system_* deliver (those stage via
  *       @c send_pending_msg instead).
  */
 error_t enqueue_msg_for_send(Message_t* msg);

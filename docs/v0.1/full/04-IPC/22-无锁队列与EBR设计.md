@@ -24,7 +24,7 @@ EBR 在调度与线程 teardown 中的用法见 `03-任务与调度/17-EBR与线
 | `hybird-vs-micro` | 混合≈微内核同构；IPC + 可感知阻塞的调度是核心件 | `18` §1 | 本篇 §1.2 |
 | `dummy-link-list` | 朴素链表无法无锁 → 必须 MS 假出队 | — | 本篇 §1.3–§1.4、§6 |
 | `ms-queue-feature` | 假出队；节点不能整段迁移走；port 单状态扩展 | `18` §4.1–4.2、`19` §4.1 | 本篇 §1.4、§1.7、§6.2–6.3 |
-| `ipc_transfer_message` | 壳复制、载荷共享；`send_pending_msg` 兜底 | `18` §4.2、`19` §6.4 | 本篇 §1.5 |
+| `ipc_transfer_message` | 给 receiver 新建 `Message_t`、共享 `Msg_Data`；`send_pending_msg` 兜底 | `18` §4.2、`19` §6.4 | 本篇 §1.5 |
 
 ---
 
@@ -88,7 +88,7 @@ RendezvOS v0.1 的并发队列核心是 **Michael–Scott 无锁 MSQ**（Maged M
 |---|------|------|
 | 1 | **MPMC** | 多客户端对一个 server port 合法 |
 | 2 | **空 = 单 dummy，head=tail** | 空判断不能靠「head 是否 NULL」 |
-| 3 | **假出队**：新 dummy **必须留队**；其 `next` 可能仍被别人读 | **不能**把刚 dequeue 的节点整段迁移到另一队列；`Message_t` 只能新建壳 + 共享 `Msg_Data_t`（§1.5、`18` §4.2） |
+| 3 | **假出队**：新 dummy **必须留队**；其 `next` 可能仍被别人读 | **不能**把刚 dequeue 的节点整段迁移到另一队列；只能给对方新建 `Message_t` + 共享 `Msg_Data_t`（§1.5、`18` §4.2） |
 | 4 | **帮助推进 stale tail** | 失败不是「立刻放弃」，常需重试 |
 
 再钉两条 **IPC 侧后果**（对象在 `18`，行为在 `19`）：
@@ -98,9 +98,9 @@ RendezvOS v0.1 的并发队列核心是 **Michael–Scott 无锁 MSQ**（Maged M
 
 ### 1.5 假出队迫使 `Msg` / `Msg_Data` 拆开
 
-![ipc_transfer_message：壳复制、载荷共享](figures/ipc_transfer_message.png)
+![ipc_transfer_message：新建 Message_t、共享 Msg_Data](figures/ipc_transfer_message.png)
 
-从发送队列**取出**的是 `Message_t` 壳；transfer 时**新建**接收方壳（复制），发送侧与接收侧各自持有同一份 `Msg_Data_t`（再指向真正载荷）。不能把 MSQ 节点整段迁移到接收队列——假出队要求旧节点可能仍被别人当 dummy / next 读。拆开之后：壳跟着队列走、可独立 refcount；载荷一对一绑在 `Msg_Data` 上（内核里往往无法在任意缓冲前后强行添加一个 refcount）。
+从发送队列**取出**的是 `Message_t`；transfer 时给接收方**再分配一条** `Message_t`，发送侧与接收侧各自持有同一份 `Msg_Data_t`（再指向真正载荷）。不能把 MSQ 节点整段迁移到接收队列——假出队要求旧节点可能仍被别人当 dummy / next 读。拆开之后：`Message_t` 跟着队列走、可独立 refcount；载荷一对一绑在 `Msg_Data` 上（内核里往往无法在任意缓冲前后强行添加一个 refcount）。
 
 对象字段与生命周期：`18` §4.2。谁跑 transfer、exit race、`send_pending_msg`：`19` §1.1、§6.4。
 
@@ -152,7 +152,7 @@ tagged pointer 解决 ABA 的原理（同一地址、不同代）：
 
 权衡：
 
-- MSQ dequeue 会 **移动 dummy 节点** 并 `ref_put` 旧 dummy，故 message 拆成 `Msg_Data_t` + `Message_t` shell（`18` §4.2）。
+- MSQ dequeue 会 **移动 dummy 节点** 并 `ref_put` 旧 dummy，故 message 拆成 `Msg_Data_t` + `Message_t`（`18` §4.2）。
 - EBR retire 表 overflow 时 **leak**（泄漏，保留节点不回收）而非 UAF（见 EBR 篇）——用可观测泄漏换并发安全上界。
 - 无锁正确性依赖 tag / EBR 纪律；写错 `free_func` 或缺 `ebr_enter` 会导致稀有崩溃，框架将难度留给少数原语实现者，而非每个 server 作者。
 
@@ -307,7 +307,8 @@ MS 队列 enqueue / dequeue 算法（伪码，省略 EBR 包裹与 tag 推进细
 `ipc_port_try_match` → `msq_dequeue_check_head(..., MSQ_CHECK_FIELD_APPEND, tp_new(NULL, target_ipc_state), NULL)`：
 
 - 校验 head 后首个真实节点的 append tag 为 **对侧** 状态；
-- 不匹配则 continue dequeue stale request。
+- tag 不匹配则 continue dequeue。
+- **IPC 层还要再滤一层：** `ipc_port_try_match` 在 dequeue 之后检查对头线程 status / `port_ptr`，不合格的 request 直接 put 掉再取下一个（见 `19` §6.0）。这不是 MSQ 算法的一部分。
 
 ### 6.4 msq_clean_queue（teardown）
 
@@ -408,13 +409,13 @@ cd core && make ARCH=x86_64 config && make all && make run
 - **append_info_bits 上限 15** — tag 空间受限；port 仅用 2 bit。
 - **无 hazard pointer 备选** — 全库统一 EBR；其他子系统复用须遵守 enter / exit 纪律。
 
-更形式化正确性论证不在本篇展开；若替换队列实现须同步更新本篇与 EBR / IPC 相关 full。性能与队列扩展等**尚未实现**的项见 `v0.1/evolution/TODO.md`（E2）——**现行设计动机与约定以本篇正文为准**，不外链到已废弃的工程审计稿。
+更形式化正确性论证不在本篇展开；若替换队列实现须同步更新本篇与 EBR / IPC 相关 full。性能、广播、批量绕开会合等**尚未实现**的项见 `19` §10.1 与 `v0.1/evolution/TODO.md`（E2）——**现行设计动机与约定以本篇正文为准**。
 
 ---
 
 ## 11. 变更记录
 
-- 2026-10-04：在现有五图之外补三张 ASCII 图：tagged pointer 解决 ABA 原理图（§1.6）、EBR grace period 与 retire/reclaim 时序图（§4.4）、MS 队列 enqueue/dequeue 算法伪码图（§6.1）；口语动词「塞/抢/碰/塞」改为「投递/争/访问/携带」、「硬塞」改为「硬加」。
+- 2026-10-05：§6.3 标明 IPC `try_match` 在 MSQ dequeue 之后还要丢 status/`port_ptr` 不合格的 request（权威在 `19` §6.0）；§10 未实现项回链 `19` §10.1。
 - 2026-10-05：任务 1/3/5 精读——口语词与翻译腔清理（涨得很陡→急剧上升、丢配→丢失配对、塌掉→崩塌、故事→情况、付自己那份→承担自己那份、精心细锁→精心设计的细粒度锁、堆起来→累积、烧核→消耗 CPU、环假设 SPSC→假设 SPSC 环形缓冲区、边角插件→边缘组件、饿死→饥饿、硬需求→硬性需求、摘掉→摘除、搬走/挪→迁移、硬加→强行添加、进不来→无法进入、会错→会出错）；为首现缩写补全称/释义（Michael–Scott、EBR、UAF、SPSC、MPMC、AS、leak）；§9「测例」→「测试用例」。
 - 2026-10-02：整章表述逻辑：§1 定为 04-IPC 设计脊骨（五图 + 图→18/19 后果表）；收窄本篇覆盖面（不拥有 ipc/message 契约）；§1.4–1.5 明确牵出单状态 port / Ipc_Request / Msg 拆分。
 - 2026-10-02：迁入 lockfree-IPC 五张设计图到 `figures/`，嵌入 §1.1–§1.5（锁 vs IPC、混合≈微、dummy 复活、MSQ 假出队、Msg 壳复制）；§1.6 ABA、§1.7 EMPTY；图为动机真源。

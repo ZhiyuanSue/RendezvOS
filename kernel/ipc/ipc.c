@@ -376,8 +376,15 @@ error_t send_msg(Message_Port_t* port)
                                 return REND_SUCCESS;
                         }
                         case -E_REND_AGAIN: {
-                                /*the receiver have exit, we need try to
-                                 * dequeue a receiver again.*/
+                                /*
+                                 * Receiver is exiting. Drop this matched
+                                 * request and try_match another RECV waiter.
+                                 * Message is back on send_pending_msg.
+                                 */
+                                ref_put(&receiver_request->ms_queue_node
+                                                 .refcount,
+                                        free_ipc_request);
+                                receiver_request = NULL;
                                 continue;
                         }
                         default: {
@@ -588,6 +595,13 @@ error_t ipc_try_send_msg(Message_Port_t* port)
                         return REND_SUCCESS;
                 }
                 case -E_REND_AGAIN: {
+                        /*
+                         * Same as send_msg: receiver exiting. Put this
+                         * request and match again (message on pending).
+                         */
+                        ref_put(&receiver_request->ms_queue_node.refcount,
+                                free_ipc_request);
+                        receiver_request = NULL;
                         continue;
                 }
                 default: {
