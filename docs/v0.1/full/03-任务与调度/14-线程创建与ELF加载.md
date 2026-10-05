@@ -10,25 +10,25 @@ loader **消费** `modules/elf` 格式库（`check_elf_header` / `for_each_progr
 
 ## 1. 概述
 
-core **没有进程对象**。能调度的是线程；用户镜像进地址空间靠 loader helper；怎么回到用户态则分两条回用户原语（下面叫 Path A / B）。加载和回用户可以拆开组合——写文档时最容易把它们揉成一团。
+core **没有进程对象**。能调度的是线程；用户镜像进地址空间靠 loader helper；怎么回到用户态则分两条原语（下面叫 Path A / B）。加载与回到用户态可以拆开组合——写文档时最容易把它们混在一起。
 
 按「你想做的事」选 API：
 
 | 你想做 | 用 |
 |--------|-----|
-| 内核 server / 测例 kthread | `gen_thread_from_func` |
+| 内核 server / 测试用例 kthread | `gen_thread_from_func` |
 | 底层自管 vs / 入队 / flags | `create_thread` + 自己 add |
-| bare-core / incbin 一次造用户线程（harness） | `gen_thread_from_elf` → 体跑 `run_elf_program` |
+| bare-core / incbin 一次创建用户线程（harness） | `gen_thread_from_elf` → 体跑 `run_elf_program` |
 | fork / clone 类复制用户上下文 | `copy_thread` → 自己入队 → `run_copied_thread` |
-| 只把 ELF 塞进已有 vs | `load_elf_to_vs`（+ 自管 clear / stack / 回用户） |
+| 只把 ELF 装入已有 vs | `load_elf_to_vs`（+ 自管 clear / stack / 回用户） |
 
-**Path A / B 说的是「怎么回用户」，不是「怎么 load」：**
+**Path A / B 说的是「怎么回到用户态」，不是「怎么 load」：**
 
 | | Path A（同线程、已在 syscall） | Path B（新线程 / 无 in-flight syscall 帧） |
 |--|--------------------------------|--------------------------------------------|
 | 典型 | personality `execve` 原地换镜像 | `run_elf_program`、`run_copied_thread`、PID1 首次 drop |
 | 提交 PC / SP | `arch_syscall_set_user_return(syscall_ctx, …)` | 合成 / 拷贝 trap frame + 同 API |
-| 是否再 drop | **否**（syscall 返回路径带走） | **是** — `arch_return_to_user` |
+| 是否再 drop | **否**（由 syscall 返回路径承担） | **是** — `arch_return_to_user` |
 
 core **没有** `task_exec_enter_user`。Path A 的编排在 personality；core 只提供 `load_elf_to_vs` / `generate_user_stack` / arch 原语。现网 Linux PID1 往往是「同款 `linux_exec_replace_image`（clear + load + stack）+ Path B drop」——**不走** `gen_thread_from_elf`。树内 `gen_thread_from_elf` **零调用方**，仍是保留的 harness API，不是默认启动路径。
 
@@ -116,7 +116,6 @@ slice = 内核侧稀疏文件镜像，**不是**用户 VSpace。loader：`page_s
 ### 6.2 `create_thread` 骨架
 
 `new_thread_structure` → tid / kstack / `arch_set_new_thread_ctx(..., thread_entry, …, reserve_trap_frame)` → 填 `init_parameter` → `thread->vs = vs`。失败已赋值则 `del_thread_structure`（会 put vs）。
-
 ### 6.3 `gen_thread_from_func` / `gen_thread_from_elf`
 
 **func：** get root → create(`reserve=false`) → 名字拷贝 → `add_thread_to_manager(tm)`。失败：create 失败 put root；add 失败 `del_thread_structure`（含 put root）。成功才写可选 out 指针。
@@ -124,6 +123,35 @@ slice = 内核侧稀疏文件镜像，**不是**用户 VSpace。loader：`page_s
 **elf：** create_vspace + register → create(`run_elf_program`, reserve=true, slice) → `generate_user_stack` + `arch_set_thread_user_sp` → flags=USER → add 本核。失败：按阶段 `del_thread_structure` / put 尚未移交的 vs。
 
 ### 6.4 `load_elf_to_vs`
+
+ELF64 头与程序头布局（本 loader 只接受 ELFCLASS64；Phdr 通过 `page_slice_copy_to_buffer` 读出，不要求物理连续可 deref）：
+
+```text
+   Elf64_Ehdr（file offset 0，由 page_slice_lookup(0) 取 KVA）
+   ┌──────────────────────────────────────────────┐
+   │ e_ident[EI_MAG]: 7F 45 4C 46 (ELF)            │
+   │ e_ident[EI_CLASS]: ELFCLASS64                 │
+   │ e_type / e_machine / e_version                │
+   │ e_entry ─────────── 用户入口 PC（run_elf_program 读此）│
+   │ e_phoff ─────────── program header 表的文件偏移│
+   │ e_shoff / e_flags / e_ehsize                  │
+   │ e_phentsize ─────── 每个 Phdr 的大小          │
+   │ e_phnum ─────────── program header 数量       │
+   │ e_shentsize / e_shnum / e_shstrndx            │
+   └──────────────────────────────────────────────┘
+                │ e_phoff
+                ▼
+   Elf64_Phdr[e_phnum]（每个 e_phentsize 字节）
+   ┌──────────────────────────────────────────────┐
+   │ p_type:  PT_LOAD / PT_DYNAMIC / PT_INTERP ... │
+   │ p_flags: R | W | X                           │
+   │ p_offset ──── 段在文件中的偏移                │
+   │ p_vaddr  ──── 段在虚地址空间中的目标 VA        │
+   │ p_paddr / p_filesz / p_memsz / p_align        │
+   └──────────────────────────────────────────────┘
+   loader 第一遍只处理 PT_LOAD：把 [p_offset, p_offset+p_filesz) 拷到
+   [p_vaddr, p_vaddr+p_filesz)；p_memsz > p_filesz 的部分按 0 填充（fill）。
+```
 
 1. ELFCLASS64；坏头 / 越界失败。
 2. 第一遍 `PT_LOAD`：radix big-lock → `mm_user_utils_set_range_and_fill` → 有 `p_filesz` 则 `page_slice_copy_to_user`；跟踪 `max_load_end`。
@@ -138,9 +166,29 @@ Phdr 遍历：page0 KVA 做指针算术，内容经 copy_to_buffer（不要求 p
 
 `run_elf_program` 再 `user_sp -= 8` 并写 `*(u64*)=0`（最简 null 哨兵）。personality Path A 用自己的栈图像 builder，不是这套。
 
+用户栈图像（Path B，`run_elf_program` 落地时）：
+
+```text
+   USER_SPACE_TOP ─┐
+                  ▼
+   ┌─────────────────────────────────┐
+   │  user stack (8 页 = 32 KiB)      │  generate_user_stack 映射
+   │                                 │  R | W | USER | VALID
+   │                                 │
+   │   ┌─────────────────────────┐  │  SP 初值 = 顶 − 8（generate_user_stack）
+   │   │ 0x0000_0000_0000_0000   │  │  ← null word（run_elf_program 再 −8 写 0）
+   │   └─────────────────────────┘  │
+   │                                 │
+   │   (后续 argv / envp / auxv 由    │
+   │    compat 自建，core 不负责)     │
+   └─────────────────────────────────┘  ← user_sp 传给 arch_syscall_set_user_return
+```
+
+两次 −8 的来源不同：第一次是 `generate_user_stack` 给「哨兵区」留 8 字节；第二次是 `run_elf_program` 在该哨兵位写一个 null word，作为最简栈底（无 argc/argv）。compat 若要真正的 argv/auxv，自建栈图像后用 Path A 提交，不走这套双重 −8。
+
 ### 6.6 `run_elf_program`（Path B）
 
-在 **当前** `thread->vs` 上：`load_elf_to_vs` → 读 `e_entry` → 写 null word → 可选 `append_hooks->init`（失败只 `pr_error`，**仍继续 drop**）→ 重读 SP（hook 可改）→ `arch_empty_drop_trap_frame` + `arch_syscall_set_user_return` + `arch_return_to_user`。设计为不返回；落到 return 即错误。
+在 **当前** `thread->vs` 上：`load_elf_to_vs` → 读 `e_entry` → 写 null word → 可选 `append_hooks->init`（失败只 `pr_error`，**仍继续 drop**）→ 重读 SP（hook 可改）→ `arch_empty_drop_trap_frame` + `arch_syscall_set_user_return` + `arch_return_to_user`。设计为不返回；走到 return 即错误。
 
 ### 6.7 `copy_thread` / `run_copied_thread`
 
@@ -148,7 +196,7 @@ Phdr 遍历：page0 KVA 做指针算术，内容经 copy_to_buffer（不要求 p
 
 ### 6.8 回用户：软件原语与硬件出口
 
-各 ISA 共用同一套 C API，落到不同的「离开内核」指令（下分现行主线路径）。
+各 ISA 共用同一套 C API，对应到不同的「离开内核」指令（下文按现行主线路径分述）。
 
 **共同步骤（Path B）：**
 
@@ -158,15 +206,15 @@ Phdr 遍历：page0 KVA 做指针算术，内容经 copy_to_buffer（不要求 p
 
 **x86_64（Intel SDM：SYSCALL / SYSRET、IA-32e）：**
 
-- 用户 PC 写在 trap frame 的 `rcx`（SYSRET 用 RCX 当返回 RIP）；返回值在 `rax`。
-- 用户 RSP 走 `user_rsp_scratch`（及 `ctx->user_rsp`），出口路径再装回。
+- 用户 PC 写在 trap frame 的 `rcx`（SYSRET 用 RCX 当返回 RIP；见 Intel SDM Vol.2 `SYSCALL` / `SYSRET`——`SYSCALL` 把下一条指令地址存入 RCX，`SYSRET` 从 RCX 恢复 RIP）；返回值在 `rax`。
+- 用户 RSP 走 `user_rsp_scratch`（及 `ctx->user_rsp`），出口路径再装回。`SYSCALL` 把用户 RSP 存入 `MSR_LSTAR` 配套的内核入口约定里，本实现用 per-CPU scratch 寄存。
 - `arch_drop_to_user`：`cli`，`mov %rdi, %rsp`，跳 `arch_exit_kernel`；后者最终 **`sysretq`** 回环 3。与正常 syscall 返回共用出口，避免另造一套段 / RFLAGS 恢复。
 
 **aarch64（ARM ARM：Exception return、SP_EL0、ELR_EL1）：**
 
-- 用户 PC 写在 `tf->ELR`；返回值在 `REGS[0]`（x0）。
-- 用户 SP 进 `SP_EL0`（及 `ctx->sp_el0`）；`tf->SP` 存的是**内核** trap save-area 指针，不是 EL0 SP。
-- `arch_drop_to_user`：`mov SP, X0`，跳 `el0_sync_trap_exit`；出口用 **`eret`** 回到 EL0。与 EL0 sync 返回共用向量尾。
+- 用户 PC 写在 `tf->ELR`（`ELR_EL1` 保存陷入 EL1 时的返回地址，`eret` 从 `ELR_EL1` 恢复 PC）；返回值在 `REGS[0]`（x0）。
+- 用户 SP 进 `SP_EL0`（及 `ctx->sp_el0`）；`tf->SP` 存的是**内核** trap save-area 指针，不是 EL0 SP。陷入路径 `SP_EL0` 由硬件自动保存到 `SP_EL0`，内核用 `SP_EL1` 作内核栈。
+- `arch_drop_to_user`：`mov SP, X0`，跳 `el0_sync_trap_exit`；出口用 **`eret`** 回到 EL0（同时从 `SPSR_EL1` 恢复 PSTATE）。与 EL0 sync 返回共用向量尾。
 
 Path A 不调 `arch_return_to_user`：正在处理的 syscall 返回时自然走同一条 `sysretq` / `eret`，只是 PC / SP 已被 `arch_syscall_set_user_return` 改成新镜像的入口。
 
@@ -174,9 +222,9 @@ Path A 不调 `arch_return_to_user`：正在处理的 syscall 返回时自然走
 
 ## 7. 公开 API
 
-本篇拥有：`thread_loader.h` 全套；`thread.h` 的 `create_thread` / `copy_thread` / `run_copied_thread`（创建路径以本篇为主；调度侧摘要见 `13`）；arch `thread_arch.h` 上 Path A/B 回用户与首次 ctx 钩子。说明改写自头文件 Doxygen，并已与 `.c` / `.S` 核对。
+本篇涉及的接口分布在：`thread_loader.h` 全套；`thread.h` 的 `create_thread` / `copy_thread` / `run_copied_thread`（创建路径以本篇为主；调度侧摘要见 `13`）；arch `thread_arch.h` 上 Path A/B 回用户与首次 ctx 钩子。说明改写自头文件 Doxygen，并已与 `.c` / `.S` 核对。
 
-**本篇不拥有：** `check_elf_header` / `print_elf_*` → `37`；`schedule` / 入队原语细节 → `13`/`16`；VSpace create/register → `15`/`07`。
+**本篇不涉及：** `check_elf_header` / `print_elf_*` → `37`；`schedule` / 入队原语细节 → `13`/`16`；VSpace create/register → `15`/`07`。
 
 ### 7.1 编排顺序（调用方必须遵守）
 
@@ -207,7 +255,7 @@ void run_copied_thread(u64 syscall_return_value);
 
 | 接口 | 说明 |
 |------|------|
-| `create_thread` | `vs` 非 NULL；成功则**接管**活引用。装好 `thread_entry`、kstack、`arch_set_new_thread_ctx`、tid 与参数。**不**入队、**不**调 hooks.init。失败不接管 `vs`。 |
+| `create_thread` | `vs` 非 NULL；成功则**接管**活引用。设置好 `thread_entry`、kstack、`arch_set_new_thread_ctx`、tid 与参数。**不**入队、**不**调 hooks.init。失败不接管 `vs`。 |
 | `gen_thread_from_func` | get `root_vspace` → create(`reserve=false`) → 名字堆拷贝 → `add_thread_to_manager(tm)`。create 失败 put root；add 失败 `del_thread_structure`（含 put root）。成功才写可选 out 指针。 |
 | `gen_thread_from_elf` | create/register vs → create(`run_elf_program`, reserve=true, slice) → `generate_user_stack` → `thread_set_flags(USER)`（**整字赋值**）→ 挂到**本核** `core_tm`。失败按阶段回滚。**不** destroy slice。树内现网无调用方。 |
 | `copy_thread` | src 必须是 USER；成功接管 `vs`，**任意失败都会 put 传入的 `vs`**。拷 trap frame 并 refresh/merge ctx；调 hooks.copy。返回时仍为 `init`，由调用方入队。 |
@@ -278,7 +326,7 @@ extern void run_thread(Thread_Init_Para *); /* asm；见 thread.h */
 
 ## 9. 测试
 
-现网测例大量 `gen_thread_from_func`；`gen_thread_from_elf` **无**当前 C 调用方。ELF 加载时可能 `print_elf_ph64`。本篇未复测。
+现网测试用例大量 `gen_thread_from_func`；`gen_thread_from_elf` **无**当前 C 调用方。ELF 加载时可能 `print_elf_ph64`。
 
 ```bash
 cd core && make ARCH=x86_64 config && make all && make run
@@ -298,6 +346,8 @@ cd core && make ARCH=x86_64 config && make all && make run
 
 ## 11. 变更记录
 
+- 2026-10-05：任务 1/3/5 精读——§1/§9「测例」→「测试用例」；§1「揉成一团」→「混在一起」、「两条回用户原语」→「两条原语」、「一次造用户线程」→「一次创建用户线程」、「怎么回用户」→「怎么回到用户态」；§1 表「syscall 返回路径带走」→「由 syscall 返回路径承担」；§6.6「落到 return」→「走到 return」；§6.8 标题「回用户」→「回到用户态」、「落到不同的」→「对应到不同的」；§7.2「装好」→「设置好」。
+- 2026-10-04：补硬件/架构知识——§6.4 加 Elf64_Ehdr / Elf64_Phdr 结构 ASCII 图与字段说明；§6.5 加用户栈图像布局图，写清两次 −8 的来源；§6.8 扩写 SYSRET 用 RCX 当返回 RIP、`eret` 从 ELR_EL1/SPSR_EL1 恢复 PC/PSTATE 的硬件语义（Intel SDM Vol.2 / ARM ARM）。语言润色：塞进→装入。
 - 2026-10-02：`gen_thread_from_func` add 失败改为 `del_thread_structure` 回滚（与 elf 对齐）；成功才写 out 指针。
 - 2026-09-27：中文表述润色（母语习惯）。
 - 2026-09-26：与 ch37 硬分工——篇首/§5 不再把 `modules/elf/*` 写成「本篇覆盖」；loader 只消费格式库。
@@ -305,3 +355,4 @@ cd core && make ARCH=x86_64 config && make all && make run
 - 2026-09-25：语言整理；§6.8 补 Path A/B 与 `sysretq` / `eret` 硬件出口对照；日期对齐本轮。
 - 2026-08-29：整篇重做——Path A/B 叙述；四 API 对照表；harness 零调用方；双重 −8；copy 失败 put vs；`thread_set_flags` 赋值；init 失败仍 drop；纠正「默认用 gen_thread_from_elf」叙事。
 - 2026-08-27：初稿。
+- 2026-10-05：最终词句顺畅。

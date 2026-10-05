@@ -312,7 +312,7 @@ error_t arch_start_core(cpu_id_t cpu_id);
 make ARCH=aarch64 config && make run
 ```
 
-没有单独覆盖 `boot.S` 的测例。本篇按源码整理，本轮未单独复测。
+没有单独覆盖 `boot.S` 的测试用例。
 
 ---
 

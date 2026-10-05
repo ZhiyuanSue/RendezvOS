@@ -75,7 +75,7 @@ v0.1/full/
 │   ├── 41-名称索引注册表.md
 │   └── 42-公共基础库与数据结构.md
 └── 11-测试/
-    └── 43-内核测试框架与测例索引.md
+    └── 43-内核测试框架与测试用例索引.md
 ```
 
 共 11 分区、44 篇正文。
@@ -92,7 +92,7 @@ v0.1/full/
 审定前自查（撰写侧已做一轮，Maintainer 可复验）：
 
 - 无 `old/` 引用；无绑定 `linux_layer/` 等具体上层路径。
-- core 测例命令为 `cd core && make ARCH=<isa> config && make all && make run`（非 `make build`）。
+- core 测试用例命令为 `cd core && make ARCH=<isa> config && make all && make run`（非 `make build`）。
 - 各篇 §10「限制与后续」中的远期工作应在 `evolution/TODO.md` 有对应条目或 design 占位。
 
 ---
@@ -259,10 +259,10 @@ v0.1/full/
 
 **表述逻辑（先意图，再对象，再行为，再底座）：**
 
-1. `22` **§1** — 五张设计图（`figures/`）= 整章脊骨：同步搬家、混合≈微、假出队、Msg 壳、单状态  
-2. `18` — Port / Message **对象**（两层模型、单队列、Msg 拆分）  
-3. `19` — **会合与投递行为**（推拉、`Ipc_Request`、transfer、system）  
-4. `20` / `21` — kmsg 与 hooks（横向）  
+1. `22` **§1** — 五张设计图（`figures/`）= 整章脊骨：同步搬家、混合≈微、假出队、Msg 壳、单状态
+2. `18` — Port / Message **对象**（两层模型、单队列、Msg 拆分）
+3. `19` — **会合与投递行为**（推拉、`Ipc_Request`、transfer、system）
+4. `20` / `21` — kmsg 与 hooks（横向）
 5. `22` **§2 起** — MSQ / tagged ptr / EBR **算法与 API**
 
 文件序号仍是 18→…→22；**读的时候按上面顺序**，不要按文件名从 18 盲读到 22。
@@ -483,7 +483,7 @@ v0.1/full/
 
 ## 11-测试
 
-### [x] [ ] 11-测试/43-内核测试框架与测例索引.md
+### [x] [ ] 11-测试/43-内核测试框架与测试用例索引.md
 
 职责：`BSP_test`/`AP_test`、`single_test`/`smp_test`、`check_result` 语义
 

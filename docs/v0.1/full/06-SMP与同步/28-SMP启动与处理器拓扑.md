@@ -266,7 +266,7 @@ BSP 把 `all_enabled` 写成试完之后，AP 才 `do_init_call`（意图见 `03
 
 ## 7. 公开 API
 
-本篇拥有：`smp.h` / `cpu_id.h` 里的编排与 online 查询，以及各架构 `smp.h` 的 `arch_start_smp`。`start_secondary_cpu` 由汇编跳入，定义在 `smp.c`，目前无 `smp.h` 声明。
+本篇涉及的接口分布在：`smp.h` / `cpu_id.h` 里的编排与 online 查询，以及各架构 `smp.h` 的 `arch_start_smp`。`start_secondary_cpu` 由汇编跳入，定义在 `smp.c`，目前无 `smp.h` 声明。
 
 不归本篇：`cpu_id_is_online` / `task_manager_for_cpu` → `16`；`percpu()` → `29`；软 IPI → `30`；ICR → `26`；PSCI → `39`；`arch_start_core` → 平台启动篇。
 

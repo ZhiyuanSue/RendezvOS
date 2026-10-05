@@ -10,10 +10,10 @@ EBR 在调度与线程 teardown 中的用法见 `03-任务与调度/17-EBR与线
 
 整章设计意图压在本篇 **§1 的五张图**上。建议顺序：
 
-1. **本篇 §1** — 为何同步沉进 IPC、为何 MSQ、假出队如何逼出 Msg 拆开与单状态 port  
-2. **`18`** — 两层模型与对象（port / `Msg_Data` / `Message_t`）  
-3. **`19`** — 推拉会合、`Ipc_Request`、transfer、system 投递  
-4. **`20` / `21`** — kmsg 与 hooks（横向）  
+1. **本篇 §1** — 为何同步沉进 IPC、为何 MSQ、假出队如何迫使 Msg 拆开与单状态 port
+2. **`18`** — 两层模型与对象（port / `Msg_Data` / `Message_t`）
+3. **`19`** — 推拉会合、`Ipc_Request`、transfer、system 投递
+4. **`20` / `21`** — kmsg 与 hooks（横向）
 5. **本篇 §2 起** — MSQ / tagged ptr / EBR 的算法与 API
 
 下表把五图→后果→权威篇钉死，避免三篇各讲一半、读者对不上：
@@ -23,14 +23,14 @@ EBR 在调度与线程 teardown 中的用法见 `03-任务与调度/17-EBR与线
 | `lock-vs-ipc` | 临界区线程化后，同步变成 IPC 会合；无锁是扩展前提 | `18` §1、`19` §1 | 本篇 §1.1 |
 | `hybird-vs-micro` | 混合≈微内核同构；IPC + 可感知阻塞的调度是核心件 | `18` §1 | 本篇 §1.2 |
 | `dummy-link-list` | 朴素链表无法无锁 → 必须 MS 假出队 | — | 本篇 §1.3–§1.4、§6 |
-| `ms-queue-feature` | 假出队；节点不能整段搬走；port 单状态扩展 | `18` §4.1–4.2、`19` §4.1 | 本篇 §1.4、§1.7、§6.2–6.3 |
+| `ms-queue-feature` | 假出队；节点不能整段迁移走；port 单状态扩展 | `18` §4.1–4.2、`19` §4.1 | 本篇 §1.4、§1.7、§6.2–6.3 |
 | `ipc_transfer_message` | 壳复制、载荷共享；`send_pending_msg` 兜底 | `18` §4.2、`19` §6.4 | 本篇 §1.5 |
 
 ---
 
 ## 1. 概述
 
-RendezvOS v0.1 的并发队列核心是 **Michael–Scott 无锁 MSQ**（`ms_queue_t`），用 **tagged pointer** 在指针里塞 small tag（port 会合状态等），再配 **EBR** 延迟释放节点，避免「队列上还能看见、堆里已经 free」的 UAF。
+RendezvOS v0.1 的并发队列核心是 **Michael–Scott 无锁 MSQ**（Maged M. Michael 与 Michael L. Scott 提出的多生产者多消费者无锁队列算法，`ms_queue_t`），用 **tagged pointer** 在指针里携带 small tag（port 会合状态等），再配 **EBR**（Epoch-Based Reclamation，基于世代的延迟回收）延迟释放节点，避免「队列上还能看见、堆里已经 free」的 UAF（Use-After-Free，释放后使用）。
 
 三处主要用法：port 的 `thread_queue`；每线程 send / recv 消息队列；kmalloc 跨核 free（见 kmalloc 篇）。
 
@@ -38,17 +38,17 @@ RendezvOS v0.1 的并发队列核心是 **Michael–Scott 无锁 MSQ**（`ms_que
 
 ### 1.1 同步没有消失，只是搬家了
 
-宏内核里两核都要碰同一块共享资源：一核进临界区，另一核自旋——核一多，大家轮流等，总等待能涨得很陡。
+宏内核里两核都要访问同一块共享资源：一核进临界区，另一核自旋——核数一多，各核轮流等待，总等待会急剧上升。
 
 ![锁同步 vs IPC 同步](figures/lock-vs-ipc.png)
 
-左图「使用锁同步」：两核各自跑非临界区（蓝），争用时一核进临界区（橙），另一核 **spin**（白）——吞吐被串行化。右图「使用 IPC 同步」：共享资源变成**一个 server 线程**（橙框），其它线程只发 IPC；业务侧可以写成「单线程循环收消息」。但多核同步**没消失**：两个客户端同时给 server 塞请求，**谁先谁后、会不会丢配**，全变成 **IPC 框架自己的同步问题**。
+左图「使用锁同步」：两核各自跑非临界区（蓝），争用时一核进临界区（橙），另一核 **spin**（白）——吞吐被串行化。右图「使用 IPC 同步」：共享资源变成**一个 server 线程**（橙框），其它线程只发 IPC；业务侧可以写成「单线程循环收消息」。但多核同步**没消失**：两个客户端同时向 server 投递请求，**谁先谁后、会不会丢失配对**，全变成 **IPC 框架自己的同步问题**。
 
-所以：若 IPC 还用一把大锁做会合，核数上去时争用故事和宏内核大锁差不多——混合内核「换扩展性」的叙事在底层塌掉。v0.1 的选择是 port 会合与消息队列走 **无锁 MSQ**：每核付自己那份操作成本，再加上调度切换。核少时，精心细锁往往更便宜（切换比抢锁贵）；**核变多、临界区都线程化之后**，可扩展的无锁 IPC 才是前提。
+所以：若 IPC 还用一把大锁做会合，核数增多时争用情况和宏内核大锁差不多——混合内核「换扩展性」的叙事在底层崩塌。v0.1 的选择是 port 会合与消息队列走 **无锁 MSQ**：每核承担自己那份操作成本，再加上调度切换。核少时，精心设计的细粒度锁往往更便宜（切换比获取锁贵）；**核变多、临界区都线程化之后**，可扩展的无锁 IPC 才是前提。
 
-**代价量级（直觉，非基准）：** N 个客户端抢同一把锁，最坏等待像 **O(N²)** 堆起来；「一 server + 无锁 port」每人付一次会合 / 切换，总工作更接近 **O(N)**——争用从「自旋烧核」变成「排队进 server」。
+**代价量级（直觉，非基准）：** N 个客户端争同一把锁，最坏等待像 **O(N²)** 累积；「一 server + 无锁 port」每人承担一次会合 / 切换，总工作更接近 **O(N)**——争用从「自旋消耗 CPU」变成「排队进 server」。
 
-对比：有的系统用大内核锁换验证简单；有的环假设 SPSC。我们面对的是混合内核里常见的 **MPMC 会合**（多客户端对一个 server port），所以要可带 tag 约束的 MS 队列。
+对比：有的系统用大内核锁换验证简单；有的假设 SPSC（Single-Producer Single-Consumer，单生产者单消费者）环形缓冲区。我们面对的是混合内核里常见的 **MPMC（Multi-Producer Multi-Consumer，多生产者多消费者）会合**（多客户端对一个 server port），所以要可带 tag 约束的 MS 队列。
 
 → **Port 为何存在、为何会合先于搬消息**：见 `18` §1。
 
@@ -56,9 +56,9 @@ RendezvOS v0.1 的并发队列核心是 **Michael–Scott 无锁 MSQ**（`ms_que
 
 ![多内核栈：混合内核 vs 微内核](figures/hybird-vs-micro.png)
 
-本框架里，除内存 / 线程管理外，多数内核功能以内核线程跑在高半地址；用户线程进内核有**自己的内核栈**（不是单内核栈），内核态延伸流也可以当「能收发 IPC 的执行流」看。左图：混合内核——绿为纯内核 server 栈，紫为用户线程陷入后的内核栈；IPC 模块连到所有内核栈底。右图：把业务下放到用户态后，仍是「多栈 + 中央 IPC」——**基于 IPC 的混合内核与微内核在这条轴上是同构的**；IPC + 能感知阻塞的调度因此是核心件，不是边角插件。
+本框架里，除内存 / 线程管理外，多数内核功能以内核线程跑在高半地址；用户线程进内核有**自己的内核栈**（不是单内核栈），内核态延伸流也可以当「能收发 IPC 的执行流」看。左图：混合内核——绿为纯内核 server 栈，紫为用户线程陷入后的内核栈；IPC 模块连到所有内核栈底。右图：把业务下放到用户态后，仍是「多栈 + 中央 IPC」——**基于 IPC 的混合内核与微内核在这条轴上是同构的**；IPC + 能感知阻塞的调度因此是核心件，不是边缘组件。
 
-运行条件上还有两点：IPC 路径工作在**同一内核地址空间**（用户 AS 不同，但内核映射共享，不必为会合切页表）；内核里通常**手动 schedule**——竞态主要来自多核，阻塞点必须主动让出，否则同核其它线程饿死。
+运行条件上还有两点：IPC 路径工作在**同一内核地址空间**（用户 AS（Address Space，地址空间）不同，但内核映射共享，不必为会合切页表）；内核里通常**手动 schedule**——竞态主要来自多核，阻塞点必须主动让出，否则同核其它线程饥饿。
 
 → **阻塞会合必须 `schedule`、谁跑 transfer**：见 `19` §1。
 
@@ -70,17 +70,17 @@ RendezvOS v0.1 的并发队列核心是 **Michael–Scott 无锁 MSQ**（`ms_que
 
 并发下却要在**两次非相邻读**之后再写一次：`读 dummy→next(=A)` → `读 A→next(=B)` → `写 dummy→next = B`。竞态一例：
 
-1. T1 读到 `dummy→next = A`  
-2. T2 先把 A、B 都出队，队列空（`dummy→next = NULL`）  
-3. T1 仍拿着过期的 A，读到 `A→next = B`，再把 `dummy→next` 写成 B  
+1. T1 读到 `dummy→next = A`
+2. T2 先把 A、B 都出队，队列空（`dummy→next = NULL`）
+3. T1 仍持有过期的 A，读到 `A→next = B`，再把 `dummy→next` 写成 B
 
-于是 **已被出队的 B「复活」**。无 dummy 时用独立 `head` 指向首元，矛盾同类。根因：需要**同时**原子更新「dummy→A」与「A→B」两处非相邻指针；硬件 CAS 一次只能动一个字，朴素链表无锁做不到。Michael–Scott 队列用「假出队 + 帮助推进 tail」绕开了这个双指针硬需求。
+于是 **已被出队的 B「复活」**。无 dummy 时用独立 `head` 指向首元，矛盾同类。根因：需要**同时**原子更新「dummy→A」与「A→B」两处非相邻指针；硬件 CAS 一次只能动一个字，朴素链表无锁做不到。Michael–Scott 队列用「假出队 + 帮助推进 tail」绕开了这个双指针硬性需求。
 
 ### 1.4 MSQ 四性质（假出队）
 
 ![MSQ 空队列与假出队](figures/ms-queue-feature.png)
 
-上半：空队列 = 唯一 dummy，**head 与 tail 都指向它**。下半：出队时旧 dummy 被摘掉（虚线），原先的 A 成为**新 dummy 且必须仍挂在队上**；逻辑上「弹出」的是载荷语义，节点内存不能整段搬走。
+上半：空队列 = 唯一 dummy，**head 与 tail 都指向它**。下半：出队时旧 dummy 被摘除（虚线），原先的 A 成为**新 dummy 且必须仍挂在队上**；逻辑上「弹出」的是载荷语义，节点内存不能整段迁移走。
 
 四条钉死实现取舍：
 
@@ -88,19 +88,19 @@ RendezvOS v0.1 的并发队列核心是 **Michael–Scott 无锁 MSQ**（`ms_que
 |---|------|------|
 | 1 | **MPMC** | 多客户端对一个 server port 合法 |
 | 2 | **空 = 单 dummy，head=tail** | 空判断不能靠「head 是否 NULL」 |
-| 3 | **假出队**：新 dummy **必须留队**；其 `next` 可能仍被别人读 | **不能**把刚 dequeue 的节点整段挪到另一队列；`Message_t` 只能新建壳 + 共享 `Msg_Data_t`（§1.5、`18` §4.2） |
+| 3 | **假出队**：新 dummy **必须留队**；其 `next` 可能仍被别人读 | **不能**把刚 dequeue 的节点整段迁移到另一队列；`Message_t` 只能新建壳 + 共享 `Msg_Data_t`（§1.5、`18` §4.2） |
 | 4 | **帮助推进 stale tail** | 失败不是「立刻放弃」，常需重试 |
 
 再钉两条 **IPC 侧后果**（对象在 `18`，行为在 `19`）：
 
-- **Port 单状态线程队列**：同一时刻要么全 SEND、要么全 RECV（或空）。双队列「检查 + 插入」无法单 CAS——见 `18` §1。扩展原语：`msq_enqueue_check_tail` / `msq_dequeue_check_head`（本篇 §1.7、§6.2–6.3）。  
+- **Port 单状态线程队列**：同一时刻要么全 SEND、要么全 RECV（或空）。双队列「检查 + 插入」无法单 CAS——见 `18` §1。扩展原语：`msq_enqueue_check_tail` / `msq_dequeue_check_head`（本篇 §1.7、§6.2–6.3）。
 - **会合排队的是 `Ipc_Request_t`，不是 TCB**：假出队会让「刚匹配的节点」仍当 dummy；若把 TCB 嵌进节点再入队会自环——见 `19` §4.1。
 
 ### 1.5 假出队迫使 `Msg` / `Msg_Data` 拆开
 
 ![ipc_transfer_message：壳复制、载荷共享](figures/ipc_transfer_message.png)
 
-从发送队列**取出**的是 `Message_t` 壳；transfer 时**新建**接收方壳（复制），发送侧与接收侧各自持有同一份 `Msg_Data_t`（再指向真正载荷）。不能把 MSQ 节点整段挪到接收队列——假出队要求旧节点可能仍被别人当 dummy / next 读。拆开之后：壳跟着队列走、可独立 refcount；载荷一对一绑在 `Msg_Data` 上（内核里往往无法在任意缓冲前后硬塞一个 refcount）。
+从发送队列**取出**的是 `Message_t` 壳；transfer 时**新建**接收方壳（复制），发送侧与接收侧各自持有同一份 `Msg_Data_t`（再指向真正载荷）。不能把 MSQ 节点整段迁移到接收队列——假出队要求旧节点可能仍被别人当 dummy / next 读。拆开之后：壳跟着队列走、可独立 refcount；载荷一对一绑在 `Msg_Data` 上（内核里往往无法在任意缓冲前后强行添加一个 refcount）。
 
 对象字段与生命周期：`18` §4.2。谁跑 transfer、exit race、`send_pending_msg`：`19` §1.1、§6.4。
 
@@ -108,22 +108,37 @@ RendezvOS v0.1 的并发队列核心是 **Michael–Scott 无锁 MSQ**（`ms_que
 
 CAS 只看「字是否仍等于期望值」。典型 ABA：
 
-1. T1 读到 head/tail 字 = **A**（某节点地址）  
-2. T2 把该节点 dequeue → free → 分配器又把**同一地址**分给新节点再入队  
-3. T1 的 CAS 仍看见地址 A，以为没人动过，错误成功  
+1. T1 读到 head/tail 字 = **A**（某节点地址）
+2. T2 把该节点 dequeue → free → 分配器又把**同一地址**分给新节点再入队
+3. T1 的 CAS 仍看见地址 A，以为没人动过，误判为成功
 
 队列里 head/tail/`next` 都是 CAS 目标；节点经 EBR/堆复用后，裸指针 CAS 分不清「同一地址、不同代」。
 
-本仓库：`tagged_ptr_t` = **低 48 位地址 + 高 16 位 tag**（`taggedptr.h`）。`tp_get_ptr` 对 bit47 做 **canonical 符号扩展**，否则内核高半地址解包会错。每次推进 tail / 改链时 tag 单调递增（单状态扩展下步长为 `1 << append_info_bits`，低位留给 port 状态）。即使指针回到同一地址，tag 不同 → CAS 失败 → 重试。EBR 延迟 reclaim，缩短「还挂在别人读路径上的节点被立刻复用」的窗口；**tag 解决 ABA 检测，EBR 解决读侧寿命**——二者互补，不是互相替代。
+本仓库：`tagged_ptr_t` = **低 48 位地址 + 高 16 位 tag**（`taggedptr.h`）。`tp_get_ptr` 对 bit47 做 **canonical 符号扩展**，否则内核高半地址解包会出错。每次推进 tail / 改链时 tag 单调递增（单状态扩展下步长为 `1 << append_info_bits`，低位留给 port 状态）。即使指针回到同一地址，tag 不同 → CAS 失败 → 重试。EBR 延迟 reclaim，缩短「还挂在别人读路径上的节点被立刻复用」的窗口；**tag 解决 ABA 检测，EBR 解决读侧寿命**——二者互补，不是互相替代。
+
+tagged pointer 解决 ABA 的原理（同一地址、不同代）：
+
+```text
+   tagged_ptr_t = [ 16-bit tag (高) | 48-bit 地址 (低) ]
+                  └─ append_info_bits 占 tag 低位 ─┘
+
+   T1 读 tail = {tag=5, addr=A}              ┌── T2 把 A dequeue → free → 分配器
+   准备 CAS tail {5,A}→{6,B}                  │   又把同一地址 A 分给新节点再 enqueue
+                                              ▼   tail 现在是 {tag=6, addr=A}
+   T1 的 CAS {5,A}→{6,B}：tag 不匹配（5≠6）→ 失败 → 重试
+   ── 即使地址碰巧相同，tag 单调递增让 T1 看见「这是新一代」，不会误以为没人动过
+   注：x86_64 虚拟地址 canonical 形式只用低 48 位，高 16 位空出来正好放 tag
+        bit47 = 1（内核高半）时 tp_get_ptr 须符号扩展到 64 位，否则解出的指针非法
+```
 
 ### 1.7 单状态扩展（EMPTY 枢纽）
 
 标准 MSQ 不区分「队列里现在全是谁」。Port 需要「整条队同一侧」。做法：
 
-- `append_info_bits`（≤15）占用 tag 低位存 `IPC_PORT_STATE_*`；高位仍作 ABA 计数，`tag_step = 1 << bits`。  
-- **状态只写在 tail** 的 append 域（head / next 不作权威）。  
-- `EMPTY` 是 SEND↔RECV 的枢纽：任一侧可从 EMPTY 入队并改状态；对侧 `dequeue_check_head` 才匹配。  
-- 入队 CAS 失败但 tail 状态未变：退化成同侧 MS 竞态，仍正确——对侧进不来。
+- `append_info_bits`（≤15）占用 tag 低位存 `IPC_PORT_STATE_*`；高位仍作 ABA 计数，`tag_step = 1 << bits`。
+- **状态只写在 tail** 的 append 域（head / next 不作权威）。
+- `EMPTY` 是 SEND↔RECV 的枢纽：任一侧可从 EMPTY 入队并改状态；对侧 `dequeue_check_head` 才匹配。
+- 入队 CAS 失败但 tail 状态未变：退化成同侧 MS 竞态，仍正确——对侧无法进入。
 
 细节咬合见 §6.2 / §6.3；状态机与生命周期见 `18`；enqueue_wait / try_match 调用序见 `19`。
 
@@ -138,8 +153,8 @@ CAS 只看「字是否仍等于期望值」。典型 ABA：
 权衡：
 
 - MSQ dequeue 会 **移动 dummy 节点** 并 `ref_put` 旧 dummy，故 message 拆成 `Msg_Data_t` + `Message_t` shell（`18` §4.2）。
-- EBR retire 表 overflow 时 **leak** 而非 UAF（见 EBR 篇）——用可观测泄漏换并发安全上界。
-- 无锁正确性依赖 tag / EBR 纪律；写错 `free_func` 或缺 `ebr_enter` 会导致稀有崩溃，框架把难度留在少数原语实现者，而不是每个 server 作者。
+- EBR retire 表 overflow 时 **leak**（泄漏，保留节点不回收）而非 UAF（见 EBR 篇）——用可观测泄漏换并发安全上界。
+- 无锁正确性依赖 tag / EBR 纪律；写错 `free_func` 或缺 `ebr_enter` 会导致稀有崩溃，框架将难度留给少数原语实现者，而非每个 server 作者。
 
 与相邻子系统：跨核传递的消息 / 对象常在 **A 核 `kallocator` 分配、B 核释放**，堆必须承认所有权（见 kmalloc 篇跨核 free MSQ）。单执行流 server 依赖本篇原语，而不是在业务里自写多核锁协议。
 
@@ -183,8 +198,8 @@ typedef struct Michael_Scott_Queue {
 
 ### 4.3 refcount 约定
 
-- 入队节点：caller 分配，`ref_init` 或 **`ref_get_not_zero`** 后 enqueue。后者用 CAS 环：仅当 count ≠ 0 才加一——避免「`fetch_dec` 已到 0、即将 free」与「另一核 `ref_get` 又把死对象救活」的竞态。普通 `ref_get` 在 MS 节点上不够安全。  
-- dequeue 返回数据 node 时已 **increment** refcount；caller `ref_put(..., free_func)`。  
+- 入队节点：caller 分配，`ref_init` 或 **`ref_get_not_zero`** 后 enqueue。后者用 CAS 环：仅当 count ≠ 0 才加一——避免「`fetch_dec` 已到 0、即将 free」与「另一核 `ref_get` 又把死对象救活」的竞态。普通 `ref_get` 在 MS 节点上不够安全。
+- dequeue 返回数据 node 时已 **increment** refcount；caller `ref_put(..., free_func)`。
 - `free_func` 对 IPC / message 通常为 `free_ipc_request` / `free_message_ref` → **EBR retire**。EBR 保护读侧仍可能看见的节点；refcount 保护对象逻辑寿命。
 
 ### 4.4 EBR 与 MSQ 协作（摘要）
@@ -196,6 +211,26 @@ typedef struct Michael_Scott_Queue {
 | 任意 schedule | `ebr_try_reclaim` 扫描 retire_epoch < safe_epoch |
 
 **safe epoch** — 所有 active CPU 的 `local_epoch` 最小值与 global epoch 的关系见 EBR 篇。本篇不重复公式。
+
+EBR grace period 与 retire/reclaim 时序：
+
+```text
+   global epoch:        G0          G1          G2          G3
+                       │           │           │           │
+   CPU0 local_epoch:   G0 ──enter───────────exit── G2 ──enter──...
+   CPU1 local_epoch:   G0 ──enter──exit── G1 ──enter──────────exit──...
+                       │           │           │           │
+   safe_epoch = min(active local_epoch)
+                       │           │           │
+   retire 表:        retire@G0 ────► safe≥G1 后可 reclaim
+                       │           │
+                       │           └─► retire@G1 ────► safe≥G2 后可 reclaim
+
+   关键不变量：节点 retire 时的 epoch G 必须严格小于「所有 CPU 都已离开 G、进入 G+1 之后」
+              的 safe_epoch，才能 reclaim——保证任何可能看见该节点的读者都已退出临界区
+   overflow：retire 表满时 EBR 选择 leak（保留节点）而非冒险 reclaim → UAF
+              （用可观测泄漏换并发安全上界，详见 `17`）
+```
 
 ---
 
@@ -226,6 +261,39 @@ typedef struct Michael_Scott_Queue {
 
 概念上「写端只链新节点、读端遍历可能看见已 retire 节点」仍成立；实现上 **enqueue/dequeue 都包了 EBR**，调用方勿双重 enter。
 
+MS 队列 enqueue / dequeue 算法（伪码，省略 EBR 包裹与 tag 推进细节）：
+
+```text
+   msq_enqueue(q, node, free_func):
+     loop:
+       tail = q->tail                       # 读 tail（tagged ptr）
+       next = tail->next
+       if tail == q->tail:                   # tail 未变
+         if next == NULL:                    # tail 是末元
+           if CAS(&tail->next, NULL, node):  # 链上 node
+             break                           # 成功
+         else:                               # tail 落后于 next
+           CAS(&q->tail, tail, next)         # 帮助推进 tail（help stale）
+       # 否则重试
+     CAS(&q->tail, tail, node)              # 推进 tail（tag+step）
+
+   msq_dequeue(q, free_func) -> node | none:
+     loop:
+       head = q->head; tail = q->tail
+       next = head->next                    # head 必是 dummy
+       if head == q->head:
+         if head == tail:                   # 队列空或 tail 落后
+           if next == NULL: return none    # 真·空
+           CAS(&q->tail, tail, next)       # 帮助推进 tail
+         else:
+           value = next->value             # 读首元数据
+           if CAS(&q->head, head, next):   # 假出队：head 跳到 next
+             free_func(head)               # 旧 dummy 经 EBR retire
+             return next                   # next 成为新 dummy（仍挂队）
+   注：CAS 均带 tag 比较；tag 不匹配则视为「已被别人改」，重试
+        假出队 = 逻辑弹出 value，但 next 节点内存仍挂在队上当新 dummy
+```
+
 ### 6.2 Port 会合 enqueue（check_tail）
 
 `ipc_port_enqueue_wait` 调用 `msq_enqueue_check_tail(&port->thread_queue, &req->ms_queue_node, my_ipc_state, tp_new(NULL, expected_ipc_state), free_ipc_request)`：
@@ -249,7 +317,7 @@ typedef struct Michael_Scott_Queue {
 
 ## 7. 公开 API
 
-本篇拥有：`ms_queue.h`（MSQ 全套 inline）与 `taggedptr.h`。EBR 符号说明与完整约定见 **`17` §7**（本篇只钉与 MSQ 的咬合）。
+本篇涉及的接口分布在：`ms_queue.h`（MSQ 全套 inline）与 `taggedptr.h`。EBR 符号说明与完整约定见 **`17` §7**（本篇只钉与 MSQ 的咬合）。
 
 IPC **不**把 MSQ 再包一层公开 API；上层经 `send_msg` / port 会合间接使用。
 
@@ -323,14 +391,13 @@ MSQ / EBR 纯 C + atomics，**arch 无关**。`tagged_ptr` 假设指针低位对
 
 ## 9. 测试
 
-- SMP IPC 测例对 MSQ + EBR 施加并发压力。
-- `ebr_dump_stats` — 调试 retire / overflow（非正式测例）。
+- SMP IPC 测试用例对 MSQ + EBR 施加并发压力。
+- `ebr_dump_stats` — 调试 retire / overflow（非正式测试用例）。
 
 ```bash
 cd core && make ARCH=x86_64 config && make all && make run
 ```
 
-本篇未复测。
 
 ---
 
@@ -347,6 +414,8 @@ cd core && make ARCH=x86_64 config && make all && make run
 
 ## 11. 变更记录
 
+- 2026-10-04：在现有五图之外补三张 ASCII 图：tagged pointer 解决 ABA 原理图（§1.6）、EBR grace period 与 retire/reclaim 时序图（§4.4）、MS 队列 enqueue/dequeue 算法伪码图（§6.1）；口语动词「塞/抢/碰/塞」改为「投递/争/访问/携带」、「硬塞」改为「硬加」。
+- 2026-10-05：任务 1/3/5 精读——口语词与翻译腔清理（涨得很陡→急剧上升、丢配→丢失配对、塌掉→崩塌、故事→情况、付自己那份→承担自己那份、精心细锁→精心设计的细粒度锁、堆起来→累积、烧核→消耗 CPU、环假设 SPSC→假设 SPSC 环形缓冲区、边角插件→边缘组件、饿死→饥饿、硬需求→硬性需求、摘掉→摘除、搬走/挪→迁移、硬加→强行添加、进不来→无法进入、会错→会出错）；为首现缩写补全称/释义（Michael–Scott、EBR、UAF、SPSC、MPMC、AS、leak）；§9「测例」→「测试用例」。
 - 2026-10-02：整章表述逻辑：§1 定为 04-IPC 设计脊骨（五图 + 图→18/19 后果表）；收窄本篇覆盖面（不拥有 ipc/message 契约）；§1.4–1.5 明确牵出单状态 port / Ipc_Request / Msg 拆分。
 - 2026-10-02：迁入 lockfree-IPC 五张设计图到 `figures/`，嵌入 §1.1–§1.5（锁 vs IPC、混合≈微、dummy 复活、MSQ 假出队、Msg 壳复制）；§1.6 ABA、§1.7 EMPTY；图为动机真源。
 - 2026-10-02：§1.1 补 O(N²) 锁等待 vs O(N) 无锁会合的代价直觉；回灌设计动机——朴素链表复活竞态、MSQ 四性质、ABA/tagged-ptr、EMPTY 枢纽、`ref_get_not_zero`；成稿不引用归档笔记路径。
@@ -356,3 +425,4 @@ cd core && make ARCH=x86_64 config && make all && make run
 - 2026-09-25：语言整理；§6.1 改文字流；§8 点明 CAS 随 arch。
 - 2026-08-29：回灌设计动机：同步搬家、混合≈微内核同构、MSQ 假出队→Msg 拆分；去掉审计稿外链。
 - 2026-08-27：初稿：MSQ、tag、EBR 配合与三处用法。
+- 2026-10-05：最终词句顺畅。

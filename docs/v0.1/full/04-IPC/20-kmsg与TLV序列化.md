@@ -10,13 +10,13 @@ v0.1 · 2026-09-27
 
 ## 1. 概述
 
-Port 只接通「谁」；`Message_t` 只是队列壳。业务还需要「哪种操作、带哪些参数」——若每个 server 自造二进制布局，协议会碎。
+Port 只接通「谁」；`Message_t` 只是队列壳。业务还需要「哪种操作、带哪些参数」——若每个 server 自造二进制布局，协议会碎片化。
 
 kmsg 是**可选的结构化信封**：
 
-- 固定头 `kmsg_hdr_t` + **`ipc_serial` TLV**（文档里常叫 TLV；API 名是 `ipc_serial`）
-- 打成 `Msg_Data_t`，`msg_type == MSG_DATA_TAG_KMSG`
-- **不是** RPC、不路由、不解释 compat opcode
+- 固定头 `kmsg_hdr_t` + **`ipc_serial` TLV**（Type-Length-Value，类型-长度-值三段式编码；文档里常叫 TLV；API 名是 `ipc_serial`）
+- 封装为 `Msg_Data_t`，`msg_type == MSG_DATA_TAG_KMSG`
+- **不是** RPC（Remote Procedure Call，远程过程调用）、不路由、不解释 compat opcode
 
 | 字段 | 含义 |
 |------|------|
@@ -24,9 +24,13 @@ kmsg 是**可选的结构化信封**：
 | `opcode` | 操作身份；system 在 `kmsg_system.h`，compat 各自编号 |
 | `payload` | TLV；`(opcode 语境下的) fmt` 编解码双方必须一致——编译器不查 |
 
-无 in-band version：layout 变就 **bump `KMSG_MAGIC` 并全量同步**。适合同镜像内核协作，不适合开放跨版本 wire。
+无 in-band version（不在线协议里携带版本号）：layout 变就 **递增 `KMSG_MAGIC` 并全量同步**。适合同镜像内核协作，不适合开放跨版本 wire（on-the-wire，跨进程/跨版本的线协议格式）。
 
-拆 `ipc_serial` / `kmsg`：前者只管字节流；后者只管 hdr + 打进 `Msg_Data`。热路径一次分配 hdr + payload，payload 区直接 `encode_into`。
+拆 `ipc_serial` / `kmsg`：前者只管字节流；后者只管 hdr + 嵌入 `Msg_Data`。热路径一次分配 hdr + payload，payload 区直接 `encode_into`。
+
+### 与 Linux 类似机制对照
+
+Linux netlink 是 TLV 在内核 IPC 里的典型用法：每条属性用 `struct nlattr`（`nla_len` 高 16 位存长度、低 16 位存 type）封装，`NLA_*` 类型族在协议头里定义，收发双方按协议号各自解释。本仓库的 `ipc_serial` 同为 TLV，但有两点关键差异：其一，protobuf / FlatBuffers 这类 schema 化序列化先有 IDL 再生代码，kmsg 走的是「无 schema、按 fmt 字符串现场解释」的路线——`fmt` 字符串即一次性 schema；其二，kmsg 的 `t`/`s`/`p`/`u` 等格式符扮演的是 type tag（1 字节），而 Linux nlattr 的 type 字段同样是 tag、但 length 显式编码在每个属性头里（kmsg 也是每段 `value_len` 显式编码，这点一致）。换言之，kmsg ≈ 「fmt 字符串当 schema + nlattr 风格 TLV 当 wire」，省掉了 IDL 生成步骤。
 
 ---
 
@@ -46,9 +50,9 @@ kmsg 是**可选的结构化信封**：
 
 **收：** `recv` → dequeue → `kmsg_from_msg` → 看 opcode → `ipc_serial_decode(payload, len, fmt, …)`。
 
-**core 生产点很少：** `port.c`（PORT_CLOSED）、`time.c`（timer）、`powerd`（shutdown）。海量 call site 在 linux_layer / servers。
+**core 内生产点很少：** `port.c`（PORT_CLOSED）、`time.c`（timer）、`powerd`（shutdown）。海量 call site（调用点）在 linux_layer / servers。
 
-**测例注意：** `single_ipc_test` / port / smp IPC 多用**裸** `create_message_data`；真正走 kmsg 的 core 测例主要是 timer 等。不是「IPC 测例都用 kmsg」。
+**测试用例注意：** `single_ipc_test` / port / smp IPC 多用**裸** `create_message_data`；真正走 kmsg 的 core 测试用例主要是 timer 等。不是「IPC 测试用例都用 kmsg」。
 
 解码得到的 `s` / `t` 指针指向 **message buffer 内**；异步处理须拷贝。
 
@@ -76,13 +80,44 @@ typedef struct {
 } kmsg_t;
 ```
 
-`msg_type` 只表示 **carrier 布局是 kmsg**；操作身份是 `(module, opcode)`。其它 tag + 裸缓冲合法（测例常用）。
+`msg_type` 只表示 **carrier（载体）布局是 kmsg**；操作身份是 `(module, opcode)`。其它 tag + 裸缓冲合法（测试用例常用）。
+
+kmsg 在 `Msg_Data_t` 缓冲中的字节布局：
+
+```text
+   ┌──────────────── Msg_Data_t buffer (data_len = 12 + payload_len) ────────────────┐
+   │  offset 0              4        6        8        12                              │
+   │  ┌─────────┬─────────┬─────────┬─────────┬──────────────────────────────────┐  │
+   │  │  magic  │ module  │ opcode  │  pl_len │   payload[...] (TLV, ≤ PAGE_SIZE) │  │
+   │  │  4 byte │ 2 byte  │ 2 byte  │ 4 byte  │                                  │  │
+   │  └─────────┴─────────┴─────────┴─────────┴──────────────────────────────────┘  │
+   │   'L','M','S','G'     (module=port service_id 惯例)   ipc_serial TLV          │
+   └────────────────────────────────────────────────────────────────────────────────┘
+                            ▲
+                            │ msg_type = MSG_DATA_TAG_KMSG (在 Msg_Data_t 头里)
+   kmsg_from_msg 校验：magic / 至少能放下 hdr / payload_len == data_len - 12
+                       不校验 module / opcode / TLV 合法性
+```
 
 ### 4.2 TLV wire（`ipc_serial`）
 
 ```text
-u32 param_count
-×N:  u8 type_tag | u32 value_len | u8 value[value_len]
+   u32 param_count
+   ×N:  u8 type_tag | u32 value_len | u8 value[value_len]
+```
+
+wire 字节布局示例（fmt="qi"，2 个参数：一个 i64、一个 i32）：
+
+```text
+   ┌────────────┬─────┬──────────┬──────────────────────┬─────┬──────────┬──────────────┐
+   │ param_count│ tag │ value_len│       value          │ tag │ value_len│    value     │
+   │  u32 = 2   │ 'q' │  u32 = 8 │  i64 (8 byte, 本机)  │ 'i' │  u32 = 4 │ i32 (4 byte) │
+   │  4 byte    │ 1 B │  4 byte  │       8 byte         │ 1 B │  4 byte  │   4 byte     │
+   └────────────┴─────┴──────────┴──────────────────────┴─────┴──────────┴──────────────┘
+   ◄──────────── param_count (4 byte) ────────────► ◄──── N 个 TLV ────►
+   注：本机 endian，不跨 ISA；'p' 槽宽 = sizeof(void*)（x86_64/aarch64 均为 8）
+        's'/'t' 的 value 含末尾 NUL，strlen+1；NULL → value_len=0 → 解码出 NULL
+        空 fmt="" 仍写 4 字节 param_count=0（不是「无 payload」）
 ```
 
 | 字符 | encode 入参 | decode 出参 | wire |
@@ -132,7 +167,7 @@ u32 param_count
 | `kmsg_system.h` | system opcode 表 |
 | `message.c` | Msg_Data 载体 |
 
-`ipc_serial_encode_alloc` / 独立 `encode_va`：**无仓库内调用方**（近死代码）；热路径走 `kmsg_create` 内 `encode_into`。不是必经路径。
+`ipc_serial_encode_alloc` / 独立 `encode_va`：**无仓库内调用方**（近乎死代码）；热路径走 `kmsg_create` 内 `encode_into`。不是必经路径。
 
 ---
 
@@ -140,11 +175,11 @@ u32 param_count
 
 ### 6.1 create
 
-`measure_va` → 拒 `>KMSG_MAX_PAYLOAD` → percpu `kallocator` 分配 → `encode_into_va` → 包装 Msg_Data。坏 fmt / 过大 / 无 allocator → `NULL`。`fmt==NULL` **无防护**（会崩）。
+`measure_va` → 拒绝 `>KMSG_MAX_PAYLOAD` → percpu `kallocator` 分配 → `encode_into_va` → 包装 Msg_Data。坏 fmt / 过大 / 无 allocator / `fmt==NULL` → `NULL` 或 `-E_IN_PARAM`。
 
 ### 6.2 decode
 
-要求 `param_count` == fmt 参数数、tag / len 匹配、**整缓冲吃干净**（`off==buf_len`）；`s` / `t` 非零长末字节须 `'\0'`。错误几乎统一 `-E_IN_PARAM`。
+要求 `param_count` == fmt 参数数、tag / len 匹配、**整缓冲消耗完**（`off==buf_len`）；`s` / `t` 非零长末字节须 `'\0'`。错误几乎统一 `-E_IN_PARAM`。
 
 ### 6.3 与 compat RPC（边界一句）
 
@@ -154,16 +189,16 @@ u32 param_count
 
 ## 7. 公开 API
 
-本篇拥有：`kmsg.h` / `kmsg_system.h` / `ipc_serial.h`。说明以头文件 Doxygen 为准（已与 `.c` 核对）。
+本篇涉及的接口分布在：`kmsg.h` / `kmsg_system.h` / `ipc_serial.h`。说明以头文件 Doxygen 为准（已与 `.c` 核对）。
 
-**本篇不拥有：** `Msg_Data` / Port → `18`；send/recv → `19`；compat RPC / `'t'` 命名语法 → 上层文档。
+**本篇不涉及：** `Msg_Data` / Port → `18`；send/recv → `19`；compat RPC / `'t'` 命名语法 → 上层文档。
 
 ### 7.1 编排顺序（调用方须遵守）
 
 | 场景 | 顺序 |
 |------|------|
 | 发送 kmsg | **`kmsg_create(module, op, fmt, …)`** → `create_message_with_msg` → put 多余 data 引用 → `enqueue` → `send_msg`（`19`） |
-| 接收 | `recv` → `dequeue` → **`kmsg_from_msg`** → 比 opcode → **`ipc_serial_decode(payload, payload_len, fmt, …)`** |
+| 接收 | `recv` → `dequeue` → **`kmsg_from_msg`** → 比对 opcode → **`ipc_serial_decode(payload, payload_len, fmt, …)`** |
 | 热路径自编码 | （少见）`measure_va` → 自备缓冲 → `encode_into_va`；`kmsg_create` 已内嵌此序 |
 
 空 `fmt=""` 仍产生 **4 字节** `param_count=0` 的 payload（不是「无缓冲」）。
@@ -177,7 +212,7 @@ const kmsg_t *kmsg_from_msg(const Message_t *msg);
 
 | 接口 | 说明 |
 |------|------|
-| `kmsg_create` | measure → 拒 `> KMSG_MAX_PAYLOAD` → 一次 alloc hdr+payload → encode_into → `create_message_data(MSG_DATA_TAG_KMSG, …)`。失败 NULL。不查 port、不填 reply。 |
+| `kmsg_create` | measure → 拒绝 `> KMSG_MAX_PAYLOAD` → 一次 alloc hdr+payload → encode_into → `create_message_data(MSG_DATA_TAG_KMSG, …)`。失败 NULL。不查 port、不填 reply。 |
 | `kmsg_from_msg` | 校验 tag / 长度 / `KMSG_MAGIC` / `payload_len` 一致性；**不**验 module/opcode/TLV。 |
 
 常量：`MSG_DATA_TAG_KMSG=1`；`KMSG_MAGIC=0x47534d4c`（字节 `'L','M','S','G'`）；`KMSG_MAX_PAYLOAD=PAGE_SIZE`。
@@ -197,9 +232,9 @@ void *ipc_serial_encode_alloc(const char *fmt, u32 *out_len, ...);
 | `measure_va` | 算出含 4 字节 count 的总长；不消费调用方 `va_list`（内部 copy）。 |
 | `encode_into_va` | 写入调用方缓冲；`off` 必须恰等于 `total`。 |
 | `decode` | wire `param_count` 须等于 fmt 参数个数；**读完须 `off==buf_len`**（有残留则失败——追加 `'t'` 须纳入 fmt）。`s`/`t` 指针指向缓冲内。 |
-| `encode_va` / `encode_alloc` | 自分配辅助；**树内无 C 调用方**（近死）；热路径走 `kmsg_create`。 |
+| `encode_va` / `encode_alloc` | 自分配辅助；**树内无 C 调用方**（近乎死代码）；热路径走 `kmsg_create`。 |
 
-fmt 字符：`p/q/i/u/s/t`；`'t'` 与 `'s'` wire 同形但 **tag 必须对上** 才能 decode。`fmt` 须非 NULL。
+fmt 字符：`p/q/i/u/s/t`；`'t'` 与 `'s'` wire 同形但 **tag 必须对上** 才能 decode。`fmt==NULL` 各入口（`measure_va` / `encode_into_va` / `decode`）显式拒绝返回 `-E_IN_PARAM`。
 
 ### 7.4 System opcode（`kmsg_system.h`）
 
@@ -209,7 +244,7 @@ fmt 字符：`p/q/i/u/s/t`；`'t'` 与 `'s'` wire 同形但 **tag 必须对上**
 | `KMSG_OP_SYSTEM_POWER_REBOOT` | 2 | `""` | 登记 |
 | `KMSG_OP_SYSTEM_TIMER_EXPIRE` / `_CANCEL` | 3 / 4 | `"q"` | timer |
 | `KMSG_OP_SYSTEM_PORT_CLOSED` | 5 | `"q"`（恒 0） | unregister 清队时 **仅**注入给阻塞 recv；send 侧用 `THREAD_FLAG_IPC_PORT_CLOSED`（`18` §6.2） |
-| `KMSG_OP_SYSTEM_END` | 6 | — | 上层 opcode 起点（勿重叠） |
+| `KMSG_OP_SYSTEM_END` | 6 | — | 上层 opcode 起点（不要重叠） |
 
 ---
 
@@ -221,21 +256,25 @@ fmt 字符：`p/q/i/u/s/t`；`'t'` 与 `'s'` wire 同形但 **tag 必须对上**
 
 ## 9. 测试
 
-timer 等 system kmsg；裸 Msg_Data IPC 测例**不**覆盖本篇。本篇未复测。
+timer 等 system kmsg；裸 Msg_Data IPC 测试用例**不**覆盖本篇。
 
 ---
 
 ## 10. 限制与后续
 
-- 无版本字段；错 fmt = UB。
+- 无版本字段；错 fmt = UB（Undefined Behavior，未定义行为）。
 - deny / 错误粒度粗。
 - opcode 数字可跨协议「撞号」——靠 port 隔离。
-- RPC / reply 命名 / nest token → compat。
+- RPC / reply 命名 / nest token（嵌套调用时用于回程的 cookie 标记）→ compat。
 
 ---
 
 ## 11. 变更记录
 
+- 2026-10-05：§6.1 / §7.3 同步代码修复——`ipc_serial_measure_va` / `encode_into_va` / `decode` 三个入口加 `!fmt` 检查（返回 `-E_IN_PARAM`）；§6.1 移除「`fmt==NULL` 无防护（会崩溃）」，§7.3 「`fmt` 须非 NULL」改为「各入口显式拒绝」。
+- 2026-10-04：补 kmsg 在 `Msg_Data_t` 缓冲中的字节布局图（§4.1）与 TLV wire 字节布局示例图（§4.2，含空 fmt 仍占 4 字节说明）。
+- 2026-10-05：任务 1/3/5 精读——口语词与翻译腔清理（碎→碎片化、打进→嵌入、拒→拒绝、会崩→会崩溃、吃干净→消耗完、近死→近乎死代码、比 opcode→比对 opcode、勿重叠→不要重叠）；为首现缩写补全称/释义（TLV、RPC、in-band version、wire、call site、carrier、UB、nest token）；§3/§9「测例」→「测试用例」。
+- 2026-10-05：补「与 Linux 类似机制对照」小节；最终词句顺畅。
 - 2026-10-04：§4.3 / §4.5 改题为概念名（去掉函数名 / 文件名当小节标题）。
 - 2026-09-27：中文表述润色（母语习惯）；「真源」改为「以…为准」。
 - 2026-09-26：PORT_CLOSED 生产点改写——kmsg **只**面向阻塞 recv；纠正旧稿「仅唤醒 recv」易读成「send 不醒」；与 `18` §6.2 / `kmsg_system.h` 对齐。

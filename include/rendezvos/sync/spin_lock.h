@@ -57,10 +57,7 @@ static inline void lock_mcs(spin_lock *m, spin_lock_t *me)
                 return;
 
         /* Someone there, need to link in */
-        tail->next = me;
-
-        /* Make sure we do the above setting of next. */
-        barrier();
+        atomic64_store((volatile u64 *)&tail->next, (u64)me);
 
         /* Spin on my spin variable (acquire vs unlock store). */
         while (!atomic64_load((volatile u64 *)&me->spin))

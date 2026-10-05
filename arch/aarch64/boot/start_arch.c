@@ -66,7 +66,7 @@ static void arch_syscall_helper(struct trap_frame *tf)
 
 /*
  * Bind syscall via trap_class; register_fixed_trap() reverse-scans
- * aarch64_ec_to_trap_class() (EC 0x15/0x18 -> TRAP_CLASS_SYSCALL).
+ * aarch64_ec_to_trap_class() (EC 0x15 -> TRAP_CLASS_SYSCALL).
  */
 static void init_syscall(void)
 {

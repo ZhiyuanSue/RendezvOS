@@ -2,6 +2,7 @@
 #include <arch/x86_64/PIC/IRQ.h>
 #include <arch/x86_64/cpuinfo.h>
 #include <arch/x86_64/msr.h>
+#include <arch/x86_64/sync/barrier.h>
 #include <arch/x86_64/sys_ctrl.h>
 #include <arch/x86_64/trap/trap.h>
 #include <common/types.h>
@@ -70,7 +71,7 @@ void reset_APIC(void)
         APIC_WR_REG(LVT_TIME, KERNEL_VIRT_OFFSET, APIC_LVT_MASKED);
         APIC_WR_REG(LVT_PERF, KERNEL_VIRT_OFFSET, APIC_LVT_DEL_MODE_NMI);
         APIC_WR_REG(LVT_LINT_0, KERNEL_VIRT_OFFSET, APIC_LVT_MASKED);
-        APIC_WR_REG(LVT_LINT_0, KERNEL_VIRT_OFFSET, APIC_LVT_MASKED);
+        APIC_WR_REG(LVT_LINT_1, KERNEL_VIRT_OFFSET, APIC_LVT_MASKED);
         APIC_WR_REG(TPR, KERNEL_VIRT_OFFSET, 0);
 }
 void software_enable_APIC(void)
@@ -207,6 +208,12 @@ u64 APIC_timer_init(enum timer_type sys_timer_type)
         }
         APIC_WR_REG(LVT_TIME, KERNEL_VIRT_OFFSET, lvt_timer_val);
         if (sys_timer_type == TIMER_TYPE_X86_TSC_DDL) {
+                /* SDM 10.5.4.1: in xAPIC mode an MFENCE is required between
+                 * the LVT Timer MMIO write (mode switch to TSC-deadline) and
+                 * the IA32_TSC_DEADLINE WRMSR. x2APIC mode needs no fence
+                 * (both are WRMSR, ordered by the processor). */
+                if (arch_irq_type == xAPIC_IRQ)
+                        mfence();
                 APIC_timer_reset(sys_timer_type, init_cnt);
         }
         return (u64)init_cnt;

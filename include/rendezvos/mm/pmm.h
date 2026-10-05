@@ -57,7 +57,8 @@ enum zone_type {
  *
  * Called from @c phy_mm_init after the post-reserve available range is known,
  * before @c split_pmm_zones. Set @ref nr_mem_zones and for each active zone
- * set @c lower_addr / @c upper_addr / @c pmm (static @c struct pmm only).
+ * set @c lower_addr / @c upper_addr / @c pmm (static @c struct pmm only;
+ * each zone must use a distinct @c pmm instance).
  * Weak default: one @c ZONE_NORMAL covering all available RAM + buddy.
  *
  * @param avail_lo Inclusive-style window start used by default NORMAL.

@@ -38,6 +38,10 @@ static bool pmm_zone_config_legal(void)
                 if (!mem_zones[i].pmm
                     || mem_zones[i].lower_addr >= mem_zones[i].upper_addr)
                         return false;
+                for (int j = 0; j < i; j++) {
+                        if (mem_zones[i].pmm == mem_zones[j].pmm)
+                                return false;
+                }
         }
         return true;
 }
@@ -555,17 +559,25 @@ error_t phy_mm_init(struct setup_info *arch_setup_info)
                 goto init_pmm_error;
         }
         /*generate the pmm data per zone*/
+        size_t zone_pmm_manage_offset = 0;
         for (int mem_zone = 0; mem_zone < nr_mem_zones; ++mem_zone) {
                 MemZone *zone = &(mem_zones[mem_zone]);
+                size_t zone_pmm_manage_size =
+                        zone->zone_pmm_manage_pages * PAGE_SIZE;
                 if (zone->pmm && zone->pmm->pmm_init) {
                         zone->pmm->pmm_init(
                                 zone->pmm,
                                 pmm_data_phy_start_offset
-                                        + zone_total_pages * PAGE_SIZE,
+                                        + zone_total_pages * PAGE_SIZE
+                                        + zone_pmm_manage_offset,
                                 pmm_data_phy_start_offset
                                         + zone_total_pages * PAGE_SIZE
-                                        + zone->zone_pmm_manage_pages
-                                                  * PAGE_SIZE);
+                                        + zone_pmm_manage_offset
+                                        + zone_pmm_manage_size);
+                        zone_pmm_manage_offset += zone_pmm_manage_size;
+                } else {
+                        /*no pmm or pmm have no pmm_init*/
+                        goto init_pmm_error;
                 }
         }
         return REND_SUCCESS;

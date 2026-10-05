@@ -155,7 +155,7 @@ error_t pci_scan_bar(struct pci_node *pci_dev, const pci_header_t *hdr)
                 last_bar_offset = (vaddr) & (hdr->type0.bar[5]) - (vaddr)hdr;
         } else if (hdr->common.header_type == 1) {
                 bar_offset = (vaddr) & (hdr->type1.bar[0]) - (vaddr)hdr;
-                last_bar_offset = (vaddr) & (hdr->type0.bar[1]) - (vaddr)hdr;
+                last_bar_offset = (vaddr) & (hdr->type1.bar[1]) - (vaddr)hdr;
         }
         for (u64 offset = bar_offset; offset <= last_bar_offset; offset += 4) {
                 int bar_number = (offset - bar_offset) / 4;

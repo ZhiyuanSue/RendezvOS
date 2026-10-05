@@ -125,10 +125,10 @@ void get_curr_el_trap_info(struct trap_frame *tf)
  * |-----|-------------------------------|-----------------|----------------------|----------|
  * | 0x00| Unknown reason                | ARM ARM         | UNKNOWN | ✅ | |
  * 0x01| Trapped WFI/WFE               | ARM ARM         | UNKNOWN | ✅       |
- * | 0x02| Trapped MRS/MSR               | ARM ARM         | ILLEGAL_INSTR | ✅
+ * | 0x02| Reserved/undefined EC          | ARM ARM         | ILLEGAL_INSTR | ✅
  * | | 0x03| Trapped CP15 MRC/MCR         | ARM ARM         | ILLEGAL_INSTR | ✅
- * | | 0x04| Trapped CP14 MRRC/MCRR       | ARM ARM         | ILLEGAL_INSTR | ✅
- * | | 0x05| Trapped SVE/SIMD/FP          | ARM ARM         | ILLEGAL_INSTR | ✅
+ * | | 0x04| Trapped CP15 MRRC/MCRR       | ARM ARM         | ILLEGAL_INSTR | ✅
+ * | | 0x05| Trapped CP14 MRC/MCR         | ARM ARM         | ILLEGAL_INSTR | ✅
  * | | 0x06| Trapped other instructions   | ARM ARM         | ILLEGAL_INSTR | ✅
  * | | 0x07| FP access trap                | ARM ARM         | FP_FAULT | ✅ |
  * | 0x08| FP exception                  | ARM ARM         | FP_FAULT | ✅ | |
@@ -143,7 +143,7 @@ void get_curr_el_trap_info(struct trap_frame *tf)
  * value)            | -               | -                    | ❌       | |
  * 0x11| Tag check fault (MTE)        | ARM ARM         | SECURITY             |
  * ✅       | | 0x15| SVC from lower EL            | ARM ARM         | SYSCALL
- * | ✅       | | 0x18| SVC in AArch64               | ARM ARM         | SYSCALL
+ * | ✅       | | 0x18| Trapped MSR/MRS (AArch64) | ARM ARM         | ILLEGAL_INSTR
  * | ✅       | | 0x20| Instruction abort (lower EL) | ARM ARM         |
  * PAGE_FAULT           | ✅       | | 0x21| Instruction abort (same EL)  | ARM
  * ARM         | PAGE_FAULT           | ✅       | | 0x22| PC alignment fault |
@@ -176,13 +176,15 @@ static enum trap_class aarch64_ec_to_trap_class(u64 ec)
 
         /* Trapped instruction execution */
         case 0x02:
-                return TRAP_CLASS_ILLEGAL_INSTR; /* Trapped MRS/MSR */
+                return TRAP_CLASS_ILLEGAL_INSTR; /* Reserved/undefined EC
+                                                  * (per ARM ARM D13.2.1;
+                                                  *  MRS/MSR trap is EC 0x18) */
         case 0x03:
                 return TRAP_CLASS_ILLEGAL_INSTR; /* Trapped CP15 MRC/MCR */
         case 0x04:
-                return TRAP_CLASS_ILLEGAL_INSTR; /* Trapped CP14 MRRC/MCRR */
+                return TRAP_CLASS_ILLEGAL_INSTR; /* Trapped CP15 MRRC/MCRR */
         case 0x05:
-                return TRAP_CLASS_ILLEGAL_INSTR; /* Trapped SVE/SIMD/FP */
+                return TRAP_CLASS_ILLEGAL_INSTR; /* Trapped CP14 MRC/MCR */
         case 0x06:
                 return TRAP_CLASS_ILLEGAL_INSTR; /* Trapped other instructions
                                                   */
@@ -226,17 +228,17 @@ static enum trap_class aarch64_ec_to_trap_class(u64 ec)
                 return TRAP_CLASS_SYSCALL; /* SVC from lower EL (AArch64) -
                                               user->kernel syscall */
         case 0x18:
-                return TRAP_CLASS_SYSCALL; /* SVC in AArch64 - same-EL SVC
-                                              (defensive) */
+                return TRAP_CLASS_ILLEGAL_INSTR; /* Trapped MSR/MRS system
+                                                  * register access (AArch64)
+                                                  * — per ARM ARM D13.2.1 /
+                                                  *  Linux ESR_ELx_EC_SYS64.
+                                                  *  Note: there is no
+                                                  *  "same-EL SVC" EC; SVC is
+                                                  *  always 0x15. */
         /*
-         * Note: We map both EC 0x15 and 0x18 to SYSCALL for completeness:
-         * - EC 0x15: Normal syscall path (SVC from EL0 to EL1)
-         * - EC 0x18: Same-EL SVC (should not happen in normal operation, but we
-         * handle it defensively)
-         *
-         * Most syscalls will use EC 0x15. EC 0x18 is a defensive catch for
-         * erroneous same-EL SVC instructions (kernel bugs, compromised kernel,
-         * etc.).
+         * Note: EC 0x15 is the normal syscall path (SVC from EL0 to EL1).
+         * EC 0x18 (Trapped MSR/MRS) is mapped to ILLEGAL_INSTR above — it is
+         * not a syscall; there is no "same-EL SVC" EC in the ARM ARM.
          */
 
         /* Debug exceptions */

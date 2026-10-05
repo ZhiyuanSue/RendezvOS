@@ -6,7 +6,7 @@ v0.1 · 2026-09-27
 
 Trap class / fixed / IDT·VBAR 入口见 `23-Trap抽象与分类.md`；APIC / PIC、GIC 寄存器与 EOI 细节见平台两篇；timer 语义见 `07-时间与定时器`；软 IPI 协议见 `06-SMP与同步/30-软IPI机制.md`。
 
-官方手册（本篇只写清「软件命名空间如何贴上硬件号」；寄存器细节归平台篇）：
+官方手册（本篇只写清「软件命名空间如何映射到硬件号」；寄存器细节归平台篇）：
 
 - **Intel SDM Vol.3：** IDT、向量 0–255、Local APIC 投递的向量号。
 - **ARM GIC Architecture Specification（GICv2，IHI0048）与 ARM ARM：** INTID、GICC_IAR / EOIR；CPU 侧只有 VBAR IRQ 入口。
@@ -15,14 +15,14 @@ Trap class / fixed / IDT·VBAR 入口见 `23-Trap抽象与分类.md`；APIC / PI
 
 ## 1. 概述
 
-硬件中断不会自己变成 C 函数调用。CPU 侧永远是：
+硬件中断不会自动变成 C 函数调用。CPU 侧永远是：
 
-1. 控制器（8259 / LAPIC / GIC）挑出一个**号**；
+1. 控制器（8259 / LAPIC / GIC）选出一个**号**；
 2. 架构入口把这个号写进 `trap_frame`；
 3. `trap_handler` 用这个号当下标，查 per-CPU `irq_vector[]`，调 handler；
 4. 若属性要求，再做 **EOI**（告诉硬件「这条中断处理完了」）。
 
-core 的贡献是第 3 步的**软件命名空间**：先 **reserve** 架构占用，再划 **alloc 池** 给驱动；`register_irq_handler` 要求槽已 USED，并在 **所有 CPU** 装同一 handler。这不是 Linux `request_irq`，也不是「随便拿个数字写 handler」。
+core 的贡献是第 3 步的**软件命名空间**：先 **reserve** 架构占用，再划 **alloc 池** 给驱动；`register_irq_handler` 要求槽已 USED，并在 **所有 CPU** 装同一 handler。这不是 Linux `request_irq`，也不是「随意取一个数字写 handler」。
 
 ### 1.1 硬件「号」与软件 trap id
 
@@ -32,21 +32,64 @@ core 的贡献是第 3 步的**软件命名空间**：先 **reserve** 架构占�
 | 软件 trap id | **= 向量号** | **`intid + 64`**（前 64 槽留给 ESR.EC） |
 | 谁写出这个号 | PIC 基址 / LAPIC LVT·SVR·ICR /（将来）IOAPIC RTE | `GICC_IAR` 读出 INTID；SGI 由 `GICD_SGIR` 注入 |
 
-OS 必须保证：**写进硬件的向量 / INTID，在软件表里已经 reserve 且挂了 handler**。否则要么 alloc 撞车，要么进 `unknown` panic。
+OS 必须保证：**写进硬件的向量 / INTID，在软件表里已经 reserve 且挂了 handler**。否则要么 alloc 冲突，要么进 `unknown` panic。
 
 ### 1.2 为何 per-CPU 表、却装同一 handler
 
 `DEFINE_PER_CPU(struct irq, irq_vector[NR_IRQ])`：每核一份槽位状态（USED 等），但 `register_irq_handler` 写的是**所有 online CPU 同一函数指针**。
 
-硬件原因：SMP 上同一外设可能被路由到不同核（或 IPI 打到指定核）；每核都有自己的 IDT / VBAR / GICC，入口汇编跑在**被中断的那颗核**上，查的是**本核** `percpu(irq_vector)`。若只装 BSP 的表，AP 上同一向量会 panic。
+硬件原因：SMP 上同一外设可能被路由到不同核（或 IPI 投递到指定核）；每核都有自己的 IDT / VBAR / GICC，入口汇编跑在**被中断的那颗核**上，查的是**本核** `percpu(irq_vector)`。若只装 BSP 的表，AP 上同一向量会 panic。
 
 v0.1 **没有**「每核不同 ISR」；绑核靠硬件路由（GIC ITARGETSR / 将来 IOAPIC），不是靠换软件表项。
 
 ### 1.3 EOI 与 schedule
 
-ACK：`IRQ_NEED_EOI` → `arch_eoi_irq`（x86 写 LAPIC EOI 或 PIC OCW2；aarch64 写 `GICC_EOIR`）。漏 EOI 时，同优先级 / level 触发的线可能**再也不来**。
+ACK：`IRQ_NEED_EOI` → `arch_eoi_irq`（x86 写 LAPIC EOI 或 PIC OCW2；aarch64 写 `GICC_EOIR`）。漏 EOI 时，同优先级 / level 触发的线可能**再也收不到中断**。
 
-用户态被打断且 `core_tm` 就绪 → `trap_handler` 末尾 **`schedule`**（x86 `syscall` 旁路除外——见 syscall 篇）。ISR 应短、非阻塞；长活 IPC 到线程（无 threaded IRQ）。
+用户态被打断且 `core_tm` 就绪 → `trap_handler` 末尾 **`schedule`**（x86 `syscall` 旁路除外——见 syscall 篇）。ISR 应短、非阻塞；长任务应通过 IPC 交给线程（无 threaded IRQ）。
+
+#### EOI 时序（漏 EOI 会卡住后续中断）
+
+```text
+  正常路径（IRQ_NEED_EOI=1）：
+
+   IRQ 到达 ─► IRR 置位 ─► CPU accept ─► ISR 置位 ─► ISR 执行
+                                              │
+                                              └─ trap_handler 末尾
+                                                 arch_eoi_irq ─► EOI 寄存器写 0
+                                                 └─► ISR 位清零
+                                                     └─► 同级/同向量可再来
+
+  漏 EOI 路径（IRQ_NEED_EOI=0 但硬件需要 EOI）：
+
+   IRQ 到达 ─► ISR 置位 ─► ISR 执行 ─► 返回（未 EOI）
+                                    │
+                                    └─ ISR 位仍置位
+                                       └─► 同优先级中断被屏蔽
+                                       └─► 该线不再触发（level）
+                                               或同向量不重投（edge 亦可能）
+```
+
+#### IRQ 共享与 EOI 时序（同向量多设备）
+
+x86 上多个设备可共享同一 IDT 向量（典型 PCI legacy 共享线）。共享时 ISR 必须轮询每个挂在该向量的设备：
+
+```text
+  共享向量 V 上挂了设备 A、B、C（都 register 到同一 trap id）：
+
+   IRQ 到达 ─► IDT[V] ─► trap_handler ─► 调共享 handler
+                                       │
+                                       ├─ 查设备 A 状态寄存器
+                                       │   └─ active？处理 A，清 A 中断源
+                                       ├─ 查设备 B 状态寄存器
+                                       │   └─ active？处理 B，清 B 中断源
+                                       └─ 查设备 C 状态寄存器
+                                           └─ active？处理 C，清 C 中断源
+                                       │
+                                       └─ 全部查完 ─► EOI（一次，对控制器）
+```
+
+**关键：** level 触发时，EOI 之前必须先清除所有挂在该线的设备中断源，否则 EOI 后线仍有效，会立刻再进同一向量（风暴）。本仓库 v0.1 **没有** IRQ 共享框架（`register_irq_handler` 同 id 后写覆盖，不挂链），所以共享场景属于限制项——见 §10。
 
 ---
 
@@ -94,36 +137,39 @@ DEFINE_PER_CPU(struct irq, irq_vector[NR_IRQ]);
 
 x86 上 Intel 保留 **0–31** 给架构异常（`TRAP_ARCH_USED = 32` 是上界，不是「已用个数」）。设备 / timer / IPI 必须落在 ≥32 的向量上，并避开我们 reserve 的固定槽。
 
-aarch64 上 CPU **没有** 256 项向量表；GIC 用 INTID 标识中断源。为了复用同一套 `irq_vector[]` 分发，把 EC 塞进前 64 槽、IRQ 整体平移 +64——Trap 篇说的「假统一、真映射」。
+aarch64 上 CPU **没有** 256 项向量表；GIC 用 INTID 标识中断源。为了复用同一套 `irq_vector[]` 分发，把 EC 放入前 64 槽、IRQ 整体平移 +64——Trap 篇说的「假统一、真映射」。
 
 ### 4.3 固定槽、设备池与空洞
 
-读布局时，把槽位分成三类就够了：
+读布局时，把槽位分成三类即可：
 
-**① 每核都要有的固定槽（`irq_vector_reserve_range_for_cpu`）**  
-异常 / EC、timer、IPI，以及 aarch64 上整段 SGI+PPI，都会打到「被中断的那颗核」。入口汇编查的是本核的 `irq_vector[]`，所以每个核都必须先把这些 trap id 标成 `VEC_USED`，否则该核上 `register_irq_handler` 会拒装，或者中断来了走 unknown 再 panic。  
+**① 每核都要有的固定槽（`irq_vector_reserve_range_for_cpu`）**
+异常 / EC、timer、IPI，以及 aarch64 上整段 SGI+PPI，都会打到「被中断的那颗核」。入口汇编查的是本核的 `irq_vector[]`，所以每个核都必须先把这些 trap id 标成 `VEC_USED`，否则该核上 `register_irq_handler` 会拒装，或者中断来了走 unknown 再 panic。
 注意：「每个 CPU 都需要同一组 id」不等于启动时调用 `irq_vector_reserve_range_for_all_cpus`。正确做法是：每核自己 reserve 同一组 id；之后某次 `register_irq_handler(ARCH_IRQ_VEC_*, …)` 再把**同一份** handler 写到所有核。谁在何时调用 `arch_init_irq_vector_state`，见 §6.1。
 
-**② 全局设备池（`set_alloc_pool` + 日后 `alloc`）**  
+**② 全局设备池（`set_alloc_pool` + 日后 `alloc`）**
 外设 SPI / 将来 IOAPIC·MSI 可能被路由到任意核，所以软件 trap id 必须在所有核上同一套。`irq_vector_alloc` 要求「全 CPU 都未 USED」才算空闲，成功后再**全 CPU** 置 USED。这个窗口是**全局一份**的，不是 per-CPU。
 
-**③ 空洞（既没 reserve，也不在 pool 里）**  
+**③ 空洞（既没 reserve，也不在 pool 里）**
 例如 x86 上 timer / spurious / IPI 周围那些空隙。既不能 `alloc`，也不该手写进 LVT 或路由——留给以后固定用途，或故意留空。
 
-「保留」在这里的含义是：reserve 只占坑（USED），handler 可以晚装（timer / IPI），也可以故意不装（x86 spurious：误入则 unknown，随后 panic）。
+「保留」在这里的含义是：reserve 只占位（USED），handler 可以晚装（timer / IPI），也可以故意不装（x86 spurious：误入则 unknown，随后 panic）。
 
 ```text
 x86_64 trap id（= IDT 向量）布局示意：
 
-  [0 ………… 31]  [32…]     0x20   …  0x27  …  0x30  …  [0x40 …… 0xEF]  [0xF0…]
-   └─ 每核 reserve ─┘  空洞   timer  空洞 spur  空洞 IPI 空洞 └─ 全局 alloc pool ─┘  空洞
-   (TRAP_ARCH_USED)
+  0          31   32       0x20 0x27 0x30        0x40              0xEF  0xF0      0xFF
+  ├─架构异常─┤  空洞    ──┤timer│spur│IPI│  空洞   ├─ 全局 alloc pool ─┤   空洞    │
+  └─每核 reserve─┘         │      │    │          └─  设备向量        ┘              │
+   (TRAP_ARCH_USED=32)     └─每核 reserve─────────┘                  └─未 reserve──┘
+
+  256 项 IDT 全宽；向量 0–15 不可作 APIC 投递目标（APIC 合法范围 16–255）。
 
 aarch64 trap id 布局示意：
 
-  [0 ……… 63]  [64 ……… 95]  [96 ………………… 1083]
-   └每核 EC─┘  └每核 SGI+PPI─┘  └─ 全局 SPI alloc pool ─┘
-               (intid 0–31)      (intid 32–1019)
+  0 ……… 63   64 ……… 95   96 ………………… 1083
+  └每核 EC─┘  └每核 SGI+PPI─┘  └─ 全局 SPI alloc pool ─┘
+              (intid 0–31)      (intid 32–1019)
 ```
 
 #### 各 ISA 实际占用的区间
@@ -145,10 +191,10 @@ aarch64 trap id 布局示意：
 | 区间 | 用途 | 硬件 |
 |------|------|------|
 | `[0, 63]` | EC / sync | ESR.EC，不是 GIC |
-| trap **64–95** | SGI+PPI（intid 0–31；含 IPI0、timer PPI） | **整段** reserve：SGI/PPI 的 INTID 固定，不能拿来当分设备的池。timer 的具体 trap id 仍由 `arch_get_timer_irq_num` 解析，但槽位已经落在这一段里 |
+| trap **64–95** | SGI+PPI（intid 0–31；含 IPI0、timer PPI） | **整段** reserve：SGI/PPI 的 INTID 固定，不能用作分设备的池。timer 的具体 trap id 仍由 `arch_get_timer_irq_num` 解析，但槽位已经落在这一段里 |
 | pool trap **96–1083** | SPI（intid 32–1019） | Distributor 上可配的外设线 |
 
-和 §1.2 一起看：表是 per-CPU 的，所以固定槽必须**每核各自** reserve；handler 却是全局一份——启动时只占坑，真正挂函数指针是后来的 `register_irq_handler`。
+和 §1.2 一起看：表是 per-CPU 的，所以固定槽必须**每核各自** reserve；handler 却是全局一份——启动时只占位，真正挂函数指针是后来的 `register_irq_handler`。
 
 ### 4.4 注册不变量
 
@@ -175,12 +221,12 @@ aarch64 trap id 布局示意：
 
 ### 6.1 Boot（软件表必须先于「能收到中断」）
 
-每个核在 `init_interrupt` 里都会调用一次 `arch_init_irq_vector_state`。函数本身很短，只干两件事：
+每个核在 `init_interrupt` 里都会调用一次 `arch_init_irq_vector_state`。函数本身很短，只做两件事：
 
 1. 对本核调用若干次 `irq_vector_reserve_range_for_cpu(me, …)`：在**本核**的 `irq_vector[]` 上把固定区间标成 `USED`，**不**挂 handler（区间表见 §4.3）。
 2. 调用一次 `irq_vector_set_alloc_pool(lo, hi)`：公布设备可分配的闭区间；各核 boot 时会写同一对 lo/hi，重复写无妨。
 
-boot 路径**不会**用 `irq_vector_reserve_range_for_all_cpus`。原因很简单：BSP 起来时 AP 往往还没起来，没法替别人标表；等每个核自己跑到 `init_interrupt`，自然会把自己那份固定槽占好。`reserve_for_all_cpus` 留给「所有核都已 online 之后」才需要一次性全局占坑的场景。
+boot 路径**不会**用 `irq_vector_reserve_range_for_all_cpus`。原因很简单：BSP 起来时 AP 往往还没起来，无法替其他核标记表项；等每个核自己跑到 `init_interrupt`，自然会把自己那份固定槽占好。`reserve_for_all_cpus` 留给「所有核都已 online 之后」才需要一次性全局占位的场景。
 
 ```text
 init_interrupt
@@ -207,18 +253,18 @@ trap_id = TRAP_ID(tf->trap_info)
 1. `u32 id; irq_vector_alloc(&id);` — **勿**手写 timer / IPI / EC。
 2. `register_irq_handler(id, isr, IRQ_NEED_EOI);` — 软件表就绪。
 3. **再**硬件路由 / unmask：
-   - x86：向量 = `id`（IOAPIC / MSI 见 APIC 篇；v0.1 IOAPIC 空壳 → 外设线基本接不上）。
+   - x86：向量 = `id`（IOAPIC / MSI 见 APIC 篇；v0.1 IOAPIC 空壳 → 外设线基本无法接上）。
    - aarch64：`intid = AARCH64_TRAP_ID_TO_IRQ(id)`，再 `gicd_v2_unmask_irq` / `set_affinity`。
 4. 未 USED 就 register → error log + return。
-5. ISR 返回后由 `trap_handler` 做 EOI——handler 内**不要**自己乱写 EOI，除非明确绕过 `IRQ_NEED_EOI`。
+5. ISR 返回后由 `trap_handler` 做 EOI——handler 内**不要**自行写 EOI，除非明确绕过 `IRQ_NEED_EOI`。
 
 ---
 
 ## 7. 公开 API
 
-本篇拥有：软件 trap id 命名空间与分发——`struct irq` / `irq_vector[]`、`irq_vector_*`、`register_irq_handler`、`trap_handler`、`init_interrupt`、`arch_init_irq_vector_state` / `arch_init_interrupt`、`arch_eoi_irq`、`arch_unknown_trap_handler`。说明改写自 `trap.h` / `arch/*/trap/trap.h` Doxygen（已与 `kernel/trap/trap.c`、`arch/*/trap/trap.c` 核对）。
+本篇涉及的接口分布在：软件 trap id 命名空间与分发——`struct irq` / `irq_vector[]`、`irq_vector_*`、`register_irq_handler`、`trap_handler`、`init_interrupt`、`arch_init_irq_vector_state` / `arch_init_interrupt`、`arch_eoi_irq`、`arch_unknown_trap_handler`。说明改写自 `trap.h` / `arch/*/trap/trap.h` Doxygen（已与 `kernel/trap/trap.c`、`arch/*/trap/trap.c` 核对）。
 
-**本篇不拥有：** `register_fixed_trap` / `trap_class` → `23`；weak `syscall` → `24`；APIC / PIC / GIC 寄存器与路由 → `26` / `27`；timer / IPI 业务语义 → 时间篇 / `30`。
+**本篇不涉及：** `register_fixed_trap` / `trap_class` → `23`；weak `syscall` → `24`；APIC / PIC / GIC 寄存器与路由 → `26` / `27`；timer / IPI 业务语义 → 时间篇 / `30`。
 
 ### 7.1 编排顺序（调用方须遵守）
 
@@ -296,7 +342,7 @@ void arch_unknown_trap_handler(struct trap_frame *tf);
 
 ## 9. 测试
 
-间接：timer、IPI、SMP。无单独「池耗尽」测例。本篇未复测。
+间接：timer、IPI、SMP。无单独「池耗尽」测试用例。
 
 ---
 
@@ -313,6 +359,7 @@ void arch_unknown_trap_handler(struct trap_frame *tf);
 
 ## 11. 变更记录
 
+- 2026-10-04：补 EOI 时序图（正常 vs 漏 EOI）与 IRQ 共享 + EOI 时序图；扩 x86 向量空间布局示意（标注 256 项全宽、APIC 合法范围 16–255、空洞位置）；「塞进/本篇拥有」改地道中文（放入/本篇涉及的接口分布在）。
 - 2026-10-04：§4.3 改题为「固定槽、设备池与空洞」；`arch_init_irq_vector_state` 调用步骤迁入 §6.1。
 - 2026-10-01：§4.3 按中文阅读习惯重写（保留布局示意）；同步扩写代码侧 Doxygen / 注释。
 - 2026-10-01：§4.3 扩写——`arch_init_irq_vector_state` 的每核 reserve / 全局 pool / 空洞三类槽位与布局示意；澄清为何不用 boot 期 `reserve_for_all_cpus`。
@@ -321,3 +368,5 @@ void arch_unknown_trap_handler(struct trap_frame *tf);
 - 2026-09-25：扩写硬件「号」与软件 trap id 贴合；per-CPU 表为何、EOI 硬件含义；驱动 checklist 强调先软件后路由；手册入口。
 - 2026-08-29：整篇重做——各 ISA reserve 实表；NR_IRQ / EC+offset；free / USED 陷阱。
 - 2026-08-27：初稿。
+- 2026-10-05：任务 1/3/5 精读——「测例」改「测试用例」；口语词修正（贴上→映射到、自己变成→自动变成、挑出→选出、随便拿个数字→随意取一个数字、撞车→冲突、再也不来→再也收不到中断、长活 IPC→长任务应通过 IPC、再也进不来→不再触发、就够了→即可、占坑→占位（3 处）、拿来当→用作、替别人标表→替其他核标记表项、只干两件事→只做两件事、接不上→无法接上、自己乱写 EOI→自行写 EOI）。
+- 2026-10-05：最终词句顺畅。

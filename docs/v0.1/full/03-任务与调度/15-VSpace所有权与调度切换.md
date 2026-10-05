@@ -10,20 +10,20 @@ Radix / `create` / `clone` 细节见页表与 Radix 篇；mask 跨核怎么刷�
 
 ## 1. 概述
 
-用户 `VSpace` 既是线程身份的一部分，又是硬件页表根 / ASID / TLB 的对象。若「线程放完就 `del`」，可能赶上某核还装着这份翻译，或 mask 还记着该核。
+用户 `VSpace` 既是线程身份的一部分，又是硬件页表根 / ASID / TLB 的对象。若「线程释放完就 `del`」，可能此时某核仍缓存着这份翻译，或 mask 还记录该核。
 
 两条引用要分开看：
 
 | 钉子 | 谁持有 | 干什么 |
 |------|--------|--------|
-| **所有权 ref** | `thread->vs` | 钉住对象生命周期；`create_thread` / `copy_thread` **转入**（无二次 get）；回收时 **只 put**，不卸 CR3 / TTBR |
-| **schedule CPU 额外 ref** | 本核逻辑 / `current_vspace` 仍关联该 user AS 时 | 钉住「本核还可能用着这份翻译」；切入 **另一** user（含 root→首个 user、leftover A→B）时 **get 新**；旧非 `&root_vspace` 才 **put 旧**；user→kernel **不** put |
+| **所有权 ref** | `thread->vs` | 钉住对象生命周期；`create_thread` / `copy_thread` **转入**（无二次 get）；回收时 **只 put**，不卸 CR3 / TTBR0 |
+| **schedule CPU 额外 ref** | 本核逻辑 / `current_vspace` 仍关联该 user AS（AS = 地址空间，即 VSpace）时 | 钉住「本核还可能用着这份翻译」；切入 **另一** user（含 root→首个 user、leftover A→B）时 **get 新**；旧非 `&root_vspace` 才 **put 旧**；user→kernel **不** put |
 
-再加 `tlb_cpu_mask`：哪些核**可能**还缓存着该 AS 的翻译。三者一起，才敢在 `del` / 回收 ASID 前说「没人再用」。
+再加 `tlb_cpu_mask`：哪些核**可能**还缓存着该 AS 的翻译。三者一起，才能在 `del` / 回收 ASID 前断定「没人再用」。
 
-**故意懒：** 切到 idle / 内核时 **不**把硬件改回 `root_vspace`，也 **不** clear mask / put CPU extra。内核高半区各 AS 共享，内核路径不依赖用户低半正确性；代价是 leftover user AS 可能被某核的 extra + mask 钉到之后某次 **user→user**。
+**刻意延迟：** 切到 idle / 内核时 **不**把硬件改回 `root_vspace`，也 **不** clear mask / put CPU extra。内核高半区各 AS 共享，内核路径不依赖用户低半正确性；代价是 leftover user AS 可能被某核的 extra + mask 钉住，直到之后某次 **user→user** 才清除。
 
-这和「创建时绑核、不乱迁」咬合：乱迁会打穿 percpu `me`、IPC 归属，以及 mask「谁跑过这 AS」的假设。
+这和「创建时绑核、不轻易迁核」一致：随意迁核会破坏 percpu `me`、IPC 归属，以及 mask「谁跑过这 AS」的假设。
 
 ---
 
@@ -45,7 +45,7 @@ Radix / `create` / `clone` 细节见页表与 Radix 篇；mask 跨核怎么刷�
 
 **in-place exec** — `vspace_clear_user_mappings(vs, handler, true)`：远程 mask 须清；本核位可留（见 §6.4）。
 
-常见错误：create 成功后再 put vs；USER + `&root_vspace`；未 quiesce 就 clear / del；以为切到 idle 就会清 mask。
+常见错误：create 成功后再 put vs；USER + `&root_vspace`；未 quiesce（远端核尚未切走、mask 未清零）就 clear / del；以为切到 idle 就会清 mask。
 
 ---
 
@@ -76,6 +76,32 @@ Radix / `create` / `clone` 细节见页表与 Radix 篇；mask 跨核怎么刷�
 - USER ⇒ `vs` 非 NULL 且 ≠ `&root_vspace`
 - `current_vspace == user_vs` ⇒ 本核通常已持 schedule extra，且 mask 本地位已 set（同 vs 再入不重复 get）
 - `del` / `clear(..., false)` ⇒ mask 全零（`allow_self_use` 例外见下）
+
+VSpace refcount 生命周期（以一个用户 AS 绑定两个线程、在两核上跑过为例）：
+
+```text
+   refcount 来源        事件                              ref 值   tlb_cpu_mask
+   ──────────────────────────────────────────────────────────────────────────
+   create_vspace        ref_init(1)                      1        {}
+   register_vspace     (无 ref 变化)                     1        {}
+   create_thread(T1)   ownership 转入 (无 get)            1        {}
+   T1 首次 schedule    schedule extra: get               2        {cpu0}
+                       mask_set(cpu0), 装 CR3/TTBR0
+   create_thread(T2)   ownership 转入 (无 get)            2        {cpu0}
+   T2 在 cpu1 首次跑    schedule extra: get               3        {cpu0,cpu1}
+                       mask_set(cpu1), 装根
+   T1 exit → zombie     ownership put                     2        {cpu0,cpu1}
+   cpu0 切到另一 user   schedule extra: put(T1 所在 vs)    1        {cpu1}
+                       mask_clear(cpu0), 本地 invalidate
+   T2 exit → zombie     ownership put                     0        {cpu1}
+   free_vspace_ref      unregister                        0        {cpu1}
+   del_vspace           clear(..., false) 要求 mask 全零  →  -E_REND_RC_UNEQUAL
+                       (cpu1 位仍在 → 半死对象陷阱)
+   ──────────────────────────────────────────────────────────────────────────
+   正常路径下 cpu1 也会先切走、mask 清零，再 del_vspace 才能成功 → asid_free
+```
+
+「半死对象」正是 `del_vspace` 在 mask 仍非零时返回 `-E_REND_RC_UNEQUAL` 留下的状态：已 unregister、refcount=0、但 ASID 与根页还没释放，且无公开修复 API——只能靠不变量（所有核都已切走、mask 清零）避免。
 
 ---
 
@@ -129,21 +155,62 @@ percpu(current_vspace) = new
 if old != &root_vspace:
     本地 invalidate 旧 AS
     vs_tlb_cpu_mask_clear(old)
-    ref_put(old)
+    ref_put(old)               // 放 CPU extra；不对 root put
 ```
 
 为何这样排：
 
 - **先 get 再装表**：避免装上一个已在回收中的 AS。
-- **先 set 新 mask 再装硬件**：人已经跑在新 AS 上时，别人发 shootdown 不能漏掉本核（TLB 篇同理）。
-- **先刷旧再 clear 再 put**：mask 里已经没你了，本地 TLB 却还脏着，会漏刷。
-- **先装新再丢旧**：中途故障还能退回，不必先把自己变成「无根」。
+- **先 set 新 mask 再装硬件**：本核已在新 AS 上运行时，别人发 shootdown 不能漏掉本核（TLB 篇同理）。
+- **先刷旧再 clear 再 put**：mask 里已经没本核了，本地 TLB 却还脏着，会漏刷。
+- **先装新再释放旧**：中途故障还能退回，不必先把自己变成「无根」。
+
+CR3 / TTBR0 切换时序（六步在 `schedule` 解锁后、`switch_to` 之前完成；`switch_to` 本身不碰页表根）：
+
+```text
+   schedule()                arch_set_current_user_vspace_root_asid(new)        switch_to()
+   ──────────┬───────────────────────────┬────────────────────────────────────┬──────────►
+             │ lock sched_lock           │                                    │
+             │ old = percpu(current_vspace)                                   │
+             │ old != new:               │ x86_64:  CR3 ← new->vspace_root_addr │
+             │   ref_get_not_zero(new)   │         (无 PCID 时冲掉本核 user TLB)│
+             │   mask_set(new)           │ aarch64: TTBR0_EL1 ← root|ASID       │
+             │   ─────────────────────►  │         (TCR.AS=1，按 ASID 区分)    │
+             │   percpu(current_vspace)=new                                   │
+             │   if old != root:         │                                    │
+             │     本地 invalidate old AS│                                    │
+             │     mask_clear(old)       │                                    │
+             │     ref_put(old)          │                                    │
+             │ unlock                    │                                    │ 保存 callee-saved
+             │                           │                                    │ + 内核栈指针
+             │                           │                                    │ ret → 新线程
+```
+
+页表根寄存器位域示意：
+
+```text
+   x86_64 CR3 (Intel SDM Vol.3 §4.10, 64 bit)
+   ┌─────────────────────────────────────────────────────────┐
+   │ 63      52 51                 12 11           5 4     0  │
+   │ ├─ PCID ──┤├── 物理页帧号 (PPN, 40 bit) ──┤├ 保留 ─┤├flags┤│
+   │                                  4 KiB 对齐 │          │   │
+   └─────────────────────────────────────────────────────────┘
+   本实现未开 PCID → 写 CR3 即冲掉本核 user TLB 项（除 global 项）
+
+   aarch64 TTBR0_EL1 (ARM ARM D8.2.3, with TCR.EPD0/AS)
+   ┌─────────────────────────────────────────────────────────┐
+   │ 63      48 47                                          0 │
+   │ ├─ ASID ─┤├──────── BADDR (物理根, 47 bit 对齐) ────────┤│
+   │  8 bit    TCR.T0SZ 决定有效位宽；ASID 由 TCR.A1 选 TTBR0/1 │
+   └─────────────────────────────────────────────────────────┘
+   跨核广播 invalidate 仍走 TLB 篇的 tlbi ...is / asid
+```
 
 ### 6.4 `allow_self_use` / `del` / ASID
 
 `vspace_clear_user_mappings(vs, handler, allow_self_use)`：
 
-- 保留对象 / ASID / L0 / 内核高半；拆用户映射与用户 PT。
+- 保留对象 / ASID / L0 / 内核高半；拆除用户映射与用户 PT。
 - 拒绝 root 形态。
 - **门闩：**
   - `allow_self_use && current_vspace == vs` → 只允许本 CPU 一位；远端位 → `-E_REND_RC_UNEQUAL`
@@ -154,13 +221,13 @@ in-place exec：远程须 quiesce；**本核位可留**；ASID **不换**。不�
 
 `del_vspace`：已 unregister → `clear(..., false)`（mask 全零）→ 拆结构 → **`asid_free`**（asid_free **不**再查 mask；门闩全在 clear）。无 generation：靠 mask 空 + 本地已刷。
 
-**陷阱：** `free_vspace_ref` 先 unregister 再 del；若 del 因 mask 失败，会留下已注销、refcount 0 的半死对象。正常靠不变量避免——**不是**可重试 API。失败码是 `-E_REND_RC_UNEQUAL`，不是旧稿里的 `-E_REND_AGAIN`。
+**陷阱：** `free_vspace_ref` 先 unregister 再 del；若 del 因 mask 失败，会留下已注销、refcount 0 的半死对象。正常情况下靠不变量避免——**不是**可重试 API。失败码是 `-E_REND_RC_UNEQUAL`，不是旧稿里的 `-E_REND_AGAIN`。
 
-### 6.5 合法但容易当 bug 的状态
+### 6.5 合法但容易被当作 bug 的状态
 
 - 本核在跑 idle，但 `current_vspace` 仍是已退出进程的 vs。
 - 末线程 ownership put 后对象未必立刻 `del`——常被某核 schedule extra 钉住。
-- 内核线程硬件仍指向上一用户低半——只用不碰低半即可。
+- 内核线程硬件仍指向上一用户低半——只用而不访问低半即可。
 
 ---
 
@@ -193,20 +260,9 @@ in-place exec：远程须 quiesce；**本核位可留**；ASID **不换**。不�
 
 仅当 **next** 带 `THREAD_FLAG_USER`：
 
-1. `new_vs` 空或 `== &root_vspace` → 报错，不 switch  
-2. `old_vs == new_vs` → **无操作**（不 get / 不改 mask / 不装根）  
-3. 否则六步（**不可乱序**）：
-
-```text
-ref_get_not_zero(new)
-vs_tlb_cpu_mask_set(new)          // 先 set 新
-arch_set_current_user_vspace_root_asid(new)
-percpu(current_vspace) = new
-if old != &root_vspace:
-    本地 invalidate 旧 AS
-    vs_tlb_cpu_mask_clear(old)
-    ref_put(old)                  // 放 CPU extra；不对 root put
-```
+1. `new_vs` 空或 `== &root_vspace` → 报错，不 switch
+2. `old_vs == new_vs` → **无操作**（不 get / 不改 mask / 不装根）
+3. 否则六步（**不可乱序**，详见 §6.3 的代码与「为何这样排」）
 
 | 转移 | 行为 |
 |------|------|
@@ -230,9 +286,9 @@ extern VSpace *current_vspace; /* per-CPU；用 percpu() */
 | 接口 | 说明 |
 |------|------|
 | `vspace_clear_user_mappings` | 清用户低半，保留对象 / ASID / 根帧 / 内核半。禁止对 root。门闩：`allow_self_use && current_vspace==vs` → 只许本核一位；否则（含 allow 但 current≠vs）→ mask **全零**；失败返回 `-E_REND_RC_UNEQUAL`（**不是** `-E_REND_AGAIN`）。 |
-| `del_vspace` | 须已 unregister；`clear(..., false)` → 毁 radix → 放根页 → **`asid_free`**（不再查 mask）→ 放结构；`*vs=NULL`。仍 registered → `-E_IN_PARAM`。 |
+| `del_vspace` | 须已 unregister；`clear(..., false)` → 销毁 radix → 释放根页 → **`asid_free`**（不再查 mask）→ 释放结构；`*vs=NULL`。仍 registered → `-E_IN_PARAM`。 |
 | `free_vspace_ref` | **先 unregister 再 del**。若 del 因 mask 失败，会留下已注销、refcount 为 0 的半死对象；**没有公开的重试 / 修复接口**（靠不变量避免）。 |
-| `percpu(current_vspace)` | 逻辑上的当前 AS；user→kernel **不会**清掉。 |
+| `percpu(current_vspace)` | 逻辑上的当前 AS；user→kernel **不会**清除。 |
 
 `create` / `clone` / `register` 签名与一般说明见 `07` §7.4；本篇只钉「何时 register、何时转入、何时敢 clear/del」。
 
@@ -251,7 +307,7 @@ extern VSpace *current_vspace; /* per-CPU；用 percpu() */
 
 ## 9. 测试
 
-无单独「所有权」测例；随用户 create / 切换 / exec clear / 回收路径与 SMP unmap 覆盖。本篇未复测。
+无单独「所有权」测试用例；随用户 create / 切换 / exec clear / 回收路径与 SMP unmap 覆盖。
 
 ---
 
@@ -266,9 +322,12 @@ extern VSpace *current_vspace; /* per-CPU；用 percpu() */
 
 ## 11. 变更记录
 
+- 2026-10-05：任务 1/3/5 精读——§9「测例」→「测试用例」；§1「放完就 del」→「释放完就 del」、「装着这份翻译」→「缓存着这份翻译」、「记着该核」→「记录该核」、「才敢…说」→「才能…断定」、「咬合」→「一致」、「乱迁会打穿」→「随意迁核会破坏」；§1 表首次出现 AS 补说明（= 地址空间，即 VSpace）；§3「未 quiesce」补说明（远端核尚未切走、mask 未清零）；§6.3「先装新再丢旧」→「先装新再释放旧」、`ref_put(old)` 补「放 CPU extra；不对 root put」注释；§6.4「拆用户映射」→「拆除用户映射」；§6.5「不碰低半」→「不访问低半」；§7.4「毁 radix / 放根页 / 放结构」→「销毁 radix / 释放根页 / 释放结构」、「清掉」→「清除」；§7.3 重复的六步代码块改为交叉引用 §6.3。
+- 2026-10-04：补硬件/架构知识——§6.3 加 CR3 / TTBR0 切换时序图与寄存器位域示意（Intel SDM Vol.3 §4.10、ARM ARM D8.2.3）；§4.3 加 VSpace refcount 生命周期图，演示 ownership / schedule extra / tlb_cpu_mask 三者咬合与「半死对象」陷阱。语言润色：不乱迁→不轻易迁核、钉到→钉住。
 - 2026-09-27：中文表述润色（母语习惯）。
 - 2026-09-26：对照 `schedule` USER 块——纠正 §1「仅 user→另一 user 才 get/put」：实为切入另一 user 即 get 新，旧非 root 才 put；user→kernel 仍不 put。
 - 2026-09-26：§7 全文审阅——补强 `free_vspace_ref` / clear 门闩 / `current_vspace` Doxygen；写清转入·六步·回收编排与半死对象陷阱。
 - 2026-09-25：语言整理；§6.3 补「为何」；§8 扩写 CR3 / TTBR0 装根与「内核可不换根」的硬件前提。
 - 2026-08-29：整篇重做——双引用叙述；六步顺序；user→kernel 滞后写死；`allow_self_use` 精确条件；失败码 `-E_REND_RC_UNEQUAL`；与 TLB / ASID / TM 分工。
 - 2026-08-26：初稿。
+- 2026-10-05：最终词句顺畅。

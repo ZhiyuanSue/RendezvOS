@@ -120,7 +120,7 @@ static error_t one_write(u8 *base, u32 cap, u32 *off, char fc, va_list *ap)
 
 error_t ipc_serial_measure_va(const char *fmt, va_list ap, u32 *total_out)
 {
-        if (!total_out)
+        if (!total_out || !fmt)
                 return -E_IN_PARAM;
         *total_out = 0;
 
@@ -146,7 +146,7 @@ error_t ipc_serial_measure_va(const char *fmt, va_list ap, u32 *total_out)
 error_t ipc_serial_encode_into_va(void *buf, u32 total, const char *fmt,
                                   va_list ap)
 {
-        if (!buf || total < 4u)
+        if (!buf || total < 4u || !fmt)
                 return -E_IN_PARAM;
 
         u32 n_param = (u32)fmt_param_count(fmt);
@@ -285,7 +285,7 @@ static error_t one_read(const u8 *base, u32 buf_len, u32 *off, char expect,
 
 error_t ipc_serial_decode(const void *buf, u32 buf_len, const char *fmt, ...)
 {
-        if (!buf || buf_len < 4u)
+        if (!buf || buf_len < 4u || !fmt)
                 return -E_IN_PARAM;
 
         u32 n_wire;
