@@ -1,5 +1,8 @@
-# README
-我试图支持AMD的GPU用于推理和计算，因此，尝试搜集，阅读Linux内核中关于ROCm相关的内容
+# ROCm / GPU 直通笔记
+
+> evolution：本机 VFIO / QEMU / KFD 与 Linux ROCm 阅读笔记，**不是** v0.1 现行契约。将来 GPU 路径会接着写。
+
+我试图支持 AMD 的 GPU 用于推理和计算，因此搜集、阅读 Linux 内核中关于 ROCm 相关的内容。
 
 # 使用虚拟机显卡直通的方式
 我还是记录一下我在这台机器上的操作。

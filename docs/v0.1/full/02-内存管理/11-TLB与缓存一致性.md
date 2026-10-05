@@ -130,24 +130,114 @@ AArch64 用 **`TLBI`** 系列指令做 TLB 维护，参数里常带 ASID 与页�
 
 树内 **没有** 可移植 `dcache_clean` / `icache_invalidate` 族（aarch64 `sync/cache.h` 为空）。设备 / DMA / 自修改代码接入之前，先把硬件名词记录在此，避免和 TLB 篇混为一谈。
 
-**x86 内存类型（SDM；页表粗粒度控制）：**
+#### 6.3.1 x86 内存类型与 PAT
 
-| 类型 | 直观含义 | 本仓库 |
-|------|------|--------|
-| UC / UC- | 不缓存，强序 | LAPIC 等 MMIO：`UNCACHED` → `PCD\|PWT` |
-| WC | 写合并 | 未单独暴露 |
-| WT / WB / WP | 通写 / 回写 / 写保护 | 普通 RAM 默认走 WB 类路径 |
+**SDM 卷三表 11-2 的内存类型**（页表 / MTRR / PAT 共同决定最终类型）：
 
-更细的 **PAT**（Page Attribute Table）可把同一组 PCD/PWT 解析为多种类型；v0.1 **未接入 PAT 编程**，`07` 已写明粗粒度。全局还有 **CR0.CD / CR0.NW**：正常运行应清零（允许缓存）；置 CD 等于整机关闭缓存，仅调试用。
+| 类型 | 直观含义 | 写回语义 | 本仓库 |
+|------|------|------|--------|
+| **UC**（Strong Un-cacheable） | 不缓存，强序 | 不可重排、不可合并 | LAPIC 等 MMIO：`UNCACHED` → `PCD\|PWT` |
+| **UC-**（PAT 中可降级） | UC 的弱化版，允许在某些组合下被 WC 覆盖 | 同 UC | PAT 编程时区分 |
+| **WC**（Write Combining） | 写合并 | 写可暂存到 write-combining buffer，一次刷出 | 未单独暴露 |
+| **WT**（Write Through） | 通写 | 写同时进 cache 与内存 | 普通 RAM 默认不走 |
+| **WB**（Write Back） | 回写 | 写只进 cache，脏后回写 | 普通 RAM 默认 |
+| **WP**（Write Protected） | 写保护 | 读可 cache，写穿透 | 当前未用 |
 
-**aarch64 PoC / PoU 与 IC/DC（ARM ARM）：**
+**全局开关 CR0.CD / CR0.NW**（SDM 卷二 CR0）：
+
+| 位 | 置 1 含义 | 清零含义 |
+|----|----|----|
+| **CD**（bit 30，Cache Disable） | 整机禁 cache（仅调试用） | 允许 cache，个别页可由 PCD/PWT/PAT 单独禁 |
+| **NW**（Not Write-through） | 配合 CD 控制写行为 | 正常回写策略 |
+
+正常运行两位置零即可——单页粒度的非 cache 由 PCD/PWT/PAT 决定，不需要动 CR0。
+
+**PAT（Page Attribute Table）**（SDM 卷三 §11.12）：8 项寄存器，把 PTE 的 `PAT|PCD|PWT` 三位（共 8 种组合）映射到上表的具体内存类型。v0.1 **未编程 PAT**——上电默认布局足以让 `PCD|PWT=11` 解析为 UC、`00` 解析为 WB，覆盖 MMIO 与普通 RAM 两类需求；后续若要在大块 RAM 上开 WC（例如图形缓冲、大 DMA 描述符），再写 IA32_PAT 并同步到所有核。本仓库页表篇 §4.5 已写明粗粒度策略。
+
+**缓存拓扑发现：CPUID.02H**（SDM 卷二 CPUID）：EAX=2 一次性枚举 cache / TLB 描述符，调用方按 Intel 公布的查找表解码一字节（例如 `0x0E` = 24 KiB L1 数据 cache、6-way、行 64 B）。core 当前不依赖此信息——buddy / map_handler 不做 cache-aware 着色；记录在此供后续 cache 优化或自修改代码路径使用。
+
+#### 6.3.2 aarch64 屏障域与 DMB/DSB 参数
+
+ARM 屏障按 **共享域** × **访问类型** 两维取参数。共享域四档：
+
+| 域 | 含义 |
+|----|----|
+| **nSH**（Non-shareable） | 只当前 PE 访问 |
+| **ISH**（Inner Shareable） | 一组 PE 间一致（典型一簇核） |
+| **OSH**（Outer Shareable） | 跨外设 / 跨簇一致 |
+| **SY**（Full System） | 全局 |
+
+访问类型三档：**LD**（Load-Load / Load-Store，对 Store→Load 不约束）、**ST**（Store-Store）、**SY**（Any-Any，全部约束）。组合出下表（`DMB` 与 `DSB` 共用同一组助记符；`DSB` 额外保证「完成才返回」，`DMB` 只保序）：
+
+| | nSH | ISH | OSH | SY |
+|----|----|----|----|----|
+| LD | `DMB NSHLD` | `DMB ISHLD` | `DMB OSHLD` | `DMB LD` |
+| ST | `DMB NSHST` | `DMB ISHST` | `DMB OSHST` | `DMB ST` |
+| Any | `DMB NSH` | `DMB ISH` | `DMB OSH` | `DMB SY` |
+
+本仓库 TLBI 上下文同步用 `dsb(ISHST)` / `dsb(ISH)` / `isb`（见 §6.1），其余屏障语义见 `31-锁与内存屏障.md`。`LDAR` / `STLR`（acquire / release 字宽）不在本篇范围。
+
+#### 6.3.3 aarch64 TLBI 变体目录
+
+`TLBI` 系列指令的助记符后缀编码了「域 / 范围 / EL / 是否 Last level」。本仓库 inline 用到的见 §6.1 表；下表给出完整目录供对照 ARM ARM：
+
+| 后缀 | 含义 |
+|----|----|
+| `*`（无后缀） | 本地 PE |
+| `*IS` | Inner Shareable 广播 |
+| `*OS` | Outer Shareable 广播（ARMv8.4 起） |
+| `ALLE1` | EL1&0 当前 VMID 的 stage-1 全清 |
+| `ALLE2` / `ALLE3` | EL2 / EL3 全清 |
+| `ASIDE1` | 按 ASID 清（EL1&0） |
+| `VAE1` | 按 VA+ASID 清单页（EL1&0） |
+| `VAAE1` | 按 VA 清单页，忽略 ASID |
+| `IPAS2E1` | IPA→PA 映射清（EL2 stage-2） |
+| `VMALLE1` | 按 VMID 清 EL1&0 |
+| `RVA*` / `RVAA*` | Range 失效（ARMv8.4 起；带 `base / num / scale / ttl`） |
+| `…L`（如 `VALE1`） | Last level only（只刷最后一级翻译，不刷中间级） |
+
+带 `VM*` 的后缀多与 VMID / 虚拟化翻译相关；RendezvOS v0.1 不开 EL2 stage-2，stage-2 变体不在 inline 里。Range 失效若启用，可把 §7.3 表里 `invalidate_range` 的逐页循环换成单条 `rva*is`，但需要 **FEAT_TLBIRANGE**（ARMv8.4）——目前仍退化逐页。
+
+#### 6.3.4 aarch64 IC / DC 维护指令
+
+**PoC / PoU**（ARM ARM，本仓库未封装）：
 
 | 点 | 含义 |
-|----|------|
+|----|----|
 | **PoC**（Point of Coherency） | 「对系统里所有观察者都一致」的汇合点（常到内存/互连） |
 | **PoU**（Point of Unification） | 「对本 PE 的 I 与 D 侧一致」的点（常到本核 unification） |
 
-常用指令族（**未**封装进本仓库 API）：`IC IALLU` / `IALLUIS` / `IVAU`（指令 cache）；`DC ZVA` / `IVAC` / `CVAC` / `CIVAC` / `ISW`…（数据 cache 按 VA 或 set/way）。改可执行页、加载固件 blob、将来 DMA 缓冲与 CPU 共享时，需要「先 DC 再 IC」一类序列——接入业务路径时再写入 `sync/cache.h`，本篇不假装已有实现。
+**IC 系列**（指令 cache）：
+
+| 指令 | 作用 |
+|----|----|
+| `IC IALLU` | 本 PE 全部指令 cache 失效 |
+| `IC IALLUIS` | Inner Shareable 域所有 PE 的指令 cache 失效 |
+| `IC IVAU` | 按虚拟地址失效某行 |
+
+**DC 系列**（数据 cache；按 VA 或 set/way）：
+
+| 指令 | 作用 |
+|----|----|
+| `DC ZVA` | 把 `DCZID_EL0` 给出的一块（不一定等于 cache 行）清零 |
+| `DC IVAC` | 按 VA 失效到 PoC |
+| `DC CVAC` | 按 VA clean 到 PoC |
+| `DC CVAU` | 按 VA clean 到 PoU |
+| `DC CIVAC` | 按 VA clean + invalidate 到 PoC |
+| `DC ISW` | 按 set/way invalidate |
+| `DC CSW` | 按 set/way clean |
+| `DC CISW` | 按 set/way clean + invalidate |
+
+**`DC ZVA` 的使能条件**（ARM ARM `DCZID_EL0`）：
+
+| 位 | 含义 |
+|----|----|
+| **DZP**（bit 4） | 0 = 允许 `DC ZVA`；1 = 禁止。需在用户态使用前确认已清零 |
+| **BS**（bits [3:0]） | 块大小为 2^(BS+2) 字节；最大 9 → 2 KiB |
+
+`DC ZVA` 常用于大块用户清零（`memset(p, 0, big)`）：先确认 `DCZID_EL0.DZP==0`，再按行大小（`BS` 算出）逐行清零，比按字节写快得多。core 当前未封装此路径——`map_handler_zero_page` 走普通 `memset`；记录在此供后续 zero-on-fault 优化。
+
+改可执行页、加载固件 blob、将来 DMA 缓冲与 CPU 共享时，需要「先 DC clean 到 PoC / PoU，再 IC invalidate」一类序列——接入业务路径时再写入 `sync/cache.h`，本篇不假装已有实现。
 
 ---
 
@@ -242,6 +332,7 @@ void arch_smp_flush_tlb_init(void);
 
 ## 11. 变更记录
 
+- 2026-10-05：§6.3 扩写硬件背景（PAT/CR0/CPUID.02H、DMB 矩阵、TLBI 目录、DC ZVA）。打分前校正：CPUID `0x0E` 按 SDM 为 24 KiB/6-way 而非 64-set×8-way；range TLBI 是 FEAT_TLBIRANGE 不是 TLS；`DC ZVA` 清的是 DCZID 块（2^(BS+2)）不是 cache 行；`ALLE1` 是当前 VMID 的 stage-1 全清。来源：`core/docs/old/cache&tlb.md` 迁移审核。
 - 2026-10-04：全文中文表述整理——「再抄一遍」→「再抄录一遍」；「以后另写」→「后续另写」；「对得上」→「保持一致」；「钉过」→「锁定过」；「怎么送」→「如何发送」；「留着」→「保留着」；「全机狂刷」→「全机全部刷掉」；「不理」→「忽略」；「卡着」→「约束」；「再写长一遍」→「再详细写一遍」；「落在」→「位于」；「拿着」→「持有」；「不能乱」→「不能打乱」；「人已经跑在…你」→「新线程已经在…本核」；「漏掉你」→「漏掉本核」；「没你了/脏着」→「没有本核/留有脏项」；「留到」→「保留到」；「装上」→「映射上」；「跑过的核都得动到」→「运行过的核都要处理到」；「补两件事」→「补充两件事」；「不是一回事」→「不是同一件事」；「丢掉旧项」→「失效旧项」；「冲掉」→「刷掉」；「靠」→「依赖」；「还没就绪」→「尚未就绪」；「叙事」→「解释」；「想当然当成」→「想当然地当成」；「对上」→「对应」；「点到为止」→「简要说明」；「套路/随便加点装饰」→「流程/随意添加的装饰」；「丢掉」→「丢弃」；「带着」→「持有」；「写了」→「已写明」；「走到」→「执行到」；「注册上」→「注册」；「不走这条通道」→「不经过这条通道」；「接上/钉在这里/混谈」→「接入/记录在此/混为一谈」；「粗控」→「粗粒度控制」；「直观」→「直观含义」；「解成」→「解析为」；「未接」→「未接入」；「整机关缓存」→「整机关闭缓存」；「装固件 blob/接到业务路径时再写进」→「加载固件 blob/接入业务路径时再写入」；「整刷」→「整空间刷」；「单测/靠」→「单元测试/依赖」；「属远期」→「属于远期」；§7「本篇拥有」→「本篇涉及的接口分布在」。
 - 2026-10-04：§4.1 补 `vs_tlb_cpu_bitmap_t` / `tlb_cpu_mask` 字段。
 - 2026-10-04：§4 只留 mask / map 策略不变量；硬件刷法与 cache 附录迁入 §6.1 / §6.3。

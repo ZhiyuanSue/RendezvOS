@@ -1,18 +1,9 @@
 # Core 待办
 
-<<<<<<< HEAD
-归档：[`archive/TODO_DONE.md`](archive/TODO_DONE.md)（含「明确不做」）  
-接口：[`GUIDE.md`](GUIDE.md) §6 · [`USING_CORE.md`](USING_CORE.md)
-
-**规则：** 完成一项 → 写入 DONE 归档，**从本文件删掉该项**；本文件只列 **core 内**未完成工作。
-
-**不在此列：** console / UART RX / `uart_server` / log handoff 等 **compat 与上层**事项 → [`doc/linux_compat/NEXT_PLAN.md`](../../doc/linux_compat/NEXT_PLAN.md)、[`log.md`](log.md)、[`STDIO_SHIM.md`](../../doc/linux_compat/STDIO_SHIM.md)。
-=======
 归档：[`archive/TODO_DONE.md`](archive/TODO_DONE.md)（含「明确不做」与已关闭项）  
 接口：[`GUIDE.md`](GUIDE.md) §6 · [`USING_CORE.md`](USING_CORE.md) · [`log.md`](log.md)
 
 **规则：** 完成或关闭一项 → 写入 DONE 归档，**从本文件删掉**；本文件只列未完成工作。
->>>>>>> affinity
 
 ---
 
@@ -23,23 +14,14 @@
 | **B** | 值得做、可排期 |
 | **C** | 远期；有需要再开 |
 
-<<<<<<< HEAD
-**冻结前主线：** Doxygen 随手（#50）。
-=======
 **2026-08-25：** 轮询 `uart_getc`（DONE #68）与 **创建时线程 CPU affinity**（DONE #72）已落地并经 maintainer 同意。**无** `core-v0.1-frozen` tag 时，剩余冻前债以本文件 B 档为准；IRQ affinity **不**再挡 freeze（与 IOAPIC 同档远期，见 DONE #14）。
 
 **现行 log（够用即可）：** `printk` / `pr_*` → 同步 `uart_putc`；上层 `write(1/2)` 可走 `log_put_locked`（compat 接线）。见 [`log.md`](log.md)。
->>>>>>> affinity
 
 ---
 
 ## B. 可排期
 
-<<<<<<< HEAD
-### 关键 API Doxygen（#50）
-
-- 冻结对外承诺的入口：`port.h`、`pmm_set_reclaim_hook`、`configure_pmm_zones_hook`、trap vector alloc 等。
-=======
 ### 1. 中断 CPU affinity（IRQ 绑哪个 CPU 处理）
 
 **现状：** `irq_vector[]` per-CPU；`register_irq_handler` 全核安装。aarch64 `gicd_v2_set_affinity` 仅 arch 内部；x86 IOAPIC 路由空（见 [`interrupt.md`](interrupt.md)、DONE「明确不做」#14）。线程侧创建时绑核见 DONE #72 / [`USING_CORE.md`](USING_CORE.md) §3.12。
@@ -57,16 +39,11 @@
 ### 2. 关键 API Doxygen（#50）
 
 - 对外承诺的入口：`port.h`、`pmm_set_reclaim_hook`、`configure_pmm_zones_hook`、trap vector alloc、**已落地的线程 affinity 头注释**（`thread.h`）、将来 IRQ affinity。
->>>>>>> affinity
 - 改到哪个头就补 `@brief` / 参数约定；与 `GUIDE.md` §6、`USING_CORE.md` 一致。
 
 ---
 
-<<<<<<< HEAD
-## C. 非冻结（core 内远期）
-=======
 ## C. 远期
->>>>>>> affinity
 
 | 项 | 说明 |
 |----|------|
@@ -77,8 +54,6 @@
 | aarch64 `boot.S` EL3/SPSR/ELR | 仅从 EL3 进内核时需要 |
 | lockfree-ipc §8.3–8.5 | 批量 / 广播 / 调度感知 IPC |
 | 真 capability / 本地 port handle | 上层策略模型 |
-<<<<<<< HEAD
-=======
 | UART RX IRQ / IOAPIC | 轮询 `uart_getc` 已有（DONE #68）；IRQ 路由仍见 DONE #14 |
 | Log 前后端 / IPC server（#46） | 见 DONE #69–#71；归上层 + panic 直写 |
 
@@ -98,4 +73,3 @@
 | 2026-08-25 | 创建时线程 affinity → DONE #72；IRQ affinity 改 B（不挡 freeze）；运行期迁移进 C |
 | 2026-08-23 | 关闭 UART/log 冻前主线；曾列 B.1/B.2 affinity 为冻结范围 |
 | 2026-08-23 | 初版重构：剩 #50 + C 表 |
->>>>>>> affinity

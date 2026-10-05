@@ -193,7 +193,8 @@ sel_stack:
 	
 	.global	set_stack
 set_stack:
-	adr	x0,#boot_stack
+	adrp	x0,boot_stack
+	add	x0,x0,:lo12:boot_stack
 	add	x0,x0,#boot_stack_size
 	mov	sp,x0
 	ret

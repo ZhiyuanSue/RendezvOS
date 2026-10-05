@@ -17,7 +17,8 @@ core/docs/
 └── v0.1/
     ├── full/                 与代码对应的全量说明
     ├── compat/               给调用 core 的上层用的操作说明
-    └── evolution/            待办、归档、远期设计
+    ├── evolution/            待办、归档、远期设计
+    └── reference/            板级资产（如 QEMU virt 样例 DTS），不是叙事文档
 ```
 
 **full** — 维护 core 或需要实现细节时读。  
