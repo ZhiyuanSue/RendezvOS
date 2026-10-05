@@ -140,6 +140,8 @@ CPU 只有一根 INTR；8259 用中断向量号告诉 CPU「查 IDT 哪一项」
 
 随后用 **OCW1** 写 IMR（中断屏蔽寄存器）：主片初值 **`0xFB`**（放开 cascade IRQ2，其余 mask）、从片 **`0xFF`** 全 mask。设备要用时再 `enable_PIC_IRQ`（清 IMR 对应位）。
 
+另外，可以找到一些 8259A 入门：例如[CSDN：8259A 介绍](https://blog.csdn.net/weixin_46716100/article/details/122205489)。用来建立 ICW1–4 / OCW 的顺序印象可以，**不是** datasheet，也不是 `init_PIC` 的对照。端口、基址、`0xFB`/`0xFF` 以本篇和 `PIC.c` 为准。
+
 8259 内部还有和 APIC 同名但不同片的概念，读端口时别混：
 
 | 名字 | 在 8259 里 | OS 日常 |
@@ -595,6 +597,7 @@ u64 PIT_get_hz(void);             /* PIT_TICK_RATE = 1193181 */
 
 ## 13. 变更记录
 
+- 2026-10-05：§4.2 补 early 笔记里的 8259A 入门链接（非正式；以 `PIC.c` 为准）。
 - 2026-10-04：补 8259 级联拓扑图（主从片端口/ICW2 基址/cascade IRQ2）；补 x2APIC MSR 映射表（MMIO 偏移 → MSR 索引，含 ICR 合并、DFR 取消、Self IPI 新增）；补 8254 PIT 定时原理图与 HPET 定时原理图（均作校准/时钟源背景）；「本篇拥有」改「本篇涉及的接口分布在」。
 - 2026-10-02：§5.4 补 ARAT（CPUID.06H）说明；注明探测函数存在但选型未分支。
 - 2026-10-01：`PIC_EOI` 从片路径改为先从后主；去掉「不连带主片」缺口表述。

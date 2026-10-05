@@ -252,7 +252,11 @@ boot **没有** `arch_set_new_thread_ctx`；首次保存靠这次 `switch_to`。
 
 ### 6.6 arch 切换：软件边界与硬件寄存器
 
-`schedule` 解锁之后才调 `switch_to`。C 层先换「用户可见 / 特权辅助」状态，再进汇编 `context_switch` 保存 / 恢复 callee-saved 与内核栈指针。页表根（CR3 / TTBR0）**不在**这里换——那是上面 USER 分支里 `arch_set_current_user_vspace_root_asid` 的事（见 VSpace / ASID 篇）。
+`schedule` 解锁之后才调 `switch_to`。C 层先换段表、GS、用户栈指针这类「这颗核现在代表哪个线程」的状态，再进汇编 `context_switch`，保存/恢复一组通用寄存器和内核栈指针。页表根（CR3 / TTBR0）**不在**这里换——那是上面 USER 分支里 `arch_set_current_user_vspace_root_asid` 的事（见 VSpace / ASID 篇）。
+
+**这次切换存什么、不存什么。** 调用约定里，有些通用寄存器由「被调用的函数」负责保存。`context_switch` 只存这一组，外加内核栈指针：x86 是 `r15`–`r12`、`rbp`、`rbx` 和 `rsp`；aarch64 是 `x19`–`x30`、`sp` 和 `SPSR`。
+
+浮点和向量是**另一套**寄存器，现在**不存**。x86 上这是 SSE 用的 **XMM**（每个 128 位；更宽的 AVX 再加长），以及浮点控制/状态。aarch64 上浮点和向量共用最多 32 个 128 位寄存器，汇编里常写成 `v0`–`v31`，和 `x0`–`x30` 不是同一组。启动时已经打开硬件（`04` 的 `start_simd`、`05` 的 `enable_fp`），因为不能假定用户不用。保存还没做：用户线程若执行这些指令，切走再切回，寄存器里的数会乱。这是以后要补的（evolution 待办 **E13**）。内核 C 用 `-mno-sse` / `-mgeneral-regs-only`，避免在补上之前由内核踩掉用户状态。
 
 线程栈布局（用户线程；内核线程只有 kstack，无 ustack）：
 
@@ -270,7 +274,7 @@ boot **没有** `arch_set_new_thread_ctx`；首次保存靠这次 `switch_to`。
    │   │ user PC/SP/...  │ │  x86_64: rcx(rip)/rsp/rflags/rax...
    │   │                 │ │  aarch64: ELR/SP/x0/SPSR...
    │   └─────────────────┘ │
-   │   callee-saved 区     │  context_switch 保存 r15–r12/rbp/rbx (x86_64)
+   │   通用寄存器保存区   │  context_switch 保存 r15–r12/rbp/rbx (x86_64)
    │                       │  或 x19–x30/sp/SPSR (aarch64)
    └───────────────────────┘  kstack_bottom（高地址）
 ```
@@ -434,7 +438,7 @@ extern void run_thread(Thread_Init_Para *para); /* asm；见 thread.h */
 | 接口 | x86_64 | aarch64 |
 |------|--------|---------|
 | `switch_to` | TSS.RSP0、KERNEL_GS、FS、`user_rsp_scratch` → 再 `context_switch` | TPIDR_EL0 / SP_EL0；保存 DAIF，返回旧上下文后再恢复 DAIF+ISB |
-| `context_switch` | 保存/恢复 callee-saved + RSP（`arch_switch.S`） | x19–x30、SP、SPSR（`arch_switch.S`） |
+| `context_switch` | 保存被调用者负责的那组通用寄存器和 `rsp`（`arch_switch.S`）；**不保存** XMM 等浮点/向量寄存器 | 保存 `x19`–`x30`、`sp`、`SPSR`（`arch_switch.S`）；**不保存** `v0`–`v31` 那套浮点/向量寄存器 |
 | `run_thread` | SysV（System V ABI）：按 `int_para[]` 调 `thread_func_ptr` | AAPCS64（ARM 64 位过程调用标准）同理 |
 
 页表根**不**在 `switch_to` 里换。`copy_thread` / `run_copied_thread` → `14`。
@@ -468,12 +472,13 @@ cd core && make ARCH=x86_64 config && make all && make run
 - 环上无 ready → RR 死循环（靠 idle）。
 - `new_task_manager` 缺 alloc NULL 检查。
 - 远期：迁移 / 可插拔调度见 evolution E3、E4。
+- 线程切换不保存浮点/向量寄存器；用户若用了，切走再切回会乱。见 **E13**。
 
 ---
 
 ## 11. 变更记录
 
-- 2026-10-05：任务 1/3/5 精读——§9「测例」→「测试用例」；§1「难并发收束」→「并发难点收束」、「长出一套锁」→「演化出一套锁」；§4.2「拆结构前」→「拆除结构前」；§7.2「拆光环上线程」→「拆解环上的线程」、「排掉」→「排空」、「放下 vs」→「释放 vs」；§7.3「打 warn」→「打印 warn」；§4.1 首次出现 FAM 补全称（柔性数组成员）；§1 首次出现 MCS 补全称（Mellor-Crummey & Scott 锁）；§7.6 首次出现 SysV / AAPCS64 补全称。
+- 2026-10-05：§6.6 / §7 写清 `context_switch` 只存通用寄存器；浮点/向量是另一套（x86 XMM，aarch64 `v0`–`v31`），保存为 **E13**。
 - 2026-10-04：补硬件/架构知识——§4.2 加线程状态机 ASCII 图；§4.3 加 per-CPU TM 就绪环结构图；§6.6 加线程栈布局图与 `switch_to` 时序图，并扩写 TSS.RSP0 在 64 位模式下的角色（Intel SDM Vol.3 §7.2）与 SWAPGS / KERNEL_GS_BASE / FS_BASE 的语义。语言润色：塞→放入、随便跑→轻易跑、永远→始终、属演进→属于演进。
 - 2026-10-03：去掉未接线的 `thread_status_suspend`（原仅 `cmain` 测例路径写一次，且会被 `recv_msg` 覆盖；RR 只认 `ready`）。
 - 2026-10-02：删除已无定义的死声明 `tid_spin_lock`；tid MCS 仅 `percpu(id_spin_lock)`。

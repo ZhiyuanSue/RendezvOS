@@ -17,4 +17,4 @@ v0.1/evolution/
     └── 日志与console-server.md
 ```
 
-进度：full 初稿 44 篇已完成。按操作计划做 **逐篇深读代码重做**（进度见 [`../full重做进度.md`](../full重做进度.md)）；`TODO.md` 含远期代码项 E1–E11；`ROCm.md` 已从 `old/` 迁入；`archive/`、`design/*.md` 仍仅规划。
+进度：full 初稿 44 篇已完成。按操作计划做 **逐篇深读代码重做**（进度见 [`../生成进度.md`](../生成进度.md)）；`TODO.md` 含远期代码项 E1–E11；`ROCm.md` 已从 `old/` 迁入；`archive/`、`design/*.md` 仍仅规划。
