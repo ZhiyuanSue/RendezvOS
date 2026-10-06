@@ -127,6 +127,7 @@ int memory_regions_reserve_region_with_length(size_t length,
                                               paddr *phy_start, paddr *phy_end)
 {
         int used_region = -1;
+        paddr old_start;
         for (u64 i = 0; i < m_regions.region_count; i++) {
                 if (m_regions.memory_regions_entry_empty(i))
                         continue;
@@ -135,7 +136,8 @@ int memory_regions_reserve_region_with_length(size_t length,
                 if ((region_end - ROUND_UP(reg->addr, start_alignment))
                     > length) {
                         used_region = i;
-                        *phy_start = ROUND_UP(reg->addr, start_alignment);
+                        old_start = reg->addr;
+                        *phy_start = ROUND_UP(old_start, start_alignment);
                         *phy_end = *phy_start + length;
                         /* if need , split */
                         if (reg->addr != *phy_start) {
@@ -147,6 +149,7 @@ int memory_regions_reserve_region_with_length(size_t length,
                         }
                         /* adjust this region's start */
                         reg->addr = *phy_end;
+                        reg->len -= reg->addr - old_start;
                         break;
                 }
         }

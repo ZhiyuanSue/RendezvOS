@@ -269,14 +269,19 @@ typedef bool (*pmm_reclaim_fn_t)(struct pmm* pmm, size_t need_pages,
  *
  * @par pmm_alloc
  * Request @p page_number pages; on success returns starting @c ppn_t and
- * writes the actual count (rounded up to 2^n) to @p alloced_page_number.
- * @c page_number == 0 → returns 0 and sets alloced to 0.
- * Failures return a negative @c error_t.
- * Use @c invalid_ppn() (@c ppn <= 0) to detect failure
+ * writes the actual count to @p alloced_page_number (buddy rounds up to 2^n).
+ * @c page_number == 0 → returns 0 and alloced 0 (success). Do not use
+ * @c invalid_ppn() on that path: it treats 0 as invalid.
+ * Other failures are negative @c error_t (@c invalid_ppn() is true):
+ * @c -E_RENDEZVOS — request larger than the allocator can give, or metadata
+ * broken (no reclaim);
+ * @c -E_REND_AGAIN — reclaim unset or exhausted (typical OOM);
+ * @c -E_REND_NO_MEM — reclaim hook returned false.
  *
  * @par pmm_free
- * Release @p page_number pages starting at @p ppn (must match a prior alloc
- * span). Returns @c REND_SUCCESS (0) or negative error_t.
+ * Release @p page_number pages starting at @p ppn. Returns @c REND_SUCCESS
+ * or a negative error_t. Buddy drops per-page refs and merges at 0; it does
+ * not require @p page_number to be a prior alloc's whole span.
  *
  * @par Locking
  * Implementations take the zone MCS lock via @c pmm_lock / @c pmm_unlock;

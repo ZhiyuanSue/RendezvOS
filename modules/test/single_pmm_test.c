@@ -13,7 +13,7 @@ int pmm_test(void)
                         mem_zones[ZONE_NORMAL].pmm,
                         pg_size,
                         &alloced_page_number);
-                if (alloc_ppn[i] == -E_RENDEZVOS) {
+                if (invalid_ppn(alloc_ppn[i])) {
                         pr_error("alloc error\n");
                         goto pmm_test_error;
                 } else
@@ -34,7 +34,7 @@ int pmm_test(void)
                         mem_zones[ZONE_NORMAL].pmm,
                         i * 2 + 3,
                         &alloced_page_number);
-                if (alloc_ppn[i] == -E_RENDEZVOS) {
+                if (invalid_ppn(alloc_ppn[i])) {
                         pr_error("alloc error\n");
                         goto pmm_test_error;
                 } else
@@ -57,7 +57,7 @@ int pmm_test(void)
                         mem_zones[ZONE_NORMAL].pmm,
                         i * 2 + 3,
                         &alloced_page_number);
-                if (alloc_ppn[i] == -E_RENDEZVOS) {
+                if (invalid_ppn(alloc_ppn[i])) {
                         pr_error("alloc error\n");
                         goto pmm_test_error;
                 } else
@@ -82,13 +82,13 @@ int pmm_test(void)
                           % PPN_TEST_CASE_NUM] = tmp;
 
                 if (invalid_ppn(tmp)) {
-                        pr_error("[ ERROR ] pmm alloc error %d\n",
-                                 tmp) goto pmm_test_error;
+                        pr_error("[ ERROR ] pmm alloc error %d\n", tmp);
+                        goto pmm_test_error;
                 }
         }
         if (mem_zones[ZONE_NORMAL].pmm->pmm_alloc(
                     mem_zones[ZONE_NORMAL].pmm, 1, &alloced_page_number)
-            != -E_RENDEZVOS) {
+            != -E_REND_AGAIN) {
                 pr_error("alloc boundary error\n");
                 goto pmm_test_error;
         }
@@ -105,7 +105,7 @@ int pmm_test(void)
         for (int i = 0; i < PPN_TEST_CASE_NUM; ++i) {
                 alloc_ppn[i] = mem_zones[ZONE_NORMAL].pmm->pmm_alloc(
                         mem_zones[ZONE_NORMAL].pmm, 1, &alloced_page_number);
-                if (alloc_ppn[i] == -E_RENDEZVOS) {
+                if (invalid_ppn(alloc_ppn[i])) {
                         pr_error("alloc error\n");
                         goto pmm_test_error;
                 } else
@@ -115,7 +115,7 @@ int pmm_test(void)
         }
         if (mem_zones[ZONE_NORMAL].pmm->pmm_alloc(
                     mem_zones[ZONE_NORMAL].pmm, 1, &alloced_page_number)
-            != -E_RENDEZVOS) {
+            != -E_REND_AGAIN) {
                 pr_error("alloc boundary error\n");
                 goto pmm_test_error;
         }

@@ -123,12 +123,13 @@ i64 pmm_alloc_zone(struct buddy *bp, int alloc_order,
                 if (bp->pmm_show_info)
                         bp->pmm_show_info((struct pmm *)bp);
                 *alloced_page_number = 0;
-                return (-E_RENDEZVOS);
+                return (-E_REND_NO_MEM);
         }
 
         if (del_node->order < 0) {
                 pr_error("[ BUDDY ]try to alloc an allocated page ppn %lx\n",
                          del_node->ppn);
+                *alloced_page_number = 0;
                 return (-E_RENDEZVOS);
         }
 
@@ -233,6 +234,9 @@ retry:
         i64 res = pmm_alloc_zone(bp, alloc_order, alloced_page_number);
         pmm_unlock(pmm);
         if (!invalid_ppn(res))
+                return res;
+        /*The buddy data have been broken*/
+        if (res == -E_RENDEZVOS)
                 return res;
 
 try_reclaim:
@@ -374,7 +378,7 @@ out_unlock_return:
 void pmm_show_info(struct pmm *pmm)
 {
         struct buddy *bp = (struct buddy *)pmm;
-        pr_info("[ Buckets pages ] %d %d %d %d %d %d %d %d %d %d\n",
+        pr_info("[ Buckets pages ] %d %d %d %d %d %d %d %d %d %d %d\n",
                 bp->buckets[0].aval_pages,
                 bp->buckets[1].aval_pages,
                 bp->buckets[2].aval_pages,
@@ -384,7 +388,8 @@ void pmm_show_info(struct pmm *pmm)
                 bp->buckets[6].aval_pages,
                 bp->buckets[7].aval_pages,
                 bp->buckets[8].aval_pages,
-                bp->buckets[9].aval_pages);
+                bp->buckets[9].aval_pages,
+                bp->buckets[10].aval_pages);
 }
 struct buddy buddy_pmm = {.pmm_init = pmm_init,
                           .pmm_alloc = pmm_alloc,
