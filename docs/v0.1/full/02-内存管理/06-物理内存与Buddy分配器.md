@@ -126,7 +126,7 @@ struct mem_section {
 
 | 结构 | 跟谁走 | 记什么 |
 |------|--------|--------|
-| `Page` | 跟 `MemSection`，与物理页一一对应 | 引用计数、所属 section、rmap 链表（谁映射了这一页，虚拟地址篇再用） |
+| `Page` | 跟 `MemSection`，与物理页一一对应 | 引用计数、所属 section、rmap 链表（谁映射了这一页，radix 篇再用） |
 | pmm 私有管理区 | 跟该 zone 的 `struct pmm` | 由实现自定。buddy：`buddy_page[]`（空闲阶、空闲链、`ppn`），见 §4.3 |
 
 默认 buddy 的私有项（`buddy_pmm.h`），不是 zone 通用结构：

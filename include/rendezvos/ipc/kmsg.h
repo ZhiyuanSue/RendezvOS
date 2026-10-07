@@ -9,13 +9,14 @@
 
 /**
  * @c Msg_Data.msg_type when @c Msg_Data.data points at a @c kmsg_t buffer.
- * Tags carrier layout only; routing uses @c hdr.module / @c hdr.opcode.
+ * Tags carrier layout only. Routing is by port name; @c hdr.module is a
+ * service_id fast-check, @c hdr.opcode is for the receiver to dispatch.
  */
 #define MSG_DATA_TAG_KMSG 1
 
 /**
- * Magic for the slim kmsg header (no in-band version; layout changes bump this
- * magic and all call sites together).
+ * Magic for the slim kmsg header — buffer identity check only
+ * (@c kmsg_from_msg rejects a mismatch).
  * Little-endian bytes at increasing address: 'L','M','S','G'.
  */
 #define KMSG_MAGIC 0x47534d4cu

@@ -28,7 +28,8 @@
  *
  * Encode tag and decode fmt char must match byte-for-byte ('t' ≠ 's').
  * Empty fmt "" still yields 4-byte payload (param_count=0).
- * NULL fmt is undefined (callers must pass a non-NULL string).
+ * NULL fmt is rejected: measure / encode_into / decode return -E_IN_PARAM;
+ * encode_va / encode_alloc return NULL.
  *
  * Decode: for "s"/"t", the returned char* points into the message buffer; copy
  * if needed after the buffer is freed. Decode requires off == buf_len (no
@@ -44,12 +45,12 @@
 
 /**
  * @brief Compute serialized size for @p fmt / @p ap (includes 4-byte count).
- * @param fmt Non-NULL format string (empty "" OK → total 4).
+ * @param fmt Format string; empty "" OK → total 4. NULL → @c -E_IN_PARAM.
  * @param ap  Variadic args matching @p fmt (copied internally; caller's list
  *            is not consumed — caller may reuse after measure).
  * @param total_out Out: byte length; must be non-NULL.
- * @return @c REND_SUCCESS; @c -E_IN_PARAM if @p total_out is NULL or unknown
- *         format char.
+ * @return @c REND_SUCCESS; @c -E_IN_PARAM if @p fmt or @p total_out is NULL,
+ *         or unknown format char.
  */
 error_t ipc_serial_measure_va(const char *fmt, va_list ap, u32 *total_out);
 
@@ -58,26 +59,28 @@ error_t ipc_serial_measure_va(const char *fmt, va_list ap, u32 *total_out);
  * @param buf   Destination; must be non-NULL and @p total >= 4.
  * @param total Exact size from a prior @c ipc_serial_measure_va (must equal
  *              the encoded length or returns @c -E_IN_PARAM).
- * @param fmt   Non-NULL format string.
+ * @param fmt   Format string; NULL → @c -E_IN_PARAM.
  * @param ap    Args matching @p fmt.
- * @return @c REND_SUCCESS; @c -E_IN_PARAM on bad size/tag/overflow/mismatch.
+ * @return @c REND_SUCCESS; @c -E_IN_PARAM on NULL fmt, or bad
+ *         size/tag/overflow/mismatch.
  */
 error_t ipc_serial_encode_into_va(void *buf, u32 total, const char *fmt,
                                   va_list ap);
 
 /**
  * @brief Measure + allocate + encode into a single heap buffer.
- * @param fmt     Non-NULL format string (same rules as measure/encode).
+ * @param fmt     Format string (same rules as measure/encode); NULL → NULL.
  * @param out_len Out length on success; must be non-NULL.
  * @param ap      Args matching @p fmt.
  * @return Heap buffer owned by the caller (free with kallocator), or NULL on
- *         measure/alloc/encode failure (@p out_len unchanged on failure).
+ *         NULL fmt / measure/alloc/encode failure (@p out_len unchanged
+ *         on failure).
  */
 void *ipc_serial_encode_va(const char *fmt, u32 *out_len, va_list ap);
 
 /**
  * @brief Variadic wrapper around @c ipc_serial_encode_va.
- * @param fmt     Non-NULL format string.
+ * @param fmt     Format string; NULL → NULL.
  * @param out_len Out length on success; must be non-NULL.
  * @param ...     Args matching @p fmt.
  * @return Same as @c ipc_serial_encode_va.
@@ -88,10 +91,12 @@ void *ipc_serial_encode_alloc(const char *fmt, u32 *out_len, ...);
  * @brief Decode @p buf into out-parameters matching @p fmt.
  * @param buf     Serialized blob; @p buf_len must be exact (no trailing junk).
  * @param buf_len Length in bytes (>= 4).
- * @param fmt     Non-NULL; param count must equal wire @c param_count.
+ * @param fmt     Format string; NULL → @c -E_IN_PARAM. Param count must equal
+ *                wire @c param_count.
  * @param ...     Out pointers: @c p→void**, @c q→i64*, @c i→i32*, @c u→u32*,
  *                @c s/@c t→char** (into @p buf; NULL if wire len 0).
- * @return @c REND_SUCCESS; @c -E_IN_PARAM on mismatch / bad NUL / short buffer.
+ * @return @c REND_SUCCESS; @c -E_IN_PARAM on NULL fmt / mismatch / bad NUL /
+ *         short buffer.
  */
 error_t ipc_serial_decode(const void *buf, u32 buf_len, const char *fmt, ...);
 
