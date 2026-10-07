@@ -44,52 +44,9 @@ v0.1 **没有**「每核不同 ISR」；绑核靠硬件路由（GIC ITARGETSR / 
 
 ### 1.3 EOI 与 schedule
 
-ACK：`IRQ_NEED_EOI` → `arch_eoi_irq`（x86 写 LAPIC EOI 或 PIC OCW2；aarch64 写 `GICC_EOIR`）。漏 EOI 时，同优先级 / level 触发的线可能**再也收不到中断**。
+ACK：`IRQ_NEED_EOI` → `arch_eoi_irq`（x86 写 LAPIC EOI 或 PIC OCW2；aarch64 写 `GICC_EOIR`）。漏 EOI 时，同优先级 / level 触发的线可能**再也收不到中断**（时序与共享线约束见 §6.2）。
 
 用户态被打断且 `core_tm` 就绪 → `trap_handler` 末尾 **`schedule`**（x86 `syscall` 旁路除外——见 syscall 篇）。ISR 应短、非阻塞；长任务应通过 IPC 交给线程（无 threaded IRQ）。
-
-#### EOI 时序（漏 EOI 会卡住后续中断）
-
-```text
-  正常路径（IRQ_NEED_EOI=1）：
-
-   IRQ 到达 ─► IRR 置位 ─► CPU accept ─► ISR 置位 ─► ISR 执行
-                                              │
-                                              └─ trap_handler 末尾
-                                                 arch_eoi_irq ─► EOI 寄存器写 0
-                                                 └─► ISR 位清零
-                                                     └─► 同级/同向量可再来
-
-  漏 EOI 路径（IRQ_NEED_EOI=0 但硬件需要 EOI）：
-
-   IRQ 到达 ─► ISR 置位 ─► ISR 执行 ─► 返回（未 EOI）
-                                    │
-                                    └─ ISR 位仍置位
-                                       └─► 同优先级中断被屏蔽
-                                       └─► 该线不再触发（level）
-                                               或同向量不重投（edge 亦可能）
-```
-
-#### IRQ 共享与 EOI 时序（同向量多设备）
-
-x86 上多个设备可共享同一 IDT 向量（典型 PCI legacy 共享线）。共享时 ISR 必须轮询每个挂在该向量的设备：
-
-```text
-  共享向量 V 上挂了设备 A、B、C（都 register 到同一 trap id）：
-
-   IRQ 到达 ─► IDT[V] ─► trap_handler ─► 调共享 handler
-                                       │
-                                       ├─ 查设备 A 状态寄存器
-                                       │   └─ active？处理 A，清 A 中断源
-                                       ├─ 查设备 B 状态寄存器
-                                       │   └─ active？处理 B，清 B 中断源
-                                       └─ 查设备 C 状态寄存器
-                                           └─ active？处理 C，清 C 中断源
-                                       │
-                                       └─ 全部查完 ─► EOI（一次，对控制器）
-```
-
-**关键：** level 触发时，EOI 之前必须先清除所有挂在该线的设备中断源，否则 EOI 后线仍有效，会立刻再进同一向量（风暴）。本仓库 v0.1 **没有** IRQ 共享框架（`register_irq_handler` 同 id 后写覆盖，不挂链），所以共享场景属于限制项——见 §10。
 
 ---
 
@@ -239,7 +196,7 @@ init_interrupt
 
 x86：先 `lidt`、再选 PIC/APIC、再 `sti`（且常在 `init_syscall` 之后）。aarch64：**先开 IRQ 再配 GIC CPU interface**——中间有一小段窗口，见 GIC 篇。
 
-### 6.2 `trap_handler`（设备 / IRQ 路径）
+### 6.2 `trap_handler`（设备 / IRQ 路径）与 EOI
 
 ```text
 trap_id = TRAP_ID(tf->trap_info)
@@ -247,6 +204,49 @@ trap_id = TRAP_ID(tf->trap_info)
 → NEED_EOI → arch_eoi_irq      // 硬件 ACK
 → !from_kernel && core_tm → schedule
 ```
+
+#### EOI 时序（漏 EOI 会卡住后续中断）
+
+```text
+  正常路径（IRQ_NEED_EOI=1）：
+
+   IRQ 到达 ─► IRR 置位 ─► CPU accept ─► ISR 置位 ─► ISR 执行
+                                              │
+                                              └─ trap_handler 末尾
+                                                 arch_eoi_irq ─► EOI 寄存器写 0
+                                                 └─► ISR 位清零
+                                                     └─► 同级/同向量可再来
+
+  漏 EOI 路径（IRQ_NEED_EOI=0 但硬件需要 EOI）：
+
+   IRQ 到达 ─► ISR 置位 ─► ISR 执行 ─► 返回（未 EOI）
+                                    │
+                                    └─ ISR 位仍置位
+                                       └─► 同优先级中断被屏蔽
+                                       └─► 该线不再触发（level）
+                                               或同向量不重投（edge 亦可能）
+```
+
+#### IRQ 共享与 EOI 时序（同向量多设备）
+
+x86 上多个设备可共享同一 IDT 向量（典型 PCI legacy 共享线）。共享时 ISR 必须轮询每个挂在该向量的设备：
+
+```text
+  共享向量 V 上挂了设备 A、B、C（都 register 到同一 trap id）：
+
+   IRQ 到达 ─► IDT[V] ─► trap_handler ─► 调共享 handler
+                                       │
+                                       ├─ 查设备 A 状态寄存器
+                                       │   └─ active？处理 A，清 A 中断源
+                                       ├─ 查设备 B 状态寄存器
+                                       │   └─ active？处理 B，清 B 中断源
+                                       └─ 查设备 C 状态寄存器
+                                           └─ active？处理 C，清 C 中断源
+                                       │
+                                       └─ 全部查完 ─► EOI（一次，对控制器）
+```
+
+**关键：** level 触发时，EOI 之前必须先清除所有挂在该线的设备中断源，否则 EOI 后线仍有效，会立刻再进同一向量（风暴）。本仓库 v0.1 **没有** IRQ 共享框架（`register_irq_handler` 同 id 后写覆盖，不挂链），所以共享场景属于限制项——见 §10。
 
 ### 6.3 驱动 checklist（硬件依赖顺序）
 
@@ -359,6 +359,7 @@ void arch_unknown_trap_handler(struct trap_frame *tf);
 
 ## 11. 变更记录
 
+- 2026-10-07：§1 概述瘦身——EOI 时序图与 IRQ 共享图迁入 §6.2，与 `trap_handler` 流程合并；§1.3 只留概念句并回指。
 - 2026-10-04：补 EOI 时序图（正常 vs 漏 EOI）与 IRQ 共享 + EOI 时序图；扩 x86 向量空间布局示意（标注 256 项全宽、APIC 合法范围 16–255、空洞位置）；「塞进/本篇拥有」改地道中文（放入/本篇涉及的接口分布在）。
 - 2026-10-04：§4.3 改题为「固定槽、设备池与空洞」；`arch_init_irq_vector_state` 调用步骤迁入 §6.1。
 - 2026-10-01：§4.3 按中文阅读习惯重写（保留布局示意）；同步扩写代码侧 Doxygen / 注释。

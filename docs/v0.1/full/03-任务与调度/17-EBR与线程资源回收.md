@@ -4,7 +4,7 @@ v0.1 · 2026-09-26
 
 本篇覆盖：`kernel/task/ebr.c`、`include/rendezvos/task/ebr.h`、`delete_thread` / `free_thread_ref` / `del_thread_structure` / `thread_release_owned_resources`（`thread.c`），以及与 `schedule` 钩子的交汇。
 
-MSQ 算法与队列内 `ebr_enter` / `exit` 见 `04-IPC/22-无锁队列与EBR设计.md`；消息 / request 何时 put 见 Port 篇；zombie / `EXIT_REQUESTED` 见 TM 篇；`vs` 只 put 不卸硬件见 VSpace 篇；跨核 kfree 排水见 kmalloc 篇（**不是** EBR）。
+MSQ 算法与队列内 `ebr_enter` / `exit` 见 `04-IPC/18-无锁队列与EBR设计.md`；消息 / request 何时 put 见 Port 篇；zombie / `EXIT_REQUESTED` 见 TM 篇；`vs` 只 put 不卸硬件见 VSpace 篇；跨核 kfree 排水见 kmalloc 篇（**不是** EBR）。
 
 ---
 
@@ -12,16 +12,10 @@ MSQ 算法与队列内 `ebr_enter` / `exit` 见 `04-IPC/22-无锁队列与EBR设
 
 这里其实是**两件相关但不同的事**，标题勿读成「一切回收都是 EBR（Epoch-Based Reclamation，基于世代的回收）」。
 
-| 对象 | 怎么放 | 为何 |
-|------|--------|------|
-| **MSQ（Message Queue，无锁消息队列）暴露的节点**（`Message_t` / `Ipc_Request_t`） | last `ref_put` → `ebr_retire_ref` → 等 epoch 安全再 `*_real` `m_free` | 无锁读 `head/tail/next` 时，即使有 refcount，仍有「先看到指针、再被释放」窗口 |
-| **Thread_Base 本身**（TCB（Thread Control Block，线程控制块）、kstack、name、ownership `vs`） | refcount → `del_thread_structure` **同步**释放 | 线程不依赖 EBR；依赖「摘环 + 无人持有」 |
+- **MSQ 节点**（`Message_t` / `Ipc_Request_t`）走 EBR 延迟回收——无锁读路径上有「先看见指针、再被释放」的窗口。
+- **Thread_Base 本身**（TCB、kstack、name、ownership `vs`）靠 refcount **同步**释放，不依赖 EBR。
 
-交汇点：
-
-1. 每次 `schedule`：先 `kalloc_process_cross_cpu_frees()`，再 **`ebr_try_reclaim()`**（idle 重的核也要推进）。两钩子并列，不是同一种排水。
-2. 线程回收排空 send / recv 时调 `free_message_ref` → **队列节点仍进 EBR**。
-3. `Ipc_Request` 持有 `thread` ref；`free_ipc_request_real` 里 put thread → EBR 延迟可**推迟** TCB 真正释放。
+二者在 `schedule` 排水、线程 teardown 排空消息队列、以及 `Ipc_Request` 持有的 thread ref 上交汇（对象表与不变量见 §4）。
 
 ---
 
@@ -48,6 +42,19 @@ name / kstack：**直接** `m_free`，不走 EBR。
 ---
 
 ## 4. 数据结构与不变量
+
+两类对象怎么放、为何不同：
+
+| 对象 | 怎么放 | 为何 |
+|------|--------|------|
+| **MSQ（Message Queue）暴露的节点**（`Message_t` / `Ipc_Request_t`） | last `ref_put` → `ebr_retire_ref` → 等 epoch 安全再 `*_real` `m_free` | 无锁读 `head/tail/next` 时，即使有 refcount，仍有「先看到指针、再被释放」窗口 |
+| **Thread_Base 本身**（TCB（Thread Control Block）、kstack、name、ownership `vs`） | refcount → `del_thread_structure` **同步**释放 | 线程不依赖 EBR；依赖「摘环 + 无人持有」 |
+
+交汇点（与 §6 / 线程回收衔接）：
+
+1. 每次 `schedule`：先 `kalloc_process_cross_cpu_frees()`，再 **`ebr_try_reclaim()`**（idle 重的核也要推进）。两钩子并列，不是同一种排水。
+2. 线程回收排空 send / recv 时调 `free_message_ref` → **队列节点仍进 EBR**。
+3. `Ipc_Request` 持有 `thread` ref；`free_ipc_request_real` 里 put thread → EBR 延迟可**推迟** TCB 真正释放。
 
 ### 4.1 Per-CPU EBR
 
@@ -183,7 +190,7 @@ ref_put → free_thread_ref → del_thread_structure:
 
 本篇涉及的接口分布在：`ebr.h` 全套；线程回收路径上的 `delete_thread` / `free_thread_ref` / `del_thread_structure`（`thread.h`；与 `13` 交叉，本篇钉回收顺序）。说明改写自头文件 Doxygen，并已与 `.c` 核对。
 
-**本篇不涉及：** MSQ inline 算法 → `22`；`kalloc_process_cross_cpu_frees` → kmalloc 篇（与 `ebr_try_reclaim` **并列**于 `schedule`，不是同一种排水）；zombie / `EXIT_REQUESTED` 语义 → `13`。
+**本篇不涉及：** MSQ inline 算法 → `18`；`kalloc_process_cross_cpu_frees` → kmalloc 篇（与 `ebr_try_reclaim` **并列**于 `schedule`，不是同一种排水）；zombie / `EXIT_REQUESTED` 语义 → `13`。
 
 `thread_release_owned_resources`：**内部 static**；勿在末次 ref 前手调。
 
@@ -259,6 +266,7 @@ void del_thread_structure(Thread_Base *thread);
 
 ## 11. 变更记录
 
+- 2026-10-07：§1 概述瘦身——对象分类表与交汇点迁入 §4 开头并与不变量合并。
 - 2026-10-05：任务 1/3/5 精读——§1 首次出现 EBR 补全称（Epoch-Based Reclamation，基于世代的回收）、MSQ 补说明（Message Queue，无锁消息队列）、TCB 补全称（Thread Control Block）；§4.2/§4.5/§8 残留的「靠」→「依赖」（前轮漏改的三处）；§7.2 首次出现 UAF 补说明（use-after-free）。
 - 2026-10-04：补硬件/架构知识——§4.2 加 EBR 三阶段（quiet / propagate / reclaim）状态图与 `safe = min(active local_epoch)` 推导；§4.5 新增 EBR 与 hazard pointer 对照表（读侧开销 / 回收时机 / 内存占用 / 适用场景）。语言润色：靠→依赖、hold→持有、抢地址复用→抢占地址复用、死转→死循环。
 - 2026-09-27：中文表述润色（母语习惯）。

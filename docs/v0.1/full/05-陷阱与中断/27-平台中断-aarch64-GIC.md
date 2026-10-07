@@ -24,117 +24,11 @@ ARM 应用核（EL1）被中断时：
 3. 读 **GICC_IAR** 得到 **INTID**（及 SGI 时的 CPUID）；
 4. 软件用 INTID 分发；处理完写 **GICC_EOIR**（通常写回 IAR 原值）。
 
-core 把第 3 步的 INTID 映射成 trap id，放入统一的 `irq_vector[]`：
+core 把 INTID 映射成 trap id：`trap_id = intid + 64`（前 64 槽留给 ESR.EC）。宏：`AARCH64_IRQ_TO_TRAP_ID` / `AARCH64_TRAP_ID_TO_IRQ`。
 
-```text
-trap_id = intid + 64
-```
+GICv2 两块：**GICD（Distributor，全局一份）** 负责 SPI 配置 / 路由 / 发 SGI；**GICC（CPU Interface，每核一份）** 负责读 IAR、写 EOIR。拓扑与角色表见 §4；INTID 分段与软件映射见 §6.1；四态与 EOI 模式见 §5.2。
 
-前 64 个槽留给 ESR.EC（同步异常）。宏：`AARCH64_IRQ_TO_TRAP_ID` / `AARCH64_TRAP_ID_TO_IRQ`。
-
-### 1.1 GIC 两大块（GICv2）
-
-| 块 | 角色 | 本仓库 |
-|----|------|--------|
-| **GICD（Distributor）** | **全局一份**：SPI 配置、发 SGI、priority / target / enable、类型（边沿 / 电平） | `gic.gicd`，DTB `reg` 第一段 |
-| **GICC（CPU Interface）** | **每核一份**：`IAR` 应答、`EOIR` 结束、`PMR` / `BPR` / `CTLR` | `gic.gicc`，DTB `reg` 第二段 |
-
-（还有 GICH 等虚拟化扩展——头文件有结构、**无驱动**。）
-
-#### GICv2 拓扑与中断流向
-
-```text
-  外设线 ─┐                                          ┌─ CPU0 (EL1)
-          │                                          │   ┌──────────┐
-  SPI 32..1019 ─┐                                    ├──►│ GICC CPU0 │──► VBAR IRQ ──► 读 IAR ──► ISR
-                │   ┌──────────────────────────┐     │   └──────────┘
-  PPI 16..31 ────┤  │      GICD (Distributor)    │     │
-                │  │  全局一份：                │     │   ┌──────────┐
-  SGI 0..15 ─────┤  │  - ITARGETSR（SPI 路由）   │────►├──►│ GICC CPU1 │──► VBAR IRQ ──► 读 IAR ──► ISR
-                │  │  - IPRIORITYR（优先级）    │     │   └──────────┘
-                │  │  - ISENABLER（使能）        │     │
-                │  │  - ICFGR（边沿/电平）       │     │   ┌──────────┐
-                │  │  - SGIR（注入 SGI）         │────►├──►│ GICC CPU2 │──► VBAR IRQ ──► 读 IAR ──► ISR
-                │  └──────────────────────────┘     │   └──────────┘
-                │                                    │
-                └─ PPI/SGI 是 banked：每核 GICD       │   ┌──────────┐
-                   各有一份私有副本，不参与路由  ─────►├──►│ GICC CPU3 │──► VBAR IRQ ──► 读 IAR ──► ISR
-                                                     │   └──────────┘
-                                                     └─ CPU3 (EL1)
-```
-
-关键：SPI 由 GICD 的 ITARGETSR 决定投递到哪些 CPU interface；PPI 天然只到本核；SGI 由 SGIR 的 filter/list 决定目标。CPU interface 收到后，CPU 还要先读 IAR 才能 ack。
-
-### 1.2 INTID 分段（IHI0048）
-
-| 范围 | 名称 | 含义 | OS 含义 |
-|------|------|------|---------|
-| 0–15 | **SGI** | Software Generated Interrupt | 核间门铃（本仓库 IPI = **SGI 0**） |
-| 16–31 | **PPI** | Private Peripheral Interrupt | **每核私有**（timer 使用某条 PPI，**不**硬编码；见 `arch_get_timer_irq_num`） |
-| 32–1019 | **SPI** | Shared Peripheral Interrupt | 板级 / 外设共享线；可配目标核（ITARGETSR affinity） |
-
-**纠正：** Timer 是 **PPI**，不是 SPI。QEMU virt 上常见 INTID **30**（ns-phys），但软件以 DTB `arm,armv8-timer` 的 **第 2 组** interrupts 为准——勿写死宏。
-
-1020–1022 为特殊 INTID（Group 标识等）；**1023** 是 spurious（读 IAR 得到它表示「此刻没有可交给你的有效中断」）。SGI 是边沿触发；PPI/SPI 可配边沿或电平。手册还把投递分成 **1-N**（多核都看见 pending，但只有一个 CPU 真正 ack，其余再读 IAR 会获取到 1023）和 **N-N**（多个 CPU 都可以各自处理）。本仓库 SPI 初始化写成 edge + 1-N。
-
-GICv2 最多按 8 个 core 来理解 SGI 的 CPUID 字段；同一 SGI 号可以同时有多对「源核→目标核」pending，依赖 **INTID + 源 CPUID** 区分，而不是再开一套 INTID。
-
-### 1.3 四种状态（后面读 IAR / EOIR 都站在这张图上）
-
-一条 INTID 在 GIC 里不是「来了 / 没来」两态，而是：
-
-```text
-inactive  ──到达──►  pending  ──读 IAR──►  active
-                         ▲                    │
-                         │                    │ 处理中又来一枪
-                         │                    ▼
-                         │            active and pending
-                         │                    │
-                         └──── 写 EOIR / 优先级被丢弃 ────┘
-```
-
-- **inactive**：没有活着的请求，或已经处理完。
-- **pending**：已记录，还没交给 CPU。
-- **active**：本核已经 ack（读过 IAR），ISR 还在运行。
-- **active and pending**：正在服务，同号又来了一枪。
-
-「结束」其实是两步，容易混：
-
-1. **优先级下降（priority drop）**：告诉接口「当前这档 running priority 可以放下了」。
-2. **deactivate**：真正把这条 INTID 从 active 移除。
-
-`GICC_CTLR.EOImode` 决定两步是否合并到一次写 EOIR 里。本仓库走**合并路径**，只写 EOIR，不用 DIR。分离模式下：写 EOIR 只做 drop，还要按与读 IAR **相反的顺序**写 `GICC_DIR`。
-
-#### EOI 两种模式对比（IHI0048 §3.4）
-
-```text
-  合并模式（EOImode=0，本仓库默认）：
-
-   读 IAR ─► active + running priority 抬高
-       │
-       ISR 执行
-       │
-       写 EOIR ─► ① priority drop（running priority 放下）
-                ② deactivate（INTID 从 active 拿掉）
-                ─► 同 INTID 可再来
-
-  分离模式（EOImode=1，本仓库未用）：
-
-   读 IAR ─► active + running priority 抬高
-       │
-       ISR 执行（期间可被更高优先级抢占）
-       │
-       写 EOIR ─► ① priority drop（running priority 放下）
-                ─► 但 INTID 仍 active（可继续被抢占比较）
-       │
-       ... 后续处理 ...
-       │
-       写 DIR ─► ② deactivate（INTID 从 active 拿掉）
-                ─► 同 INTID 才可再来
-```
-
-分离模式让驱动把「让出优先级」与「真正结束」拆开，便于在 driver 末尾或线程上下文才 deactivate。本仓库走合并模式简化路径：ISR 末尾一次 `gic.eoi` 即同时 drop + deactivate。注意分离模式下 DIR 必须按 IAR 的**逆序**写（栈式），否则会错位。
-### 1.4 OS 对硬件的硬依赖
+### 1.1 OS 对硬件的硬依赖
 
 1. **先 `set_vbar_el1`**，IRQ 槽指向 `el*_trap_entry`；否则开中断即崩溃。
 2. **进 IRQ 入口后必须读 IAR**（`gic.read_irq_num`）才能知道 INTID——只靠 VBAR 偏移不够。
@@ -166,6 +60,37 @@ inactive  ──到达──►  pending  ──读 IAR──►  active
 ## 4. 硬件深度：Distributor（GICD）
 
 GICD 是**全局一份**的配置面：哪条 INTID 开着、优先级多少、SPI 打给哪些核、SGI 发往哪些核。它**不**应答中断——ack / EOI 在每核的 GICC。手册把同一套使能/pending/active 寄存器做成 **bank**：SGI/PPI 每个 CPU interface 各有一份副本，SPI 才是真正的共享配置。读「同一个 INTID」时，要想清楚看的是哪份 bank。
+
+| 块 | 角色 | 本仓库 |
+|----|------|--------|
+| **GICD（Distributor）** | **全局一份**：SPI 配置、发 SGI、priority / target / enable、类型（边沿 / 电平） | `gic.gicd`，DTB `reg` 第一段 |
+| **GICC（CPU Interface）** | **每核一份**：`IAR` 应答、`EOIR` 结束、`PMR` / `BPR` / `CTLR` | `gic.gicc`，DTB `reg` 第二段 |
+
+（还有 GICH 等虚拟化扩展——头文件有结构、**无驱动**。）
+
+#### GICv2 拓扑与中断流向
+
+```text
+  外设线 ─┐                                          ┌─ CPU0 (EL1)
+          │                                          │   ┌──────────┐
+  SPI 32..1019 ─┐                                    ├──►│ GICC CPU0 │──► VBAR IRQ ──► 读 IAR ──► ISR
+                │   ┌──────────────────────────┐     │   └──────────┘
+  PPI 16..31 ────┤  │      GICD (Distributor)    │     │
+                │  │  全局一份：                │     │   ┌──────────┐
+  SGI 0..15 ─────┤  │  - ITARGETSR（SPI 路由）   │────►├──►│ GICC CPU1 │──► VBAR IRQ ──► 读 IAR ──► ISR
+                │  │  - IPRIORITYR（优先级）    │     │   └──────────┘
+                │  │  - ISENABLER（使能）        │     │
+                │  │  - ICFGR（边沿/电平）       │     │   ┌──────────┐
+                │  │  - SGIR（注入 SGI）         │────►├──►│ GICC CPU2 │──► VBAR IRQ ──► 读 IAR ──► ISR
+                │  └──────────────────────────┘     │   └──────────┘
+                │                                    │
+                └─ PPI/SGI 是 banked：每核 GICD       │   ┌──────────┐
+                   各有一份私有副本，不参与路由  ─────►├──►│ GICC CPU3 │──► VBAR IRQ ──► 读 IAR ──► ISR
+                                                     │   └──────────┘
+                                                     └─ CPU3 (EL1)
+```
+
+关键：SPI 由 GICD 的 ITARGETSR 决定投递到哪些 CPU interface；PPI 天然只到本核；SGI 由 SGIR 的 filter/list 决定目标。CPU interface 收到后，CPU 还要先读 IAR 才能 ack。
 
 Group0 / Group1（`GICD_IGROUPR`）在有 Security 的实现里对应 Secure / Non-secure；无 Security 的 virt 上常常退化为「是否启用」——见 §5.4。本仓库 dist init 开的是 Group0 那一位。
 
@@ -315,6 +240,62 @@ GICC 是**每核一份**的「取号窗口」：Distributor 把中断转到某�
 
 ### 5.2 应答与结束：IAR、EOIR、DIR、CTLR
 
+#### 四种状态（读 IAR / EOIR 都站在这张图上）
+
+一条 INTID 在 GIC 里不是「来了 / 没来」两态，而是：
+
+```text
+inactive  ──到达──►  pending  ──读 IAR──►  active
+                         ▲                    │
+                         │                    │ 处理中又来一枪
+                         │                    ▼
+                         │            active and pending
+                         │                    │
+                         └──── 写 EOIR / 优先级被丢弃 ────┘
+```
+
+- **inactive**：没有活着的请求，或已经处理完。
+- **pending**：已记录，还没交给 CPU。
+- **active**：本核已经 ack（读过 IAR），ISR 还在运行。
+- **active and pending**：正在服务，同号又来了一枪。
+
+「结束」其实是两步，容易混：
+
+1. **优先级下降（priority drop）**：告诉接口「当前这档 running priority 可以放下了」。
+2. **deactivate**：真正把这条 INTID 从 active 移除。
+
+`GICC_CTLR.EOImode` 决定两步是否合并到一次写 EOIR 里。本仓库走**合并路径**，只写 EOIR，不用 DIR。分离模式下：写 EOIR 只做 drop，还要按与读 IAR **相反的顺序**写 `GICC_DIR`。
+
+#### EOI 两种模式对比（IHI0048 §3.4）
+
+```text
+  合并模式（EOImode=0，本仓库默认）：
+
+   读 IAR ─► active + running priority 抬高
+       │
+       ISR 执行
+       │
+       写 EOIR ─► ① priority drop（running priority 放下）
+                ② deactivate（INTID 从 active 拿掉）
+                ─► 同 INTID 可再来
+
+  分离模式（EOImode=1，本仓库未用）：
+
+   读 IAR ─► active + running priority 抬高
+       │
+       ISR 执行（期间可被更高优先级抢占）
+       │
+       写 EOIR ─► ① priority drop（running priority 放下）
+                ─► 但 INTID 仍 active（可继续被抢占比较）
+       │
+       ... 后续处理 ...
+       │
+       写 DIR ─► ② deactivate（INTID 从 active 拿掉）
+                ─► 同 INTID 才可再来
+```
+
+分离模式让驱动把「让出优先级」与「真正结束」拆开，便于在 driver 末尾或线程上下文才 deactivate。本仓库走合并模式简化路径：ISR 末尾一次 `gic.eoi` 即同时 drop + deactivate。注意分离模式下 DIR 必须按 IAR 的**逆序**写（栈式），否则会错位。
+
 按一次 IRQ 的时间顺序：
 
 1. 读 **GICC_IAR**：ack。返回值布局（GICv2）大致是：
@@ -385,6 +366,18 @@ GICD 开 **Group0**、GICC 开 **「Group1」** 宏位——在**无 Security �
 ## 6. 数据结构与不变量（软件侧）
 
 ### 6.1 INTID ↔ trap（必记）
+
+| 范围 | 名称 | 含义 | OS 含义 |
+|------|------|------|---------|
+| 0–15 | **SGI** | Software Generated Interrupt | 核间门铃（本仓库 IPI = **SGI 0**） |
+| 16–31 | **PPI** | Private Peripheral Interrupt | **每核私有**（timer 使用某条 PPI，**不**硬编码；见 `arch_get_timer_irq_num`） |
+| 32–1019 | **SPI** | Shared Peripheral Interrupt | 板级 / 外设共享线；可配目标核（ITARGETSR affinity） |
+
+**纠正：** Timer 是 **PPI**，不是 SPI。QEMU virt 上常见 INTID **30**（ns-phys），但软件以 DTB `arm,armv8-timer` 的 **第 2 组** interrupts 为准——勿写死宏。
+
+1020–1022 为特殊 INTID（Group 标识等）；**1023** 是 spurious（读 IAR 得到它表示「此刻没有可交给你的有效中断」）。SGI 是边沿触发；PPI/SPI 可配边沿或电平。手册还把投递分成 **1-N**（多核都看见 pending，但只有一个 CPU 真正 ack，其余再读 IAR 会获取到 1023）和 **N-N**（多个 CPU 都可以各自处理）。本仓库 SPI 初始化写成 edge + 1-N。
+
+GICv2 最多按 8 个 core 来理解 SGI 的 CPUID 字段；同一 SGI 号可以同时有多对「源核→目标核」pending，依赖 **INTID + 源 CPUID** 区分，而不是再开一套 INTID。
 
 | 用途 | INTID | trap id |
 |------|-------|---------|
@@ -552,6 +545,7 @@ gic.pending_clr(u32 intid);
 
 ## 13. 变更记录
 
+- 2026-10-07：§1 概述瘦身——GICD/GICC 表与拓扑迁入 §4；INTID 分段迁入 §6.1；四态与 EOI 模式迁入 §5.2 并与应答叙述合并；§1 只留入口因果与硬依赖清单。
 - 2026-10-04：补 GICv2 拓扑与中断流向图（GICD/GICC、SPI 路由 vs PPI/SGI banked）；补 EOI 两种模式对比图（合并 vs 分离，priority drop vs deactivate）；补优先级比较与抢占门槛图（BPR 切分、PMR/RPR 门槛链）；「塞进/碰到/本篇拥有」改地道中文（放入/遇到/本篇涉及的接口分布在）。
 - 2026-10-02：对齐现行代码——timer 改为 DTB ns-phys 探测（不再写死 PPI30）；§8.3 端到端补上 `TRAP_SET_CPU` / EOIR 还原。
 - 2026-10-01：再补 GICD 字布局 / SGI 0–7 vs 8–15、ICFGR·ITARGETSR·SGIR 字段、SGIR 不叠 pending 与软 IPI 的关系、BPR=3 / RPR、IAR 位域与未处理 1023 缺口、GIC↔APIC 对照表。

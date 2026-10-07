@@ -4,7 +4,7 @@ v0.1 · 2026-09-27
 
 本篇覆盖：`kernel/ipc/port.c`、`include/rendezvos/ipc/port.h`（ops_life / ops_count / `port_append_hooks_t` / `port_ops_begin|end`）、以及 `ipc.c` 里对 begin 的调用点。测试用例：`modules/test/single_port_test.c`。
 
-Port 对象与两层会合见 `18`；send / recv 阻塞时序、醒后 flag、orphan drop、PORT_CLOSED **行为细节**见 `19`；设计脊骨见 `22` §1；`KMSG_OP_SYSTEM_PORT_CLOSED` 登记见 kmsg 篇；名称索引见基础设施篇。
+Port 对象与两层会合见 `19`；send / recv 阻塞时序、醒后 flag、orphan drop、PORT_CLOSED **行为细节**见 `20`；设计框架见 `18` §1；`KMSG_OP_SYSTEM_PORT_CLOSED` 登记见 kmsg 篇；名称索引见基础设施篇。
 
 ---
 
@@ -195,7 +195,7 @@ REGISTER 在表锁内调 hook：**禁止**在 hook 里同表 lookup / register�
 | 置 `IPC_PORT_CLOSED` flag | 否 | **send 等待者恒置**；recv **仅当**清队后 `recv_pending_cnt==0`（投递失败） |
 | 对外 errno / 返回 | SEND / RECV 伪装 CLOSED | send：`-E_REND_PORT_CLOSED`；recv：有 kmsg → `SUCCESS`+dequeue opcode，有 flag → CLOSED |
 
-**Deny ≠ 关闭 port**：port 仍 REGISTERED；LOOKUP deny 只是「这次拿不到」。已 begin 的阻塞等待者醒后**不再**跑 ops_allow——真正关闭靠 unregister。清队权威表见 `18` §6.2；阻塞 API 醒后约定见 `19` §6.2。
+**Deny ≠ 关闭 port**：port 仍 REGISTERED；LOOKUP deny 只是「这次拿不到」。已 begin 的阻塞等待者醒后**不再**跑 ops_allow——真正关闭靠 unregister。清队权威表见 `19` §6.2；阻塞 API 醒后约定见 `20` §6.2。
 
 LOOKUP 通过 ≠ SEND 通过（测试用例刻意拆开）。Token 缓存**不能**绕过 LOOKUP——每次 resolve 再门禁。
 
@@ -205,7 +205,7 @@ LOOKUP 通过 ≠ SEND 通过（测试用例刻意拆开）。Token 缓存**不�
 
 本篇涉及的接口分布在：准入 / 生命周期门面——`port_append_hooks_t`、`port_ops_allow_t`、`port_ops_begin` / `end`、`PORT_OPS_LIFE_*` / `port_ops_type`。说明以 `port.h` Doxygen 为准（已与 `.c` 核对）。
 
-**本篇不涉及：** port 创建/表/unregister 清队过程细节 → `18`（本篇只钉门禁交汇）；send/recv 阻塞状态机 → `19`；kmsg PORT_CLOSED 载荷 → `20`。
+**本篇不涉及：** port 创建/表/unregister 清队过程细节 → `19`（本篇只钉门禁交汇）；send/recv 阻塞状态机 → `20`；kmsg PORT_CLOSED 载荷 → `21`。
 
 生产路径今日一律 `create_message_port(..., NULL)`；非 NULL hooks **仅**测试用例。
 
@@ -256,7 +256,7 @@ void port_ops_end(Message_Port_t *port);
 |------|------|
 | `port_ops_begin` | 只接受 SEND/RECV。序：REGISTERED → `ops_allow` → `ops_count++` → 再查 REGISTERED。失败不增 count。ipc 把 false 折成 `-E_REND_PORT_CLOSED`。 |
 | `port_ops_end` | `ops_count--`。阻塞前必调。 |
-| `PORT_OPS_LIFE_*` | ACTIVE→REGISTERED→CLOSING→CLOSED（见 `18` unregister 编排序）。 |
+| `PORT_OPS_LIFE_*` | ACTIVE→REGISTERED→CLOSING→CLOSED（见 `19` unregister 编排序）。 |
 
 `ops_count` **不**串行化并发 send；只挡 unregister。
 
@@ -268,7 +268,7 @@ void port_ops_end(Message_Port_t *port);
 | `ipc_system_try_deliver` | 经 try_send → **会**过 SEND |
 | `ipc_system_deliver_to` | **不**过 port_ops（清队注入用此） |
 
-**Deny ≠ 关闭 port**：无 PORT_CLOSED kmsg / flag；port 仍 REGISTERED。LOOKUP deny ≠ SEND deny（可拆开测）。Token resolve **每次**再跑 LOOKUP。真正关闭时 send/recv 等待者都醒，但 send=flag、recv=优先 kmsg（`18` §6.2）。
+**Deny ≠ 关闭 port**：无 PORT_CLOSED kmsg / flag；port 仍 REGISTERED。LOOKUP deny ≠ SEND deny（可拆开测）。Token resolve **每次**再跑 LOOKUP。真正关闭时 send/recv 等待者都醒，但 send=flag、recv=优先 kmsg（`19` §6.2）。
 
 ---
 
@@ -303,7 +303,7 @@ cd core && make ARCH=x86_64 config && make all && make run
 - 2026-10-05：任务 1/3/5 精读——口语词与翻译腔清理（焊进→嵌入、绑死→绑定、摘表→从表中摘除、死等→永远等待、拖到→推迟到、直打→直接打入、拿到→取得、勿混→不要混）；为首现英文术语补释义（capability-neutral、actor、admission）；多处「测例」→「测试用例」。
 - 2026-10-05：补「与 Linux 类似机制对照」小节；最终词句顺畅。
 - 2026-09-27：中文表述润色（母语习惯）；「关港」改为「关闭 port」；「真源 / 契约」改为「以…为准 / 约定」；两侧通知差异表述更顺口。
-- 2026-09-26：§6.3 / §7.4 钉死关闭 port 清队时两侧通知不同（两侧 ready；kmsg 仅 recv；flag 规则）并链 `18`/`19`；与 `port.h` unregister Doxygen 一致。
+- 2026-09-26：§6.3 / §7.4 钉死关闭 port 清队时两侧通知不同（两侧 ready；kmsg 仅 recv；flag 规则）并链 `19`/`20`；与 `port.h` unregister Doxygen 一致。
 - 2026-09-26：§7 全文审阅——强化 `ops_allow` / `port_ops_begin` Doxygen（REGISTER 锁内、deny≠关闭 port、begin 四步）；写清编排与 deliver_to 旁路。
 - 2026-09-25：语言整理；与阻塞篇 / 清队边界不变。
 - 2026-08-29：整篇重做——外置叙述；纠正 REGISTER / `lookup_name`；生产零 hooks 诚实；deny vs 真关闭；四门表；与清队 / `deliver_to` 边界。

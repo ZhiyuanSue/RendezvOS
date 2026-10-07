@@ -154,7 +154,7 @@ powerd 在 port 创建/注册失败时线程直接 return——此后 `request_p
 
 本篇涉及的接口分布在：可返回错误约定（`error.h`）、不可恢复出口（`kernel_panic` / `kernel_halt`）、优雅关机客户端与 BSP `powerd` 服务（`powerd.h` / `powerd.c`）、x86 `arch_shutdown`/`arch_reset`（`arch/x86_64/power_ctrl.h`）。以头文件注释为准（见上列头文件；已与 `.c` 核对）。
 
-**本篇不涉及：** aarch64 `arch_shutdown`→PSCI SYSTEM_OFF 细节 → `39`；关机 kmsg opcode 常量正文 → `20`；IPC send/recv 语义 → `19`。
+**本篇不涉及：** aarch64 `arch_shutdown`→PSCI SYSTEM_OFF 细节 → `39`；关机 kmsg opcode 常量正文 → `21`；IPC send/recv 语义 → `20`。
 
 ### 7.1 编排顺序（调用方须遵守）
 
@@ -239,7 +239,7 @@ error_t rendezvos_request_poweroff(void);  /* inline in powerd.h */
 - 2026-10-04：§4.2 改题为「各 ISA 怎么真正关机」，不再以函数名起题。
 - 2026-10-01：删除重复码 `E_REND_RETRY`；buddy reclaim 耗尽并入 `-E_REND_AGAIN`（§4.1）。
 - 2026-09-27：语言润色——「真源 = … Doxygen」改为「以头文件注释为准」；one-shot→单次、bring-up→拉起、非热路径契约→非常用路径，约定从略；符号与技术事实未改。
-- 2026-09-26：§7 全文审阅——error/panic/powerd/x86 power_ctrl Doxygen；负返回惯例；vs `39`/`20`。
+- 2026-09-26：§7 全文审阅——error/panic/powerd/x86 power_ctrl Doxygen；负返回惯例；vs `39`/`21`。
 - 2026-09-26：语言轮——负返回惯例；码表；x86 `0x604`/`0x92`；powerd vs 直接 panic；riscv 缺口。
 - 2026-08-29：整篇重做。
 - 2026-08-27：初稿。
