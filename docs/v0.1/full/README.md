@@ -43,7 +43,7 @@ v0.1/full/
 │   ├── 16-CPU亲和性-创建时绑核.md
 │   └── 17-EBR与线程资源回收.md
 ├── 04-IPC/
-│   ├── 18-无锁队列与EBR设计.md
+│   ├── 18-无锁IPC设计概述.md
 │   ├── 19-Port与消息模型.md
 │   ├── 20-阻塞与非阻塞收发.md
 │   ├── 21-kmsg与TLV序列化.md
@@ -155,9 +155,11 @@ v0.1/full/
 
 ## 02-内存管理
 
+章内未另开总览篇：**整章内存栈总图**（`figures/memory_system.png`）挂在 `06` 开篇；`07`–`09` 开篇回指该图。`06` 的第二格审定仍只覆盖物理页 / buddy 正文。
+
 ### [x] [x] 02-内存管理/06-物理内存与Buddy分配器.md
 
-职责：zone、`phy_mm_init`、buddy 算法、reclaim hook、多 zone 骨架
+职责：zone、`phy_mm_init`、buddy 算法、reclaim hook、多 zone 骨架；开篇另承载 02 章栈总图（图本身属整章审定，不并入本篇 buddy 审定范围）
 
 源码：`kernel/mm/pmm.c` · `kernel/mm/buddy_pmm.c` · `include/rendezvos/mm/pmm.h` · `include/rendezvos/mm/buddy_pmm.h` · `arch/x86_64/mm/pmm.c` · `arch/aarch64/mm/pmm.c` · `include/arch/x86_64/mm/pmm.h` · `include/arch/aarch64/mm/pmm.h` · `include/arch/riscv64/mm/pmm.h` · `include/arch/loongarch/mm/pmm.h`
 
@@ -265,7 +267,7 @@ v0.1/full/
 4. `21` / `22` — kmsg 与 hooks（横向）
 5. `18` **§2 起** — MSQ / tagged ptr / EBR **算法与 API**（可与 19/20 交叉回看）
 
-### [x] [ ] 04-IPC/18-无锁队列与EBR设计.md
+### [x] [ ] 04-IPC/18-无锁IPC设计概述.md
 
 职责：**§1 = 04-IPC 设计框架**（`figures/` 五图）；§2+ = MS queue、tagged ptr、ABA、EBR 咬合与 API
 

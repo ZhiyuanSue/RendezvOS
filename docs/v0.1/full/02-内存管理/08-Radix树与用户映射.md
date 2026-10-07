@@ -4,7 +4,7 @@ v0.1 · 2026-09-25
 
 本篇覆盖：`kernel/mm/vmm_radix_tree.c`、`kernel/mm/mm_user_utils.c`、`include/rendezvos/mm/vmm_radix_tree.h`、`include/rendezvos/mm/mm_user_utils.h`；与 clone / register 紧耦合处见 `kernel/mm/vmm.c`（完整 VSpace 生命周期仍以 `07-虚拟地址空间与页表.md` 为准）。
 
-硬件 PTE 怎么改见同分区页表篇。page fault 填页 / 拆页的**策略**在兼容层；本篇只钉 core 侧约定。`register_vspace` 按页表根地址挂红黑树（见 §4.7），与 IPC 子系统按字符串名注册 port 是两套不同机制——此处只是提醒别混淆，不展开 IPC。
+整章内存栈总图见 `06-物理内存与Buddy分配器.md` 开篇。硬件 PTE 怎么改见同分区页表篇。page fault 填页 / 拆页的**策略**在兼容层；本篇只钉 core 侧约定。`register_vspace` 按页表根地址挂红黑树（见 §4.7），与 IPC 子系统按字符串名注册 port 是两套不同机制——此处只是提醒别混淆，不展开 IPC。
 
 ---
 

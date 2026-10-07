@@ -4,7 +4,7 @@ v0.1 · 2026-09-25
 
 本篇覆盖：`kernel/mm/kmalloc.c`、`kernel/mm/string.c`、`include/rendezvos/mm/kmalloc.h`、`include/rendezvos/mm/allocator.h`。
 
-物理页见 `06-物理内存与Buddy分配器.md`；在 `root_vspace` 上挂整页时用的 radix / `map` 见 Radix 篇与页表篇；跨核 free 用的 MSQ 机制见 `04-IPC/18-无锁队列与EBR设计.md`。
+整章内存栈总图见 `06-物理内存与Buddy分配器.md` 开篇（底层即本篇 `kallocator`，横向箭头即跨核归还）。物理页分配见 `06`；在 `root_vspace` 上挂整页时用的 radix / `map` 见 Radix 篇与页表篇；跨核 free 用的 MSQ 机制见 `04-IPC/18`。
 
 ---
 

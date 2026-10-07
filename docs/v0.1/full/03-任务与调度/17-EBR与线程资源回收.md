@@ -4,7 +4,7 @@ v0.1 · 2026-09-26
 
 本篇覆盖：`kernel/task/ebr.c`、`include/rendezvos/task/ebr.h`、`delete_thread` / `free_thread_ref` / `del_thread_structure` / `thread_release_owned_resources`（`thread.c`），以及与 `schedule` 钩子的交汇。
 
-MSQ 算法与队列内 `ebr_enter` / `exit` 见 `04-IPC/18-无锁队列与EBR设计.md`；消息 / request 何时 put 见 Port 篇；zombie / `EXIT_REQUESTED` 见 TM 篇；`vs` 只 put 不卸硬件见 VSpace 篇；跨核 kfree 排水见 kmalloc 篇（**不是** EBR）。
+MSQ 算法与队列内 `ebr_enter` / `exit` 见 `04-IPC/18-无锁IPC设计概述.md`；消息 / request 何时 put 见 Port 篇；zombie / `EXIT_REQUESTED` 见 TM 篇；`vs` 只 put 不卸硬件见 VSpace 篇；跨核 kfree 排水见 kmalloc 篇（**不是** EBR）。
 
 ---
 

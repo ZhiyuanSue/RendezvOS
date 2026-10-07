@@ -24,7 +24,7 @@ full 正文缺口：（当前无；新增篇目或整篇重写需求在此表格
 | ID | 主题 | 来源 full 篇 | 说明 |
 |----|------|--------------|------|
 | E1 | NUMA / 多 zone `VSpace::pmm` | `02-内存管理/08-Radix树与用户映射.md`、`03-任务与调度/15-VSpace所有权与调度切换.md` | 物理页路由与 shootdown 策略增强 |
-| E2 | Port / MSQ 性能与 IPC 演进 | `04-IPC/19-Port与消息模型.md`、`04-IPC/20-阻塞与非阻塞收发.md`、`04-IPC/18-无锁队列与EBR设计.md` | 队列与 port 表扩展；背压窗口、批量绕开会合、广播、调度感知 IPC 见 `20` §10.1（均非 v0.1）；design 占位 `design/lockfree-IPC远期.md` |
+| E2 | Port / MSQ 性能与 IPC 演进 | `04-IPC/19-Port与消息模型.md`、`04-IPC/20-阻塞与非阻塞收发.md`、`04-IPC/18-无锁IPC设计概述.md` | 队列与 port 表扩展；背压窗口、批量绕开会合、广播、调度感知 IPC 见 `20` §10.1（均非 v0.1）；design 占位 `design/lockfree-IPC远期.md` |
 | E3 | 运行期 CPU 迁移 / `affinity_mask` | `03-任务与调度/16-CPU亲和性-创建时绑核.md`、`03-任务与调度/13-线程与Task_Manager.md` | v0.1 仅创建时绑核；design 占位 `design/线程运行期迁移与affinity_mask.md` |
 | E4 | 调度：优先级 / 迁移 / exit 协议 | `03-任务与调度/13-线程与Task_Manager.md`、`04-IPC/20-阻塞与非阻塞收发.md` | RR 单策略；`scheduler` 函数指针预留；IPC 依赖 / 优先级翻转见 `20` §10.1 |
 | E5 | x86 IOAPIC / MSI 路由 | `05-陷阱与中断/26-平台中断-x86_64-APIC与PIC.md` | IOAPIC 空壳；design 占位 `design/IRQ亲和性与IOAPIC.md` |

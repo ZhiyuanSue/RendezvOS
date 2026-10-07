@@ -4,7 +4,7 @@ v0.1 · 2026-10-02
 
 本篇覆盖：`kernel/ipc/port.c`、`kernel/ipc/message.c`、`include/rendezvos/ipc/port.h`、`include/rendezvos/ipc/message.h`、`kernel/registry/name_index.c`（经 `Port_Table` 使用的部分）。
 
-**建议先读** `18-无锁队列与EBR设计.md` **§1**（五图 = 整章设计框架），再读本篇。收发状态机与 push/pull 见 `20`；kmsg 见 `21`；钩子见 `22`；MSQ/EBR 算法见 `18` §2 起；`name_index` 通用约定见 `10-基础设施/41-名称索引注册表.md`。
+**建议先读** `18-无锁IPC设计概述.md` **§1**（五图 = 整章设计框架），再读本篇。收发状态机与 push/pull 见 `20`；kmsg 见 `21`；钩子见 `22`；MSQ/EBR 算法见 `18` §2 起；`name_index` 通用约定见 `10-基础设施/41-名称索引注册表.md`。
 
 ---
 

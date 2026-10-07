@@ -1,3 +1,25 @@
+
+# 内存部分的整体框架
+
+自上而下是依赖（生长关系）；横向是多核关系
+
+![内存管理栈](figures/memory_system.png)
+
+1. **顶层「物理页面管理器」全局一份**（默认使用`ZONE_NORMAL`的 buddy分配器，实际上也有多zone支持）——本篇主体。
+2. **中间两行**：`Map_Handler` 是**每核**改页表的映射助手（见 `07`）；Radix 是**每个 `VSpace`** 的虚拟地址管理（见 `08`）。图里画在 Map handler 下方，表示「基于映射助手，实现对虚拟地址映射的管理」，**不是**「一个 Map handler 独享一棵 radix」。
+3. **最底下是 percpu 内核对象分配器**即 `kallocator`（见 `09`）；横向箭头是：在 B 核释放 A 核分配的对象时，**无锁送回 A 核分配器**（实现上借 MSQ，机制见 `04-IPC/18`）。
+4. 用户态的对象分配器由用户态的库进行管理，core不管这些。
+
+建议阅读顺序：
+
+| 图中层级 | 本分区权威篇 |
+|----------|--------------|
+| 物理页面管理器 | 本篇 `06` |
+| Map handler / 页表工具 | `07` |
+| Radix 虚拟页面记账 | `08` |
+| percpu 对象分配 + 跨核归还 | `09` |
+| （图未单独画出）稀疏页索引 / TLB / ASID | `10` / `11` / `12` |
+
 # 物理内存与Buddy分配器
 
 v0.1 · 2026-10-02
@@ -495,6 +517,7 @@ make ARCH=x86_64 config && make run
 
 ## 11. 变更记录
 
+- 2026-10-07：开篇挂 `figures/memory_system.png` 作为 **02-内存管理整章栈总图**（未另开总览篇）；§1 起仍只覆盖物理页与 buddy。
 - 2026-10-06：厘清 `Page[]` 是 zone 通用描述，`buddy_page[]` 只是默认 buddy 的私有管理区；切片大小走 `pmm_calculate_manage_space`，内容由 `pmm_init` 填写。
 - 2026-10-06：§4.2 写清 PMM 预定含 L2 + `MemSection`/`Page[]` + 各 zone `buddy_page[]`；`buddy_page[]` 是 manage 切片不是 section 柔性数组；`struct buddy` 在静态 `buddy_pmm`。
 - 2026-10-06：`pmm_alloc_zone` 找不到块 → `-E_REND_NO_MEM`（再 reclaim）；数据结构等关键性错误 → `-E_RENDEZVOS` 。`pmm_test` 成功路径用 `invalid_ppn`，OOM 期望 `-E_REND_AGAIN`。
