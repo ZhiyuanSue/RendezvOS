@@ -10,13 +10,21 @@ EBR 机制与「谁推进 reclaim」见 `03-任务与调度/17-EBR与线程资�
 
 ## 1. 概述
 
-在 §1.1 我们介绍了锁并发与基于IPC并发的同构性，并解释了，我们试图使用无锁IPC来规避内核中多执行流对一个临界区的锁并发的核心思路。
+IPC机制是混合内核或者微内核的核心机制。当然在某些情况下实质上是ITC（inter-thread communication），不过正如seL4的文档中的处理一样，为了更好的便于理解，我们还是用IPC这个词。
+
+基于此，我们这里的IPC机制，定义为两个执行流之间互相通信以进行协作的机制。
+
+在 §1.1 我们会介绍锁并发与基于IPC并发的同构性，并解释了，我们试图使用无锁IPC来规避内核中多执行流对一个临界区的锁并发的核心思路。
 
 基于这种同构性，我们在 §1.2 讨论了，基于无锁 IPC 方案来解构锁，同时使用单执行流来循环执行临界区，使用无锁IPC方案进行通信协作，这样来实现混合内核的思路。其最终的目的是，为了让兼容层实现的代码，可以以单执行流的方式实现，以规避复杂的内核并发实现问题。
 
-RendezvOS v0.1 的并发无锁IPC核心是 **Michael–Scott 无锁 MSQ**（Maged M. Michael 与 Michael L. Scott 提出的多生产者多消费者无锁队列算法，`ms_queue_t`），同时添加 **tagged pointer** 在指针里携带 small tag 来解决ABA问题和带状态的 port 会合问题，再配 **EBR**（Epoch-Based Reclamation，基于世代的延迟回收）延迟释放节点，避免「队列上还能看见、堆里已经 free」的 UAF（Use-After-Free，释放后使用）。这部分在 §1.3 到 §1.7 的剩余几个小节，概述了这些细节实现上的一些问题。
+RendezvOS v0.1 的并发无锁IPC核心是 **Michael–Scott 无锁 MSQ**（Maged M. Michael 与 Michael L. Scott 提出的多生产者多消费者无锁队列算法，`ms_queue_t`），同时添加 **tagged pointer** 在指针里携带 small tag 来解决ABA问题和带状态的 port 会合问题，再配 **EBR**（Epoch-Based Reclamation，基于世代的延迟回收）延迟释放节点，避免「队列上还能看见、堆里已经 free」的 UAF（Use-After-Free，释放后使用）。
 
- MSQ 用在 port 的 `thread_queue`以及每线程 send / recv 消息队列，除此之外，也在kmalloc 跨核 free 中使用（见 kmalloc 篇）。
+另外，和典型实现（例如我在网上搜到的：  https://www.cnblogs.com/lijingcheng/p/4454848.html  ）不同的是，我们也需要考虑节点的内存分配问题，使用外置而非MSQ的 enqueue/dequeue 申请分配内存节点的分配策略，从而大幅度减少 enqueue/dequeue 的不确定性问题。
+
+在 §1.3 到 §1.8 的剩余几个小节，概述了这些细节实现上的一些问题，以及这些是如何影响我们最终对基础数据结构MSQ的一些改造的。
+
+MSQ 用在 port 的 `thread_queue`以及每线程 send / recv 消息队列，除此之外，也在kmalloc 跨核 free 中使用（见 kmalloc 篇）。
 
 ### 1.1 锁并发与基于IPC并发的同构性——同步没有消失，只是搬家了
 
@@ -68,9 +76,9 @@ RendezvOS v0.1 的并发无锁IPC核心是 **Michael–Scott 无锁 MSQ**（Mage
 
 ### 1.3 为何朴素链表做不成无锁队列
 
-然后我们来展开说无锁ipc队列的问题。
+然后我们来展开说无锁ipc队列要解决的问题。
 
-固定 dummy 的单链表看起来只要把 `dummy→next` 从 A 改成 B 就能出队：
+以下图一个固定 dummy 的单链表为例，看起来只要把 `dummy→next` 从 A 改成 B 就能出队：
 
 ![固定 dummy 单链表](figures/dummy-link-list.png)
 
@@ -80,35 +88,44 @@ RendezvOS v0.1 的并发无锁IPC核心是 **Michael–Scott 无锁 MSQ**（Mage
 2. T2 先把 A、B 都出队，队列空（`dummy→next = NULL`）
 3. T1 仍持有过期的 A，读到 `A→next = B`，再把 `dummy→next` 写成 B
 
-于是 **已被出队的 B「复活」**。无 dummy 时用独立 `head` 指向首元素，矛盾是相同的，也需要改 `head` 指针。根因：需要**同时**两处非相邻指针；硬件 CAS 一次只能动一个字，朴素链表无锁做不到。Michael–Scott 队列用「假出队 + 帮助推进 tail」绕开了这个双指针硬性需求。
+于是 **已被出队的 B「复活」**。无 dummy 时用独立 `head` 指向首元素，矛盾是相同的，也需要改 `head` 指针。
 
-### 1.4 MSQ 四性质（假出队）
+根因：需要**同时修改**两个不相邻的指针（u64/u32，看架构）；硬件 CAS 一次只能动一个u64/u32，从而导致上述的单链表无法实现无锁。
+
+Michael–Scott 队列用「假出队 + 帮助推进 tail」绕开了这个双指针硬性需求。我找到一个相关的数据结构和算法的示例实现 ： https://www.cnblogs.com/lijingcheng/p/4454848.html  。
+
+### 1.4 MSQ 队列具有的性质
+
+msqueue有以下几个特性（下图用于示例），这些特性深刻的影响了本文后续代码开发中的诸多细节。
 
 ![MSQ 空队列与假出队](figures/ms-queue-feature.png)
 
-上半：空队列 = 唯一 dummy，**head 与 tail 都指向它**。下半：出队时旧 dummy 被摘除（虚线），原先的 A 成为**新 dummy 且必须仍挂在队上**；逻辑上「弹出」的是载荷语义，节点内存不能整段迁移走。
+1. msqueue本身是一个多发送者多接收者的一个无锁队列。
 
-四条钉死实现取舍：
+2. msqueue本身具有一个dummy节点，所以只有一个dummy节点的时候，他就意味着队列空，此时队列的head和tail指针都指向dummy，如图上半图所示。
 
-| # | 性质 | 后果 |
-|---|------|------|
-| 1 | **MPMC** | 多客户端对一个 server port 合法 |
-| 2 | **空 = 单 dummy，head=tail** | 空判断不能靠「head 是否 NULL」 |
-| 3 | **假出队**：新 dummy **必须留队**；其 `next` 可能仍被别人读 | **不能**把刚 dequeue 的节点整段迁移到另一队列；只能给对方新建 `Message_t` + 共享 `Msg_Data_t`（§1.5、`19` §4.2） |
-| 4 | **帮助推进 stale tail** | 失败不是「立刻放弃」，常需重试 |
+3. msqueue的出队过程，是把旧的dummy节点出队，让原本跟在dummy节点后的节点，图中是A（这个节点必须存在，否则只剩下一个dummy，那么出队失败），成为新的dummy节点。虽然逻辑上这个新的dummy节点已经出队了，但是实质上，新的dummy必须还“放”在队列中。同时，我们难以确定，这个新的dummy节点，他的后继指针next，是否被其他线程所使用，所以直接使用这个新的dummy，认为他是已经被弹出的，是不可行的。（也就是假出队问题
 
-再钉两条 **IPC 侧后果**（对象在 `19`，行为在 `20`）：
+4. 辅助tail更新。无论是enqueue还是dequeue，在失败的时候都试图推进tail节点。
 
-- **Port 单状态线程队列**：同一时刻要么全 SEND、要么全 RECV（或空）。双队列「检查 + 插入」无法单 CAS——见 `19` §1。扩展原语：`msq_enqueue_check_tail` / `msq_dequeue_check_head`（本篇 §1.7、§6.2–6.3）。
-- **会合排队的是 `Ipc_Request_t`，不是 TCB**：假出队会让「刚匹配的节点」仍当 dummy；若把 TCB 嵌进节点再入队会自环——见 `20` §4.1。
 
 ### 1.5 假出队迫使 `Msg` / `Msg_Data` 拆开
 
 ![ipc_transfer_message：新建 Message_t、共享 Msg_Data](figures/ipc_transfer_message.png)
 
-从发送队列**取出**的是 `Message_t`；transfer 时给接收方**再分配一条** `Message_t`，发送侧与接收侧各自持有同一份 `Msg_Data_t`（再指向真正载荷）。不能把 MSQ 节点整段迁移到接收队列——假出队要求旧节点可能仍被别人当 dummy / next 读。拆开之后：`Message_t` 跟着队列走、可独立 refcount；载荷一对一绑在 `Msg_Data` 上（内核里往往无法在任意缓冲前后强行添加一个 refcount）。
+假出队问题，迫使我采用上图所示的这个数据结构。
 
-对象字段与生命周期：`19` §4.2。谁跑 transfer、exit race、`send_pending_msg`：`20` §1.1、§6.4。
+当初我踩入这个坑的原理是这样的：如果直接尝试在发送者的发送队列中弹出一个 msg 节点，然后塞入接收队列的接收节点，因为假出队问题，其实弹出的节点仍在队列中排着，它的后继指向着发送队列的真正第一个节点，直接塞入接收队列，就会导致发送队列被破坏掉。
+
+而如果直接进行复制，在数据块很大的时候，是成本很高的。
+
+所以如图，我们使用`Message_t`在队列中排队，在转移到接收队列的时候我们进行复制。
+
+而让`Msg_Data_t`用于消息数据的管理。这两个复制的`Message_t`均通过指针指向同一个`Msg_Data_t`，从而避免大量数据的拷贝。
+
+另外，在图中`Msg_Data_t`和真正的数据内容的分离，则是因为，为了能够正确的管理生命周期并释放，因此我们在`Msg_Data_t`这里至少需要维护一个refcount。然而，当我给定一个任意的内核缓冲区的数据，我们能轻易的在前面加上一个refcount字段然后封装成一个表示msg的数据结构吗？这恐怕是困难的，它可能是紧密的跟前后的其他数据结合在一起。因此，我们只有一个办法，继续分离并用指针指向数据内容，这是唯一的办法。为此我们约定`Msg_Data_t`和具体数据内容一一对应。
+
+这些MSQ的特性，尤其是假出队问题，导致的我们消息在两个队列中传递的时候，必须使用复制而非直接节点换队列的模式。是MSQ实现IPC需要考虑的典型问题。
 
 ### 1.6 ABA 与 tagged pointer
 
@@ -147,6 +164,10 @@ tagged pointer 解决 ABA 的原理（同一地址、不同代）：
 - 入队 CAS 失败但 tail 状态未变：退化成同侧 MS 竞态，仍正确——对侧无法进入。
 
 细节咬合见 §6.2 / §6.3；状态机与生命周期见 `19`；enqueue_wait / try_match 调用序见 `20`。
+
+### 1.8 enqueue/dequeue外的内存分配
+
+
 
 ---
 
