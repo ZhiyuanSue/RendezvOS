@@ -4,7 +4,7 @@ v0.1 · 2026-09-27
 
 本篇覆盖：`kernel/ipc/port.c`、`include/rendezvos/ipc/port.h`（ops_life / ops_count / `port_append_hooks_t` / `port_ops_begin|end`）、以及 `ipc.c` 里对 begin 的调用点。测试用例：`modules/test/single_port_test.c`。
 
-Port 对象与两层会合见 `19`；send / recv 阻塞时序、醒后 flag、orphan drop、PORT_CLOSED **行为细节**见 `20`；设计框架见 `18` §1；`KMSG_OP_SYSTEM_PORT_CLOSED` 登记见 kmsg 篇；名称索引见基础设施篇。
+Port 对象与两层会合见 `19`；send / recv 阻塞时序、醒后 flag、orphan drop、PORT_CLOSED **行为细节**见 `20`；无锁 IPC 动机与 MSQ 约束见 `18` §1；`KMSG_OP_SYSTEM_PORT_CLOSED` 登记见 kmsg 篇；名称索引见基础设施篇。
 
 ---
 
