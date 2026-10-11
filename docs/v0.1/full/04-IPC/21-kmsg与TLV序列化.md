@@ -4,7 +4,7 @@ v0.1 · 2026-09-27
 
 本篇覆盖：`kernel/ipc/kmsg.c`、`kernel/ipc/ipc_serial.c`、`include/rendezvos/ipc/kmsg.h`、`include/rendezvos/ipc/kmsg_system.h`、`include/rendezvos/ipc/ipc_serial.h`。
 
-`Msg_Data` / Port 会合见 `19`；send / recv 与 system 投递见 `20`；设计框架与 MSQ / EBR 见 `18`（建议先读 §1）。
+`Msg_Data` / Port 会合见 `19`；send / recv 与 system 投递见 `20`；动机与 MSQ / EBR 见 `18`（建议先读 §1；Msg 壳与 `Msg_Data` 拆开见 `18` §1.5）。
 
 ---
 

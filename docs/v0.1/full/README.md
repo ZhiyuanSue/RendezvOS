@@ -43,7 +43,7 @@ v0.1/full/
 │   ├── 16-CPU亲和性-创建时绑核.md
 │   └── 17-EBR与线程资源回收.md
 ├── 04-IPC/
-│   ├── 18-无锁IPC设计概述.md
+│   ├── 18-支持IPC的无锁MSQ队列实现.md
 │   ├── 19-Port与消息模型.md
 │   ├── 20-阻塞与非阻塞收发.md
 │   ├── 21-kmsg与TLV序列化.md
@@ -261,15 +261,15 @@ v0.1/full/
 
 **阅读顺序（与文件名一致）：**
 
-1. `18` **§1** — 五张设计图（`figures/`）= 整章设计框架：同步搬家、混合≈微、假出队、Message_t 与 Msg_Data、单状态
+1. `18` **§1** — 动机（§1.1–1.2）与 MSQ 约束（§1.3–1.8）：同构、混合内核和微内核、假出队、`Message_t`/`Msg_Data`、ABA、单状态、外置节点内存
 2. `19` — Port / Message **对象**（两层模型、单队列、Msg 拆分）
 3. `20` — **会合与投递行为**（推拉、`Ipc_Request`、transfer、system）
 4. `21` / `22` — kmsg 与 hooks（横向）
 5. `18` **§2 起** — MSQ / tagged ptr / EBR **算法与 API**（可与 19/20 交叉回看）
 
-### [x] [ ] 04-IPC/18-无锁IPC设计概述.md
+### [x] [x] 04-IPC/18-支持IPC的无锁MSQ队列实现.md
 
-职责：**§1 = 04-IPC 设计框架**（`figures/` 五图）；§2+ = MS queue、tagged ptr、ABA、EBR 咬合与 API
+职责：**§1 = 动机 + MSQ 设计约束**（含 `figures/` 五图与 §1.8 外置内存）；§2+ = MS queue、tagged ptr、ABA、EBR 咬合与 API
 
 源码：`include/common/dsa/ms_queue.h` · `include/common/taggedptr.h` · `kernel/task/ebr.c`（咬合）；IPC/message 契约见 `19`/`20`
 
