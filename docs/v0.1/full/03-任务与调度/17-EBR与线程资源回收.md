@@ -47,14 +47,27 @@ name / kstack：**直接** `m_free`，不走 EBR。
 
 | 对象 | 怎么放 | 为何 |
 |------|--------|------|
-| **MSQ（Message Queue）暴露的节点**（`Message_t` / `Ipc_Request_t`） | last `ref_put` → `ebr_retire_ref` → 等 epoch 安全再 `*_real` `m_free` | 无锁读 `head/tail/next` 时，即使有 refcount，仍有「先看到指针、再被释放」窗口 |
-| **Thread_Base 本身**（TCB（Thread Control Block）、kstack、name、ownership `vs`） | refcount → `del_thread_structure` **同步**释放 | 线程不依赖 EBR；依赖「摘环 + 无人持有」 |
+| **MSQ 暴露的节点**（`Message_t` / `Ipc_Request_t`） | last `ref_put` → 外壳 `free_*` → `ebr_retire_ref(ref, *_real)` → 安全后 `ebr_try_reclaim` **调 `*_real`**（其内才可能 `m_free`） | 无锁读 `head/tail/next` 时，即使有 refcount，仍有「先看到指针、再 `ref_get_not_zero`」窗口 |
+| **Thread_Base 本身**（TCB、kstack、name、ownership `vs`） | refcount → `del_thread_structure` **同步**释放 | 线程不依赖 EBR；依赖「摘环 + 无人持有」 |
+
+分工一句话：**refcount** 管「还有没有逻辑持有者」；**EBR** 管「有没有核还握着裸指针」。EBR 推迟的是登记的 **`free_func`（`*_real`）**，不是「直接 `m_free`」。
+
+节点延期析构流水：
+
+```text
+  last ref_put(..., free_message_ref / free_ipc_request / …)
+       → ebr_retire_ref(ref, *_real)   // 入本核表 + retire_epoch；此刻不析构
+       → （retire_epoch < safe_epoch）
+       → ebr_try_reclaim 调 *_real     // 再 container_of / put 载荷 / 可能 m_free
+```
 
 交汇点（与 §6 / 线程回收衔接）：
 
 1. 每次 `schedule`：先 `kalloc_process_cross_cpu_frees()`，再 **`ebr_try_reclaim()`**（idle 重的核也要推进）。两钩子并列，不是同一种排水。
 2. 线程回收排空 send / recv 时调 `free_message_ref` → **队列节点仍进 EBR**。
 3. `Ipc_Request` 持有 `thread` ref；`free_ipc_request_real` 里 put thread → EBR 延迟可**推迟** TCB 真正释放。
+
+MSQ 侧谁包 `ebr_enter`/`exit`、谁注入 `free_*`，咬合摘要见 `18` §4.4——**世代与安全条件以本篇为准**。
 
 ### 4.1 Per-CPU EBR
 
@@ -67,7 +80,7 @@ name / kstack：**直接** `m_free`，不走 EBR。
 
 lazy init：`ebr_inited` 0 / 1 / 2。
 
-### 4.2 安全条件（必须写对）
+### 4.2 安全条件与时序（必须写对）
 
 ```text
 safe = global_epoch
@@ -77,7 +90,7 @@ reclaim iff rec.retire_epoch < safe     // 是 < 不是 ≤
 
 `ebr_try_reclaim` **只扫本 CPU 槽**——节点 retire 在**调用 `ebr_retire_ref` 的那颗核**上；要依赖该核 schedule / exit / 再 retire 推进。
 
-EBR 三阶段（quiet / propagate / reclaim）状态图：
+某一瞬间怎样算 safe（snapshot 直觉）：
 
 ```text
    ┌─────────────────────────────────────────────────────────────────┐
@@ -87,11 +100,38 @@ EBR 三阶段（quiet / propagate / reclaim）状态图：
    │  CPU 1:  active=0, local=E-1    ── 已退出，但落后一个 epoch        │
    │  CPU 2:  active=0, local=E      ── 已退出且追平                   │
    │                                                                  │
-   │  safe = min(E, E-1, E) = E-1                                       │
-   │  rec.retire_epoch < E-1 才可 reclaim                              │
+   │  safe = min(E /*active*/, …) 与 global 按上式；本例可到 E-1        │
+   │  rec.retire_epoch < safe 才可调 free_func                         │
    └─────────────────────────────────────────────────────────────────┘
-                            │
-                            ▼
+```
+
+沿时间轴看「retire 之后要等多久才能调 `free_func`」（时间向右；竖线 = global 推进到该世代）：
+
+```text
+  global →     G0                G1                G2                G3
+               |                 |                 |                 |
+  CPU0         |==== enter ======|                 |==== enter ===…  |
+  (local)      |  local=G0       |exit→(inactive)  |  local=G2       |
+               |                 |                 |                 |
+  CPU1         |==enter==|       |==== enter ======|=======|         |
+  (local)      | local=G0|exit   |  local=G1       |       |exit     |
+               |         |       |                 |       |         |
+               |         v       |                 |       v         |
+  谁还在读?    |  CPU0,CPU1      |  CPU1           |  CPU0           |  …
+  safe 直觉    |  min=G0         |  min=G1         |  min=G2         |  …
+               |                 |                 |                 |
+  例: retire@G0|  ● 入本核表     |---------------->| 可调 free_func  |
+               |  (还不能析构)   |  仍可能有读者   |  (G0 < safe)    |
+               |                 |                 |                 |
+  例: retire@G1|                 |  ● 入本核表     |---------------->| 可调 free_func
+               |                 |  (还不能析构)   |  等 safe>G1     |
+```
+
+**读图说明：** 某核上的 `====` 表示它正处在 `ebr_enter`…`ebr_exit`（active），`local_epoch` 为 enter 时快照的 global。某一刻 safe 直觉上是「当前还在读的那些核」的 `local_epoch` 最小值——inactive 核不拉低 safe。节点在世代 G 被 `ebr_retire_ref` 记入本核表（●）后不能马上析构：必须等到 `retire_epoch < safe`（严格小于），`ebr_try_reclaim` 才调用登记的 `free_func`。上图 retire@G0 要到 safe 至少为 G1 之后才允许回收；retire@G1 再往后一格。
+
+机制上还可看成 quiet → propagate → reclaim：
+
+```text
    ┌───────────────┐   ┌───────────────┐   ┌───────────────┐
    │  Quiet        │──►│  Propagate    │──►│  Reclaim       │
    │  (各核退出)   │   │  (global++    │   │  (本核扫槽:    │
@@ -102,11 +142,11 @@ EBR 三阶段（quiet / propagate / reclaim）状态图：
         └────────── 下次 ebr_enter 重新快照 ◄──────┘
 ```
 
-关键点：`safe` 取所有 active 核 `local_epoch` 的最小值；只要还有一颗核停留在旧 epoch，retire_epoch ≥ safe 的记录就不能回收。`ebr_exit` 在深度 1→0 时 `global_epoch++`，把「已退出」状态传播给下一次 enter 的快照——这就是 propagate。reclaim 只扫本核槽，因此每颗核必须自己 schedule / exit / retire 来推进自己的回收。
+`ebr_exit` 在深度 1→0 时 `global_epoch++`，把「已退出」传播给下一次 enter 的快照——即 propagate。只要还有一颗核停在旧 epoch，`retire_epoch ≥ safe` 的记录就不能回收。每颗核必须自己 schedule / exit / retire 推进**本核**槽上的回收。
 
 ### 4.3 Overflow
 
-槽满：先 reclaim 腾位；仍满 → **leak + 日志**，仍返回 `REND_SUCCESS`。不是「稍后一定 free」。
+槽满：先 reclaim 腾位；仍满 → **leak + 日志**，仍返回 `REND_SUCCESS`。不是「稍后一定 free」——宁可泄漏，也不提前调 `free_func` 冒 UAF。
 
 ### 4.4 线程回收不变量
 
@@ -266,6 +306,7 @@ void del_thread_structure(Thread_Base *thread);
 
 ## 11. 变更记录
 
+- 2026-10-11：§4 对齐 18 审阅结论——延期的是 `*_real`/`free_func`（非直接 `m_free`）；迁入世代泳道图与读图说明；明确机制权威在本篇、MSQ 咬合见 `18` §4.4。
 - 2026-10-07：§1 概述瘦身——对象分类表与交汇点迁入 §4 开头并与不变量合并。
 - 2026-10-05：任务 1/3/5 精读——§1 首次出现 EBR 补全称（Epoch-Based Reclamation，基于世代的回收）、MSQ 补说明（Message Queue，无锁消息队列）、TCB 补全称（Thread Control Block）；§4.2/§4.5/§8 残留的「靠」→「依赖」（前轮漏改的三处）；§7.2 首次出现 UAF 补说明（use-after-free）。
 - 2026-10-04：补硬件/架构知识——§4.2 加 EBR 三阶段（quiet / propagate / reclaim）状态图与 `safe = min(active local_epoch)` 推导；§4.5 新增 EBR 与 hazard pointer 对照表（读侧开销 / 回收时机 / 内存占用 / 适用场景）。语言润色：靠→依赖、hold→持有、抢地址复用→抢占地址复用、死转→死循环。
