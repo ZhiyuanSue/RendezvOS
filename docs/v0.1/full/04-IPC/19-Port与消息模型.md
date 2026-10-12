@@ -4,82 +4,81 @@ v0.1 · 2026-10-02
 
 本篇覆盖：`kernel/ipc/port.c`、`kernel/ipc/message.c`、`include/rendezvos/ipc/port.h`、`include/rendezvos/ipc/message.h`、`kernel/registry/name_index.c`（经 `Port_Table` 使用的部分）。
 
-**建议先读** `18-支持IPC的无锁MSQ队列实现.md` **§1**（动机 §1.1–1.2；驱动 MSQ 改成现状的约束在 §1.3–1.8），再读本篇。收发状态机与 push/pull 见 `20`；kmsg 见 `21`；钩子见 `22`；MSQ/EBR 算法见 `18` §2 起；`name_index` 通用约定见 `10-基础设施/41-名称索引注册表.md`。
+**建议先读** `18-支持IPC的无锁MSQ队列实现.md` **§1**（整个无锁 IPC 的动机 §1.1–1.2；驱动 MSQ 改成现状的约束在 §1.3–1.8），再读本篇。收发状态机与 push/pull 见 `20`；kmsg 见 `21`；钩子见 `22`；MSQ/EBR 算法见 `18` §2 起的章节；`name_index` 通用约定见 `10-基础设施/41-名称索引注册表.md`。
 
 ---
 
 ## 1. 概述
 
-从无锁篇 §1 往下推，本篇只钉 **对象长什么样**。
+在`18`里面我们提供了无锁队列的算法，但是我们只是提供了一些基本的无锁队列的原语，在此基础上如何实现IPC是另一个需要考虑的问题。本篇主要描述我们用于IPC对端发现的中介——`Port`。
 
-### 1.1 同步沉进 IPC 之后，还缺什么对象
+### 1.1 对端发现和消息发送的解耦
 
-临界区线程化之后，多核同步变成「怎么把请求正确交给 server 线程」（`18` §1.1–1.2）。若仍用「一个邮箱队列直接堆消息」，同步阻塞语义（谁在等回复）和线程状态 / 调度的绑定都会变得不自然——还得另建「消息 ↔ 阻塞线程」索引。
+在实现临界区线程化的转换之后之后，多核并发的问题关键变成「如何将请求转发给对应的等在那儿的单队列server」（`18` §1.1–1.2）。
 
-吸收 endpoint（端点，IPC 中代表可被寻址的通信端）一类设计：内核先做**路由与配对**，数据怎么拷由 transfer 路径决定。把消息交给另一个线程就两步——**先找到对方，再把载荷递过去**。core 把这两步拆成两层：
+第一个关键问题就是对端发现。
 
-1. **Port 会合层** — port 上挂的是**在等的线程请求**（`Ipc_Request_t` → `Thread_Base`），不是消息本体。像总机：先接通通话双方。
-2. **Per-thread 消息层** — 每个线程自己的 `send_msg_queue` / `recv_msg_queue` 上才是 `Message_t`。接通之后由 `ipc_transfer_message` 做投递（图解 `18` §1.5）。
+我们如何才能正确的找到目标server线程呢？同时，假设有多个同类线程都可以处理该消息，我应该发送给谁？就比如我一个网卡有多个interface，都可以发送网络包，而且都能发到，那实际上就是两个单执行流server的线程，我应该发给谁让他去发出去呢？
 
-两层模型示意（单状态：同一时刻 `thread_queue` 里不会混 SEND 与 RECV）：
+吸收 endpoint（端点，IPC 中代表可被寻址的通信端）一类设计：把消息交给另一个线程就两步——**先找到对方，再把载荷递过去**。core 把这两步拆成两层：
+
+1. **Port 会合层** — port 上挂的是**在等的线程请求**（`Ipc_Request_t` → `Thread_Base`），不是消息本体。进行消息发送对端的一个配对会和。
+2. **消息发送层** — 每个线程具有自己的 `send_msg_queue` / `recv_msg_queue` ，在这上面挂着的上才是 `Message_t`。接通之后由 `ipc_transfer_message` 做投递（ `Message_t` 相关可以看 `18` §1.5）。
+
+两层模型示意（Port 会合层单状态队列：同一时刻 `Port` 的 `thread_queue` 里不会同时具有 SEND 与 RECV 两种类型的线程发送请求）：
 
 ```text
-   ┌──────────── Port 会合层 ────────────┐    ┌── Per-thread 消息层 ──┐
-   │  port.thread_queue (单状态 MSQ)     │    │  Thread A             │
-   │  例：全是 SEND waiter               │    │  send_pending_msg     │
-   │  ┌────┬────┬────┐                   │    │  send_msg_queue       │
-   │  │ReqS│ReqS│ReqS│  tag=SEND         │    │  recv_msg_queue       │
-   │  └────┴────┴────┘                   │    │  recv_pending_cnt     │
-   │  或全 RECV / 或仅 dummy（EMPTY）     │    └──────────────────────┘
+   ┌──────────── Port 会合层 ─────────────┐    ┌── Per-thread 消息层 ──┐
+   │  port.thread_queue (单状态 MSQ)      │    │  Thread A            │
+   │  例：全是 SEND waiter                │    │  send_pending_msg    │
+   │  ┌────┬────┬────┐                   │    │  send_msg_queue      │
+   │  │ReqS│ReqS│ReqS│  tag=SEND         │    │  recv_msg_queue      │
+   │  └────┴────┴────┘                   │    │  recv_pending_cnt    │
+   │  或全 RECV / 或仅 dummy（EMPTY）      │    └──────────────────────┘
    └─────────────────────────────────────┘
-                      配对成功后
-                      ipc_transfer_message（没睡在 port 上的一侧跑）
 ```
 
-没有 `send_msg(port, msg)`这种模式的接口：消息先 `enqueue` 进本线程队列，再 `send_msg` 去 port 上配对。一次发送的时序（谁先到、谁跑 transfer）见 `20` §1.1。
+没有 `send_msg(port, msg)`这种模式的接口：消息先 `enqueue` 进本线程队列，再 `send_msg` 去 port 上配对并发送。一次发送的时序见 `20` §1.1。
 
-### 1.2 为何只有一条线程队列
+### 1.2 单状态队列如何用于对端发现
 
-直观做法是 port 里各挂一条 sender 队列与 receiver 队列。但「看对面有没有人 → 取出或把自己加入队列」跨两个队列时，**单次 CAS（Compare-And-Swap，比较并交换，单字原子操作）做不到原子**。典型事故：发送方看 recv 空，准备把自己加入队列；接收方同时看 send 空，也把自己加入队列——双方都永远阻塞。
+对端发现的直观做法是 Port 里各挂一条 sender 队列与 receiver 队列。但「看对端的队列上有没有人，然后取出对端队列的头节点或把自己加入本端的等待队列」这个操作，会跨两个队列，**难以做成无锁的原子操作**。典型事故：发送方看 recv 空，准备把自己加入队列并阻塞；接收方同时看 send 空，也把自己加入队列并阻塞，尽管实际上发送队列和接收队列均有一个线程，但是双方都永远阻塞。
 
-单队列不变量简单：**要么全是 sender 在等，要么全是 recv 在等（或空）**；一配对就能配成对，剩下的仍然在同一侧。这才好做无锁扩展（单状态 MSQ，`18` §1.7；假出队性质见 `18` §1.4）。tag 低位存 `EMPTY` / `SEND` / `RECV`，权威在 tail。
+单队列则更为简单：**队列中要么全是 sender 线程在等，要么全是 recv 线程在等，要么为空**；如果有另一种类型的线程，那么一定会两两匹配，最后剩下的仍然是同一种类型。而这可以依赖 `18` 中带状态的加入队列和弹出队列。
 
-> 名词「假出队」（dummy dequeue）：MS 队列 dequeue 时并不真正摘除并释放头节点，而是把旧 dummy 节点释放、把其后继节点升为新 dummy 仍挂在队上——逻辑上「弹出」的是载荷语义，节点内存不能整段迁移走。详见 `18` §1.4。
+用于塞入队列中的是 **`Ipc_Request_t` 而非描述线程的 TCB 本体**，之所以这么实现，是因为里存在一个问题就是，假出队带来的自环问题，如果塞进去的是线程的 TCB ，那么节点 enqueue 后又被当 dummy 出队，再次 enqueue 的时候，就相当于把在头部的 dummy 指向自己形成环。
 
-会合节点是 **`Ipc_Request_t` 而非 TCB 本体**——假出队自环（节点 enqueue 后又被当 dummy，再次 enqueue 指向自己形成环）理由见 `20` §4.1（`18` §1.4 已钉因果）。
+### 1.3 假出队如何影响 Msg 
 
-### 1.3 假出队如何定下 Msg 拆分
+MSQ 假出队以及如何影响`Msg_Data_t`可以参考`18` §1.4–1.5，具体来说，逻辑上「弹出」的节点仍可能当新 dummy 挂在队上，**不能**整段迁移到对方 recv 队列。因此：
 
-MSQ 假出队（`18` §1.4–1.5）：逻辑上「弹出」的节点仍可能当新 dummy 挂在队上，**不能**整段迁移到对方 recv 队列。因此：
+- **`Msg_Data_t`** — 拥有载荷的指针与独立的 refcount，是一个消息数据的真正描述者。
+- **`Message_t`** — 挂在 MSQ 上的节点，包括队列节点，以及指向 `Msg_Data_t`的指针。transfer 时给接收方生成一个 `Message_t`并拷贝过去，从而共享并增加对应的 `Msg_Data_t` 的引用计数。
 
-- **`Msg_Data_t`** — 载荷与 `free_data`；独立 refcount。
-- **`Message_t`** — 挂在 MSQ 上的那一截（含队列节点 + 指向 `Msg_Data_t`）。transfer 时给接收方**再 new 一条** `Message_t`，载荷那份 `Msg_Data_t` 共享。
-
-字段细节见 §4.2；推拉谁跑 transfer、pending 兜底见 `20`。
-
-本篇本身没有架构相关的硬件寄存器；会合靠软件 MSQ / CAS（Compare-And-Swap），调度唤醒走 `schedule`（任务篇）。全局按名找 port：`global_port_table`（内部 `name_index_t`）。
+字段细节见 §4.2；推拉谁跑 transfer、pending 等见 `20`。
 
 ---
 
 ## 2. 目标与边界
 
-**提供：** 创建 / 注册 / 按名查找 / 关闭 port；会合队列与 `Message_t` / `Msg_Data_t`；与 refcount / EBR 的生命周期。承接无锁篇 §1 推出的两层模型与 Msg 拆分。
+**提供：** 创建 / 注册 / 按名查找 / 关闭 port；Port 中的队列会和与 `Message_t` / `Msg_Data_t`的拆分，以及 refcount / EBR 的生命周期等内容。
 
-**不做：** 收发状态机与 system 投递（`20`）；MSQ CAS / tag 算法（`18`）；RPC、reply 命名、具体 server 协议；capability 命名空间（可用钩子 `ops_allow` 由兼容层加）；形式化验证声明。
+**不描述：** 收发状态机与 system 投递（见`20`）；MSQ相关算法原语（见`18`）；RPC、reply 命名、具体 server 协议（兼容层）；capability 命名空间（可用钩子 `ops_allow` 由兼容层添加），见`22`；不做形式化验证声明。
 
 ---
 
 ## 3. 分层与调用方
 
-典型 server：`create_message_port` → `register_port` → 循环 `recv_msg` → `dequeue_recv_msg` → `ref_put`。
-客户端：`thread_lookup_port` → `enqueue_msg_for_send` → `send_msg` → `ref_put(port)`。
+典型 server：`create_message_port`创建port → `register_port`注册port → 循环 `recv_msg`尝试接收消息，接收成功则接收队列中有一条消息，否则阻塞住 → `dequeue_recv_msg`从接收队列中弹出一条消息并获得一个引用 → 用完消息之后`ref_put`该消息。
 
-须知：lookup / send / recv 取得的 port 已 bump ref（引用计数加一）；未注册不能 `port_ops_begin`；`unregister` 后新操作返回 `-E_REND_PORT_CLOSED`。已在 `thread_queue` 上的等待者由 `port_clean_thread_queue` 唤醒，但 **send / recv 两侧的通知方式不同**——因为醒来回到的 API 形态不同（因果见 §6.2；行为细节亦见 `20`）：
+客户端：`thread_lookup_port`查找目标所在的port并获得引用 → `enqueue_msg_for_send`把消息放入发送队列 → `send_msg`尝试如果有接收方就发送，如果没有接收方就阻塞住自己 → `ref_put(port)`放弃对port的引用。
 
-| 等待侧 | 关闭 port 时 | 阻塞 API 醒后 |
+除了正常发送消息的唤醒之外，已在 `thread_queue` 上的等待者也可以由 `port_clean_thread_queue` 在清理队列的时候唤醒，但 **send / recv 两侧的通知方式不同**——因为醒来回到的 API 形态不同（因果见 §6.2；行为细节亦见 `20`）：
+
+| 等待侧的状态（指示是发送者还是接收者） | 关闭 port 时的行为 | 阻塞 API 醒后 |
 |--------|--------------|---------------|
-| `block_on_send` | **恒** OR `THREAD_FLAG_IPC_PORT_CLOSED` + ready；**无** kmsg（`send_msg` 不看 recv 队列） | `send_msg` → 清 orphan → `-E_REND_PORT_CLOSED` |
-| `block_on_receive` | 先尝试 `KMSG_OP_SYSTEM_PORT_CLOSED`（`ipc_system_deliver_to`）+ ready；**仅当**事后 `recv_pending_cnt==0`（投递失败 / 未投递上消息）才 OR flag | 有 kmsg → `REND_SUCCESS`，dequeue 看 opcode；有 flag → `-E_REND_PORT_CLOSED` |
+| `block_on_send` | 只把自己的线程flag OR 一下`THREAD_FLAG_IPC_PORT_CLOSED` 并将线程状态置于ready；无 kmsg 发送（`send_msg` 不看 recv 队列） | `send_msg` 中被唤醒之后，看到flag被置位，则清理掉想发出去但是失败了的消息，并返回 `-E_REND_PORT_CLOSED`给上层 |
+| `block_on_receive` | 先尝试使用 `ipc_system_deliver_to` 投递 `KMSG_OP_SYSTEM_PORT_CLOSED` 并修改线程状态为ready；仅当投递失败（recv_pending_cnt == 0）才同样 OR `THREAD_FLAG_IPC_PORT_CLOSED` flag | 有 kmsg → `REND_SUCCESS`，dequeue 看 opcode是否为 `KMSG_OP_SYSTEM_PORT_CLOSED` ；有 flag 则返回`-E_REND_PORT_CLOSED` |
 
 ---
 
@@ -91,16 +90,14 @@ MSQ 假出队（`18` §1.4–1.5）：逻辑上「弹出」的节点仍可能当
 - `refcount` / `name` / `service_id`（名 FNV-1a 派生，供 kmsg 快检）/ `ops_life` / `ops_count` / `append_hooks`。
 - 队列状态在 **tail 的 tagged ptr**：`EMPTY` / `SEND` / `RECV`。
 
-### 4.2 为何 `Msg_Data_t` 与 `Message_t` 拆开
+### 4.2 `Msg_Data_t` 与 `Message_t`
 
-因果在无锁篇 §1.4–1.5（假出队 + `ipc_transfer_message.png`）：旧 dummy 出队后，跟在后面的节点变成**新 dummy，还必须留在队列里**。若消息内容嵌在队列节点里，没法把「逻辑上已出队」的那块内存整段迁移到对方 recv 队列。
+拆分动机见 `18` §1.4–1.5 与本篇 §1.3。这里只钉对象字段：
 
-因此本篇对象定成：
+- **`Msg_Data_t`** — 载荷指针 / 长度 / 类型、`free_data`、独立 refcount；与具体数据内容一一对应（载荷本身往往不能再嵌 refcount 头）。
+- **`Message_t`** — `ms_queue_node_t` + 指向 `Msg_Data_t` 的指针（及可选字段）；是队列节点，不是载荷。transfer：接收方**再 new 一条** `Message_t`，共享同一份 `Msg_Data_t`。
 
-- **`Msg_Data_t`** — 真正的载荷与 `free_data`；独立 refcount。
-- **`Message_t`** — 只含 `ms_queue_node_t` + 指向 `Msg_Data_t` 的指针（再加可选字段）。它是**队列节点**，不是载荷本身。transfer 时给接收方**再分配一条** `Message_t`，两边指向同一份 `Msg_Data_t`，不能把 MSQ 节点整段搬到对方队列。
-
-这是调试中遇到问题之后定下来的结构，不是审美拆分。行为路径（谁跑 transfer、pending）见 `20` §6.4。
+谁跑 transfer、pending 兜底见 `20` §6.4；构造 / 释放 API 见 §7.3。
 
 ### 4.3 `Port_Table` / `global_port_table`
 
@@ -249,7 +246,7 @@ error_t free_message_ref(ref_count_t *); /* → ebr_retire_ref */
 | `create_message_structure` / `fill_message_data` | 先分配空的 `Message_t` 再挂上 `Msg_Data`（fill 会 bump）。 |
 | `free_message_ref` | **EBR** 推迟真释放；real 路径 put `Msg_Data` 再 free 这条 `Message_t`。 |
 
-为何拆 `Msg_Data` / `Message_t`：见 §4.2（MSQ dummy 不能整节点迁移走）。
+为何拆 `Msg_Data` / `Message_t`：见 §1.3 / §4.2（动机权威在 `18` §1.5）。
 
 ---
 
@@ -275,6 +272,7 @@ error_t free_message_ref(ref_count_t *); /* → ebr_retire_ref */
 
 ## 11. 变更记录
 
+- 2026-10-12：§4.2 收成字段钉点；假出队因果只回指 `18` §1.4–1.5 / 本篇 §1.3，避免三重复述。
 - 2026-10-10：文件名随 `18` 更名为 `18-支持IPC的无锁MSQ队列实现.md`。
 - 2026-10-09：开篇与单状态交叉引用对齐 `18` §1 新结构（单状态钉 §1.7）。
 - 2026-10-05：§1.1 只留两层对象 ASCII（单状态 waiter）；发送时序图挪到 `20`（本章不是收发状态机）。§10 演进转到 `20` §10.1。
