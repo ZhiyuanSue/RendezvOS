@@ -10,12 +10,12 @@ MSQ 算法与队列内 `ebr_enter` / `exit` 见 `04-IPC/18-支持IPC的无锁MSQ
 
 ## 1. 概述
 
-这里其实是**两件相关但不同的事**，标题勿读成「一切回收都是 EBR（Epoch-Based Reclamation，基于世代的回收）」。
+标题容易让人以为「所有回收都叫 EBR」。其实是**两件相关但不同的事**：
 
-- **MSQ 节点**（`Message_t` / `Ipc_Request_t`）走 EBR 延迟回收——无锁读路径上有「先看见指针、再被释放」的窗口。
-- **Thread_Base 本身**（TCB、kstack、name、ownership `vs`）靠 refcount **同步**释放，不依赖 EBR。
+- **无锁队列上的节点**（`Message_t` / `Ipc_Request_t`）走 **EBR（基于世代的延迟回收）**——读路径上可能「先看到裸指针，再去做引用计数」，中间不能立刻拆掉对象。
+- **线程对象本身**（控制块、内核栈、名字、拥有的地址空间）靠引用计数**当场**释放，不走 EBR。
 
-二者在 `schedule` 排水、线程 teardown 排空消息队列、以及 `Ipc_Request` 持有的 thread ref 上交汇（对象表与不变量见 §4）。
+两者会在调度排水、线程退出清空收发箱、以及「等待请求还握着线程引用」这些地方碰到一起。对象怎么登记、何时算安全，见 §4。
 
 ---
 
@@ -41,44 +41,74 @@ name / kstack：**直接** `m_free`，不走 EBR。
 
 ---
 
-## 4. 数据结构与不变量
+## 4. 数据结构：先分清两条回收路，再看 EBR 表项
 
-两类对象怎么放、为何不同：
+§1 的两分法落到实现上：
 
 | 对象 | 怎么放 | 为何 |
 |------|--------|------|
-| **MSQ 暴露的节点**（`Message_t` / `Ipc_Request_t`） | last `ref_put` → 外壳 `free_*` → `ebr_retire_ref(ref, *_real)` → 安全后 `ebr_try_reclaim` **调 `*_real`**（其内才可能 `m_free`） | 无锁读 `head/tail/next` 时，即使有 refcount，仍有「先看到指针、再 `ref_get_not_zero`」窗口 |
-| **Thread_Base 本身**（TCB、kstack、name、ownership `vs`） | refcount → `del_thread_structure` **同步**释放 | 线程不依赖 EBR；依赖「摘环 + 无人持有」 |
+| 无锁队列节点（`Message_t` / `Ipc_Request_t`） | 最后一次 `ref_put` → 外壳 `free_*` → **`ebr_retire_ref` 进本核表** → 安全后再调 `*_real` | 无锁读队列指针时，即使后面有 refcount，仍有「先看见指针、再 `ref_get_not_zero`」的空窗 |
+| 线程对象本身 | 引用计数归零 → **同步**拆除 | 不依赖 EBR；靠「已摘调度环且无人持有」 |
 
-分工一句话：**refcount** 管「还有没有逻辑持有者」；**EBR** 管「有没有核还握着裸指针」。EBR 推迟的是登记的 **`free_func`（`*_real`）**，不是「直接 `m_free`」。
+一句话：**引用计数**管「还有没有逻辑持有者」；**EBR** 管「有没有核还握着裸指针」。EBR 推迟的是登记进去的那个真正析构函数，不是「登记的瞬间就 `free` 内存」。
 
-节点延期析构流水：
+延期析构流水（先建立印象，字段名见下一小节）：
 
 ```text
-  last ref_put(..., free_message_ref / free_ipc_request / …)
-       → ebr_retire_ref(ref, *_real)   // 入本核表 + retire_epoch；此刻不析构
-       → （retire_epoch < safe_epoch）
-       → ebr_try_reclaim 调 *_real     // 再 container_of / put 载荷 / 可能 m_free
+  最后一次 ref_put（消息 / 等待请求的外壳释放）
+        │
+        ▼
+  登记进本核待回收表（记下世代号；此刻还不拆）
+        │
+        ▼
+  等到「登记世代 < 安全世代」
+        │
+        ▼
+  调度或退出路径上尝试回收 → 调用真正的析构
 ```
 
-交汇点（与 §6 / 线程回收衔接）：
+和线程退出的交汇（细节见 §6）：
 
-1. 每次 `schedule`：先 `kalloc_process_cross_cpu_frees()`，再 **`ebr_try_reclaim()`**（idle 重的核也要推进）。两钩子并列，不是同一种排水。
-2. 线程回收排空 send / recv 时调 `free_message_ref` → **队列节点仍进 EBR**。
-3. `Ipc_Request` 持有 `thread` ref；`free_ipc_request_real` 里 put thread → EBR 延迟可**推迟** TCB 真正释放。
+1. 每次调度：先做跨核堆释放排水，再尝试 EBR 回收（空闲线程转得多的核也要推进）。两件事并列，不是同一种机制。
+2. 拆线程时清空收发箱，消息节点仍然走 EBR。
+3. 等待请求握着线程引用时，EBR 推迟拆请求，也可能间接推迟线程对象真正释放。
 
-MSQ 侧谁包 `ebr_enter`/`exit`、谁注入 `free_*`，咬合摘要见 `18` §4.4——**世代与安全条件以本篇为准**。
+队列路径上谁进出读临界区、谁登记释放函数，咬合摘要见 `18`；**世代与安全条件以本篇为准**。
 
-### 4.1 Per-CPU EBR
+### 4.1 每核状态与待回收槽：字段干什么
 
-| 量 | 含义 |
-|----|------|
-| `ebr_active_flag` / `ebr_nesting_depth` | 本核是否在读临界区 |
-| `ebr_local_epoch` | enter 时快照的 global |
-| `ebr_retired_recs[EBR_RETIRE_SLOTS]` | 默认 512：ref、free_func、retire_epoch |
-| `ebr_global_epoch` | 全局；exit 到深度 0 时自增 |
+EBR 要回答两件事：现在有没有核还在读临界区里握着裸指针；哪些对象已经没人引用、但要等读侧安静后再拆。状态主要在 `ebr.c`（头文件只暴露接口）。
 
-lazy init：`ebr_inited` 0 / 1 / 2。
+```c
+typedef struct {
+        ref_count_t *ref;
+        error_t (*free_func)(ref_count_t *);
+        u64 retire_epoch;
+        bool used;
+} ebr_retired_rec_t;
+
+DEFINE_PER_CPU(atomic64_t, ebr_active_flag);
+DEFINE_PER_CPU(atomic64_t, ebr_local_epoch);
+DEFINE_PER_CPU(atomic64_t, ebr_nesting_depth);
+DEFINE_PER_CPU(ebr_retired_rec_t[EBR_RETIRE_SLOTS], ebr_retired_recs);
+/* 默认 512 槽；另有 retired_count / peak 等统计 */
+
+static atomic64_t ebr_global_epoch;
+```
+
+| 量 | 为什么要有 |
+|----|-----------|
+| `ebr_retired_rec_t.ref` | 指向待回收对象的 refcount 头（用它 `container_of` 回对象）。 |
+| `free_func` | 安全之后真正该调谁（如 `free_message_ref` 的 `*_real`）；EBR **不**自己猜怎么拆对象。 |
+| `retire_epoch` | 登记进表时的全局世代；只有 `retire_epoch < safe` 才可回收（§4.2）。 |
+| `used` | 本槽是否占用。 |
+| `ebr_active_flag` | 本核是否正处于 `ebr_enter`…`exit` 读临界区。算 safe 时：active 的核要把其 `local_epoch` 纳入 min。 |
+| `ebr_local_epoch` | 进入临界区时快照的 `global_epoch`——表示「我至少看到这么新的世代」。 |
+| `ebr_nesting_depth` | 允许嵌套 enter/exit；只有回到深度 0 才清 active、并推进 `global_epoch`。 |
+| `ebr_retired_recs[]` | **本核**的待回收表。节点 retire 在调用 `ebr_retire_ref` 的那颗核上；别的核的 `ebr_try_reclaim` 扫不到。 |
+| `ebr_global_epoch` | 全局世代；某核 exit 到深度 0 时自增，推动「更老的 retire」变为可回收。 |
+
+lazy init：`ebr_inited` 走 0（未初始化）→ 1（初始化中）→ 2（就绪）。
 
 ### 4.2 安全条件与时序（必须写对）
 

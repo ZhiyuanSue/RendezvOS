@@ -56,19 +56,56 @@ core **没有** `task_exec_enter_user`。Path A 的编排在 personality；core 
 
 ---
 
-## 4. 数据结构与不变量
+## 4. 数据结构：创建路径要带什么信息
 
-### 4.1 Thread_Init_Para
+§1 按「你想做的事」选了 API；下面两份结构体是这些路径真正塞进线程、或交给钩子的参数包。栈页数、地址空间所有权约定接在后面。
 
-`thread_func_ptr` + `int_para[NR_ABI_PARAMETER_INT_REG]`。varargs 超限忽略。ELF 路径：`int_para[0] = page_slice*`；copy 路径：`int_para[0] = custom_return_value`。
+### 4.1 `Thread_Init_Para`：线程入口怎么被调用
 
-### 4.2 elf_load_info_t
+新建线程最终会进入架构侧的 `run_thread`，必须先知道：调哪个函数、整型参数是什么。各架构头文件里字段一致：
 
-`slice` / `entry_addr` / `max_load_end`（页对齐）/ `user_sp` / `phnum` / `phentsize`。**仅** `run_elf_program` 填好传给 `append_hooks->init`。Path A / Linux replace_image **不**构造此结构。
+```c
+typedef struct {
+        void *thread_func_ptr;
+        u64 int_para[NR_ABI_PARAMETER_INT_REG];
+} Thread_Init_Para;
+```
 
-### 4.3 page_slice 与 ELF
+| 字段 | 为什么要有 |
+|------|-----------|
+| `thread_func_ptr` | 线程一开始执行的函数：内核线程就是业务函数；ELF 路径则先进入加载例程。 |
+| `int_para[]` | 按调用约定放进整型参数寄存器的值；超出寄存器个数的多余参数直接丢掉。 |
 
-slice = 内核侧稀疏文件镜像，**不是**用户 VSpace。loader：`page_slice_lookup(0)` 取 header KVA；Phdr 用 `page_slice_copy_to_buffer`；文件字节用 `page_slice_copy_to_user`。core **从不** destroy slice。
+常见约定：走 ELF 时第一个参数是文件镜像（稀疏页索引指针）；走复制线程时第一个参数是给子线程看的「返回值」。整份结构挂在 `thread->init_parameter`。
+
+### 4.2 `elf_load_info_t`：ELF 装完后告诉 hooks 什么
+
+加载例程把可加载段映射进用户地址空间、搭好用户栈之后，若上层注册了「首次初始化」钩子，需要把入口、栈顶、文件元数据一并交给它。这份摘要就是：
+
+```c
+typedef struct elf_load_info {
+        struct page_slice *slice;
+        vaddr entry_addr;
+        vaddr max_load_end;
+        vaddr user_sp;
+        u16 phnum;
+        u16 phentsize;
+} elf_load_info_t;
+```
+
+| 字段 | 为什么要有 |
+|------|-----------|
+| `slice` | 内核侧看到的 ELF 文件镜像（稀疏页索引）。钩子若还要读文件可据此定位。**所有权仍在调用方**，core 不会销毁它。 |
+| `entry_addr` | ELF 入口虚址；之后回到用户态时跳到这里。 |
+| `max_load_end` | 所有可加载段上界（页对齐）；上层可用来划分堆起点等。 |
+| `user_sp` | 已摆好的用户栈顶。 |
+| `phnum` / `phentsize` | 程序头表条数与每条大小，便于钩子再扫一遍。 |
+
+只有走「新建线程 + 跑加载例程」这条路径才会填这份结构。普通内核函数线程、以及自己换镜像、不走该例程的路径，都不会构造它（钩子看到的指针可以为空）。
+
+### 4.3 文件镜像（page_slice）与 ELF
+
+这里的 slice 是内核侧的稀疏文件镜像，**不是**用户地址空间。加载时：用偏移 0 取出文件头；程序头拷到临时缓冲；段内容再拷进用户页。core **从不**销毁这份 slice。
 
 ### 4.4 栈常量
 

@@ -45,32 +45,67 @@ Radix / `create` / `clone` 细节见页表与 Radix 篇；mask 跨核怎么刷�
 
 **in-place exec** — `vspace_clear_user_mappings(vs, handler, true)`：远程 mask 须清；本核位可留（见 §6.4）。
 
-常见错误：create 成功后再 put vs；USER + `&root_vspace`；未 quiesce（远端核尚未切走、mask 未清零）就 clear / del；以为切到 idle 就会清 mask。
+常见错误：创建成功后又把同一份地址空间引用放掉；给用户线程挂上内核根地址空间；远端核还没切走、mask 还没清零就清空或删除；以为切到空闲线程就会自动清 mask。
 
 ---
 
-## 4. 数据结构与不变量
+## 4. 数据结构：所有权钉子钉在哪
 
-### 4.1 VSpace（本篇相关）
+§1 已经说明：用户地址空间上要同时钉住「逻辑持有者」「本核是否还可能用着翻译」「哪些核可能还缓存着 TLB」。完整 `VSpace` 定义见 `07`；下面只摘与这三件事相关的字段。
 
-- `refcount` — 末 put → `free_vspace_ref` → unregister + `del_vspace`
-- `tlb_cpu_mask` + lock — schedule set / clear；unmap / shootdown / clear / del 的门闩
-- `vspace_root_addr` / `asid` — 装硬件
-- `root_vs` — 用户指向 `&root_vspace`；root 自指
+### 4.1 `VSpace`（本篇相关）
 
-### 4.2 线程与 per-CPU
+```c
+struct VSpace {
+        asid_t asid;
+        struct pmm *pmm;
+        ref_count_t refcount;
+        vs_tlb_cpu_bitmap_t tlb_cpu_mask;
+        cas_lock_t tlb_cpu_mask_lock;
+        spin_lock vspace_lock;
+        void *root_radix;
+        paddr vspace_root_addr;
+        union {
+                struct { /* 仅 root_vspace 使用 */
+                        struct list_entry root_manage_list_head;
+                        struct rb_root _vspace_rb_root;
+                        cas_lock_t vspace_register_lock;
+                };
+                struct { /* 普通用户 vs */
+                        struct rb_node _vspace_rb_node;
+                        VSpace *root_vs; /* → &root_vspace */
+                };
+        };
+};
+```
 
-- `thread->vs` — 所有权；boot 为 NULL
-- `THREAD_FLAG_USER` — **门闩**：仅 next 带此位才尝试换用户 AS（不是「有 vs 就换」）
-- `percpu(current_vspace)` — 本核**逻辑**关联的 AS（`virt_mm_init` = root）；仅成功切到另一 user 时更新；进内核**不**改回 root
+| 字段 | 为什么要有 |
+|------|-----------|
+| `asid` | 硬件用的地址空间号；切换和刷 TLB 靠它区分（见 ASID 篇）。 |
+| `pmm` | 这个地址空间向哪套物理页分配器要页（现行多为普通区）。 |
+| `refcount` | 还有没有逻辑持有者。最后一次放掉引用时，注销并删除对象。 |
+| `tlb_cpu_mask` + 锁 | 哪些 CPU **可能**还缓存着这份翻译。切入时置位、切走时本地失效并清位；改映射时只打扰 mask 里的核；删除前必须等 mask 全空。 |
+| `vspace_lock` | 保护页表结构修改；用可扩展自旋锁，等待节点必须是本核私有的。 |
+| `root_radix` / `vspace_root_addr` | 软件侧页表元数据根，以及装进硬件的页表根物理地址。 |
+| union（root / 用户） | 内核那份根地址空间兼管「用户地址空间注册表」；普通用户空间挂进去，并指回根。 |
 
-### 4.3 ref 来源
+### 4.2 线程与 per-CPU 上还钉着什么
+
+| 位置 | 为什么要有 |
+|------|-----------|
+| `thread->vs` | **所有权 ref**：线程活着就钉住这份 AS；boot 线程为 NULL。 |
+| `THREAD_FLAG_USER` | **是否尝试换用户 AS 的门闩**：`schedule` 只对带此位的 next 做用户 AS 切换，不是「有 `vs` 指针就换」。 |
+| `percpu(current_vspace)` | 本核**逻辑上**关联的 AS（开机是 root）。仅成功切到**另一个** user AS 时更新；进内核线程**不**改回 root（刻意延迟，见 §1）。 |
+
+### 4.3 ref 从哪来、须守什么
+
+三种来源：
 
 1. 每条绑定该 AS 的用户线程 ownership（各 1）
-2. 每核 schedule extra（user→另一 user 时对旧 put；user→kernel **不** put）
+2. 每核 schedule 额外 ref（切入另一 user 时 get 新、对旧非 root put；**user→kernel 不 put**）
 3. `root_vspace`：`ref_init(1)` + 每个内核线程转入一条；永不 `del`
 
-不变量：
+还必须守住：
 
 - create / copy 成功 ⇒ caller 不得再持传入 vs（copy **失败也会** put，见创建篇）
 - USER ⇒ `vs` 非 NULL 且 ≠ `&root_vspace`

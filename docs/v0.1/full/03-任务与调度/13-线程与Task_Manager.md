@@ -19,7 +19,7 @@ core 的调度对象是 **线程 + 地址空间**，没有一等公民「进程�
 - **per-CPU TM**：就绪环、current、锁都在本核。跨核 MCS（Mellor-Crummey & Scott 锁，一种可扩展自旋锁）的 `me`、IPC 阻塞归属、`tlb_cpu_mask` 都假设「线程不轻易跑到别的核」。
 - **创建时绑核**：入队时选定 CPU；**没有**运行期迁移 API。
 - **status 与 exit flag 分开**：IPC 会改 `block_on_*`；退出意图只能用 `THREAD_FLAG_EXIT_REQUESTED`，不能靠换一个 status 位。
-- **append hooks**：兼容层挂元数据；`schedule` 热路径不读 FAM。
+- **append hooks**：上层可用 `append_thread_info[]` 挂私有数据；`schedule` 热路径不读这段。
 - **`scheduler` 函数指针**：预留换算法；v0.1 **始终**装 `round_robin_schedule`。
 
 这和「单执行流 server + 无锁 IPC」是同一哲学：并发难点收束在少数原语；策略用 hook / 换指针，而不是在每个 syscall 里演化出一套锁。完整可插拔调度器属于演进（evolution E4）。
@@ -50,34 +50,68 @@ core 的调度对象是 **线程 + 地址空间**，没有一等公民「进程�
 
 ---
 
-## 4. 数据结构与不变量
+## 4. 数据结构：线程与调度器长什么样
 
-### 4.1 Thread_Base
+定义以 `thread.h` 为准。
 
-定义于 `thread.h`（`THREAD_COMMON` + append FAM，FAM = 柔性数组成员，用于尾区可变长 append 数据）。主要字段：
+§1 已经交代：调度对象是「线程 + 地址空间」，每核一个 `Task_Manager` 管就绪环。本节按这个骨架展开字段——先 `Thread_Base`，再状态机，再 TM。`send_msg_queue` / `recv_msg_queue` 等 IPC 字段嵌在 TCB 上，但**语义以 Port 篇（`19`）为准**，这里只说明「它们住在线程上」。公开 API 见 §7。
 
-| 字段 | 含义 |
-|------|------|
-| `sched_thread_list` | 嵌入 TM 环 |
-| `tm` | 所属 per-CPU TM；NULL = 未入队或已 detach |
-| `status` | 原子调度 / IPC 状态 |
-| `flags` | `USER` / `EXIT_REQUESTED` / `IPC_PORT_CLOSED` |
-| `vs` | AS 所有权 ref；boot 为 NULL |
-| `ctx` | `Arch_Thread_Context` |
-| `kstack_bottom` / `kstack_num` | 内核栈顶（高地址）与页数；默认 `thread_kstack_page_num == 2` |
-| `init_parameter` | 入口函数 + ABI 整型参数 |
-| `refcount` | TCB 生命周期；IPC 请求等可额外 hold |
-| `send_msg_queue` / `recv_msg_queue` | per-thread MSQ（dummy 在 `new_thread_structure` 分配） |
-| `port_ptr` / `port_cache` | 阻塞 port；按名 LRU（最多 16，不 pin port） |
-| `append_hooks` + `append_thread_info[]` | 可选尾区 |
+### 4.1 `Thread_Base` / `THREAD_COMMON`
 
-不变量：
+一条可调度执行流对应一颗 `Thread_Base`。字段大致分几块：身份与调度、地址空间与栈、引用计数、IPC 相关槽位、挂在 TM 环上的链表节，以及可选的结构体末尾可变长区域（给上层挂私有数据）。
 
-- `tm != NULL` ⇒ 节点在对应环上（`del` 会校验是否仍是 current）。
-- `add_thread_to_manager` 期望入队前 `status == init`，成功 CAS → `ready`（失败只 `pr_warn`，仍返回 SUCCESS）。
+```c
+#define THERAD_SCHE_COMMON                           \
+        struct {                                     \
+                struct list_entry sched_thread_list; \
+        }; /* 宏名源码少一个 D，文档不改拼写 */
+
+#define THREAD_COMMON                                               \
+        char *name;                                                 \
+        tid_t tid;                                                  \
+        u64 flags;                                                  \
+        VSpace *vs;                                                 \
+        Task_Manager *tm;                                           \
+        u64 status;                                                 \
+        u64 kstack_bottom;                                          \
+        u64 kstack_num;                                             \
+        Arch_Thread_Context ctx;                                    \
+        Thread_Init_Para *init_parameter;                           \
+        ref_count_t refcount;                                       \
+        ms_queue_t recv_msg_queue;                                  \
+        ms_queue_t send_msg_queue;                                  \
+        volatile Message_t *send_pending_msg;                       \
+        atomic64_t recv_pending_cnt;                                \
+        volatile void *port_ptr;                                    \
+        struct thread_port_cache port_cache;                        \
+        THERAD_SCHE_COMMON
+
+struct Thread_Base {
+        THREAD_COMMON
+        const thread_append_hooks_t *append_hooks;
+        u64 append_thread_info[]; /* flexible array；长度见 append_hooks */
+};
+```
+
+| 字段 | 为什么要有 |
+|------|-----------|
+| `name` / `tid` | 调试名；全局唯一编号（由 id 管理器发放，用过不回收）。 |
+| `flags` | 位标志，与下面的 `status` 分开记。常见：`USER`（用户线程）、`EXIT_REQUESTED`（想退出）、`IPC_PORT_CLOSED`（port 已关）。IPC 会改 status，但**擦不掉**退出意图。 |
+| `vs` | 本线程拥有的地址空间；用户线程必须有独立用户地址空间，boot 线程为 NULL。`create_thread` 成功后所有权归线程，调用方不得再放掉这份引用（见 `14` / `15`）。 |
+| `tm` | 所属的本核调度器；NULL 表示还没入队或已摘环。跑在哪颗核上 = `tm->owner_cpu`，没有单独的「亲和」字段。 |
+| `status` | 调度与 IPC 共用的状态（§4.2）。绕环调度只挑选 `ready`。 |
+| `kstack_bottom` / `kstack_num` | 内核栈（高地址为底）和页数；默认两页。 |
+| `ctx` | 架构相关的寄存器上下文，切换时保存 / 恢复。 |
+| `init_parameter` | 入口函数和整型参数（见 `14`），供 `run_thread` 启动。 |
+| `refcount` | 线程对象寿命；IPC 等待请求等可以额外持有。归零后同步拆除（不走 EBR，见 `17`）。 |
+| `send_msg_queue` / `recv_msg_queue` / `send_pending_msg` / `recv_pending_cnt` / `port_ptr` / `port_cache` | 每线程消息 MSQ 与 port 查找 cache——**含义见 `19` §4.5**；本篇只说明它们嵌在线程里。MSQ dummy 在 `new_thread_structure` 分配。 |
+| `sched_thread_list` | 挂进本核就绪环的链表节。只要还挂在某个 `tm` 上，就应该在环上。 |
+| `append_hooks` / `append_thread_info[]` | 可选 append 区给上层；调度热路径不读。何时调用钩子见 §4.5。 |
+
+调用方须守住的约定：
+
+- `add_thread_to_manager` 期望入队前 `status == init`，成功 CAS → `ready`（失败只 `pr_warn`，仍可能返回 SUCCESS）。
 - `create_thread` 成功 ⇒ **caller 不得再** `ref_put` 传入的 `vs`。
-- **没有**线程上的 affinity 字段；亲和 = `thread->tm->owner_cpu`。
-- 宏名 `THERAD_SCHE_COMMON` 少一个 D——以源码为准，勿在文档里「纠正」拼写。
 
 ### 4.2 status 与 flags
 
@@ -104,22 +138,30 @@ enum thread_status_base {
 状态机示意（箭头上的标签是触发方）：
 
 ```text
-                 create_thread
-        init ─────────────────────► ready
-                                  ▲ │
-                  schedule demote  │ │ schedule promote (RR 选中)
-                                  │ ▼
-                                 running
-                                  │ │
-              IPC block_on_*       │ │ owner CPU 切走带 EXIT_REQUESTED
-              (CAS 成功)           │ ▼
-                                  block_on_*      zombie
-                                  │               │
-                                  │ schedule      │ delete_thread
-                                  │ (仍阻塞态)    │ status=exit
-                                  └────► ready    ▼
-                                                 exit
-                                                 (del_thread_structure)
+  init
+    │  create_thread
+    ▼
+  ready ◄──────────────────┐
+    │  schedule promote    │ schedule demote
+    │  (RR 选中)           │
+    ▼                      │
+  running ─────────────────┘
+    │
+    ├─ IPC block_on_* (CAS 成功)
+    │       │
+    │       ▼
+    │   block_on_*
+    │       │  schedule（仍阻塞则回到 ready 再等）
+    │       └──────────► ready
+    │
+    └─ owner CPU 切走带 EXIT_REQUESTED 的 ready
+            │
+            ▼
+         zombie
+            │  delete_thread → status=exit
+            ▼
+          exit
+            （del_thread_structure）
 ```
 
 `block_on_*` ↔ `ready` 的 CAS 由 IPC 路径与 `schedule` 共用同一原子位；`zombie` 仍可挂在环上，等 clean / EBR 那侧观测（见 `17`）。
@@ -136,31 +178,54 @@ enum thread_status_base {
 
 ### 4.3 Task_Manager
 
+每核一个调度器对象：管本核「当前跑谁、环上还有谁 ready」。跨核创建只在**首次入队**时选目标 TM，之后 `owner_cpu` 固定。
+
 ```c
+#define TASK_MANAGER_SCHE_COMMON                     \
+        struct {                                     \
+                cas_lock_t sched_lock;               \
+                struct list_entry sched_thread_list; \
+        };
+
 struct task_manager {
-        cas_lock_t sched_lock;
-        struct list_entry sched_thread_list;
+        TASK_MANAGER_SCHE_COMMON
         cpu_id_t owner_cpu;
-        Thread_Base* current_thread;
-        Thread_Base* (*scheduler)(Task_Manager* tm);
+        Thread_Base *current_thread;
+        Thread_Base *(*scheduler)(Task_Manager *tm);
 };
 ```
 
-每核一个 TM，就绪环是双向链表 + 哨兵节点；`current_thread` 指向本核正在跑的线程：
+| 字段 | 为什么要有 |
+|------|-----------|
+| `sched_lock` | 极短临界区保护环操作（CAS 锁，见 `31`）。 |
+| `sched_thread_list` | 双向环的哨兵节点；线程的 `sched_thread_list` 挂在这上面。 |
+| `owner_cpu` | 这颗 TM 属于哪颗逻辑 CPU；也是该核上线程的亲和。 |
+| `current_thread` | 本核正在跑的线程；RR 从它的 `next` 开始找下一个 `ready`。 |
+| `scheduler` | 选下一个线程的函数指针；现行只装 round-robin。 |
 
+每核一个 TM，就绪环是双向链表 + 哨兵节点：
 ```text
-   per-CPU Task_Manager (owner_cpu = c)
-   ┌──────────────────────────────────────────────┐
-   │ sched_lock   sched_thread_list (哨兵)         │
-   │ current_thread ──► Thread_A (running)        │
-   └──────────────────────────────────────────────┘
-                            │
-                            ▼
-        ┌───哨兵───┬───Thread_B (ready)───┬───Thread_C (ready)───┐
-        │          │                      │                      │
-        └──────────┴──────────────────────┴──────────────────────┘
-        RR 从 current->sched_thread_list.next 起绕环找下一个 ready
-        环上全无 ready → 死循环（靠 idle 兜底，永不永久非 ready）
+  per-CPU Task_Manager (owner_cpu = c)
+  │  sched_lock
+  │  sched_thread_list（哨兵）
+  │  current_thread
+  ▼
+  Thread_A (running)
+  │
+  │  就绪环（双向，从 current 的 next 起找）
+  ▼
+  哨兵
+  │
+  ▼
+  Thread_B (ready)
+  │
+  ▼
+  Thread_C (ready)
+  │
+  └──► 回到哨兵
+
+  RR：从 current->next 绕环找下一个 ready
+  环上全无 ready → 死循环（靠 idle 兜底）
 ```
 
 - `DEFINE_PER_CPU(Task_Manager*, core_tm)` — **始终** `percpu(core_tm)` / `per_cpu(core_tm, cpu)`；头文件 `extern Task_Manager* core_tm` 是模板声明，不是全局单例。
@@ -175,14 +240,15 @@ MCS 节点是 `DEFINE_PER_CPU(..., id_spin_lock)`（`id.c`）。`init_core_id_sy
 
 ### 4.5 append hooks
 
-| Hook | 何时调用 |
-|------|----------|
-| `init` | **仅** `run_elf_program`（有 `elf_info`）；`create_thread` **不**调 |
-| `copy` | `copy_thread` 成功路径末尾 |
-| `fini` | `del_thread_structure`，在释放 vs / 堆之前（fini 时 vs 仍有效） |
+上层若要在线程上挂私有数据，又不想改 core 固定布局，创建时按 `append_info_len` 多分配（`append_thread_info[]`），再用一张静态 `thread_append_hooks_t` 说明何时 `init` / `copy` / `fini`。
 
-分配长度 = `sizeof(Thread_Base) + append_info_len`。钩子表通常静态共享；成员可为 NULL。
+| Hook | 何时调用 | 干什么 |
+|------|----------|--------|
+| `init` | **仅** `run_elf_program`（带着 `elf_info`）；普通 `create_thread` **不**调 | 首次填写 append 区（例如记 ELF 加载结果） |
+| `copy` | `copy_thread` 成功路径末尾 | 从源线程 append 区抄/重建到新线程 |
+| `fini` | `del_thread_structure`，在释放 vs / 堆之前（此时 vs 仍有效） | 释放 append 区持有的资源 |
 
+成员可为 NULL。`schedule` 热路径不读 append 区。
 ---
 
 ## 5. 代码对应

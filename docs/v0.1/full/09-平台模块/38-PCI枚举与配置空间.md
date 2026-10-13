@@ -42,17 +42,52 @@ x86 拉起阶段只做发现：从 bus 0 递归扫 → 建 `pci_node` 树 → �
 
 ---
 
-## 4. 数据结构与不变量
+## 4. 数据结构：软件树节点 vs 配置空间头
 
-- 树：`pci_node`（bus/dev/func、BAR 信息、`dev_node` 挂孩子）。
-- Bridge：`class_code==0x06` 且 subclass `0x04`/`0x07` → 写配置空间偏移 `0x18`（primary/secondary/subordinate）并递归。
-- BAR：probe 后 `len` / `start_addr`；`pci_bar_resource_assigned` 恒 true → **总是复用**读到的 origin（当 BIOS 已分配）。
-- `pci.h` 有 `/*MMIO way*/` 空注释——**未实现**。
+§1 的目标是枚举总线上的功能，并把结果留下来给后面用。实现上分两层：硬件上的配置空间头（读出来的 64 字节布局，见 §4.1），以及软件里一棵孩子/兄弟树（`pci_node`），方便打印和按厂商/设备号查找。
+
+```c
+struct pci_resource {
+        u64 start_addr;
+        u64 len;
+        u64 flags; /* EXIST / IO / MEM / MEM_64 / PREFETCH */
+};
+
+struct pci_node {
+        struct tree_node dev_node;
+        u8 bus, device, func, pedding;
+        u16 vendor_id, device_id;
+        u8 prog_if, subclass, class_code, header_type;
+        u32 usable_resource_number;
+        struct pci_resource bar[MAX_PCI_BAR_NUMBER];
+        u8 primary, secondary, subordinate, padding;
+        u32 pci_device_flags;
+        i32 ref_count;
+};
+
+typedef struct {
+        u16 vendor_id, device_id;
+        u16 command, status;
+        u8 revision_id, prog_if, subclass, class_code;
+        u8 cache_line_size, latency_timer, header_type, bist;
+} pci_common_header_t;
+/* Type0 / Type1 与 union pci_header_t 见 pci.h */
+```
+
+| 字段 | 为什么要有 |
+|------|-----------|
+| `dev_node` | 挂进 PCI 设备树（桥下面挂孩子）。 |
+| `bus` / `device` / `func` | 配置空间寻址三维坐标（Mechanism #1 的 CF8 编码用）。 |
+| `vendor_id` / `device_id` / class 三元组 / `header_type` | 从配置空间头抄来，供识别与桥判断。 |
+| `bar[]` + `usable_resource_number` | 每个 BAR 探测后的基址、长度、IO/MEM 等标志；能用的 BAR 个数。 |
+| `primary` / `secondary` / `subordinate` | **桥**才有意义：本桥连接的总线号范围，递归扫描 secondary。 |
+| `ref_count` | `pci_get_device` 命中时 +1，`pci_put_device` −1。 |
+
+行为摘要：桥（`class_code==0x06` 且 subclass `0x04`/`0x07`）写配置空间 `0x18` 总线号并递归；BAR probe 后 **复用** BIOS 已写好的基址（`pci_bar_resource_assigned` 恒 true）。`pci.h` 里 MMIO 配置通路注释为空——**未实现**，只用 IO 口 CF8/CFC。
 
 ### 4.1 配置空间头（64 字节）
 
 每个 bus/device/function 暴露 256 字节（PCIe 扩展到 4KB）配置空间，前 64 字节是头。`header_type`（偏移 `0x0E` bit7）区分单功能（0）与多功能（1），低 7 位区分头类型：
-
 ```text
 偏移   Type 0（普通设备）              Type 1（PCI-PCI 桥）
 0x00   vendor_id  / device_id          vendor_id  / device_id

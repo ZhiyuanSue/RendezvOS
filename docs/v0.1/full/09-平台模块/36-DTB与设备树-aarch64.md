@@ -54,8 +54,24 @@ aarch64 **不用** ACPI 枚举板级资源；**Flattened Device Tree（FDT）** 
 
 ### 4.1 FDT blob（硬件 / 规范）
 
-`struct fdt_header`：magic、`totalsize`、`off_dt_struct` / `off_dt_strings`、version（规范现行多为 17）等。结构块标签：`FDT_BEGIN_NODE` / `END_NODE` / `PROP` / `NOP` / `END`。属性与多字节细胞大端——读 `len`/`reg` 须 `SWAP_ENDIANNESS_32`（或 property 层封装）。
+`fdt.h`：
 
+```c
+struct fdt_header {
+        u32 magic; /* FDT_MAGIC = 0xd00dfeed */
+        u32 totalsize;
+        u32 off_dt_struct;
+        u32 off_dt_strings;
+        u32 off_mem_rsvmap;
+        u32 version; /* 规范现行多为 17 */
+        u32 last_comp_version;
+        u32 boot_cpuid_phys;
+        u32 size_dt_strings;
+        u32 size_dt_struct;
+};
+```
+
+结构块标签：`FDT_BEGIN_NODE` / `END_NODE` / `PROP` / `NOP` / `END`。属性与多字节细胞大端——读 `len`/`reg` 须 `SWAP_ENDIANNESS_32`（或 property 层封装）。
 #### 4.1.1 FDT 整体布局
 
 FDT（Flattened Device Tree）是设备树的二进制序列化格式，整个 blob 在内存里按下列顺序排布，所有偏移字段均相对 blob 起始、大端：
@@ -128,30 +144,59 @@ structure block 是一串 32 位大端 token，token 取值：
 
 arm64 booting：DTB 8 字节对齐、位于低 128 MiB RAM 内（协议本身**无** 2 MiB 大小限制）。本仓库 early 路径用 2 MiB block 映射（aarch64 L2 block on 4K granule = 2 MiB），故 DTB 实际应 &lt; 2 MiB 以一次 block 覆盖；细节见平台启动篇。
 
-### 4.2 软件树
+### 4.2 软件树：为什么要再解析成 C 对象
 
-- `device_root`：`arch_start_platform` 之后的全局根。
-- 每节点：`name`、属性链表、孩子 / 兄弟（`dev_tree_get_next` 深度优先遍历用）。
-- `compatible`：NUL 分隔的 string list；匹配逻辑见下。
-- 未识别名称的属性 → `PROPERTY_TYPE_OTHER`，数据仍保留。
+§4.1 是固件传来的扁平二进制。bootloader 传递用扁平格式合适；内核里若反复按名查找、深度优先走树，则解析成「节点 + 属性链表」更方便。`build_device_tree` 之后，全局根是 `device_root`。
 
+```c
+struct device_node {
+        struct tree_node dev_node;
+        char *name;
+        struct property *property;
+};
+extern struct device_node *device_root;
+
+struct property {
+        char *name;
+        void *data;
+        int len;
+        struct property *next;
+} __attribute__((packed));
+```
+
+| 字段 | 为什么要有 |
+|------|-----------|
+| `dev_node` | 孩子/兄弟二叉表示，供深度优先遍历（`dev_tree_get_next`）。 |
+| `name` | 节点名（如 `cpu@0`），`find_by_name` 用。 |
+| `property` | 该节点属性单链表头。 |
+| `property.name` / `data` / `len` | 属性名、值指针、字节长度。**名和值的数据常常仍指向 map 后的 FDT blob，不复制**——blob 映射必须活着。 |
+| `property.next` | 同一节点上的下一条属性。 |
+
+`compatible` 是 NUL 分隔的字符串列表，匹配逻辑见 §4.3。未识别名称的属性仍保留数据（类型标成 OTHER）。
 #### 4.2.1 `device_node` 树结构
 
 `build_device_tree` 把扁平的 structure block 递归展开成 C 树，节点之间用「孩子 / 兄弟」二叉链表表示（左孩子右兄弟法），便于深度优先遍历：
 
 ```text
-   device_root ("/")
+  device_root ("/")
         │ child
         ▼
-   ┌──────────┐ sibling ┌──────────┐ sibling ┌──────────┐
-   │  cpus    │ ──────► │  gic     │ ──────► │ chosen   │
-   └──────────┘         └──────────┘         └──────────┘
-        │ child              │ child               (无 child)
-        ▼                    ▼
-   ┌──────────┐ sibling  ┌──────────┐ sibling
-   │  cpu@0   │ ──────► │  cpu@1   │ ──────► …
-   └──────────┘         └──────────┘
-   (属性: device_type=cpu, reg, enable-method, …)
+      cpus
+        │
+        ├─ sibling → gic
+        │              │ child
+        │              ▼
+        │            （gic 子节点…）
+        │
+        ├─ sibling → chosen（无 child）
+        │
+        └─ child
+             ▼
+          cpu@0
+             │
+             ├─ sibling → cpu@1 → …
+             │
+             └─ 属性: device_type=cpu, reg, enable-method, …
 ```
 
 节点与属性对象本身分配在 BSP `kallocator` 上，但属性**名**与**值**的数据指针仍指向 map 后的 FDT blob——不复制。这意味着只要 `device_root` 在用，`boot_dtb_header_base_addr` 指向的 blob 必须保持 mapped；early raw blob 与平台阶段 blob 是两段不同映射，勿混指针域。

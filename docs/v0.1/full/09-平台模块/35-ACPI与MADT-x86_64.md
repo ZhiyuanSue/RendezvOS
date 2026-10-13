@@ -56,9 +56,42 @@ AML 解释器、设备热插拔、sleep 状态机都不在 v0.1 边界内——�
 
 ### 4.1 RSDP / RSDT（ACPI 1.0）
 
-`struct acpi_table_rsdp`：签名 8 字节 `"RSD PTR "`（含尾空格）、checksum、OEM、**revision**、**rsdt_address**（32 位物理）。revision 0 = 仅前 20 字节有效；本仓库拒绝带 `xsdt_address` 的新版路径。
+§1 的两段式里，早期先找到根指针并记下物理地址；平台起来后再顺着表目录走到 MADT。下面是根指针与表目录在结构体里的样子（`acpi_table.h`）：
 
-RSDT：标准表头 + 一串 **u32** 物理指针（`ACPI_RSDT_ENTRY_SIZE`）。条目数 = `(length - header) / 4`。
+```c
+struct acpi_table_rsdp {
+        char signature[8]; /* "RSD PTR "（含尾空格） */
+        u8 checksum;
+        char oemid[6];
+        u8 revision; /* 0 = 仅前 20 字节有效 */
+        u32 rsdt_address; /* 32 位物理 */
+};
+
+struct acpi_table_head {
+        char signature[4];
+        u32 length;
+        u8 revision;
+        u8 checksum;
+        char OEMID[6];
+        char OEM_table_ID[8];
+        u32 OEM_revision;
+        u32 Creator_ID;
+        u32 Creator_revision;
+};
+
+struct acpi_table_rsdt {
+        /* ACPI_TABLE_HEAD 展开为上表字段 */
+        u32 *entry; /* 物理指针数组；条目数 = (length - header) / 4 */
+};
+```
+
+| 字段 | 为什么要有 |
+|------|-----------|
+| RSDP.`signature` / `revision` / `rsdt_address` | 在 BIOS 区扫到 `"RSD PTR "` 后，靠 revision 判断只信前 20 字节，并用 32 位物理地址找到 RSDT。 |
+| `acpi_table_head` | 每张次级表共用的头：签名四字符、整表长度等；本仓库主要用 `signature` + `length` 走路，**不算** checksum。 |
+| RSDT.`entry[]` | 指向 MADT / FACP 等表的 u32 物理指针数组；条目数 = `(length - 头长) / 4`。 |
+
+本仓库拒绝带 `xsdt_address` 的 RSDP rev≥1 路径。
 
 #### 4.1.1 ACPI 表层级结构
 
@@ -107,18 +140,38 @@ RSDP 的 8 字节签名是字符串 `"RSD PTR "`（注意第 8 字节是空格 `
 
 ### 4.2 MADT
 
-```text
-acpi_table_madt:
-  ACPI_TABLE_HEAD
-  Local_int_ctrl_address   // 期望 0xFEE00000（xAPIC MMIO）
-  flags                    // MADT_PCAT_COMPAT 等（PC/AT 兼容标志，本仓库不消费）
-  int_ctrl_structure[]     // 变长 type/length 记录
+`acpi_madt.h`：
+
+```c
+struct acpi_table_madt {
+        /* ACPI_TABLE_HEAD */
+        u32 Local_int_ctrl_address; /* 期望 0xFEE00000（xAPIC MMIO） */
+        u32 flags; /* MADT_PCAT_COMPAT 等；本仓库不消费 */
+        char int_ctrl_structure[]; /* 变长 type/length 记录 */
+};
+
+struct madt_int_ctrl_head {
+        u8 type;
+        u8 length;
+};
+
+struct madt_Local_APIC { /* type = 0 */
+        u8 type;
+        u8 length;
+        u8 _ACPI_P_UID;
+        u8 _APIC_ID;
+        u32 flags;
+};
 ```
 
-Local APIC 记录（type 0）：`_ACPI_P_UID`、`_APIC_ID`、`flags`。
-**不变量（实现）：** `apic_id` 直接当逻辑 `cpu_id` 下标（可稀疏）；`NR_CPU` = 合法条目**个数**（`apic_id < MAX` 时 `++`），**不是** `max_id+1`。
-`CPU_STATE[apic_id]` 先置 `cpu_disable`，SIPI 成功后再变 `cpu_enable`。
+| 字段 | 为什么要有 |
+|------|-----------|
+| `Local_int_ctrl_address` | firmware 声称的 LAPIC MMIO 基址；实现里核对此是否为 `0xFEE00000`。 |
+| `flags` | 规范里的 PC/AT 兼容等位；本仓库**不消费**。 |
+| `int_ctrl_structure[]` | 变长记录流；每条先有 `type`/`length`，再按类型解释。 |
+| Local APIC 的 `_APIC_ID` / `flags` | 发现有几颗带 LAPIC 的 CPU；`apic_id` **直接当**逻辑 `cpu_id` 下标（可稀疏）。 |
 
+实现约定：`NR_CPU` = 合法条目**个数**（`apic_id < MAX` 时 `++`），**不是** `max_id+1`。`CPU_STATE[apic_id]` 先置 `cpu_disable`，SIPI 成功后再变 `cpu_enable`。
 #### 4.2.1 MADT 项类型一览
 
 MADT 的 `int_ctrl_structure[]` 是一串 `{u8 type; u8 length; …}` 的变长记录，游标按 `length` 推进。规范定义了十余种 type，本仓库只对 Local APIC 真正消费，其余一律空 `break`：

@@ -50,8 +50,35 @@ ELF 模块做三件事：校验文件头、按 class 读字段、（可选）打
 
 ### 4.1 ELF 文件头布局（Ehdr）
 
-ELF 文件最前面是固定格式的文件头。`e_ident` 占前 16 字节，其后字段在 ELF32 / ELF64 中长度不同（地址与偏移字段由 32 位扩为 64 位），因此 ELF64 Ehdr 比 ELF32 多 8 字节：
+本模块是薄格式库（§1.1）：只读字段、做校验与遍历，不负责映射进地址空间。文件最前面是固定布局的文件头。`elf_64.h`（32 位对称定义在 `elf_32.h`）：
 
+```c
+typedef struct {
+        unsigned char e_ident[EI_NIDENT]; /* magic + class + data + … */
+        Elf64_Half e_type;
+        Elf64_Half e_machine;
+        Elf64_Word e_version;
+        Elf64_Addr e_entry;
+        Elf64_Off e_phoff;
+        Elf64_Off e_shoff;
+        Elf64_Word e_flags;
+        Elf64_Half e_ehsize;
+        Elf64_Half e_phentsize;
+        Elf64_Half e_phnum;
+        Elf64_Half e_shentsize;
+        Elf64_Half e_shnum;
+        Elf64_Half e_shstrndx;
+} Elf64_Ehdr;
+```
+
+| 字段 | loader 为什么关心 |
+|------|------------------|
+| `e_ident` | magic / class(32|64) / 端序；`check_elf_header` 只严查 magic+version。 |
+| `e_entry` | 入口虚址，最终交给 `14` 的 `elf_load_info`。 |
+| `e_phoff` / `e_phentsize` / `e_phnum` | 找到 Program Header 表并遍历 `PT_LOAD`。 |
+| 其余 | 格式完整字段；本薄库多为打印/遍历辅助，loader 不全用。 |
+
+ELF 文件最前面是固定格式的文件头。`e_ident` 占前 16 字节，其后字段在 ELF32 / ELF64 中长度不同（地址与偏移字段由 32 位扩为 64 位），因此 ELF64 Ehdr 比 ELF32 多 8 字节：
 ```text
 偏移   ELF32 字段             ELF64 字段            说明
 0x00   e_ident[16]            e_ident[16]          magic + class + data + version + osabi
@@ -88,8 +115,28 @@ ELF 文件最前面是固定格式的文件头。`e_ident` 占前 16 字节，�
 
 ### 4.2 Program Header（Phdr）
 
-每个 `PT_LOAD` 描述一段「文件偏移 → 虚拟地址」的映射。ELF32 / ELF64 字段顺序不同，遍历宏各自按对应布局步进：
+```c
+typedef struct {
+        Elf64_Word p_type; /* PT_LOAD=1 … */
+        Elf64_Word p_flags; /* PF_X/W/R */
+        Elf64_Off p_offset;
+        Elf64_Addr p_vaddr;
+        Elf64_Addr p_paddr;
+        Elf64_Xword p_filesz;
+        Elf64_Xword p_memsz;
+        Elf64_Xword p_align;
+} Elf64_Phdr;
+```
 
+| 字段 | loader 为什么关心 |
+|------|------------------|
+| `p_type` | 是否 `PT_LOAD`（要映射）；`PT_DYNAMIC` 仅 stub。 |
+| `p_flags` | 页权限（R/W/X）。 |
+| `p_offset` / `p_filesz` | 从文件镜像哪一段拷多少字节。 |
+| `p_vaddr` / `p_memsz` | 映射到用户 AS 的哪段；`memsz>filesz` 的差额当 `.bss` 零页。 |
+| `p_align` / `p_paddr` | 对齐约束；`p_paddr` 对用户 ELF 通常无意义。 |
+
+每个 `PT_LOAD` 描述一段「文件偏移 → 虚拟地址」的映射。ELF32 / ELF64 字段顺序不同，遍历宏各自按对应布局步进：
 ```text
 ELF64 Phdr（56 字节，p_offset 在 p_flags 前）：
   p_type    (Word)   PT_LOAD=1 PT_DYNAMIC=2 PT_INTERP=3 PT_NOTE=4 PT_GNU_STACK=0x6474e551 ...
