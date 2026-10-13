@@ -37,9 +37,9 @@ Radix / `create` / `clone` 细节见页表与 Radix 篇；mask 跨核怎么刷�
 
 ## 3. 分层与调用方
 
-**用户 AS** — `create` / `clone` → `register_vspace` → 把 **活引用** 交给 `create_thread` / `copy_thread` / `gen_thread_from_elf`。register 须在线程接管前完成；unregister 在最后 `ref_put` → `free_vspace_ref`。
+**用户 AS** — `create` / `clone` 后 `register_vspace`，再把 **活引用** 交给 `create_thread` / `copy_thread` / `gen_thread_from_elf`。register 须在线程接管前完成；unregister 在最后 `ref_put` 落到 `free_vspace_ref`。
 
-**内核 / server** — `gen_thread_from_func`：get root → create（不设 USER）→ **永不**走 AS 切换。
+**内核 / server** — `gen_thread_from_func`：先 get root，再 create（不设 USER），**永不**走 AS 切换。
 
 **boot** — `new_thread_structure`，`vs == NULL`，不设 USER。
 
@@ -162,15 +162,15 @@ VSpace refcount 生命周期（以一个用户 AS 绑定两个线程、在两核
 | `copy_thread` | 成功转入；**任意失败 put 传入 vs** |
 | `gen_thread_from_func` | 内部 get root 再 create |
 | `gen_thread_from_elf` | 内部 create + register；USER 在 create **之后**才 set |
-| 回收路径 | `fini`（vs 仍有效）→ put ownership；**不**卸硬件 |
+| 回收路径 | `fini`（vs 仍有效）时 put ownership；**不**卸硬件 |
 | boot | `vs` 保持 NULL |
 
 ### 6.2 `schedule` 决策
 
 仅当 **next** 带 `THREAD_FLAG_USER`：
 
-1. `new_vs` 空或 == root → 报错，`use_old_thread`（不 switch）
-2. `old_vs = current_vspace`；`old == new` → **无操作**（不 get、不改 mask、不装根）
+1. `new_vs` 空或 == root 则报错，`use_old_thread`（不 switch）
+2. `old_vs = current_vspace`；`old == new` 则 **无操作**（不 get、不改 mask、不装根）
 3. 否则走 §6.3
 
 | 转移 | 行为 |
@@ -248,13 +248,13 @@ CR3 / TTBR0 切换时序（六步在 `schedule` 解锁后、`switch_to` 之前�
 - 保留对象 / ASID / L0 / 内核高半；拆除用户映射与用户 PT。
 - 拒绝 root 形态。
 - **门闩：**
-  - `allow_self_use && current_vspace == vs` → 只允许本 CPU 一位；远端位 → `-E_REND_RC_UNEQUAL`
-  - 否则 → mask **全零**
-  - `allow_self_use=true` 但 `current_vspace != vs` → **退化成全零要求**
+  - `allow_self_use && current_vspace == vs` 则只允许本 CPU 一位；远端位则返回 `-E_REND_RC_UNEQUAL`
+  - 否则要求 mask **全零**
+  - `allow_self_use=true` 但 `current_vspace != vs` 则 **退化成全零要求**
 
 in-place exec：远程须 quiesce；**本核位可留**；ASID **不换**。不是「exec 前 mask 必须全 0」。
 
-`del_vspace`：已 unregister → `clear(..., false)`（mask 全零）→ 拆结构 → **`asid_free`**（asid_free **不**再查 mask；门闩全在 clear）。无 generation：靠 mask 空 + 本地已刷。
+`del_vspace`：已 unregister 后 `clear(..., false)`（mask 全零），再拆结构，最后 **`asid_free`**（asid_free **不**再查 mask；门闩全在 clear）。无 generation：靠 mask 空 + 本地已刷。
 
 **陷阱：** `free_vspace_ref` 先 unregister 再 del；若 del 因 mask 失败，会留下已注销、refcount 0 的半死对象。正常情况下靠不变量避免——**不是**可重试 API。失败码是 `-E_REND_RC_UNEQUAL`，不是旧稿里的 `-E_REND_AGAIN`。
 
@@ -274,11 +274,11 @@ in-place exec：远程须 quiesce；**本核位可留**；ASID **不换**。不�
 
 | 场景 | 顺序 |
 |------|------|
-| 用户 AS 交给线程 | `create_vspace` / `clone_vspace` → **`register_vspace`** → 把 **活引用** 交给 `create_thread` / `copy_thread`（**无二次 get**） |
+| 用户 AS 交给线程 | `create_vspace` / `clone_vspace` 后 **`register_vspace`**，再把 **活引用** 交给 `create_thread` / `copy_thread`（**无二次 get**） |
 | 调度切入另一用户 AS | 仅当 next 带 `THREAD_FLAG_USER` 且 `old≠new`：见 §7.3 六步 |
 | user → kernel / idle | **整段跳过**换根：硬件 / `current_vspace` / mask / CPU extra **滞后** |
-| 原地 exec clear | 远程 mask 先 quiesce → **`vspace_clear_user_mappings(vs, h, true)`**（本核位可留）→ load；**不换 ASID** |
-| 末次 ownership put | **`free_vspace_ref`**：`unregister` → `del_vspace`（`clear(..., false)` 要求 mask **全零**）→ `asid_free` |
+| 原地 exec clear | 远程 mask 先 quiesce，再 **`vspace_clear_user_mappings(vs, h, true)`**（本核位可留），然后 load；**不换 ASID** |
+| 末次 ownership put | **`free_vspace_ref`**：`unregister` 后 `del_vspace`（`clear(..., false)` 要求 mask **全零**），再 `asid_free` |
 
 ### 7.2 所有权转入（`thread.h`；细节 `13`/`14`）
 
@@ -288,15 +288,15 @@ in-place exec：远程须 quiesce；**本核位可留**；ASID **不换**。不�
 | `copy_thread` | 成功转入；**任意失败路径都会 put 传入的 vs** |
 | `gen_thread_from_func` | 内部 get root 再 create（转入 root） |
 | `gen_thread_from_elf` | 内部 create+register；`THREAD_FLAG_USER` 在 create **之后**才设 |
-| 回收路径 | append `fini` 时 vs 仍有效 → put ownership；**不**卸 CR3/TTBR |
+| 回收路径 | append `fini` 时 vs 仍有效，则 put ownership；**不**卸 CR3/TTBR |
 | boot | `vs` 保持 NULL |
 
 ### 7.3 `schedule` 用户 AS 块（`task_manager.c`；API 见 `13`）
 
 仅当 **next** 带 `THREAD_FLAG_USER`：
 
-1. `new_vs` 空或 `== &root_vspace` → 报错，不 switch
-2. `old_vs == new_vs` → **无操作**（不 get / 不改 mask / 不装根）
+1. `new_vs` 空或 `== &root_vspace` 则报错，不 switch
+2. `old_vs == new_vs` 则 **无操作**（不 get / 不改 mask / 不装根）
 3. 否则六步（**不可乱序**，详见 §6.3 的代码与「为何这样排」）
 
 | 转移 | 行为 |
@@ -320,8 +320,8 @@ extern VSpace *current_vspace; /* per-CPU；用 percpu() */
 
 | 接口 | 说明 |
 |------|------|
-| `vspace_clear_user_mappings` | 清用户低半，保留对象 / ASID / 根帧 / 内核半。禁止对 root。门闩：`allow_self_use && current_vspace==vs` → 只许本核一位；否则（含 allow 但 current≠vs）→ mask **全零**；失败返回 `-E_REND_RC_UNEQUAL`（**不是** `-E_REND_AGAIN`）。 |
-| `del_vspace` | 须已 unregister；`clear(..., false)` → 销毁 radix → 释放根页 → **`asid_free`**（不再查 mask）→ 释放结构；`*vs=NULL`。仍 registered → `-E_IN_PARAM`。 |
+| `vspace_clear_user_mappings` | 清用户低半，保留对象 / ASID / 根帧 / 内核半。禁止对 root。门闩：`allow_self_use && current_vspace==vs` 则只许本核一位；否则（含 allow 但 current≠vs）要求 mask **全零**；失败返回 `-E_REND_RC_UNEQUAL`（**不是** `-E_REND_AGAIN`）。 |
+| `del_vspace` | 须已 unregister；`clear(..., false)` 后销毁 radix、释放根页，再 **`asid_free`**（不再查 mask），最后释放结构；`*vs=NULL`。仍 registered 则返回 `-E_IN_PARAM`。 |
 | `free_vspace_ref` | **先 unregister 再 del**。若 del 因 mask 失败，会留下已注销、refcount 为 0 的半死对象；**没有公开的重试 / 修复接口**（靠不变量避免）。 |
 | `percpu(current_vspace)` | 逻辑上的当前 AS；user→kernel **不会**清除。 |
 

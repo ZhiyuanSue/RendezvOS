@@ -18,8 +18,8 @@ core **没有进程对象**。能调度的是线程；用户镜像进地址空�
 |--------|-----|
 | 内核 server / 测试用例 kthread | `gen_thread_from_func` |
 | 底层自管 vs / 入队 / flags | `create_thread` + 自己 add |
-| bare-core / incbin 一次创建用户线程（harness） | `gen_thread_from_elf` → 体跑 `run_elf_program` |
-| fork / clone 类复制用户上下文 | `copy_thread` → 自己入队 → `run_copied_thread` |
+| bare-core / incbin 一次创建用户线程（harness） | `gen_thread_from_elf`，体跑 `run_elf_program` |
+| fork / clone 类复制用户上下文 | `copy_thread`，再自己入队，子跑 `run_copied_thread` |
 | 只把 ELF 装入已有 vs | `load_elf_to_vs`（+ 自管 clear / stack / 回用户） |
 
 **Path A / B 说的是「怎么回到用户态」，不是「怎么 load」：**
@@ -36,7 +36,7 @@ core **没有** `task_exec_enter_user`。Path A 的编排在 personality；core 
 
 ## 2. 目标与边界
 
-**提供：** TCB + kstack + arch ctx 工厂；内核 / 用户便捷封装；ELF64 PT_LOAD → VSpace；user stack 映射；Path B drop 所需 arch 钩子；`copy_thread` 复制用户 trap frame。
+**提供：** TCB + kstack + arch ctx 工厂；内核 / 用户便捷封装；把 ELF64 PT_LOAD 装入 VSpace；user stack 映射；Path B drop 所需 arch 钩子；`copy_thread` 复制用户 trap frame。
 
 **不做：** 完整 execve（shebang、interpreter、标准 AT_* auxv）；动态链接（`PT_DYNAMIC` stub）；ELF32；自动跨核（`gen_thread_from_elf` 固定本核 TM）；`page_slice_destroy`（slice 生命周期归 caller）。
 
@@ -48,7 +48,7 @@ core **没有** `task_exec_enter_user`。Path A 的编排在 personality；core 
 
 **harness / 将来 incbin** — `gen_thread_from_elf(&p, hooks, slice)`；slice 须已 populate（含 header 的 pgoff 0）。
 
-**兼容层** — 通常：`create_vspace` → `create_thread(..., USER 自设, reserve=true)` → 入队；exec 路径复用 `load_elf_to_vs` + 自建栈图像 + Path A 或 Path B drop。fork：`clone_vspace` 或共享 AS → `copy_thread` → `add_*`。
+**兼容层** — 通常先 `create_vspace`，再 `create_thread(..., USER 自设, reserve=true)`，然后入队；exec 路径复用 `load_elf_to_vs` + 自建栈图像 + Path A 或 Path B drop。fork：`clone_vspace` 或共享 AS，再 `copy_thread`，然后 `add_*`。
 
 **append：** `init` 仅 `run_elf_program`（现 Linux hooks 常为 NULL）；`copy` 在 `copy_thread`；`fini` 见 EBR 篇。`create_thread` **不**调 init。
 
@@ -120,7 +120,7 @@ typedef struct elf_load_info {
 | `gen_thread_from_elf` | 内部 create + register | N/A | 回滚（见 §6.3） |
 | `copy_thread` | 传入 | 成功不得 put | **任意失败路径 core 会 put 传入的 vs** |
 
-`create_thread` 成功后 status 仍为 `init`，直到 `add_thread_to_manager` CAS → `ready`。
+`create_thread` 成功后 status 仍为 `init`，直到 `add_thread_to_manager` CAS 成 `ready`。
 
 ---
 
@@ -130,9 +130,9 @@ typedef struct elf_load_info {
 |------|------|
 | `thread_loader.c` / `.h` | `gen_thread_from_*`、`run_elf_program`、`load_elf_to_vs`、`generate_user_stack` |
 | `thread.c` | `create_thread`、`copy_thread`、`run_copied_thread` |
-| `modules/elf/*`（**→ 37**） | 格式校验 / Phdr 遍历宏 / 打印；本篇只调用 |
+| `modules/elf/*`（详见 **37**） | 格式校验 / Phdr 遍历宏 / 打印；本篇只调用 |
 | `mm_user_utils` / radix | 用户 range map |
-| `page_slice_copy` | 文件 → user |
+| `page_slice_copy` | 文件拷到 user |
 | arch `arch_thread` / `arch_user_switch` / `arch_run_thread` | ctx、drop、syscall return、ABI call |
 
 ---
@@ -152,12 +152,12 @@ typedef struct elf_load_info {
 
 ### 6.2 `create_thread` 骨架
 
-`new_thread_structure` → tid / kstack / `arch_set_new_thread_ctx(..., thread_entry, …, reserve_trap_frame)` → 填 `init_parameter` → `thread->vs = vs`。失败已赋值则 `del_thread_structure`（会 put vs）。
+`new_thread_structure` 之后分配 tid / kstack，再 `arch_set_new_thread_ctx(..., thread_entry, …, reserve_trap_frame)`，接着填 `init_parameter`，最后 `thread->vs = vs`。失败已赋值则 `del_thread_structure`（会 put vs）。
 ### 6.3 `gen_thread_from_func` / `gen_thread_from_elf`
 
-**func：** get root → create(`reserve=false`) → 名字拷贝 → `add_thread_to_manager(tm)`。失败：create 失败 put root；add 失败 `del_thread_structure`（含 put root）。成功才写可选 out 指针。
+**func：** 先 get root，再 create(`reserve=false`)，然后名字拷贝，最后 `add_thread_to_manager(tm)`。失败：create 失败 put root；add 失败 `del_thread_structure`（含 put root）。成功才写可选 out 指针。
 
-**elf：** create_vspace + register → create(`run_elf_program`, reserve=true, slice) → `generate_user_stack` + `arch_set_thread_user_sp` → flags=USER → add 本核。失败：按阶段 `del_thread_structure` / put 尚未移交的 vs。
+**elf：** create_vspace + register 后 create(`run_elf_program`, reserve=true, slice)，再 `generate_user_stack` + `arch_set_thread_user_sp`，设 flags=USER，最后 add 本核。失败：按阶段 `del_thread_structure` / put 尚未移交的 vs。
 
 ### 6.4 `load_elf_to_vs`
 
@@ -191,8 +191,8 @@ ELF64 头与程序头布局（本 loader 只接受 ELFCLASS64；Phdr 通过 `pag
 ```
 
 1. ELFCLASS64；坏头 / 越界失败。
-2. 第一遍 `PT_LOAD`：radix big-lock → `mm_user_utils_set_range_and_fill` → 有 `p_filesz` 则 `page_slice_copy_to_user`；跟踪 `max_load_end`。
-3. 第二遍 `PT_DYNAMIC` → **stub**（打印 + SUCCESS）。
+2. 第一遍 `PT_LOAD`：持 radix big-lock，再 `mm_user_utils_set_range_and_fill`；有 `p_filesz` 则 `page_slice_copy_to_user`；跟踪 `max_load_end`。
+3. 第二遍 `PT_DYNAMIC` 走 **stub**（打印 + SUCCESS）。
 4. 输出页对齐 `max_load_end_out`。
 
 Phdr 遍历：page0 KVA 做指针算术，内容经 copy_to_buffer（不要求 phdr 物理连续可 deref）。
@@ -225,11 +225,11 @@ Phdr 遍历：page0 KVA 做指针算术，内容经 copy_to_buffer（不要求 p
 
 ### 6.6 `run_elf_program`（Path B）
 
-在 **当前** `thread->vs` 上：`load_elf_to_vs` → 读 `e_entry` → 写 null word → 可选 `append_hooks->init`（失败只 `pr_error`，**仍继续 drop**）→ 重读 SP（hook 可改）→ `arch_empty_drop_trap_frame` + `arch_syscall_set_user_return` + `arch_return_to_user`。设计为不返回；走到 return 即错误。
+在 **当前** `thread->vs` 上：先 `load_elf_to_vs`，再读 `e_entry`、写 null word；可选 `append_hooks->init`（失败只 `pr_error`，**仍继续 drop**）；重读 SP（hook 可改），最后走 `arch_empty_drop_trap_frame` + `arch_syscall_set_user_return` + `arch_return_to_user`。设计为不返回；走到 return 即错误。
 
 ### 6.7 `copy_thread` / `run_copied_thread`
 
-前置：src 必须 USER，否则 put vs 失败。create(`run_copied_thread`, src hooks, vs, true, ret) → 拷 `*(kstack_bottom-1)` trap frame → `arch_ctx_refresh` + `arch_ctx_merge_from_src` → flags / name / copy hook。返回时仍为 **init**。子线程：`run_copied_thread` 写返回值后 `arch_return_to_user(kstack_bottom, NULL, ret)`。
+前置：src 必须 USER，否则 put vs 失败。create(`run_copied_thread`, src hooks, vs, true, ret) 后拷 `*(kstack_bottom-1)` trap frame，再 `arch_ctx_refresh` + `arch_ctx_merge_from_src`，并处理 flags / name / copy hook。返回时仍为 **init**。子线程：`run_copied_thread` 写返回值后 `arch_return_to_user(kstack_bottom, NULL, ret)`。
 
 ### 6.8 回用户：软件原语与硬件出口
 
@@ -239,7 +239,7 @@ Phdr 遍历：page0 KVA 做指针算术，内容经 copy_to_buffer（不要求 p
 
 1. 在内核栈顶预留的 `trap_frame` 上填好用户 PC / SP / 返回值（`arch_empty_drop_trap_frame` 或拷贝父帧）。
 2. `arch_syscall_set_user_return` 把「用户可见」的 PC / SP / ret 写进 frame（及 live 寄存器 / scratch）。
-3. `arch_return_to_user` → `arch_drop_to_user`：把 RSP / SP 指到该 frame，再走与「从 syscall / sync trap 返回用户」同一条出口。
+3. `arch_return_to_user` 落到 `arch_drop_to_user`：把 RSP / SP 指到该 frame，再走与「从 syscall / sync trap 返回用户」同一条出口。
 
 **x86_64（Intel SDM：SYSCALL / SYSRET、IA-32e）：**
 
@@ -261,17 +261,17 @@ Path A 不调 `arch_return_to_user`：正在处理的 syscall 返回时自然走
 
 本篇涉及的接口分布在：`thread_loader.h` 全套；`thread.h` 的 `create_thread` / `copy_thread` / `run_copied_thread`（创建路径以本篇为主；调度侧摘要见 `13`）；arch `thread_arch.h` 上 Path A/B 回用户与首次 ctx 钩子。说明改写自头文件 Doxygen，并已与 `.c` / `.S` 核对。
 
-**本篇不涉及：** `check_elf_header` / `print_elf_*` → `37`；`schedule` / 入队原语细节 → `13`/`16`；VSpace create/register → `15`/`07`。
+**本篇不涉及：** `check_elf_header` / `print_elf_*` 见 `37`；`schedule` / 入队原语细节见 `13`/`16`；VSpace create/register 见 `15`/`07`。
 
 ### 7.1 编排顺序（调用方必须遵守）
 
 | 场景 | 顺序 |
 |------|------|
-| 内核 kthread | `gen_thread_from_func`（内部 get root → create → name → add）或自管 `create_thread` + `add_*` |
-| harness 用户线程 | populate `page_slice` → **`gen_thread_from_elf`** → 调度后体跑 **`run_elf_program`**（load → drop） |
-| 只装镜像 | （可选 clear）→ **`load_elf_to_vs`** → 自建栈 / Path A 或 B |
-| fork 类 | 准备 vs（clone/share+get）→ **`copy_thread`** → `add_*` → 子跑 **`run_copied_thread`** |
-| Path B drop | 填 / 拷 trap frame → `arch_syscall_set_user_return` → **`arch_return_to_user`** → `arch_drop_to_user` |
+| 内核 kthread | `gen_thread_from_func`（内部先 get root，再 create、拷 name、add）或自管 `create_thread` + `add_*` |
+| harness 用户线程 | 先 populate `page_slice`，再 **`gen_thread_from_elf`**；调度后体跑 **`run_elf_program`**（load 再 drop） |
+| 只装镜像 | （可选 clear 后）**`load_elf_to_vs`**，再自建栈 / Path A 或 B |
+| fork 类 | 准备 vs（clone/share+get），再 **`copy_thread`**，然后 `add_*`，子跑 **`run_copied_thread`** |
+| Path B drop | 填 / 拷 trap frame，再 `arch_syscall_set_user_return`，经 **`arch_return_to_user`** 落到 `arch_drop_to_user` |
 | Path A（compat） | 同线程 syscall 内 `arch_syscall_set_user_return`；**不**调 `arch_return_to_user` |
 
 四 API 对照表见 §6.1。
@@ -293,8 +293,8 @@ void run_copied_thread(u64 syscall_return_value);
 | 接口 | 说明 |
 |------|------|
 | `create_thread` | `vs` 非 NULL；成功则**接管**活引用。设置好 `thread_entry`、kstack、`arch_set_new_thread_ctx`、tid 与参数。**不**入队、**不**调 hooks.init。失败不接管 `vs`。 |
-| `gen_thread_from_func` | get `root_vspace` → create(`reserve=false`) → 名字堆拷贝 → `add_thread_to_manager(tm)`。create 失败 put root；add 失败 `del_thread_structure`（含 put root）。成功才写可选 out 指针。 |
-| `gen_thread_from_elf` | create/register vs → create(`run_elf_program`, reserve=true, slice) → `generate_user_stack` → `thread_set_flags(USER)`（**整字赋值**）→ 挂到**本核** `core_tm`。失败按阶段回滚。**不** destroy slice。树内现网无调用方。 |
+| `gen_thread_from_func` | 先 get `root_vspace`，再 create(`reserve=false`)，然后名字堆拷贝，最后 `add_thread_to_manager(tm)`。create 失败 put root；add 失败 `del_thread_structure`（含 put root）。成功才写可选 out 指针。 |
+| `gen_thread_from_elf` | create/register vs 后 create(`run_elf_program`, reserve=true, slice)，再 `generate_user_stack`，`thread_set_flags(USER)`（**整字赋值**），最后挂到**本核** `core_tm`。失败按阶段回滚。**不** destroy slice。树内现网无调用方。 |
 | `copy_thread` | src 必须是 USER；成功接管 `vs`，**任意失败都会 put 传入的 `vs`**。拷 trap frame 并 refresh/merge ctx；调 hooks.copy。返回时仍为 `init`，由调用方入队。 |
 | `run_copied_thread` | 调 `arch_return_to_user(kstack, NULL, ret)`；若意外返回则 OR exit 再 `schedule`。 |
 
@@ -308,9 +308,9 @@ error_t run_elf_program(struct page_slice *slice);
 
 | 接口 | 说明 |
 |------|------|
-| `load_elf_to_vs` | 只接受 ELF64；`check_elf_header` → 扫 `PT_LOAD`（radix big-lock + fill + `page_slice_copy_to_user`）→ `PT_DYNAMIC` stub。可选输出页对齐的 `max_load_end`。 |
+| `load_elf_to_vs` | 只接受 ELF64；`check_elf_header` 后扫 `PT_LOAD`（radix big-lock + fill + `page_slice_copy_to_user`），再走 `PT_DYNAMIC` stub。可选输出页对齐的 `max_load_end`。 |
 | `generate_user_stack` | 从 `USER_SPACE_TOP` 向下映射 `thread_ustack_page_num` 页；返回高地址再 **− 8**；失败返回 0。 |
-| `run_elf_program` | 在当前线程 vs 上 load → 写 null word（再 −8）→ 可选 init（失败仍继续 drop）→ Path B。成功路径**不会**返回 `REND_SUCCESS`。 |
+| `run_elf_program` | 在当前线程 vs 上 load，再写 null word（再 −8）；可选 init（失败仍继续 drop），最后 Path B。成功路径**不会**返回 `REND_SUCCESS`。 |
 
 `elf_load_info_t`：传给 hooks.init 的元数据（slice / entry / max_load_end / user_sp / phnum / phentsize）。
 

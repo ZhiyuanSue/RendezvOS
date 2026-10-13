@@ -64,7 +64,7 @@ flowchart TB
 
 | 层 | 符号 | 谁调用 | 本篇职责 |
 |----|------|--------|----------|
-| 可移植编排 | `start_smp`、`start_secondary_cpu`、`all_enabled`、`cpu_is_online` | BSP：`cmain` → `start_smp`；AP：`ap_start` / `ap_entry` → `start_secondary_cpu` | 何时开始叫醒、用什么同步汇合、AP 起来后设定AP核环境、对BSP提供「这颗核起来了没有」的信号 |
+| 可移植编排 | `start_smp`、`start_secondary_cpu`、`all_enabled`、`cpu_is_online` | BSP：`cmain` 调 `start_smp`；AP：`ap_start` / `ap_entry` 进 `start_secondary_cpu` | 何时开始叫醒、用什么同步汇合、AP 起来后设定AP核环境、对BSP提供「这颗核起来了没有」的信号 |
 | 架构唤醒 | `arch_start_smp` | 仅由 `start_smp` 调用 | 发 INIT–SIPI 或调 PSCI `cpu_on`；每启一核前改写共用的 `setup_info` |
 
 平台侧的 `arch_start_platform`（仅 BSP）/ `arch_start_core`（每核）以及跳板汇编归平台启动篇；AP 路径上会**调用**它们，但职责不以本篇为准。软 IPI、per-CPU 访问约定是唤醒之后的事，见同目录专篇。
@@ -111,7 +111,7 @@ AP 把自己标成 `cpu_enable` 之后，空转等 `all_enabled`。BSP 必须在
 
 ### 4.4 处理器拓扑（占位）
 
-预留了 `cpu_topology_root` → `cpu_socket` → `cpu_cluster` → `cpu_core`。当前全是空结构体，无 walker、无查询。现行 `cpu_id` 来自 MADT / DTB+PSCI，**不**经过这棵树。
+预留了 `cpu_topology_root` 下挂 `cpu_socket`、`cpu_cluster`、`cpu_core`。当前全是空结构体，无 walker、无查询。现行 `cpu_id` 来自 MADT / DTB+PSCI，**不**经过这棵树。
 
 ### 4.5 本核 per-CPU 区何时可用
 
@@ -152,7 +152,7 @@ AP 把自己标成 `cpu_enable` 之后，空转等 `all_enabled`。BSP 必须在
 
 1. **INIT**（shorthand：除自己以外的所有核）——目标核进入 wait-for-SIPI。
 2. 延时约 10 ms。
-3. **SIPI（STARTUP）两次**——ICR 的向量字段填的是**启动代码所在物理页的页帧号**（本仓库是 `0x1000` → 帧号 1），不是普通 IDT 向量。两次之间约 200 µs。Intel 建议发两次，因为 SIPI 失败不会自动重发。
+3. **SIPI（STARTUP）两次**——ICR 的向量字段填的是**启动代码所在物理页的页帧号**（本仓库是 `0x1000`，即帧号 1），不是普通 IDT 向量。两次之间约 200 µs。Intel 建议发两次，因为 SIPI 失败不会自动重发。
 
 ```mermaid
 sequenceDiagram
@@ -192,7 +192,7 @@ sequenceDiagram
 
 ### 6.3 BSP：`start_smp`
 
-BSP 上已在 boot 线程跑，`do_init_call` 和 `"kernel_port"` 已做过。无 `SMP` 宏则直接返回。否则：把 `all_enabled` 写成还没试完 → `arch_start_smp`（§6.4 / §6.5）→ 再写成试完（该尝试的核都尝试过，不保证每颗都 `cpu_enable`）。`start_smp` 返回之后，可选 `RENDEZVOS_TEST` 再挂测试线程，然后 BSP 进 `kernel_handle_msg`。
+BSP 上已在 boot 线程跑，`do_init_call` 和 `"kernel_port"` 已做过。无 `SMP` 宏则直接返回。否则：先把 `all_enabled` 写成还没试完，再调 `arch_start_smp`（§6.4 / §6.5），返回后写成试完（该尝试的核都尝试过，不保证每颗都 `cpu_enable`）。`start_smp` 返回之后，可选 `RENDEZVOS_TEST` 再挂测试线程，然后 BSP 进 `kernel_handle_msg`。
 
 `arch_start_smp` 返回之前，被叫醒的核已经可以跑到 `start_secondary_cpu` 里等 `all_enabled`（§6.6）。BSP 先让`arch_start_smp`跑完返回，再宣布试完，才放行 AP 的 initcall 。
 
@@ -217,7 +217,7 @@ sequenceDiagram
 关于x86_64的`arch_start_smp`：
 1. BSP 自己的 `CPU_STATE = cpu_enable`。
 2. 若 `NR_CPU == 1`：不拷代码、不发 IPI，但仍调用 `clean_tmp_page_table`（拆启动早期低地址恒等映射；`bsp_entry` 进 `cmain` 时故意不拆，见 x86 平台篇）。
-3. 若 `NR_CPU > 1`：关本核可屏蔽中断 → 拷 `ap_start` → INIT（all-ex-self）→ 约 10 ms → 对每个 `CPU_STATE[i]==cpu_disable`：分配 16 页栈、写 `ap_boot_stack_ptr` 与 `cpu_id=i`、SIPI 两次（间隔约 200 µs）、轮询至 `cpu_enable` 或约十秒超时 → 开中断 → 清掉 `0x1000` → `clean_tmp_page_table`(拆启动早期低地址恒等映射)。
+3. 若 `NR_CPU > 1`：关本核可屏蔽中断，拷 `ap_start`，发 INIT（all-ex-self），等约 10 ms；再对每个 `CPU_STATE[i]==cpu_disable`：分配 16 页栈、写 `ap_boot_stack_ptr` 与 `cpu_id=i`、SIPI 两次（间隔约 200 µs）、轮询至 `cpu_enable` 或约十秒超时；然后开中断，清掉 `0x1000`，并 `clean_tmp_page_table`（拆启动早期低地址恒等映射）。
 
 ### 6.5 aarch64：`arch_start_smp` 怎么做
 
@@ -254,7 +254,7 @@ sequenceDiagram
 
 汇编入口见平台篇；比 BSP 少做哪些全机一次的事，见启动总览 §6.2。这里只钉 **叫醒之后** 可移植层还卡哪些点。`cpu_id` 和栈顶怎样从 `setup_info`获取，见刚写完的 §6.4 / §6.5。
 
-进来时 `setup_info->cpu_id` 已经是本核软件编号。随后：`arch_enable_percpu` → `virt_mm_init`（栈顶来自 `ap_boot_stack_ptr`）→ `arch_start_core`。这两步任一失败就 `return`，**此时还没有**写 `cpu_enable`，BSP 的 `arch_start_smp` 会一直等到超时。
+进来时 `setup_info->cpu_id` 已经是本核软件编号。随后：先 `arch_enable_percpu`，再 `virt_mm_init`（栈顶来自 `ap_boot_stack_ptr`），然后 `arch_start_core`。这两步任一失败就 `return`，**此时还没有**写 `cpu_enable`，BSP 的 `arch_start_smp` 会一直等到超时。
 
 只有这两步都成功，才把 `CPU_STATE` 写成 `cpu_enable`——这是给 BSP 的「这颗核初步准备好了」信号，好让它去叫醒下一颗。然后才 `init_proc`。`init_proc` 失败同样 `return`，但 **`cpu_enable` 已经写下了**：BSP 不会为这一核再等，本核也不会去等 `all_enabled`、不会跑 `do_init_call`。
 
@@ -268,15 +268,15 @@ BSP 把 `all_enabled` 写成试完之后，AP 才 `do_init_call`（意图见 `03
 
 本篇涉及的接口分布在：`smp.h` / `cpu_id.h` 里的编排与 online 查询，以及各架构 `smp.h` 的 `arch_start_smp`。`start_secondary_cpu` 由汇编跳入，定义在 `smp.c`，目前无 `smp.h` 声明。
 
-不归本篇：`cpu_id_is_online` / `task_manager_for_cpu` → `16`；`percpu()` → `29`；软 IPI → `30`；ICR → `26`；PSCI → `39`；`arch_start_core` → 平台启动篇。
+不归本篇：`cpu_id_is_online` / `task_manager_for_cpu`（见 `16`）；`percpu()`（见 `29`）；软 IPI（见 `30`）；ICR（见 `26`）；PSCI（见 `39`）；`arch_start_core`（见平台启动篇）。
 
 ### 7.1 编排顺序（与源码一致）
 
 | 场景 | 顺序 |
 |------|------|
-| BSP `cmain` | … → `init_proc` → **`do_init_call`** → `kernel_port_register` → **`start_smp`** → `kernel_handle_msg`（全文见总览） |
-| `start_smp` 内 | `all_enabled` 还没试完 → **`arch_start_smp`** → 试完 |
-| AP | `ap_start` / `ap_entry` → **`start_secondary_cpu`**（§6.6）：per-CPU → `virt_mm_init` → `arch_start_core` → `CPU_STATE=enable` → `init_proc` → **等 `all_enabled`** → `do_init_call` → `kernel_handle_msg` |
+| BSP `cmain` | ……经 `init_proc`、**`do_init_call`**、`kernel_port_register` 到 **`start_smp`**，再进 `kernel_handle_msg`（全文见总览） |
+| `start_smp` 内 | 先把 `all_enabled` 标成还没试完，调 **`arch_start_smp`**，再标成试完 |
+| AP | `ap_start` / `ap_entry` 进 **`start_secondary_cpu`**（§6.6）：先 per-CPU，再 `virt_mm_init`、`arch_start_core`，写 `CPU_STATE=enable`，然后 `init_proc`，**等 `all_enabled`**，再 `do_init_call`，最后 `kernel_handle_msg` |
 
 ### 7.2 编排入口
 
@@ -298,7 +298,7 @@ void arch_start_smp(struct setup_info *arch_setup_info);
 
 | 架构 | 做什么 |
 |------|--------|
-| x86_64 | `ap_start`@`0x1000`；INIT → 对每个 `cpu_disable` SIPI×2；清跳板；`clean_tmp_page_table`。 |
+| x86_64 | `ap_start`@`0x1000`；发 INIT 后对每个 `cpu_disable` SIPI×2；清跳板；`clean_tmp_page_table`。 |
 | aarch64 | DTB `cpu` + `psci`；`cpu_on(reg, PHY(ap_entry), NR_CPU)`；失败仍可能 `NR_CPU++`。 |
 
 ### 7.4 查询是否 online
@@ -333,7 +333,7 @@ enum cpu_status { no_cpu, cpu_disable, cpu_enable };
 
 ## 10. 限制与后续
 
-拓扑结构体仍是空占位。`cpu_is_online` 与 `cpu_id_is_online` 在 APIC id 不连续时不一致。MADT disabled 未过滤。aarch64 `cpu_on` 失败仍可能 `NR_CPU++`。x86_64 缺「APIC id → 数组下标」对照层。
+拓扑结构体仍是空占位。`cpu_is_online` 与 `cpu_id_is_online` 在 APIC id 不连续时不一致。MADT disabled 未过滤。aarch64 `cpu_on` 失败仍可能 `NR_CPU++`。x86_64 缺「APIC id 到数组下标」对照层。
 
 ---
 

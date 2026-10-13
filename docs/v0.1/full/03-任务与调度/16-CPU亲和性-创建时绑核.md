@@ -58,7 +58,7 @@ compat 若要 `sched_setaffinity`：在自有 proc 记期望 CPU，**创建时**
 |------|------|
 | 同核 server | `gen_thread_from_func(..., percpu(core_tm), ...)` |
 | per-CPU 复制 | `for cpu: gen_thread_from_func(..., task_manager_for_cpu(cpu), ...)`（先确认 tm 非 NULL） |
-| 分步 | `create_thread`（`init`，`tm=NULL`）→ `add_thread_to_cpu(t, j)` |
+| 分步 | 先 `create_thread`（`init`，`tm=NULL`），再 `add_thread_to_cpu(t, j)` |
 | 跨核 probe | 测试用例：核 `i` 往 `(i+1)%NR_CPU` 入队 |
 
 错误用法：已有 `tm` 再 add；`status != init`；offline CPU；把 GIC / MPIDR / APIC 中断亲和跟线程绑核混为一谈。
@@ -72,7 +72,7 @@ compat 若要 `sched_setaffinity`：在自有 proc 记期望 CPU，**创建时**
 ### 4.1 `owner_cpu`
 
 - `Task_Manager::owner_cpu` — `new_task_manager` 时 = 创建该 TM 的 `percpu(cpu_number)`，固定。
-- `thread_owner_cpu(t)` — `t->tm->owner_cpu`，无 tm → `CPU_ID_INVALID`（detach / `delete` 摘环后**不能**当终身标签）。
+- `thread_owner_cpu(t)` — `t->tm->owner_cpu`，无 tm 则返回 `CPU_ID_INVALID`（detach / `delete` 摘环后**不能**当终身标签）。
 
 ### 4.2 能否往这颗核上挂线程（软件 online）
 
@@ -130,9 +130,9 @@ cpu < RENDEZVOS_MAX_CPU_NUMBER
 
 ## 6. 流程
 
-1. 确认目标 online → `task_manager_for_cpu`
+1. 确认目标 online，再取 `task_manager_for_cpu`
 2. `create_thread` 或 `gen_thread_from_func(..., tm, ...)`
-3. 若分步：`add_thread_to_cpu` → `init→ready`，`tm` 指向目标
+3. 若分步：`add_thread_to_cpu` 把 status 从 `init` 变成 `ready`，`tm` 指向目标
 4. 之后只在该核 `schedule` 上被 RR 选中
 
 测试用例：CPU `i` 在 `(i+1)%NR_CPU` 创建 probe（arg=creator）；probe 写 `affinity_seen[ran_on]=creator`；check `affinity_seen[j]==(j+NR_CPU-1)%NR_CPU`。创建者 spin `schedule` 直至 seen 置位，再等到 zombie 后 `delete_thread`。
@@ -150,8 +150,8 @@ cpu < RENDEZVOS_MAX_CPU_NUMBER
 | 场景 | 顺序 |
 |------|------|
 | 同核 | `gen_thread_from_func(..., percpu(core_tm), ...)` |
-| 指定核（便捷） | 确认 `task_manager_for_cpu(cpu)` 非 NULL → `gen_thread_from_func(..., tm, ...)` |
-| 分步绑核 | `create_thread`（status=`init`，`tm==NULL`）→ **`add_thread_to_cpu(t, cpu)`** → 仅在 owner 上被 RR 选中 |
+| 指定核（便捷） | 确认 `task_manager_for_cpu(cpu)` 非 NULL 后，再 `gen_thread_from_func(..., tm, ...)` |
+| 分步绑核 | 先 `create_thread`（status=`init`，`tm==NULL`），再 **`add_thread_to_cpu(t, cpu)`**；之后仅在 owner 上被 RR 选中 |
 | 查询 | 入队后 `thread_owner_cpu(t)`；摘环后勿再当标签 |
 
 创建调用所在核 **不必** 等于目标核；首次运行只保证在 **owner**。
@@ -169,8 +169,8 @@ error_t add_thread_to_cpu(Thread_Base *thread, cpu_id_t cpu);
 |------|------|
 | `cpu_id_is_online` | 条件：`cpu < MAX` ∧ `0 ≤ cpu < NR_CPU` ∧ `per_cpu(core_tm,cpu)≠NULL`。只表示「可以首次入队」；不等于 MADT / GIC 硬件 online。 |
 | `task_manager_for_cpu` | 若 online 则返回该核 `core_tm`，否则 NULL。 |
-| `thread_owner_cpu` | 读 `tm->owner_cpu`；无 tm → `CPU_ID_INVALID`（detach / delete 摘环后失效）。 |
-| `add_thread_to_cpu` | 门禁：NULL → `-E_IN_PARAM`；已有 tm 或 status≠init → `-E_RENDEZVOS`；offline → `-E_IN_PARAM`；否则转调 `add_thread_to_manager`。**没有**运行期迁核。 |
+| `thread_owner_cpu` | 读 `tm->owner_cpu`；无 tm 则返回 `CPU_ID_INVALID`（detach / delete 摘环后失效）。 |
+| `add_thread_to_cpu` | 门禁：参数为 NULL 则 `-E_IN_PARAM`；已有 tm 或 status≠init 则 `-E_RENDEZVOS`；offline 则 `-E_IN_PARAM`；否则转调 `add_thread_to_manager`。**没有**运行期迁核。 |
 
 对照：`add_thread_to_manager` 对非 init 只打印 warn 仍挂环——严格的 status 检查只在本 API。`gen_thread_from_elf` **固定挂本核**，没有跨核 helper。
 

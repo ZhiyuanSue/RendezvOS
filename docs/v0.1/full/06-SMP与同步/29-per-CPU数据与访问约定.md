@@ -33,7 +33,7 @@ SMP 身份 / BSP_ID（BSP = Bootstrap Processor，引导核；AP = Application P
 
 x86 选 **GS_BASE**（内核态直接当基址；用户 TLS 另走 FS / KERNEL_GS，见任务篇 `switch_to`）。aarch64 选 **TPIDR_EL1**（EL1 私有；**不要**和用户 TLS 的 `TPIDR_EL0` 混）。
 
-未 `arch_enable_percpu` 就调 `percpu()` → 读到错误基址 → 静默误访问错误槽位或崩溃。
+未 `arch_enable_percpu` 就调 `percpu()`，会读到错误基址，进而静默误访问错误槽位或崩溃。
 
 #### 1.1.1 x86 GS 段机制要点
 
@@ -116,7 +116,7 @@ EL1 代码读 `mrs x0, TPIDR_EL1` 取得基址，再加偏移即得本核副本�
 
 ### 4.2 MCS `me`
 
-`lock_mcs(lock, me)` 的 `me` 必须是 **本 CPU 队列节点**（`&percpu(port_table_spin_lock)`、`&percpu(asid_mcs_node)`，或嵌在 `Map_Handler` 里的 node）。使用其他核的 slot → 链表损坏（INVARIANTS）。
+`lock_mcs(lock, me)` 的 `me` 必须是 **本 CPU 队列节点**（`&percpu(port_table_spin_lock)`、`&percpu(asid_mcs_node)`，或嵌在 `Map_Handler` 里的 node）。使用其他核的 slot 会损坏链表（INVARIANTS）。
 
 ### 4.3 启用时机
 
@@ -125,7 +125,7 @@ EL1 代码读 `mrs x0, TPIDR_EL1` 取得基址，再加偏移即得本核副本�
 | BSP | `cmain`：`arch_cpu_info` 之后、`virt_mm_init` 之前（`arch_enable_percpu(BSP_ID)`） |
 | AP | `start_secondary_cpu` **尽早**（在 `virt_mm_init` / `arch_start_core` 之前） |
 
-`percpu()` 早于 enable → 基址错。`get_per_cpu_base()`：x86 `rdmsr GS_BASE`；aarch64 `mrs TPIDR_EL1`。
+`percpu()` 早于 enable 则基址错。`get_per_cpu_base()`：x86 `rdmsr GS_BASE`；aarch64 `mrs TPIDR_EL1`。
 
 ---
 
@@ -143,7 +143,7 @@ EL1 代码读 `mrs x0, TPIDR_EL1` 取得基址，再加偏移即得本核副本�
 
 1. 链接：CPU0 模板在 `.percpu..data`。
 2. `phy_mm_init`：`reserve_per_cpu_region` + `clean_per_cpu_region`。
-3. BSP / AP：`arch_enable_percpu(cpu_id)` → 之后才安全 `percpu()`。
+3. BSP / AP：先 `arch_enable_percpu(cpu_id)`，之后才可安全使用 `percpu()`。
 4. 运行时：各子系统往本核槽填指针 / 状态；跨核用 `per_cpu(var, cpu)` **显式**指名。
 
 ---
@@ -152,18 +152,18 @@ EL1 代码读 `mrs x0, TPIDR_EL1` 取得基址，再加偏移即得本核副本�
 
 本篇涉及的接口分布在：per-CPU 布局与访问——`DEFINE_PER_CPU` / `percpu` / `per_cpu`、`arch_enable_percpu` / `get_per_cpu_base`、`__per_cpu_offset` / `cpu_number`、以及 boot 侧 `reserve_per_cpu_region` / `clean_per_cpu_region` / `calculate_per_cpu_offset`。说明改写自 `percpu.h` Doxygen（已与 `percpu.c`、`arch/*/percpu.c` 核对）。
 
-**本篇不涉及：** 各住户变量语义（`core_tm`、`irq_vector`、MCS node…）→ 各子系统篇；BSP_ID / 上线时序 → `28`；MCS 锁原语本身 → `31`。
+**本篇不涉及：** 各住户变量语义（`core_tm`、`irq_vector`、MCS node…，见各子系统篇）；BSP_ID / 上线时序（见 `28`）；MCS 锁原语本身（见 `31`）。
 
 ### 7.1 编排顺序（调用方须遵守）
 
 | 场景 | 顺序 |
 |------|------|
-| 物理布局 | `phy_mm_init` → **`reserve_per_cpu_region`** → map → **`clean_per_cpu_region`**（额外区 **memset 0**） |
-| BSP | `cmain`：`arch_cpu_info` 之后 **`arch_enable_percpu(BSP_ID)`** → 之后才 `percpu()`；`arch_start_core` 写 `cpu_number` |
-| AP | `start_secondary_cpu` **最先** `arch_enable_percpu(cpu_id)` → 再 `virt_mm_init` / `arch_start_core` |
+| 物理布局 | `phy_mm_init` 内 **`reserve_per_cpu_region`**，再 map，然后 **`clean_per_cpu_region`**（额外区 **memset 0**） |
+| BSP | `cmain`：`arch_cpu_info` 之后 **`arch_enable_percpu(BSP_ID)`**，此后才可 `percpu()`；`arch_start_core` 写 `cpu_number` |
+| AP | `start_secondary_cpu` **最先** `arch_enable_percpu(cpu_id)`，再 `virt_mm_init` / `arch_start_core` |
 | MCS | `lock_mcs(lock, me)` 的 `me` = **本核** node（`&percpu(...)`），禁止他核 slot |
 
-未 enable 就 `percpu()` → 基址错。AP 槽无模板初值——勿假定 `DEFINE_PER_CPU(...)= {x}` 在 AP 上成立。
+未 enable 就 `percpu()` 则基址错。AP 槽无模板初值——勿假定 `DEFINE_PER_CPU(...)= {x}` 在 AP 上成立。
 
 ### 7.2 宏与本核访问
 
@@ -203,7 +203,7 @@ percpu(var);                  /* 本核 = get_per_cpu_base() + 偏移 */
         基址 + OFF  ──▶ 本核 core_tm 副本
 ```
 
-热路径上没有「查 cpu_id → 查 offset 表」的全局访问，只有一次 MSR / 系统寄存器读 + 一次加法。这正是 per-CPU 数据存在的核心原因。
+热路径上没有「先查 cpu_id 再查 offset 表」的全局访问，只有一次 MSR / 系统寄存器读 + 一次加法。这正是 per-CPU 数据存在的核心原因。
 
 ### 7.3 基址寄存器
 
@@ -236,7 +236,7 @@ void clean_per_cpu_region(paddr per_cpu_phy_addr);
 
 ### 7.5 MCS `me`（硬规则）
 
-`me` 必须指向**当前 CPU** 的队列节点。用 `per_cpu(node, other)` 当 `me` → 链表损坏。细节亦见 INVARIANTS。
+`me` 必须指向**当前 CPU** 的队列节点。用 `per_cpu(node, other)` 当 `me` 会损坏链表。细节亦见 INVARIANTS。
 
 ---
 

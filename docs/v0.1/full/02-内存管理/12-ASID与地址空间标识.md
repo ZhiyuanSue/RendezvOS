@@ -44,7 +44,7 @@ TLB mask / shootdown 见 `11-TLB与缓存一致性.md`；调度时装根见 `03-
 
 ### 4.1 软件分配器
 
-全局位图，上界由 `arch_asid_supported_width()` 决定：`asid_max = (1u << width) - 1`（aarch64 为 8→255 或 16→65535；x86 为 12→4095，对齐 PCID 字段宽）。**0 永远保留**；分配失败返回 0，create 路径会释放已建结构体。锁是 MCS：`asid_lock` + 本核 `asid_mcs_node`。
+全局位图，上界由 `arch_asid_supported_width()` 决定：`asid_max = (1u << width) - 1`（aarch64 为 8 位对应 255、或 16 位对应 65535；x86 为 12 位对应 4095，对齐 PCID 字段宽）。**0 永远保留**；分配失败返回 0，create 路径会释放已建结构体。锁是 MCS：`asid_lock` + 本核 `asid_mcs_node`。
 
 注意 x86 返回 **12** 只表示 PCID 标识位宽；**当前并未启用 PCID**（装 CR3 仍忽略 asid）——不要写成「x86 已经启用 PCID」。
 
@@ -103,7 +103,7 @@ static asid_bitmap_t asid_bitmap;
 
   也就是把软件 ASID 写入 TTBR0 的高 16 位字段（与常见 AArch64 ASID 打包方式一致；具体位宽还受 `TCR_EL1.AS` 约束）。
 - `TCR_EL1.AS`：`ID_AA64MMFR0_EL1.ASIDBits` 为 16-bit 时，`boot.S` 的 `init_mmu` **会**置位；否则按 8-bit。`arch_asid_supported_width()` 读同一字段，把 8/16 告诉分配器。
-- 页表叶上的 **nG（非全局）** 位：非全局项才会随 ASID 生效；全局项换 ASID 也不一定清除。这与页表篇里 `PAGE_ENTRY_GLOBAL` → 清/置 `nG` 的编解码对应。
+- 页表叶上的 **nG（非全局）** 位：非全局项才会随 ASID 生效；全局项换 ASID 也不一定清除。这与页表篇里 `PAGE_ENTRY_GLOBAL` 对应到清/置 `nG` 的编解码一致。
 - 失效：`tlbi vae1` / `aside1` 等把 ASID 编进操作数（TLB 篇 §6.1）。
 
 **x86_64（Intel SDM，PCID / CR3）**
@@ -115,9 +115,9 @@ static asid_bitmap_t asid_bitmap;
 
 ```text
 asid_init (BSP)
-  → create_vspace / clone → asid_alloc → vs->asid
-  → schedule：set mask → 写 TTBR0|ASID 或 CR3 → 刷旧 → clear 旧 mask
-  → del_vspace：mask==0 → 清用户映射 → asid_free
+  create_vspace / clone 时 asid_alloc，写入 vs->asid
+  schedule：set mask，写 TTBR0|ASID 或 CR3，刷旧，再 clear 旧 mask
+  del_vspace：mask 已空后清用户映射，再 asid_free
 ```
 
 ---
@@ -134,10 +134,10 @@ ASID 写入硬件，见各 ISA 的 `arch/*/mm/vmm.h` 的
 
 | 阶段 | 顺序 |
 |------|------|
-| BSP | `virt_mm_init` → **`asid_init()`** → `init_root_vspace`（`root_vspace.asid = 0`） |
-| 用户 AS 创建 | `alloc_user_vs_structure` / create·clone → **`asid_alloc()`** → 写入 `vs->asid`；返回 **0** 则失败回滚 |
-| 调度切入 | `vs_tlb_cpu_mask_set` → **`arch_set_current_user_vspace_root_asid(root, vs->asid)`** → …（见 11 / 15） |
-| 销毁 | `tlb_cpu_mask` 已空 → 清用户映射 → **`asid_free(vs->asid)`**（在 `del_vspace` 路径） |
+| BSP | `virt_mm_init` 内 **`asid_init()`**，再 `init_root_vspace`（`root_vspace.asid = 0`） |
+| 用户 AS 创建 | `alloc_user_vs_structure` / create·clone 时 **`asid_alloc()`**，写入 `vs->asid`；返回 **0** 则失败回滚 |
+| 调度切入 | `vs_tlb_cpu_mask_set` 后 **`arch_set_current_user_vspace_root_asid(root, vs->asid)`**，其余见 11 / 15 |
+| 销毁 | `tlb_cpu_mask` 已空后清用户映射，再 **`asid_free(vs->asid)`**（在 `del_vspace` 路径） |
 
 clone **不**继承父 ASID，各自 `asid_alloc`。无 generation：回收后再分配全靠 mask/刷序纪律。
 
@@ -168,7 +168,7 @@ void arch_set_current_user_vspace_root(paddr u_root); /* 兼容；无 ASID 标�
 
 | 接口 | aarch64 | x86_64 |
 |------|---------|--------|
-| `arch_asid_supported_width` | 读 `ID_AA64MMFR0_EL1` ASIDBITS → **8 或 16** | **12**（PCID 字段宽；**不**表示已启用 PCID） |
+| `arch_asid_supported_width` | 读 `ID_AA64MMFR0_EL1` ASIDBITS，得到 **8 或 16** | **12**（PCID 字段宽；**不**表示已启用 PCID） |
 | `…_root_asid` | `TTBR0 = u_root \| (asid<<48)` + ISB | **忽略 asid**，只写 CR3 |
 | `…_root` | 只写 TTBR0 低半根 | 写 CR3 |
 

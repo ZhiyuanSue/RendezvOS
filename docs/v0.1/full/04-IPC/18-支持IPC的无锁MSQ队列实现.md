@@ -12,7 +12,7 @@ EBR 机制与「谁推进 reclaim」见 `03-任务与调度/17-EBR与线程资�
 |--------|--------|
 | 本篇 **§1.1–1.2** | 锁与IPC 同构、基于IPC的混合内核和微内核框架概述；§1.2 末可转 `19`/`20`（如果不要了解无锁队列实现细节的话） |
 | 本篇 **§1.3–1.8** | MSQ 约束与对原始算法的改造：假出队、Msg 拆开、ABA、单状态、外置节点内存等问题和对MSQ算法的影响 |
-| **`19` → `20`** | Port / Message 对象 → 基于无锁队列的IPC match与transfer行为等 |
+| **先 `19` 再 `20`** | Port / Message 对象，以及基于无锁队列的 IPC match 与 transfer 行为等 |
 | **`21` / `22`** | kmsg消息封装、Port的权限管理hooks等 |
 | 本篇 **§2 起** | MSQ / tagged ptr / EBR 算法与 API |
 
@@ -94,7 +94,7 @@ MSQ 用在 port 的 `thread_queue`以及每线程 send / recv 消息队列，除
 
 ![固定 dummy 单链表](figures/dummy-link-list.png)
 
-并发下却要在**两次非相邻读**之后再写一次：`读 dummy→next(=A)` → `读 A→next(=B)` → `写 dummy→next = B`。竞态一例：
+并发下却要在**两次非相邻读**之后再写一次：先读 `dummy→next(=A)`，再读 `A→next(=B)`，最后写 `dummy→next = B`。竞态一例：
 
 1. T1 读到 `dummy→next = A`
 2. T2 先把 A、B 都出队，队列空（`dummy→next = NULL`）
@@ -325,7 +325,7 @@ MSQ 读路径上存在「先看见指针、再加引用」的窗口，所以 **�
 | 动作 | 谁做 | 说明 |
 |------|------|------|
 | 读/改队列指针 | `msq_enqueue` / `msq_dequeue`（及 check head/tail 的变体） | 已经封装在enqueue/dequeue算法中，调用方不需要再考虑调用 |
-| 逻辑引用归零 → 延期析构 | 最后一次 `ref_put` 传入 `free_*` 用于析构 | 在`free_*`中内部调用 `ebr_retire_ref(ref, free_*_real)` |
+| 逻辑引用归零后延期析构 | 最后一次 `ref_put` 传入 `free_*` 用于析构 | 在`free_*`中内部调用 `ebr_retire_ref(ref, free_*_real)` |
 | 到期执行析构（不止MSQ，其他使用EBR的指针也可） | `schedule` / `ebr_exit` 等里面的 `ebr_try_reclaim` | 只扫**本核** retire 表；满足条件 `retire_epoch < safe_epoch` 才调 `free_func` |
 
 
@@ -622,8 +622,8 @@ IPC **不**把 MSQ 再包一层公开 API；上层经 `send_msg` / port 会合�
 
 | 场景 | 顺序 |
 |------|------|
-| 建队列 | 分配 dummy node → **`msq_init(q, dummy, append_info_bits)`** |
-| 普通入/出队 | 节点 `ref_init` → **`msq_enqueue`** / **`msq_dequeue`** → 对返回节点 **`ref_put(..., free_func)`** |
+| 建队列 | 分配 dummy node，再调用 **`msq_init(q, dummy, append_info_bits)`** |
+| 普通入/出队 | 节点先 `ref_init`，再 **`msq_enqueue`** / **`msq_dequeue`**，最后对返回节点 **`ref_put(..., free_func)`** |
 | 队列单状态出队/入队 | **`msq_enqueue_check_tail`** / **`msq_dequeue_check_head`**（tag=某个状态） |
 | 读临界区 | MSQ 内部已`ebr_enter`配对`ebr_exit`；节点 last put 调用 `ebr_retire_ref` |
 | 析构排空 | **`msq_clean_queue(q, true, free_*)`** — **勿**对空队列路径的 dummy 再 put |

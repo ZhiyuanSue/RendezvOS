@@ -8,11 +8,11 @@ v0.1 · 2026-09-27
 
 | | 02（策略 / mask） | **本篇（06）** |
 |--|------------------|----------------|
-| mask 含义、schedule set→装根页表→刷旧→clear | 主责 | 一句引用 |
+| mask 含义、schedule 里 set / 装根页表 / 刷旧 / clear | 主责 | 一句引用 |
 | new_map 本地 vs remap/unmap all_core | 主责 | 引用 |
 | x86：按 mask 软 IPI + invlpg | 策略层 | **gen/busy/done 握手** |
 | aarch64：`tlbi *is`，**常忽略 mask** | 已写 | **禁止再写「via IPI」** |
-| 门铃 / pending | → 软 IPI 篇 | 只写 TLB 消息槽如何用 IPI |
+| 门铃 / pending | 见软 IPI 篇 | 只写 TLB 消息槽如何用 IPI |
 
 软 IPI：唯一 in-tree 默认 registrant 是 **x86 TLB**。VSpace teardown 门闩见 VSpace 所有权篇。
 
@@ -28,7 +28,7 @@ x86 通过 IPI 触发刷新；aarch64 通过硬件广播刷新。
 
 | | x86 | aarch64 |
 |--|-----|---------|
-| all_core | 本地先刷 → 按 mask 发软 IPI → 等 done | `tlbi …is` + DSB/ISB；**mask 参数常 `(void)`** |
+| all_core | 本地先刷，再按 mask 发软 IPI，并等 done | `tlbi …is` + DSB/ISB；**mask 参数常 `(void)`** |
 | init | `smp_ipi_init` + **`arch_smp_flush_tlb_init`** | 仅 `smp_ipi_init`（**无** TLB-IPI init） |
 | mask 仍用于 | 选谁收 IPI + teardown | **仅** teardown / clear 门闩 |
 
@@ -102,7 +102,7 @@ struct smp_tlb_flush_msg {
 
 | 字段 | 谁写 | 谁读 / 约定 |
 |------|------|-------------|
-| `busy` | **发送方** `exchange→1` 抢占；成功路径由 **handler** 清 0；**仅** `smp_ipi_send` 失败时发送方自清 | 同目标串行化 |
+| `busy` | **发送方** 用 `exchange` 写成 1 抢占；成功路径由 **handler** 清 0；**仅** `smp_ipi_send` 失败时发送方自清 | 同目标串行化 |
 | `flush_va` / `flush_all` | **发送方**在持有 `busy` 后写 | handler 读后执行 `invlpg` / CR3 全刷 |
 | `request_gen` | **仅发送方** `fetch_inc` | handler `load` 作完成标签 `cur` |
 | `done_gen` | **仅 handler** 刷完后 `store(cur)` | 发送方自旋至 `done ≥ expect`（`expect=fetch_inc+1`） |
@@ -116,7 +116,7 @@ unmap 读 mask 发 IPI 时 **不**再持有 `tlb_cpu_mask_lock`——正确性�
 
 ### 4.3 aarch64
 
-`*_all_core` → `tlbi vae1is` / `aside1is` / …；mask 显式忽略。ASID 进 `tlbi`（与 x86 装饰对称不同）。
+`*_all_core` 落到 `tlbi vae1is` / `aside1is` / …；mask 显式忽略。ASID 进 `tlbi`（与 x86 装饰对称不同）。
 
 ---
 
@@ -169,7 +169,7 @@ unmap 读 mask 发 IPI 时 **不**再持有 `tlb_cpu_mask_lock`——正确性�
 
 要点：A 对每个 mask 内的核**串行**处理（单槽，无 batching）；B 的 handler 只读消息槽、刷、回写 done，**不锁、不 sleep**。A 等 done 才继续下一核，故 A 返回时所有 mask 内核都已刷完。门铃失败（如目标核离线）则 A 清除 busy 返回，**不保证**远端已刷——调用方需知此限制。
 
-Init：`arch_start_core` → `smp_ipi_init` + **`arch_smp_flush_tlb_init`**（每核槽；**全局一次** `smp_ipi_register`）。
+Init：`arch_start_core` 路径上 `smp_ipi_init`，并调 **`arch_smp_flush_tlb_init`**（每核槽；**全局一次** `smp_ipi_register`）。
 
 ### 6.2 aarch64
 
@@ -185,7 +185,7 @@ Init：`arch_start_core` → `smp_ipi_init` + **`arch_smp_flush_tlb_init`**（�
 
 本篇涉及的接口分布在：x86 **shootdown 握手**——`arch_smp_flush_tlb_init` / `arch_smp_flush_page_tlb` / `arch_smp_flush_all_tlb`，以及 per-CPU `smp_tlb_flush_msg`（gen/busy/done）字段约定。说明改写自 `arch/x86_64/sync/tlb.h` Doxygen + `arch_smp_tlb_flush.c`（已核对）。
 
-**本篇不涉及：** `tlb_cpu_mask` 维护 / schedule set→刷→clear → `11`；可移植 `arch_tlb_invalidate_*` 命名与 aarch64 `tlbi *is` 细节 → `11`；软 IPI pending 位图 → `30`。
+**本篇不涉及：** `tlb_cpu_mask` 维护 / schedule 的 set、刷、clear（见 `11`）；可移植 `arch_tlb_invalidate_*` 命名与 aarch64 `tlbi *is` 细节（见 `11`）；软 IPI pending 位图（见 `30`）。
 
 aarch64：**无**本篇专属 shootdown API——`*_all_core` 即硬件广播（见 `11`）。
 
@@ -193,10 +193,10 @@ aarch64：**无**本篇专属 shootdown API——`*_all_core` 即硬件广播（
 
 | 场景 | 顺序 |
 |------|------|
-| x86 每核 | `smp_ipi_init` → **`arch_smp_flush_tlb_init`**（首调者全局 `smp_ipi_register`） |
-| MM remap/unmap 用户页 | 改 PTE 后 `arch_tlb_invalidate_page_all_core(…, &mask)` → 内部调用 **`arch_smp_flush_page_tlb`** |
-| vspace 级 | `…_vspace_page_all_core` → **`arch_smp_flush_all_tlb(mask)`** |
-| 发送路径 | 本地先刷 → 按 mask 对 remote：抢 busy → 写参 → `smp_ipi_send` → **等 done_gen** |
+| x86 每核 | `smp_ipi_init` 之后 **`arch_smp_flush_tlb_init`**（首调者全局 `smp_ipi_register`） |
+| MM remap/unmap 用户页 | 改 PTE 后调 `arch_tlb_invalidate_page_all_core(…, &mask)`，内部再调 **`arch_smp_flush_page_tlb`** |
+| vspace 级 | `…_vspace_page_all_core` 落到 **`arch_smp_flush_all_tlb(mask)`** |
+| 发送路径 | 本地先刷；再按 mask 对 remote 抢 busy、写参、`smp_ipi_send`，并 **等 done_gen** |
 
 IPI handler **只刷**；不拿 `tlb_cpu_mask_lock`、不 sleep。
 

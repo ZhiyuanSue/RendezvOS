@@ -42,13 +42,13 @@ PC 上外设不会直接进入内核入口。CPU 侧永远是：
 | **Local APIC（LAPIC）** | **每核一个**；接收投递给本核的中断；自带 timer、LINT、IPI、spurious | **已实现**（`LocalAPIC.c`） |
 | **I/O APIC** | 板级 / 芯片组；把 PCI / ISA 线编成「发到某个 LAPIC 的某个向量」 | **`IOAPIC.h` 空壳**；MADT IOAPIC 条目 `break` 为空操作 (no-op) |
 
-没有 IOAPIC，就没有规范的「外设 IRQ → 向量」编程路径——timer / IPI 仍可走 LAPIC 自有源；PCI 设备中断基本无法接入。
+没有 IOAPIC，就没有规范的「外设 IRQ 到向量」编程路径——timer / IPI 仍可走 LAPIC 自有源；PCI 设备中断基本无法接入。
 
 ### 1.3 OS 对硬件的硬依赖（读代码前先对齐）
 
 1. **IDT 必须先装好**（`lidt`），向量 gate 指向 `trap_N`；否则开中断即崩溃。
 2. **写进 LVT / SVR / ICR / PIC ICW2 的向量号**，必须已在 `irq_vector[]` **reserve**，且已 `register_irq_handler`（timer / IPI）或可进 unknown。
-3. **处理完设备 / timer / IPI 类中断后要 EOI**（`IRQ_NEED_EOI` → `APIC_EOI` 写 0，或 `PIC_EOI`）；漏 EOI 会卡住同级 / level 线。
+3. **处理完设备 / timer / IPI 类中断后要 EOI**（带 `IRQ_NEED_EOI` 时 `APIC_EOI` 写 0，或 `PIC_EOI`）；漏 EOI 会卡住同级 / level 线。
 4. **用 APIC 就必须 mask 掉 8259**，否则双路径乱投递。
 5. **xAPIC 须把 `0xFEE00000` 映成 UNCACHED**（`map_LAPIC`）；缓存一致性错误会读到脏寄存器镜像。
 
@@ -73,7 +73,7 @@ PC 上外设不会直接进入内核入口。CPU 侧永远是：
 
 ## 3. 分层与调用方
 
-**BSP 平台一次** — ACPI → `parser_apic()` 枚举 Local APIC → `NR_CPU`；**不**在此 `init_irq`。
+**BSP 平台一次** — ACPI 经 `parser_apic()` 枚举 Local APIC 并填 `NR_CPU`；**不**在此 `init_irq`。
 
 **每核** — 见 §6.1。Timer / IPI 注册在 IRQ 篇与软 IPI 篇；本篇提供 LVT / ICR / SVR 原语。
 
@@ -129,7 +129,7 @@ CPU 只有一根 INTR；8259 用中断向量号告诉 CPU「查 IDT 哪一项」
 
 ### 4.2 初始化序列（`init_PIC` ↔ ICW1–4）
 
-端口：主片命令/数据 `0x20` / `0x21`，从片 `0xA0` / `0xA1`（`io_port.h`）。写顺序固定：**ICW1 → ICW2 → ICW3 → ICW4**；ICW1 必须写到偶地址（命令口），后面几个写到奇地址（数据口）。漏一步或顺序反了，向量基址和级联关系都会错。
+端口：主片命令/数据 `0x20` / `0x21`，从片 `0xA0` / `0xA1`（`io_port.h`）。写顺序固定：**依次写 ICW1、ICW2、ICW3、ICW4**；ICW1 必须写到偶地址（命令口），后面几个写到奇地址（数据口）。漏一步或顺序反了，向量基址和级联关系都会错。
 
 | ICW | 本实现要点 | 再多记一点 |
 |-----|------------|------------|
@@ -165,7 +165,7 @@ CPU 只有一根 INTR；8259 用中断向量号告诉 CPU「查 IDT 哪一项」
 
 - 必须先 `lidt`，IDT[`0x20`…] 有效。
 - 向量基址改了就必须同步改 `ARCH_IRQ_VEC_*` / reserve——当前固定为 `0x20`/`0x28`。
-- 手动 EOI：handler 经 `arch_eoi_irq` → `PIC_EOI`。
+- 手动 EOI：handler 经 `arch_eoi_irq` 调到 `PIC_EOI`。
 - `enable_PIC_IRQ` 的参数是 **IDT 向量**（如 `0x21`），不是「线号 1」；实现里会减基址再算 IMR 位。
 
 ---
@@ -190,7 +190,7 @@ Local APIC 是**每核一份**的控制器：管本核的 timer / LINT / IPI 接
 | `0x300` / `0x310` | ICR_LOW / HIGH | `APIC_send_IPI` |
 | `0x320` | LVT Timer | timer 路径 |
 | `0x350` / `0x360` | LVT LINT0 / LINT1 | `reset_APIC` |
-| `0x340` | LVT PERF | → NMI |
+| `0x340` | LVT PERF | 投递为 NMI |
 | `0x380` / `0x390` / `0x3E0` | INIT_CNT / CURR_CNT / DCR | timer 计数 |
 
 复位时各 LVT 的 **Mask 位为 1**（默认全挡住），软件必须显式放开要听的源。
@@ -259,18 +259,18 @@ x2APIC 把 xAPIC 的 4 KiB MMIO 窗口整体搬到 MSR 空间，索引 = `0x800 
 
 **时序陷阱：** SVR 软件使能 **不在** `init_irq` 末尾，而在 **`arch_init_timer` 路径**上才调用。开中断（`sti`）与真正「APIC 开始工作」之间可能有窗口——读启动日志时不要假设 `init_irq` 完就能收 timer。
 
-**Spurious 无 handler**：IRQ 篇只 reserve `0x27`；若误入 → `trap_handler` unknown → panic。正常不应频繁 spurious。软件抬高 TPR、把刚到的中断 mask 掉时，硬件就可能改投这条 spurious 向量——和 GIC 读 IAR 得到 1023 是同一类「来了但此刻不该进 ISR」的出口。
+**Spurious 无 handler**：IRQ 篇只 reserve `0x27`；若误入则 `trap_handler` 走 unknown 并 panic。正常不应频繁 spurious。软件抬高 TPR、把刚到的中断 mask 掉时，硬件就可能改投这条 spurious 向量——和 GIC 读 IAR 得到 1023 是同一类「来了但此刻不该进 ISR」的出口。
 
 ### 5.3 LVT — 本地向量表（SDM：Local Vector Table）
 
-每项描述「本核本地源 → 哪个向量、什么投递模式、是否 mask」。常见项：Timer、Thermal、PERF、LINT0、LINT1、Error、CMCI（较新的 CPU 才有）。
+每项描述「本核本地源对应哪个向量、什么投递模式、是否 mask」。常见项：Timer、Thermal、PERF、LINT0、LINT1、Error、CMCI（较新的 CPU 才有）。
 
 | LVT | 本实现 | 含义 |
 |-----|--------|------|
 | **Timer** | 校准后写向量=`arch_get_timer_irq_num`（0x20）、模式 periodic / one-shot / TSC-deadline | 系统 tick 源 |
 | **LINT0** | `reset_APIC` 里 **MASKED** | 常接 ExtINT / 8259；我们用 APIC 时 mask 掉 |
 | **LINT1** | `reset_APIC` 里 **MASKED** | 常接 NMI；用 APIC 时 mask 掉 |
-| **PERF** | 投递模式 **NMI** | 性能计数溢出 → NMI（进 IRQ class，见 Trap 篇） |
+| **PERF** | 投递模式 **NMI** | 性能计数溢出投 NMI（进 IRQ class，见 Trap 篇） |
 | Thermal / Error / CMCI | 未重点用 | — |
 
 每一项大致共用同一套字段（Timer / LINT 略有加减，见图 10-8）：
@@ -300,7 +300,7 @@ x2APIC 把 xAPIC 的 4 KiB MMIO 窗口整体搬到 MSR 空间，索引 = `0x800 
 
 **ARAT（Always Running APIC Timer，CPUID.06H:EAX bit 2）：** 部分 CPU 在深 C-state 时仍让 APIC timer 运行；无 ARAT 时 bus-clock timer 可能随核睡眠停止，唤醒后校准值不可靠。代码有 `ARAT_support()` 探测，**当前校准 / 选型路径未据此分支**——文档记能力位；真正选型仍看 TSC-Deadline / ONE_SHOT（见 `33`）。
 
-TSC-deadline 模式：计数走 CPU 时钟而不是 APIC bus，一般更稳。步骤是：确认 CPUID.01H ECX.TSC_Deadline → LVT Timer 选 TSC 模式 → 写 MSR **`IA32_TSC_DEADLINE`（`6E0H`）** → 到期仍经 LVT Timer 向量进 IDT → 下次再写 deadline。不走 INIT_CNT / CURR_CNT。写 deadline 之前若模式还没切到 TSC，行为未定义——代码路径里要先改 LVT 再写 MSR。
+TSC-deadline 模式：计数走 CPU 时钟而不是 APIC bus，一般更稳。步骤是：确认 CPUID.01H ECX.TSC_Deadline 后，把 LVT Timer 选成 TSC 模式，再写 MSR **`IA32_TSC_DEADLINE`（`6E0H`）**；到期仍经 LVT Timer 向量进 IDT，下次再写 deadline。不走 INIT_CNT / CURR_CNT。写 deadline 之前若模式还没切到 TSC，行为未定义——代码路径里要先改 LVT 再写 MSR。
 
 #### 8254 PIT 定时原理（校准源）
 
@@ -319,7 +319,7 @@ TSC-deadline 模式：计数走 CPU 时钟而不是 APIC bus，一般更稳。�
     重装值（写 0x40/41/42）
 ```
 
-`PIT_mdelay(ms)` 用 mode 2（rate generator）或 mode 0（interrupt on terminal count）忙等：写一个计数值 → 倒数到 0 → 读回状态判断是否到点。校准逻辑：在 `PIT_mdelay(已知 ms)` 期间读 APIC CURR_CNT 前后差值，反推 APIC timer 实际频率。
+`PIT_mdelay(ms)` 用 mode 2（rate generator）或 mode 0（interrupt on terminal count）忙等：写入计数值，等倒数到 0，再读回状态判断是否到点。校准逻辑：在 `PIT_mdelay(已知 ms)` 期间读 APIC CURR_CNT 前后差值，反推 APIC timer 实际频率。
 
 #### HPET 定时原理（未接入，仅背景）
 
@@ -353,7 +353,7 @@ APIC 给每个向量一个优先级，就拆在向量号自己身上：
 - **优先级 class** = 向量 `[7:4]`（0–15）
 - **sub-class** = 向量 `[3:0]`
 
-TPR 同样拆成 class / sub-class。规则大意是：只有 **class 高于** 当前 TPR class 的才会送给 CPU（同 class 时再看 sub-class 的细节以 SDM 为准）。64 位下写 **CR8** 只动 TPR 的 class 那半（CR8[3:0] → TPR[7:4]），写完后的重仲裁会在下一条指令边界生效。
+TPR 同样拆成 class / sub-class。规则大意是：只有 **class 高于** 当前 TPR class 的才会送给 CPU（同 class 时再看 sub-class 的细节以 SDM 为准）。64 位下写 **CR8** 只动 TPR 的 class 那半（CR8[3:0] 写入 TPR[7:4]），写完后的重仲裁会在下一条指令边界生效。
 
 **PPR（Processor-Priority Register）** 只读，表示「CPU 正在执行的那档」：PPR[7:4] = max(TPR[7:4], ISRV[7:4])；若 TPR class 更大则 PPR[3:0]=TPR[3:0]，否则为 0。ISRV 是 ISR 里当前最高那一位对应的向量优先级。
 
@@ -365,14 +365,14 @@ TPR 同样拆成 class / sub-class。规则大意是：只有 **class 高于** �
 
 可以按时间顺序读这四组：
 
-1. 中断被本核 **accept** → 置 **IRR**（Interrupt Request）里对应向量位：已经收下、还没交给 CPU。
-2. CPU 准备处理下一条 → 清 IRR 里当前最高优先级那一位，同时在 **ISR**（In-Service）同一位置位：正在服务。
-3. ISR 执行完成、`iret` 之前写 **EOI**（32 位寄存器，手册没规定「写哪个向量」，惯例写 **0**）→ 清 ISR 里最高优先级位，同级后续才能再来。
+1. 中断被本核 **accept** 后，置 **IRR**（Interrupt Request）里对应向量位：已经收下、还没交给 CPU。
+2. CPU 准备处理下一条时，清 IRR 里当前最高优先级那一位，同时在 **ISR**（In-Service）同一位置位：正在服务。
+3. ISR 执行完成、`iret` 之前写 **EOI**（32 位寄存器，手册没规定「写哪个向量」，惯例写 **0**），从而清 ISR 里最高优先级位，同级后续才能再来。
 4. **TMR（Trigger Mode）** 与向量一一对应：1 = 当时按电平收下，0 = 边沿。写 EOI 时若 TMR=1，硬件可能向所有 I/O APIC 发一次 EOI 广播；可用 SVR bit 12 关掉（还要看 VERSION 那一位允不允许关）。
 
 IRR 和 ISR 都是 **256 位**，向量 0–15 保留（CPU 异常，不是 APIC 投递的有效向量）。同一向量可以 **IRR 与 ISR 同时置位**：一个正在服务，另一个在排队——也就是同一向量最多缓存两枪。更高优先级、且 CPU 没关中断时，**不必先 EOI** 就能打断当前 ISR，形成嵌套。
 
-本仓库：`APIC_EOI()` → `APIC_WR_REG(EOI, …, 0)`；由 `arch_eoi_irq` 在 `IRQ_NEED_EOI` 时调用。**不要**在 ISR 里提前 EOI 再做长任务（除非明确理解电平触发会立刻重入）。
+本仓库：`APIC_EOI()` 即 `APIC_WR_REG(EOI, …, 0)`；由 `arch_eoi_irq` 在 `IRQ_NEED_EOI` 时调用。**不要**在 ISR 里提前 EOI 再做长任务（除非明确理解电平触发会立刻重入）。
 
 ### 5.7 ICR — 核间中断（SDM：Interrupt Command Register）
 
@@ -464,8 +464,8 @@ rendezvos_time_init()
 
 | 条件 | 动作 |
 |------|------|
-| CPUID APIC + x2APIC | `x2APIC_IRQ`：disable_PIC → enable_x2APIC → `reset_APIC` |
-| 仅 APIC | **先** `arch_irq_type=xAPIC_IRQ` + `disable_PIC` → MADT 基址须 **`== 0xFEE00000`** → map LAPIC → enable → LDR → `reset_APIC` |
+| CPUID APIC + x2APIC | `x2APIC_IRQ`：先 `disable_PIC`，再 `enable_x2APIC`，然后 `reset_APIC` |
+| 仅 APIC | **先** 置 `arch_irq_type=xAPIC_IRQ` 并 `disable_PIC`；MADT 基址须 **`== 0xFEE00000`**，再 map LAPIC、enable、LDR，最后 `reset_APIC` |
 | 无 APIC | `PIC_IRQ`：`init_PIC()` |
 
 MADT 地址若非 FEE00000，或 `map_LAPIC` 失败：xAPIC 路径 **直接 return**——此时 **`arch_irq_type` 已是 `xAPIC_IRQ`、PIC 已 mask，无 PIC 回退**（半初始化缺口；Doxygen 已写）。**不**跟 override 重映射。
@@ -488,7 +488,7 @@ EOI 分支差异（实现细节）：PIC 路径 `PIC_EOI(向量号)` 区分主/�
 
 本篇涉及的接口分布在：x86_64 中断控制器原语——`init_irq` / `arch_irq_type`、8259（`PIC.h`）、Local APIC（`LocalAPIC.h`：SVR / EOI / ICR / LVT timer 后端）、8254 PIT（`PIT.h`）。说明改写自上述头文件 Doxygen（已与 `.c` 核对）。`IOAPIC.h` **空壳，无 API**。
 
-**本篇不涉及：** `irq_vector_*` / `register_irq_handler` / `trap_handler` → `25`；`arch_eoi_irq` 声明与分发约定 → `25`（实现调本篇 `PIC_EOI` / `APIC_EOI`）；可移植 `rendezvos_time_*` → `33`；软 IPI 协议 → `30`；MADT 枚举 → `35`。
+**本篇不涉及：** `irq_vector_*` / `register_irq_handler` / `trap_handler`（见 `25`）；`arch_eoi_irq` 声明与分发约定（见 `25`；实现调本篇 `PIC_EOI` / `APIC_EOI`）；可移植 `rendezvos_time_*`（见 `33`）；软 IPI 协议（见 `30`）；MADT 枚举（见 `35`）。
 
 上层设备应走 `25` 的 alloc+register，**勿**假定 IOAPIC 路由。
 
@@ -496,7 +496,7 @@ EOI 分支差异（实现细节）：PIC 路径 `PIC_EOI(向量号)` 区分主/�
 
 | 场景 | 顺序 |
 |------|------|
-| 每核 | `init_interrupt`（reserve+lidt）→ **`init_irq`** → `smp_ipi_init` → … → `sti` → **`rendezvos_time_init` → `software_enable_APIC`**（APIC 路径） |
+| 每核 | `init_interrupt`（reserve+lidt）之后 **`init_irq`**，再 `smp_ipi_init`，……然后 `sti`，APIC 路径上再经 **`rendezvos_time_init` 调到 `software_enable_APIC`** |
 | APIC 选型 | 见 `init_irq`：x2APIC / xAPIC（基址须 `== 0xFEE00000`）/ PIC |
 | Timer ISR 就绪 | 先 `register_irq_handler(0x20, …)`，再写 LVT Timer / 开 SVR |
 | IPI | 先 register `0x30`，再 `APIC_send_IPI`（协议见 `30`） |
@@ -546,8 +546,8 @@ void APIC_send_IPI(u8 dest, u32 dest_sh, u32 trig, u32 level,
 
 | 接口 | 说明 |
 |------|------|
-| `map_LAPIC` | 仅 xAPIC：`0xFEE00000` → UNCACHED 内核映射。 |
-| `reset_APIC` | mask Timer/LINT0/LINT1，PERF→NMI，TPR=0。 |
+| `map_LAPIC` | 仅 xAPIC：把 `0xFEE00000` 映成 UNCACHED 内核映射。 |
+| `reset_APIC` | mask Timer/LINT0/LINT1，PERF 投递为 NMI，TPR=0。 |
 | `software_enable_APIC` | SVR：`SW_ENABLE` + spurious=`0x27`。在 **timer init** 路径调用。 |
 | `APIC_EOI` | EOI 寄存器写 0（不带向量）。 |
 | `APIC_send_IPI` | xAPIC：**先 HIGH 后 LOW**；x2APIC：一次 MSR。软 IPI 向量=`0x30`。`dest` 参数为 **u8**（ICR[63:56]）；x2APIC 32-bit dest 的 [55:32] 保持 0。 |
@@ -572,7 +572,7 @@ u64 PIT_get_hz(void);             /* PIT_TICK_RATE = 1193181 */
 
 ## 10. 多架构
 
-仅 x86_64。aarch64 → GIC 篇。
+仅 x86_64。aarch64 见 GIC 篇。
 
 ---
 
@@ -584,9 +584,9 @@ u64 PIT_get_hz(void);             /* PIT_TICK_RATE = 1193181 */
 
 ## 12. 限制与后续 / 已知缺口
 
-- **IOAPIC 空壳**；MADT IOAPIC 未消费 → 无规范 PCI IRQ。
+- **IOAPIC 空壳**；MADT IOAPIC 未消费，故无规范 PCI IRQ。
 - **xAPIC MADT/map 失败半初始化**：`arch_irq_type` 已 xAPIC、PIC 已 disable，无回退。
-- **x2APIC ICR** 定向目的地可疑（`dest_field` 仅 u8 → [63:56]；[55:32] 恒 0）。
+- **x2APIC ICR** 定向目的地可疑（`dest_field` 仅 u8，写入 [63:56]；[55:32] 恒 0）。
 - **`disable_APIC` 清 bit 用了 `&` 组合**（逻辑可疑）。
 - Spurious 无 handler。
 - 从片 `enable_PIC_IRQ` 不补 unmask 主 IRQ2（init 时主 IMR=`0xFB` 已放开 cascade）。

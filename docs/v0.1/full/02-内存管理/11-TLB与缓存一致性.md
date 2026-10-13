@@ -66,7 +66,7 @@ cas_lock_t tlb_cpu_mask_lock;
 
 先 set 再装表，是为了避免「新线程已经在新 AS 上运行了，mask 里却还没有本核」——这时别人发 shootdown 会漏掉本核。先本地刷再 clear，是为了避免「mask 里已经没有本核了，本地 TLB 却还留有脏项」。
 
-还有一处故意的滞后：下一线程若不是用户态，schedule **可以不**清 mask、也可以不换硬件根。位和 CPU 侧引用会保留到之后某次用户→用户切换。拆除回收必须等 mask 空，细节见所有权篇 / ASID 篇。
+还有一处故意的滞后：下一线程若不是用户态，schedule **可以不**清 mask、也可以不换硬件根。位和 CPU 侧引用会保留到之后某次用户态到用户态的切换。拆除回收必须等 mask 空，细节见所有权篇 / ASID 篇。
 
 ### 4.2 map 路径：新 vs 改
 
@@ -136,7 +136,7 @@ AArch64 用 **`TLBI`** 系列指令做 TLB 维护，参数里常带 ASID 与页�
 
 | 类型 | 直观含义 | 写回语义 | 本仓库 |
 |------|------|------|--------|
-| **UC**（Strong Un-cacheable） | 不缓存，强序 | 不可重排、不可合并 | LAPIC 等 MMIO：`UNCACHED` → `PCD\|PWT` |
+| **UC**（Strong Un-cacheable） | 不缓存，强序 | 不可重排、不可合并 | LAPIC 等 MMIO：`UNCACHED` 编成 `PCD\|PWT` |
 | **UC-**（PAT 中可降级） | UC 的弱化版，允许在某些组合下被 WC 覆盖 | 同 UC | PAT 编程时区分 |
 | **WC**（Write Combining） | 写合并 | 写可暂存到 write-combining buffer，一次刷出 | 未单独暴露 |
 | **WT**（Write Through） | 通写 | 写同时进 cache 与内存 | 普通 RAM 默认不走 |
@@ -167,7 +167,7 @@ ARM 屏障按 **共享域** × **访问类型** 两维取参数。共享域四�
 | **OSH**（Outer Shareable） | 跨外设 / 跨簇一致 |
 | **SY**（Full System） | 全局 |
 
-访问类型三档：**LD**（Load-Load / Load-Store，对 Store→Load 不约束）、**ST**（Store-Store）、**SY**（Any-Any，全部约束）。组合出下表（`DMB` 与 `DSB` 共用同一组助记符；`DSB` 额外保证「完成才返回」，`DMB` 只保序）：
+访问类型三档：**LD**（Load-Load / Load-Store，对 Store 后接 Load 不约束）、**ST**（Store-Store）、**SY**（Any-Any，全部约束）。组合出下表（`DMB` 与 `DSB` 共用同一组助记符；`DSB` 额外保证「完成才返回」，`DMB` 只保序）：
 
 | | nSH | ISH | OSH | SY |
 |----|----|----|----|----|
@@ -191,7 +191,7 @@ ARM 屏障按 **共享域** × **访问类型** 两维取参数。共享域四�
 | `ASIDE1` | 按 ASID 清（EL1&0） |
 | `VAE1` | 按 VA+ASID 清单页（EL1&0） |
 | `VAAE1` | 按 VA 清单页，忽略 ASID |
-| `IPAS2E1` | IPA→PA 映射清（EL2 stage-2） |
+| `IPAS2E1` | IPA 到 PA 的映射清（EL2 stage-2） |
 | `VMALLE1` | 按 VMID 清 EL1&0 |
 | `RVA*` / `RVAA*` | Range 失效（ARMv8.4 起；带 `base / num / scale / ttl`） |
 | `…L`（如 `VALE1`） | Last level only（只刷最后一级翻译，不刷中间级） |
@@ -233,7 +233,7 @@ ARM 屏障按 **共享域** × **访问类型** 两维取参数。共享域四�
 | 位 | 含义 |
 |----|----|
 | **DZP**（bit 4） | 0 = 允许 `DC ZVA`；1 = 禁止。需在用户态使用前确认已清零 |
-| **BS**（bits [3:0]） | 块大小为 2^(BS+2) 字节；最大 9 → 2 KiB |
+| **BS**（bits [3:0]） | 块大小为 2^(BS+2) 字节；BS 最大为 9，对应 2 KiB |
 
 `DC ZVA` 常用于大块用户清零（`memset(p, 0, big)`）：先确认 `DCZID_EL0.DZP==0`，再按行大小（`BS` 算出）逐行清零，比按字节写快得多。core 当前未封装此路径——`map_handler_zero_page` 走普通 `memset`；记录在此供后续 zero-on-fault 优化。
 
@@ -253,12 +253,12 @@ IPI 握手细节见 30 / 32 篇。无通用 dcache/icache API。
 
 | 场景 | 顺序 |
 |------|------|
-| 调度切入某用户 AS | **`vs_tlb_cpu_mask_set(vs, cpu)`** → 再装 CR3/TTBR（先 set 再装表，避免漏 shootdown） |
-| 调度切离 | 本地 TLBI / 换根 → **`vs_tlb_cpu_mask_clear`**（先刷再 clear） |
+| 调度切入某用户 AS | 先 **`vs_tlb_cpu_mask_set(vs, cpu)`**，再装 CR3/TTBR（先 set 再装表，避免漏 shootdown） |
+| 调度切离 | 先本地 TLBI / 换根，再 **`vs_tlb_cpu_mask_clear`**（先刷再 clear） |
 | `map`/`unmap` 改用户 PTE | 按页表篇：首次/更新选本地或 **`arch_tlb_invalidate_page_all_core(asid, va, &vs->tlb_cpu_mask)`** |
 | 内核临时窗 / 内核叶 | **`arch_tlb_invalidate_kernel_page`**；`*_all_core` 见下表 ISA 差异 |
 | 拆除 / 回收 ASID | 等待 **`vs_tlb_cpu_mask_is_zero`**（mask 空才放行） |
-| x86 每核启动 | `arch_start_core` → **`arch_smp_flush_tlb_init()`**（aarch64 无对等 IPI init） |
+| x86 每核启动 | `arch_start_core` 里调 **`arch_smp_flush_tlb_init()`**（aarch64 无对等 IPI init） |
 
 ### 7.2 Mask（`tlb_cpu_mask.h` / `vmm.h`）
 

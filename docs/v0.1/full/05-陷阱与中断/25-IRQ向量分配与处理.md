@@ -44,9 +44,9 @@ v0.1 **没有**「每核不同 ISR」；绑核靠硬件路由（GIC ITARGETSR / 
 
 ### 1.3 EOI 与 schedule
 
-ACK：`IRQ_NEED_EOI` → `arch_eoi_irq`（x86 写 LAPIC EOI 或 PIC OCW2；aarch64 写 `GICC_EOIR`）。漏 EOI 时，同优先级 / level 触发的线可能**再也收不到中断**（时序与共享线约束见 §6.2）。
+ACK：带 `IRQ_NEED_EOI` 时调 `arch_eoi_irq`（x86 写 LAPIC EOI 或 PIC OCW2；aarch64 写 `GICC_EOIR`）。漏 EOI 时，同优先级 / level 触发的线可能**再也收不到中断**（时序与共享线约束见 §6.2）。
 
-用户态被打断且 `core_tm` 就绪 → `trap_handler` 末尾 **`schedule`**（x86 `syscall` 旁路除外——见 syscall 篇）。ISR 应短、非阻塞；长任务应通过 IPC 交给线程（无 threaded IRQ）。
+用户态被打断且 `core_tm` 就绪时，`trap_handler` 末尾会 **`schedule`**（x86 `syscall` 旁路除外——见 syscall 篇）。ISR 应短、非阻塞；长任务应通过 IPC 交给线程（无 threaded IRQ）。
 
 ---
 
@@ -63,10 +63,10 @@ ACK：`IRQ_NEED_EOI` → `arch_eoi_irq`（x86 写 LAPIC EOI 或 PIC OCW2；aarch
 | 角色 | 做什么 |
 |------|--------|
 | arch boot | `arch_init_irq_vector_state`：reserve + `set_alloc_pool` |
-| Timer | `rendezvos_time_init`：`arch_get_timer_irq_num` → `register_irq_handler(…, IRQ_NEED_EOI)`（x86=`0x20`；aarch64=DTB ns-phys） |
+| Timer | `rendezvos_time_init`：取 `arch_get_timer_irq_num` 后 `register_irq_handler(…, IRQ_NEED_EOI)`（x86=`0x20`；aarch64=DTB ns-phys） |
 | IPI | `arch_smp_ipi_init`：register `ARCH_IRQ_VEC_IPI` |
-| Fault / SVC | `register_fixed_trap` → 内部 `register_irq_handler` |
-| 设备 | **`irq_vector_alloc` → `register_irq_handler(..., IRQ_NEED_EOI)` → 平台 unmask / 路由** |
+| Fault / SVC | `register_fixed_trap` 内部再调 `register_irq_handler` |
+| 设备 | **先 `irq_vector_alloc`，再 `register_irq_handler(..., IRQ_NEED_EOI)`，然后平台 unmask / 路由** |
 
 ---
 
@@ -82,7 +82,7 @@ struct irq {
 DEFINE_PER_CPU(struct irq, irq_vector[NR_IRQ]);
 ```
 
-全局池：`irq_vector_pool_lo/hi`；默认 **lo=1, hi=0**（非法 → 未 `set_alloc_pool` 时 alloc 得 `-E_IN_PARAM`）。
+全局池：`irq_vector_pool_lo/hi`；默认 **lo=1, hi=0**（非法区间；未 `set_alloc_pool` 时 alloc 得 `-E_IN_PARAM`）。
 
 ### 4.2 NR_IRQ 与命名空间（硬件贴合）
 
@@ -253,9 +253,9 @@ x86 上多个设备可共享同一 IDT 向量（典型 PCI legacy 共享线）�
 1. `u32 id; irq_vector_alloc(&id);` — **勿**手写 timer / IPI / EC。
 2. `register_irq_handler(id, isr, IRQ_NEED_EOI);` — 软件表就绪。
 3. **再**硬件路由 / unmask：
-   - x86：向量 = `id`（IOAPIC / MSI 见 APIC 篇；v0.1 IOAPIC 空壳 → 外设线基本无法接上）。
+   - x86：向量 = `id`（IOAPIC / MSI 见 APIC 篇；v0.1 IOAPIC 空壳，外设线基本无法接上）。
    - aarch64：`intid = AARCH64_TRAP_ID_TO_IRQ(id)`，再 `gicd_v2_unmask_irq` / `set_affinity`。
-4. 未 USED 就 register → error log + return。
+4. 未 USED 就 register：error log 后 return。
 5. ISR 返回后由 `trap_handler` 做 EOI——handler 内**不要**自行写 EOI，除非明确绕过 `IRQ_NEED_EOI`。
 
 ---
@@ -264,18 +264,18 @@ x86 上多个设备可共享同一 IDT 向量（典型 PCI legacy 共享线）�
 
 本篇涉及的接口分布在：软件 trap id 命名空间与分发——`struct irq` / `irq_vector[]`、`irq_vector_*`、`register_irq_handler`、`trap_handler`、`init_interrupt`、`arch_init_irq_vector_state` / `arch_init_interrupt`、`arch_eoi_irq`、`arch_unknown_trap_handler`。说明改写自 `trap.h` / `arch/*/trap/trap.h` Doxygen（已与 `kernel/trap/trap.c`、`arch/*/trap/trap.c` 核对）。
 
-**本篇不涉及：** `register_fixed_trap` / `trap_class` → `23`；weak `syscall` → `24`；APIC / PIC / GIC 寄存器与路由 → `26` / `27`；timer / IPI 业务语义 → 时间篇 / `30`。
+**本篇不涉及：** `register_fixed_trap` / `trap_class`（见 `23`）；weak `syscall`（见 `24`）；APIC / PIC / GIC 寄存器与路由（见 `26` / `27`）；timer / IPI 业务语义（见时间篇 / `30`）。
 
 ### 7.1 编排顺序（调用方须遵守）
 
 | 场景 | 顺序 |
 |------|------|
-| 每核装表 | `arch_start_core` → **`init_interrupt`** = `arch_init_irq_vector_state` → `arch_init_interrupt` → 平台 IRQ iface → `smp_ipi_init` → … → `rendezvos_time_init` |
-| 设备驱动 | **`irq_vector_alloc(&id)`** → **`register_irq_handler(id, isr, IRQ_NEED_EOI)`** → **再**硬件 unmask / 路由 |
+| 每核装表 | `arch_start_core` 调 **`init_interrupt`**（先 `arch_init_irq_vector_state`，再 `arch_init_interrupt`），然后平台 IRQ iface、`smp_ipi_init`，……再到 `rendezvos_time_init` |
+| 设备驱动 | **先 `irq_vector_alloc(&id)`，再 `register_irq_handler(id, isr, IRQ_NEED_EOI)`，然后**硬件 unmask / 路由 |
 | Fault / SVC | `register_fixed_trap`（内部再 `register_irq_handler`；须已 reserve） |
-| Timer / IPI | 槽已由 `arch_init_irq_vector_state` reserve → 直接 `register_irq_handler(ARCH_IRQ_VEC_*, …)` |
+| Timer / IPI | 槽已由 `arch_init_irq_vector_state` reserve，可直接 `register_irq_handler(ARCH_IRQ_VEC_*, …)` |
 
-未 USED 就 register → error log + return。ISR 内勿自写 EOI（除非故意不设 `IRQ_NEED_EOI`）。
+未 USED 就 register：error log 后 return。ISR 内勿自写 EOI（除非故意不设 `IRQ_NEED_EOI`）。
 
 ### 7.2 表项与属性
 
@@ -307,7 +307,7 @@ error_t irq_vector_free(u32 trap_id);
 |------|------|
 | `reserve_*` | 只标 USED，不装 handler。boot 里用 **`for_cpu(me)`** 按 §4.3 占本核固定槽；`for_all_cpus` 不走 boot 路径。 |
 | `set_alloc_pool` | 设置**全局**可分配闭区间 [lo, hi]；非法范围会被忽略。默认 lo=1、hi=0，此时 alloc 返回 `-E_IN_PARAM`。各核 boot 会重复写成同一窗口。 |
-| `irq_vector_alloc` | 池内找「**全 CPU** 均未 USED」的 id，再全 CPU 置 USED。耗尽 → `-E_RENDEZVOS`。 |
+| `irq_vector_alloc` | 池内找「**全 CPU** 均未 USED」的 id，再全 CPU 置 USED。耗尽则返回 `-E_RENDEZVOS`。 |
 | `irq_vector_free` | 仅池内；要求全 CPU USED，否则 `-E_RENDEZVOS`。**不清** `irq_handler`。 |
 
 ### 7.4 注册与分发
@@ -323,10 +323,10 @@ void arch_unknown_trap_handler(struct trap_frame *tf);
 
 | 接口 | 说明 |
 |------|------|
-| `init_interrupt` | 固定序：`arch_init_irq_vector_state` → `arch_init_interrupt`。不清零已有全 CPU 表项。 |
+| `init_interrupt` | 固定序：先 `arch_init_irq_vector_state`，再 `arch_init_interrupt`。不清零已有全 CPU 表项。 |
 | `register_irq_handler` | 本 CPU 须已 USED；写**全 CPU**同一 handler；`attr \| USED`。`handler==NULL` 可清指针。 |
-| `trap_handler` | `TRAP_ID` → handler 或 unknown+panic → NEED_EOI → EOI → 用户来源且 `core_tm` 则 `schedule`。 |
-| `arch_eoi_irq` | 平台 ACK（细节 → `26`/`27`）。 |
+| `trap_handler` | 按 `TRAP_ID` 调 handler，无则 unknown+panic；若 NEED_EOI 则 EOI；用户来源且 `core_tm` 就绪则 `schedule`。 |
+| `arch_eoi_irq` | 平台 ACK（细节见 `26`/`27`）。 |
 | `arch_unknown_trap_handler` | 打印帧；随后 `trap_handler` panic。 |
 
 驱动 checklist 见 §6.3。x86 `syscall` **不**经本路径。
@@ -336,7 +336,7 @@ void arch_unknown_trap_handler(struct trap_frame *tf);
 
 ## 8. 多架构
 
-上表 NR_IRQ / reserve / intid 映射。控制器细节 → APIC / GIC 篇。riscv / loongarch 非 v0.1 主线。
+上表 NR_IRQ / reserve / intid 映射。控制器细节见 APIC / GIC 篇。riscv / loongarch 非 v0.1 主线。
 
 ---
 
@@ -348,9 +348,9 @@ void arch_unknown_trap_handler(struct trap_frame *tf);
 
 ## 10. 限制与后续
 
-- 池耗尽 → `-E_RENDEZVOS`；未 set pool → `-E_IN_PARAM`。
+- 池耗尽返回 `-E_RENDEZVOS`；未 set pool 返回 `-E_IN_PARAM`。
 - free 不清 handler。
-- x86 IOAPIC 路由未齐 → alloc 出的向量无处可编程。
+- x86 IOAPIC 路由未齐时，alloc 出的向量无处可编程。
 - Spurious 无专用 handler。
 - 池是全局 lo/hi，非 per-CPU 独立池。
 - 无 portable `irq_set_affinity`（旧笔记 backlog）；GIC 有内部 `set_affinity`，x86 无。绑核语义见 GIC 篇。

@@ -16,7 +16,7 @@ v0.1 · 2026-09-27
 
 | | x86 | aarch64 |
 |--|-----|---------|
-| 门铃 | LAPIC（Local APIC）ICR **FIXED**，向量 **`0x30`** | GICD **SGI 0** → trap id **64** |
+| 门铃 | LAPIC（Local APIC）ICR **FIXED**，向量 **`0x30`** | GICD **SGI 0**，对应 trap id **64** |
 | 注册 | `register_irq_handler(ARCH_IRQ_VEC_IPI, …, NEED_EOI)` | 同左（宏叠 +64） |
 
 AP 启动拉核用的 INIT / SIPI **不是** soft IPI（delivery mode 不同，只是共用 `APIC_send_IPI` 一类原语）——见拓扑篇。
@@ -87,7 +87,7 @@ DEFINE_PER_CPU(atomic64_t, smp_ipi_pending);
 
 不变量：
 
-- `smp_ipi_send`：online → CAS OR pending bit → `arch_smp_ipi_send`；失败则 **清除该 bit**。
+- `smp_ipi_send`：确认 online 后 CAS OR pending bit，再 `arch_smp_ipi_send`；失败则 **清除该 bit**。
 - dispatch：`atomic64_exchange(pending, 0)` 循环，对置位 slot 调 `fn()`（**无参**）。exchange 循环避免 handler 中途再 OR 丢 bit。
 
 门铃怎么送到目标核（ICR / SGIR），见 §6.1。
@@ -137,7 +137,7 @@ smp_ipi_send(cpu, id)       // pending OR + 门铃触发
 
 本篇涉及的接口分布在：软 IPI 协议——`smp_ipi_init` / `register` / `send`、`smp_ipi_fn_t` / `ipi_id_t`，以及 arch 门铃 `arch_smp_ipi_init` / `arch_smp_ipi_send`。说明改写自 `ipi.h` + `arch/*/smp.h` Doxygen（已与 `ipi.c`、`arch_smp_ipi.c` 核对）。
 
-**本篇不涉及：** IRQ 向量 reserve / `trap_handler` → `25`；ICR / SGIR 字段细节 → `26`/`27`；x86 TLB 消息槽与握手 → `32`；`cpu_is_online` → `28`。
+**本篇不涉及：** IRQ 向量 reserve / `trap_handler`（见 `25`）；ICR / SGIR 字段细节（见 `26`/`27`）；x86 TLB 消息槽与握手（见 `32`）；`cpu_is_online`（见 `28`）。
 
 AP 启动拉核用的 INIT/SIPI **不是** soft IPI（共用发送原语而已）。
 
@@ -145,10 +145,10 @@ AP 启动拉核用的 INIT/SIPI **不是** soft IPI（共用发送原语而已�
 
 | 场景 | 顺序 |
 |------|------|
-| 每核装门铃 | `init_interrupt` → 平台 IRQ iface → **`smp_ipi_init`**（→ `arch_smp_ipi_init` → `register_irq_handler(IPI_VEC, dispatch, NEED_EOI)`） |
+| 每核装门铃 | `init_interrupt` 与平台 IRQ iface 之后 **`smp_ipi_init`**（内部 `arch_smp_ipi_init`，再 `register_irq_handler(IPI_VEC, dispatch, NEED_EOI)`） |
 | 注册消费者 | 通常全局一次：`smp_ipi_register(&id, fn)`（x86 TLB 在 `arch_smp_flush_tlb_init`） |
-| 发送 | 填目标核 per-CPU 消息（若需要）→ **`smp_ipi_send(cpu, id)`** |
-| 接收 | IRQ → dispatch：`exchange(pending,0)` 循环 → `fn()` → EOI |
+| 发送 | 填好目标核 per-CPU 消息（若需要）后调 **`smp_ipi_send(cpu, id)`** |
+| 接收 | IRQ 进 dispatch：`exchange(pending,0)` 循环调 `fn()`，最后 EOI |
 
 `fn` 无参；上下文在发送方预先写好的槽里。无 unregister；槽上限 `RENDEZVOS_SMP_IPI_MAX`（16）。
 
@@ -165,7 +165,7 @@ void smp_ipi_init(void);
 |------|------|
 | `smp_ipi_init` | 每核；挂共享 `smp_ipi_dispatch`。 |
 | `smp_ipi_register` | 线性占 slot。`-E_IN_PARAM` / 满则 `-E_REND_OVERFLOW`。 |
-| `smp_ipi_send` | 要求 `cpu_is_online` + slot used；CAS OR pending bit → arch 门铃；**门铃失败则清除该 bit**。bit 已置仍会再触发门铃。 |
+| `smp_ipi_send` | 要求 `cpu_is_online` + slot used；CAS OR pending bit 后敲 arch 门铃；**门铃失败则清除该 bit**。bit 已置仍会再触发门铃。 |
 
 Dispatch：`atomic64_exchange(pending, 0)` 循环，避免 handler 中途再 OR 丢 bit。
 
@@ -204,8 +204,8 @@ error_t arch_smp_ipi_send(cpu_id_t cpu);
 
 | | x86_64 | aarch64 |
 |--|--------|---------|
-| 向量 / INTID | IDT **`0x30`** | SGI **0** → trap **64** |
-| send | ICR FIXED；非 APIC → `-E_RENDEZVOS` | SGIR self / specified；`cpu≥8` → `-E_IN_PARAM` |
+| 向量 / INTID | IDT **`0x30`** | SGI **0**，对应 trap **64** |
+| send | ICR FIXED；非 APIC 返回 `-E_RENDEZVOS` | SGIR self / specified；`cpu≥8` 返回 `-E_IN_PARAM` |
 | 假设 | `cpu` = APIC id | GIC CPU IF 编号 == 逻辑 id |
 
 ### 7.4 与 TLB 的分工

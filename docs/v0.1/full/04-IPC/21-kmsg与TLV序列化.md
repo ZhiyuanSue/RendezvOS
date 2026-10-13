@@ -120,9 +120,9 @@ kmsg 在 `Msg_Data_t` 的 data 指针指向的 buffer 中的字节布局：
 |------|-------------|-------------|------|
 | `p` | `void*` | `void**` | `sizeof(void*)` |
 | `q` | `i64` | `i64*` | 8 |
-| `i` | `int`→写 `i32` | `i32*` | 4 |
+| `i` | `int`（写成 `i32`） | `i32*` | 4 |
 | `u` | `u32` | `u32*` | 4 |
-| `s` | `char*`（`NULL`→`value_len=0`） | `char**`（缓冲内；len0→空指针） | `strlen+1`（**含末尾 `'\0'`**） |
+| `s` | `char*`（`NULL` 则 `value_len=0`） | `char**`（缓冲内；len0 则空指针） | `strlen+1`（**含末尾 `'\0'`**） |
 | `t` | 同 `s` | 同 `s` | wire 同 `s`；约定语义 = reply port 名 |
 
 空白字符在 fmt 中忽略。encode 的 tag 与 decode 的 fmt 字符须逐字节相等（`'t'` 编的不能用 `'s'` 解）。空 `fmt=""` 仍写出 4 字节 `param_count=0`。
@@ -140,7 +140,7 @@ kmsg 在 `Msg_Data_t` 的 data 指针指向的 buffer 中的字节布局：
 
 ### 4.5 所有权
 
-`kmsg_create`：一次分配 hdr + payload → `encode_into` → `create_message_data(..., free_msgdata_ref_default)`，最后得到的refcount=1。失败一律返回 `NULL`。
+`kmsg_create`：一次分配 hdr + payload，再 `encode_into`，接着 `create_message_data(..., free_msgdata_ref_default)`，最后得到的refcount=1。失败一律返回 `NULL`。
 
 `Message_t` 与 `Msg_Data` **独立** ref。
 
@@ -152,7 +152,7 @@ kmsg 在 `Msg_Data_t` 的 data 指针指向的 buffer 中的字节布局：
 | POWER_REBOOT | 2 | `""` | 已经登记；实现尚未接齐 |
 | TIMER_EXPIRE | 3 | `"q"` | timer |
 | TIMER_CANCEL | 4 | `"q"` | timer |
-| PORT_CLOSED | 5 | `"q"`（恒传 0，**没有业务载荷**） | `port_clean_thread_queue` → **只**投给当时 `block_on_receive` 的等待者（send 一侧port关闭之后的`send_msg` 返回直接用 flag 标记线程被唤醒来自于port被关闭，见 `19` §6.2） |
+| PORT_CLOSED | 5 | `"q"`（恒传 0，**没有业务载荷**） | `port_clean_thread_queue` **只**投给当时 `block_on_receive` 的等待者（send 一侧port关闭之后的`send_msg` 返回直接用 flag 标记线程被唤醒来自于port被关闭，见 `19` §6.2） |
 | SYSTEM_END | 6 | — | 建议兼容层的 opcode 从 SYSTEM_END+1 起编（后续可能继续补充system的opcode，所以建议兼容层都用宏表示自己的起始opcode）；这是用于划分界限的宏，不是一条会发出去的消息 |
 
 不同兼容层协议可以各自从 `SYSTEM_END+1` 起号——靠 **不同 port / `service_id`** 隔开，**不是**全机一份全局唯一的 opcode 空间。怎么投递见收发篇。
@@ -193,15 +193,15 @@ kmsg 在 `Msg_Data_t` 的 data 指针指向的 buffer 中的字节布局：
 
 本篇涉及的接口分布在：`kmsg.h` / `kmsg_system.h` / `ipc_serial.h`。
 
-**本篇不涉及：** `Msg_Data` / Port → `19`；send/recv → `20`。
+**本篇不涉及：** `Msg_Data` / Port 见 `19`；send/recv 见 `20`。
 
 ### 7.1 编排顺序（调用方须遵守）
 
 | 场景 | 顺序 |
 |------|------|
-| 发送 kmsg | **`kmsg_create(module, op, fmt, …)`** → `create_message_with_msg` → put 多余 data 引用 → `enqueue` → `send_msg`（`20`） |
-| 接收 | `recv` → `dequeue` → **`kmsg_from_msg`** → 比对 opcode → **`ipc_serial_decode(payload, payload_len, fmt, …)`** |
-| 热路径自编码 | （少见）`measure_va` → 自备缓冲 → `encode_into_va`；`kmsg_create` 已内嵌此序 |
+| 发送 kmsg | **`kmsg_create(module, op, fmt, …)`**，再 `create_message_with_msg`，put 多余 data 引用后 `enqueue`，最后 `send_msg`（`20`） |
+| 接收 | `recv`，再 `dequeue`，接着 **`kmsg_from_msg`**，比对 opcode 后 **`ipc_serial_decode(payload, payload_len, fmt, …)`** |
+| 热路径自编码 | （少见）先 `measure_va`，再自备缓冲，最后 `encode_into_va`；`kmsg_create` 已内嵌此序 |
 
 空 `fmt=""` 仍产生 **4 字节** `param_count=0` 的 payload（不是「无缓冲」）。
 
@@ -214,7 +214,7 @@ const kmsg_t *kmsg_from_msg(const Message_t *msg);
 
 | 接口 | 说明 |
 |------|------|
-| `kmsg_create` | measure → 拒绝 `> KMSG_MAX_PAYLOAD` → 一次 alloc hdr+payload → encode_into → `create_message_data(MSG_DATA_TAG_KMSG, …)`。失败 NULL。不查 port、不填 reply。 |
+| `kmsg_create` | 先 measure，若 `> KMSG_MAX_PAYLOAD` 则拒绝；否则一次 alloc hdr+payload，encode_into，再 `create_message_data(MSG_DATA_TAG_KMSG, …)`。失败 NULL。不查 port、不填 reply。 |
 | `kmsg_from_msg` | 校验 tag / 长度 / `KMSG_MAGIC` / `payload_len` 一致性；**不**验 module/opcode/TLV。 |
 
 常量：`MSG_DATA_TAG_KMSG=1`；`KMSG_MAGIC=0x47534d4c`（字节 `'L','M','S','G'`）；`KMSG_MAX_PAYLOAD=PAGE_SIZE`。
@@ -264,7 +264,7 @@ core里面缺少相关测例，但是可以使用 timer 等发送 system kmsg �
 
 ## 10. 限制与后续
 
-调用约定靠程序员自己守：`fmt` 里每个字符对应哪一种 C 类型（如 `'q'`→`i64`），必须和后面实参一致。库在运行时只看见一串字符和一块 `va_list`，会按字符去 `va_arg(假定类型)`，它无法再核对「你传进来的到底是不是这个类型」。
+调用约定靠程序员自己守：`fmt` 里每个字符对应哪一种 C 类型（如 `'q'` 对应 `i64`），必须和后面实参一致。库在运行时只看见一串字符和一块 `va_list`，会按字符去 `va_arg(假定类型)`，它无法再核对「你传进来的到底是不是这个类型」。
 
 因此：`fmt` 写成 `"q"` 却传了 `int`，编译器通常不报错，库也返回成功，结果却是 C 的未定义行为（UB）。
 

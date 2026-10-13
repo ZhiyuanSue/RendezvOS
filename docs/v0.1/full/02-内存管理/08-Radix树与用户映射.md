@@ -56,7 +56,7 @@ core 里的 `clone_vspace` 已经能做 `COW_PREP` / `COPY_PAGES`；真正在 fa
 - **kmalloc 等**：可用 `vmm_radix_tree_lock_range_big_and_small`（内部取到 L2 后**释放 L0**），避免嵌套在已持有的 L0 临界区里。
 - **utils**：一律拒绝 `&root_vspace`（内核的全局根地址空间，所有 VSpace 共享它的内核高半；只服务用户地址空间，见 §4.6）。调用方已持有 L0 时，用 `lock_range_small_with_big_locked` 那条路径。
 
-推荐生命周期：`insert_range`（LAZY）→ 调用方 `map` → `leaf_bind`（VALID + rmap）→ … → unbind → unmap → DELETE。
+推荐生命周期：先 `insert_range`（LAZY），调用方 `map` 之后再 `leaf_bind`（VALID + rmap）；拆除时先 unbind，再 unmap，最后 DELETE。
 
 ---
 
@@ -101,11 +101,11 @@ core 里的 `clone_vspace` 已经能做 `COW_PREP` / `COPY_PAGES`；真正在 fa
 
 要点：
 
-- **不存在 → LAZY**：`insert_range` 强制带 `LAZY` 并清 `VALID`，**不**写 PPN、**不**挂 rmap。
-- **LAZY → VALID**：`leaf_bind_range` 在调用方 `map` **之后**调用，置 `VALID`、清 `LAZY`、`link_rmap`。拒绝同时 `VALID|LAZY`——这是「先 insert 再 map 再 bind」顺序的硬保证。
-- **VALID → LAZY**：`leaf_unbind_range` 在调用方 `unmap` **之前**调用，清 `VALID`、`unlink_rmap`、恢复 `LAZY`。
-- **VALID → VALID（换 PPN）**：`change_leaf_ppn` 用于 COW split / remap，先摘旧 rmap 再加新 rmap，失败回滚到旧 PPN。
-- **LAZY/VALID → 不存在**：DELETE 路径。Phase 4 检测仍 `VALID` 就拒绝（须先 unbind），`radix_node_clear` 清叶子；Phase 5 自下而上回填计数，某级 count 归零就 `free_level_table` 释放子表页。
+- **从不存在到 LAZY**：`insert_range` 强制带 `LAZY` 并清 `VALID`，**不**写 PPN、**不**挂 rmap。
+- **从 LAZY 到 VALID**：`leaf_bind_range` 在调用方 `map` **之后**调用，置 `VALID`、清 `LAZY`、`link_rmap`。拒绝同时 `VALID|LAZY`——这是「先 insert 再 map 再 bind」顺序的硬保证。
+- **从 VALID 到 LAZY**：`leaf_unbind_range` 在调用方 `unmap` **之前**调用，清 `VALID`、`unlink_rmap`、恢复 `LAZY`。
+- **VALID 上换 PPN（仍为 VALID）**：`change_leaf_ppn` 用于 COW split / remap，先摘旧 rmap 再加新 rmap，失败回滚到旧 PPN。
+- **从 LAZY/VALID 回到不存在**：DELETE 路径。Phase 4 检测仍 `VALID` 就拒绝（须先 unbind），`radix_node_clear` 清叶子；Phase 5 自下而上回填计数，某级 count 归零就 `free_level_table` 释放子表页。
 - **COW**：`PAGE_ENTRY_COW` 与 `VALID` 正交，可叠加在 `VALID` 上。fork 走 `COW_PREP` 时父子叶子都置 `COW`，PTE 侧清 WRITE；写故障时由兼容层调 `remap_page` 分裂。
 
 #### 4.1.3 数据结构
@@ -193,7 +193,7 @@ typedef enum {
 
 ### 4.3 `radix_range_lock_acquire` 五阶段（树锁实现）
 
-`vmm_radix_tree_lock_range_small_with_big_locked` 与 `lock_range_big_and_small` 都落到 `radix_range_lock_acquire`。它是「区间锁 + 树生长」的核心：在没有下层表页时按需创建，并按 L0 → L1 → L2 → L3 自上而下铺路、自下而上回滚。把它拆成五阶段看：
+`vmm_radix_tree_lock_range_small_with_big_locked` 与 `lock_range_big_and_small` 都落到 `radix_range_lock_acquire`。它是「区间锁 + 树生长」的核心：在没有下层表页时按需创建，并按 L0、L1、L2、L3 自上而下铺路、自下而上回滚。把它拆成五阶段看：
 
 ```text
    入口：root（L0 表已存在），区间 [start, end)
@@ -245,7 +245,7 @@ typedef enum {
 
 ### 4.4 锁序与 PMM zone 锁
 
-**锁序（禁止逆序）：** L0 big → L2 band → PMM zone → `vspace_lock`。持 PMM zone 锁时 **不要** 调用 `map()` / `unmap()`。
+**锁序（禁止逆序）：** 先 L0 big，再 L2 band，然后 PMM zone，最后 `vspace_lock`。持 PMM zone 锁时 **不要** 调用 `map()` / `unmap()`。
 
 ```text
    L0 big lock        L2 band lock       PMM zone lock      vspace_lock
@@ -265,7 +265,7 @@ typedef enum {
 |----|----|
 | `radix_leaf_link_rmap` / `unlink_rmap`（改 `Page.rmap_list`） | ✅ 允许 |
 | 遍历 `Page.rmap_list` 取快照 | ✅ 允许 |
-| `pmm_alloc` / `pmm_free` | ❌ 禁止（会再取同一把锁 → 死锁） |
+| `pmm_alloc` / `pmm_free` | ❌ 禁止（会再取同一把锁，造成死锁） |
 | `map()` / `unmap()` | ❌ 禁止（可能嵌套 zone 锁） |
 
 调用方统一用 `pmm_lock` / `pmm_unlock` 或 `pmm_zone_lock` / `pmm_zone_unlock`，不要直接展开 `lock_mcs(&pmm->spin_ptr, &percpu(pmm_spin_lock[zone_id]))`——MCS 锁的 `me` 节点（本 CPU 在该锁队列里的槽位）必须按 (zone, cpu) 选对，封装保证一致。
@@ -284,7 +284,7 @@ typedef enum {
 
 只写叶子的 `flags` 与 `owner`，**不**碰 rmap、**不**碰 PTE。LAZY 表示「已预约、无物理页」。`entry_flags_rm_sw_flags` 在写之前剥掉软件位，避免把 `REMAP` / `COW` 一类软件标志漏到叶子。
 
-#### 4.5.2 `leaf_bind_range`（QUERY_OR_CHANGE，LAZY → VALID）
+#### 4.5.2 `leaf_bind_range`（QUERY_OR_CHANGE，从 LAZY 到 VALID）
 
 ```text
    for each leaf in [start, end) by 4 KiB, ppn = ppn_first + i:
@@ -296,7 +296,7 @@ typedef enum {
 
 `leaf_bind_range` 拒绝同时 VALID|LAZY——这是「先 insert 再 map 再 bind」顺序的硬保证。rmap 链表操作在 zone 锁下做（§4.4）。
 
-#### 4.5.3 `leaf_unbind_range`（QUERY_OR_CHANGE，VALID → LAZY）
+#### 4.5.3 `leaf_unbind_range`（QUERY_OR_CHANGE，从 VALID 到 LAZY）
 
 ```text
    Pass 1（INC）：校验区间内每页都是 VALID，数总数 == page_number
@@ -456,10 +456,10 @@ API 一律带前缀：`vmm_radix_tree_*`、`mm_user_utils_*`。
 
 | utils | 编排（已持 L0） | 失败回滚 |
 |------|------|------|
-| `set_range_and_fill` | `pmm_alloc` → L2=INSERT → `insert_range` → 逐页 `map` → `leaf_bind_range` → 释放 L2 → `map_handler_zero_page` | 回滚已 map 前缀 + 删 radix 预约；返回 0 |
-| `fill_page_with_exist_range` | 单页：QUERY → `pmm_alloc` → `map` → `leaf_bind` → zero。叶已 VALID → 幂等成功 | 不生长新预约 |
-| `clean_range_and_unfill` | `leaf_unbind_range` → 释放 L2 → `unmap` + `pmm_free` → L2=DELETE 清预约 | 失败路径仍 `unlock_range_big` |
-| `remap_page` | `change_leaf_ppn` → `map(REMAP)` → 释放旧页 | `map` 失败回滚 radix |
+| `set_range_and_fill` | `pmm_alloc` 后取 L2=INSERT，再 `insert_range`；逐页 `map` 后 `leaf_bind_range`，释放 L2，最后 `map_handler_zero_page` | 回滚已 map 前缀 + 删 radix 预约；返回 0 |
+| `fill_page_with_exist_range` | 单页：QUERY 后 `pmm_alloc`、`map`、`leaf_bind`、zero。叶已 VALID 则幂等成功 | 不生长新预约 |
+| `clean_range_and_unfill` | `leaf_unbind_range` 后释放 L2，再 `unmap` + `pmm_free`，最后 L2=DELETE 清预约 | 失败路径仍 `unlock_range_big` |
+| `remap_page` | `change_leaf_ppn` 后 `map(REMAP)`，成功则释放旧页 | `map` 失败回滚 radix |
 | `set_range_flags` | ABSOLUTE/DELTA/`DELTA_PTE_ONLY`；先改 PTE 再改 radix | 尝试恢复前缀 |
 
 owner 写成 `vs->root_vs ? root_vs : vs`，并带当前 CPU tag。`set_range_flags` 区间内每页须已 VALID + `have_mapped`，且 radix/PTE flags 一致；`DELTA_PTE_ONLY` 用于 fork COW 只改 PTE。
@@ -478,9 +478,9 @@ owner 写成 `vs->root_vs ? root_vs : vs`，并带当前 CPU tag。`set_range_fl
 ### 6.3 与 fault 的协作（兼容层约定，非 core 实现）
 
 1. 查 radix（必要时再 `have_mapped`——它检查 PTE 是否已实际写入，与 radix 的 VALID 区分：radix VALID 表示账本上已绑 PPN，`have_mapped` 表示硬件 PTE 已装好）。
-2. 未映射，但在 radix 里且还不是 VALID → 持 L0，调 `fill_page_with_exist_range`。
-3. 已映射 + 写故障 + radix 要 WRITE + PTE 只读 → COW split（`remap_page`），**不是** fill。
-4. radix 里没有 → 按未映射处理（例如 SEGV）。
+2. 未映射，但在 radix 里且还不是 VALID：持 L0，调 `fill_page_with_exist_range`。
+3. 已映射且写故障、radix 要 WRITE、PTE 只读：做 COW split（`remap_page`），**不是** fill。
+4. radix 里没有：按未映射处理（例如 SEGV）。
 
 正文不要绑定某一具体兼容层目录名。
 
@@ -496,11 +496,11 @@ owner 写成 `vs->root_vs ? root_vs : vs`，并带当前 CPU tag。`set_range_fl
 
 | 场景 | 顺序（半开区间 `[start, end)`；`end` 必须来自 `calculate_end_check`） |
 |------|------|
-| 门禁 | **`vmm_radix_tree_calculate_end_check(start, page_count, &end)`** → 后续锁/变更一律用同一 `end` |
-| 兼容层 / 加载器（推荐） | **`lock_range_big`**（可跨多次调用一直持有）→ 选区间（或 `find_first_occupied_interval`）→ **`lock_range_small_with_big_locked(kind)`** → radix/utils → **`unlock_range_small`** → … → **`unlock_range_big`** |
-| kmalloc 等短路径 | **`lock_range_big_and_small`**（内部取 L2 后**释放 L0**）→ 工作 → **`unlock_range_big_and_small`** |
-| 预约→落页（手动编排） | L2=`RADIX_RL_INSERT` → **`insert_range`** → 调用方 **`map`** → **`leaf_bind(_range)`** → unlock |
-| 卸页→删账本 | L2 下 **`leaf_unbind(_range)`** → 调用方 **`unmap`** → L2=`RADIX_RL_DELETE`（内部拆空节点） |
+| 门禁 | 先 **`vmm_radix_tree_calculate_end_check(start, page_count, &end)`**；后续锁/变更一律用同一 `end` |
+| 兼容层 / 加载器（推荐） | **`lock_range_big`**（可跨多次调用一直持有）；选区间（或 `find_first_occupied_interval`）后 **`lock_range_small_with_big_locked(kind)`**，做 radix/utils，再 **`unlock_range_small`**；全部做完后 **`unlock_range_big`** |
+| kmalloc 等短路径 | **`lock_range_big_and_small`**（内部取 L2 后**释放 L0**）做完工作后 **`unlock_range_big_and_small`** |
+| 预约到落页（手动编排） | L2=`RADIX_RL_INSERT` 下 **`insert_range`**，调用方 **`map`** 后再 **`leaf_bind(_range)`**，最后 unlock |
+| 卸页到删账本 | L2 下 **`leaf_unbind(_range)`**，调用方 **`unmap`**，再以 L2=`RADIX_RL_DELETE` 拆空节点 |
 | utils（已持有 L0） | **不**再获取 L0；只用 `lock_range_small_with_big_locked`；拒绝 `&root_vspace` |
 
 `kind`：`RADIX_RL_INSERT` / `RADIX_RL_DELETE` / `RADIX_RL_QUERY_OR_CHANGE`。
@@ -576,9 +576,9 @@ error_t mm_user_utils_set_range_flags(VSpace *, vaddr start, u64 length_bytes,
 
 | 接口 | 说明 |
 |------|------|
-| `set_range_and_fill` | L2 INSERT → insert → map 循环 → bind → 释放 L2 → `map_handler_zero_page`。成功返回 `start`，失败 **0**（回滚前缀）。区间内已有可 INSERT 重叠则整次失败。 |
-| `fill_page_with_exist_range` | 单页：叶已 **VALID** → 成功空操作（幂等）；否则须已存在且 **LAZY**；其它情况失败（不隐式生长）。 |
-| `clean_range_and_unfill` | unbind → 释放 L2 → unmap + `pmm_free` → 再 `RADIX_RL_DELETE`。失败路径须仍 `unlock_range_big`。 |
+| `set_range_and_fill` | L2 INSERT 下 insert，再 map 循环与 bind，释放 L2 后 `map_handler_zero_page`。成功返回 `start`，失败 **0**（回滚前缀）。区间内已有可 INSERT 重叠则整次失败。 |
+| `fill_page_with_exist_range` | 单页：叶已 **VALID** 则成功空操作（幂等）；否则须已存在且 **LAZY**；其它情况失败（不隐式生长）。 |
+| `clean_range_and_unfill` | unbind 后释放 L2，再 unmap + `pmm_free`，最后 `RADIX_RL_DELETE`。失败路径须仍 `unlock_range_big`。 |
 | `remap_page` | 先 `change_leaf_ppn` 再 `map(..., PAGE_ENTRY_REMAP)`（**不是** unmap+map）。 |
 | `set_range_flags` | 区间内每页须已 VALID+`have_mapped`，且 radix/PTE flags 一致；模式见 `MM_USER_RANGE_FLAGS_*`。 |
 
@@ -586,7 +586,7 @@ handler 一律 `&percpu(Map_Handler)`。稀疏多孔 VA 由编排方多次调 ut
 
 ### 7.5 与 07 交叉、本篇不重复展开的符号
 
-`clone_vspace` / `register_vspace` / `unregister_vspace` / `del_vspace` / `vspace_clear_user_mappings` → **07** §7。
+`clone_vspace` / `register_vspace` / `unregister_vspace` / `del_vspace` / `vspace_clear_user_mappings` 见 **07** §7。
 
 ---
 

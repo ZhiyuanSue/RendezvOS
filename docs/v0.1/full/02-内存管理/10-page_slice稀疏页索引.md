@@ -32,7 +32,7 @@ Buddy（伙伴分配器，按 2 的幂次合并/拆分物理页，见 `09-kmallo
 
 ## 3. 分层与调用方
 
-上层（例如兼容层的页缓存）持 `struct page_slice *`：`insert` 绑定已有 kva → `lookup` / `copy_to_*` 读 → 需要副本时 `clone`。与用户缓冲交互另走 `map_handler_user_kernel_copy` 一类路径，**不**进 `thread->vs` 的 radix。
+上层（例如兼容层的页缓存）持 `struct page_slice *`：用 `insert` 绑定已有 kva，用 `lookup` / `copy_to_*` 读，需要副本时再 `clone`。与用户缓冲交互另走 `map_handler_user_kernel_copy` 一类路径，**不**进 `thread->vs` 的 radix。
 
 每 slice 一把 `cas_lock`，API 内部加锁。**lookup 返回前会释放锁**——并发 remove 可能让指针立刻失效，调用方不要假设指针长期有效。copy 路径同样是「lookup 之后再 memcpy」，不会跨整段拷贝一直持锁。
 
@@ -210,7 +210,7 @@ struct page_slice {
 
 ### 6.1 绑定一页
 
-调用方准备好内核 kva → `page_slice_insert_page`（缺少壳页时分配 index / leaf）→ 槽上置位 VALID。
+调用方准备好内核 kva 后调用 `page_slice_insert_page`（缺少壳页时分配 index / leaf），成功则槽上置位 VALID。
 
 ### 6.2 copy / clone
 
@@ -236,7 +236,7 @@ struct page_slice {
 | 步骤 | API |
 |------|-----|
 | 建空 slice | **`page_slice_create(append_sz, logical_size)`**（`logical_size > 0`） |
-| 绑内容页 | 调用方 `m_alloc` → **`page_slice_insert_page(slice, pgoff, kva, flags)`** |
+| 绑内容页 | 调用方先 `m_alloc`，再 **`page_slice_insert_page(slice, pgoff, kva, flags)`** |
 | 读 | **`page_slice_lookup`**（返回前已放锁）或 **`copy_to_*`** |
 | 伸缩逻辑长度 | **`page_slice_set_size(&slice, new_size)`**（`0` ≡ destroy） |
 | 副本 | **`page_slice_clone(&dst, src)`**（深拷 VALID；不拷贝柔性数组尾） |
@@ -261,10 +261,10 @@ error_t page_slice_remove_page(struct page_slice *slice, u64 pgoff);
 |------|------|
 | `create` | 空树；`slice_size` 须 ∈ (0, `PAGE_SLICE_MAX_BYTE_SIZE]`。柔性数组尾 `append_page_slice_info[]` 长度=`append_info_size`（可为 0）。失败 NULL。 |
 | `destroy` | 递归释放壳页；对叶 kva 调 `m_free`，除非 `PAGE_SLICE_FLAG_PIN`。成功 `*slice=NULL`。 |
-| `set_size` | `new_size==0` → destroy。变大只改逻辑长度（树长高在后续 insert）。变小拆除高 pgoff 并可 unwrap 空壳。超上限 → `-E_REND_OVERFLOW`。 |
-| `insert_page` | 绑定已有 `kva`（非 0）；成功必置 `VALID`。同 kva 幂等；异 kva 已 VALID → `-E_REND_AGAIN`。**不**分配内容页。 |
-| `lookup` | 已绑定返回 entry 指针；缺失/无效/越界 → NULL。**返回前释放锁**。 |
-| `remove_page` | 清叶；非 PIN 则 `m_free` kva；可级联释放空壳。未映射 → `-E_REND_NOFOUND`。 |
+| `set_size` | `new_size==0` 等价 destroy。变大只改逻辑长度（树长高在后续 insert）。变小拆除高 pgoff 并可 unwrap 空壳。超上限返回 `-E_REND_OVERFLOW`。 |
+| `insert_page` | 绑定已有 `kva`（非 0）；成功必置 `VALID`。同 kva 幂等；异 kva 且已 VALID 则返回 `-E_REND_AGAIN`。**不**分配内容页。 |
+| `lookup` | 已绑定返回 entry 指针；缺失/无效/越界返回 NULL。**返回前释放锁**。 |
+| `remove_page` | 清叶；非 PIN 则 `m_free` kva；可级联释放空壳。未映射返回 `-E_REND_NOFOUND`。 |
 
 标志：`PAGE_SLICE_FLAG_VALID`（insert 置位）；`PAGE_SLICE_FLAG_PIN` = destroy/remove **跳过**内容 `m_free`（非 MMU pin）。`mapped_entries` 仅上层统计。
 
@@ -281,7 +281,7 @@ error_t page_slice_clone(struct page_slice **dst_out, struct page_slice *src);
 
 | 接口 | 说明 |
 |------|------|
-| `copy_to_buffer` | 区间须**全部已映射**，遇到空洞 → `-E_RENDEZVOS`（不零填）。`len==0` 成功。 |
+| `copy_to_buffer` | 区间须**全部已映射**，遇到空洞返回 `-E_RENDEZVOS`（不零填）。`len==0` 成功。 |
 | `copy_to_slice` | 目标 pgoff 须已绑定；不为 dst 插入；拒绝危险自重叠。 |
 | `copy_to_user` | 同源须已映射；经 `map_handler_user_kernel_copy` 写入 `vs`。 |
 | `clone` | 同 `size` 新 slice；只深拷贝 VALID（新页归 dst）；空洞不实现；清除 PIN；**不**拷贝 `append_page_slice_info[]` 柔性数组尾。**不是 COW**。 |

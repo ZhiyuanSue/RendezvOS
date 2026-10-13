@@ -96,7 +96,7 @@ struct mem_group {
 
 ### 4.3 整页与 `root_vspace`
 
-路径大致是：`pmm_alloc` → 在 root 上 radix `insert_range`（owner tag = 本 CPU）→ `map` → `leaf_bind` → 可选 zero。跟踪节点 `page_chunk_node` 本身也来自小对象分配。释放：unbind → unmap → DELETE 清叶 → `pmm_free`。
+路径大致是：`pmm_alloc` 后在 root 上 radix `insert_range`（owner tag = 本 CPU），再 `map`、`leaf_bind`，可选 zero。跟踪节点 `page_chunk_node` 本身也来自小对象分配。释放时先 unbind，再 unmap，经 DELETE 清叶后 `pmm_free`。
 
 ```c
 #define MM_COMMON                                                       \
@@ -169,12 +169,12 @@ struct mem_allocator {
 
 | 阶段 | 顺序 |
 |------|------|
-| 每核启动 | `virt_mm_init` → **`kinit(cpu_id)`** → `per_cpu(kallocator, cpu_id)` 可用 |
-| 运行期分配 | **`percpu(kallocator)->m_alloc(a, n)`**：入口先 **`mem_allocator_remote_frees`** → 小对象或整页路径 → 成功则载荷已清零 |
-| 运行期释放 | **`percpu(kallocator)->m_free(a, p)`**：先 remote_frees → 按是否 4 KiB 对齐分流（见下） |
+| 每核启动 | `virt_mm_init` 内调 **`kinit(cpu_id)`** 后，`per_cpu(kallocator, cpu_id)` 可用 |
+| 运行期分配 | **`percpu(kallocator)->m_alloc(a, n)`**：入口先 **`mem_allocator_remote_frees`**，再走小对象或整页路径；成功则载荷已清零 |
+| 运行期释放 | **`percpu(kallocator)->m_free(a, p)`**：先 remote_frees，再按是否 4 KiB 对齐分流（见下） |
 | 调度旁路 drain | **`kalloc_process_cross_cpu_frees()`**（`schedule` 调用）≡ 对本核再执行一次 remote_frees |
 
-跨核 free：小对象 → 归属核 `buffer_msq`；整页 → 归属核 `kfree_page_msq`（owner 来自 `root_vspace` radix tag）。归属核 drain：**先** `kfree_page_msq`，**再** `buffer_msq`。
+跨核 free：小对象投归属核 `buffer_msq`；整页投归属核 `kfree_page_msq`（owner 来自 `root_vspace` radix tag）。归属核 drain：**先** `kfree_page_msq`，**再** `buffer_msq`。
 
 ### 7.2 Allocator vtable（`allocator.h` / `mem_allocator`）
 
@@ -191,7 +191,7 @@ struct allocator {
 | 接口 | 说明 |
 |------|------|
 | `m_alloc(a, Bytes)` | 合法：`1 ≤ Bytes ≤ MIDDLE_PAGE_SIZE`（2 MiB）；否则 NULL。`Bytes > 2048`（`slot_size[11]`）走整页：先小对象分配 `page_chunk_node`，再 `core_get_free_pages` 映入 `&root_vspace`，memset，插入 RB。否则走 chunk/`_k_alloc`。失败 NULL。 |
-| `m_free(a, p)` | `p` 页对齐 → 查 radix owner；异核投 `kfree_page_msq`，本核 `kfree_page_local`。非对齐 → 读 `object_header.allocator_id`；本核归还 chunk，异核投 `buffer_msq`。`a`/`p` 为空则记录日志返回。 |
+| `m_free(a, p)` | `p` 页对齐时查 radix owner：异核投 `kfree_page_msq`，本核 `kfree_page_local`。非对齐则读 `object_header.allocator_id`：本核归还 chunk，异核投 `buffer_msq`。`a`/`p` 为空则记录日志返回。 |
 | `allocator_id` | 与 CPU id 对齐；写入小对象 header / chunk。 |
 
 典型用法：`percpu(kallocator)->m_alloc(percpu(kallocator), n)`。
@@ -205,7 +205,7 @@ void kalloc_process_cross_cpu_frees(void);
 
 | 接口 | 说明 |
 |------|------|
-| `kinit` | `allocator_id < 0` → NULL。用静态 `tmp_k_alloctor` 自举真正的 `mem_allocator` 与两条 MSQ，装入 `per_cpu(kallocator, id)`。同 id 已存在 → NULL。 |
+| `kinit` | `allocator_id < 0` 返回 NULL。用静态 `tmp_k_alloctor` 自举真正的 `mem_allocator` 与两条 MSQ，装入 `per_cpu(kallocator, id)`。同 id 已存在也返回 NULL。 |
 | `kalloc_process_cross_cpu_frees` | 对本核 `kallocator` 调 `mem_allocator_remote_frees`；`kallocator` 为空则 no-op。 |
 
 尺寸常量（实现）：`slot_size[] = {8…2048}` 共 `MAX_GROUP_SLOTS`(12)；`PAGE_PER_CHUNK == 4`。整页路径 **禁止** `mm_user_utils_*`（只操作 `root_vspace`）。
@@ -238,7 +238,7 @@ make ARCH=x86_64 config && make all && make run
 
 ## 10. 限制与后续
 
-- owner 标错或对齐误判 → 进错队列或泄漏。
+- owner 标错或对齐误判会进错队列或泄漏。
 - 引导期自举与正式实例切换需要注意：早期分配若落在 tmp，释放路径要能对应上。
 - 与 radix DELETE / owner 过滤的头文件叙述差异，以 `.c` 为准（见 Radix 篇）。
 

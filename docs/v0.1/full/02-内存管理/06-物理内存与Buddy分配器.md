@@ -399,7 +399,7 @@ riscv / loongarch 的 `pmm.h` 为空桩，无实现。
 
 骨架顺序：
 
-1. `arch_init_pmm` → 填 `m_regions`，给出 `per_cpu_phy_start`（即内核之后的可用位置）；
+1. `arch_init_pmm`：填 `m_regions`，给出 `per_cpu_phy_start`（即内核之后的可用位置）；
 2. `reserve_per_cpu_region`；整段 `[kernel, percpu_end)` reserve；
 3. 校验同 1 GiB；`arch_map_percpu_data_space` 并清零；
 4. 配置Zone；`pmm_configure_zones`（非法则默认只用 NORMAL）；
@@ -410,7 +410,7 @@ riscv / loongarch 的 `pmm.h` 为空桩，无实现。
 
 ### 6.3 alloc / free
 
-alloc：持锁找到 ≥ 所需阶的块 → **先**给范围内 `Page` 加引用计数，**再**分裂buddy块 → 返回起始 ppn，实际页数 **向上取整到 2ⁿ**（经 `alloced_page_number` 传出）。`page_number` 超过 `2^BUDDY_MAXORDER` 且当时空闲总数够，或 `pmm_alloc_zone` 返回 `-E_RENDEZVOS`（数据结构出现严重错误），直接返回该错误码，不 reclaim。空闲总数不够，或 `_zone` 返回 `-E_REND_NO_MEM`（拼不出连续 2ⁿ），则**解锁后** reclaim（若已注册）；无 hook / 次数用尽则返回 `-E_REND_AGAIN`。
+alloc：持锁找到 ≥ 所需阶的块后，**先**给范围内 `Page` 加引用计数，**再**分裂 buddy 块，然后返回起始 ppn，实际页数 **向上取整到 2ⁿ**（经 `alloced_page_number` 传出）。`page_number` 超过 `2^BUDDY_MAXORDER` 且当时空闲总数够，或 `pmm_alloc_zone` 返回 `-E_RENDEZVOS`（数据结构出现严重错误），直接返回该错误码，不 reclaim。空闲总数不够，或 `_zone` 返回 `-E_REND_NO_MEM`（拼不出连续 2ⁿ），则**解锁后** reclaim（若已注册）；无 hook / 次数用尽则返回 `-E_REND_AGAIN`。
 
 free：降低引用计数；减到 0 再合并回桶。**不**进入 reclaim。实现按页处理，并不核对「这是某次 alloc 交出去的整块」。
 
@@ -430,8 +430,8 @@ DTB 属性解码的更细约定见 `09-平台模块/36-DTB与设备树-aarch64.m
 
 | 阶段 | 顺序 |
 |------|------|
-| `cmain` | `prepare_arch` → **`phy_mm_init`** → … → `virt_mm_init` → … |
-| `phy_mm_init` 内部 | **`arch_init_pmm`** → reserve percpu+kernel → 同 1 GiB 校验 → map/clean percpu → 算可用窗 → **`configure_pmm_zones_hook`**（非法则默认 NORMAL）→ `split_pmm_zones` → reserve PMM 元数据（+ 2 MiB 尾）→ map/clean → `generate_zone_data` → 按 zone **依次** `pmm->pmm_init`（manage 区间不重叠） |
+| `cmain` | 先 `prepare_arch`，再 **`phy_mm_init`**，……，再 `virt_mm_init`…… |
+| `phy_mm_init` 内部 | 先 **`arch_init_pmm`**，再 reserve percpu+kernel，同 1 GiB 校验，map/clean percpu，算可用窗；然后 **`configure_pmm_zones_hook`**（非法则默认 NORMAL）、`split_pmm_zones`、reserve PMM 元数据（+ 2 MiB 尾）、map/clean、`generate_zone_data`；最后按 zone **依次** `pmm->pmm_init`（manage 区间不重叠） |
 | 运行期 | 调用方选 `zone->pmm`，再 `pmm->pmm_alloc` / `pmm->pmm_free`（可先 `pmm_set_reclaim_hook`） |
 
 ### 7.2 初始化
@@ -445,7 +445,7 @@ void configure_pmm_zones_hook(paddr avail_lo, paddr avail_hi); /* weak */
 | 接口 | 说明 |
 |------|------|
 | `phy_mm_init` | BSP 物理内存总入口。成功 `REND_SUCCESS`；reserve/布局失败、或某个已启用 zone 没有 `pmm_init`，返回 `-E_RENDEZVOS`。不建线程、不建 Map_Handler。成功后各 zone 的 `pmm` 可分配。 |
-| `arch_init_pmm` | 填 `m_regions`，写出 percpu 起点位置（即`next_region_phy_start`）。**x86**：Multiboot mmap（AVAILABLE 且越过 1 MiB）；找不到 RSDP 则跳过；如果ACPI的版本为 0 保留 RSDT 所在 2 MiB 窗，更高版本目前没支持，则 **halt**；让=`PHY(_end)`。**aarch64**：DTB `device_type=memory` 的 `reg`（按 2×u64），mem_rsvmap 只打印，让内核之后可用位置=`PHY(map_end_virt_addr)`。区域为空或解析失败 → **`kernel_halt`**，不向 `phy_mm_init` 回错误码。 |
+| `arch_init_pmm` | 填 `m_regions`，写出 percpu 起点位置（即`next_region_phy_start`）。**x86**：Multiboot mmap（AVAILABLE 且越过 1 MiB）；找不到 RSDP 则跳过；如果ACPI的版本为 0 保留 RSDT 所在 2 MiB 窗，更高版本目前没支持，则 **halt**；让=`PHY(_end)`。**aarch64**：DTB `device_type=memory` 的 `reg`（按 2×u64），mem_rsvmap 只打印，让内核之后可用位置=`PHY(map_end_virt_addr)`。区域为空或解析失败则 **`kernel_halt`**，不向 `phy_mm_init` 回错误码。 |
 | `configure_pmm_zones_hook` | 在已知可用窗、切 zone 之前调用；填 `mem_zones[0..nr_mem_zones)` 与各 zone 的 `pmm`（静态实例，**每个 zone 一份**）。弱默认：单 `ZONE_NORMAL` + `buddy_pmm`。区间非法、`pmm` 为空、或两个 zone 共用同一 `pmm` 指针：回退默认，不硬失败。 |
 
 最后，用于传递初始化的内存区域，主要经过全局 `m_regions` 上的方法指针：`memory_regions_reserve_region` / `memory_regions_reserve_region_with_length` 等，见 `struct memory_regions`。这些函数非本篇对外的功能接口，而是中间过程维护的数据结构和接口。
@@ -471,7 +471,7 @@ error_t pmm_change_pages_ref(struct pmm *, ppn_t start, size_t n, bool inc);
 |------|------|
 | `pmm_init` | 用 `[start, end)` 这块已经 reserve 好的物理区间，填写本 pmm 的私有管理结构。buddy：在其中铺 `buddy_page[]`。 |
 | `pmm_calculate_manage_space` | 按该 zone 的页数回报私有管理区要多少页。core 只按返回值切片，不理解布局。buddy：`ROUND_UP(n * sizeof(buddy_page), PAGE_SIZE) / PAGE_SIZE`。 |
-| `pmm_alloc` | 分配至少 `page_number` 页；成功返回起始 **ppn**（`ppn_t`=`i64`），`*alloced_page_number` 为向上取整到 2ⁿ 的实际页数。`page_number==0` → 返回 `0` 且 alloced=0。失败返回**负** `error_t`：超 `2^BUDDY_MAXORDER` 且总数够，或 buddy 账本不一致 → `-E_RENDEZVOS`（不 reclaim）；无 hook / 重试耗尽 → `-E_REND_AGAIN`；hook 放弃 → `-E_REND_NO_MEM`。判断失败用 `invalid_ppn`（`ppn<=0`）；空请求的 `0` 也被该宏判为非法，调用方需区分。core **不**自动跨 zone 借用。 |
+| `pmm_alloc` | 分配至少 `page_number` 页；成功返回起始 **ppn**（`ppn_t`=`i64`），`*alloced_page_number` 为向上取整到 2ⁿ 的实际页数。`page_number==0` 则返回 `0` 且 alloced=0。失败返回**负** `error_t`：超 `2^BUDDY_MAXORDER` 且总数够，或 buddy 账本不一致，则 `-E_RENDEZVOS`（不 reclaim）；无 hook / 重试耗尽则 `-E_REND_AGAIN`；hook 放弃则 `-E_REND_NO_MEM`。判断失败用 `invalid_ppn`（`ppn<=0`）；空请求的 `0` 也被该宏判为非法，调用方需区分。core **不**自动跨 zone 借用。 |
 | `pmm_free` | 从 `ppn` 起释放 `page_number` 页（调用约定应与当初分配跨度一致）。成功 `0`，失败负错误码。按页降 `Page` 引用计数，减到 0 再并回桶；**不**检查这是不是一次 alloc 的整块。 |
 | `pmm_set_reclaim_hook` | 兼容层安装/清空 reclaim 回调。core 不注册。回调只在 `pmm_alloc` 当时拿不到页时调用，且 **锁已放**。hook 可对本 `pmm` `pmm_free`，**禁止** `pmm_alloc`。最多 64 次。 |
 | `pmm_lock` / `pmm_unlock` | MCS；`me` 必须是**当前核**的 `pmm_spin_lock[zone_id]`。 |

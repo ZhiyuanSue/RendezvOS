@@ -41,11 +41,11 @@ Linux LSM（Linux Security Modules）是内核里通用的 hook 框架：每个�
 
 | 场景 | 行为 |
 |------|------|
-| create | `create_message_port(name, hooks)` → 可选 `init` → 再 `register_port` |
-| register | 表锁内 `ops_allow(REGISTER, NULL)` → 通过才 `name_index_register` |
-| lookup | 表命中后 `ops_allow(LOOKUP, name)`；拒绝 → put + 返回 NULL（errno **丢弃**） |
-| send / recv | `port_ops_begin`：life 须 REGISTERED → `ops_allow(SEND|RECV, NULL)` → `ops_count++` → 再查 life |
-| unregister | 从表中摘除 → CLOSING → 等 `ops_count==0`（可 schedule）→ `port_clean_thread_queue` → CLOSED → put |
+| create | `create_message_port(name, hooks)`，可选 `init`，再 `register_port` |
+| register | 表锁内 `ops_allow(REGISTER, NULL)`，通过才 `name_index_register` |
+| lookup | 表命中后 `ops_allow(LOOKUP, name)`；拒绝则 put 并返回 NULL（errno **丢弃**） |
+| send / recv | `port_ops_begin`：life 须为 REGISTERED，再 `ops_allow(SEND|RECV, NULL)`，然后 `ops_count++`，最后再查 life |
+| unregister | 从表中摘除，进入 CLOSING，等到 `ops_count==0`（可 schedule），再 `port_clean_thread_queue`，进入 CLOSED 后 put |
 
 测试用例：`port_hook_gate_self_test` 等拆开 LOOKUP vs SEND、token 再门禁。
 
@@ -146,7 +146,7 @@ typedef struct port_append_hooks {
 | `fini` | `delete_message_port_structure` 开头 | — |
 | `ops_allow(REGISTER, NULL)` | `register_port`，**持表 MCS 锁**，register 前 | 返回 hook 的 `error_t` |
 | `ops_allow(LOOKUP, name)` | `port_lookup_finish`（含 resolve_token） | put + NULL |
-| `ops_allow(SEND/RECV, NULL)` | `port_ops_begin` | begin false → ipc **统一** `-E_REND_PORT_CLOSED` |
+| `ops_allow(SEND/RECV, NULL)` | `port_ops_begin` | begin 为 false 时，ipc **统一** 折成 `-E_REND_PORT_CLOSED` |
 
 REGISTER 在表锁内调 hook：**禁止**在 hook 里同表 lookup / register（死锁）。
 
@@ -179,13 +179,13 @@ REGISTER 在表锁内调 hook：**禁止**在 hook 里同表 lookup / register�
 
 ### 6.2 send / recv（ipc）
 
-`send_msg` / `ipc_try_send_msg` → begin(SEND)；失败时 drop orphan + `-E_REND_PORT_CLOSED`。
-`recv_msg` / `ipc_try_recv_msg` → begin(RECV)；失败直接 CLOSED。
+`send_msg` / `ipc_try_send_msg` 会 begin(SEND)；失败时 drop orphan + `-E_REND_PORT_CLOSED`。
+`recv_msg` / `ipc_try_recv_msg` 会 begin(RECV)；失败直接 CLOSED。
 
 成功：match 后 end；阻塞：enqueue 成功后 **先 end 再 schedule**；醒后看 `THREAD_FLAG_IPC_PORT_CLOSED`。
 
-`ipc_system_try_deliver` → 内部 try_send → **会**过 SEND 门。
-`ipc_system_deliver_to` → 直接打入线程队列 → **不**过 port_ops（清队注入用这条）。
+`ipc_system_try_deliver` 内部走 try_send，**会**过 SEND 门。
+`ipc_system_deliver_to` 直接打入线程队列，**不**过 port_ops（清队注入用这条）。
 
 ### 6.3 与真关闭的差异
 
@@ -193,7 +193,7 @@ REGISTER 在表锁内调 hook：**禁止**在 hook 里同表 lookup / register�
 |--|----------------|--------------------------------------------------|
 | 注入 PORT_CLOSED kmsg | 否 | **仅**当时 `block_on_receive`（`deliver_to`；成功则 pending↑） |
 | 置 `IPC_PORT_CLOSED` flag | 否 | **send 等待者恒置**；recv **仅当**清队后 `recv_pending_cnt==0`（投递失败） |
-| 对外 errno / 返回 | SEND / RECV 伪装 CLOSED | send：`-E_REND_PORT_CLOSED`；recv：有 kmsg → `SUCCESS`+dequeue opcode，有 flag → CLOSED |
+| 对外 errno / 返回 | SEND / RECV 伪装 CLOSED | send：`-E_REND_PORT_CLOSED`；recv：有 kmsg 则 `SUCCESS`+dequeue opcode，有 flag 则 CLOSED |
 
 **Deny ≠ 关闭 port**：port 仍 REGISTERED；LOOKUP deny 只是「这次拿不到」。已 begin 的阻塞等待者醒后**不再**跑 ops_allow——真正关闭靠 unregister。清队权威表见 `19` §6.2；阻塞 API 醒后约定见 `20` §6.2。
 
@@ -205,7 +205,7 @@ LOOKUP 通过 ≠ SEND 通过（测试用例刻意拆开）。Token 缓存**不�
 
 本篇涉及的接口分布在：准入 / 生命周期门面——`port_append_hooks_t`、`port_ops_allow_t`、`port_ops_begin` / `end`、`PORT_OPS_LIFE_*` / `port_ops_type`。说明以 `port.h` Doxygen 为准（已与 `.c` 核对）。
 
-**本篇不涉及：** port 创建/表/unregister 清队过程细节 → `19`（本篇只钉门禁交汇）；send/recv 阻塞状态机 → `20`；kmsg PORT_CLOSED 载荷 → `21`。
+**本篇不涉及：** port 创建/表/unregister 清队过程细节见 `19`（本篇只钉门禁交汇）；send/recv 阻塞状态机见 `20`；kmsg PORT_CLOSED 载荷见 `21`。
 
 生产路径今日一律 `create_message_port(..., NULL)`；非 NULL hooks **仅**测试用例。
 
@@ -213,11 +213,11 @@ LOOKUP 通过 ≠ SEND 通过（测试用例刻意拆开）。Token 缓存**不�
 
 | 场景 | 顺序 |
 |------|------|
-| 带 hooks 创建 | `create_message_port(name, hooks)` → 可选 **`init`**（失败则 create NULL，不调 fini）→ `register_port` |
-| 注册 | 表锁内 **`ops_allow(REGISTER, NULL)`** → index 注册（ACTIVE→REGISTERED） |
-| 查找 | 表命中 bump ref → **`ops_allow(LOOKUP, name)`**；拒绝 put→NULL |
-| send/recv | **`port_ops_begin(SEND\|RECV)`** → … → match 后 **`port_ops_end`**；阻塞路径 **先 end 再 `schedule`** |
-| 销毁 | unregister 清队 → last ref → **`fini`** → free |
+| 带 hooks 创建 | `create_message_port(name, hooks)`，可选 **`init`**（失败则 create NULL，不调 fini），再 `register_port` |
+| 注册 | 表锁内 **`ops_allow(REGISTER, NULL)`**，再 index 注册（ACTIVE 变为 REGISTERED） |
+| 查找 | 表命中 bump ref 后过 **`ops_allow(LOOKUP, name)`**；拒绝则 put 并返回 NULL |
+| send/recv | **`port_ops_begin(SEND\|RECV)`**，会合中途保持 begin，match 后 **`port_ops_end`**；阻塞路径 **先 end 再 `schedule`** |
+| 销毁 | unregister 清队，last ref 时调 **`fini`**，再 free |
 
 ### 7.2 Hooks 与枚举
 
@@ -254,9 +254,9 @@ void port_ops_end(Message_Port_t *port);
 
 | 接口 | 说明 |
 |------|------|
-| `port_ops_begin` | 只接受 SEND/RECV。序：REGISTERED → `ops_allow` → `ops_count++` → 再查 REGISTERED。失败不增 count。ipc 把 false 折成 `-E_REND_PORT_CLOSED`。 |
+| `port_ops_begin` | 只接受 SEND/RECV。序：须已 REGISTERED，再 `ops_allow`，然后 `ops_count++`，最后再查仍是 REGISTERED。失败不增 count。ipc 把 false 折成 `-E_REND_PORT_CLOSED`。 |
 | `port_ops_end` | `ops_count--`。阻塞前必调。 |
-| `PORT_OPS_LIFE_*` | ACTIVE→REGISTERED→CLOSING→CLOSED（见 `19` unregister 编排序）。 |
+| `PORT_OPS_LIFE_*` | ACTIVE、REGISTERED、CLOSING、CLOSED 依次演进（见 `19` unregister 编排序）。 |
 
 `ops_count` **不**串行化并发 send；只挡 unregister。
 
@@ -265,7 +265,7 @@ void port_ops_end(Message_Port_t *port);
 | 路径 | 过门？ |
 |------|--------|
 | `send_msg` / `recv_msg` / `ipc_try_*` | begin(SEND/RECV) |
-| `ipc_system_try_deliver` | 经 try_send → **会**过 SEND |
+| `ipc_system_try_deliver` | 经 try_send，**会**过 SEND |
 | `ipc_system_deliver_to` | **不**过 port_ops（清队注入用此） |
 
 **Deny ≠ 关闭 port**：无 PORT_CLOSED kmsg / flag；port 仍 REGISTERED。LOOKUP deny ≠ SEND deny（可拆开测）。Token resolve **每次**再跑 LOOKUP。真正关闭时 send/recv 等待者都醒，但 send=flag、recv=优先 kmsg（`19` §6.2）。

@@ -311,8 +311,8 @@ BSP 走到这里时由 `cmain` 调用，AP 则由 `start_secondary_cpu` 调用�
 
 | 调用方 | 和本篇有关的顺序 |
 |--------|------------------|
-| BSP `cmain` | … → **`prepare_arch`** → `phy_mm_init` → **`arch_cpu_info`** → `arch_enable_percpu(BSP_ID)` → `virt_mm_init` → **`arch_start_platform`** → **`arch_start_core(BSP_ID)`** → … |
-| AP `start_secondary_cpu` | … → **`arch_start_core(cpu_id)`** → …（不再走 `prepare_arch` / `arch_cpu_info` / `arch_start_platform`） |
+| BSP `cmain` | ……经 **`prepare_arch`**、`phy_mm_init`、**`arch_cpu_info`**、`arch_enable_percpu(BSP_ID)`、`virt_mm_init`，再 **`arch_start_platform`**，然后 **`arch_start_core(BSP_ID)`**…… |
+| AP `start_secondary_cpu` | ……到 **`arch_start_core(cpu_id)`**……（不再走 `prepare_arch` / `arch_cpu_info` / `arch_start_platform`） |
 
 GIC：分发器只在 `arch_start_platform`；CPU 接口在每个核的 `arch_start_core`。
 

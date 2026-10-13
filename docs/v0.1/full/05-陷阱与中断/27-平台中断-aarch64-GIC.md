@@ -49,9 +49,9 @@ GICv2 两块：**GICD（Distributor，全局一份）** 负责 SPI 配置 / 路�
 
 ## 3. 分层与调用方
 
-**平台一次** — DTB → `gic.probe` → `gic.init_distributor`（只配 SPI）。同阶段有 `psci_init`——电源归 PSCI 篇。
+**平台一次** — DTB 就绪后 `gic.probe`，再 `gic.init_distributor`（只配 SPI）。同阶段有 `psci_init`——电源归 PSCI 篇。
 
-**每核** — `init_interrupt`（VBAR + **立刻 enable IRQ**）→ `gic.init_cpu_interface` → IPI / timer register。
+**每核** — `init_interrupt`（VBAR + **立刻 enable IRQ**）之后 `gic.init_cpu_interface`，再注册 IPI / timer。
 
 **驱动** — alloc 得 trap id 后，对 SPI：`intid = trap_id - 64`，再 `gicd_v2_unmask_irq` / `set_affinity`；勿把手写 EC 当设备号。
 
@@ -105,7 +105,7 @@ Group0 / Group1（`GICD_IGROUPR`）在有 Security 的实现里对应 Secure / N
 | **GICD_CTLR** | 整块 Distributor 的转发总闸。改使能位之前应先关掉转发，配完再开。本仓库 init 先写 0，最后开 Group0。 |
 | **GICD_TYPER** | `ITLinesNumber` 等：能推出「有多少个 ISENABLER 字」、SPI 上界（还要和 INTID 1019 取小）。probe/init 用来决定循环扫到哪。 |
 
-探测「哪些 INTID 真的存在」的手册套路：关 CTLR → 对 ISENABLER 写 `0xffffffff` 再读回（不支持的位 RAZ/WI，支持的常表现为 RAO/WI）→ 再用 ICENABLER 看哪些位被永久占用 → 开 CTLR。本仓库未采用这套探测，而是信 TYPER + 固定 INTID 分段。
+探测「哪些 INTID 真的存在」的手册套路：先关 CTLR，对 ISENABLER 写 `0xffffffff` 再读回（不支持的位 RAZ/WI，支持的常表现为 RAO/WI），再用 ICENABLER 看哪些位被永久占用，最后开 CTLR。本仓库未采用这套探测，而是信 TYPER + 固定 INTID 分段。
 
 **使能（enable ≠ pending）**
 
@@ -152,7 +152,7 @@ GICD_SGIR（写）：
           0b11 = 保留
 ```
 
-SGI 的 pending 要用「INTID + 源 CPU + 目标 CPU」才能说清楚：两个核可以同时向第三核发送**同一个** SGI 号，GIC 仍能分别记录；**同一个 CPU 不能**对同一 INTID 叠加两次还没被 ack 的相同源。读 IAR 时会带回源 CPUID（IAR[12:10]，GICv2 常见 3 bit → 最多区分 8 个源），EOIR 必须写回去——这就是 trap_info 里 `TRAP_SET_CPU` 的硬件来由。每个目标核上，同一 SGI 号还可以有**不同**的优先级字节。
+SGI 的 pending 要用「INTID + 源 CPU + 目标 CPU」才能说清楚：两个核可以同时向第三核发送**同一个** SGI 号，GIC 仍能分别记录；**同一个 CPU 不能**对同一 INTID 叠加两次还没被 ack 的相同源。读 IAR 时会带回源 CPUID（IAR[12:10]，GICv2 常见 3 bit，最多区分 8 个源），EOIR 必须写回去——这就是 trap_info 里 `TRAP_SET_CPU` 的硬件来由。每个目标核上，同一 SGI 号还可以有**不同**的优先级字节。
 
 ### 4.2 `init_distributor` 在做什么
 
@@ -175,7 +175,7 @@ GICD_CTLR = Group0 enable
 
 写 **GICD_SGIR**（字段见 §4.1）即注入一发 SGI。和 x86 写 ICR 不同：这里**没有** Delivery Status 轮询——写完就当发出去了；目标侧能不能立刻 ack，取决于对方 CPU interface 的 PMR / running priority / DAIF。
 
-本仓库软 IPI / SMP 门铃用 **SGI 0** → trap id **64**。协议（pending 位、generation）见软 IPI 篇；本篇只提供「硬件将 SGI 发送到目标 CPU interface」。
+本仓库软 IPI / SMP 门铃用 **SGI 0**，对应 trap id **64**。协议（pending 位、generation）见软 IPI 篇；本篇只提供「硬件将 SGI 发送到目标 CPU interface」。
 
 同一目标核上，若上一发同号同源还没 EOI，再写 SGIR **不会**再叠一发 pending（见 §1.2 / §4.1）——软 IPI 协议因此必须自己做 generation / pending 位，不能假设「写多少次 SGIR 就进多少次 ISR」。
 
@@ -354,7 +354,7 @@ GICD 开 **Group0**、GICC 开 **「Group1」** 宏位——在**无 Security �
 
 | 问题 | x86 Local APIC | GICv2 |
 |------|----------------|-------|
-| 板级外设怎么进核 | 本该 IOAPIC → LAPIC（本仓库 IOAPIC 空） | GICD 配 SPI + ITARGETSR → 各核 GICC |
+| 板级外设怎么进核 | 本该经 IOAPIC 到 LAPIC（本仓库 IOAPIC 空） | GICD 配 SPI + ITARGETSR，再投到各核 GICC |
 | 核间门铃 | ICR（向量号） | GICD_SGIR（SGI 号 + filter） |
 | 应答 | 向量已在 IDT 投递里；软件写 EOI=0 | **必须读 IAR** 才知道 INTID |
 | 结束 | EOI 清最高 ISR | EOIR 写回 INTID[+CPUID] |
@@ -377,7 +377,7 @@ GICD 开 **Group0**、GICC 开 **「Group1」** 宏位——在**无 Security �
 
 1020–1022 为特殊 INTID（Group 标识等）；**1023** 是 spurious（读 IAR 得到它表示「此刻没有可交给你的有效中断」）。SGI 是边沿触发；PPI/SPI 可配边沿或电平。手册还把投递分成 **1-N**（多核都看见 pending，但只有一个 CPU 真正 ack，其余再读 IAR 会获取到 1023）和 **N-N**（多个 CPU 都可以各自处理）。本仓库 SPI 初始化写成 edge + 1-N。
 
-GICv2 最多按 8 个 core 来理解 SGI 的 CPUID 字段；同一 SGI 号可以同时有多对「源核→目标核」pending，依赖 **INTID + 源 CPUID** 区分，而不是再开一套 INTID。
+GICv2 最多按 8 个 core 来理解 SGI 的 CPUID 字段；同一 SGI 号可以同时有多对「源核到目标核」pending，依赖 **INTID + 源 CPUID** 区分，而不是再开一套 INTID。
 
 | 用途 | INTID | trap id |
 |------|-------|---------|
@@ -391,7 +391,7 @@ GICv2 最多按 8 个 core 来理解 SGI 的 CPUID 字段；同一 SGI 号可以
 
 ### 6.3 `compatible`
 
-现硬编码 **`arm,cortex-a15-gic`**。DTB 若写 `arm,gic-400` 等会不匹配 → probe 失败则静默 return（后续空指针风险取决于调用方检查）。
+现硬编码 **`arm,cortex-a15-gic`**。DTB 若写 `arm,gic-400` 等会不匹配，probe 失败则静默 return（后续空指针风险取决于调用方检查）。
 
 ---
 
@@ -401,7 +401,7 @@ GICv2 最多按 8 个 core 来理解 SGI 的 CPUID 字段；同一 SGI 号可以
 |------|------|
 | `gic_v2.c` / `.h` | probe、map、dist / CPU IF、mask、EOI、SGI |
 | `gic_v3.h` | 占位 |
-| `arch/.../trap/trap.c` | IAR→trap_id；`arch_eoi_irq` |
+| `arch/.../trap/trap.c` | IAR 映射到 trap_id；`arch_eoi_irq` |
 | `generic_time.c` | arch timer（CNTP_*）+ 消费 PPI 线 |
 | `arch_smp_ipi` | SGI0 |
 
@@ -411,8 +411,8 @@ GICv2 最多按 8 个 core 来理解 SGI 的 CPUID 字段；同一 SGI 号可以
 
 ### 8.1 Probe / map
 
-1. DTB `compatible` 匹配 → 找节点。
-2. `reg` 四元组：`[gicd_phys, len, gicc_phys, len]` → DEVICE 映射 → `KERNEL_PHY_TO_VIRT`。
+1. DTB `compatible` 匹配后找节点。
+2. 读 `reg` 四元组：`[gicd_phys, len, gicc_phys, len]`，做 DEVICE 映射，再用 `KERNEL_PHY_TO_VIRT`。
 
 ### 8.2 每核时序（与 x86 相反，必写）
 
@@ -442,7 +442,7 @@ FIQ 分支解码为空（Trap 篇）——勿指望 FIQ 路径。
 
 ### 8.4 与 arch timer 的接线
 
-Generic timer 在 EL1 编程 **CNTP_***（non-secure physical）；到期拉高 DTB 约定的那条 PPI。软件侧：`arch_get_timer_irq_num` 在 BSP 上读 `arm,armv8-timer` 的 **ns-phys** 组，缓存 trap id；AP 复用缓存。同节点常见顺序：secure phys → ns-phys → virt → hyp——**只取第 2 组**。QEMU virt 上 ns-phys 多为 INTID 30（trap 94），换板以 DTB 为准。
+Generic timer 在 EL1 编程 **CNTP_***（non-secure physical）；到期拉高 DTB 约定的那条 PPI。软件侧：`arch_get_timer_irq_num` 在 BSP 上读 `arm,armv8-timer` 的 **ns-phys** 组，缓存 trap id；AP 复用缓存。同节点常见顺序是 secure phys、ns-phys、virt、hyp——**只取第 2 组**。QEMU virt 上 ns-phys 多为 INTID 30（trap 94），换板以 DTB 为准。
 
 ---
 
@@ -450,7 +450,7 @@ Generic timer 在 EL1 编程 **CNTP_***（non-secure physical）；到期拉高 
 
 本篇涉及的接口分布在：aarch64 GICv2 驱动——全局 `struct gic_v2 gic` 及其 ops、INTID 分段宏 / `gic_v2_is_*`、`union irq_source`。说明改写自 `gic_v2.h` Doxygen（已与 `gic_v2.c` 核对）。`gic_v3.h` **仅占位，无独立 API**。
 
-**本篇不涉及：** `irq_vector_*` / `register_irq_handler` / `trap_handler` → `25`；`arch_eoi_irq` / `get_curr_el_trap_info` 约定 → `25`/`23`（实现调 `gic.read_irq_num` / `gic.eoi`）；软 IPI 协议 → `30`；DTB 解析 → `36`；可移植 timer → `33`。
+**本篇不涉及：** `irq_vector_*` / `register_irq_handler` / `trap_handler`（见 `25`）；`arch_eoi_irq` / `get_curr_el_trap_info` 约定（见 `25`/`23`；实现调 `gic.read_irq_num` / `gic.eoi`）；软 IPI 协议（见 `30`）；DTB 解析（见 `36`）；可移植 timer（见 `33`）。
 
 上层设备：`25` alloc+register 后，对 SPI 用 **INTID**（`trap_id - 64`）调 `gic.unmask_irq` / `set_affinity`。
 
@@ -458,10 +458,10 @@ Generic timer 在 EL1 编程 **CNTP_***（non-secure physical）；到期拉高 
 
 | 场景 | 顺序 |
 |------|------|
-| BSP 平台一次 | DTB 就绪 → **`gic.probe`** → **`gic.init_distributor`**（+ `psci_init`，见 `39`） |
-| 每核 | **`init_interrupt`**（VBAR + **已 enable IRQ**）→ **`gic.init_cpu_interface`** → `smp_ipi_init` → `rendezvos_time_init` |
-| 设备 SPI | `irq_vector_alloc` → `register_irq_handler` → **`gic.unmask_irq(intid)`**（可选 `set_affinity`） |
-| IRQ 运行时 | VBAR → `read_irq_num`(IAR) → `trap_id=intid+64` → handler → **`eoi`(EOIR)** |
+| BSP 平台一次 | DTB 就绪后 **`gic.probe`**，再 **`gic.init_distributor`**（另有 `psci_init`，见 `39`） |
+| 每核 | **`init_interrupt`**（VBAR + **已 enable IRQ**）之后 **`gic.init_cpu_interface`**，再 `smp_ipi_init`、`rendezvos_time_init` |
+| 设备 SPI | 先 `irq_vector_alloc`，再 `register_irq_handler`，然后 **`gic.unmask_irq(intid)`**（可选 `set_affinity`） |
+| IRQ 运行时 | VBAR 入口读 `read_irq_num`(IAR)，得 `trap_id=intid+64`，调 handler，最后 **`eoi`(EOIR)** |
 
 与 x86 相反：本平台 **先开 IRQ 再配 GICC**（启动窗口，见 §8.2）。
 
@@ -498,7 +498,7 @@ gic.pending_clr(u32 intid);
 
 | 接口 | 说明 |
 |------|------|
-| `probe` | 找节点 → `reg` 四元组 → DEVICE map → 设指针。失败只打印。 |
+| `probe` | 找节点，读 `reg` 四元组，做 DEVICE map，设指针。失败只打印。 |
 | `init_distributor` | 只配 **SPI**：edge、`set_affinity(…,0)`（**空操作 (no-op)**）、priority、**全 mask**；开 GICD Group0。 |
 | `init_cpu_interface` | **unmask 全部 SGI+PPI**；PMR=`0xff`、BPR=`0x3`；开 GICC Group1。 |
 | `unmask` / `mask` | 写 ISENABLER / ICENABLER。参数是 **INTID**，不是 trap id。 |
@@ -512,7 +512,7 @@ gic.pending_clr(u32 intid);
 
 1. `irq_vector_alloc(&trap_id)`（池内 ≥96）。
 2. `register_irq_handler(trap_id, isr, IRQ_NEED_EOI)`。
-3. `intid = AARCH64_TRAP_ID_TO_IRQ(trap_id)` → `gic.unmask_irq(intid)`；需要绑核再 `set_affinity`。
+3. `intid = AARCH64_TRAP_ID_TO_IRQ(trap_id)` 后 `gic.unmask_irq(intid)`；需要绑核再 `set_affinity`。
 4. EOI 交给 `trap_handler`；勿在 ISR 内自行 `gic.eoi`，除非明确绕过 `IRQ_NEED_EOI`。
 
 ---
@@ -520,7 +520,7 @@ gic.pending_clr(u32 intid);
 
 ## 10. 多架构
 
-仅 aarch64。x86 → APIC / PIC 篇。
+仅 aarch64。x86 见 APIC / PIC 篇。
 
 ---
 

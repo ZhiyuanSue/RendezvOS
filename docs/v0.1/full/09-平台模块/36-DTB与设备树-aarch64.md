@@ -39,14 +39,14 @@ aarch64 **不用** ACPI 枚举板级资源；**Flattened Device Tree（FDT）** 
 
 | 消费者 | 查找方式 | 关键串 |
 |--------|----------|--------|
-| early UART | raw compatible | `arm,pl011`（ARM PrimeCell PL011 UART）→ `reg`（假定两个 64-bit addr/size） |
-| pmm | raw `device_type` | `memory` → `reg` |
+| early UART | raw compatible | `arm,pl011`（ARM PrimeCell PL011 UART），读其 `reg`（假定两个 64-bit addr/size） |
+| pmm | raw `device_type` | `memory` 节点上的 `reg` |
 | PSCI | 树 + compatible | `arm,psci`（list 常另含 `arm,psci-0.2`；查找为逐条全等） |
 | GIC | 树 + compatible | **写死** `arm,cortex-a15-gic`（仅 `arm,gic-400` 的 blob **对不上**） |
 | SMP | 树 + type | `device_type=cpu` + `reg` + `enable-method` |
-| cmdline | 树 + name | `chosen` → `bootargs` |
+| cmdline | 树 + name | `chosen` 下的 `bootargs` |
 
-典型形态：`dev_node_find_by_compatible(NULL, "…")`（`NULL` 表示从 `device_root` 起）→ `dev_node_find_property` → 读 `reg` / `method`。
+典型形态：`dev_node_find_by_compatible(NULL, "…")`（`NULL` 表示从 `device_root` 起），再 `dev_node_find_property`，然后读 `reg` / `method`。
 
 ---
 
@@ -248,7 +248,7 @@ arch_start_smp（稍后）:
 
 ### 6.2 Early raw：为何手写 `arm,pl011` 查找
 
-此时没有虚存堆，不能 `build_device_tree`。`boot_get_uart_info` 在物理地址空间里用 `raw_get_prop_from_dtb` 按 compatible 查找，再按 **#address-cells/#size-cells = 2** 的常见 virt 布局拆 `reg`（两对 u32 → 64-bit 基址与长度）。找不到或长度 &gt; 2 MiB → `boot_Error()`。字符数组逐字节赋值，是为了避免早期依赖可写全局字符串的问题。
+此时没有虚存堆，不能 `build_device_tree`。`boot_get_uart_info` 在物理地址空间里用 `raw_get_prop_from_dtb` 按 compatible 查找，再按 **#address-cells/#size-cells = 2** 的常见 virt 布局拆 `reg`（两对 u32 拼成 64-bit 基址与长度）。找不到或长度 &gt; 2 MiB 则 `boot_Error()`。字符数组逐字节赋值，是为了避免早期依赖可写全局字符串的问题。
 
 ### 6.3 建树
 
@@ -266,7 +266,7 @@ arch_start_smp（稍后）:
 
 本篇涉及的接口分布在：FDT / 设备树软件面——裁剪 `fdt_*` / `raw_get_prop_from_dtb`（`dtb.h`）、`build_device_tree` + `device_root` + `dev_node_find_*` / `property_read_*`（`dev_tree.h`；建树实现在 `start_arch.c`）。以头文件注释为准（见上列头文件；已与 `.c` 核对）。
 
-**本篇不涉及：** `map_dtb` / `prepare_arch` / `arch_start_platform` 编排 → `05`；early UART map → `05`/`34`；memmap `memory` 消费 → `06`；GIC / PSCI / SMP 对查找结果的使用 → `27`/`39`/`28`。
+**本篇不涉及：** `map_dtb` / `prepare_arch` / `arch_start_platform` 编排（见 `05`）；early UART map（见 `05`/`34`）；memmap `memory` 消费（见 `06`）；GIC / PSCI / SMP 对查找结果的使用（见 `27`/`39`/`28`）。
 
 ### 7.1 编排顺序（调用方须遵守）
 
@@ -274,8 +274,8 @@ arch_start_smp（稍后）:
 |------|------|------|
 | MMU-off / early | **`raw_get_prop_from_dtb`** | 无堆；物理/早期 VA 上的 blob |
 | `prepare_arch` | **`fdt_check_header`** | 已 map 的 `boot_dtb_header_base_addr` |
-| `arch_start_platform` | **`build_device_tree`** → `device_root` | 须已有 BSP `kallocator` |
-| 驱动 probe | `dev_node_find_*` → `dev_node_find_property` → `property_read_*` | `node==NULL` → 从 `device_root` |
+| `arch_start_platform` | **`build_device_tree`** 得到 `device_root` | 须已有 BSP `kallocator` |
+| 驱动 probe | `dev_node_find_*`，再 `dev_node_find_property`，然后 `property_read_*` | `node==NULL` 时从 `device_root` 起 |
 
 **勿混** early blob 指针与树节点指针。
 
@@ -292,7 +292,7 @@ struct fdt_property *raw_get_prop_from_dtb(void *fdt, int offset, …,
 
 | 接口 | 说明 |
 |------|------|
-| `fdt_check_header` | magic / size；失败 → `prepare_arch` 返回错 → `cmain` panic。 |
+| `fdt_check_header` | magic / size；失败则 `prepare_arch` 返回错，`cmain` 随之 panic。 |
 | `raw_get_prop_from_dtb` | early UART（`arm,pl011`）与 pmm（`memory`）；SINGLE/MUL 模式。 |
 
 ### 7.3 建树与查找（`dev_tree.h`）

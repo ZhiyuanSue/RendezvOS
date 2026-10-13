@@ -15,7 +15,7 @@ ACPI 在同一次平台启动中先执行，但 **PCI 不读 MCFG**。DTB 里的
 
 ## 1. 概述
 
-x86 拉起阶段只做发现：从 bus 0 递归扫 → 建 `pci_node` 树 → 打印。配置空间采用 **legacy PIO**，不是 ECAM。
+x86 拉起阶段只做发现：从 bus 0 递归扫，建 `pci_node` 树，再打印。配置空间采用 **legacy PIO**，不是 ECAM。
 
 能看见设备、测量 BAR 长度并复用 BIOS 已写地址；`pci_enable_device` 骨架被 **IRQ 分配 stub** 阻断——开 IO/MEM/MASTER 之后 `pci_assign_irq` 恒返回 -1，再回滚 command。
 
@@ -38,7 +38,7 @@ x86 拉起阶段只做发现：从 bus 0 递归扫 → 建 `pci_node` 树 → �
 | `arch_start_platform`（x86） | `pci_scan_all(pci_tree_build_callback, root)` |
 | 测试用例 | `single_pci_test`（`#ifdef PCI`） |
 
-驱动若调 `pci_enable_device`：`power_up(stub)` → command(IO\|MEM\|MASTER) → **`assign_irq` 恒 -1 → 失败并 disable command**。
+驱动若调 `pci_enable_device`：先 `power_up(stub)`，再写 command(IO\|MEM\|MASTER)；因 **`assign_irq` 恒为 -1，会失败并 disable command**。
 
 ---
 
@@ -170,7 +170,7 @@ PCI 规范定义两种配置空间访问机制：Mechanism #1（现代 x86 必�
 
 ### 6.2 扫描
 
-PCI 拓扑是三级树：**bus（0..255）→ device（0..31）→ function（0..7）**。每个 function 是一个独立配置空间。扫描从 bus 0 开始，遇到 PCI-PCI 桥就分配新 bus 号并递归进入下游：
+PCI 拓扑是三级树：**bus（0..255）、device（0..31）、function（0..7）**。每个 function 是一个独立配置空间。扫描从 bus 0 开始，遇到 PCI-PCI 桥就分配新 bus 号并递归进入下游：
 
 ```text
 bus 0  ┌─ dev0 ─ func0 ─── (bridge) ──┐
@@ -199,7 +199,7 @@ scan_device:
 
 ### 6.3 BAR size probe
 
-对每个 BAR：读 origin → 写 `0xFFFFFFFF` → 读回算 size → **写回 origin**。64-bit MEM BAR 再处理高 dword。不重新分配资源。
+对每个 BAR：先读 origin，写 `0xFFFFFFFF`，读回算 size，再 **写回 origin**。64-bit MEM BAR 再处理高 dword。不重新分配资源。
 
 ### 6.4 已知源码缺口（以 `.c` 为准）
 
@@ -213,7 +213,7 @@ scan_device:
 
 本篇涉及的接口分布在：x86 PCI 发现——Mechanism #1 配置读写（`pci.h`）、`pci_scan_*` / `pci_enable_device`（`pci_ops.h`）、`pci_node` 树与查找（`pci_dev_tree.h`）。以头文件注释为准（见上列头文件；已与 `.c` 核对）。
 
-**本篇不涉及：** `arch_start_platform` 编排 → `04`；ACPI/MCFG → `35`（**不读**）；中断路由 / IOAPIC → `26`；aarch64 ECAM / DTB pci-host → **不存在**。
+**本篇不涉及：** `arch_start_platform` 编排（见 `04`）；ACPI/MCFG（见 `35`，**不读**）；中断路由 / IOAPIC（见 `26`）；aarch64 ECAM / DTB pci-host（**不存在**）。
 
 仅 `#ifdef PCI`（`modules.pci.use`）构建有意义。
 
@@ -221,9 +221,9 @@ scan_device:
 
 | 场景 | 顺序 |
 |------|------|
-| 平台 | `acpi_init` → 分配 `pci_root` → **`pci_scan_all(cb, pci_root)`** |
-| callback | 填 `pci_node` → 可选 **`pci_scan_bar`** → return |
-| 查找 | **`pci_get_device(vid, did, start)`**（NULL start → `pci_root`） |
+| 平台 | `acpi_init` 之后分配 `pci_root`，再 **`pci_scan_all(cb, pci_root)`** |
+| callback | 填 `pci_node`，可选再 **`pci_scan_bar`**，然后 return |
+| 查找 | **`pci_get_device(vid, did, start)`**（`start` 为 NULL 时从 `pci_root` 起） |
 | enable | **`pci_enable_device`** — **当前恒失败**（IRQ stub） |
 
 ### 7.2 配置空间（PIO）

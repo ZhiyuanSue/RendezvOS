@@ -28,7 +28,7 @@ ARM 把核大致分成：
 | **Retention** | 对外调试更「冷」；对 OS 近似 StandBy | 平台定义 |
 | **Powerdown** | 上下文可能丢失；唤醒需要入口地址等 | PSCI suspend / 更深状态 |
 
-功率域通常构成树形：**system → cluster → core**。子节点不能比父节点「更浅」地单独深睡（例如 core Retention 时 cluster 不能已 Powerdown）。协调模式默认是 **platform-coordinated**（固件/平台收齐各核意图）；**OS-initiated** 更复杂，v0.1 不考虑。
+功率域通常构成树形：**system、cluster、core**。子节点不能比父节点「更浅」地单独深睡（例如 core Retention 时 cluster 不能已 Powerdown）。协调模式默认是 **platform-coordinated**（固件/平台收齐各核意图）；**OS-initiated** 更复杂，v0.1 不考虑。
 
 **热插拔 ≠ 深睡：** 热拔核后 OS 不再调度/收中断到该核，须显式 `cpu_on` 才回来；深睡核仍可被唤醒事件拉起。本仓库用 `cpu_on` 做 **拉起**，不做运行期 hotplug。
 
@@ -71,7 +71,7 @@ REBOOT opcode：目前多数仅打印日志；arch_reset() 空壳
 ## 4. 数据结构与不变量
 
 - DTB：`compatible` 含精确条目 `arm,psci`（list 常另有 `arm,psci-0.2`）；`method` = `smc` \| `hvc`。
-- 属性存在性门闩：缺 `migrate` / `cpu_on` / `cpu_off` / `cpu_suspend` 任一 → print 并 **提前 return**（可能已 `enable=true` 且绑定了 `system_off`，但 `cpu_on` 仍为 NULL）。依赖 QEMU 旧式 DT 常带这些属性名。
+- 属性存在性门闩：缺 `migrate` / `cpu_on` / `cpu_off` / `cpu_suspend` 任一则 print 并 **提前 return**（可能已 `enable=true` 且绑定了 `system_off`，但 `cpu_on` 仍为 NULL）。依赖 QEMU 旧式 DT 常带这些属性名。
 - **不读** 属性里的 u32 function id——一律用头文件 `#define`（如 `psci_64_cpu_on_func_id`）。
 - `cpu_on`：`target_cpu` = MPIDR affinity（来自 cpu 节点 `reg`）；`context_id` = 稠密逻辑 id（与 x86「APIC id = 下标」不同，见拓扑篇）。
 
@@ -84,9 +84,9 @@ REBOOT opcode：目前多数仅打印日志；arch_reset() 空壳
 | `arch/aarch64/psci/psci.c` | init、包装、硬编码 id 调用 |
 | `psci_call.S` | `smc #0` / `hvc #0` |
 | `include/.../psci.h` | `psci_func_64`、function id |
-| `power_ctrl.h` | `arch_shutdown` → `system_off`；`arch_reset` 空 |
+| `power_ctrl.h` | `arch_shutdown` 调 `system_off`；`arch_reset` 空 |
 | `arch/.../boot/smp.c` | 串行 `cpu_on` |
-| `kernel/system/powerd.c` | IPC 关机策略（细节 → 40） |
+| `kernel/system/powerd.c` | IPC 关机策略（细节见 40） |
 
 ---
 
@@ -170,17 +170,17 @@ arch_shutdown → psci_func.system_off()
 
 ## 7. 公开 API
 
-本篇涉及的接口分布在：aarch64 PSCI / SMCCC——`psci_init`、`psci_func` 表、`psci_*` 包装与 FID 常量（`psci.h`）、`psci_smc`/`psci_hvc` 桩、错误码枚举；以及本 arch 的 **`arch_shutdown` → SYSTEM_OFF**（`power_ctrl.h`）。以头文件注释为准（`psci.h` / `power_ctrl.h`；已与 `.c` / `.S` 核对）。
+本篇涉及的接口分布在：aarch64 PSCI / SMCCC——`psci_init`、`psci_func` 表、`psci_*` 包装与 FID 常量（`psci.h`）、`psci_smc`/`psci_hvc` 桩、错误码枚举；以及本 arch 的 **`arch_shutdown` 落到 SYSTEM_OFF**（`power_ctrl.h`）。以头文件注释为准（`psci.h` / `power_ctrl.h`；已与 `.c` / `.S` 核对）。
 
-**本篇不涉及：** `arch_start_smp` 串行启核编排 → `28`；DTB 查找原语 → `36`；powerd / `request_poweroff` / `kernel_panic` → `40`；x86 `power_ctrl`（非 PSCI）。
+**本篇不涉及：** `arch_start_smp` 串行启核编排（见 `28`）；DTB 查找原语（见 `36`）；powerd / `request_poweroff` / `kernel_panic`（见 `40`）；x86 `power_ctrl`（非 PSCI）。
 
 ### 7.1 编排顺序（调用方须遵守）
 
 | 场景 | 顺序 |
 |------|------|
-| 平台 | `build_device_tree` → **`psci_init()`** →（其后）GIC |
-| 启核 | `arch_start_smp` → **`psci_func.cpu_on(affinity, PHY(ap_entry), context=逻辑id)`** |
-| 关机终点 | panic/halt 或 powerd→halt → **`arch_shutdown`** → `psci_func.system_off()` |
+| 平台 | `build_device_tree` 之后 **`psci_init()`**，再往后才是 GIC |
+| 启核 | `arch_start_smp` 调 **`psci_func.cpu_on(affinity, PHY(ap_entry), context=逻辑id)`** |
+| 关机终点 | panic/halt，或 powerd 走到 halt 后 **`arch_shutdown`**，再 `psci_func.system_off()` |
 
 优雅关机先经过 `"powerd"` IPC（`40`），勿在业务里直接 `cpu_off`。
 
@@ -193,7 +193,7 @@ extern struct psci_func_64 psci_func;  /* .enable, .cpu_on, .system_off, … */
 
 | 要点 | 说明 |
 |------|------|
-| method | DT `method` = `smc` \| `hvc` → 选桩 |
+| method | DT `method` = `smc` \| `hvc`，据此选桩 |
 | compatible | 查找精确 `"arm,psci"`（NUL list **逐条全等**；常与 `arm,psci-0.2` 并存于同一 list） |
 | FID | **硬编码** `#define`；只检查属性**名**是否存在，不读单元格 id |
 | 半初始化状态 | 缺 `migrate`/`cpu_on`/… 任一属性名时提前 return；此时可能已 `enable=true` 且绑定了 `system_off`，但 `cpu_on` 仍为 NULL |

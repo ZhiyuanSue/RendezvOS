@@ -36,7 +36,7 @@ core 的调度对象是 **线程 + 地址空间**，没有一等公民「进程�
 
 ## 3. 分层与调用方
 
-**内核 / server 线程** — `gen_thread_from_func(..., tm, arg)`，或 `create_thread` 再 `add_thread_to_manager` / `add_thread_to_cpu`。线程体在 `thread_entry` → `run_thread`；返回后 OR `EXIT_REQUESTED` 再 `schedule`。
+**内核 / server 线程** — `gen_thread_from_func(..., tm, arg)`，或 `create_thread` 再 `add_thread_to_manager` / `add_thread_to_cpu`。线程体经 `thread_entry` 进入 `run_thread`；返回后 OR `EXIT_REQUESTED` 再 `schedule`。
 
 **用户线程** — `gen_thread_from_elf` / `copy_thread`：须 `THREAD_FLAG_USER` + 独立用户 `VSpace`（见创建篇）。用户返回会覆盖内核栈上的 `thread_entry` 帧，正常不落回入口尾部清理。
 
@@ -110,7 +110,7 @@ struct Thread_Base {
 
 调用方须守住的约定：
 
-- `add_thread_to_manager` 期望入队前 `status == init`，成功 CAS → `ready`（失败只 `pr_warn`，仍可能返回 SUCCESS）。
+- `add_thread_to_manager` 期望入队前 `status == init`，成功则 CAS 成 `ready`（失败只 `pr_warn`，仍可能返回 SUCCESS）。
 - `create_thread` 成功 ⇒ **caller 不得再** `ref_put` 传入的 `vs`。
 
 ### 4.2 status 与 flags
@@ -131,7 +131,7 @@ enum thread_status_base {
 | 状态 | 谁设置 | 调度含义 |
 |------|--------|----------|
 | `running` / `ready` | `schedule` demote / promote | RR 只选 `ready` |
-| `block_on_*` | IPC 路径 | 先改 status 再 `schedule`；demote CAS 失败 → 保持阻塞 |
+| `block_on_*` | IPC 路径 | 先改 status 再 `schedule`；demote CAS 失败则保持阻塞 |
 | `zombie` | owner CPU 在切走带 `EXIT_REQUESTED` 的 ready 线程时 | 仍可挂在环上；clean 观测 |
 | `exit` | `delete_thread` 入口 | **不是** zombie；拆除结构前的标记 |
 
@@ -168,13 +168,13 @@ enum thread_status_base {
 
 三条退出路径不可混淆：
 
-1. **自愿结束（core）：** OR `EXIT_REQUESTED` → `schedule` → 切走且仍 `ready` → **zombie**。
+1. **自愿结束（core）：** OR `EXIT_REQUESTED`，再 `schedule`；切走且仍为 `ready` 时变成 **zombie**。
 2. **`delete_thread`：** 直接写 `status = exit`，再 `del` + `ref_put`。
 3. **compat / clean：** 可强制 zombie；细节见 EXIT / clean 协议，不在本篇展开。
 
 `THREAD_FLAG_EXIT_REQUESTED` = 意图；`zombie` = owner CPU「已切走」证明。IPC 改 status **擦不掉** flag。
 
-默认 `flags = THREAD_FLAG_NONE` → 内核线程；用户须显式 `THREAD_FLAG_USER`。`USER` **不得**搭配 `&root_vspace`（`schedule` 当 misconfig）。
+默认 `flags = THREAD_FLAG_NONE` 即内核线程；用户须显式 `THREAD_FLAG_USER`。`USER` **不得**搭配 `&root_vspace`（`schedule` 当 misconfig）。
 
 ### 4.3 Task_Manager
 
@@ -268,15 +268,15 @@ MCS 节点是 `DEFINE_PER_CPU(..., id_spin_lock)`（`id.c`）。`init_core_id_sy
 
 ### 6.1 入队与首次运行
 
-调用方 `create_thread`（装 `thread_entry`、可选预留 trap frame）→ `add_thread_to_manager` / `add_thread_to_cpu`（`init→ready`）→ 某次 `schedule` RR 选中 → `switch_to` → `thread_entry` → `run_thread(func)`。
+调用方先 `create_thread`（装 `thread_entry`、可选预留 trap frame），再 `add_thread_to_manager` / `add_thread_to_cpu`（把 status 从 `init` 变成 `ready`）；某次 `schedule` RR 选中后经 `switch_to` 进入 `thread_entry`，再跑 `run_thread(func)`。
 
-用户 `copy_thread` 返回的线程**未入队**；入口是 `run_copied_thread` → `arch_return_to_user`。
+用户 `copy_thread` 返回的线程**未入队**；入口是 `run_copied_thread`，再经 `arch_return_to_user` 回用户。
 
-`add_thread_to_manager`：任一指针 NULL → **返回 SUCCESS 且不链接**（静默）。已有 `tm` → `-E_RENDEZVOS`。
+`add_thread_to_manager`：任一指针为 NULL 则**返回 SUCCESS 且不链接**（静默）。已有 `tm` 则返回 `-E_RENDEZVOS`。
 
 `add_thread_to_cpu`：仅允许 `tm==NULL` 且 `status==init`（创建期首次）。
 
-`del_thread_from_manager`：仍是 current → `-E_REND_AGAIN`；无 tm 幂等 SUCCESS。
+`del_thread_from_manager`：若仍是 current 则返回 `-E_REND_AGAIN`；无 tm 幂等 SUCCESS。
 
 ### 6.2 `schedule` 主路径
 
@@ -300,19 +300,19 @@ switch_to(curr → next)
 
 ### 6.3 round_robin_schedule
 
-从 `current->sched_thread_list.next` 绕环，跳过哨兵与非 `ready`。选中自己 → 上层走 `use_old_thread`。
+从 `current->sched_thread_list.next` 绕环，跳过哨兵与非 `ready`。若选中自己，上层走 `use_old_thread`。
 
 环上**全无 ready** 时 while **死循环**——惯例上靠 idle 始终维持 ready。无时间片。
 
 ### 6.4 delete_thread
 
-写 `status = exit` → 循环 `del_thread_from_manager`；`-E_REND_AGAIN` 且本核是 owner → `schedule` → 再试 → `ref_put` → 可能 `del_thread_structure`。
+先写 `status = exit`，再循环 `del_thread_from_manager`；若得到 `-E_REND_AGAIN` 且本核是 owner，则 `schedule` 后再试，最后 `ref_put`，可能落到 `del_thread_structure`。
 
 ### 6.5 `init_proc`（boot ↔ idle）
 
-1. `new_task_manager` → boot（认领执行流，`running`）→ idle（入队）
+1. `new_task_manager` 之后建 boot（认领执行流，`running`），再建 idle（入队）
 2. 人为：`current = idle`（running），boot = ready
-3. `switch_to(boot → idle)`：保存 boot 现场，跳进 idle；之后 idle `schedule` 可切回 boot，`init_proc` 在 **boot** 上返回
+3. `switch_to(boot, idle)`：保存 boot 现场，跳进 idle；之后 idle `schedule` 可切回 boot，`init_proc` 在 **boot** 上返回
 
 boot **没有** `arch_set_new_thread_ctx`；首次保存靠这次 `switch_to`。`init_proc` 自己没有参数。boot 的栈也不是这里分配的：`kstack_bottom` 取 `percpu(boot_stack_bottom)`，该值由前面的 `virt_mm_init` 写成链接栈（BSP）或 `ap_boot_stack_ptr`（AP）。
 
@@ -394,16 +394,16 @@ boot **没有** `arch_set_new_thread_ctx`；首次保存靠这次 `switch_to`。
 
 本篇涉及的接口分布在：`thread.h` / `id.h` 上的调度与 TCB / 入队 / tid，以及 arch `thread_arch.h` 的 `switch_to` / `context_switch`。说明改写自头文件 Doxygen，并已与 `.c` / `.S` 核对。
 
-**本篇不涉及（只链过去）：** `gen_thread_from_*` / ELF 加载 → `14`；`kernel_port_*` → `03`；亲和性深挖 → `16`；EBR 槽与 `ebr_*` → `17`（`delete_thread` / `del_thread_structure` 的生命周期侧仍在本篇列出）。
+**本篇不涉及（只链过去）：** `gen_thread_from_*` / ELF 加载见 `14`；`kernel_port_*` 见 `03`；亲和性深挖见 `16`；EBR 槽与 `ebr_*` 见 `17`（`delete_thread` / `del_thread_structure` 的生命周期侧仍在本篇列出）。
 
 ### 7.1 编排顺序（调用方必须遵守）
 
 | 场景 | 顺序 |
 |------|------|
-| 每核任务子系统起来 | `init_core_id_system`（`cmain`，早于 `init_proc`）→ **`init_proc`** → … → 之后才可 `create` / `schedule` |
-| `init_proc` 内部 | `new_task_manager` → boot → idle → `switch_to(boot→idle)`；返回时已在 **boot** |
-| 普通内核线程 | `create_thread`（或 `gen_thread_from_func`）→ `add_*` → 某次 **`schedule`** → `switch_to` → `thread_entry` → `run_thread` |
-| 退出 | OR `EXIT_REQUESTED`（或 `delete_thread` 写 `exit`）→ owner 上 `schedule` 切走 → zombie / 摘环 → `ref_put` |
+| 每核任务子系统起来 | 先 `init_core_id_system`（`cmain`，早于 `init_proc`），再 **`init_proc`**，……之后才可 `create` / `schedule` |
+| `init_proc` 内部 | `new_task_manager`，再建 boot、idle，再 `switch_to(boot, idle)`；返回时已在 **boot** |
+| 普通内核线程 | `create_thread`（或 `gen_thread_from_func`），再 `add_*`；某次 **`schedule`** 后经 `switch_to` 进入 `thread_entry`，再跑 `run_thread` |
+| 退出 | OR `EXIT_REQUESTED`（或 `delete_thread` 写 `exit`），在 owner 上 `schedule` 切走，再经 zombie / 摘环，最后 `ref_put` |
 
 `schedule` 内部七步见 `thread.h` `@note` 与 §6.2。
 
@@ -450,8 +450,8 @@ error_t add_thread_to_cpu(Thread_Base *, cpu_id_t);
 | `create_thread` | `vs` **必须非 NULL**；成功则**接管**调用方对 `vs` 的活引用（含 `&root_vspace`）。装好 `thread_entry`、kstack、`arch_set_new_thread_ctx`、参数与 tid。**不**入队；**不**调 append `init`。失败不接管 `vs`。便捷封装见 `14`。 |
 | `delete_thread` | 写 `status=exit`；循环 `del_thread_from_manager`，若返回 `-E_REND_AGAIN` 且本核是 owner 则先 `schedule` 再试；最后 `ref_put`，可能落到 `del_thread_structure`。 |
 | `del_thread_structure` / `free_thread_ref` | 末次引用路径：摘环、释放 vs、排空 IPC、释放 kstack / name，并调 append `fini`（与 `17` 交叉）。 |
-| `add_thread_to_manager` | 挂环、设 `tm`、尝试 init→ready；若已非 init 只打印 warn，仍返回成功。任一侧为 NULL → 返回成功但不挂。已有 `tm` → `-E_RENDEZVOS`。 |
-| `del_thread_from_manager` | 幂等摘环；若仍是 `current` → `-E_REND_AGAIN`。 |
+| `add_thread_to_manager` | 挂环、设 `tm`、尝试把 status 从 init 变成 ready；若已非 init 只打印 warn，仍返回成功。任一侧为 NULL 则返回成功但不挂。已有 `tm` 则返回 `-E_RENDEZVOS`。 |
+| `del_thread_from_manager` | 幂等摘环；若仍是 `current` 则返回 `-E_REND_AGAIN`。 |
 | `add_thread_to_cpu` | 首次入队时选核：要求 `tm==NULL` 且 status 为 `init`；否则 `-E_RENDEZVOS` / `-E_IN_PARAM`。细节见 `16`。 |
 
 ### 7.4 current / status / flags / 辅助
@@ -503,11 +503,11 @@ extern void run_thread(Thread_Init_Para *para); /* asm；见 thread.h */
 
 | 接口 | x86_64 | aarch64 |
 |------|--------|---------|
-| `switch_to` | TSS.RSP0、KERNEL_GS、FS、`user_rsp_scratch` → 再 `context_switch` | TPIDR_EL0 / SP_EL0；保存 DAIF，返回旧上下文后再恢复 DAIF+ISB |
+| `switch_to` | 先写 TSS.RSP0、KERNEL_GS、FS、`user_rsp_scratch`，再 `context_switch` | TPIDR_EL0 / SP_EL0；保存 DAIF，返回旧上下文后再恢复 DAIF+ISB |
 | `context_switch` | 保存被调用者负责的那组通用寄存器和 `rsp`（`arch_switch.S`）；**不保存** XMM 等浮点/向量寄存器 | 保存 `x19`–`x30`、`sp`、`SPSR`（`arch_switch.S`）；**不保存** `v0`–`v31` 那套浮点/向量寄存器 |
 | `run_thread` | SysV（System V ABI）：按 `int_para[]` 调 `thread_func_ptr` | AAPCS64（ARM 64 位过程调用标准）同理 |
 
-页表根**不**在 `switch_to` 里换。`copy_thread` / `run_copied_thread` → `14`。
+页表根**不**在 `switch_to` 里换。`copy_thread` / `run_copied_thread` 见 `14`。
 
 ---
 
@@ -535,7 +535,7 @@ cd core && make ARCH=x86_64 config && make all && make run
 - 仅 RR；指针预留，无第二套算法。
 - 无运行期迁移；阻塞线程仍属 owner CPU。
 - RR 无时间片：长占 CPU 的内核线程饿死同核 ready 线程。
-- 环上无 ready → RR 死循环（靠 idle）。
+- 环上无 ready 则 RR 死循环（靠 idle）。
 - `new_task_manager` 缺 alloc NULL 检查。
 - 远期：迁移 / 可插拔调度见 evolution E3、E4。
 - 线程切换不保存浮点/向量寄存器；用户若用了，切走再切回会乱。见 **E13**。

@@ -31,9 +31,9 @@ name / kstack：**直接** `m_free`，不走 EBR。
 
 ## 3. 分层与调用方
 
-**MSQ / IPC** — 队列 CAS 外包 `ebr_enter` / `exit`；`free_message_ref` / `free_ipc_request` → `ebr_retire_ref(..., *_real)`。
+**MSQ / IPC** — 队列 CAS 外包 `ebr_enter` / `exit`；`free_message_ref` / `free_ipc_request` 落到 `ebr_retire_ref(..., *_real)`。
 
-**任意路径** — 间接经 `schedule` → `ebr_try_reclaim`。
+**任意路径** — 间接经 `schedule` 调用 `ebr_try_reclaim`。
 
 **compat / clean** — 仍用 `delete_thread`；勿假设 message 地址在 put 后立刻可复用。观测退出用 `EXIT_REQUESTED` + zombie，不是节点立即可回收。
 
@@ -47,8 +47,8 @@ name / kstack：**直接** `m_free`，不走 EBR。
 
 | 对象 | 怎么放 | 为何 |
 |------|--------|------|
-| 无锁队列节点（`Message_t` / `Ipc_Request_t`） | 最后一次 `ref_put` → 外壳 `free_*` → **`ebr_retire_ref` 进本核表** → 安全后再调 `*_real` | 无锁读队列指针时，即使后面有 refcount，仍有「先看见指针、再 `ref_get_not_zero`」的空窗 |
-| 线程对象本身 | 引用计数归零 → **同步**拆除 | 不依赖 EBR；靠「已摘调度环且无人持有」 |
+| 无锁队列节点（`Message_t` / `Ipc_Request_t`） | 最后一次 `ref_put` 进外壳 `free_*`，再 **`ebr_retire_ref` 进本核表**，安全后再调 `*_real` | 无锁读队列指针时，即使后面有 refcount，仍有「先看见指针、再 `ref_get_not_zero`」的空窗 |
+| 线程对象本身 | 引用计数归零后 **同步**拆除 | 不依赖 EBR；靠「已摘调度环且无人持有」 |
 
 一句话：**引用计数**管「还有没有逻辑持有者」；**EBR** 管「有没有核还握着裸指针」。EBR 推迟的是登记进去的那个真正析构函数，不是「登记的瞬间就 `free` 内存」。
 
@@ -108,7 +108,7 @@ static atomic64_t ebr_global_epoch;
 | `ebr_retired_recs[]` | **本核**的待回收表。节点 retire 在调用 `ebr_retire_ref` 的那颗核上；别的核的 `ebr_try_reclaim` 扫不到。 |
 | `ebr_global_epoch` | 全局世代；某核 exit 到深度 0 时自增，推动「更老的 retire」变为可回收。 |
 
-lazy init：`ebr_inited` 走 0（未初始化）→ 1（初始化中）→ 2（就绪）。
+lazy init：`ebr_inited` 走 0（未初始化）、1（初始化中）、再到 2（就绪）。
 
 ### 4.2 安全条件与时序（必须写对）
 
@@ -159,7 +159,7 @@ reclaim iff rec.retire_epoch < safe     // 是 < 不是 ≤
 
 **读图说明：** 某核上的 `====` 表示它正处在 `ebr_enter`…`ebr_exit`（active），`local_epoch` 为 enter 时快照的 global。某一刻 safe 直觉上是「当前还在读的那些核」的 `local_epoch` 最小值——inactive 核不拉低 safe。节点在世代 G 被 `ebr_retire_ref` 记入本核表（●）后不能马上析构：必须等到 `retire_epoch < safe`（严格小于），`ebr_try_reclaim` 才调用登记的 `free_func`。上图 retire@G0 要到 safe 至少为 G1 之后才允许回收；retire@G1 再往后一格。
 
-机制上还可看成 quiet → propagate → reclaim：
+机制上还可看成 quiet、再 propagate、最后 reclaim：
 
 ```text
    ┌───────────────┐   ┌───────────────┐   ┌───────────────┐
@@ -172,15 +172,15 @@ reclaim iff rec.retire_epoch < safe     // 是 < 不是 ≤
         └────────── 下次 ebr_enter 重新快照 ◄──────┘
 ```
 
-`ebr_exit` 在深度 1→0 时 `global_epoch++`，把「已退出」传播给下一次 enter 的快照——即 propagate。只要还有一颗核停在旧 epoch，`retire_epoch ≥ safe` 的记录就不能回收。每颗核必须自己 schedule / exit / retire 推进**本核**槽上的回收。
+`ebr_exit` 在深度从 1 回到 0 时 `global_epoch++`，把「已退出」传播给下一次 enter 的快照——即 propagate。只要还有一颗核停在旧 epoch，`retire_epoch ≥ safe` 的记录就不能回收。每颗核必须自己 schedule / exit / retire 推进**本核**槽上的回收。
 
 ### 4.3 Overflow
 
-槽满：先 reclaim 腾位；仍满 → **leak + 日志**，仍返回 `REND_SUCCESS`。不是「稍后一定 free」——宁可泄漏，也不提前调 `free_func` 冒 UAF。
+槽满：先 reclaim 腾位；仍满则 **leak + 日志**，仍返回 `REND_SUCCESS`。不是「稍后一定 free」——宁可泄漏，也不提前调 `free_func` 冒 UAF。
 
 ### 4.4 线程回收不变量
 
-- **禁止**在 `delete_thread` 里、末次 ref 之前调 `thread_release_owned_resources`（二次 drain → dummy 双 put / 死循环）。
+- **禁止**在 `delete_thread` 里、末次 ref 之前调 `thread_release_owned_resources`（二次 drain 会导致 dummy 双 put / 死循环）。
 - `fini` 必须在 drop `vs` **之前**（compat 可能还读 vs）。
 - 空队列 dequeue 已 put dummy；`msq_clean_queue` **禁止**再 put dummy。
 - 回收路径 **不**切换当前硬件 AS（只 put ownership）。
@@ -229,7 +229,7 @@ ebr_retire_ref     // 记入本核槽（可先 reclaim；满则 leak）
 ebr_try_reclaim    // 本核：retire_epoch < safe → free_func
 ```
 
-### 6.2 `delete_thread` → 结构体释放
+### 6.2 `delete_thread` 到结构体释放
 
 ```text
 status = exit
@@ -252,7 +252,7 @@ ref_put → free_thread_ref → del_thread_structure:
 
 ### 6.3 与 IPC 的钉子
 
-`Ipc_Request` 持有 thread → reclaim `free_ipc_request_real` 才 put thread → TCB 可能活过「业务以为已 delete」的时刻。clean / 观测应用 status / flag，勿抢占地址复用。
+`Ipc_Request` 持有 thread，要等 reclaim `free_ipc_request_real` 才 put thread，因此 TCB 可能活过「业务以为已 delete」的时刻。clean / 观测应用 status / flag，勿抢占地址复用。
 
 ---
 
@@ -260,7 +260,7 @@ ref_put → free_thread_ref → del_thread_structure:
 
 本篇涉及的接口分布在：`ebr.h` 全套；线程回收路径上的 `delete_thread` / `free_thread_ref` / `del_thread_structure`（`thread.h`；与 `13` 交叉，本篇钉回收顺序）。说明改写自头文件 Doxygen，并已与 `.c` 核对。
 
-**本篇不涉及：** MSQ inline 算法 → `18`；`kalloc_process_cross_cpu_frees` → kmalloc 篇（与 `ebr_try_reclaim` **并列**于 `schedule`，不是同一种排水）；zombie / `EXIT_REQUESTED` 语义 → `13`。
+**本篇不涉及：** MSQ inline 算法见 `18`；`kalloc_process_cross_cpu_frees` 见 kmalloc 篇（与 `ebr_try_reclaim` **并列**于 `schedule`，不是同一种排水）；zombie / `EXIT_REQUESTED` 语义见 `13`。
 
 `thread_release_owned_resources`：**内部 static**；勿在末次 ref 前手调。
 
@@ -268,11 +268,11 @@ ref_put → free_thread_ref → del_thread_structure:
 
 | 场景 | 顺序 |
 |------|------|
-| MSQ 读临界区 | **`ebr_enter`** → 遍历指针 → **`ebr_exit`**（`ms_queue.h` 已包） |
-| 节点末次 put | `free_message_ref` / `free_ipc_request` → **`ebr_retire_ref(..., *_real)`** → 稍后本核 reclaim |
-| 推进 reclaim | 本核 `ebr_exit`(深度 1→0)、再 `retire`、或任意 **`schedule`**（先排跨核 kfree，再 `ebr_try_reclaim`） |
-| 删线程 | **`delete_thread`**：`status=exit` → 摘环（owner 上遇 AGAIN 则 schedule）→ `ref_put` |
-| 末次线程 ref | **`free_thread_ref` → `del_thread_structure`**：fini（vs 仍有效）→ release（消息进 EBR；name/kstack 直接 free；只 put vs）→ free TCB |
+| MSQ 读临界区 | **`ebr_enter`**，遍历指针，再 **`ebr_exit`**（`ms_queue.h` 已包） |
+| 节点末次 put | `free_message_ref` / `free_ipc_request` 落到 **`ebr_retire_ref(..., *_real)`**，稍后本核 reclaim |
+| 推进 reclaim | 本核 `ebr_exit`（深度从 1 回到 0）、再 `retire`、或任意 **`schedule`**（先排跨核 kfree，再 `ebr_try_reclaim`） |
+| 删线程 | **`delete_thread`**：写 `status=exit`，再摘环（owner 上遇 AGAIN 则 schedule），最后 `ref_put` |
+| 末次线程 ref | **`free_thread_ref` 进 `del_thread_structure`**：先 fini（vs 仍有效），再 release（消息进 EBR；name/kstack 直接 free；只 put vs），最后 free TCB |
 
 ### 7.2 EBR（`ebr.h`）
 
@@ -286,10 +286,10 @@ void ebr_dump_stats(void);
 
 | 接口 | 说明 |
 |------|------|
-| `ebr_enter` | 深度 0→1：把 global 快照到 local，置 active。可嵌套。 |
-| `ebr_exit` | 深度 1→0：清 active，`global++`，再对本核做 `ebr_try_reclaim`。 |
+| `ebr_enter` | 深度从 0 到 1：把 global 快照到 local，置 active。可嵌套。 |
+| `ebr_exit` | 深度从 1 回到 0：清 active，`global++`，再对本核做 `ebr_try_reclaim`。 |
 | `ebr_try_reclaim` | 只扫**本核**槽；`retire_epoch < safe`（**严格小于**）才调 `free_func`。 |
-| `ebr_retire_ref` | 记入本核表（默认 512 槽）；前后会尝试 reclaim。满则 **leak，但仍返回 SUCCESS**（防 UAF，use-after-free）。`ref` / `free_func` 为空 → `-E_IN_PARAM`。 |
+| `ebr_retire_ref` | 记入本核表（默认 512 槽）；前后会尝试 reclaim。满则 **leak，但仍返回 SUCCESS**（防 UAF，use-after-free）。`ref` / `free_func` 为空则返回 `-E_IN_PARAM`。 |
 | `ebr_dump_stats` | 打印每核的 retire / reclaim / overflow 统计。 |
 
 `Thread_Base` **不**走 EBR；但 `Ipc_Request` 可钉住 thread ref，从而间接推迟 `del_thread_structure`。
@@ -305,10 +305,10 @@ void del_thread_structure(Thread_Base *thread);
 | 接口 | 说明 |
 |------|------|
 | `delete_thread` | 写 `exit`；循环摘环（owner 上遇 AGAIN 则 `schedule`）；再 `ref_put`。成功路径**不会**在 put 前 drain。 |
-| `free_thread_ref` | 末次引用的析构入口 → `del_thread_structure`。 |
+| `free_thread_ref` | 末次引用的析构入口，落到 `del_thread_structure`。 |
 | `del_thread_structure` | 见 §7.1 / §6.2。创建失败时可同步直调。name / kstack **直接** `m_free`。 |
 
-禁止：在 `delete_thread` 的末次 ref **之前**再调 release（二次 drain → dummy 双 put / 死循环）。
+禁止：在 `delete_thread` 的末次 ref **之前**再调 release（二次 drain 会导致 dummy 双 put / 死循环）。
 
 ---
 

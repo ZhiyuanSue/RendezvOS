@@ -26,7 +26,7 @@ ELF 模块做三件事：校验文件头、按 class 读字段、（可选）打
 
 **提供：** magic + `EI_VERSION==EV_CURRENT` 校验；class / data / osabi 查询；`e_type` / `e_machine` 读取；32/64 phdr·shdr 遍历宏；DEBUG 下打印。
 
-**不做：** `load_elf_to_vs`、栈图像、drop、hooks（→ 14）；ELF32 加载（loader 直接拒绝）；完整动态链接；校验 `e_machine` 是否匹配当前 ISA（**loader 也不校验**——错架构镜像可能直到 map 后才触发异常）。
+**不做：** `load_elf_to_vs`、栈图像、drop、hooks（见 14）；ELF32 加载（loader 直接拒绝）；完整动态链接；校验 `e_machine` 是否匹配当前 ISA（**loader 也不校验**——错架构镜像可能直到 map 后才触发异常）。
 
 ---
 
@@ -34,7 +34,7 @@ ELF 模块做三件事：校验文件头、按 class 读字段、（可选）打
 
 | 调用方 | 用法 |
 |--------|------|
-| `kernel/task/thread_loader.c` | `check_elf_header` → `get_elf_class` → `for_each_program_header_64`；调试可调 `print_elf_ph64` |
+| `kernel/task/thread_loader.c` | 先 `check_elf_header`，再 `get_elf_class`，然后 `for_each_program_header_64`；调试可调 `print_elf_ph64` |
 | 调试 | `print_elf_header` / `print_elf_*`（默认无输出，见下） |
 
 无独立 `single_elf_*` 测试用例。
@@ -136,7 +136,7 @@ typedef struct {
 | `p_vaddr` / `p_memsz` | 映射到用户 AS 的哪段；`memsz>filesz` 的差额当 `.bss` 零页。 |
 | `p_align` / `p_paddr` | 对齐约束；`p_paddr` 对用户 ELF 通常无意义。 |
 
-每个 `PT_LOAD` 描述一段「文件偏移 → 虚拟地址」的映射。ELF32 / ELF64 字段顺序不同，遍历宏各自按对应布局步进：
+每个 `PT_LOAD` 描述一段「文件偏移到虚拟地址」的映射。ELF32 / ELF64 字段顺序不同，遍历宏各自按对应布局步进：
 ```text
 ELF64 Phdr（56 字节，p_offset 在 p_flags 前）：
   p_type    (Word)   PT_LOAD=1 PT_DYNAMIC=2 PT_INTERP=3 PT_NOTE=4 PT_GNU_STACK=0x6474e551 ...
@@ -186,7 +186,7 @@ ELF32 Phdr（32 字节，p_flags 在最后）：
 |------|------|
 | `elf.c` | `check_elf_header` / `get_elf_type` / `get_elf_machine` / `elf64_hash` |
 | `elf.h` | inline `get_elf_class|data_encode|osabi|…`；遍历宏 |
-| `elf_print.c` | 打印；默认 `debug → pr_off` |
+| `elf_print.c` | 打印；默认 `debug` 宏为 `pr_off` |
 | `thread_loader.c` | **唯一正式消费者**（14 篇） |
 
 ---
@@ -204,7 +204,7 @@ loader:
   不调用 get_elf_machine 做 ISA 校验
 ```
 
-打印：`elf_print.c` 顶部 `// #define DEBUG` 默认注释掉 → `debug` 宏为 `pr_off`，`print_elf_*` 调用仍安全但无输出。需要时取消注释并开 `_LOG_DEBUG_`。
+打印：`elf_print.c` 顶部 `// #define DEBUG` 默认注释掉，故 `debug` 宏为 `pr_off`，`print_elf_*` 调用仍安全但无输出。需要时取消注释并开 `_LOG_DEBUG_`。
 
 ---
 
@@ -212,7 +212,7 @@ loader:
 
 本篇涉及的接口分布在：ELF **格式库**——`check_elf_header` / `get_elf_*`、32/64 Phdr·Shdr 遍历宏（`elf.h`）、调试打印（`elf_print.h`）、常量与结构体（`elf_common.h` / `elf_32.h` / `elf_64.h`）。以头文件注释为准（`elf.h` / `elf_print.h`；已与 `.c` 核对）。
 
-**本篇不涉及：** `load_elf_to_vs` / `gen_thread_from_elf` / `run_elf_program` / 栈 / Path A·B → `14`；`page_slice` 拷贝 → `10`；VSpace map → `07`/`08`。
+**本篇不涉及：** `load_elf_to_vs` / `gen_thread_from_elf` / `run_elf_program` / 栈 / Path A·B（见 `14`）；`page_slice` 拷贝（见 `10`）；VSpace map（见 `07`/`08`）。
 
 **不存在于公开面：** `elf64_hash`（`.c` 内实现，未导出、无调用方）。
 
@@ -258,7 +258,7 @@ void print_elf_ph32/64(...); void print_elf_sh32/64(...);
 void print_elf_machine(u16);
 ```
 
-默认 `DEBUG` 关闭 → `pr_off`；调用无害。loader 调试可偶发 `print_elf_ph64`。
+默认 `DEBUG` 关闭，宏为 `pr_off`；调用无害。loader 调试可偶发 `print_elf_ph64`。
 
 ---
 

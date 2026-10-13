@@ -4,7 +4,7 @@ v0.1 · 2026-09-27
 
 本篇覆盖：`modules/log/log.c`、`include/modules/log/log.h`、`modules/driver/uart/uart.c`、`uart_16550A.c`、`uart_pl011.c`、各 ISA 的 UART 头（`uart_16550A.h` / `uart_pl011.h` 等）、`modules/driver/x86_char_console/char_console.c`。
 
-SMP 下 MCS 见锁篇；`cmain` 里 `uart_open` → `log_init` 时序见启动总览；aarch64 PL011 early map / `boot_uart_base_addr` 见平台启动与 DTB 篇。
+SMP 下 MCS 见锁篇；`cmain` 里先 `uart_open` 再 `log_init` 的时序见启动总览；aarch64 PL011 early map / `boot_uart_base_addr` 见平台启动与 DTB 篇。
 
 **硬件对照：** 16550A / 8250 兼容 UART（COM1 I/O）；PrimeCell PL011（MMIO）；x86 VGA 文本模式帧缓冲 `0xB8000`。手册名点到为止，寄存器以本仓库读写为准。
 
@@ -14,7 +14,7 @@ SMP 下 MCS 见锁篇；`cmain` 里 `uart_open` → `log_init` 时序见启动�
 
 Boot / 调试需要 **同步、不依赖 IPC / 堆 / 调度** 的字符输出——buddy、port、线程都尚未初始化时也要能输出字符。
 
-路径刻意压缩为一条线：`pr_*` / `printk` → 格式化 → `log_put_byte` → `uart_putc` → 硬件。没有 ring、没有 console server、没有「多 sink 框架」。后端由编译宏 **`_UART_16550A_`** 或 **`_UART_PL011_`** 在 `uart.c` 里静态分发。
+路径刻意压缩为一条线：`pr_*` / `printk` 格式化后经 `log_put_byte`、`uart_putc` 落到硬件。没有 ring、没有 console server、没有「多 sink 框架」。后端由编译宏 **`_UART_16550A_`** 或 **`_UART_PL011_`** 在 `uart.c` 里静态分发。
 
 x86 另有 VGA 文本层（`x86_char_console`），但 **`log_put_byte` 从不 `CONSOLE_PUTC`**：`pr_*` 只经 `SET_CONSOLE_COLOR` 改 VGA **属性字节**；正文只出现在串口（QEMU 典型 `-serial stdio`）。只看虚拟机窗口 VGA 会以为「内核没日志」。
 
@@ -32,7 +32,7 @@ x86 另有 VGA 文本层（`x86_char_console`），但 **`log_put_byte` 从不 `
 
 **不做：** termios、pty、异步 flush 线程、串口 DMA、IRQ 驱动的 RX、`/dev/console`、多 sink。
 
-**RX 现状：** `uart_getc` 是**无限阻塞轮询**。PL011 可启用设备侧 RXIM，但 GIC SPI（Shared Peripheral Interrupt，共享外设中断）仍默认 mask（见 GIC 篇）→ CPU 收不到中断线，getc 仍依赖轮询。16550 路径 `IER=0`，完全不使能 UART 中断。
+**RX 现状：** `uart_getc` 是**无限阻塞轮询**。PL011 可启用设备侧 RXIM，但 GIC SPI（Shared Peripheral Interrupt，共享外设中断）仍默认 mask（见 GIC 篇），CPU 收不到中断线，getc 仍依赖轮询。16550 路径 `IER=0`，完全不使能 UART 中断。
 
 **轮询 vs 中断收发对比：**
 
@@ -55,7 +55,7 @@ v0.1 全程轮询是刻意为之：early/panic 路径不能依赖 IRQ 已注册�
 | 任意内核路径 | `#include <modules/log/log.h>`，`pr_error` / `pr_info`… |
 | Early / 级别旁路 | `print(...)` = `printk(..., LOG_OFF)`——过滤下 LOG_OFF 仍可输出 |
 | 兼容层整段写入 | `log_put_locked(buf, len)`（整段持 MCS，逐字节 `uart_putc`） |
-| Boot | `cmain`：`uart_open(ROUND_UP(&_end, MIDDLE_PAGE_SIZE))` → `log_init(log_level)` |
+| Boot | `cmain`：先 `uart_open(ROUND_UP(&_end, MIDDLE_PAGE_SIZE))`，再 `log_init(log_level)` |
 
 打印入口只允许 **`modules/log/log.h`**。历史上的空壳 `rendezvos/stdio.h` 已删，勿再 `#include`。
 
@@ -145,7 +145,7 @@ PC 经典 **COM1** 基址 **`0x3F8`**（`_X86_16550A_COM1_BASE_`），`inb`/`out
 `uart_16550A_open`：
 
 1. `IER = 0`（关中断——early 路径不需要 IRQ）。
-2. LCR 置 DLAB，写 **DLL=1, DLM=0** → 假定 1.8432 MHz 晶振时 **115200** baud。
+2. LCR 置 DLAB，写 **DLL=1, DLM=0**，在假定 1.8432 MHz 晶振时对应 **115200** baud。
 3. LCR 清零（8N1 默认配置；未显式写字长位时依赖复位后状态）。
 
 **波特率分频计算：** 16550A 内部基准时钟 1.8432 MHz，波特率 = `1.8432 MHz / (16 × divisor)`，故
@@ -156,7 +156,7 @@ PC 经典 **COM1** 基址 **`0x3F8`**（`_X86_16550A_COM1_BASE_`），`inb`/`out
    9600 baud → divisor = 12
 ```
 
-DLL/DLM 合为 16 位分频值（DLM 高字节，DLL 低字节）。`DLL=1, DLM=0` 即 divisor=1，对应 115200。换波特需重写 LCR.DLAB=1 → DLL/DLM → LCR.DLAB=0。
+DLL/DLM 合为 16 位分频值（DLM 高字节，DLL 低字节）。`DLL=1, DLM=0` 即 divisor=1，对应 115200。换波特需先置 LCR.DLAB=1，改写 DLL/DLM，再清 LCR.DLAB=0。
 
 `putc`：轮询 **LSR bit5（THRE）** 后写 THR。
 `getc`：轮询 **LSR bit0（DR）** 后读 RHR——无超时。
@@ -238,14 +238,14 @@ PrimeCell PL011，MMIO。`uart_open` 传入的虚址即 early 页表已映射的
 
 本篇涉及的接口分布在：同步调试输出——`modules/log/log.h`（`printk` / `pr_*` / `log_put_*` / `COLOR_SET`）、可移植 UART 分发（`uart.h`）、16550 / PL011 后端、x86 VGA 文本（`char_console.h`）。以头文件注释为准（见上列头文件；已与 `.c` 核对）。
 
-**本篇不涉及：** MCS 原语本身 → `31`；`cmain` 里 `uart_open`→`log_init` 时序 → `02`；aarch64 early map / `boot_uart_base_addr` → `05`/`36`；GIC SPI mask → `27`。
+**本篇不涉及：** MCS 原语本身（见 `31`）；`cmain` 里 `uart_open` / `log_init` 时序（见 `02`）；aarch64 early map / `boot_uart_base_addr`（见 `05`/`36`）；GIC SPI mask（见 `27`）。
 
 ### 7.1 编排顺序（调用方须遵守）
 
 | 场景 | 顺序 |
 |------|------|
-| BSP boot | **`uart_open(...)`** → **`log_init(level)`** → 此后才可依赖 `pr_*` |
-| 常规日志 | `#include <modules/log/log.h>` → **`pr_info` / `pr_error`…**（SMP 下宏内加锁） |
+| BSP boot | 先 **`uart_open(...)`**，再 **`log_init(level)`**，此后才可依赖 `pr_*` |
+| 常规日志 | `#include <modules/log/log.h>` 后用 **`pr_info` / `pr_error`…**（SMP 下宏内加锁） |
 | 级别旁路 | **`print(...)`** = `printk(..., LOG_OFF)`——仍**无** MCS |
 | 整段写入 | **`log_put_locked(buf, len)`**（持 MCS，逐字节 `uart_putc`） |
 | VGA 出字符 | 须另调 **`CONSOLE_PUTC`**——`log_put_byte` **从不**写屏 |
@@ -267,7 +267,7 @@ void log_put_locked(const u8 *buf, u64 len);
 |------|------|
 | `log_init` | 写 `\\n` + 设 `log_level`；非清屏。 |
 | `printk` | 仅当 `msg_level <= log_level` 输出；**自身不加锁**。 |
-| `pr_*` | `COLOR_SET`→`printk`→`COLOR_CLR`；SMP 用 `log_spin_lock_ptr` + `percpu(log_spin_lock)`。 |
+| `pr_*` | `COLOR_SET`，再 `printk`，最后 `COLOR_CLR`；SMP 用 `log_spin_lock_ptr` + `percpu(log_spin_lock)`。 |
 | `print` | `LOG_OFF` 旁路过滤；无锁。 |
 | `log_put_byte` | 直调 `uart_putc`；**不** `CONSOLE_PUTC`。 |
 | `COLOR_SET(d,fg,bg)` | UART 只接收 `(d,fg)`——第三参背景**不传入 ANSI**（已知错位）。 |
