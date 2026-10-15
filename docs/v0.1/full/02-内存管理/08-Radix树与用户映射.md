@@ -38,7 +38,7 @@ core 里的 `clone_vspace` 已经能做 `COW_PREP` / `COPY_PAGES`；真正在 fa
 
 3. **回滚要能精确到阶段**。五阶段里任何一步都可能失败（`pmm_alloc` 拿不到页、检测到 overlap、叶子仍 VALID 不能删）。如果失败要回滚，必须只回滚**已经改动过的部分**，不能把别的 CPU 已经发布的东西也撤掉。所以每个阶段都有自己的 `phase*_clean_*` 标签，按「后建的先撤」顺序释放，绝不碰别的 CPU 的发布结果。
 
-**代价**：调用方要理清 L0/L2 锁的获取顺序、`mm_user_utils_*` 的编排、`calculate_end_check` 的门禁；读起来确实比「一把锁保一切」复杂。**回报**：单进程多线程的 fault / mmap / munmap 在多核上几乎不互相阻塞，争用点从「整个地址空间」收窄到「同一段 2 MiB 带」——这就是本篇后面所有复杂机制存在的理由。
+**代价**：调用方要理清 L0/L2 锁的获取顺序、`mm_user_utils_*` 的编排、`calculate_end_check` 的准入；读起来确实比「一把锁保一切」复杂。**回报**：单进程多线程的 fault / mmap / munmap 在多核上几乎不互相阻塞，争用点从「整个地址空间」收窄到「同一段 2 MiB 带」——这就是本篇后面所有复杂机制存在的理由。
 
 ---
 
@@ -179,7 +179,7 @@ L0 按大约 512 GiB（`HUGE_PAGE_SIZE`）一档，管的是「谁在驱动这
 
 **Clone 窗口（源码强调）：** 在源上持有用户半的 L0，可以挡住**其他核再进入**该 radix，但**不表示**扫 interval 时没有别的核持有 L2——他核可能已经走 `big_and_small` 释放了 L0、手里还持有 L2。查找代码扫占用区间时必须 **获取 L2 并等待**。不要理解成「持有 L0 就包办一切」。
 
-`vmm_radix_tree_calculate_end_check(start, page_count, &end)`：公开 VA 区间的唯一门禁（溢出 + 页对齐）。锁和变更 API **不再**重复这道检查；调用方必须把同一个 `vaddr_end` 贯穿整个临界区。
+`vmm_radix_tree_calculate_end_check(start, page_count, &end)`：公开 VA 区间的唯一准入（溢出 + 页对齐）。锁和变更 API **不再**重复这道检查；调用方必须把同一个 `vaddr_end` 贯穿整个临界区。
 
 加锁种类：
 
@@ -496,7 +496,7 @@ owner 写成 `vs->root_vs ? root_vs : vs`，并带当前 CPU tag。`set_range_fl
 
 | 场景 | 顺序（半开区间 `[start, end)`；`end` 必须来自 `calculate_end_check`） |
 |------|------|
-| 门禁 | 先 **`vmm_radix_tree_calculate_end_check(start, page_count, &end)`**；后续锁/变更一律用同一 `end` |
+| 准入 | 先 **`vmm_radix_tree_calculate_end_check(start, page_count, &end)`**；后续锁/变更一律用同一 `end` |
 | 兼容层 / 加载器（推荐） | **`lock_range_big`**（可跨多次调用一直持有）；选区间（或 `find_first_occupied_interval`）后 **`lock_range_small_with_big_locked(kind)`**，做 radix/utils，再 **`unlock_range_small`**；全部做完后 **`unlock_range_big`** |
 | kmalloc 等短路径 | **`lock_range_big_and_small`**（内部取 L2 后**释放 L0**）做完工作后 **`unlock_range_big_and_small`** |
 | 预约到落页（手动编排） | L2=`RADIX_RL_INSERT` 下 **`insert_range`**，调用方 **`map`** 后再 **`leaf_bind(_range)`**，最后 unlock |
@@ -526,7 +526,7 @@ Radix_node_t *vmm_radix_tree_find_first_occupied_leaf(...);
 
 | 接口 | 说明 |
 |------|------|
-| `calculate_end_check` | **唯一**公开 VA 区间门禁（溢出+对齐）；锁/变更 API **不再**重复检查。失败返回 false。 |
+| `calculate_end_check` | **唯一**公开 VA 区间准入（溢出+对齐）；锁/变更 API **不再**重复检查。失败返回 false。 |
 | `lock_range_big` | 只获取穿越的 L0 bit-lock（512 GiB 桶）；不生长下层。须配对 `unlock_range_big`。 |
 | `lock_range_small_with_big_locked` | 调用方已持有对应 L0；获取 L2 带锁。`INSERT`/`DELETE`/`QUERY_OR_CHANGE` 语义不同。 |
 | `lock_range_big_and_small` | 一次性获取 L0+L2，返回时**通常只持 L2**（L0 已释放）。 |

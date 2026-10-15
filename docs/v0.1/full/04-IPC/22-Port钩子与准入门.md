@@ -47,7 +47,7 @@ Linux LSM（Linux Security Modules）是内核里通用的 hook 框架：每个�
 | send / recv | `port_ops_begin`：life 须为 REGISTERED，再 `ops_allow(SEND|RECV, NULL)`，然后 `ops_count++`，最后再查 life |
 | unregister | 从表中摘除，进入 CLOSING，等到 `ops_count==0`（可 schedule），再 `port_clean_thread_queue`，进入 CLOSED 后 put |
 
-测试用例：`port_hook_gate_self_test` 等拆开 LOOKUP vs SEND、token 再门禁。
+测试用例：`port_hook_gate_self_test` 等拆开 LOOKUP vs SEND、token 再过准入。
 
 ---
 
@@ -197,7 +197,7 @@ REGISTER 在表锁内调 hook：**禁止**在 hook 里同表 lookup / register�
 
 **Deny ≠ 关闭 port**：port 仍 REGISTERED；LOOKUP deny 只是「这次拿不到」。已 begin 的阻塞等待者醒后**不再**跑 ops_allow——真正关闭靠 unregister。清队权威表见 `19` §6.2；阻塞 API 醒后约定见 `20` §6.2。
 
-LOOKUP 通过 ≠ SEND 通过（测试用例刻意拆开）。Token 缓存**不能**绕过 LOOKUP——每次 resolve 再门禁。
+LOOKUP 通过 ≠ SEND 通过（测试用例刻意拆开）。Token 缓存**不能**绕过 LOOKUP——每次 resolve 再过准入。
 
 ---
 
@@ -205,7 +205,7 @@ LOOKUP 通过 ≠ SEND 通过（测试用例刻意拆开）。Token 缓存**不�
 
 本篇涉及的接口分布在：准入 / 生命周期门面——`port_append_hooks_t`、`port_ops_allow_t`、`port_ops_begin` / `end`、`PORT_OPS_LIFE_*` / `port_ops_type`。说明以 `port.h` Doxygen 为准（已与 `.c` 核对）。
 
-**本篇不涉及：** port 创建/表/unregister 清队过程细节见 `19`（本篇只钉门禁交汇）；send/recv 阻塞状态机见 `20`；kmsg PORT_CLOSED 载荷见 `21`。
+**本篇不涉及：** port 创建/表/unregister 清队过程细节见 `19`（本篇只钉准入交汇）；send/recv 阻塞状态机见 `20`；kmsg PORT_CLOSED 载荷见 `21`。
 
 生产路径今日一律 `create_message_port(..., NULL)`；非 NULL hooks **仅**测试用例。
 
@@ -274,7 +274,7 @@ void port_ops_end(Message_Port_t *port);
 
 ## 8. 多架构
 
-与 ISA 无关。门禁是软件回调，不碰中断控制器或页表。
+与 ISA 无关。准入是软件回调，不碰中断控制器或页表。
 
 ---
 

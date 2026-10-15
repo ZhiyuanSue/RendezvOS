@@ -170,7 +170,7 @@ error_t add_thread_to_cpu(Thread_Base *thread, cpu_id_t cpu);
 | `cpu_id_is_online` | 条件：`cpu < MAX` ∧ `0 ≤ cpu < NR_CPU` ∧ `per_cpu(core_tm,cpu)≠NULL`。只表示「可以首次入队」；不等于 MADT / GIC 硬件 online。 |
 | `task_manager_for_cpu` | 若 online 则返回该核 `core_tm`，否则 NULL。 |
 | `thread_owner_cpu` | 读 `tm->owner_cpu`；无 tm 则返回 `CPU_ID_INVALID`（detach / delete 摘环后失效）。 |
-| `add_thread_to_cpu` | 门禁：参数为 NULL 则 `-E_IN_PARAM`；已有 tm 或 status≠init 则 `-E_RENDEZVOS`；offline 则 `-E_IN_PARAM`；否则转调 `add_thread_to_manager`。**没有**运行期迁核。 |
+| `add_thread_to_cpu` | 准入：参数为 NULL 则 `-E_IN_PARAM`；已有 tm 或 status≠init 则 `-E_RENDEZVOS`；offline 则 `-E_IN_PARAM`；否则转调 `add_thread_to_manager`。**没有**运行期迁核。 |
 
 对照：`add_thread_to_manager` 对非 init 只打印 warn 仍挂环——严格的 status 检查只在本 API。`gen_thread_from_elf` **固定挂本核**，没有跨核 helper。
 

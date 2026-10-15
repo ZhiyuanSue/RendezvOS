@@ -277,7 +277,7 @@ v0.1/full/
 
 ### [x] [ ] 04-IPC/19-Port与消息模型.md
 
-职责：两层模型（port rendezvous + per-thread 队列）；`Message_Port_t`；全局 port 表；**承接 `18` §1 推出的对象后果**
+职责：两层模型（port rendezvous + per-thread 队列）；`Message_Port_t`；全局 port 注册表；**承接 `18` §1 推出的对象后果**
 
 源码：`kernel/ipc/port.c` · `kernel/ipc/message.c` · `include/rendezvos/ipc/port.h` · `include/rendezvos/ipc/message.h` · `kernel/registry/name_index.c`
 
