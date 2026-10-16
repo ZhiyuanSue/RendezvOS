@@ -258,8 +258,8 @@ static inline size_t message_port_total_size(const port_append_hooks_t* hooks)
  * @brief Enter a send/recv/try critical section on @p port.
  *
  * Requires @p op_type of @c PORT_OPS_SEND or @c PORT_OPS_RECV, life
- * @c PORT_OPS_LIFE_REGISTERED, and optional @c ops_allow success; then bumps
- * @c ops_count and re-checks still REGISTERED (else undoes and fails).
+ * @c PORT_OPS_LIFE_REGISTERED, and optional @c ops_allow success; then
+ * increments @c ops_count and re-checks still REGISTERED (else undoes and fails).
  *
  * @return true if entered; false if wrong op_type, not registered / closing,
  *         or @c ops_allow denied. Callers fold false to @c -E_REND_PORT_CLOSED.

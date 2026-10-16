@@ -134,7 +134,7 @@ i64 pmm_alloc_zone(struct buddy *bp, int alloc_order,
         }
 
         /*
-         * Phase 1 (no buddy metadata mutation yet): bump Page refcount for the
+         * Phase 1 (no buddy metadata mutation yet): increment Page refcount for the
          * allocated range. If this fails, we can safely return without rolling
          * back buddy buckets/splits because we haven't touched them.
          */

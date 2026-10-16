@@ -378,8 +378,8 @@ static void thread_port_cache_fill_entry(struct thread_port_cache* c, u32 idx,
         }
 }
 
-static void thread_port_cache_bump_lru(struct thread_port_cache* c,
-                                       u32 found_idx)
+static void thread_port_cache_touch_lru(struct thread_port_cache* c,
+                                        u32 found_idx)
 {
         if (!thread_port_cache_entry_in_use(c, found_idx))
                 return;
@@ -410,7 +410,7 @@ static Message_Port_t* thread_port_cache_lookup(Thread_Base* thread,
                         continue;
                 }
 
-                thread_port_cache_bump_lru(c, i);
+                thread_port_cache_touch_lru(c, i);
                 return port;
         }
         return NULL;
@@ -430,7 +430,7 @@ static void thread_port_cache_record(Thread_Base* thread, const char* name,
                         if (c->entries[i].row_index != tok->row_index
                             || c->entries[i].row_gen != tok->row_gen)
                                 continue;
-                        thread_port_cache_bump_lru(c, i);
+                        thread_port_cache_touch_lru(c, i);
                         c->entries[i].name_hash = target_hash;
                         c->entries[i].row_index = tok->row_index;
                         c->entries[i].row_gen = tok->row_gen;

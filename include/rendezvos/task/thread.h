@@ -102,7 +102,7 @@ struct thread_port_cache_entry {
 struct thread_port_cache {
         struct thread_port_cache_entry entries[THREAD_MAX_KNOWN_PORTS];
         u64 count;
-        /* Monotonic counter for O(1) LRU updates (no scanning bump). */
+        /* Monotonic counter for O(1) LRU updates (no scan to refresh order). */
         u64 lru_clock;
 };
 
@@ -363,7 +363,7 @@ error_t delete_thread(Thread_Base* thread);
  * @brief Look up a message port by name for the current thread (per-thread LRU
  * cache; caller must ref_put the returned port).
  * @param name Port name string.
- * @return Port with refcount bumped, or NULL if not found or bad context.
+ * @return Port with one extra ref for the caller, or NULL if not found or bad context.
  */
 Message_Port_t* thread_lookup_port(const char* name);
 

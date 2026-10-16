@@ -163,7 +163,7 @@ REGISTER 在表锁内调 hook：**禁止**在 hook 里同表 lookup / register�
         ├─► ops_allow(REGISTER, NULL) ──拒绝──► 返回 hook 的 error_t
         └─► name_index_register  ──成功──► ACTIVE → REGISTERED；表持一 ref
 
-   thread_lookup_port / port_table_lookup*  ──表命中、bump ref──►
+   thread_lookup_port / port_table_lookup*  ──表命中、再取一份引用──►
         │
         └─► ops_allow(LOOKUP, name) ──拒绝──► ref_put + 返回 NULL
                                   ──放行──► 返回 port（持 ref）
@@ -215,7 +215,7 @@ LOOKUP 通过 ≠ SEND 通过（测试用例刻意拆开）。Token 缓存**不�
 |------|------|
 | 带 hooks 创建 | `create_message_port(name, hooks)`，可选 **`init`**（失败则 create NULL，不调 fini），再 `register_port` |
 | 注册 | 表锁内 **`ops_allow(REGISTER, NULL)`**，再 index 注册（ACTIVE 变为 REGISTERED） |
-| 查找 | 表命中 bump ref 后过 **`ops_allow(LOOKUP, name)`**；拒绝则 put 并返回 NULL |
+| 查找 | 表命中后先给调用方再取一份引用，再过 **`ops_allow(LOOKUP, name)`**；拒绝则 put 并返回 NULL |
 | send/recv | **`port_ops_begin(SEND\|RECV)`**，会合中途保持 begin，match 后 **`port_ops_end`**；阻塞路径 **先 end 再 `schedule`** |
 | 销毁 | unregister 清队，last ref 时调 **`fini`**，再 free |
 

@@ -68,7 +68,7 @@ struct Msg {
  * Another is create_message and then do something and finally fill_message_data
  */
 /**
- * @brief Create a Message_t that shares an existing Msg_Data (refcount bumped).
+ * @brief Create a Message_t that shares an existing Msg_Data (one more ref on the payload).
  * @param msgdata Payload to attach; must have a live refcount.
  * @return New message with refcount 1, or NULL if msgdata is invalid or
  *         allocation fails.
@@ -88,7 +88,7 @@ Message_t* create_message_structure(void);
 void delete_message_structure(Message_t* msg);
 
 /**
- * @brief Attach Msg_Data to a message (refcount bumped).
+ * @brief Attach Msg_Data to a message (one more ref on the payload).
  * @param msg Message to fill; must not be NULL.
  * @param msgdata Payload to attach; must have a live refcount.
  * @return REND_SUCCESS on success; -E_IN_PARAM on invalid input.
