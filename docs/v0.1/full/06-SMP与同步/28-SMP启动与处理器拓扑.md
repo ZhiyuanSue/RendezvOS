@@ -252,7 +252,7 @@ sequenceDiagram
 
 ### 6.6 AP：`start_secondary_cpu`
 
-汇编入口见平台篇；比 BSP 少做哪些全机一次的事，见启动总览 §6.2。这里只钉 **叫醒之后** 可移植层还卡哪些点。`cpu_id` 和栈顶怎样从 `setup_info`获取，见刚写完的 §6.4 / §6.5。
+汇编入口见平台篇；比 BSP 少做哪些全机一次的事，见启动总览 §6.2。这里只写 **叫醒之后** 可移植层还卡哪些点。`cpu_id` 和栈顶怎样从 `setup_info`获取，见刚写完的 §6.4 / §6.5。
 
 进来时 `setup_info->cpu_id` 已经是本核软件编号。随后：先 `arch_enable_percpu`，再 `virt_mm_init`（栈顶来自 `ap_boot_stack_ptr`），然后 `arch_start_core`。这两步任一失败就 `return`，**此时还没有**写 `cpu_enable`，BSP 的 `arch_start_smp` 会一直等到超时。
 

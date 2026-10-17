@@ -298,5 +298,5 @@ error_t pci_enable_device(struct pci_node *);  /* IRQ stub → 失败回滚 comm
 - 2026-09-27：语言润色——「真源 = … Doxygen」改为「以头文件注释为准」；one-shot→单次、bring-up→拉起、非热路径契约→非常用路径，约定从略；符号与技术事实未改。
 - 2026-09-26：§7 全文审阅——pci.h/ops/dev_tree Doxygen；PIO-only；enable 失败与 func0 缺口。
 - 2026-09-25：语言轮——CF8/CFC Mechanism #1；扫描/BAR/enable 真相；func0 与 type1 缺口。
-- 2026-08-29：整篇重做——删 ECAM/aarch64/双源；钉 PIO-only。
+- 2026-08-29：整篇重做——删 ECAM/aarch64/双源；限定为 PIO-only。
 - 2026-08-27：初稿（叙事过时）。

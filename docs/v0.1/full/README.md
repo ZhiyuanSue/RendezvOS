@@ -85,8 +85,8 @@ v0.1/full/
 ## 当前状态（2026-10-03）
 
 - **初稿 / 深读重做**：44 篇第一格均为 `[x]`；逐篇深读重做已完成。
-- **Maintainer 审定**：看各篇标题前第二格。已通过：`00-总览/00-架构与源码布局.md`、`00-总览/01-构建与链接.md`、`01-启动与初始化/02-启动流程总览.md`、`01-启动与初始化/03-模块初始化与内核入口.md`、`01-启动与初始化/04-平台启动-x86_64.md`、`01-启动与初始化/05-平台启动-aarch64.md`、`02-内存管理/06-物理内存与Buddy分配器.md`、`04-IPC/21-kmsg与TLV序列化.md`、`06-SMP与同步/28-SMP启动与处理器拓扑.md`。
-- **compat**：规划见 `v0.1/compat/README.md`；正文待 full 全部第二格通过后再写。
+- **Maintainer 审定**：看各篇标题前第二格。已通过：`00-总览/00-架构与源码布局.md`、`00-总览/01-构建与链接.md`、`01-启动与初始化/02-启动流程总览.md`、`01-启动与初始化/03-模块初始化与内核入口.md`、`01-启动与初始化/04-平台启动-x86_64.md`、`01-启动与初始化/05-平台启动-aarch64.md`、`02-内存管理/06-物理内存与Buddy分配器.md`、`04-IPC/18-支持IPC的无锁MSQ队列实现.md`、`04-IPC/19-Port与消息模型.md`、`04-IPC/20-阻塞与非阻塞收发.md`、`04-IPC/21-kmsg与TLV序列化.md`、`06-SMP与同步/28-SMP启动与处理器拓扑.md`。
+- **兼容层文档**：规划见 `v0.1/compat/README.md`；正文待 full 全部第二格通过后再写。
 - **evolution**：远期项见 `v0.1/evolution/TODO.md`；`design/`、`archive/` 正文未建。
 
 审定前自查（撰写侧已做一轮，Maintainer 可复验）：
@@ -101,7 +101,7 @@ v0.1/full/
 
 ### [x] [x] 00-总览/00-架构与源码布局.md
 
-职责：core 树分区、`include/` vs `kernel/` vs `arch/` vs `modules/` 关系；公开 API 边界；与 compat 的分层
+职责：core 树分区、`include/` vs `kernel/` vs `arch/` vs `modules/` 关系；公开 API 边界；与兼容层的分层
 
 源码：`include/rendezvos/`（目录级） · `include/common/` · `include/modules/modules.h` · `kernel/system/main.c` · `include/rendezvos/task/initcall.h`
 
@@ -275,7 +275,7 @@ v0.1/full/
 
 ---
 
-### [x] [ ] 04-IPC/19-Port与消息模型.md
+### [x] [x] 04-IPC/19-Port与消息模型.md
 
 职责：两层模型（port rendezvous + per-thread 队列）；`Message_Port_t`；全局 port 注册表；**承接 `18` §1 推出的对象后果**
 
@@ -283,7 +283,7 @@ v0.1/full/
 
 ---
 
-### [x] [ ] 04-IPC/20-阻塞与非阻塞收发.md
+### [x] [x] 04-IPC/20-阻塞与非阻塞收发.md
 
 职责：`send_msg` / `recv_msg` / try 变体；push vs pull；`Ipc_Request`；返回码；**承接假出队与推拉行为**
 
@@ -293,7 +293,7 @@ v0.1/full/
 
 ### [x] [x] 04-IPC/21-kmsg与TLV序列化.md
 
-职责：`kmsg_t`、TLV、`ipc_serial`、system async outbound
+职责：`kmsg_t`、TLV、`ipc_serial`、system 异步投递
 
 源码：`kernel/ipc/kmsg.c` · `kernel/ipc/ipc_serial.c` · `include/rendezvos/ipc/kmsg.h` · `include/rendezvos/ipc/kmsg_system.h` · `include/rendezvos/ipc/ipc_serial.h`
 
@@ -517,4 +517,4 @@ implementation 文件应各归一篇「源码」列表，头文件随对应 `.c`
 4. `07-时间与定时器/` → `08-日志与控制台/` → `09-平台模块/`
 5. `10-基础设施/` → `11-测试/`
 
-单篇审定通过：勾该篇标题前**第二个** `[x]`。全部 `[x] [x]` 后再启动 compat 正文与 evolution `design/` 撰写。
+单篇审定通过：勾该篇标题前**第二个** `[x]`。全部 `[x] [x]` 后再启动兼容层文档正文与 evolution `design/` 撰写。

@@ -14,7 +14,7 @@ PSCI（Power State Coordination Interface，电源状态协调接口）`system_o
 
 core 用两套「出错」的出口，不要混：
 
-1. **可返回的错误：** `error_t`（`typedef int`）。成功 `REND_SUCCESS == 0`；枚举值是**正数**（从 `E_RENDEZVOS = 1024` 起），调用惯例 **`return -E_*`**（负值）。选 1024 起是为了给 Linux 负 errno 留空间——compat 自己映射，**不在** `error.h` 扩 Linux 全表。
+1. **可返回的错误：** `error_t`（`typedef int`）。成功 `REND_SUCCESS == 0`；枚举值是**正数**（从 `E_RENDEZVOS = 1024` 起），调用惯例 **`return -E_*`**（负值）。选 1024 起是为了给 Linux 负 errno 留空间——兼容层自己映射，**不在** `error.h` 扩 Linux 全表。
 2. **不可恢复：** `kernel_panic(msg)` / `kernel_halt()` 会关中断、打日志、调 `arch_shutdown()`，最后 `while(1) arch_cpu_relax()`。无栈回溯、不停其他核、不经 powerd。
 
 `error_t` 的编码布局（`int` 为 32 位有符号）：
@@ -25,14 +25,14 @@ core 用两套「出错」的出口，不要混：
         ←  -E_REND_*  →  │ 0 │  ←  +E_REND_*  →       ←  -errno  →
    ─────┬───────────────┬─────┬──────────────────┬─────────────────
         ↑               ↑     ↑                  ↑
-   调用惯例返回值     成功   枚举定义正值      预留给 compat
+   调用惯例返回值     成功   枚举定义正值      预留给兼容层
    （实际传负值）            （从 1024 起）    （如 -ENOENT=-2）
 
    约定：
      return 0       → 成功
      return -E_*    → 失败（调用方 if (ret < 0) 视为失败）
      return +E_*    → 禁止直接返回给调用方（枚举仅用于定义）
-   选 1024 起：避开 [−1023, −1] 的小负 errno，compat 可直接用 Linux
+   选 1024 起：避开 [−1023, −1] 的小负 errno，兼容层可直接用 Linux
                 负 errno 而不与本表冲突。
 ```
 

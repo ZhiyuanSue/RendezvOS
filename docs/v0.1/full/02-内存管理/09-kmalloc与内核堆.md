@@ -250,6 +250,6 @@ make ARCH=x86_64 config && make all && make run
 - 2026-10-04：§4 补 `mem_chunk` / `mem_group` / `mem_allocator` / `page_chunk_node` 结构体。
 - 2026-09-27：中文用语整理（契约→约定；§7「以头文件注释为准」；「吃这个堆」→「从这份堆分配」）。
 - 2026-09-26：§7 全文审阅——补 `kinit` / drain / `m_alloc`·`m_free` 头文件注释与接口说明；写清尺寸门禁、双 MSQ 与编排顺序。
-- 2026-09-25：语言整理；钉死双 MSQ、drain 触发点、slot 档与 utils 禁 root。
+- 2026-09-25：语言整理；写清双 MSQ、drain 触发点、slot 档与 utils 禁 root。
 - 2026-08-29：整篇重做——双 MSQ、页走 radix owner、drain 在 alloc/free/schedule；堆不再变大锁。
 - 2026-08-26：v0.1 初稿。

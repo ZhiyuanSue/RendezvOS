@@ -131,7 +131,7 @@ DEFINE_PER_CPU(struct irq, irq_vector[NR_IRQ]);
 
 ### 6.1 何时能捕 trap
 
-Boot 汇编（`boot.S`）**不**提前装 IDT / VBAR。可捕窗口从 `arch_start_core` 进入 `init_interrupt` 起。compat 的 PF fixed 更晚（initcall）——此前未注册向量会 panic。
+Boot 汇编（`boot.S`）**不**提前装 IDT / VBAR。可捕窗口从 `arch_start_core` 进入 `init_interrupt` 起。兼容层的 PF fixed 更晚（initcall）——此前未注册向量会 panic。
 
 **开中断时序（架构不对称，必写）：**
 
@@ -462,7 +462,7 @@ bool arch_int_from_kernel(struct trap_frame *tf);
 
 ## 8. 多架构
 
-上表。riscv / loongarch 非 v0.1 主线验收。compat 路径：`linux_page_fault_irq` / `linux_unknown_trap` 用 fixed class——文档化此路径，勿文档化硬编码向量。
+上表。riscv / loongarch 非 v0.1 主线验收。兼容层路径：`linux_page_fault_irq` / `linux_unknown_trap` 用 fixed class——文档化此路径，勿文档化硬编码向量。
 
 ---
 
@@ -488,7 +488,7 @@ bool arch_int_from_kernel(struct trap_frame *tf);
 - 2026-10-05：修正 §6.4 EC 表 SError 条目——`0b000111`（0x07）实为 FP/AdvSIMD 访问陷阱（→`FP_FAULT`），非 SError；SError 的 EC 是 `0b001111`（0x0f，from lower EL）与 `0b101111`（0x2f，interrupt），均映射 `ASYNC_ABORT`。原表两处 `0b000111 SError`（一写 `UNKNOWN/panic`、一写 `ASYNC_ABORT`）系 EC 值写错 + VBAR 路由（`unexpected_trap`→panic）与 EC 映射（`ASYNC_ABORT`）混列；现拆清：FP 访问陷阱单列，SError 两 EC 合并并注明 VBAR 当前接 `unexpected_trap`。速记同步。
 - 2026-10-04：补 x86 IDT 门描述符位布局图（Task/Interrupt/Trap Gate、DPL、IST 字段）；补 aarch64 ESR_ELx 寄存器位布局与 EC 值对照表；补同步异常 vs 异步中断分类总图；「塞进/碰到/本篇拥有」改地道中文（放入/匹配到/本篇涉及的接口分布在）。
 - 2026-10-02：补 x86 Fault/Trap/Abort 返回 RIP；IST 用意与为何未用；aarch64 异常入口序列与 ELR（async/sync/SVC）规则；IRQ 路径注明 `TRAP_SET_CPU`；§6.6 双侧速查。
-- 2026-09-27：中文措辞整理——弱化「真源 / 钉」堆砌；公开头路径与 TSS 锚点表述通顺化。
+- 2026-09-27：中文措辞整理——弱化「真源」等生硬堆砌用语；公开头路径与 TSS 锚点表述通顺化。
 - 2026-09-26：§7 全文审阅——纠正 `register_fixed_trap` 为 `void`；划清拥有（class/populate）vs `25`（trap_handler/irq 池）；补 Doxygen（反向扫描、USED 前置、IRQ class 陷阱、CR2/FAR/SPSR）。
 - 2026-09-25：补遗漏模块——**TSS.RSP0 / `tss.c`**；VBAR 16 槽接线表；#PF error_code 位；划清 RTC 不属本篇；文首补 SDM / ARM ARM 对照入口。
 - 2026-09-12：删除对已清除的 `interrupt_init` 死声明 / E12 的叙述。

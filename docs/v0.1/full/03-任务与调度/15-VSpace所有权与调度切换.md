@@ -4,7 +4,7 @@ v0.1 · 2026-09-26
 
 本篇覆盖：`schedule()` 的用户 AS 块（`kernel/task/task_manager.c`）、`thread->vs` 转入 / 放出（`thread.c` / `thread.h`）、`vspace_clear_user_mappings` / `del_vspace` 与 mask 门闩（`vmm.c` / `vmm.h`）、`percpu(current_vspace)`。
 
-Radix / `create` / `clone` 细节见页表与 Radix 篇；mask 跨核怎么刷见 `11-TLB与缓存一致性.md`；ASID 号码见 ASID 篇；RR / zombie 见 `13-线程与Task_Manager.md`；ELF / Path A·B 见创建篇。
+Radix / `create` / `clone` 细节见页表与 Radix 篇；mask 跨核怎么刷见 `11-TLB与缓存一致性.md`；ASID 号码见 ASID 篇；调度器 / zombie 见 `13-线程与Task_Manager.md`；ELF / Path A·B 见创建篇。
 
 ---
 
@@ -14,14 +14,14 @@ Radix / `create` / `clone` 细节见页表与 Radix 篇；mask 跨核怎么刷�
 
 两条引用要分开看：
 
-| 钉子 | 谁持有 | 干什么 |
-|------|--------|--------|
-| **所有权 ref** | `thread->vs` | 钉住对象生命周期；`create_thread` / `copy_thread` **转入**（无二次 get）；回收时 **只 put**，不卸 CR3 / TTBR0 |
-| **schedule CPU 额外 ref** | 本核逻辑 / `current_vspace` 仍关联该 user AS（AS = 地址空间，即 VSpace）时 | 钉住「本核还可能用着这份翻译」；切入 **另一** user（含 root→首个 user、leftover A→B）时 **get 新**；旧非 `&root_vspace` 才 **put 旧**；user→kernel **不** put |
+| 引用角色 | 谁持有 | 干什么 |
+|----------|--------|--------|
+| **所有权 ref** | `thread->vs` | 保住对象生命周期；`create_thread` / `copy_thread` **转入**（无二次 get）；回收时 **只 put**，不卸 CR3 / TTBR0 |
+| **schedule CPU 额外 ref** | 本核逻辑 / `current_vspace` 仍关联该 user AS（AS = 地址空间，即 VSpace）时 | 表示「本核还可能用着这份翻译」；切入 **另一** user（含 root→首个 user、leftover A→B）时 **get 新**；旧非 `&root_vspace` 才 **put 旧**；user→kernel **不** put |
 
 再加 `tlb_cpu_mask`：哪些核**可能**还缓存着该 AS 的翻译。三者一起，才能在 `del` / 回收 ASID 前断定「没人再用」。
 
-**刻意延迟：** 切到 idle / 内核时 **不**把硬件改回 `root_vspace`，也 **不** clear mask / put CPU extra。内核高半区各 AS 共享，内核路径不依赖用户低半正确性；代价是 leftover user AS 可能被某核的 extra + mask 钉住，直到之后某次 **user→user** 才清除。
+**刻意延迟：** 切到 idle / 内核时 **不**把硬件改回 `root_vspace`，也 **不** clear mask / put CPU extra。内核高半区各 AS 共享，内核路径不依赖用户低半正确性；代价是 leftover user AS 可能被某核的 extra + mask 拖住，直到之后某次 **user→user** 才清除。
 
 这和「创建时绑核、不轻易迁核」一致：随意迁核会破坏 percpu `me`、IPC 归属，以及 mask「谁跑过这 AS」的假设。
 
@@ -31,7 +31,7 @@ Radix / `create` / `clone` 细节见页表与 Radix 篇；mask 跨核怎么刷�
 
 **提供：** 所有权转入规则；`schedule` 何时装用户根、六步顺序；user→kernel 滞后语义；`allow_self_use` / `del` 与 mask 门闩；boot / `root` 特例。
 
-**不做：** 展开 IPI / `tlbi`（TLB 篇）；ASID bitmap（ASID 篇）；RR / zombie（TM 篇）；fork 标志解释（compat）；强制进内核时换回 root。
+**不做：** 展开 IPI / `tlbi`（TLB 篇）；ASID bitmap（ASID 篇）；调度策略 / zombie（TM 篇）；fork 标志解释（兼容层）；强制进内核时换回 root。
 
 ---
 
@@ -49,9 +49,9 @@ Radix / `create` / `clone` 细节见页表与 Radix 篇；mask 跨核怎么刷�
 
 ---
 
-## 4. 数据结构：所有权钉子钉在哪
+## 4. 数据结构：所有权引用落在哪
 
-§1 已经说明：用户地址空间上要同时钉住「逻辑持有者」「本核是否还可能用着翻译」「哪些核可能还缓存着 TLB」。完整 `VSpace` 定义见 `07`；下面只摘与这三件事相关的字段。
+§1 已经说明：用户地址空间上要同时保住「逻辑持有者」「本核是否还可能用着翻译」「哪些核可能还缓存着 TLB」。完整 `VSpace` 定义见 `07`；下面只摘与这三件事相关的字段。
 
 ### 4.1 `VSpace`（本篇相关）
 
@@ -89,11 +89,11 @@ struct VSpace {
 | `root_radix` / `vspace_root_addr` | 软件侧页表元数据根，以及装进硬件的页表根物理地址。 |
 | union（root / 用户） | 内核那份根地址空间兼管「用户地址空间注册表」；普通用户空间挂进去，并指回根。 |
 
-### 4.2 线程与 per-CPU 上还钉着什么
+### 4.2 线程与 per-CPU 上还持有什么
 
 | 位置 | 为什么要有 |
 |------|-----------|
-| `thread->vs` | **所有权 ref**：线程活着就钉住这份 AS；boot 线程为 NULL。 |
+| `thread->vs` | **所有权 ref**：线程活着就保住这份 AS；boot 线程为 NULL。 |
 | `THREAD_FLAG_USER` | **是否尝试换用户 AS 的门闩**：`schedule` 只对带此位的 next 做用户 AS 切换，不是「有 `vs` 指针就换」。 |
 | `percpu(current_vspace)` | 本核**逻辑上**关联的 AS（开机是 root）。仅成功切到**另一个** user AS 时更新；进内核线程**不**改回 root（刻意延迟，见 §1）。 |
 
@@ -261,7 +261,7 @@ in-place exec：远程须 quiesce；**本核位可留**；ASID **不换**。不�
 ### 6.5 合法但容易被当作 bug 的状态
 
 - 本核在跑 idle，但 `current_vspace` 仍是已退出进程的 vs。
-- 末线程 ownership put 后对象未必立刻 `del`——常被某核 schedule extra 钉住。
+- 末线程 ownership put 后对象未必立刻 `del`——常被某核 schedule extra 拖住。
 - 内核线程硬件仍指向上一用户低半——只用而不访问低半即可。
 
 ---
@@ -325,7 +325,7 @@ extern VSpace *current_vspace; /* per-CPU；用 percpu() */
 | `free_vspace_ref` | **先 unregister 再 del**。若 del 因 mask 失败，会留下已注销、refcount 为 0 的半死对象；**没有公开的重试 / 修复接口**（靠不变量避免）。 |
 | `percpu(current_vspace)` | 逻辑上的当前 AS；user→kernel **不会**清除。 |
 
-`create` / `clone` / `register` 签名与一般说明见 `07` §7.4；本篇只钉「何时 register、何时转入、何时敢 clear/del」。
+`create` / `clone` / `register` 签名与一般说明见 `07` §7.4；本篇只写清「何时 register、何时转入、何时敢 clear/del」。
 
 ---
 
@@ -358,7 +358,7 @@ extern VSpace *current_vspace; /* per-CPU；用 percpu() */
 ## 11. 变更记录
 
 - 2026-10-05：任务 1/3/5 精读——§9「测例」→「测试用例」；§1「放完就 del」→「释放完就 del」、「装着这份翻译」→「缓存着这份翻译」、「记着该核」→「记录该核」、「才敢…说」→「才能…断定」、「咬合」→「一致」、「乱迁会打穿」→「随意迁核会破坏」；§1 表首次出现 AS 补说明（= 地址空间，即 VSpace）；§3「未 quiesce」补说明（远端核尚未切走、mask 未清零）；§6.3「先装新再丢旧」→「先装新再释放旧」、`ref_put(old)` 补「放 CPU extra；不对 root put」注释；§6.4「拆用户映射」→「拆除用户映射」；§6.5「不碰低半」→「不访问低半」；§7.4「毁 radix / 放根页 / 放结构」→「销毁 radix / 释放根页 / 释放结构」、「清掉」→「清除」；§7.3 重复的六步代码块改为交叉引用 §6.3。
-- 2026-10-04：补硬件/架构知识——§6.3 加 CR3 / TTBR0 切换时序图与寄存器位域示意（Intel SDM Vol.3 §4.10、ARM ARM D8.2.3）；§4.3 加 VSpace refcount 生命周期图，演示 ownership / schedule extra / tlb_cpu_mask 三者咬合与「半死对象」陷阱。语言润色：不乱迁→不轻易迁核、钉到→钉住。
+- 2026-10-04：补硬件/架构知识——§6.3 加 CR3 / TTBR0 切换时序图与寄存器位域示意（Intel SDM Vol.3 §4.10、ARM ARM D8.2.3）；§4.3 加 VSpace refcount 生命周期图，演示 ownership / schedule extra / tlb_cpu_mask 三者咬合与「半死对象」陷阱。语言润色：不乱迁→不轻易迁核；引用持有表述统一。
 - 2026-09-27：中文表述润色（母语习惯）。
 - 2026-09-26：对照 `schedule` USER 块——纠正 §1「仅 user→另一 user 才 get/put」：实为切入另一 user 即 get 新，旧非 root 才 put；user→kernel 仍不 put。
 - 2026-09-26：§7 全文审阅——补强 `free_vspace_ref` / clear 门闩 / `current_vspace` Doxygen；写清转入·六步·回收编排与半死对象陷阱。

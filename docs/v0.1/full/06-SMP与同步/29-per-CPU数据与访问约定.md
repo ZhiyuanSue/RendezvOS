@@ -272,7 +272,7 @@ void clean_per_cpu_region(paddr per_cpu_phy_addr);
 
 - 2026-10-04：§1.1.1/1.1.2 补 x86 GS 段机制（GS_BASE / KERNEL_GS_BASE / SWAPGS / FS_BASE 分工）与 aarch64 TPIDR_EL1/EL0/RO_EL0 线程 ID 寄存器说明；§4.1.1 加 per-CPU 布局示意（链接段模板 + AP 清零预留区）；§7.3.1 加 percpu() 访问路径图（MSR/系统寄存器读 + 偏移）。
 - 2026-10-03：§4.3 / §7.1 BSP enable 时点改为 `arch_cpu_info` 之后。
-- 2026-09-27：中文措辞整理——弱化「真源 / 钉死」堆砌。
+- 2026-09-27：中文措辞整理——弱化「真源」等生硬堆砌用语。
 - 2026-09-26：§7 全文审阅——`percpu.h` 全套 Doxygen；写清「清零预留≠memcpy」「先 enable 再 percpu」与 MCS `me`；划清 vs `28`/`31`。
 - 2026-09-25：语言整理；§1.1 补 GS_BASE / TPIDR_EL1 硬件动机与用户 TLS 分界。
 - 2026-08-29：整篇重做——纠正「复制」→清零预留；MCS me；GS/TPIDR；住户表；与拓扑篇时序交叉。

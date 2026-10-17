@@ -364,7 +364,7 @@ void arch_unknown_trap_handler(struct trap_frame *tf);
 - 2026-10-04：§4.3 改题为「固定槽、设备池与空洞」；`arch_init_irq_vector_state` 调用步骤迁入 §6.1。
 - 2026-10-01：§4.3 按中文阅读习惯重写（保留布局示意）；同步扩写代码侧 Doxygen / 注释。
 - 2026-10-01：§4.3 扩写——`arch_init_irq_vector_state` 的每核 reserve / 全局 pool / 空洞三类槽位与布局示意；澄清为何不用 boot 期 `reserve_for_all_cpus`。
-- 2026-09-27：中文措辞整理——弱化「钉 / 真源」堆砌；补 `software_enable_APIC` 的「软件使能」对照。
+- 2026-09-27：中文措辞整理——弱化「真源」等生硬堆砌用语；补 `software_enable_APIC` 的「软件使能」对照。
 - 2026-09-26：§7 全文审阅——补 `trap_handler` 声明与 Doxygen；强化 alloc/free/register 全 CPU 语义与「先软件后路由」编排序；划清 vs `23`/`24`/`26`/`27`。
 - 2026-09-25：扩写硬件「号」与软件 trap id 贴合；per-CPU 表为何、EOI 硬件含义；驱动 checklist 强调先软件后路由；手册入口。
 - 2026-08-29：整篇重做——各 ISA reserve 实表；NR_IRQ / EC+offset；free / USED 陷阱。

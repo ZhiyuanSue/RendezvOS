@@ -14,7 +14,7 @@ core 的调度对象是 **线程 + 地址空间**，没有一等公民「进程�
 
 每个可调度实体是 `Thread_Base`，挂在本 CPU 的 **`Task_Manager`（per-CPU）** 环形就绪链表上。`schedule()` 持 `sched_lock` 选出下一个 `thread_status_ready`，再在锁外 `switch_to`。默认策略是环形 next-ready（`round_robin_schedule`）：没有时间片字段、没有优先级——这里的「RR」就是绕环找 ready。
 
-调度故意做得很薄。真正要钉死的是骨架，而不是「更好的调度算法」：
+调度故意做得很薄。真正要守住的是骨架，而不是「更好的调度算法」：
 
 - **per-CPU TM**：就绪环、current、锁都在本核。跨核 MCS（Mellor-Crummey & Scott 锁，一种可扩展自旋锁）的 `me`、IPC 阻塞归属、`tlb_cpu_mask` 都假设「线程不轻易跑到别的核」。
 - **创建时绑核**：入队时选定 CPU；**没有**运行期迁移 API。
@@ -170,7 +170,7 @@ enum thread_status_base {
 
 1. **自愿结束（core）：** OR `EXIT_REQUESTED`，再 `schedule`；切走且仍为 `ready` 时变成 **zombie**。
 2. **`delete_thread`：** 直接写 `status = exit`，再 `del` + `ref_put`。
-3. **compat / clean：** 可强制 zombie；细节见 EXIT / clean 协议，不在本篇展开。
+3. **兼容层 / clean：** 可强制 zombie；细节见 EXIT / clean 协议，不在本篇展开。
 
 `THREAD_FLAG_EXIT_REQUESTED` = 意图；`zombie` = owner CPU「已切走」证明。IPC 改 status **擦不掉** flag。
 
@@ -294,7 +294,7 @@ unlock
 switch_to(curr → next)
 ```
 
-本篇只钉边界：仅当**切入**线程带 `THREAD_FLAG_USER` 才尝试换用户 AS；切入内核 / idle **不**强制回 `root_vspace`，可能继续跑在上一用户页表上（mask / extra ref 滞后清理由 VSpace 篇管）。
+本篇只划清边界：仅当**切入**线程带 `THREAD_FLAG_USER` 才尝试换用户 AS；切入内核 / idle **不**强制回 `root_vspace`，可能继续跑在上一用户页表上（mask / extra ref 滞后清理由 VSpace 篇管）。
 
 谁调 `schedule`：idle 循环；IPC 阻塞后；`delete_thread` 重试；用户态进入的 trap / IRQ 末尾（内核态 trap **不**自动让出）。
 

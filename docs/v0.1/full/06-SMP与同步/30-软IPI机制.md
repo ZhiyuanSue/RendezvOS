@@ -69,7 +69,7 @@ slot 上限 **`RENDEZVOS_SMP_IPI_MAX`（16）**；耗尽 `-E_REND_OVERFLOW`。
 
 **TLB（x86）** — `arch_smp_flush_tlb_init` 全局一次 `smp_ipi_register`；remote 填 per-CPU msg 再 `smp_ipi_send`。
 
-**compat** — 可注册短回调；handler 在 IRQ 上下文，末尾可能 `schedule`（用户态被打断时）——须极短、勿重入长逻辑。
+**兼容层** — 可注册短回调；handler 在 IRQ 上下文，末尾可能 `schedule`（用户态被打断时）——须极短、勿重入长逻辑。
 
 发送前：`cpu_is_online`（看 `CPU_STATE`，适合稀疏 APIC）。
 
@@ -239,7 +239,7 @@ error_t arch_smp_ipi_send(cpu_id_t cpu);
 
 - 2026-10-04：§1.1.1/1.1.2 补 x86 LAPIC ICR（xAPIC ICR0/ICR1、x2APIC IA32_X2APIC_ICR、Delivery Mode、vector 0x30）与 aarch64 GIC SGI（GICD_SGIR 字段、INTID 0–15、GICv2 ≤8、GICv3 ICC_SGI1R_EL1）硬件说明；§7.4.1 加 IPI 收发时序图（写消息槽→OR pending→敲门→handler exchange→EOI）。
 - 2026-10-04：§4 只留 slot / pending 不变量；门铃送到哪颗核迁入 §6.1。
-- 2026-09-27：中文措辞整理——Bring-up→AP 启动拉核；affinity/稀疏拓扑句通顺化；弱化「真源 / 钉死」堆砌。
+- 2026-09-27：中文措辞整理——Bring-up→AP 启动拉核；affinity/稀疏拓扑句通顺化；弱化「真源」等生硬堆砌用语。
 - 2026-09-26：§7 全文审阅——`ipi.h` / arch 门铃 Doxygen；纠正 `ipi_id_t` 签名；写清 pending 失败回滚与 TLB 分工。
 - 2026-09-25：语言整理；§1.1 门铃 vs 工作拆分；硬件发送假设对照 ICR / SGIR。
 - 2026-08-29：整篇重做——门铃叙述；0x30 / SGI0→64；pending 协议；仅 x86 TLB 注册；纠正「aarch64 TLB via IPI」；GIC≤8。

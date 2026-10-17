@@ -34,7 +34,7 @@ per-CPU TM 派发示意（创建者可在任意核，目标核由 `add_thread_to
         │       add_thread_to_manager      ← 挂到 j 的就绪环，init→ready
         ▼
    t->tm = core_tm[j];  t->tm->owner_cpu = j
-   之后 t 只在 CPU j 的 schedule 上被 RR 选中
+   之后 t 只在 CPU j 的 schedule 上被调度器选中
    创建者 CPU i 永不调度 t；CPU j 永不感知 i 的就绪环
 ```
 
@@ -48,7 +48,7 @@ CPU i 与 CPU j 的就绪环互不可见：`schedule` 只扫本核 `core_tm` 的
 
 **不做：** `migrate_thread_to_cpu`；负载均衡 / work stealing；按 IRQ 亲和自动绑核；保证「创建调用所在核」==「首次运行核」（首次运行只保证在 **owner**；创建可来自任意核）。
 
-compat 若要 `sched_setaffinity`：在自有 proc 记期望 CPU，**创建时**映射到本 API；已存在线程无法修改。
+兼容层若要 `sched_setaffinity`：在自有 proc 记期望 CPU，**创建时**映射到本 API；已存在线程无法修改。
 
 ---
 
@@ -133,7 +133,7 @@ cpu < RENDEZVOS_MAX_CPU_NUMBER
 1. 确认目标 online，再取 `task_manager_for_cpu`
 2. `create_thread` 或 `gen_thread_from_func(..., tm, ...)`
 3. 若分步：`add_thread_to_cpu` 把 status 从 `init` 变成 `ready`，`tm` 指向目标
-4. 之后只在该核 `schedule` 上被 RR 选中
+4. 之后只在该核 `schedule` 上被调度器选中
 
 测试用例：CPU `i` 在 `(i+1)%NR_CPU` 创建 probe（arg=creator）；probe 写 `affinity_seen[ran_on]=creator`；check `affinity_seen[j]==(j+NR_CPU-1)%NR_CPU`。创建者 spin `schedule` 直至 seen 置位，再等到 zombie 后 `delete_thread`。
 
@@ -151,7 +151,7 @@ cpu < RENDEZVOS_MAX_CPU_NUMBER
 |------|------|
 | 同核 | `gen_thread_from_func(..., percpu(core_tm), ...)` |
 | 指定核（便捷） | 确认 `task_manager_for_cpu(cpu)` 非 NULL 后，再 `gen_thread_from_func(..., tm, ...)` |
-| 分步绑核 | 先 `create_thread`（status=`init`，`tm==NULL`），再 **`add_thread_to_cpu(t, cpu)`**；之后仅在 owner 上被 RR 选中 |
+| 分步绑核 | 先 `create_thread`（status=`init`，`tm==NULL`），再 **`add_thread_to_cpu(t, cpu)`**；之后仅在 owner 上被调度器选中 |
 | 查询 | 入队后 `thread_owner_cpu(t)`；摘环后勿再当标签 |
 
 创建调用所在核 **不必** 等于目标核；首次运行只保证在 **owner**。

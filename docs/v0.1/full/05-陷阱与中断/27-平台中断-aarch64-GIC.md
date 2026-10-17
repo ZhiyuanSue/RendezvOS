@@ -551,7 +551,7 @@ gic.pending_clr(u32 intid);
 - 2026-10-01：再补 GICD 字布局 / SGI 0–7 vs 8–15、ICFGR·ITARGETSR·SGIR 字段、SGIR 不叠 pending 与软 IPI 的关系、BPR=3 / RPR、IAR 位域与未处理 1023 缺口、GIC↔APIC 对照表。
 - 2026-10-01：对照 `docs/old/interrupt.md` 扩写 GICD/GICC——四种状态与 EOI 两阶段、1-N/spurious、bank、使能/pending/active/SGIR、优先级与 PMR/BPR 抢占、IAR 电平语义、CTLR.EOImode/AckCtl/旁路；保留原有 init 与 trap_info CPUID 打包说明。
 - 2026-10-01：补上 IAR.CPUID → `trap_info[12:10]` 打包与 `arch_eoi_irq` 还原；关闭 SGI EOI 缺口（实现此前漏接已有 `AARCH64_TRAP_CPU_*` 设计）。
-- 2026-09-27：中文措辞整理——affinity 句通顺化；统一「空操作 (no-op)」；弱化「真源 / 契约 / 钉死」堆砌。
+- 2026-09-27：中文措辞整理——affinity 句通顺化；统一「空操作 (no-op)」；弱化「真源 / 契约」等生硬堆砌用语。
 - 2026-09-26：对照 Doxygen / `gicd_v2_set_affinity`——纠正「affinity(0) 打到 core0」；写清 `|=0` 为空操作 (no-op)、不强制 CPU0；§4.2 / §9.3 / §12 同步。
 - 2026-09-26：§9 全文审阅——`gic_v2` ops / `irq_source` Doxygen；写清 probe→dist→（每核）CPU IF 与「先开 IRQ」窗口；SPI checklist；划清 vs `25`/`30`/`33`；`gic_v3` 占位说明。
 - 2026-09-25：大幅扩写硬件——GICD/GICC 寄存器、IAR/EOIR 协议、INTID 分段、SGIR、affinity 限制、OS 依赖清单与端到端链；手册入口 IHI0048 / ARM ARM。

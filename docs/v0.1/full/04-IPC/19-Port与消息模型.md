@@ -233,6 +233,32 @@ typedef struct Msg_Port Message_Port_t;
 - `CLOSING`：已从 port 注册表摘掉，新的收发进不去；等正在进行的临界区结束后再清等待者。
 - `CLOSED`：会合队列已清空；之后只靠引用计数把对象收回。
 
+**为什么要有 `ops_life` / `ops_count`（生命周期门），而不是只靠引用计数？**
+
+会合层本身是无锁的：多个线程可以同时 `send_msg` / `recv_msg`。与此同时，线程侧还有 `port_cache`（§4.5）用于加速按名查找——cache **不**长期锁住 port，但 lookup 成功后调用方会握着一份引用，并可能马上进入收发。于是会出现这种交叉：
+
+1. 管理者已经 `unregister_port`：名字从表里摘掉，准备清 `thread_queue`、释放对象；
+2. 另一侧仍握着旧指针（或刚用 cache / token resolve 拿到的 port），继续 `send_msg` / `recv_msg`。
+
+若只靠「refcount 还没归零就不释放」，确实避免了内存立刻被拆掉的风险，但「还能不能进会合、关闭方能不能安全清队」仍没说清楚：关闭方不知道还有没有半截临界区，发送方可能永远无法发出然后堵在这里，或者因为没有捋清楚清理队列的并发问题导致直接挂。
+
+把这两件事再揉进 MSQ 的 CAS / 状态 tag，会把无锁算法和「关闭协议」缠在一起，复杂度和出错的可能性都上去一大截。
+
+但是其实一把大锁保平安等方案也是可以的，不过，如果是这样，那我为什么还要一个无锁的消息发送机制呢？所以，一方面要解决问题，另一方面也要尽量减少锁等情况的开销。
+
+因此另开一条与会合无锁**基本正交**的生命周期状态机：
+
+- 只有 `REGISTERED` 时 `port_ops_begin` 才放行进入 send/recv 临界区；
+- `ops_count` 统计已 begin 尚未 end 的人数；unregister 先进入 `CLOSING`（新 begin 失败），等 count 归零再清队，最后 `CLOSED`。
+
+这样关闭与热路径会合可以分开推理：MSQ 继续管配对，life/count 只管「现在还许不允许进场 / 关闭方何时可以清空等待者」。
+
+那么我们基于这个，同样整合了可选的策略回调 `ops_allow`（谁可以 LOOKUP/SEND/…），让他们挂在同一条 begin / lookup 路径上，默认全放行。
+
+其目的也很简单，类似的微内核都有capability控制能否发送消息，以及基于这种机制实现的namespace（MettEagle: Costs and Benefits of Implementing Containers on Microkernels，OSDI 25‘），在我们这个设计里面，这部分的策略，本应当在兼容层实现，因此必须实现相应的hook。
+
+当然hook，并不是这里需要描述的，细节与hook形态见 `22`。本小节要交代的是：**生命周期门为什么必须存在**；不包括兼容层怎么用 `ops_allow`。
+
 ---
 
 ### 4.2 `Msg_Data_t` 与 `Message_t`：为什么拆成两个
@@ -285,12 +311,15 @@ typedef struct {
 | 字段 | 解决什么问题 |
 |------|-------------|
 | `ms_queue_node` | `Ipc_Request_t` 自己充当 MSQ 节点；被假出队留下当 dummy 时，也动不到 `Thread_Base` 上的其它链表。 |
-| `thread` | 配对成功后知道该给谁 transfer、该唤醒谁。创建时对线程 `ref_get`，request 退役时再 put，避免「队列上还有 request、线程已经拆掉」。 |
+| `thread` | 配对成功后知道该给谁 transfer、该唤醒谁。对 TCB 的引用配对见下；避免「队列上还有 request、线程已经拆掉」。 |
 | `queue_ptr` | 辅助记录；正常配对不依赖它保证正确性。 |
 
-配对成功后，调用方拿到这份 `Ipc_Request_t` 去 transfer 之后唤醒线程。
+两条引用计数不要混（收发路径上的逐步 get/put 见 `20` §4.1）：
 
-按 MSQ 假出队的实现，这个 `Ipc_Request_t` 节点往往还留在队头当 dummy，要等下一次出队才放下队列那份引用，不是配对当下就从队列上消失。
+- **`thread->refcount`**：仅在 `create_ipc_request` **+1**，在 `delete_ipc_request`（EBR 真正回收 request 之后）**-1**。单向：request → thread，TCB 不回指 request。
+- **`ms_queue_node.refcount`**：管 request 节点本身；入队后由队列持有，配对方 dequeue 后再握一份，用完 `ref_put(..., free_ipc_request)`；假出队时节点常仍当 dummy，不是配对当下就拆掉。
+
+配对成功后，调用方拿到这份 `Ipc_Request_t` 去 transfer 并唤醒线程，再 put 节点引用。
 
 ---
 
@@ -306,7 +335,7 @@ struct Port_Table {
 extern struct Port_Table *global_port_table;
 ```
 
-表结构本身很薄：rows、哈希桶、可缓存的 `name_index_token_t`（row_index + row_gen）都在通用的 `name_index_t` 里（详见 `41`）。Port 挂上的回调（`get_name` / `hold` / `drop` / `on_register` / `on_unregister`）让 register 时自动把 `ops_life` 打成 `REGISTERED`、并让表多持一份 ref；unregister 则取消掉端口的注册并关闭（compat 约定见 §6.1、§6.4；API 对照见 §7.2）。
+表结构本身很薄：rows、哈希桶、可缓存的 `name_index_token_t`（row_index + row_gen）都在通用的 `name_index_t` 里（详见 `41`）。Port 挂上的回调（`get_name` / `hold` / `drop` / `on_register` / `on_unregister`）让 register 时自动把 `ops_life` 打成 `REGISTERED`、并让表多持一份 ref；unregister 则取消掉端口的注册并关闭（兼容层约定见 §6.1、§6.4；API 对照见 §7.2）。
 
 ```text
   port 注册表操作：
@@ -531,6 +560,8 @@ Port 的对象模型与 ISA 无关；原子操作相关实现随 arch，语义�
 
 ## 11. 变更记录
 
+- 2026-10-17：§1.2 / §4.3 写清 `Ipc_Request` 对 TCB 的 get/put 与节点自身 refcount；逐步时序指 `20` §4.1。
+- 2026-10-17：§4.1 补「为何需要 ops_life/ops_count」（Maintainer 修订稿收录）：与 port_cache、unregister 清队交叉，与会合无锁正交；并点出 `ops_allow` / capability·namespace 动机，细节仍指 `22`。
 - 2026-10-16：对照源码修正三处：配对后的 `Ipc_Request` 仍可能当 dummy；`unregister_port` 放下的是注册表那份 ref；transfer 成功后发送侧 `Message_t` 被 put。§6.4 陈旧 request 改为按 status / `port_ptr` 丢掉。
 - 2026-10-15：§6 按审阅意见补强：恢复「先 unregister」、client 失败约定、§6.4 短清单；修正 6.3 transfer 后 Message_t 表述；清掉 §6.4 死链；「两种错误」改为「两种收尾形态」。
 - 2026-10-15：§6 重写为「兼容层怎么用」：6.1 server / 6.2 client / 6.3 消息所有权 / 6.4 引用与关闭清单；去掉与 §4/§7/`20` 重复的清队算法、transfer 摘要、lookup 实现逐步说明；§3 关闭表改为指向 §6 的用法约定。
@@ -541,12 +572,12 @@ Port 的对象模型与 ISA 无关；原子操作相关实现随 arch，语义�
 - 2026-10-13：§4 曾改回以头文件结构体摘录为主（后由同日上条重写覆盖）。
 - 2026-10-12：§4.2 假出队因果只回指 `18` §1.4–1.5 / 本篇 §1.3（后由 2026-10-13 再补结构体正文）。
 - 2026-10-10：文件名随 `18` 更名为 `18-支持IPC的无锁MSQ队列实现.md`。
-- 2026-10-09：开篇与单状态交叉引用对齐 `18` §1 新结构（单状态钉 §1.7）。
+- 2026-10-09：开篇与单状态交叉引用对齐 `18` §1 新结构（单状态见 §1.7）。
 - 2026-10-05：§1.1 只留两层对象 ASCII（单状态 waiter）；发送时序图挪到 `20`（本章不是收发状态机）。§10 演进转到 `20` §10.1。
 - 2026-10-04：补两层模型 ASCII 图（§1.1）与 `global_port_table` 结构示意图（§4.3）；为「假出队」首现处加名词解释；口语动词「塞/丢掉」改为「投/丢弃」；与 `22` 的 token→LOOKUP 门关系补一句交叉引用。
 - 2026-10-05：任务 1/3/5 精读——口语动词与翻译腔清理（睡死→永远阻塞、挂上→加入队列/投递/挂载、挪/搬走→迁移、拿到→取得、放掉→释放、晾在→滞留、挂死→阻塞不返回、摘表→从表中摘除、门闩→门禁、加门→加门禁、踩过坑→调试中遇到问题、勿想当然→不要想当然）；为首现缩写补全称（CAS、FNV-1a、LRU、endpoint）；为「自环」补简短定义；§6.3 标题与内容一致，无重复调整。
 - 2026-10-05：最终词句顺畅。
-- 2026-10-02：§1 按「先读 18§1 五图 → 本篇对象」重写：两层模型 / 单队列 / Msg 拆分都写成从设计框架往下推；§4.2 因果归无锁篇、本篇只钉字段。
+- 2026-10-02：§1 按「先读 18§1 五图 → 本篇对象」重写：两层模型 / 单队列 / Msg 拆分都写成从设计框架往下推；§4.2 因果归无锁篇、本篇只写字段。
 - 2026-10-02：§4.2 链无锁篇 §1.5 图解（`ipc_transfer_message.png`）。
 - 2026-10-01：§6.2 补「为何不对称」因果表；明确 **不是** 无锁 flag 竞态补丁（kmsg = recv 成功路径上的可 dequeue 事件；flag = deliver 失败兜底）；与 `port.c` / `port.h` 注释对齐。
 - 2026-09-27：中文表述润色（母语习惯）；「关港」改为「关闭 port」；「真源 / 契约」改为「以…为准 / 约定」；「不对称」改为更顺口的「通知方式不同」。

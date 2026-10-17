@@ -22,7 +22,7 @@ kmsg = 固定头 `kmsg_hdr_t` + **`ipc_serial` TLV**（Type-Length-Value，类�
 
 **core中提供：** 对于消息的紧凑 TLV 编解码；kmsg 对消息的封装；少量 system 使用的 opcode 登记。
 
-**core中不做：** 解释具体 compat opcode等。
+**core中不做：** 解释具体兼容层opcode等。
 
 ---
 

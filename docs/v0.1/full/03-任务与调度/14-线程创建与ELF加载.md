@@ -217,11 +217,11 @@ Phdr 遍历：page0 KVA 做指针算术，内容经 copy_to_buffer（不要求 p
    │   └─────────────────────────┘  │
    │                                 │
    │   (后续 argv / envp / auxv 由    │
-   │    compat 自建，core 不负责)     │
+   │    兼容层自建，core 不负责)     │
    └─────────────────────────────────┘  ← user_sp 传给 arch_syscall_set_user_return
 ```
 
-两次 −8 的来源不同：第一次是 `generate_user_stack` 给「哨兵区」留 8 字节；第二次是 `run_elf_program` 在该哨兵位写一个 null word，作为最简栈底（无 argc/argv）。compat 若要真正的 argv/auxv，自建栈图像后用 Path A 提交，不走这套双重 −8。
+两次 −8 的来源不同：第一次是 `generate_user_stack` 给「哨兵区」留 8 字节；第二次是 `run_elf_program` 在该哨兵位写一个 null word，作为最简栈底（无 argc/argv）。兼容层若要真正的 argv/auxv，自建栈图像后用 Path A 提交，不走这套双重 −8。
 
 ### 6.6 `run_elf_program`（Path B）
 
@@ -272,7 +272,7 @@ Path A 不调 `arch_return_to_user`：正在处理的 syscall 返回时自然走
 | 只装镜像 | （可选 clear 后）**`load_elf_to_vs`**，再自建栈 / Path A 或 B |
 | fork 类 | 准备 vs（clone/share+get），再 **`copy_thread`**，然后 `add_*`，子跑 **`run_copied_thread`** |
 | Path B drop | 填 / 拷 trap frame，再 `arch_syscall_set_user_return`，经 **`arch_return_to_user`** 落到 `arch_drop_to_user` |
-| Path A（compat） | 同线程 syscall 内 `arch_syscall_set_user_return`；**不**调 `arch_return_to_user` |
+| Path A（兼容层） | 同线程 syscall 内 `arch_syscall_set_user_return`；**不**调 `arch_return_to_user` |
 
 四 API 对照表见 §6.1。
 
@@ -377,7 +377,7 @@ cd core && make ARCH=x86_64 config && make all && make run
 - `run_elf_program` 栈图像只有 null word。
 - `gen_thread_from_elf` 不可跨核。
 - init hook 失败仍 drop 用户。
-- 完整 exec / argv / auxv / PID1 编排属 compat，不进本篇约定。
+- 完整 exec / argv / auxv / PID1 编排属兼容层，不进本篇约定。
 
 ---
 

@@ -603,7 +603,7 @@ u64 PIT_get_hz(void);             /* PIT_TICK_RATE = 1193181 */
 - 2026-10-01：`PIC_EOI` 从片路径改为先从后主；去掉「不连带主片」缺口表述。
 - 2026-10-01：再补 PIC ICW/OCW/IMR·IRR·ISR、「先从后主」EOI；LAPIC MMIO 速查表、LVT 位域、向量 0–15 非法、DCR/校准与 TSC-deadline 顺序、TPR 与向量号优先级的关系、INIT–SIPI 与软 IPI 的区分。
 - 2026-10-01：对照 `docs/old/interrupt.md` 扩写 Local APIC 寄存器组——APIC ID / VERSION、TPR·PPR 与接收门槛、IRR/ISR 双缓冲与嵌套、TMR 与 EOI 广播、SVR spurious 成因、ICR 逻辑目的地 / SIPI、x2APIC 与 xAPIC 的寄存器差异；补边沿/电平与 PIC/APIC 的衔接。
-- 2026-09-27：中文措辞整理——「软件使能 (soft-enable)」对照；bring-up→启核；弱化「钉死 / 真源 / 契约」堆砌；IOAPIC 空操作标 (no-op)。
+- 2026-09-27：中文措辞整理——「软件使能 (soft-enable)」对照；bring-up→启核；弱化「真源 / 契约」等生硬堆砌用语；IOAPIC 空操作标 (no-op)。
 - 2026-09-26：对照 `IRQ.h` / `IRQ.c`——写清 xAPIC MADT/map 失败时 **type 已是 xAPIC、PIC 已 disable、无回退**；从片 `enable_PIC_IRQ` 不补 unmask 主 IRQ2。
 - 2026-09-26：§9 全文审阅——补 IRQ/PIC/LocalAPIC/PIT Doxygen；写清 init_irq→SVR 时序、ICR 先高后低、从片 EOI 缺口；划清 vs `25`/`30`/`33`；IOAPIC 明确无 API。
 - 2026-09-25：对照源码补遗漏——`APIC.h` 伞头、`rtc.c` 非 IRQ、`arch_eoi_irq` PIC/APIC 差异；大幅扩写 8259/LAPIC 硬件与 OS 依赖。

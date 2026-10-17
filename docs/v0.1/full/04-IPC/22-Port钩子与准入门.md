@@ -13,7 +13,9 @@ Port 对象与两层会合见 `19`；send / recv 阻塞时序、醒后 flag、or
 Port 热路径要同时做两件互不相干的事：
 
 1. **生命周期门** — unregister 与正在进行的 send / recv 互斥（`ops_life` + `ops_count`）。
-2. **策略门** — 谁可以 register / 看见名字 / send / recv。
+2. **策略门** — 谁可以 register / 看见名字 / send / recv（可选 `ops_allow`）。
+
+**为什么要有第 1 条（简短）：** 会合层无锁，lookup 后调用方握着 port 引用（`port_cache` 只缓存 token，不长期 pin），可与 `unregister_port` 交叉。refcount 只保证对象内存不提前拆掉，并不回答「还能不能进场」和「何时可安全清 `thread_queue`」。若把关闭协议揉进 MSQ 的 CAS / 状态 tag，会与配对算法缠死。因此另开 life/count：仅 `REGISTERED` 可 `begin`；unregister 先 `CLOSING`（新 begin 会失败），等 `ops_count==0` 再清队后 `CLOSED`。更完整的动机叙述见 `19` §4.1；本篇写它与 `ops_allow` 怎样交汇，以及 begin/end 须守什么。
 
 若把 Linux credential（凭证）、namespace（命名空间）嵌入 `send_msg`，core 就会绑定一种安全模型。线程侧已有 `thread_append_hooks`，调度可换 `scheduler`——port 侧做对称设计：**`port_append_hooks_t`** FAM 尾区 + `init` / `fini` + **`ops_allow`**。
 
@@ -25,7 +27,7 @@ Linux LSM（Linux Security Modules）是内核里通用的 hook 框架：每个�
 
 `hooks=NULL` / `ops_allow=NULL` = 与「没钩子」时一样全放行。索引键仍是 **name 字符串**；actor（发起操作的主体）只靠 `get_cpu_current_thread()`，不传额外主体参数。
 
-**现状：** 机制已冻结；**生产路径（linux_layer / servers）一律 `create_message_port(..., NULL)`**。非 NULL hooks **仅**测试用例安装。不是「compat 已在 ops_allow 做 credential」。
+**现状：** 机制已冻结；**生产路径（linux_layer / servers）一律 `create_message_port(..., NULL)`**。非 NULL hooks **仅**测试用例安装。不是「兼容层已在 ops_allow 做 credential」。
 
 ---
 
@@ -205,7 +207,7 @@ LOOKUP 通过 ≠ SEND 通过（测试用例刻意拆开）。Token 缓存**不�
 
 本篇涉及的接口分布在：准入 / 生命周期门面——`port_append_hooks_t`、`port_ops_allow_t`、`port_ops_begin` / `end`、`PORT_OPS_LIFE_*` / `port_ops_type`。说明以 `port.h` Doxygen 为准（已与 `.c` 核对）。
 
-**本篇不涉及：** port 创建/表/unregister 清队过程细节见 `19`（本篇只钉准入交汇）；send/recv 阻塞状态机见 `20`；kmsg PORT_CLOSED 载荷见 `21`。
+**本篇不涉及：** port 创建/表/unregister 清队过程细节见 `19`（本篇只写准入在哪些路径交汇）；send/recv 阻塞状态机见 `20`；kmsg PORT_CLOSED 载荷见 `21`。
 
 生产路径今日一律 `create_message_port(..., NULL)`；非 NULL hooks **仅**测试用例。
 
@@ -299,11 +301,12 @@ cd core && make ARCH=x86_64 config && make all && make run
 
 ## 11. 变更记录
 
+- 2026-10-17：§1 概述补生命周期门「为何需要」短述（仍回指 `19` §4.1 长文）。
 - 2026-10-04：补 `port_append_hooks_t` 与 FAM 尾区布局图（§4.2，含 FAM 概念解释）与四门准入调用链 ASCII 图（§6.1）。
 - 2026-10-05：任务 1/3/5 精读——口语词与翻译腔清理（焊进→嵌入、绑死→绑定、摘表→从表中摘除、死等→永远等待、拖到→推迟到、直打→直接打入、拿到→取得、勿混→不要混）；为首现英文术语补释义（capability-neutral、actor、admission）；多处「测例」→「测试用例」。
 - 2026-10-05：补「与 Linux 类似机制对照」小节；最终词句顺畅。
 - 2026-09-27：中文表述润色（母语习惯）；「关港」改为「关闭 port」；「真源 / 契约」改为「以…为准 / 约定」；两侧通知差异表述更顺口。
-- 2026-09-26：§6.3 / §7.4 钉死关闭 port 清队时两侧通知不同（两侧 ready；kmsg 仅 recv；flag 规则）并链 `19`/`20`；与 `port.h` unregister Doxygen 一致。
+- 2026-09-26：§6.3 / §7.4 写清关闭 port 清队时两侧通知不同（两侧 ready；kmsg 仅 recv；flag 规则）并链 `19`/`20`；与 `port.h` unregister Doxygen 一致。
 - 2026-09-26：§7 全文审阅——强化 `ops_allow` / `port_ops_begin` Doxygen（REGISTER 锁内、deny≠关闭 port、begin 四步）；写清编排与 deliver_to 旁路。
 - 2026-09-25：语言整理；与阻塞篇 / 清队边界不变。
 - 2026-08-29：整篇重做——外置叙述；纠正 REGISTER / `lookup_name`；生产零 hooks 诚实；deny vs 真关闭；四门表；与清队 / `deliver_to` 边界。
