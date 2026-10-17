@@ -47,7 +47,7 @@ v0.1/full/
 │   ├── 19-Port与消息模型.md
 │   ├── 20-阻塞与非阻塞收发.md
 │   ├── 21-kmsg与TLV序列化.md
-│   └── 22-Port钩子与准入门.md
+│   └── 22-Port-hook与准入.md
 ├── 05-陷阱与中断/
 │   ├── 23-Trap抽象与分类.md
 │   ├── 24-系统调用入口.md
@@ -299,9 +299,9 @@ v0.1/full/
 
 ---
 
-### [x] [ ] 04-IPC/22-Port钩子与准入门.md
+### [x] [x] 04-IPC/22-Port-hook与准入.md
 
-职责：`port_append_hooks_t`、`ops_allow`、`port_ops_begin`、FAM append
+职责：`port_append_hooks_t` 注入、`append_hooks` / `append_port_info[]`、`ops_allow` 调用路径
 
 源码：`kernel/ipc/port.c` · `include/rendezvos/ipc/port.h` · `modules/test/single_port_test.c`
 

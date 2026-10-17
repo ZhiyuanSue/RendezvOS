@@ -4,7 +4,7 @@ v0.1 · 2026-10-02
 
 本篇覆盖：`kernel/ipc/port.c`、`kernel/ipc/message.c`、`include/rendezvos/ipc/port.h`、`include/rendezvos/ipc/message.h`、`kernel/registry/name_index.c`（经 `Port_Table` 使用的部分）。
 
-**建议先读** `18-支持IPC的无锁MSQ队列实现.md` **§1**（整个无锁 IPC 的动机 §1.1–1.2；驱动 MSQ 改成现状的约束在 §1.3–1.8），再读本篇。收发状态机与 push/pull 见 `20`；kmsg 见 `21`；钩子见 `22`；MSQ/EBR 算法见 `18` §2 起的章节；`name_index` 通用约定见 `10-基础设施/41-名称索引注册表.md`。
+**建议先读** `18-支持IPC的无锁MSQ队列实现.md` **§1**（整个无锁 IPC 的动机 §1.1–1.2；驱动 MSQ 改成现状的约束在 §1.3–1.8），再读本篇。收发状态机与 push/pull 见 `20`；kmsg 见 `21`；hook 见 `22`；MSQ/EBR 算法见 `18` §2 起的章节；`name_index` 通用约定见 `10-基础设施/41-名称索引注册表.md`。
 
 ---
 
@@ -240,7 +240,7 @@ typedef struct Msg_Port Message_Port_t;
 1. 管理者已经 `unregister_port`：名字从表里摘掉，准备清 `thread_queue`、释放对象；
 2. 另一侧仍握着旧指针（或刚用 cache / token resolve 拿到的 port），继续 `send_msg` / `recv_msg`。
 
-若只靠「refcount 还没归零就不释放」，确实避免了内存立刻被拆掉的风险，但「还能不能进会合、关闭方能不能安全清队」仍没说清楚：关闭方不知道还有没有半截临界区，发送方可能永远无法发出然后堵在这里，或者因为没有捋清楚清理队列的并发问题导致直接挂。
+若只靠「refcount 还没归零就不释放」，确实避免了内存立刻被拆掉的风险，但「还能不能进会合、关闭方能不能安全清理队列」仍没说清楚：关闭方不知道还有没有半截临界区，发送方可能永远无法发出然后堵在这里，或者因为没有捋清楚清理队列的并发问题导致直接挂。
 
 把这两件事再揉进 MSQ 的 CAS / 状态 tag，会把无锁算法和「关闭协议」缠在一起，复杂度和出错的可能性都上去一大截。
 
@@ -249,7 +249,7 @@ typedef struct Msg_Port Message_Port_t;
 因此另开一条与会合无锁**基本正交**的生命周期状态机：
 
 - 只有 `REGISTERED` 时 `port_ops_begin` 才放行进入 send/recv 临界区；
-- `ops_count` 统计已 begin 尚未 end 的人数；unregister 先进入 `CLOSING`（新 begin 失败），等 count 归零再清队，最后 `CLOSED`。
+- `ops_count` 统计已 begin 尚未 end 的人数；unregister 先进入 `CLOSING`（新 begin 失败），等 count 归零再清理队列，最后 `CLOSED`。
 
 这样关闭与热路径会合可以分开推理：MSQ 继续管配对，life/count 只管「现在还许不允许进场 / 关闭方何时可以清空等待者」。
 
@@ -421,7 +421,7 @@ struct thread_port_cache port_cache; /* thread_lookup_port 的本地 cache（条
 
 接口使用者还要记住：
 
-- **注销必须主动做，而且要在还想叫醒等待者的时候做。** 不能只 `ref_put`、指望结构释放时自然清队——唤醒等在这发生在 `unregister_port`，不发生在 last-ref 析构。拖到结构没了再清，还堵在 `thread_queue` 上的人会永远阻塞。
+- **注销必须主动做，而且要在还想叫醒等待者的时候做。** 不能只 `ref_put`、指望结构释放时自然清理队列——唤醒等在这发生在 `unregister_port`，不发生在 last-ref 析构。拖到结构没了再清，还堵在 `thread_queue` 上的人会永远阻塞。
 - 关 port 之后，若本线程还卡在 `recv_msg` 上，醒来时可能是：dequeue 到 `KMSG_OP_SYSTEM_PORT_CLOSED`（`recv_msg` 返回成功），或直接 `-E_REND_PORT_CLOSED`（只有 flag、没有消息）。server 循环对**两种收尾形态**都要能处理。对照表见 §3；kmsg 字节布局见 `21`。
 - `hooks` / `ops_allow` 不是把基本路径跑通的前提；需要准入策略时再读 `22`。
 
@@ -436,7 +436,7 @@ server 端已经 `register_port` 之后，客户端：
 
 调用侧常见坑：
 
-- lookup 得到 NULL意味着名字从未注册、已被 unregister，或 LOOKUP 钩子拒绝（拒绝时 errno 可能被丢掉，见 `22`）。此时不要解引用。
+- lookup 得到 NULL意味着名字从未注册、已被 unregister，或 LOOKUP hook 拒绝（拒绝时 errno 可能被丢掉，见 `22`）。此时不要解引用。
 - 发送过程中 port 被关掉：`send_msg` 返回 `-E_REND_PORT_CLOSED`，并且会 **丢掉未发出的孤儿消息**。不要假设「失败了消息还躺在 `send_msg_queue` 里等重试」。
 - 在仍可能阻塞的 `send_msg` 返回之前，不要把 lookup/create 的那份 port 引用 put 光；用指针就要配着持有引用。
 
@@ -513,7 +513,7 @@ void port_ops_end(Message_Port_t *port);
 | `unregister_port` | 按名从 `by_name` 摘掉， `ops_life`  进入 CLOSING 状态，等到 `ops_count==0`之后，清理 `thread_queue`（实现见 `port_clean_thread_queue`），进入 CLOSED 状态，再对表进行 `ref_put` 释放引用。名字不在表中 / 已非 REGISTERED 也返回成功。兼容层需要主动在解除注册时调用这个函数。 |
 | `port_table_lookup*` | 在 `by_name` 里按名找到 port，获取一个引用计数；再跑 `ops_allow(LOOKUP)` 执行兼容层是否允许查找到这个port的准入测试，如果拒绝则 put 掉并返回 NULL。带 token 的变体把（行下标，代际）写给线程缓存用。 |
 | `port_table_resolve_token` | 用缓存 token + 名字在锁下验证是否可以正常用cache；如果成功同样增加ref得到这个port。 |
-| `port_ops_begin` / `end` | begin：要求 `ops_life==REGISTERED` 且（可选）`ops_allow` 通过，然后 `ops_count++`。end：`ops_count--`。阻塞等待前必须先 end，否则 unregister 永远等不到清队。详见 `22`，主要目的就是port准入，以及兼容层注入port准入标准。 |
+| `port_ops_begin` / `end` | begin：要求 `ops_life==REGISTERED` 且（可选）`ops_allow` 通过，然后 `ops_count++`。end：`ops_count--`。阻塞等待前必须先 end，否则 unregister 永远等不到清理队列。详见 `22`，主要目的就是port准入，以及兼容层注入port准入标准。 |
 | `free_message_port_ref` | 引用归零后调用 `delete_message_port_structure`（先 `hooks->fini`，再释放内存）。调用方 lookup/create 拿到的每一 ref 都要配对 put。 |
 
 ### 7.3 消息：`Msg_Data_t` / `Message_t`（`message.h`）
@@ -561,10 +561,10 @@ Port 的对象模型与 ISA 无关；原子操作相关实现随 arch，语义�
 ## 11. 变更记录
 
 - 2026-10-17：§1.2 / §4.3 写清 `Ipc_Request` 对 TCB 的 get/put 与节点自身 refcount；逐步时序指 `20` §4.1。
-- 2026-10-17：§4.1 补「为何需要 ops_life/ops_count」（Maintainer 修订稿收录）：与 port_cache、unregister 清队交叉，与会合无锁正交；并点出 `ops_allow` / capability·namespace 动机，细节仍指 `22`。
+- 2026-10-17：§4.1 补「为何需要 ops_life/ops_count」（Maintainer 修订稿收录）：与 port_cache、unregister 清理队列交叉，与会合无锁正交；并点出 `ops_allow` / capability·namespace 动机，细节仍指 `22`。
 - 2026-10-16：对照源码修正三处：配对后的 `Ipc_Request` 仍可能当 dummy；`unregister_port` 放下的是注册表那份 ref；transfer 成功后发送侧 `Message_t` 被 put。§6.4 陈旧 request 改为按 status / `port_ptr` 丢掉。
 - 2026-10-15：§6 按审阅意见补强：恢复「先 unregister」、client 失败约定、§6.4 短清单；修正 6.3 transfer 后 Message_t 表述；清掉 §6.4 死链；「两种错误」改为「两种收尾形态」。
-- 2026-10-15：§6 重写为「兼容层怎么用」：6.1 server / 6.2 client / 6.3 消息所有权 / 6.4 引用与关闭清单；去掉与 §4/§7/`20` 重复的清队算法、transfer 摘要、lookup 实现逐步说明；§3 关闭表改为指向 §6 的用法约定。
+- 2026-10-15：§6 重写为「兼容层怎么用」：6.1 server / 6.2 client / 6.3 消息所有权 / 6.4 引用与关闭清单；去掉与 §4/§7/`20` 重复的清理队列算法、transfer 摘要、lookup 实现逐步说明；§3 关闭表改为指向 §6 的用法约定。
 - 2026-10-13：用语回调：去掉「数据袋 / 信封 / 收发件箱」等自造比喻，直接用 `Msg_Data_t` / `Message_t` / `send_msg_queue` 等；dummy / token / append 区保留英文惯用说法。
 - 2026-10-13：§1–§3 润色；§3 关闭通知改为结论表，细节后置；§4 入口补阅读顺序与两套状态辨析。
 - 2026-10-13：§1.1 / §4 对象总览 / `ops_life` / port 注册表等 ASCII 图改竖排，避免横版过宽。

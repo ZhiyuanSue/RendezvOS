@@ -245,7 +245,7 @@ fmt 字符：`p/q/i/u/s/t`；`'t'` 与 `'s'` 虽然实质上都是字符串但 *
 | `KMSG_OP_SYSTEM_POWER_SHUTDOWN` | 1 | `""` | powerd |
 | `KMSG_OP_SYSTEM_POWER_REBOOT` | 2 | `""` | 登记 |
 | `KMSG_OP_SYSTEM_TIMER_EXPIRE` / `_CANCEL` | 3 / 4 | `"q"` | timer |
-| `KMSG_OP_SYSTEM_PORT_CLOSED` | 5 | `"q"`（恒 0） | unregister 清队时 **仅**注入给阻塞 recv；send 侧用 `THREAD_FLAG_IPC_PORT_CLOSED`（`19` §6.2） |
+| `KMSG_OP_SYSTEM_PORT_CLOSED` | 5 | `"q"`（恒 0） | unregister 清理队列时 **仅**注入给阻塞 recv；send 侧用 `THREAD_FLAG_IPC_PORT_CLOSED`（`19` §6.2） |
 | `KMSG_OP_SYSTEM_END` | 6 | — | 上层 opcode 起点（不要重叠） |
 
 ---
