@@ -304,7 +304,8 @@ void rendezvos_time_init(void)
         percpu(tick_cnt) = 0;
         bool is_bsp = (percpu(cpu_number) == BSP_ID);
         u32 timer_irq = arch_get_timer_irq_num(is_bsp);
-        register_irq_handler(timer_irq, rendezvos_do_time_irq, IRQ_NEED_EOI);
+        register_irq_handler(timer_irq, percpu(cpu_number),
+                             rendezvos_do_time_irq, IRQ_NEED_EOI);
         heartbeat_gap = arch_init_timer(is_bsp);
 
         percpu(boot_base_time) = arch_timer_read();

@@ -1,17 +1,86 @@
+#include <rendezvos/trap/trap.h>
+#include <rendezvos/smp/percpu.h>
+#include <rendezvos/limits.h>
 #include <arch/x86_64/sys_ctrl.h>
 #include <arch/x86_64/sys_ctrl_def.h>
-#include <arch/x86_64/trap/trap.h>
 #include <arch/x86_64/power_ctrl.h>
 #include <arch/x86_64/PIC/IRQ.h>
 #include <arch/x86_64/trap/tss.h>
 #include <modules/log/log.h>
 #include <common/string.h>
-#include <rendezvos/smp/percpu.h>
-#include <rendezvos/trap/trap.h>
+#include <common/atomic.h>
 
 extern u64 trap_vec;
 extern enum IRQ_type arch_irq_type;
-extern union idt_gate_desc trap_vec_table[NR_IRQ];
+extern union idt_gate_desc trap_vec_table[NR_IDT_VECTORS];
+
+/*
+ * Per-CPU: delivery_id → table_index + 1 (0 = unbound). u64 for CAS.
+ */
+DEFINE_PER_CPU(u64, irq_delivery_to_table_index[NR_IDT_VECTORS]);
+
+u32 arch_irq_delivery_to_table_index_on_cpu(cpu_id_t cpu, u32 delivery_id)
+{
+        u64 encoded;
+
+        if (cpu >= (cpu_id_t)RENDEZVOS_MAX_CPU_NUMBER
+            || delivery_id >= (u32)NR_IDT_VECTORS)
+                return IRQ_TABLE_INDEX_INVALID;
+        encoded = per_cpu(irq_delivery_to_table_index[delivery_id], cpu);
+        return encoded ? (u32)(encoded - 1u) : IRQ_TABLE_INDEX_INVALID;
+}
+
+u32 arch_irq_delivery_to_table_index(u32 delivery_id)
+{
+        u64 encoded;
+
+        if (delivery_id >= (u32)NR_IDT_VECTORS)
+                return IRQ_TABLE_INDEX_INVALID;
+        encoded = percpu(irq_delivery_to_table_index[delivery_id]);
+        return encoded ? (u32)(encoded - 1u) : IRQ_TABLE_INDEX_INVALID;
+}
+
+bool arch_irq_delivery_available(cpu_id_t dest_cpu, u32 delivery_id)
+{
+        if (dest_cpu >= (cpu_id_t)RENDEZVOS_MAX_CPU_NUMBER)
+                return false;
+        if (irq_trap_is_local(delivery_id) || delivery_id >= (u32)NR_IDT_VECTORS)
+                return false;
+        return arch_irq_delivery_to_table_index_on_cpu(dest_cpu, delivery_id)
+               == IRQ_TABLE_INDEX_INVALID;
+}
+
+u32 arch_irq_fixed_table_index(u32 delivery_id)
+{
+        (void)delivery_id;
+        return IRQ_TABLE_INDEX_INVALID; /* scan any free global slot */
+}
+
+u32 arch_irq_hwirq_for(u32 delivery_id, u32 table_index)
+{
+        (void)delivery_id;
+        return table_index; /* soft until IOAPIC binds real GSI */
+}
+
+bool arch_irq_bind_delivery_on_cpu(cpu_id_t cpu, u32 delivery_id,
+                                   u32 table_index)
+{
+        volatile u64 *cell;
+
+        if (cpu >= (cpu_id_t)RENDEZVOS_MAX_CPU_NUMBER
+            || delivery_id >= (u32)NR_IDT_VECTORS)
+                return false;
+        cell = &per_cpu(irq_delivery_to_table_index[delivery_id], cpu);
+        if (table_index == IRQ_TABLE_INDEX_INVALID) {
+                atomic64_store(cell, 0);
+                return true;
+        }
+        if (!nr_global_irq || table_index >= nr_global_irq)
+                return false;
+        /* CAS unbound(0) → index+1; fail if another alloc took this vector. */
+        return atomic64_cas(cell, 0, (u64)table_index + 1u) == 0;
+}
+
 const char *trap_name_string[TRAP_ARCH_USED + 2] = {
         "Fault:Divide Error\n\0",
         "Fault/Trap:Debug Exception\n\0",
@@ -38,27 +107,14 @@ const char *trap_name_string[TRAP_ARCH_USED + 2] = {
         "Intel reserved\n\0",
         /*for trap number between 21-31*/
         "User Defined interrupts\n\0"};
-void arch_init_irq_vector_state(void)
-{
-        cpu_id_t me = percpu(cpu_number);
-
-        irq_vector_reserve_range_for_cpu(me, 0, (u32)TRAP_ARCH_USED - 1);
-        irq_vector_reserve_range_for_cpu(
-                me, ARCH_IRQ_VEC_TIMER, ARCH_IRQ_VEC_TIMER);
-        irq_vector_reserve_range_for_cpu(
-                me, ARCH_IRQ_VEC_SPURIOUS, ARCH_IRQ_VEC_SPURIOUS);
-        irq_vector_reserve_range_for_cpu(
-                me, ARCH_IRQ_VEC_IPI, ARCH_IRQ_VEC_IPI);
-        irq_vector_set_alloc_pool(ARCH_IRQ_VEC_ALLOC_LO, ARCH_IRQ_VEC_ALLOC_HI);
-}
 void arch_init_interrupt(void)
 {
         struct pseudo_descriptor idtr_desc;
         union desc_selector sel;
 
-        idtr_desc.limit = NR_IRQ * sizeof(union idt_gate_desc) - 1;
+        idtr_desc.limit = NR_IDT_VECTORS * sizeof(union idt_gate_desc) - 1;
         idtr_desc.base_addr = (u64)(&trap_vec_table);
-        for (int i = 0; i < NR_IRQ; ++i) {
+        for (int i = 0; i < NR_IDT_VECTORS; ++i) {
                 /*generate the IDT table*/
                 sel.rpl = KERNEL_PL;
                 sel.table_indicator = 0;
@@ -237,7 +293,7 @@ void arch_populate_trap_info(struct trap_frame *tf,
 /*
  * @brief Register fixed trap handler (x86_64 implementation)
  */
-void register_fixed_trap(enum trap_class trap_class,
+void arch_register_fixed_trap(enum trap_class trap_class,
                          fixed_trap_handler_t handler, u64 irq_attr)
 {
         if (trap_class >= TRAP_CLASS_UNKNOWN) {
@@ -248,11 +304,14 @@ void register_fixed_trap(enum trap_class trap_class,
         fixed_trap_handlers[trap_class] = handler;
         fixed_trap_attrs[trap_class] = irq_attr;
 
-        /* Reverse mapping: find corresponding x86 trap ID(s) */
+        /* Reverse mapping: install on every CPU's local slot for that id. */
         for (int trap_id = 0; trap_id < TRAP_ARCH_USED; trap_id++) {
-                if (x86_trap_class_map[trap_id] == trap_class) {
-                        register_irq_handler(
-                                trap_id, x86_fixed_trap_wrapper, irq_attr);
+                if (x86_trap_class_map[trap_id] != trap_class)
+                        continue;
+                for (cpu_id_t cpu = 0; cpu < (cpu_id_t)RENDEZVOS_MAX_CPU_NUMBER;
+                     cpu++) {
+                        register_irq_handler(trap_id, cpu,
+                                             x86_fixed_trap_wrapper, irq_attr);
                 }
         }
 }

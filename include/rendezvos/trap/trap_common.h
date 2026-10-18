@@ -11,10 +11,32 @@
 
 #include <common/types.h>
 #include <common/stdbool.h>
+#include <common/bit.h>
 #include <common/mm.h> /* vaddr */
+#include <common/atomic.h>
 
 /* Forward declaration (defined in arch-specific trap.h) */
 struct trap_frame;
+
+/**
+ * Shared handler pointer for @c local_irq / @c global_irq.
+ * Attr storage differs: local uses plain @c u64; global uses @c atomic64_t
+ * (CAS claim during @c irq_delivery_alloc).
+ */
+#define IRQ_COMMON \
+        void (*irq_handler)(struct trap_frame *tf);
+
+#define IRQ_NO_ATTR  (0ull)
+#define IRQ_NEED_EOI BIT_U64(0) /* @c trap_handler need EOI after irq_handler return */
+#define IRQ_VEC_USED BIT_U64(1) /* this irq have been used */
+
+/**
+ * Sentinels (same bit pattern, different roles — do not conflate in comments):
+ * - @c IRQ_TABLE_INDEX_INVALID: no row in @c global_irq_table
+ * - @c IRQ_HWIRQ_INVALID: no hardware irq number (GSI / INTID) yet
+ */
+#define IRQ_TABLE_INDEX_INVALID ((u32)-1)
+#define IRQ_HWIRQ_INVALID       ((u32)-1)
 
 /*
  * TRAP_COMMON macro (similar to PMM_COMMON pattern).
@@ -133,48 +155,32 @@ TRAP_CLASS_U8_BOUNDARY_CHECK;
  * Core/ provides TWO levels of handler registration:
  *
  * 1. Fixed trap handlers (architecture-independent):
- *    - register_fixed_trap(trap_class, handler, irq_attr)
+ *    - arch_register_fixed_trap(trap_class, handler, irq_attr)
  *    - One handler per trap_class (not per trap_id)
  *    - Multiple trap_ids can map to the same trap_class
  *    - Example: x86 #PF (14) and ARM data abort (0x24) both use
  * TRAP_CLASS_PAGE_FAULT
  *
  * 2. Direct IRQ handlers (architecture-specific):
- *    - register_irq_handler(trap_id, handler, irq_attr)
- *    - One handler per trap_id
- *    - Lower-level registration, bypasses trap_class abstraction
+ *    - register_irq_handler(delivery_id, dest_cpu, handler, irq_attr)
+ *    - Local: one slot per (delivery_id, cpu); global: one row per
+ *      (delivery_id, dest_cpu) from irq_delivery_alloc
  *
  * PRIORITY AND MUTUAL EXCLUSION:
  *
- * For each trap_id (e.g., x86 vector 14, ARM EC 0x24):
- *   - ONLY ONE handler can be registered at a time
- *   - Last registration wins (overwrites previous handler)
- *   - Mixing fixed_trap and irq registration for the same trap_id is NOT
- * recommended
+ * For each (delivery_id, cpu) local slot / global row:
+ *   - ONLY ONE handler at a time; last registration wins
+ *   - Mixing fixed_trap and direct register for the same slot is NOT recommended
  *
  * Recommended Usage:
- *   ✅ DO: Use register_fixed_trap() for architecture-independent handling
- *        register_fixed_trap(TRAP_CLASS_PAGE_FAULT, handle_pf, IRQ_NEED_EOI);
+ *   ✅ DO: arch_register_fixed_trap(TRAP_CLASS_PAGE_FAULT, handle_pf, IRQ_NEED_EOI);
+ *   ✅ DO: register_irq_handler(14, cpu, x86_specific_pf_handler, 0);
  *
- *   ✅ DO: Use register_irq_handler() for architecture-specific handling
- *        register_irq_handler(14, x86_specific_pf_handler, 0);  // x86-only
- *
- *   ❌ DON'T: Mix both for the same trap_id
- *        register_fixed_trap(TRAP_CLASS_PAGE_FAULT, handler1, 0);  // binds to
- * vector 14 register_irq_handler(14, handler2, 0);  // OVERWRITES handler1!
+ *   ❌ DON'T: Mix both for the same local delivery_id on the same cpu
  *
  * Implementation Detail:
- *   - register_fixed_trap() internally calls register_irq_handler() for each
- *     architecture-specific trap_id that maps to the given trap_class
- *   - Example: register_fixed_trap(TRAP_CLASS_PAGE_FAULT, ...) on x86_64
- *     internally calls register_irq_handler(14, ...) for #PF
- *   - Subsequent direct register_irq_handler(14, ...) will OVERWRITE the fixed
- * handler
- *
- * If you need both fixed and architecture-specific handling:
- *   - Register the architecture-specific handler first
- *   - Then decide which one takes precedence based on your design
- *   - Or: Chain the handlers (architecture-specific calls fixed, or vice versa)
+ *   - arch_register_fixed_trap() calls register_irq_handler(id, cpu, ...) for
+ *     each CPU and each arch delivery_id mapped to the trap_class
  *
  * ========================================================================
  */

@@ -1,7 +1,5 @@
 #ifndef _RENDEZVOS_TRAP_DEF_H_
 
-/*in gic(v2) we only use 0-1019, and we use 64 as the sync trap*/
-#define NR_IRQ             1084
 /**
  * In order to put 64 sync trap and irqs into one vector, we add this offset.
  * The first 64 number is used for sync trap, and the later part is irqs.

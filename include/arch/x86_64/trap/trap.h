@@ -3,20 +3,46 @@
 #include <common/types.h>
 #include <common/stdbool.h>
 #include <arch/x86_64/desc.h>
-#include <rendezvos/trap/trap_common.h> /* For TRAP_COMMON and enum trap_class */
+#include <rendezvos/smp/cpu_id.h>
+#include <rendezvos/trap/trap_common.h> /* For TRAP_COMMON / IRQ_COMMON */
 #include "trap_def.h" /* For PF error code bits */
 
-#define NR_IRQ             256
-#define TRAP_ID(trap_info) (trap_info)
-
 /*
- * The core have used irq vec number
+ * LOCAL: [0, ALLOC_LO) — exceptions + APIC LVT/IPI (structural; no reserve).
+ * GLOBAL: GSI softcap slots (not "IDT minus local"). Vector → slot via per-CPU map.
+ * IDT hardware table is always @c NR_IDT_VECTORS (256).
  */
 #define ARCH_IRQ_VEC_TIMER    0x20u
 #define ARCH_IRQ_VEC_SPURIOUS 0x27u
 #define ARCH_IRQ_VEC_IPI      0x30u
 #define ARCH_IRQ_VEC_ALLOC_LO 0x40u
 #define ARCH_IRQ_VEC_ALLOC_HI 0xEFu
+
+#define NR_ARCH_LOCAL_IRQ  ARCH_IRQ_VEC_ALLOC_LO
+#define NR_ARCH_GLOBAL_IRQ 256 /* GSI softcap; MADT may shrink via irq_global_table_init */
+#define NR_IDT_VECTORS     256
+#define NR_IRQ             NR_IDT_VECTORS
+
+#define TRAP_ID(trap_info) (trap_info)
+
+/**
+ * Global external irq (hwirq = GSI). Arch-extra: IOAPIC pin.
+ * Dispatch: IDT vector → per-CPU map → @c global_irq_table[index].
+ */
+struct global_irq {
+        IRQ_COMMON
+        atomic64_t irq_attr; /* CAS USED at alloc; @c IRQ_NEED_EOI, … */
+        u32 hwirq; /* GSI (hardware); soft index until IOAPIC */
+        u32 delivery_id; /* IDT vector on dest_cpu */
+        cpu_id_t dest_cpu;
+        u8 ioapic_id;
+        u8 pin;
+};
+
+/*
+ * Per-CPU map @c irq_delivery_to_table_index[] (u64, CAS): delivery → index+1.
+ * Alloc: CAS irq_attr on a free row, then CAS this map on dest_cpu only.
+ */
 
 enum TRAP_NUM {
         TRAP_DE, /* 0: Divide Error */
@@ -152,24 +178,6 @@ struct trap_frame {
  * @brief Load this CPU's IDT (lidt).
  */
 void arch_init_interrupt(void);
-
-/**
- * @brief Reserve x86 fixed vectors on this CPU; publish device alloc pool.
- * 
- * The maintainer must understand the layout of irq_vector.
- * It's percpu.
- * Every cpu have a irq vector. But some irqs are global.
- * So there must have a broadcast——of course not here.
- * For init, cpu is boot one by one.
- * so it should also reserve the namespace of current cpu. 
- * and maintain the global namespace for global irq. 
- * The later enabled cpu should not confict with the prev cpu.
- * 
- * Per-CPU USED: [0, TRAP_ARCH_USED), timer 0x20, spurious 0x27, IPI 0x30.
- * Global pool: [ARCH_IRQ_VEC_ALLOC_LO, ARCH_IRQ_VEC_ALLOC_HI].
- * Handler install is later (except spurious often stays empty).
- */
-void arch_init_irq_vector_state(void);
 
 /**
  * @brief if this trap have not register a handler, using this default handler.

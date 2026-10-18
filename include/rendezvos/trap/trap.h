@@ -2,11 +2,16 @@
 #define _RENDEZVOS_TRAP_H_
 
 /*
- * Architecture trap headers provide @c struct trap_frame and arch macros
- * (including @c trap_class).
+ * Three numbers:
+ * - delivery_id: what the CPU reports (x86 IDT vector / aarch64 trap_id)
+ * - table_index: subscript into @c global_irq_table
+ * - hwirq: hardware source id in @c global_irq::hwirq (GSI / INTID)
+ *
+ * Affinity: one global irq = one (delivery_id, dest_cpu). Rebind = free+alloc.
  */
 #include <common/bit.h>
 #include <common/stdbool.h>
+#include <common/atomic.h>
 #include <rendezvos/error.h>
 #include <rendezvos/smp/cpu_id.h>
 
@@ -22,165 +27,121 @@
 #include <arch/x86_64/trap/trap.h>
 #endif
 
-/**
- * @brief Per-CPU IRQ / trap vector slot: handler + attribute flags.
- */
-struct irq {
-        void (*irq_handler)(struct trap_frame *tf);
-#define IRQ_NO_ATTR  (0ull) /* No attribute bits. */
-#define IRQ_NEED_EOI BIT_U64(0) /* @c trap_handler should send EOIs after return.*/
-#define IRQ_VEC_USED BIT_U64(1) /* Slot reserved / allocated. */
-        u64 irq_attr;
+struct local_irq {
+        IRQ_COMMON
+        u64 irq_attr; /* plain store; per-CPU, no CAS */
 };
 
-/** True if @p attr has @c IRQ_VEC_USED . */
+extern struct global_irq *global_irq_table;
+extern u32 nr_global_irq;
+
+/* ----- irq_attr bit helpers (work on a u64 snapshot) ----- */
+
 static inline bool irq_attr_used(u64 attr)
 {
         return (attr & IRQ_VEC_USED) != 0;
 }
 
-/** @p attr set @c IRQ_VEC_USED . */
 static inline u64 irq_attr_set_used(u64 attr)
 {
         return set_mask_u64(attr, IRQ_VEC_USED);
 }
 
-/** @p attr clear @c IRQ_VEC_USED . */
 static inline u64 irq_attr_set_unused(u64 attr)
 {
         return clear_mask_u64(attr, IRQ_VEC_USED);
 }
 
-/** True if @p attr has @c IRQ_NEED_EOI . */
 static inline bool irq_attr_need_eoi(u64 attr)
 {
         return (attr & IRQ_NEED_EOI) != 0;
 }
 
-/**
- * @brief Install an IRQ/trap handler on every CPU's irq_vector[irq_num].
- *
- * Requires the trap id already marked USED on the **calling CPU** (via
- * reserve or @c irq_vector_alloc). Writes the same @p handler / attr to
- * all CPUs' slots (v0.1 has no per-CPU different ISRs). Caller
- * @p irq_attr supplies flags such as @c IRQ_NEED_EOI; USED is forced on.
- *
- * Call order for devices: @c irq_vector_alloc → @c register_irq_handler →
- * then platform unmask / route. Do not EOI inside the
- * handler when @c IRQ_NEED_EOI is set — @c trap_handler does it after return.
- *
- * @param irq_num Trap id / vector index in [0, @c NR_IRQ)
- * @param handler Handler invoked from @c trap_handler; may be NULL to clear
- * @param irq_attr Attribute flags 
- */
-void register_irq_handler(int irq_num, void (*handler)(struct trap_frame *tf),
-                          u64 irq_attr);
+/* ----- global_irq::irq_attr (atomic64_t) only ----- */
 
-/**
- * @brief Per-CPU interrupt bring-up for @c arch_start_core.
- *
- * Reserves this CPU's fixed vectors / publishes the alloc pool, then loads
- * the arch interrupt table. Does not zero @c irq_vector[] (earlier CPUs may
- * already have written all-CPU alloc/register state).
- */
-void init_interrupt(void);
+static inline volatile u64 *irq_global_attr_cell(atomic64_t *attr)
+{
+        return (volatile u64 *)&attr->counter;
+}
 
-/**
- * @brief Architecture EOI / interrupt completion for the current IRQ.
- *
- * Called from @c trap_handler when the vector's @c irq_attr has @c IRQ_NEED_EOI.
- *
- * @param trap_info Arch trap_info from the trap frame (vector / source encoding)
- */
-void arch_eoi_irq(u64 trap_info);
+static inline u64 irq_global_attr_load(atomic64_t *attr)
+{
+        return atomic64_load(irq_global_attr_cell(attr));
+}
 
-/**
- * @brief Mark trap ids [lo, hi] as USED on one CPU's irq_vector[].
- *
- * Used by @c arch_init_irq_vector_state for this CPU's core-owned vectors.
- * Does not install a handler.
- *
- * @param cpu CPU index in [0, @c RENDEZVOS_MAX_CPU_NUMBER)
- * @param lo Inclusive low trap id
- * @param hi Inclusive high trap id
- * @return @c REND_SUCCESS, or @c -E_IN_PARAM if cpu / range invalid
- */
-error_t irq_vector_reserve_range_for_cpu(cpu_id_t cpu, u32 lo, u32 hi);
+static inline void irq_global_attr_store(atomic64_t *attr, u64 value)
+{
+        atomic64_store(irq_global_attr_cell(attr), value);
+}
 
-/**
- * @brief Mark trap ids [lo, hi] as USED on every CPU's irq_vector[].
- *
- * @param lo Inclusive low trap id
- * @param hi Inclusive high trap id
- * @return @c REND_SUCCESS, or @c -E_IN_PARAM if range invalid
- */
-error_t irq_vector_reserve_range_for_all_cpus(u32 lo, u32 hi);
+static inline bool irq_global_attr_is_used(atomic64_t *attr)
+{
+        return irq_attr_used(irq_global_attr_load(attr));
+}
 
-/**
- * @brief Publish the inclusive trap-id window scanned by @c irq_vector_alloc.
- *
- * @param lo Inclusive low trap id
- * @param hi Inclusive high trap id
- */
-void irq_vector_set_alloc_pool(u32 lo, u32 hi);
+/** CAS 0 → USED on a global row; on failure try another slot (no spin). */
+static inline bool irq_global_attr_try_claim(atomic64_t *attr)
+{
+        return atomic64_cas(irq_global_attr_cell(attr), IRQ_NO_ATTR, IRQ_VEC_USED)
+               == IRQ_NO_ATTR;
+}
 
-/**
- * @brief Allocate one free trap id from the alloc pool on all CPUs.
- *
- * Scans [pool_lo, pool_hi]; an id is free only if no CPU has @c USED set.
- * On success marks @c USED on every CPU. Caller must then
- * @c register_irq_handler before enabling the hardware source.
- *
- * @param trap_id_out Out: allocated trap id
- * @return @c REND_SUCCESS, @c -E_IN_PARAM (null / pool unset), or
- *         @c -E_RENDEZVOS if pool exhausted
- */
-error_t irq_vector_alloc(u32 *trap_id_out);
+static inline void irq_global_attr_abort_claim(atomic64_t *attr)
+{
+        irq_global_attr_store(attr, IRQ_NO_ATTR);
+}
 
-/**
- * @brief Release a pool trap id (clear USED on all CPUs).
- *
- * Only ids inside the current alloc pool. Requires @c USED on every CPU;
- * otherwise @c -E_RENDEZVOS. Does not clear @c irq_handler — re-alloc of
- * the same id may see a stale pointer until @c register_irq_handler again.
- *
- * @param trap_id Trap id previously returned by @c irq_vector_alloc
- * @return @c REND_SUCCESS, @c -E_IN_PARAM, or @c -E_RENDEZVOS if not fully USED
- */
-error_t irq_vector_free(u32 trap_id);
-
-/**
- * @brief Arch: reserve this CPU's fixed slots and publish the device alloc pool.
- *
- * Called once per CPU from @c init_interrupt. Reserves this CPU's core-owned
- * fixed vectors and publishes the global device alloc window via
- * @c irq_vector_set_alloc_pool (idempotent across CPUs).
- */
-void arch_init_irq_vector_state(void);
-
-/* ===== Fixed trap handler interface (architecture-independent) ===== */
-
-/**
- * @brief Fixed / semantic trap handler: receives the raw @c trap_frame.
- * @param tf: trap frame
- *
- * @note Arch code fills a per-arch @c *_trap_info via
- * @c arch_populate_trap_info(tf, &info) before dispatching fixed handlers.
- */
 typedef void (*fixed_trap_handler_t)(struct trap_frame *tf);
 
-/**
- * @brief Register fixed trap handler (architecture-independent interface)
+bool irq_trap_is_local(u32 delivery_id);
+
+struct global_irq *irq_global_from_delivery(u32 delivery_id);
+
+struct global_irq *irq_global_find(u32 delivery_id, cpu_id_t dest_cpu);
+
+/*
+ * Arch delivery map
  *
- * @param trap_class: trap type (enum trap_class from trap_common.h)
- * @param handler: handler function
- * @param irq_attr: IRQ attributes (e.g., IRQ_NEED_EOI)
- *
- * @note Architecture layer maps trap_class to specific trap ID(s).
- *       For aarch64, one trap_class may map to multiple EC values.
- *       Repeated registration overwrites previous handler.
+ * @c arch_irq_fixed_table_index: aarch64 returns identity index; x86 returns
+ * @c IRQ_TABLE_INDEX_INVALID meaning "any free slot".
+ * @c arch_irq_bind_delivery_on_cpu: x86 CAS-binds map; returns false if the
+ * delivery id is already taken on that CPU. aarch64 no-op success.
  */
-void register_fixed_trap(enum trap_class trap_class,
-                         fixed_trap_handler_t handler, u64 irq_attr);
+
+u32 arch_irq_delivery_to_table_index_on_cpu(cpu_id_t cpu, u32 delivery_id);
+u32 arch_irq_delivery_to_table_index(u32 delivery_id);
+
+/** True if @p delivery_id is free to bind on @p dest_cpu. */
+bool arch_irq_delivery_available(cpu_id_t dest_cpu, u32 delivery_id);
+
+/** Fixed table index for @p delivery_id, or @c IRQ_TABLE_INDEX_INVALID to scan. */
+u32 arch_irq_fixed_table_index(u32 delivery_id);
+
+/** Hardware hwirq to store after a successful claim. */
+u32 arch_irq_hwirq_for(u32 delivery_id, u32 table_index);
+
+/**
+ * Bind or clear per-CPU delivery→table_index.
+ * @p table_index @c IRQ_TABLE_INDEX_INVALID clears.
+ * @return false if bind lost a race (delivery already mapped on that CPU).
+ */
+bool arch_irq_bind_delivery_on_cpu(cpu_id_t cpu, u32 delivery_id,
+                                   u32 table_index);
+
+void arch_eoi_irq(u64 trap_info);
+
+void arch_register_fixed_trap(enum trap_class trap_class,
+                              fixed_trap_handler_t handler, u64 irq_attr);
+
+void register_irq_handler(u32 delivery_id, cpu_id_t dest_cpu,
+                          void (*handler)(struct trap_frame *tf), u64 irq_attr);
+
+void init_interrupt(void);
+
+error_t irq_global_table_init(u32 count);
+
+error_t irq_delivery_alloc(u32 *delivery_id_out, cpu_id_t dest_cpu);
+
+error_t irq_delivery_free(u32 delivery_id, cpu_id_t dest_cpu);
 
 #endif

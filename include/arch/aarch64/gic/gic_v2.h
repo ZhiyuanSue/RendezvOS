@@ -184,8 +184,8 @@ union irq_source {
  * - IPI/timer register.
  * 
  * Device SPI alloc: 
- * irq_vector_alloc: just get a number from the global pool
- * - register_irq_handler 
+ * irq_delivery_alloc: claim a delivery id for one dest_cpu
+ * - register_irq_handler(delivery_id, dest_cpu, ...) 
  * - unmask_irq
  * - optional set_affinity.
  *

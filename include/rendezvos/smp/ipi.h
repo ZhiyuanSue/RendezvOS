@@ -49,7 +49,7 @@ error_t smp_ipi_send(cpu_id_t cpu, ipi_id_t ipi_id);
 
 /**
  * @brief PerCPU: bind the soft-IPI IRQ vector with a handler.
- * for x86_64/aarch64, just a normal register_irq_handler.
+ * for x86_64/aarch64, just a normal register_irq_handler(delivery, cpu, ...).
  * but might be different for riscv64, so we must using this interface and
  * ignore the arch different
  */

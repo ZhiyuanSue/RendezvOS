@@ -1,23 +1,55 @@
 #include <rendezvos/trap/trap.h>
-#include <rendezvos/smp/percpu.h>
+#include <rendezvos/limits.h>
 #include <arch/aarch64/sys_ctrl.h>
-#include <arch/aarch64/trap/trap.h>
 #include <modules/log/log.h>
 #include <arch/aarch64/power_ctrl.h>
 #include <common/string.h>
 
 extern u64 trap_vec_table;
 
-void arch_init_irq_vector_state(void)
+u32 arch_irq_delivery_to_table_index_on_cpu(cpu_id_t cpu, u32 delivery_id)
 {
-        cpu_id_t me = percpu(cpu_number);
+        u32 intid;
 
-        irq_vector_reserve_range_for_cpu(me, 0, AARCH64_IRQ_OFFSET - 1);
-        irq_vector_reserve_range_for_cpu(
-                me,
-                AARCH64_IRQ_TO_TRAP_ID(GIC_V2_SGI_START),
-                AARCH64_IRQ_TO_TRAP_ID(GIC_V2_PPI_END));
-        irq_vector_set_alloc_pool(ARCH_IRQ_VEC_ALLOC_LO, ARCH_IRQ_VEC_ALLOC_HI);
+        (void)cpu;
+        if (irq_trap_is_local(delivery_id))
+                return IRQ_TABLE_INDEX_INVALID;
+        intid = AARCH64_TRAP_ID_TO_IRQ(delivery_id);
+        if (intid < (u32)GIC_V2_SPI_START || intid > (u32)GIC_V2_SPI_END)
+                return IRQ_TABLE_INDEX_INVALID;
+        return intid - (u32)GIC_V2_SPI_START;
+}
+
+u32 arch_irq_delivery_to_table_index(u32 delivery_id)
+{
+        return arch_irq_delivery_to_table_index_on_cpu((cpu_id_t)0, delivery_id);
+}
+
+bool arch_irq_delivery_available(cpu_id_t dest_cpu, u32 delivery_id)
+{
+        if (dest_cpu >= (cpu_id_t)RENDEZVOS_MAX_CPU_NUMBER)
+                return false;
+        return arch_irq_fixed_table_index(delivery_id) != IRQ_TABLE_INDEX_INVALID;
+}
+
+u32 arch_irq_fixed_table_index(u32 delivery_id)
+{
+        return arch_irq_delivery_to_table_index(delivery_id);
+}
+
+u32 arch_irq_hwirq_for(u32 delivery_id, u32 table_index)
+{
+        (void)table_index;
+        return AARCH64_TRAP_ID_TO_IRQ(delivery_id);
+}
+
+bool arch_irq_bind_delivery_on_cpu(cpu_id_t cpu, u32 delivery_id,
+                                   u32 table_index)
+{
+        (void)cpu;
+        (void)delivery_id;
+        (void)table_index;
+        return true;
 }
 
 void arch_init_interrupt(void)
@@ -417,7 +449,7 @@ void arch_populate_trap_info(struct trap_frame *tf,
 /*
  * @brief Register fixed trap handler (aarch64 implementation)
  */
-void register_fixed_trap(enum trap_class trap_class,
+void arch_register_fixed_trap(enum trap_class trap_class,
                          fixed_trap_handler_t handler, u64 irq_attr)
 {
         if (trap_class >= TRAP_CLASS_UNKNOWN) {
@@ -428,11 +460,15 @@ void register_fixed_trap(enum trap_class trap_class,
         fixed_trap_handlers[trap_class] = handler;
         fixed_trap_attrs[trap_class] = irq_attr;
 
-        /* Reverse mapping: find corresponding EC value(s) */
+        /* Reverse mapping: install on every CPU's local slot for that EC. */
         for (u64 ec = 0; ec < 0x40; ec++) {
-                if (aarch64_ec_to_trap_class(ec) == trap_class) {
-                        register_irq_handler(
-                                ec, aarch64_fixed_trap_wrapper, irq_attr);
+                if (aarch64_ec_to_trap_class(ec) != trap_class)
+                        continue;
+                for (cpu_id_t cpu = 0; cpu < (cpu_id_t)RENDEZVOS_MAX_CPU_NUMBER;
+                     cpu++) {
+                        register_irq_handler((u32)ec, cpu,
+                                             aarch64_fixed_trap_wrapper,
+                                             irq_attr);
                 }
         }
 }

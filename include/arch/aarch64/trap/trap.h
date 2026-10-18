@@ -4,6 +4,7 @@
 #include <common/types.h>
 #include <arch/aarch64/gic/gic_v2.h>
 #include <arch/aarch64/sys_ctrl_def.h>
+#include <rendezvos/smp/cpu_id.h>
 #include <rendezvos/trap/trap_common.h>
 #include "trap_def.h"
 
@@ -17,6 +18,31 @@
 #define ARCH_IRQ_VEC_IPI       AARCH64_IRQ_TO_TRAP_ID(ARCH_IRQ_INTID_IPI)
 #define ARCH_IRQ_VEC_ALLOC_LO  AARCH64_IRQ_TO_TRAP_ID(GIC_V2_SPI_START)
 #define ARCH_IRQ_VEC_ALLOC_HI  AARCH64_IRQ_TO_TRAP_ID(GIC_V2_SPI_END)
+
+/*
+ * LOCAL: [0, ALLOC_LO) = EC + SGI/PPI (structural; no reserve).
+ * GLOBAL: SPI only — table index = INTID - SPI_START (excludes local INTIDs).
+ */
+#define NR_ARCH_LOCAL_IRQ  ARCH_IRQ_VEC_ALLOC_LO
+#define NR_ARCH_GLOBAL_IRQ (GIC_V2_SPI_END - GIC_V2_SPI_START + 1)
+#define NR_IRQ             NR_ARCH_LOCAL_IRQ /* compat */
+
+/**
+ * Global external irq (SPI). @c hwirq is real INTID; table index is SPI-relative.
+ */
+struct global_irq {
+        IRQ_COMMON
+        atomic64_t irq_attr; /* CAS USED at alloc; @c IRQ_NEED_EOI, … */
+        u32 hwirq; /* INTID (hardware) */
+        u32 delivery_id; /* software trap id (INTID + offset) */
+        cpu_id_t dest_cpu;
+};
+
+/*
+ * Delivery id → table index = INTID - SPI_START (no per-CPU map).
+ * @c dest_cpu is recorded at alloc for later GIC routing; bind/unbind no-op.
+ * APIs: @c rendezvos/trap/trap.h.
+ */
 
 #define TRAP_ID(trap_info)  (trap_info & AARCH64_TRAP_ID_MASK)
 #define TRAP_SRC(trap_info) (trap_info & AARCH64_TRAP_SRC_MASK)
@@ -93,22 +119,6 @@ struct trap_frame {
  * @brief Set VBAR_EL1 to trap_vec_table and enable IRQ.
  */
 void arch_init_interrupt(void);
-
-/**
- * @brief This function is used for init part.
- * The maintainer must understand the layout of irq_vector.
- * It's percpu.
- * Every cpu have a irq vector. But some irqs are global.
- * So there must have a broadcast——of course not here.
- * For init, cpu is boot one by one.
- * so it should also reserve the namespace of current cpu. 
- * and maintain the global namespace for global irq. 
- * The later enabled cpu should not confict with the prev cpu.
- * 
- * Per-CPU range: [0, AARCH64_IRQ_OFFSET) and SGI+PPI trap ids (intid 0–31).
- * That is global pool: [ARCH_IRQ_VEC_ALLOC_LO, ARCH_IRQ_VEC_ALLOC_HI] (SPI)
- */
-void arch_init_irq_vector_state(void);
 
 /**
  * @brief if this trap have not register a handler, using this default handler.
