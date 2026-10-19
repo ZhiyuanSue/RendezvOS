@@ -224,6 +224,13 @@ error_t arch_start_platform(struct setup_info *arch_setup_info)
         error_t e = acpi_init(arch_setup_info->rsdp_addr);
         if (e != REND_SUCCESS)
                 goto arch_start_platform_error;
+        /*
+         * TODO: parse MADT and pass the machine GSI count.
+         * Until then the global irq table length is NR_ARCH_GLOBAL_IRQ (256).
+         */
+        e = irq_global_table_alloc(NR_ARCH_GLOBAL_IRQ);
+        if (e != REND_SUCCESS)
+                goto arch_start_platform_error;
         /*alloc a pci root node without any info*/
         pci_root = malloc->m_alloc(malloc, sizeof(struct pci_node));
         e = pci_scan_all(pci_tree_build_callback, pci_root);

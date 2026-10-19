@@ -214,6 +214,11 @@ void gic_v2_init_cpu_interface(void)
         isb();
 }
 
+u32 gic_v2_nr_spi(void)
+{
+        return (u32)(GIC_V2_SPI_END - GIC_V2_SPI_START + 1);
+}
+
 struct gic_v2 gic = {.compatible = "arm,cortex-a15-gic",
                      .probe = gic_v2_probe,
                      .init_distributor = gic_v2_init_distributor,
@@ -226,4 +231,5 @@ struct gic_v2 gic = {.compatible = "arm,cortex-a15-gic",
                      .send_sgi = gicd_v2_send_sgi,
                      .read_irq_num = gicc_v2_read_irq,
                      .eoi = gicc_v2_eoi,
-                     .pending_clr = gicd_v2_pending_clr};
+                     .pending_clr = gicd_v2_pending_clr,
+                     .nr_spi = gic_v2_nr_spi};

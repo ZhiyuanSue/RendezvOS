@@ -9,6 +9,7 @@
 #ifndef _RENDEZVOS_TRAP_COMMON_H_
 #define _RENDEZVOS_TRAP_COMMON_H_
 
+#include <common/stddef.h>
 #include <common/types.h>
 #include <common/stdbool.h>
 #include <common/bit.h>
@@ -21,7 +22,7 @@ struct trap_frame;
 /**
  * Shared handler pointer for @c local_irq / @c global_irq.
  * Attr storage differs: local uses plain @c u64; global uses @c atomic64_t
- * (CAS claim during @c irq_delivery_alloc).
+ * (CAS claim during @c irq_global_alloc).
  */
 #define IRQ_COMMON \
         void (*irq_handler)(struct trap_frame *tf);
@@ -30,13 +31,10 @@ struct trap_frame;
 #define IRQ_NEED_EOI BIT_U64(0) /* @c trap_handler need EOI after irq_handler return */
 #define IRQ_VEC_USED BIT_U64(1) /* this irq have been used */
 
-/**
- * Sentinels (same bit pattern, different roles — do not conflate in comments):
- * - @c IRQ_TABLE_INDEX_INVALID: no row in @c global_irq_table
- * - @c IRQ_HWIRQ_INVALID: no hardware irq number (GSI / INTID) yet
- */
-#define IRQ_TABLE_INDEX_INVALID ((u32)-1)
-#define IRQ_HWIRQ_INVALID       ((u32)-1)
+/** No global irq id (no row in @c global_irq_vector). */
+#define IRQ_GLOBAL_ID_INVALID ((size_t)-1)
+/** No fixed local_irq_id for this global irq (x86 picks one). */
+#define IRQ_LOCAL_ID_INVALID  ((size_t)-1)
 
 /*
  * TRAP_COMMON macro (similar to PMM_COMMON pattern).
@@ -162,13 +160,13 @@ TRAP_CLASS_U8_BOUNDARY_CHECK;
  * TRAP_CLASS_PAGE_FAULT
  *
  * 2. Direct IRQ handlers (architecture-specific):
- *    - register_irq_handler(delivery_id, dest_cpu, handler, irq_attr)
- *    - Local: one slot per (delivery_id, cpu); global: one row per
- *      (delivery_id, dest_cpu) from irq_delivery_alloc
+ *    - register_irq_handler(local_irq_id, dest_cpu, handler, irq_attr)
+ *    - Local: one slot per (local_irq_id, cpu); global: one row per
+ *      (local_irq_id, dest_cpu) from irq_global_alloc
  *
  * PRIORITY AND MUTUAL EXCLUSION:
  *
- * For each (delivery_id, cpu) local slot / global row:
+ * For each (local_irq_id, cpu) local slot / global row:
  *   - ONLY ONE handler at a time; last registration wins
  *   - Mixing fixed_trap and direct register for the same slot is NOT recommended
  *
@@ -176,11 +174,11 @@ TRAP_CLASS_U8_BOUNDARY_CHECK;
  *   ✅ DO: arch_register_fixed_trap(TRAP_CLASS_PAGE_FAULT, handle_pf, IRQ_NEED_EOI);
  *   ✅ DO: register_irq_handler(14, cpu, x86_specific_pf_handler, 0);
  *
- *   ❌ DON'T: Mix both for the same local delivery_id on the same cpu
+ *   ❌ DON'T: Mix both for the same local_irq_id on the same cpu
  *
  * Implementation Detail:
  *   - arch_register_fixed_trap() calls register_irq_handler(id, cpu, ...) for
- *     each CPU and each arch delivery_id mapped to the trap_class
+ *     each CPU and each arch local_irq_id mapped to the trap_class
  *
  * ========================================================================
  */

@@ -7,48 +7,49 @@
 
 extern u64 trap_vec_table;
 
-u32 arch_irq_delivery_to_table_index_on_cpu(cpu_id_t cpu, u32 delivery_id)
+size_t arch_map_global_irq_id_on_cpu(cpu_id_t cpu,
+                                                   size_t local_irq_id)
 {
-        u32 intid;
+        size_t intid;
 
         (void)cpu;
-        if (irq_trap_is_local(delivery_id))
-                return IRQ_TABLE_INDEX_INVALID;
-        intid = AARCH64_TRAP_ID_TO_IRQ(delivery_id);
-        if (intid < (u32)GIC_V2_SPI_START || intid > (u32)GIC_V2_SPI_END)
-                return IRQ_TABLE_INDEX_INVALID;
-        return intid - (u32)GIC_V2_SPI_START;
+        if (irq_trap_is_local(local_irq_id))
+                return IRQ_GLOBAL_ID_INVALID;
+        intid = AARCH64_TRAP_ID_TO_IRQ(local_irq_id);
+        if (intid < (size_t)GIC_V2_SPI_START || intid > (size_t)GIC_V2_SPI_END)
+                return IRQ_GLOBAL_ID_INVALID;
+        return intid - (size_t)GIC_V2_SPI_START;
 }
 
-u32 arch_irq_delivery_to_table_index(u32 delivery_id)
+size_t arch_map_global_irq_id(size_t local_irq_id)
 {
-        return arch_irq_delivery_to_table_index_on_cpu((cpu_id_t)0, delivery_id);
+        return arch_map_global_irq_id_on_cpu((cpu_id_t)0,
+                                                        local_irq_id);
 }
 
-bool arch_irq_delivery_available(cpu_id_t dest_cpu, u32 delivery_id)
+bool arch_local_irq_id_available(cpu_id_t dest_cpu, size_t local_irq_id)
 {
         if (dest_cpu >= (cpu_id_t)RENDEZVOS_MAX_CPU_NUMBER)
                 return false;
-        return arch_irq_fixed_table_index(delivery_id) != IRQ_TABLE_INDEX_INVALID;
+        return arch_map_global_irq_id(local_irq_id) != IRQ_GLOBAL_ID_INVALID;
 }
 
-u32 arch_irq_fixed_table_index(u32 delivery_id)
+size_t arch_map_fixed_local_irq_id(size_t global_irq_id)
 {
-        return arch_irq_delivery_to_table_index(delivery_id);
+        size_t intid;
+
+        intid = global_irq_id + (size_t)GIC_V2_SPI_START;
+        if (intid > (size_t)GIC_V2_SPI_END)
+                return IRQ_LOCAL_ID_INVALID;
+        return (size_t)AARCH64_IRQ_TO_TRAP_ID(intid);
 }
 
-u32 arch_irq_hwirq_for(u32 delivery_id, u32 table_index)
-{
-        (void)table_index;
-        return AARCH64_TRAP_ID_TO_IRQ(delivery_id);
-}
-
-bool arch_irq_bind_delivery_on_cpu(cpu_id_t cpu, u32 delivery_id,
-                                   u32 table_index)
+bool arch_map_local_irq_id(cpu_id_t cpu, size_t local_irq_id,
+                            size_t global_irq_id)
 {
         (void)cpu;
-        (void)delivery_id;
-        (void)table_index;
+        (void)local_irq_id;
+        (void)global_irq_id;
         return true;
 }
 

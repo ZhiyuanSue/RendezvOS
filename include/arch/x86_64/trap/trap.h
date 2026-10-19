@@ -9,7 +9,7 @@
 
 /*
  * LOCAL: [0, ALLOC_LO) — exceptions + APIC LVT/IPI (structural; no reserve).
- * GLOBAL: GSI softcap slots (not "IDT minus local"). Vector → slot via per-CPU map.
+ * GLOBAL: one row per GSI. local_irq_id → global_irq_id via the per-CPU map.
  * IDT hardware table is always @c NR_IDT_VECTORS (256).
  */
 #define ARCH_IRQ_VEC_TIMER    0x20u
@@ -19,29 +19,33 @@
 #define ARCH_IRQ_VEC_ALLOC_HI 0xEFu
 
 #define NR_ARCH_LOCAL_IRQ  ARCH_IRQ_VEC_ALLOC_LO
-#define NR_ARCH_GLOBAL_IRQ 256 /* GSI softcap; MADT may shrink via irq_global_table_init */
+/*
+ * Temporary GSI count until MADT is parsed. @c arch_start_platform passes
+ * this to @c irq_global_table_alloc.
+ */
+#define NR_ARCH_GLOBAL_IRQ 256
 #define NR_IDT_VECTORS     256
 #define NR_IRQ             NR_IDT_VECTORS
 
 #define TRAP_ID(trap_info) (trap_info)
 
 /**
- * Global external irq (hwirq = GSI). Arch-extra: IOAPIC pin.
- * Dispatch: IDT vector → per-CPU map → @c global_irq_table[index].
+ * Global external irq. The array index is the GSI.
+ * Dispatch: local_irq_id → per-CPU map → @c global_irq_vector[global_irq_id].
+ * Arch-extra: IOAPIC pin, filled when the route is programmed.
  */
 struct global_irq {
         IRQ_COMMON
         atomic64_t irq_attr; /* CAS USED at alloc; @c IRQ_NEED_EOI, … */
-        u32 hwirq; /* GSI (hardware); soft index until IOAPIC */
-        u32 delivery_id; /* IDT vector on dest_cpu */
+        size_t local_irq_id; /* per-CPU id mapped on dest_cpu */
         cpu_id_t dest_cpu;
         u8 ioapic_id;
         u8 pin;
 };
 
 /*
- * Per-CPU map @c irq_delivery_to_table_index[] (u64, CAS): delivery → index+1.
- * Alloc: CAS irq_attr on a free row, then CAS this map on dest_cpu only.
+ * Per-CPU map @c local_irq_map[] (u64, CAS): local_irq_id → GSI+1.
+ * Alloc: CAS irq_attr on a free GSI, then CAS this map on dest_cpu only.
  */
 
 enum TRAP_NUM {

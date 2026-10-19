@@ -265,7 +265,7 @@ error_t arch_start_platform(struct setup_info *arch_setup_info)
         psci_init();
         gic.probe();
         gic.init_distributor();
-        return REND_SUCCESS;
+        return irq_global_table_alloc(gic.nr_spi());
 }
 /*
  * @brief the arch_start_core function is used for each core start,

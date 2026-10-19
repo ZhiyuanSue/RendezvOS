@@ -21,26 +21,27 @@
 
 /*
  * LOCAL: [0, ALLOC_LO) = EC + SGI/PPI (structural; no reserve).
- * GLOBAL: SPI only — table index = INTID - SPI_START (excludes local INTIDs).
+ * GLOBAL: SPI only — length from @c gic_v2_nr_spi; index = INTID - SPI_START.
  */
-#define NR_ARCH_LOCAL_IRQ  ARCH_IRQ_VEC_ALLOC_LO
-#define NR_ARCH_GLOBAL_IRQ (GIC_V2_SPI_END - GIC_V2_SPI_START + 1)
-#define NR_IRQ             NR_ARCH_LOCAL_IRQ /* compat */
+#define NR_ARCH_LOCAL_IRQ ARCH_IRQ_VEC_ALLOC_LO
+#define NR_IRQ            NR_ARCH_LOCAL_IRQ /* compat */
 
 /**
- * Global external irq (SPI). @c hwirq is real INTID; table index is SPI-relative.
+ * Global external irq (SPI). The array index is the SPI index
+ * (INTID - @c GIC_V2_SPI_START). @c local_irq_id is the trap id
+ * (INTID + offset). Those two are a fixed pair.
  */
 struct global_irq {
         IRQ_COMMON
         atomic64_t irq_attr; /* CAS USED at alloc; @c IRQ_NEED_EOI, … */
-        u32 hwirq; /* INTID (hardware) */
-        u32 delivery_id; /* software trap id (INTID + offset) */
+        size_t local_irq_id; /* per-CPU id mapped on dest_cpu */
         cpu_id_t dest_cpu;
 };
 
 /*
- * Delivery id → table index = INTID - SPI_START (no per-CPU map).
- * @c dest_cpu is recorded at alloc for later GIC routing; bind/unbind no-op.
+ * local_irq_id → SPI index = INTID - SPI_START (no per-CPU map).
+ * @c dest_cpu is recorded at alloc for later GIC routing.
+ * @c arch_map_local_irq_id is a no-op.
  * APIs: @c rendezvos/trap/trap.h.
  */
 

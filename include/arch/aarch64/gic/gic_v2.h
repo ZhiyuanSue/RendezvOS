@@ -178,14 +178,15 @@ union irq_source {
  * BSP call order:
  * - probe
  * - init_distributor (platform init once)
+ * - irq_global_table_alloc(gic.nr_spi()) in arch_start_platform
  * 
  * per CPU call after init_interrupt:
  * - init_cpu_interface
  * - IPI/timer register.
  * 
  * Device SPI alloc: 
- * irq_delivery_alloc: claim a delivery id for one dest_cpu
- * - register_irq_handler(delivery_id, dest_cpu, ...) 
+ * irq_global_alloc(global_irq_id, dest_cpu, &local_irq_id)
+ * - register_irq_handler(local_irq_id, dest_cpu, ...) 
  * - unmask_irq
  * - optional set_affinity.
  *
@@ -268,6 +269,11 @@ struct gic_v2 {
          * @brief Clear pending via GICD_ICPENDR for @p irq_number.
          */
         void (*pending_clr)(u32 irq_number);
+
+        /**
+         * @brief SPI line count.
+         */
+        u32 (*nr_spi)(void);
 };
 
 /**

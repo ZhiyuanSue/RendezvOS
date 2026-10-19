@@ -15,70 +15,66 @@ extern enum IRQ_type arch_irq_type;
 extern union idt_gate_desc trap_vec_table[NR_IDT_VECTORS];
 
 /*
- * Per-CPU: delivery_id → table_index + 1 (0 = unbound). u64 for CAS.
+ * Per-CPU map: local_irq_id → global_irq_id + 1 (0 = not mapped). u64 for CAS.
  */
-DEFINE_PER_CPU(u64, irq_delivery_to_table_index[NR_IDT_VECTORS]);
+DEFINE_PER_CPU(u64, local_irq_map[NR_IDT_VECTORS]);
 
-u32 arch_irq_delivery_to_table_index_on_cpu(cpu_id_t cpu, u32 delivery_id)
+size_t arch_map_global_irq_id_on_cpu(cpu_id_t cpu,
+                                                   size_t local_irq_id)
 {
         u64 encoded;
 
         if (cpu >= (cpu_id_t)RENDEZVOS_MAX_CPU_NUMBER
-            || delivery_id >= (u32)NR_IDT_VECTORS)
-                return IRQ_TABLE_INDEX_INVALID;
-        encoded = per_cpu(irq_delivery_to_table_index[delivery_id], cpu);
-        return encoded ? (u32)(encoded - 1u) : IRQ_TABLE_INDEX_INVALID;
+            || local_irq_id >= (size_t)NR_IDT_VECTORS)
+                return IRQ_GLOBAL_ID_INVALID;
+        encoded = per_cpu(local_irq_map[local_irq_id], cpu);
+        return encoded ? (size_t)(encoded - 1u) : IRQ_GLOBAL_ID_INVALID;
 }
 
-u32 arch_irq_delivery_to_table_index(u32 delivery_id)
+size_t arch_map_global_irq_id(size_t local_irq_id)
 {
         u64 encoded;
 
-        if (delivery_id >= (u32)NR_IDT_VECTORS)
-                return IRQ_TABLE_INDEX_INVALID;
-        encoded = percpu(irq_delivery_to_table_index[delivery_id]);
-        return encoded ? (u32)(encoded - 1u) : IRQ_TABLE_INDEX_INVALID;
+        if (local_irq_id >= (size_t)NR_IDT_VECTORS)
+                return IRQ_GLOBAL_ID_INVALID;
+        encoded = percpu(local_irq_map[local_irq_id]);
+        return encoded ? (size_t)(encoded - 1u) : IRQ_GLOBAL_ID_INVALID;
 }
 
-bool arch_irq_delivery_available(cpu_id_t dest_cpu, u32 delivery_id)
+bool arch_local_irq_id_available(cpu_id_t dest_cpu, size_t local_irq_id)
 {
         if (dest_cpu >= (cpu_id_t)RENDEZVOS_MAX_CPU_NUMBER)
                 return false;
-        if (irq_trap_is_local(delivery_id) || delivery_id >= (u32)NR_IDT_VECTORS)
+        if (irq_trap_is_local(local_irq_id)
+            || local_irq_id >= (size_t)NR_IDT_VECTORS)
                 return false;
-        return arch_irq_delivery_to_table_index_on_cpu(dest_cpu, delivery_id)
-               == IRQ_TABLE_INDEX_INVALID;
+        return arch_map_global_irq_id_on_cpu(dest_cpu, local_irq_id)
+               == IRQ_GLOBAL_ID_INVALID;
 }
 
-u32 arch_irq_fixed_table_index(u32 delivery_id)
+size_t arch_map_fixed_local_irq_id(size_t global_irq_id)
 {
-        (void)delivery_id;
-        return IRQ_TABLE_INDEX_INVALID; /* scan any free global slot */
+        (void)global_irq_id;
+        return IRQ_LOCAL_ID_INVALID; /* pick a free local_irq_id */
 }
 
-u32 arch_irq_hwirq_for(u32 delivery_id, u32 table_index)
-{
-        (void)delivery_id;
-        return table_index; /* soft until IOAPIC binds real GSI */
-}
-
-bool arch_irq_bind_delivery_on_cpu(cpu_id_t cpu, u32 delivery_id,
-                                   u32 table_index)
+bool arch_map_local_irq_id(cpu_id_t cpu, size_t local_irq_id,
+                            size_t global_irq_id)
 {
         volatile u64 *cell;
 
         if (cpu >= (cpu_id_t)RENDEZVOS_MAX_CPU_NUMBER
-            || delivery_id >= (u32)NR_IDT_VECTORS)
+            || local_irq_id >= (size_t)NR_IDT_VECTORS)
                 return false;
-        cell = &per_cpu(irq_delivery_to_table_index[delivery_id], cpu);
-        if (table_index == IRQ_TABLE_INDEX_INVALID) {
+        cell = &per_cpu(local_irq_map[local_irq_id], cpu);
+        if (global_irq_id == IRQ_GLOBAL_ID_INVALID) {
                 atomic64_store(cell, 0);
                 return true;
         }
-        if (!nr_global_irq || table_index >= nr_global_irq)
+        if (!nr_global_irq || global_irq_id >= nr_global_irq)
                 return false;
-        /* CAS unbound(0) → index+1; fail if another alloc took this vector. */
-        return atomic64_cas(cell, 0, (u64)table_index + 1u) == 0;
+        /* CAS not-mapped(0) → global_irq_id+1; fail if already mapped. */
+        return atomic64_cas(cell, 0, (u64)global_irq_id + 1u) == 0;
 }
 
 const char *trap_name_string[TRAP_ARCH_USED + 2] = {
