@@ -21,21 +21,19 @@ void arch_start_smp(struct setup_info *arch_setup_info);
 struct trap_frame;
 
 /**
- * @brief Register smp ipi handler @p handler (SGI0 → trap 64) with NEED_EOI
- * flag.
+ * @brief Register @c ARCH_IRQ_ID_IPI (SGI0 → trap id) with @p handler and
+ * @c IRQ_NEED_EOI.
  *
- * Called from smp_ipi_init after init_interrupt and gic.init_cpu_interface.
- * 
- * It's the same with the x86_64 arch_smp_ipi_init.
- * But it's designed, for the riscv64 is using SSIP, which might not same.
+ * Called from @c smp_ipi_init after init_interrupt and
+ * gic.init_cpu_interface. @p cpu for register is this CPU's dense id.
  */
 void arch_smp_ipi_init(void (*handler)(struct trap_frame *tf));
 
 /**
- * @brief Using GIC interface to send ipi to target cpu
- * @param cpu the target cpu id.
- * @return REND_SUCCESS if success, -E_IN_PARAM if cpu id is illegal, or
- * -E_RENDEZVOS if GIC send_sgi interface is not set.
+ * @brief Send SGI0 to @p cpu_id (dense id) via GIC.
+ *
+ * @return REND_SUCCESS, -E_IN_PARAM if cpu_id is illegal, or
+ * -E_RENDEZVOS if GIC send_sgi is not set.
  */
-error_t arch_smp_ipi_send(cpu_id_t cpu);
+error_t arch_smp_ipi_send(cpu_id_t cpu_id);
 #endif

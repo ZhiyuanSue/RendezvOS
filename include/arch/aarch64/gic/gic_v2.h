@@ -175,20 +175,12 @@ union irq_source {
 /**
  * @brief GICv2 driver object (global @c gic ).
  *
- * BSP call order:
- * - probe
- * - init_distributor (platform init once)
- * - irq_global_table_alloc(gic.nr_spi()) in arch_start_platform
- * 
- * per CPU call after init_interrupt:
- * - init_cpu_interface
- * - IPI/timer register.
- * 
- * Device SPI alloc: 
- * irq_global_alloc(global_irq_id, dest_cpu, &local_irq_id)
- * - register_irq_handler(local_irq_id, dest_cpu, ...) 
- * - unmask_irq
- * - optional set_affinity.
+ * Bring-up order (this driver only):
+ * - BSP: probe → init_distributor
+ * - per CPU (after IRQ enabled): init_cpu_interface
+ *
+ * Device SPI path uses this driver's mask/unmask/set_affinity/set_type/…
+ * on INTIDs; soft irq bookkeeping lives outside GIC.
  *
  * @note compatible is hard-coded "arm,cortex-a15-gic"; if mismatch → probe
  *       returns without setting gicd/gicc.

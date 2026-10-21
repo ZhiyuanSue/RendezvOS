@@ -12,7 +12,7 @@ extern enum timer_type sys_timer_type;
 u32 arch_get_timer_irq_num(bool is_bsp)
 {
         (void)is_bsp;
-        return ARCH_IRQ_VEC_TIMER;
+        return ARCH_IRQ_ID_TIMER;
 }
 
 /**

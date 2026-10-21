@@ -226,9 +226,9 @@ error_t arch_start_platform(struct setup_info *arch_setup_info)
                 goto arch_start_platform_error;
         /*
          * TODO: parse MADT and pass the machine GSI count.
-         * Until then the global irq table length is NR_ARCH_GLOBAL_IRQ (256).
+         * Until then the global irq vector length is NR_ARCH_GLOBAL_IRQ (256).
          */
-        e = irq_global_table_alloc(NR_ARCH_GLOBAL_IRQ);
+        e = irq_global_vector_alloc(NR_ARCH_GLOBAL_IRQ);
         if (e != REND_SUCCESS)
                 goto arch_start_platform_error;
         /*alloc a pci root node without any info*/

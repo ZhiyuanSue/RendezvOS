@@ -58,7 +58,7 @@ error_t smp_ipi_register(ipi_id_t *ipi_id_out, smp_ipi_fn_t fn)
         return REND_SUCCESS;
 }
 
-error_t smp_ipi_send(cpu_id_t cpu, ipi_id_t ipi_id)
+error_t smp_ipi_send(cpu_id_t cpu_id, ipi_id_t ipi_id)
 {
         volatile u64 *pending;
         u64 old_pending, new_pending;
@@ -66,10 +66,10 @@ error_t smp_ipi_send(cpu_id_t cpu, ipi_id_t ipi_id)
 
         if (ipi_id >= RENDEZVOS_SMP_IPI_MAX || !smp_ipi_slots[ipi_id].used)
                 return -E_IN_PARAM;
-        if (!cpu_is_online(cpu))
+        if (!cpu_is_online(cpu_id))
                 return -E_IN_PARAM;
 
-        pending = (volatile u64 *)&per_cpu(smp_ipi_pending, cpu).counter;
+        pending = (volatile u64 *)&per_cpu(smp_ipi_pending, cpu_id).counter;
         do {
                 old_pending = atomic64_load(pending);
                 new_pending = old_pending | (1ull << ipi_id);
@@ -77,7 +77,7 @@ error_t smp_ipi_send(cpu_id_t cpu, ipi_id_t ipi_id)
                         break;
         } while (atomic64_cas(pending, old_pending, new_pending) != old_pending);
 
-        e = arch_smp_ipi_send(cpu);
+        e = arch_smp_ipi_send(cpu_id);
         if (e != REND_SUCCESS) {
                 do {
                         old_pending = atomic64_load(pending);

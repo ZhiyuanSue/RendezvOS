@@ -18,7 +18,7 @@ typedef u32 ipi_id_t;
 typedef void (*smp_ipi_fn_t)(void);
 
 /**
- * @brief Allocate a global soft-IPI slot and bind @p fn as callback.
+ * @brief Allocate a global soft-IPI slot and install @p fn as callback.
  *
  * Slots are permanent (no unregister). Typically called once
  * during bring-up. At most @c RENDEZVOS_SMP_IPI_MAX slots.
@@ -31,27 +31,24 @@ typedef void (*smp_ipi_fn_t)(void);
 error_t smp_ipi_register(ipi_id_t *ipi_id_out, smp_ipi_fn_t fn);
 
 /**
- * @brief As we methioned , the ipi send is just a no arguments function.
- * So in order to send some informations, and let other CPU can handle it.
- * we must maintain some data and a state machine to discript how the ipi
- * producer and consumer communicate.
- * And that is what this function do, maintain the data and state machine
- * let another CPU can get the info , and then using arch_smp_ipi_send to send
- * it.
+ * @brief Send a soft-IPI to @p cpu for slot @p ipi_id.
  *
- * @param cpu Destination that is @c cpu_is_online (x86: APIC id; aarch64:
- *        dense id ).
+ * Soft-IPI carries no payload in the send path. Shared state and any
+ * producer/consumer handshake live in caller-owned storage filled before
+ * this call; the arch send only signals the remote CPU.
+ *
+ * @param cpu_id Destination that is @c cpu_is_online
  * @param ipi_id Slot from @c smp_ipi_register
- * @return @c REND_SUCCESS, @c -E_IN_PARAM if cpuid is wrong or cpu is disabled,
+ * @return @c REND_SUCCESS, @c -E_IN_PARAM if cpu_id is wrong or cpu is offline,
  * or arch error (@c -E_RENDEZVOS / …)
  */
-error_t smp_ipi_send(cpu_id_t cpu, ipi_id_t ipi_id);
+error_t smp_ipi_send(cpu_id_t cpu_id, ipi_id_t ipi_id);
 
 /**
- * @brief PerCPU: bind the soft-IPI IRQ vector with a handler.
- * for x86_64/aarch64, just a normal register_irq_handler(delivery, cpu, ...).
- * but might be different for riscv64, so we must using this interface and
- * ignore the arch different
+ * @brief Per-CPU bring-up: register the soft-IPI local_irq_id handler.
+ *
+ * Arch implements @c arch_smp_ipi_init; callers use this so the IRQ id and
+ * EOI policy stay behind the arch hook.
  */
 void smp_ipi_init(void);
 

@@ -4,7 +4,7 @@
  * This header must NOT include any architecture-specific headers
  * to avoid circular dependencies.
  *
- * Included by rendezvous/trap.h and architecture-specific trap headers.
+ * Included by rendezvos/trap.h and architecture-specific trap headers.
  */
 #ifndef _RENDEZVOS_TRAP_COMMON_H_
 #define _RENDEZVOS_TRAP_COMMON_H_
@@ -27,13 +27,13 @@ struct trap_frame;
 #define IRQ_COMMON \
         void (*irq_handler)(struct trap_frame *tf);
 
-#define IRQ_NO_ATTR  (0ull)
-#define IRQ_NEED_EOI BIT_U64(0) /* @c trap_handler need EOI after irq_handler return */
-#define IRQ_VEC_USED BIT_U64(1) /* this irq have been used */
+#define IRQ_NO_ATTR   (0ull)
+#define IRQ_NEED_EOI  BIT_U64(0) /* trap_handler EOI after irq_handler returns */
+#define IRQ_ATTR_USED BIT_U64(1) /* this irq has been claimed / is in use */
 
-/** No global irq id (no row in @c global_irq_vector). */
+/** No global_irq_id (not an index into @c global_irq_vector). */
 #define IRQ_GLOBAL_ID_INVALID ((size_t)-1)
-/** No fixed local_irq_id for this global irq (x86 picks one). */
+/** No fixed local_irq_id for this global irq; alloc picks one. */
 #define IRQ_LOCAL_ID_INVALID  ((size_t)-1)
 
 /*
@@ -103,13 +103,10 @@ enum trap_class {
         TRAP_CLASS_DEBUG, /* Debug exception (single-step, breakpoint) */
         TRAP_CLASS_DOUBLE_FAULT, /* Double fault (critical error indicating
                                     handler bug) */
-        TRAP_CLASS_SEGMENT_FAULT, /* Segment-related faults (x86: invalid TSS,
-                                     segment not present) */
-        TRAP_CLASS_SECURITY, /* Security exception (x86 #SE, ARM MTE fault) */
-        TRAP_CLASS_VIRTUALIZATION, /* Virtualization exception (x86 #VE, EPT
-                                      violations) */
-        TRAP_CLASS_ASYNC_ABORT, /* Asynchronous abort (ARM SError, external
-                                   abort) */
+        TRAP_CLASS_SEGMENT_FAULT, /* Segment-related faults */
+        TRAP_CLASS_SECURITY, /* Security exception */
+        TRAP_CLASS_VIRTUALIZATION, /* Virtualization exception */
+        TRAP_CLASS_ASYNC_ABORT, /* Asynchronous abort / external abort */
         TRAP_CLASS_UNKNOWN, /* Unknown or unsupported exception (MUST BE LAST)
                              */
 };
@@ -150,35 +147,34 @@ TRAP_CLASS_U8_BOUNDARY_CHECK;
  * Handler Registration Priority and Mutual Exclusion
  * ========================================================================
  *
- * Core/ provides TWO levels of handler registration:
+ * Core provides two registration levels:
  *
- * 1. Fixed trap handlers (architecture-independent):
+ * 1. Fixed trap handlers:
  *    - arch_register_fixed_trap(trap_class, handler, irq_attr)
- *    - One handler per trap_class (not per trap_id)
- *    - Multiple trap_ids can map to the same trap_class
- *    - Example: x86 #PF (14) and ARM data abort (0x24) both use
- * TRAP_CLASS_PAGE_FAULT
+ *    - One handler per trap_class (not per local_irq_id)
+ *    - Multiple local_irq_ids may map to the same trap_class
  *
- * 2. Direct IRQ handlers (architecture-specific):
- *    - register_irq_handler(local_irq_id, dest_cpu, handler, irq_attr)
- *    - Local: one slot per (local_irq_id, cpu); global: one row per
- *      (local_irq_id, dest_cpu) from irq_global_alloc
+ * 2. Direct IRQ handlers:
+ *    - register_irq_handler(local_irq_id, cpu_id, handler, irq_attr)
+ *    - Local: one entry per (local_irq_id, cpu_id)
+ *    - Global: one entry per (local_irq_id, cpu_id) from irq_global_alloc
  *
  * PRIORITY AND MUTUAL EXCLUSION:
  *
- * For each (local_irq_id, cpu) local slot / global row:
- *   - ONLY ONE handler at a time; last registration wins
- *   - Mixing fixed_trap and direct register for the same slot is NOT recommended
+ * For each (local_irq_id, cpu_id) local / global entry:
+ *   - Only one handler at a time; last registration wins
+ *   - Mixing fixed_trap and direct register for the same entry is not
+ *     recommended
  *
- * Recommended Usage:
- *   ✅ DO: arch_register_fixed_trap(TRAP_CLASS_PAGE_FAULT, handle_pf, IRQ_NEED_EOI);
- *   ✅ DO: register_irq_handler(14, cpu, x86_specific_pf_handler, 0);
+ * Recommended usage:
+ *   - arch_register_fixed_trap(TRAP_CLASS_PAGE_FAULT, handle_pf, IRQ_NEED_EOI);
+ *   - register_irq_handler(local_irq_id, cpu_id, handler, IRQ_NO_ATTR);
  *
- *   ❌ DON'T: Mix both for the same local_irq_id on the same cpu
+ * Do not mix both for the same local_irq_id on the same cpu_id.
  *
- * Implementation Detail:
- *   - arch_register_fixed_trap() calls register_irq_handler(id, cpu, ...) for
- *     each CPU and each arch local_irq_id mapped to the trap_class
+ * Implementation note:
+ *   arch_register_fixed_trap() calls register_irq_handler() for each CPU and
+ *   each local_irq_id that belongs to the trap_class.
  *
  * ========================================================================
  */

@@ -77,7 +77,7 @@ void reset_APIC(void)
 void software_enable_APIC(void)
 {
         u32 spurious_vec_reg_val;
-        u32 spurious_vec_irq_num = ARCH_IRQ_VEC_SPURIOUS;
+        u32 spurious_vec_irq_num = ARCH_IRQ_ID_SPURIOUS;
         spurious_vec_reg_val = APIC_RD_REG(SVR, KERNEL_VIRT_OFFSET);
 
         spurious_vec_reg_val =

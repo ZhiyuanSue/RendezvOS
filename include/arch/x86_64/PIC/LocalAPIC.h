@@ -213,7 +213,7 @@ tick_t APIC_timer_read(enum timer_type sys_timer_type);
 void APIC_timer_reset(enum timer_type sys_timer_type, tick_t next_event_gap);
 
 /**
- * @brief enable APIC : set SW_ENABLE and spurious vector = ARCH_IRQ_VEC_SPURIOUS (0x27).
+ * @brief enable APIC : set SW_ENABLE and spurious id = ARCH_IRQ_ID_SPURIOUS (0x27).
  */
 void software_enable_APIC(void);
 

@@ -7,50 +7,64 @@
 
 extern u64 trap_vec_table;
 
-size_t arch_map_global_irq_id_on_cpu(cpu_id_t cpu,
-                                                   size_t local_irq_id)
+size_t arch_map_global_irq_id(cpu_id_t cpu_id, size_t local_irq_id)
 {
-        size_t intid;
+        size_t hw_irq; /* GIC INTID */
 
-        (void)cpu;
+        /*
+         * Formula map; cpu_id unused for the math. CPU_ID_INVALID still
+         * means "current CPU" for the common calling convention.
+         */
+        if (cpu_id != CPU_ID_INVALID
+            && cpu_id >= (cpu_id_t)RENDEZVOS_MAX_CPU_NUMBER)
+                return IRQ_GLOBAL_ID_INVALID;
         if (irq_trap_is_local(local_irq_id))
                 return IRQ_GLOBAL_ID_INVALID;
-        intid = AARCH64_TRAP_ID_TO_IRQ(local_irq_id);
-        if (intid < (size_t)GIC_V2_SPI_START || intid > (size_t)GIC_V2_SPI_END)
+        hw_irq = AARCH64_TRAP_ID_TO_IRQ(local_irq_id);
+        if (hw_irq < (size_t)GIC_V2_SPI_START
+            || hw_irq > (size_t)GIC_V2_SPI_END)
                 return IRQ_GLOBAL_ID_INVALID;
-        return intid - (size_t)GIC_V2_SPI_START;
+        return hw_irq - (size_t)GIC_V2_SPI_START;
 }
 
-size_t arch_map_global_irq_id(size_t local_irq_id)
+bool arch_local_irq_id_available(cpu_id_t cpu_id, size_t local_irq_id)
 {
-        return arch_map_global_irq_id_on_cpu((cpu_id_t)0,
-                                                        local_irq_id);
-}
-
-bool arch_local_irq_id_available(cpu_id_t dest_cpu, size_t local_irq_id)
-{
-        if (dest_cpu >= (cpu_id_t)RENDEZVOS_MAX_CPU_NUMBER)
+        if (cpu_id != CPU_ID_INVALID
+            && cpu_id >= (cpu_id_t)RENDEZVOS_MAX_CPU_NUMBER)
                 return false;
-        return arch_map_global_irq_id(local_irq_id) != IRQ_GLOBAL_ID_INVALID;
+        size_t global_irq_id = arch_map_global_irq_id(cpu_id, local_irq_id);
+        if (global_irq_id >= nr_global_irq)
+                return false;
+        /* Free to claim: fixed global entry not yet used. */
+        return !irq_atomic_attr_is_used(
+                &global_irq_vector[global_irq_id].irq_attr);
 }
 
 size_t arch_map_fixed_local_irq_id(size_t global_irq_id)
 {
-        size_t intid;
+        size_t hw_irq; /* GIC INTID */
 
-        intid = global_irq_id + (size_t)GIC_V2_SPI_START;
-        if (intid > (size_t)GIC_V2_SPI_END)
+        hw_irq = global_irq_id + (size_t)GIC_V2_SPI_START;
+        if (hw_irq > (size_t)GIC_V2_SPI_END)
                 return IRQ_LOCAL_ID_INVALID;
-        return (size_t)AARCH64_IRQ_TO_TRAP_ID(intid);
+        return (size_t)AARCH64_IRQ_TO_TRAP_ID(hw_irq);
 }
 
-bool arch_map_local_irq_id(cpu_id_t cpu, size_t local_irq_id,
-                            size_t global_irq_id)
+bool arch_map_local_irq_id(cpu_id_t cpu_id, size_t local_irq_id,
+                           size_t global_irq_id)
 {
-        (void)cpu;
         (void)local_irq_id;
         (void)global_irq_id;
+        /* Formula map; no table to update. CPU_ID_INVALID = current CPU. */
+        if (cpu_id != CPU_ID_INVALID
+            && cpu_id >= (cpu_id_t)RENDEZVOS_MAX_CPU_NUMBER)
+                return false;
         return true;
+}
+
+void arch_irq_global_entry_reset(struct global_irq *entry)
+{
+        (void)entry;
 }
 
 void arch_init_interrupt(void)
@@ -465,9 +479,11 @@ void arch_register_fixed_trap(enum trap_class trap_class,
         for (u64 ec = 0; ec < 0x40; ec++) {
                 if (aarch64_ec_to_trap_class(ec) != trap_class)
                         continue;
-                for (cpu_id_t cpu = 0; cpu < (cpu_id_t)RENDEZVOS_MAX_CPU_NUMBER;
-                     cpu++) {
-                        register_irq_handler((u32)ec, cpu,
+                for (cpu_id_t cpu_id = 0;
+                     cpu_id < (cpu_id_t)RENDEZVOS_MAX_CPU_NUMBER;
+                     cpu_id++) {
+                        register_irq_handler((u32)ec,
+                                             cpu_id,
                                              aarch64_fixed_trap_wrapper,
                                              irq_attr);
                 }

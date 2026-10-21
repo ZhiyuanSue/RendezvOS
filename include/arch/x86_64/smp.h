@@ -38,21 +38,18 @@ void arch_start_smp(struct setup_info *arch_setup_info);
 struct trap_frame;
 
 /**
- * @brief Register ARCH_IRQ_VEC_IPI (0x30) with @p handler and IRQ_NEED_EOI
- * flag. which is used for x86 ipi.
+ * @brief Register @c ARCH_IRQ_ID_IPI (0x30) with @p handler and
+ * @c IRQ_NEED_EOI.
  *
- * Called from smp_ipi_init on each CPU after init_interrupt / init_irq.
- *
- * It's the same with the aarch64 arch_smp_ipi_init.
- * But it's designed, for the riscv64 is using SSIP, which might not same.
+ * Called from @c smp_ipi_init on each CPU after init_interrupt / init_irq.
+ * Destination @c cpu for the register path is this CPU's APIC id.
  */
 void arch_smp_ipi_init(void (*handler)(struct trap_frame *tf));
 
 /**
- * @brief using ICR send ipi to @p cpu with vector ARCH_IRQ_VEC_IPI.
+ * @brief Send IPI to @p cpu_id (APIC id) via ICR with vector @c ARCH_IRQ_ID_IPI.
  *
  * @return REND_SUCCESS, or -E_RENDEZVOS if arch_irq_type is not xAPIC/x2APIC
- * (impossible)
  */
-error_t arch_smp_ipi_send(cpu_id_t cpu);
+error_t arch_smp_ipi_send(cpu_id_t cpu_id);
 #endif

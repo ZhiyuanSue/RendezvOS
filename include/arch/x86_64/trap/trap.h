@@ -9,19 +9,20 @@
 
 /*
  * LOCAL: [0, ALLOC_LO) — exceptions + APIC LVT/IPI (structural; no reserve).
- * GLOBAL: one row per GSI. local_irq_id → global_irq_id via the per-CPU map.
- * IDT hardware table is always @c NR_IDT_VECTORS (256).
+ * GLOBAL: one entry per global_irq_id (GSI). local_irq_id → global_irq_id
+ * via the per-CPU map below. IDT hardware table is always @c NR_IDT_VECTORS
+ * (256).
  */
-#define ARCH_IRQ_VEC_TIMER    0x20u
-#define ARCH_IRQ_VEC_SPURIOUS 0x27u
-#define ARCH_IRQ_VEC_IPI      0x30u
-#define ARCH_IRQ_VEC_ALLOC_LO 0x40u
-#define ARCH_IRQ_VEC_ALLOC_HI 0xEFu
+#define ARCH_IRQ_ID_TIMER    0x20u
+#define ARCH_IRQ_ID_SPURIOUS 0x27u
+#define ARCH_IRQ_ID_IPI      0x30u
+#define ARCH_IRQ_ID_ALLOC_LO 0x40u
+#define ARCH_IRQ_ID_ALLOC_HI 0xEFu
 
-#define NR_ARCH_LOCAL_IRQ  ARCH_IRQ_VEC_ALLOC_LO
+#define NR_ARCH_LOCAL_IRQ ARCH_IRQ_ID_ALLOC_LO
 /*
- * Temporary GSI count until MADT is parsed. @c arch_start_platform passes
- * this to @c irq_global_table_alloc.
+ * Temporary global_irq_id count until MADT is parsed (GSI count).
+ * @c arch_start_platform passes this to @c irq_global_vector_alloc.
  */
 #define NR_ARCH_GLOBAL_IRQ 256
 #define NR_IDT_VECTORS     256
@@ -30,22 +31,24 @@
 #define TRAP_ID(trap_info) (trap_info)
 
 /**
- * Global external irq. The array index is the GSI.
+ * Global external irq. Index is @c global_irq_id (GSI).
  * Dispatch: local_irq_id → per-CPU map → @c global_irq_vector[global_irq_id].
  * Arch-extra: IOAPIC pin, filled when the route is programmed.
  */
 struct global_irq {
         IRQ_COMMON
         atomic64_t irq_attr; /* CAS USED at alloc; @c IRQ_NEED_EOI, … */
-        size_t local_irq_id; /* per-CPU id mapped on dest_cpu */
-        cpu_id_t dest_cpu;
+        size_t local_irq_id; /* per-CPU id mapped on cpu_id */
+        cpu_id_t cpu_id;
         u8 ioapic_id;
         u8 pin;
 };
 
 /*
- * Per-CPU map @c local_irq_map[] (u64, CAS): local_irq_id → GSI+1.
- * Alloc: CAS irq_attr on a free GSI, then CAS this map on dest_cpu only.
+ * Per-CPU map @c local_irq_map[] (u64, CAS): local_irq_id → global_irq_id+1
+ * (0 = not mapped). Alloc: CAS irq_attr on the chosen global_irq_id, then
+ * CAS this map on cpu_id only. @c arch_map_fixed_local_irq_id returns
+ * INVALID so alloc scans [ALLOC_LO, ALLOC_HI] for a free local_irq_id.
  */
 
 enum TRAP_NUM {

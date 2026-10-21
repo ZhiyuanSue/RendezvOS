@@ -12,37 +12,38 @@
 #define AARCH64_TRAP_ID_TO_IRQ(trap_id)    (trap_id - AARCH64_IRQ_OFFSET)
 
 /*
- * The core have used irq vec number
+ * Local / global id split (GIC INTID ↔ trap id via the macros above).
  */
-#define ARCH_IRQ_INTID_IPI     GIC_V2_SGI_START /* 0 */
-#define ARCH_IRQ_VEC_IPI       AARCH64_IRQ_TO_TRAP_ID(ARCH_IRQ_INTID_IPI)
-#define ARCH_IRQ_VEC_ALLOC_LO  AARCH64_IRQ_TO_TRAP_ID(GIC_V2_SPI_START)
-#define ARCH_IRQ_VEC_ALLOC_HI  AARCH64_IRQ_TO_TRAP_ID(GIC_V2_SPI_END)
+#define ARCH_IRQ_INTID_IPI   GIC_V2_SGI_START /* 0 */
+#define ARCH_IRQ_ID_IPI      AARCH64_IRQ_TO_TRAP_ID(ARCH_IRQ_INTID_IPI)
+#define ARCH_IRQ_ID_ALLOC_LO AARCH64_IRQ_TO_TRAP_ID(GIC_V2_SPI_START)
+#define ARCH_IRQ_ID_ALLOC_HI AARCH64_IRQ_TO_TRAP_ID(GIC_V2_SPI_END)
 
 /*
  * LOCAL: [0, ALLOC_LO) = EC + SGI/PPI (structural; no reserve).
- * GLOBAL: SPI only — length from @c gic_v2_nr_spi; index = INTID - SPI_START.
+ * GLOBAL: one entry per global_irq_id; length from @c gic_v2_nr_spi.
+ * global_irq_id is SPI index = INTID - SPI_START.
  */
-#define NR_ARCH_LOCAL_IRQ ARCH_IRQ_VEC_ALLOC_LO
+#define NR_ARCH_LOCAL_IRQ ARCH_IRQ_ID_ALLOC_LO
 #define NR_IRQ            NR_ARCH_LOCAL_IRQ /* compat */
 
 /**
- * Global external irq (SPI). The array index is the SPI index
- * (INTID - @c GIC_V2_SPI_START). @c local_irq_id is the trap id
- * (INTID + offset). Those two are a fixed pair.
+ * Global external irq. Index is @c global_irq_id (SPI index).
+ * Fixed pair: global_irq_id = SPI index, local_irq_id = INTID + offset.
  */
 struct global_irq {
         IRQ_COMMON
         atomic64_t irq_attr; /* CAS USED at alloc; @c IRQ_NEED_EOI, … */
-        size_t local_irq_id; /* per-CPU id mapped on dest_cpu */
-        cpu_id_t dest_cpu;
+        size_t local_irq_id; /* per-CPU id mapped on cpu_id */
+        cpu_id_t cpu_id;
 };
 
 /*
- * local_irq_id → SPI index = INTID - SPI_START (no per-CPU map).
- * @c dest_cpu is recorded at alloc for later GIC routing.
- * @c arch_map_local_irq_id is a no-op.
- * APIs: @c rendezvos/trap/trap.h.
+ * local_irq_id → global_irq_id by formula (no per-CPU map table).
+ * @c cpu_id is recorded at alloc for later GIC routing.
+ * @c arch_map_local_irq_id is a no-op (always succeeds if cpu is valid).
+ * @c arch_map_fixed_local_irq_id always returns the fixed local_irq_id.
+ * Common APIs: @c rendezvos/trap/trap.h.
  */
 
 #define TRAP_ID(trap_info)  (trap_info & AARCH64_TRAP_ID_MASK)
