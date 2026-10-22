@@ -23,6 +23,34 @@
  * LOCAL: [0, ALLOC_LO) = EC + SGI/PPI (structural; no reserve).
  * GLOBAL: one entry per global_irq_id; length from @c gic_v2_nr_spi.
  * global_irq_id is SPI index = INTID - SPI_START.
+ * local_irq_id = INTID + AARCH64_IRQ_OFFSET (offset 64).
+ *
+ * Each CPU has the same local_irq_id number line. Low ids live in
+ * local_irq_vector[]; high ids are virtual (not in that vector) and map 1:1
+ * into the shared global_irq_vector[] (formula, no per-CPU map).
+ *
+ *   CPU0 local_irq_vector[] (real, private)     virtual ids (not in local)
+ *   +-----+-----+-----+-----+                   +-----+-------+-----+
+ *   |  0  |  1  | ... |LO-1 |                   | LO  | LO+1  | ... |
+ *   +-----+-----+-----+-----+                   +--+--+--+----+-----+
+ *                                                  |     |
+ *                                                  |     |
+ *                                                  v     v
+ *   CPU1 local_irq_vector[] (real, private)     +-----+-------+-----+
+ *   +-----+-----+-----+-----+                   | LO  | LO+1  | ... |
+ *   |  0  |  1  | ... |LO-1 |                   +--+--+--+----+-----+
+ *   +-----+-----+-----+-----+                      |     |
+ *                                                  |     |
+ *                                                  v     v
+ *                    shared global_irq_vector[] (real, machine-wide)
+ *                    +------+------+------+-----+
+ *                    | g[0] | g[1] | g[2] | ... |
+ *                    +--+---+--+---+------+-----+
+ *                       ^      ^
+ *                       |      |
+ *              all CPUs LO     all CPUs LO+1     (1:1 formula)
+ *
+ * LO = ARCH_IRQ_ID_ALLOC_LO; g[i] = global_irq_vector[i] (SPI index i).
  */
 #define NR_ARCH_LOCAL_IRQ ARCH_IRQ_ID_ALLOC_LO
 #define NR_IRQ            NR_ARCH_LOCAL_IRQ /* compat */

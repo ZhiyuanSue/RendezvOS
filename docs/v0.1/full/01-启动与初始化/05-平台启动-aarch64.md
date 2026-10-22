@@ -289,7 +289,7 @@ GAS 的 `.align n`：在 **aarch64 上按 2ⁿ 对齐**（`.align 4` 是 16 字�
 
 `arch_cpu_info` 不用它的参数。它读 `MPIDR_EL1`，只把多线程（MT）和是否单核（U）记进全局 `cpu_info`，再把 `BSP_ID` 固定写成 0。不把硬件亲和性当软件编号。
 
-`arch_start_platform` 必须在虚拟内存和堆起来之后，并用 BSP 的堆。它从已映射的 DTB 头递归建成全局 `device_root`；在名为 `chosen` 的节点里找 `bootargs` 赋给 `cmdline_ptr`（没有节点或没有属性只打印，**不失败**）；再 `psci_init` 填 PSCI 调用方法；最后 `gic.probe()` 加 `gic.init_distributor()`，只初始化分发器。CPU 接口不在这里。当前实现总是返回成功。AP 不会进这个函数。
+`arch_start_platform` 必须在虚拟内存和堆起来之后，并用 BSP 的堆。它从已映射的 DTB 头递归建成全局 `device_root`；在名为 `chosen` 的节点里找 `bootargs` 赋给 `cmdline_ptr`（没有节点或没有属性只打印，**不失败**）；再 `psci_init` 填 PSCI 调用方法；然后 `gic.probe()` 加 `gic.init_distributor()`，只初始化分发器；最后申请全局外设中断用的 `global_irq_vector`（长度跟 GIC 共享外设中断条数走）。CPU 接口不在这里。缺 cmdline 不失败；申请失败则把错误码交回。AP 不会进这个函数。
 
 ### 6.5 每个核：`arch_start_core(cpu_id)`
 
@@ -333,7 +333,7 @@ error_t arch_start_core(cpu_id_t cpu_id);
 |------|------|
 | `prepare_arch` | 给已拷贝的 DTB 一张 2 MiB 高半映射，填 `boot_dtb_header_base_addr` 并推进 `map_end`；再校验 FDT 头。不建 `device_root`、不读 `bootargs`。成功返回 0；头校验失败返回 `-E_RENDEZVOS`，`cmain` 会 panic。 |
 | `arch_cpu_info` | 参数不用。填 `cpu_info` 的 MT/U，`BSP_ID = 0`（固定）。总是成功。 |
-| `arch_start_platform` | 全机一次，须在虚拟内存之后。建设备树，可选命令行，PSCI，GIC 分发器。缺 cmdline 不失败。当前实现总是返回成功。AP 不得调用。 |
+| `arch_start_platform` | 全机一次，须在虚拟内存之后。建设备树，可选命令行，PSCI，GIC 分发器，申请 `global_irq_vector`。缺 cmdline 不失败；vector 申请失败则交回错误码。AP 不得调用。 |
 | `arch_start_core` | 每核一次，补中断、本核 GIC 接口和系统调用入口，顺序见 §6.5。总是返回 0。不建线程或 port。 |
 
 ### 7.4 本篇有源码、但不算本篇公开 API 的符号

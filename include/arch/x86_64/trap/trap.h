@@ -10,8 +10,36 @@
 /*
  * LOCAL: [0, ALLOC_LO) — exceptions + APIC LVT/IPI (structural; no reserve).
  * GLOBAL: one entry per global_irq_id (GSI). local_irq_id → global_irq_id
- * via the per-CPU map below. IDT hardware table is always @c NR_IDT_VECTORS
- * (256).
+ * via the per-CPU map below. IDT is always @c NR_IDT_VECTORS (256).
+ *
+ * Each CPU has the same local_irq_id number line. Low ids live in
+ * local_irq_vector[]; high ids are virtual (not in that vector) and map into
+ * the shared global_irq_vector[].
+ *
+ *   CPU0 local_irq_vector[] (real, private)     virtual ids (not in local)
+ *   +-----+-----+-----+-----+                   +-----+-------+-----+
+ *   |  0  |  1  | ... |LO-1 |                   | LO  | LO+1  | ... |
+ *   +-----+-----+-----+-----+                   +--+--+--+----+-----+
+ *                                                  |     |
+ *                                                  |     +-----> (unmapped)
+ *                                                  v
+ *   CPU1 local_irq_vector[] (real, private)     virtual ids
+ *   +-----+-----+-----+-----+                   +-----+-------+-----+
+ *   |  0  |  1  | ... |LO-1 |                   | LO  | LO+1  | ... |
+ *   +-----+-----+-----+-----+                   +--+--+--+----+-----+
+ *                                                  |
+ *                                                  v
+ *                    shared global_irq_vector[] (real, machine-wide)
+ *                    +------+------+-----+------+-----+-------+
+ *                    | g[0] | g[1] | ... | g[j] | ... | g[k]  | ...
+ *                    +------+------+-----+--+---+-----+--+----+
+ *                                          ^             ^
+ *                                          |             |
+ *                               CPU0 LO ---+             |
+ *                               CPU1 LO -----------------+
+ *
+ * Same virtual id LO on CPU0 and CPU1 can map to different g[i].
+ * LO = ARCH_IRQ_ID_ALLOC_LO; g[i] = global_irq_vector[i].
  */
 #define ARCH_IRQ_ID_TIMER    0x20u
 #define ARCH_IRQ_ID_SPURIOUS 0x27u

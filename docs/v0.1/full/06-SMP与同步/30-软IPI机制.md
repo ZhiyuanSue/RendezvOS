@@ -4,7 +4,7 @@ v0.1 · 2026-09-27
 
 本篇覆盖：`kernel/smp/ipi.c`、`include/rendezvos/smp/ipi.h`、`arch/{x86_64,aarch64}/smp/arch_smp_ipi.c`。
 
-向量 reserve 见 IRQ 篇；门铃硬件（ICR / SGI）见 APIC / GIC 篇；**x86 TLB shootdown 握手**见 `32-TLB_shootdown与跨核一致性.md`（及 MM 的 TLB 策略篇）。本篇不把 aarch64 TLB 写成「也走 IPI」。
+IPI 所用 `local_irq_id` 与 `register_irq_handler` 见 IRQ 篇（`25`）；门铃硬件（ICR / SGI）见 APIC / GIC 篇；**x86 TLB shootdown 握手**见 `32-TLB_shootdown与跨核一致性.md`（及 MM 的 TLB 策略篇）。本篇不把 aarch64 TLB 写成「也走 IPI」。
 
 **官方手册：** Intel SDM — ICR（Interrupt Command Register，中断命令寄存器）FIXED 投递、向量进 IDT（Interrupt Descriptor Table，中断描述符表）；ARM GICv2 IHI0048 — `GICD_SGIR`、SGI（Software Generated Interrupt，软件生成中断）INTID 0–15。
 
@@ -16,8 +16,8 @@ v0.1 · 2026-09-27
 
 | | x86 | aarch64 |
 |--|-----|---------|
-| 门铃 | LAPIC（Local APIC）ICR **FIXED**，向量 **`0x30`** | GICD **SGI 0**，对应 trap id **64** |
-| 注册 | `register_irq_handler(ARCH_IRQ_VEC_IPI, …, NEED_EOI)` | 同左（宏叠 +64） |
+| 门铃 | LAPIC（Local APIC）ICR **FIXED**，向量 **`0x30`** | GICD **SGI 0**，对应 `local_irq_id` **64** |
+| 注册 | `register_irq_handler(ARCH_IRQ_ID_IPI, this_cpu, …, NEED_EOI)` | 同左（aarch64 上该宏 = INTID + 64） |
 
 AP 启动拉核用的 INIT / SIPI **不是** soft IPI（delivery mode 不同，只是共用 `APIC_send_IPI` 一类原语）——见拓扑篇。
 
@@ -49,7 +49,7 @@ x86 的 IPI 通过 Local APIC 的 **ICR（Interrupt Command Register）**发出�
 aarch64 的 IPI 走 GIC Distributor 的 **SGI（Software Generated Interrupt）**：
 
 - **`GICD_SGIR`（`0xF00`，GICv2）**：32 位寄存器，`[23:16]` 是 CPU target list（每位对应一个 CPU interface），`[3:0]` 是 SGI INTID（0–15）。写即触发。
-- **SGI INTID**：0–15，本仓库用 **0**；trap 进入向量 `0x40`（trap id 64）。
+- **SGI INTID**：0–15，本仓库用 **0**；软件侧 `local_irq_id` = INTID + 64，故 SGI0 → **64**。
 - **CPU interface 编号**：GICv2 上限 **8** 个 CPU interface，故 `cpu < 8` 才能发。本仓库假设 GIC CPU interface 编号 == 软件 `cpu_id`（MPIDR Aff0 连续编号时成立）。
 - **GICv3** 用 `ICC_SGI1R_EL1`（64 位系统寄存器），target 由 affinity tuple 指定，支持更多核；本仓库主线仍是 GICv2。
 
@@ -122,7 +122,7 @@ DEFINE_PER_CPU(atomic64_t, smp_ipi_pending);
 ```text
 每核 arch_start_core 路径：
   smp_ipi_init → arch_smp_ipi_init(dispatch)
-    → register_irq_handler(IPI_VEC, …, NEED_EOI)  // 写全 CPU 槽
+    → register_irq_handler(ARCH_IRQ_ID_IPI, this_cpu, …, NEED_EOI)
 
 smp_ipi_register(&id, fn)   // 线性占 slot（通常 BSP 启一次）
 smp_ipi_send(cpu, id)       // pending OR + 门铃触发
@@ -137,7 +137,7 @@ smp_ipi_send(cpu, id)       // pending OR + 门铃触发
 
 本篇涉及的接口分布在：软 IPI 协议——`smp_ipi_init` / `register` / `send`、`smp_ipi_fn_t` / `ipi_id_t`，以及 arch 门铃 `arch_smp_ipi_init` / `arch_smp_ipi_send`。说明改写自 `ipi.h` + `arch/*/smp.h` Doxygen（已与 `ipi.c`、`arch_smp_ipi.c` 核对）。
 
-**本篇不涉及：** IRQ 向量 reserve / `trap_handler`（见 `25`）；ICR / SGIR 字段细节（见 `26`/`27`）；x86 TLB 消息槽与握手（见 `32`）；`cpu_is_online`（见 `28`）。
+**本篇不涉及：** IRQ 两 id / `trap_handler`（见 `25`）；ICR / SGIR 字段细节（见 `26`/`27`）；x86 TLB 消息槽与握手（见 `32`）；`cpu_is_online`（见 `28`）。
 
 AP 启动拉核用的 INIT/SIPI **不是** soft IPI（共用发送原语而已）。
 
@@ -145,7 +145,7 @@ AP 启动拉核用的 INIT/SIPI **不是** soft IPI（共用发送原语而已�
 
 | 场景 | 顺序 |
 |------|------|
-| 每核装门铃 | `init_interrupt` 与平台 IRQ iface 之后 **`smp_ipi_init`**（内部 `arch_smp_ipi_init`，再 `register_irq_handler(IPI_VEC, dispatch, NEED_EOI)`） |
+| 每核装门铃 | `init_interrupt` 与平台 IRQ iface 之后 **`smp_ipi_init`**（内部 `arch_smp_ipi_init`，再 `register_irq_handler(ARCH_IRQ_ID_IPI, this_cpu, dispatch, NEED_EOI)`） |
 | 注册消费者 | 通常全局一次：`smp_ipi_register(&id, fn)`（x86 TLB 在 `arch_smp_flush_tlb_init`） |
 | 发送 | 填好目标核 per-CPU 消息（若需要）后调 **`smp_ipi_send(cpu, id)`** |
 | 接收 | IRQ 进 dispatch：`exchange(pending,0)` 循环调 `fn()`，最后 EOI |
@@ -237,6 +237,7 @@ error_t arch_smp_ipi_send(cpu_id_t cpu);
 
 ## 11. 变更记录
 
+- 2026-10-22：与两 id 模型对齐——「向量 reserve / trap id」改为 `local_irq_id` 与 `25` 交叉引用。
 - 2026-10-04：§1.1.1/1.1.2 补 x86 LAPIC ICR（xAPIC ICR0/ICR1、x2APIC IA32_X2APIC_ICR、Delivery Mode、vector 0x30）与 aarch64 GIC SGI（GICD_SGIR 字段、INTID 0–15、GICv2 ≤8、GICv3 ICC_SGI1R_EL1）硬件说明；§7.4.1 加 IPI 收发时序图（写消息槽→OR pending→敲门→handler exchange→EOI）。
 - 2026-10-04：§4 只留 slot / pending 不变量；门铃送到哪颗核迁入 §6.1。
 - 2026-09-27：中文措辞整理——Bring-up→AP 启动拉核；affinity/稀疏拓扑句通顺化；弱化「真源」等生硬堆砌用语。

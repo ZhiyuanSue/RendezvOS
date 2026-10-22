@@ -4,11 +4,11 @@ v0.1 · 2026-09-27
 
 本篇覆盖：`arch/x86_64/PIC/PIC.c`、`LocalAPIC.c`、`PIT.c`、`IRQ.c`、`include/arch/x86_64/PIC/*.h`（含**空壳** `IOAPIC.h`）、以及与 `arch_start_core` / timer / IPI 的衔接。
 
-向量 reserve / `register_irq_handler` 见 `25-IRQ向量分配与处理.md`；IDT / `trap_handler` 见 Trap 篇；软 IPI 协议见 `06-SMP与同步/30-软IPI机制.md`；MADT 枚举见 `09-平台模块/35-ACPI与MADT-x86_64.md`；timer 校准语义见时间子系统篇。
+软件 id / `register_irq_handler` 见 `25-IRQ向量分配与处理.md`；IDT / `trap_handler` 见 Trap 篇；软 IPI 协议见 `06-SMP与同步/30-软IPI机制.md`；MADT 枚举见 `09-平台模块/35-ACPI与MADT-x86_64.md`；timer 校准语义见时间子系统篇。
 
 **官方手册：** Intel SDM Vol.3 — *Interrupt and Exception Handling*、*Advanced Programmable Interrupt Controller (APIC)*、*8259A* 兼容说明；PC 平台惯例见 ACPI MADT。本篇用手册概念对照本仓库**实际访问**的寄存器与时序。
 
-**纠正：** `IRQ.c` **不**「连接 HW IRQ 号与 trap id」——只做控制器选型。8254 PIT 实现在 `arch/x86_64/PIC/PIT.c`（校准 / 可选时钟源）；若另有 `modules/driver/timer/8254`，以链接实际为准，勿假定「无 PIT.c」。
+**纠正：** `IRQ.c` **不**「连接硬件 IRQ 号与 `local_irq_id`」——只做控制器选型。8254 PIT 实现在 `arch/x86_64/PIC/PIT.c`（校准 / 可选时钟源）；若另有 `modules/driver/timer/8254`，以链接实际为准，勿假定「无 PIT.c」。
 
 ---
 
@@ -23,7 +23,7 @@ PC 上外设不会直接进入内核入口。CPU 侧永远是：
   → CPU 查 IDT → trap_vec → trap_handler(trap_info=向量)
 ```
 
-本篇讲中间那一层：**向量如何从硬件控制器产生**，以及 OS 必须怎样编程控制器，才能和 IRQ 篇的 reserve 表对齐。
+本篇讲中间那一层：**向量如何从硬件控制器产生**，以及 OS 必须怎样编程控制器，才能和 IRQ 篇的软件 id / handler 对齐。
 
 ### 1.1 三选一（不是 PIC+APIC 同时路由）
 
@@ -47,7 +47,7 @@ PC 上外设不会直接进入内核入口。CPU 侧永远是：
 ### 1.3 OS 对硬件的硬依赖（读代码前先对齐）
 
 1. **IDT 必须先装好**（`lidt`），向量 gate 指向 `trap_N`；否则开中断即崩溃。
-2. **写进 LVT / SVR / ICR / PIC ICW2 的向量号**，必须已在 `irq_vector[]` **reserve**，且已 `register_irq_handler`（timer / IPI）或可进 unknown。
+2. **写进 LVT / SVR / ICR / PIC ICW2 的向量号**，必须已在软件侧挂好 handler（timer / IPI：`register_irq_handler(id, this_cpu, …)`，见 `25`），或可进 unknown。
 3. **处理完设备 / timer / IPI 类中断后要 EOI**（带 `IRQ_NEED_EOI` 时 `APIC_EOI` 写 0，或 `PIC_EOI`）；漏 EOI 会卡住同级 / level 线。
 4. **用 APIC 就必须 mask 掉 8259**，否则双路径乱投递。
 5. **xAPIC 须把 `0xFEE00000` 映成 UNCACHED**（`map_LAPIC`）；缓存一致性错误会读到脏寄存器镜像。
@@ -125,7 +125,7 @@ CPU 只有一根 INTR；8259 用中断向量号告诉 CPU「查 IDT 哪一项」
 | … | … | … |
 | IRQ8–15 | `0x28`–`0x2F` | RTC、鼠标、IDE… |
 
-这与 IRQ 篇 reserve 的 timer=`0x20` **故意对齐**：PIC 模式下 IRQ0 就是系统 tick。
+这与 `ARCH_IRQ_ID_TIMER`（`0x20`）**故意对齐**：PIC 模式下 IRQ0 就是系统 tick。
 
 ### 4.2 初始化序列（`init_PIC` ↔ ICW1–4）
 
@@ -164,7 +164,7 @@ CPU 只有一根 INTR；8259 用中断向量号告诉 CPU「查 IDT 哪一项」
 ### 4.4 OS 依赖小结（PIC）
 
 - 必须先 `lidt`，IDT[`0x20`…] 有效。
-- 向量基址改了就必须同步改 `ARCH_IRQ_VEC_*` / reserve——当前固定为 `0x20`/`0x28`。
+- 向量基址改了就必须同步改 `ARCH_IRQ_ID_*`——当前固定为 `0x20`/`0x28`。
 - 手动 EOI：handler 经 `arch_eoi_irq` 调到 `PIC_EOI`。
 - `enable_PIC_IRQ` 的参数是 **IDT 向量**（如 `0x21`），不是「线号 1」；实现里会减基址再算 IMR 位。
 
@@ -255,11 +255,11 @@ x2APIC 把 xAPIC 的 4 KiB MMIO 窗口整体搬到 MSR 空间，索引 = `0x800 
 
 其余位：Focus Processor Checking（bit 9）；**bit 12** 控制写 EOI 时要不要向 I/O APIC **广播**（电平触发、且 VERSION 允许禁用时才有意义）。默认是允许广播的；手册更推荐关掉广播、改写产生该中断的那颗 IOAPIC 的 EOI——本仓库没有 IOAPIC，bit 12 也未特意去关。
 
-本仓库：`software_enable_APIC()` 置 enable，并把 spurious 写成 **`ARCH_IRQ_VEC_SPURIOUS`（0x27）**。
+本仓库：`software_enable_APIC()` 置 enable，并把 spurious 写成 **`ARCH_IRQ_ID_SPURIOUS`（0x27）**。
 
 **时序陷阱：** SVR 软件使能 **不在** `init_irq` 末尾，而在 **`arch_init_timer` 路径**上才调用。开中断（`sti`）与真正「APIC 开始工作」之间可能有窗口——读启动日志时不要假设 `init_irq` 完就能收 timer。
 
-**Spurious 无 handler**：IRQ 篇只 reserve `0x27`；若误入则 `trap_handler` 走 unknown 并 panic。正常不应频繁 spurious。软件抬高 TPR、把刚到的中断 mask 掉时，硬件就可能改投这条 spurious 向量——和 GIC 读 IAR 得到 1023 是同一类「来了但此刻不该进 ISR」的出口。
+**Spurious 无 handler**：向量为 `ARCH_IRQ_ID_SPURIOUS`（`0x27`）；若误入且未挂 handler，则 `trap_handler` 走 unknown 并 panic。正常不应频繁 spurious。软件抬高 TPR、把刚到的中断 mask 掉时，硬件就可能改投这条 spurious 向量——和 GIC 读 IAR 得到 1023 是同一类「来了但此刻不该进 ISR」的出口。
 
 ### 5.3 LVT — 本地向量表（SDM：Local Vector Table）
 
@@ -277,7 +277,7 @@ x2APIC 把 xAPIC 的 4 KiB MMIO 窗口整体搬到 MSR 空间，索引 = `0x800 
 
 | 位域 | 含义 |
 |------|------|
-| **[7:0] Vector** | 投进 IDT 的向量。APIC 合法范围是 **16–255**；写 **0–15** 且 Delivery=Fixed 时可能置 ESR「非法向量」，**不一定**真投递。软件 reserve 的 timer/IPI 都已避开 0–31 里的异常槽。 |
+| **[7:0] Vector** | 投进 IDT 的向量。APIC 合法范围是 **16–255**；写 **0–15** 且 Delivery=Fixed 时可能置 ESR「非法向量」，**不一定**真投递。软件侧 timer/IPI 使用的 `ARCH_IRQ_ID_*` 都已避开 0–31 里的异常槽。 |
 | **[10:8] Delivery Mode** | Fixed / SMI / NMI / ExtINT / INIT…。SMI/INIT 时向量域习惯写 0。ExtINT 表示「去问外面的 8259 要向量」——和我们 mask LINT0 的动机一致。 |
 | **[12] Delivery Status** | 只读：1 = 还在往核里送。 |
 | **[13] Polarity** | LINT：0 高有效 / 1 低有效（仅 Fixed 时有意义）。 |
@@ -451,7 +451,7 @@ MSI（Message Signaled Interrupt）走 PCI 的 message address/data，最终仍�
 ### 8.1 每核时序
 
 ```text
-init_interrupt()          // reserve + lidt
+init_interrupt()          // 装 IDT（须已申请 global_irq_vector，见 25）
 init_irq()                // 三选一；APIC 路径 disable_PIC + enable + reset_APIC
 smp_ipi_init()            // register 0x30
 … init_syscall …
@@ -488,7 +488,7 @@ EOI 分支差异（实现细节）：PIC 路径 `PIC_EOI(向量号)` 区分主/�
 
 本篇涉及的接口分布在：x86_64 中断控制器原语——`init_irq` / `arch_irq_type`、8259（`PIC.h`）、Local APIC（`LocalAPIC.h`：SVR / EOI / ICR / LVT timer 后端）、8254 PIT（`PIT.h`）。说明改写自上述头文件 Doxygen（已与 `.c` 核对）。`IOAPIC.h` **空壳，无 API**。
 
-**本篇不涉及：** `irq_vector_*` / `register_irq_handler` / `trap_handler`（见 `25`）；`arch_eoi_irq` 声明与分发约定（见 `25`；实现调本篇 `PIC_EOI` / `APIC_EOI`）；可移植 `rendezvos_time_*`（见 `33`）；软 IPI 协议（见 `30`）；MADT 枚举（见 `35`）。
+**本篇不涉及：** `irq_global_*` / `register_irq_handler` / `trap_handler`（见 `25`）；`arch_eoi_irq` 声明与分发约定（见 `25`；实现调本篇 `PIC_EOI` / `APIC_EOI`）；可移植 `rendezvos_time_*`（见 `33`）；软 IPI 协议（见 `30`）；MADT 枚举（见 `35`）。
 
 上层设备应走 `25` 的 alloc+register，**勿**假定 IOAPIC 路由。
 
@@ -496,9 +496,9 @@ EOI 分支差异（实现细节）：PIC 路径 `PIC_EOI(向量号)` 区分主/�
 
 | 场景 | 顺序 |
 |------|------|
-| 每核 | `init_interrupt`（reserve+lidt）之后 **`init_irq`**，再 `smp_ipi_init`，……然后 `sti`，APIC 路径上再经 **`rendezvos_time_init` 调到 `software_enable_APIC`** |
+| 每核 | `init_interrupt`（装 IDT）之后 **`init_irq`**，再 `smp_ipi_init`，……然后 `sti`，APIC 路径上再经 **`rendezvos_time_init` 调到 `software_enable_APIC`** |
 | APIC 选型 | 见 `init_irq`：x2APIC / xAPIC（基址须 `== 0xFEE00000`）/ PIC |
-| Timer ISR 就绪 | 先 `register_irq_handler(0x20, …)`，再写 LVT Timer / 开 SVR |
+| Timer ISR 就绪 | 先 `register_irq_handler(ARCH_IRQ_ID_TIMER, this_cpu, …)`，再写 LVT Timer / 开 SVR |
 | IPI | 先 register `0x30`，再 `APIC_send_IPI`（协议见 `30`） |
 | EOI | 由 `trap_handler` 经 `arch_eoi_irq` 调本篇；ISR 内勿自写 |
 
@@ -597,6 +597,7 @@ u64 PIT_get_hz(void);             /* PIT_TICK_RATE = 1193181 */
 
 ## 13. 变更记录
 
+- 2026-10-22：与两 id 模型对齐——去掉「reserve+lidt / irq_vector_*」表述；init 注释改为装 IDT + 已申请 `global_irq_vector`。
 - 2026-10-05：§4.2 补 early 笔记里的 8259A 入门链接（非正式；以 `PIC.c` 为准）。
 - 2026-10-04：补 8259 级联拓扑图（主从片端口/ICW2 基址/cascade IRQ2）；补 x2APIC MSR 映射表（MMIO 偏移 → MSR 索引，含 ICR 合并、DFR 取消、Self IPI 新增）；补 8254 PIT 定时原理图与 HPET 定时原理图（均作校准/时钟源背景）；「本篇拥有」改「本篇涉及的接口分布在」。
 - 2026-10-02：§5.4 补 ARAT（CPUID.06H）说明；注明探测函数存在但选型未分支。

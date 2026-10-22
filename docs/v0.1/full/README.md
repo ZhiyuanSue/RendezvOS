@@ -311,9 +311,9 @@ v0.1/full/
 
 ### [x] [ ] 05-陷阱与中断/23-Trap抽象与分类.md
 
-职责：`trap_class`、`register_fixed_trap`、`trap_frame`、与 personality 弱符号边界
+职责：`trap_class`、`arch_register_fixed_trap`、`trap_frame`、与 personality 弱符号边界
 
-源码：`kernel/trap/trap.c` · `include/rendezvos/trap/trap.h` · `include/rendezvos/trap/trap_common.h` · `include/rendezvos/trap.h` · `arch/x86_64/trap/trap_vec.S` · `arch/aarch64/trap/trap_vec.S`
+源码：`kernel/trap/trap.c` · `include/rendezvos/trap/trap.h` · `include/rendezvos/trap/trap_common.h` · `arch/x86_64/trap/trap_vec.S` · `arch/aarch64/trap/trap_vec.S`
 
 ---
 
@@ -327,7 +327,7 @@ v0.1/full/
 
 ### [x] [ ] 05-陷阱与中断/25-IRQ向量分配与处理.md
 
-职责：`irq_vector_alloc`、`register_irq_handler`、`IRQ_NEED_EOI`、per-CPU `irq_vector[]`
+职责：两 id、`irq_global_*`、`register_irq_handler(local, cpu_id, …)`、`IRQ_NEED_EOI`、`local_irq_vector[]` / `global_irq_vector[]`
 
 源码：`kernel/trap/trap.c` · `include/rendezvos/trap/trap.h` · `kernel/time/time.c`
 

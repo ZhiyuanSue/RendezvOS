@@ -25,7 +25,7 @@ SMP 身份 / BSP_ID（BSP = Bootstrap Processor，引导核；AP = Application P
 
 ### 1.1 硬件为何需要「基址寄存器」
 
-每核要有一份自己的 `core_tm` / `irq_vector` / MCS node，又不能在热路径上「查询本核编号再乘以偏移量」走全局表（还要抗重入）。惯例做法是：
+每核要有一份自己的 `core_tm` / `local_irq_vector` / MCS node，又不能在热路径上「查询本核编号再乘以偏移量」走全局表（还要抗重入）。惯例做法是：
 
 1. 算出本核 per-CPU 区的**虚拟基址**；
 2. 写进 **只有本核能读的系统寄存器**；
@@ -67,7 +67,7 @@ EL1 代码读 `mrs x0, TPIDR_EL1` 取得基址，再加偏移即得本核副本�
 
 ## 3. 分层与调用方
 
-典型住户：`core_tm`、`kallocator`、`current_vspace`、`Map_Handler`、`cpu_number`、`boot_stack_bottom`、`irq_vector[]`、`ebr_*`、`smp_ipi_pending`、`CPU_STATE`、各类 `*_spin_lock` / `*_mcs_node`、时间 tick、x86 `cpu_tss` / GDT、x86 `smp_tlb_flush_message`（aarch64 **无**此槽）、x86 `user_rsp_scratch`。
+典型住户：`core_tm`、`kallocator`、`current_vspace`、`Map_Handler`、`cpu_number`、`boot_stack_bottom`、`local_irq_vector[]`（x86 另有 `local_irq_map[]`）、`ebr_*`、`smp_ipi_pending`、`CPU_STATE`、各类 `*_spin_lock` / `*_mcs_node`、时间 tick、x86 `cpu_tss` / GDT、x86 `smp_tlb_flush_message`（aarch64 **无**此槽）、x86 `user_rsp_scratch`。
 
 跨核读取其他核的 per-CPU：仅约定路径（TLB msg、EBR scan、调试）；并发修改须持锁或发 IPI。
 
@@ -92,7 +92,7 @@ EL1 代码读 `mrs x0, TPIDR_EL1` 取得基址，再加偏移即得本核副本�
                   .percpu..data (链接段，CPU0 模板)
                   ┌──────────────────────────────────────┐
    &_per_cpu_start │ DEFINE_PER_CPU(core_tm) ...          │ ◀ offset[0]
-                  │ DEFINE_PER_CPU(irq_vector) ...       │
+                  │ DEFINE_PER_CPU(local_irq_vector) ... │
                   │ DEFINE_PER_CPU(smp_ipi_pending) ...  │
                   │ ...（所有 per-CPU 变量一份模板）       │
    &_per_cpu_end  └──────────────────────────────────────┘
@@ -152,7 +152,7 @@ EL1 代码读 `mrs x0, TPIDR_EL1` 取得基址，再加偏移即得本核副本�
 
 本篇涉及的接口分布在：per-CPU 布局与访问——`DEFINE_PER_CPU` / `percpu` / `per_cpu`、`arch_enable_percpu` / `get_per_cpu_base`、`__per_cpu_offset` / `cpu_number`、以及 boot 侧 `reserve_per_cpu_region` / `clean_per_cpu_region` / `calculate_per_cpu_offset`。说明改写自 `percpu.h` Doxygen（已与 `percpu.c`、`arch/*/percpu.c` 核对）。
 
-**本篇不涉及：** 各住户变量语义（`core_tm`、`irq_vector`、MCS node…，见各子系统篇）；BSP_ID / 上线时序（见 `28`）；MCS 锁原语本身（见 `31`）。
+**本篇不涉及：** 各住户变量语义（`core_tm`、`local_irq_vector`、MCS node…，见各子系统篇）；BSP_ID / 上线时序（见 `28`）；MCS 锁原语本身（见 `31`）。
 
 ### 7.1 编排顺序（调用方须遵守）
 
