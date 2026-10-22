@@ -33,7 +33,10 @@ struct trap_frame;
 
 /** No global_irq_id (not an index into @c global_irq_vector). */
 #define IRQ_GLOBAL_ID_INVALID ((size_t)-1)
-/** No fixed local_irq_id for this global irq; alloc picks one. */
+/**
+ * No direct local_irq_id (@c arch_try_direct_map_local_irq_id failed), or
+ * entry unset. @c irq_global_alloc then scans for a free local id.
+ */
 #define IRQ_LOCAL_ID_INVALID  ((size_t)-1)
 
 /*

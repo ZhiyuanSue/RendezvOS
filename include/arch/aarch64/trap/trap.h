@@ -57,7 +57,7 @@
 
 /**
  * Global external irq. Index is @c global_irq_id (SPI index).
- * Fixed pair: global_irq_id = SPI index, local_irq_id = INTID + offset.
+ * Direct map: global_irq_id = SPI index, local_irq_id = INTID + offset.
  */
 struct global_irq {
         IRQ_COMMON
@@ -70,7 +70,7 @@ struct global_irq {
  * local_irq_id → global_irq_id by formula (no per-CPU map table).
  * @c cpu_id is recorded at alloc for later GIC routing.
  * @c arch_map_local_irq_id is a no-op (always succeeds if cpu is valid).
- * @c arch_map_fixed_local_irq_id always returns the fixed local_irq_id.
+ * @c arch_try_direct_map_local_irq_id returns the formula local_irq_id.
  * Common APIs: @c rendezvos/trap/trap.h.
  */
 

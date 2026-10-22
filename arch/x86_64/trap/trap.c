@@ -51,10 +51,11 @@ bool arch_local_irq_id_available(cpu_id_t cpu_id, size_t local_irq_id)
                == IRQ_GLOBAL_ID_INVALID;
 }
 
-size_t arch_map_fixed_local_irq_id(size_t global_irq_id)
+size_t arch_try_direct_map_local_irq_id(size_t global_irq_id)
 {
         (void)global_irq_id;
-        return IRQ_LOCAL_ID_INVALID; /* pick a free local_irq_id */
+        /* No formula local↔GSI; irq_global_alloc scans for a free local id. */
+        return IRQ_LOCAL_ID_INVALID;
 }
 
 bool arch_map_local_irq_id(cpu_id_t cpu_id, size_t local_irq_id,

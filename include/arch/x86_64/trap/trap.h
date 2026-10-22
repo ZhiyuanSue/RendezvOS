@@ -75,8 +75,8 @@ struct global_irq {
 /*
  * Per-CPU map @c local_irq_map[] (u64, CAS): local_irq_id → global_irq_id+1
  * (0 = not mapped). Alloc: CAS irq_attr on the chosen global_irq_id, then
- * CAS this map on cpu_id only. @c arch_map_fixed_local_irq_id returns
- * INVALID so alloc scans [ALLOC_LO, ALLOC_HI] for a free local_irq_id.
+ * CAS this map on cpu_id only. @c arch_try_direct_map_local_irq_id returns
+ * INVALID here, so @c irq_global_alloc scans [ALLOC_LO, ALLOC_HI].
  */
 
 enum TRAP_NUM {

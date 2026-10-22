@@ -146,10 +146,11 @@ size_t arch_map_global_irq_id(cpu_id_t cpu_id, size_t local_irq_id);
 bool arch_local_irq_id_available(cpu_id_t cpu_id, size_t local_irq_id);
 
 /**
- * Fixed local_irq_id for @p global_irq_id, or @c IRQ_LOCAL_ID_INVALID when
- * alloc must pick a free local_irq_id on the destination CPU.
+ * Try a direct local_irq_id for @p global_irq_id (arch formula / 1:1).
+ * @return the local_irq_id, or @c IRQ_LOCAL_ID_INVALID if this arch has no
+ *         direct map — @c irq_global_alloc then scans for a free local id.
  */
-size_t arch_map_fixed_local_irq_id(size_t global_irq_id);
+size_t arch_try_direct_map_local_irq_id(size_t global_irq_id);
 
 /**
  * Establish or clear the local_irq_id → global_irq_id map on @p cpu_id.
@@ -191,6 +192,10 @@ error_t irq_global_vector_alloc(size_t count);
 
 /**
  * Claim @p global_irq_id and map a local_irq_id on @p cpu_id (concrete).
+ *
+ * Flow: try @c arch_try_direct_map_local_irq_id first. If the arch accepts
+ * a direct map, use that local_irq_id. If not (@c IRQ_LOCAL_ID_INVALID —
+ * e.g. no formula on x86), scan for a free local_irq_id on @p cpu_id.
  * Ownership is CAS on the entry's @c irq_attr (@c IRQ_ATTR_USED). On map
  * failure the claim is rolled back.
  * @p local_irq_id_out receives the id for @c register_irq_handler.

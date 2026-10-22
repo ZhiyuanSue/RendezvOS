@@ -87,12 +87,13 @@ error_t irq_global_alloc(size_t global_irq_id, cpu_id_t cpu_id,
                 return -E_IN_PARAM;
 
         global_entry = &global_irq_vector[global_irq_id];
-        local_irq_id = arch_map_fixed_local_irq_id(global_irq_id);
+        /* Prefer arch direct map; INVALID → pick a free local_irq_id below. */
+        local_irq_id = arch_try_direct_map_local_irq_id(global_irq_id);
         mapped = false;
 
         if (local_irq_id != IRQ_LOCAL_ID_INVALID) {
                 /*
-                 * Fixed local_irq_id: require it still free to claim, then
+                 * Direct map accepted: require that local_irq_id still free,
                  * claim the global entry, then write the map.
                  */
                 if (!arch_local_irq_id_available(cpu_id, local_irq_id))
@@ -103,6 +104,7 @@ error_t irq_global_alloc(size_t global_irq_id, cpu_id_t cpu_id,
                         goto alloc_fail;
                 mapped = true;
         } else {
+                /* No direct map (e.g. x86): scan [ALLOC_LO, ALLOC_HI]. */
                 if (!irq_atomic_attr_try_set_used(&global_entry->irq_attr))
                         return -E_REND_AGAIN;
                 for (candidate = ARCH_IRQ_ID_ALLOC_LO;

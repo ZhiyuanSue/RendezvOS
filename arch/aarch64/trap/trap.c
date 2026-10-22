@@ -35,18 +35,19 @@ bool arch_local_irq_id_available(cpu_id_t cpu_id, size_t local_irq_id)
         size_t global_irq_id = arch_map_global_irq_id(cpu_id, local_irq_id);
         if (global_irq_id >= nr_global_irq)
                 return false;
-        /* Free to claim: fixed global entry not yet used. */
+        /* Free to claim: that global entry not yet used. */
         return !irq_atomic_attr_is_used(
                 &global_irq_vector[global_irq_id].irq_attr);
 }
 
-size_t arch_map_fixed_local_irq_id(size_t global_irq_id)
+size_t arch_try_direct_map_local_irq_id(size_t global_irq_id)
 {
         size_t hw_irq; /* GIC INTID */
 
         hw_irq = global_irq_id + (size_t)GIC_V2_SPI_START;
         if (hw_irq > (size_t)GIC_V2_SPI_END)
                 return IRQ_LOCAL_ID_INVALID;
+        /* Direct: SPI index → INTID → local_irq_id (= intid + 64). */
         return (size_t)AARCH64_IRQ_TO_TRAP_ID(hw_irq);
 }
 
