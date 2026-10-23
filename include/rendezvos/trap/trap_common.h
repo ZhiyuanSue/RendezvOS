@@ -4,7 +4,7 @@
  * This header must NOT include any architecture-specific headers
  * to avoid circular dependencies.
  *
- * Included by rendezvos/trap.h and architecture-specific trap headers.
+ * Included by rendezvos/trap/irq_space.h, rendezvos/trap/trap.h, and arch trap/irq_space headers.
  */
 #ifndef _RENDEZVOS_TRAP_COMMON_H_
 #define _RENDEZVOS_TRAP_COMMON_H_
@@ -13,19 +13,24 @@
 #include <common/types.h>
 #include <common/stdbool.h>
 #include <common/bit.h>
-#include <common/mm.h> /* vaddr */
+#include <common/mm.h>
 #include <common/atomic.h>
+#include <rendezvos/smp/cpu_id.h>
 
 /* Forward declaration (defined in arch-specific trap.h) */
 struct trap_frame;
 
 /**
- * Shared handler pointer for @c local_irq / @c global_irq.
- * Attr storage differs: local uses plain @c u64; global uses @c atomic64_t
- * (CAS claim during @c irq_global_alloc).
+ * Fields shared by every arch's @c struct arch_global_irq.
+ * Arch headers embed this macro, then append arch-only fields.
+ *
+ * Not used by @c struct local_irq (handler + plain @c u64 irq_attr there).
  */
-#define IRQ_COMMON \
-        void (*irq_handler)(struct trap_frame *tf);
+#define GLOBAL_IRQ_COMMON                                       \
+        void (*irq_handler)(struct trap_frame *tf);             \
+        atomic64_t irq_attr; /* CAS USED at alloc; NEED_EOI, … */ \
+        size_t local_irq_id; /* per-CPU id mapped on cpu_id */  \
+        cpu_id_t cpu_id;
 
 #define IRQ_NO_ATTR   (0ull)
 #define IRQ_NEED_EOI  BIT_U64(0) /* trap_handler EOI after irq_handler returns */

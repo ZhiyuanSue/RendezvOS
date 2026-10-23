@@ -4,7 +4,7 @@ v0.1 · 2026-10-02
 
 本篇覆盖：`kernel/trap/trap.c`、`include/rendezvos/trap/trap.h`、`include/rendezvos/trap/trap_common.h`、`arch/{x86_64,aarch64}/trap/trap.c`、`trap_vec.S`、`kernel_entry.S`（x86 syscall 旁路）、**`arch/x86_64/trap/tss.c`（TSS.RSP0）**、`arch/*/boot/start_arch.c` 里的装表时机。
 
-IRQ 的 `local_irq_id` / `global_irq_id` 与 `irq_global_*` 见 `25-IRQ向量分配与处理.md`；弱符号 `syscall` / ABI 见 `24-系统调用入口.md`；APIC / PIC、GIC 编程见平台中断两篇。**不存在**扁平路径 `include/rendezvos/trap.h`——公开头是 `include/rendezvos/trap/trap.h`。
+IRQ 软件编号空间（`irq_space`：两套 id、占有/释放）与分发衔接见 `25-IRQ向量分配与处理.md`；弱符号 `syscall` / ABI 见 `24`；APIC / PIC、GIC **寄存器与路由**见平台中断两篇——和 `25` 里的软件表不是同一层。**不存在**扁平路径 `include/rendezvos/trap.h`——公开头是 `include/rendezvos/trap/trap.h`。
 
 **不在本篇：** CMOS RTC 读墙钟（`arch/x86_64/time/rtc.c`）——不是中断控制器路径，见时间子系统篇。
 
@@ -73,7 +73,7 @@ struct local_irq { /* per-CPU；local_irq_id < NR_ARCH_LOCAL_IRQ */
         void (*irq_handler)(struct trap_frame *tf);
         u64 irq_attr;  /* IRQ_ATTR_USED, IRQ_NEED_EOI, … */
 };
-/* global_irq：共享 global_irq_vector[]；≥LO 经 arch map 进入 */
+/* arch_global_irq：共享 global_irq_vector[]；≥LO 经 arch map 进入 */
 ```
 
 - x86：本核表到 `ARCH_IRQ_ID_ALLOC_LO`；IDT 全宽 256，更高编号不进本核表、须 map。
@@ -120,7 +120,8 @@ struct local_irq { /* per-CPU；local_irq_id < NR_ARCH_LOCAL_IRQ */
 | 路径 | 职责 |
 |------|------|
 | `trap_common.h` / `trap/trap.h` | class、TRAP_COMMON、公开 API |
-| `kernel/trap/trap.c` | 两 id 分发、`trap_handler`、EOI、schedule |
+| `kernel/trap/trap.c` | `trap_handler`、`register_irq_handler`、EOI、schedule（id 表见 `irq_space.c`） |
+| `kernel/trap/irq_space.c` | `local_irq_vector` / `global_irq_vector`、`irq_global_*` |
 | `arch/x86_64/trap/*` | IDT、`x86_trap_class_map`、populate、`trap_vec.S`、**`tss.c`** |
 | `arch/x86_64/trap/kernel_entry.S` | **syscall MSR 旁路** |
 | `arch/aarch64/trap/*` | VBAR 16 槽、`trap_vec.S`、EC 映射、GIC 读号 |

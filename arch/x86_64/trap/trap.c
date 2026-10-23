@@ -1,6 +1,5 @@
 #include <rendezvos/trap/trap.h>
 #include <rendezvos/smp/percpu.h>
-#include <rendezvos/limits.h>
 #include <arch/x86_64/sys_ctrl.h>
 #include <arch/x86_64/sys_ctrl_def.h>
 #include <arch/x86_64/power_ctrl.h>
@@ -8,88 +7,10 @@
 #include <arch/x86_64/trap/tss.h>
 #include <modules/log/log.h>
 #include <common/string.h>
-#include <common/atomic.h>
-#include <common/limits.h>
 
 extern u64 trap_vec;
 extern enum IRQ_type arch_irq_type;
 extern union idt_gate_desc trap_vec_table[NR_IDT_VECTORS];
-
-/*
- * Per-CPU map: local_irq_id → global_irq_id + 1 (0 = not mapped).
- * Stored as u64 for CAS; see arch/x86_64/trap/trap.h.
- */
-DEFINE_PER_CPU(u64, local_irq_map[NR_IDT_VECTORS]);
-
-size_t arch_map_global_irq_id(cpu_id_t cpu_id, size_t local_irq_id)
-{
-        u64 map_value;
-
-        if (local_irq_id >= (size_t)NR_IDT_VECTORS)
-                return IRQ_GLOBAL_ID_INVALID;
-        /* CPU_ID_INVALID: query the current CPU's map (percpu). */
-        if (cpu_id == CPU_ID_INVALID) {
-                map_value = percpu(local_irq_map[local_irq_id]);
-        } else if (cpu_id < (cpu_id_t)RENDEZVOS_MAX_CPU_NUMBER) {
-                map_value = per_cpu(local_irq_map[local_irq_id], cpu_id);
-        } else {
-                return IRQ_GLOBAL_ID_INVALID;
-        }
-        return map_value ? (size_t)(map_value - 1u) : IRQ_GLOBAL_ID_INVALID;
-}
-
-bool arch_local_irq_id_available(cpu_id_t cpu_id, size_t local_irq_id)
-{
-        if (cpu_id != CPU_ID_INVALID
-            && cpu_id >= (cpu_id_t)RENDEZVOS_MAX_CPU_NUMBER)
-                return false;
-        if (irq_trap_is_local(local_irq_id)
-            || local_irq_id >= (size_t)NR_IDT_VECTORS)
-                return false;
-        /* Free to claim: not yet mapped on cpu_id. */
-        return arch_map_global_irq_id(cpu_id, local_irq_id)
-               == IRQ_GLOBAL_ID_INVALID;
-}
-
-size_t arch_try_direct_map_local_irq_id(size_t global_irq_id)
-{
-        (void)global_irq_id;
-        /* No formula local↔GSI; irq_global_alloc scans for a free local id. */
-        return IRQ_LOCAL_ID_INVALID;
-}
-
-bool arch_map_local_irq_id(cpu_id_t cpu_id, size_t local_irq_id,
-                           size_t global_irq_id)
-{
-        volatile u64 *cell;
-
-        if (local_irq_id >= (size_t)NR_IDT_VECTORS)
-                return false;
-        /* CPU_ID_INVALID: update the current CPU's map (percpu). */
-        if (cpu_id == CPU_ID_INVALID)
-                cell = &percpu(local_irq_map[local_irq_id]);
-        else if (cpu_id < (cpu_id_t)RENDEZVOS_MAX_CPU_NUMBER)
-                cell = &per_cpu(local_irq_map[local_irq_id], cpu_id);
-        else
-                return false;
-        /* IRQ_GLOBAL_ID_INVALID: clean the map */
-        if (global_irq_id == IRQ_GLOBAL_ID_INVALID) {
-                atomic64_store(cell, 0);
-                return true;
-        }
-        if (!nr_global_irq || global_irq_id >= nr_global_irq)
-                return false;
-        /* CAS not-mapped(0) → global_irq_id+1; fail if already mapped. */
-        return atomic64_cas(cell, 0, (u64)global_irq_id + 1u) == 0;
-}
-
-void arch_irq_global_entry_reset(struct global_irq *entry)
-{
-        if (!entry)
-                return;
-        entry->ioapic_id = U8_MAX;
-        entry->pin = U8_MAX;
-}
 
 const char *trap_name_string[TRAP_ARCH_USED + 2] = {
         "Fault:Divide Error\n\0",

@@ -327,9 +327,9 @@ v0.1/full/
 
 ### [x] [ ] 05-陷阱与中断/25-IRQ向量分配与处理.md
 
-职责：两 id、`irq_global_*`、`register_irq_handler(local, cpu_id, …)`、`IRQ_NEED_EOI`、`local_irq_vector[]` / `global_irq_vector[]`
+职责：**irq_space**（两套软件编号、占有/释放/map）与分发衔接；对照硬件号，但**不写** APIC/GIC 寄存器（见 `26`/`27`）
 
-源码：`kernel/trap/trap.c` · `include/rendezvos/trap/trap.h` · `kernel/time/time.c`
+源码：`kernel/trap/irq_space.c` · `include/rendezvos/trap/irq_space.h` · `arch/*/trap/irq_space.*` · `kernel/trap/trap.c` · `include/rendezvos/trap/trap.h` · `kernel/time/time.c`
 
 ---
 
