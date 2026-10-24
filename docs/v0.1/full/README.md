@@ -167,9 +167,9 @@ v0.1/full/
 
 ### [x] [ ] 02-内存管理/07-虚拟地址空间与页表.md
 
-职责：`VSpace`、`Map_Handler`、`map()`、自映射、kernel/user 映射策略
+职责：`VSpace`、`Map_Handler`、`map()`、自映射、`mm_kernel_utils` 恒等区间、kernel/user 映射策略
 
-源码：`kernel/mm/vmm.c` · `kernel/mm/map_handler.c` · `kernel/mm/map_util_page.S` · `include/rendezvos/mm/vmm.h` · `include/rendezvos/mm/map_handler.h` · `arch/x86_64/mm/vmm.c` · `arch/aarch64/mm/vmm.c` · `include/arch/x86_64/mm/vmm.h` · `include/arch/aarch64/mm/vmm.h` · `include/arch/x86_64/mm/page_table_def.h` · `include/arch/aarch64/mm/page_table_def.h` · `include/arch/x86_64/mm/mm.h` · `include/arch/aarch64/mm/mm.h`
+源码：`kernel/mm/vmm.c` · `kernel/mm/map_handler.c` · `kernel/mm/mm_kernel_utils.c` · `kernel/mm/map_util_page.S` · `include/rendezvos/mm/vmm.h` · `include/rendezvos/mm/map_handler.h` · `include/rendezvos/mm/mm_kernel_utils.h` · `arch/x86_64/mm/vmm.c` · `arch/aarch64/mm/vmm.c` · `include/arch/x86_64/mm/vmm.h` · `include/arch/aarch64/mm/vmm.h` · `include/arch/x86_64/mm/page_table_def.h` · `include/arch/aarch64/mm/page_table_def.h` · `include/arch/x86_64/mm/mm.h` · `include/arch/aarch64/mm/mm.h`
 
 ---
 

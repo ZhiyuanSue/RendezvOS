@@ -4,7 +4,7 @@ v0.1 · 2026-09-27
 
 本篇覆盖：`modules/acpi/`（探测辅助、签名、`acpi_init`、MADT 游标）、`arch/x86_64/acpi/`（`arch_parser_fadt` / `arch_parser_madt`）。
 
-RSDP 探测调用点见启动篇 `04`；按 `rsdp_addr` 保留 RSDT 页面见物理内存篇 `06`；拓扑消费见 `28`；LAPIC 基址核对与 IOAPIC 见 `26`。
+RSDP 探测调用点见启动篇 `04`；表所占物理区是否进 buddy 见物理内存篇 `06`（只插入 Multiboot `AVAILABLE`，**无**按 RSDP/RSDT 的专项 reserve）；拓扑消费见 `28`；LAPIC 基址核对与 IOAPIC 见 `26`。
 
 **规范对照：** ACPI Specification — RSDP / RSDT / MADT（表签名 `"APIC"`）等。本仓库只实现 **ACPI 1.0 风格 RSDP（revision 0）+ RSDT**；不做 XSDT / AML。
 
@@ -14,7 +14,9 @@ RSDP 探测调用点见启动篇 `04`；按 `rsdp_addr` 保留 RSDT 页面见物
 
 在现行 QEMU / legacy BIOS 路径上，x86 用 ACPI 表做**板级发现**：有几颗带 Local APIC 的 CPU、LAPIC 基址写在哪。这些结果供 SMP 唤醒与中断控制器初始化使用，**不是**电源管理或 AML 解释。
 
-生命周期分三段——**探测根指针 → 保留表所在物理页 → 解析表**——前两段分别在启动篇与物理内存篇完成，本篇负责第三段（RSDT walk 与 arch 侧消费）。真正填拓扑的是 MADT 里的 Local APIC 条目。
+生命周期分两段——**探测根指针 → 解析表**——探测在启动篇，本篇负责 RSDT walk 与 arch 侧消费。表物理页不被 buddy 分掉，靠装载器 mmap 把 ACPI/reserved/NVS 标成非 `AVAILABLE`（见 `06`），不在 PMM 里再按表地址 reserve。真正填拓扑的是 MADT 里的 Local APIC 条目。
+
+**映射分工（与 `acpi_init(vaddr)` 契约）：** `acpi_init` 接收的是 **RSDP 的虚拟地址**，因此 **RSDP 所在页必须在调用之前已可访问**——今日靠 legacy 探测窗上的早期 identity；将来 UEFI 等路径须在写出 `setup_info->rsdp_addr` **之前**（或同阶段、但早于 `acpi_init`）把该物理页 ensure 进恒等 VA，**不要**指望 `acpi_init` 再去 map RSDP。`acpi_init` 只对 **RSDT / 子表** 做 `ensure_kernel_identity_range`（它们可能落在早期低区窗之外）。
 
 ---
 
@@ -24,9 +26,8 @@ RSDP 探测调用点见启动篇 `04`；按 `rsdp_addr` 保留 RSDT 页面见物
 
 **不做：**
 
-- XSDT / RSDP revision ≥ 1
-- RSDP / 次级表 checksum（只比签名字符串）
-- Local APIC **enable / online_capable** flags（标 disabled 的条目仍会计入并可能被 SIPI）
+- XSDT / RSDP revision ≥ 1；RSDP / 次级表 checksum（只比签名字符串）
+- Local APIC **online_capable** 热插拔（boot 只认 `Enabled`；未置位则跳过）
 - IOAPIC 编程、Interrupt Source Override、x2APIC MADT 条目（type 9）——MADT 里对应分支为空操作
 - AML / DSDT、设备热插拔、sleep 状态机
 
@@ -37,7 +38,7 @@ RSDP 探测调用点见启动篇 `04`；按 `rsdp_addr` 保留 RSDT 页面见物
 | 阶段 | 谁 | 产出 |
 |------|-----|------|
 | 探测 | `prepare_arch` → `acpi_probe_rsdp`（启动篇） | `setup_info->rsdp_addr`（0 = 未找到；不支持的 revision 在此失败） |
-| 保留页面 | `reserve_arch_region`（物理内存篇） | 按已有指针 reserve RSDT 窗；**不再探测** |
+| 可用内存 | `arch_init_pmm`（物理内存篇） | 只插入 mmap `AVAILABLE`；ACPI 等类型不进 buddy（**无** `rsdp` 专项 reserve） |
 | 解析 | `arch_start_platform` → `acpi_init` | 挂 `fadt_table` / `madt_table`；调 `arch_parser_fadt` / `arch_parser_madt` |
 | 消费拓扑 | `arch_start_smp`（`28`） | 对 `cpu_disable` 核发 INIT-SIPI |
 | 消费 LAPIC 基址 | `init_irq`（`26`） | 要求 `Local_int_ctrl_address == 0xFEE00000` |
@@ -184,7 +185,7 @@ MADT 的 `int_ctrl_structure[]` 是一串 `{u8 type; u8 length; …}` 的变长�
 | 5 | IOAPIC Source Override | 类似 type 2 | 空 `break` |
 | 9 | x2APIC | `uid`、`apic_id`（u32）、`flags`、`clk_domain` | 空 `break`（x2APIC 走 MSR（Model-Specific Register）访问，不走 MADT 基址） |
 
-`flags` 里的 bit 0（`enabled`）与 bit 1（`online_capable`，ACPI 4.0+）规范含义是「该 LAPIC 是否可用 / 可在线」，本仓库**完全不读**——firmware 标 disabled 的条目也会 `NR_CPU++` 并被 SIPI 尝试（见 §2 与 §10）。
+`flags` 里 bit 0（`Enabled`）与 bit 1（`Online Capable`，ACPI 4.0+）：本仓库 boot 路径**只认 Enabled**；未置位则跳过该条目。Online Capable 热插拔未做。
 
 #### 4.2.2 MADT 游标推进
 
@@ -196,10 +197,6 @@ MADT 的 `int_ctrl_structure[]` 是一串 `{u8 type; u8 length; …}` 的变长�
        │                                     │  curr = (head*)(((u8*)curr) + len)
        └── for_each_madt_ctrl_head 起始        └── final_madt_int_ctrl_head 判越界
 ```
-
-### 4.3 签名表瑕疵
-
-`acpi_table_sigs[]` 里 `ACPI_ECDT` 一行绑的是 `ACPI_SIG_DSDT`（复制笔误）。影响「未知表分类」打印，不挡 MADT 主路径；改码时勿当规范。
 
 ---
 
@@ -214,7 +211,7 @@ MADT 的 `int_ctrl_structure[]` 是一串 `{u8 type; u8 length; …}` 的变长�
 | `arch/.../acpi/arch_madt.h` + `arch_madt.c` | `arch_parser_madt`；消费 Local APIC 条目，填 `NR_CPU` / `CPU_STATE` |
 | `arch/.../PIC/IRQ.c` | 经 `arch_madt.h` 读 `madt_table->Local_int_ctrl_address`（实现细节见 `26`） |
 
-探测与保留页面的源文件分属启动篇 / 物理内存篇，本表不列。
+RSDP 探测调用点在启动篇；mmap 如何排除非 Available 在物理内存篇。本表不列那些源文件。
 
 ---
 
@@ -240,29 +237,33 @@ ACPI 要求在特定 BIOS 区域按 **16 字节对齐** 搜 `"RSD PTR "`。本�
               命中 → 比签名 "RSD PTR "（不校验 checksum）
 ```
 
-步进 16。找到即返回指针；**不校验** 20 字节 checksum。`prepare_arch` 找不到时打印 `not find any rsdp`，`rsdp_addr` 保持 0，启动继续——随后 `acpi_init(0)` 会把 0 当 RSDP 解，属于危险缺口（启动篇已点过）。
+步进 16。找到即返回指针；**不校验** 20 字节 checksum。返回值已是 **VA**（`search_start_vaddr + 物理偏移`），依赖探测窗当时已 identity 映射。`prepare_arch` 找不到时打印 `not find any rsdp`，`rsdp_addr` 保持 0，启动继续——随后 `acpi_init(0)` **直接失败返回**（不解引用）。
 
-revision ≠ 0：在 `prepare_arch` 即失败返回（`reserve` / `acpi_init` 不再重复判）。
+revision ≠ 0：在 `prepare_arch` 即失败返回；`acpi_init` 内仍有 `if (revision == 0) { … } else { unsupported }`（为将来其它 RSDP version 预留分支）。
 
-### 6.2 保留页面（交接）
+**UEFI / 其它探测源（未实现）：** 仍应在 `prepare_arch`（或等价「写 `rsdp_addr` 的阶段」）得到可用 VA 再交给 `acpi_init`。若固件给出的是物理地址，先 `ensure_kernel_identity_range`（或当时可用的早期 map）再存 VA——**映射发生在 init 之前**，因为 init 参数类型是 `vaddr`。
 
-探测只写 `rsdp_addr`；`reserve_arch_region` **只读**该字段做 reserve。实现与「只保留目录表窗、不预留整棵表树」等见 `06`，此处不展开。
+### 6.2 与物理内存（无专项 reserve）
+
+PMM **不**读 `rsdp_addr` 做表区 reserve。保护来自 Multiboot mmap：非 `AVAILABLE`（含 ACPI reclaim / NVS / reserved）不进 `m_regions` / buddy，细节见 `06` §6.1。本篇只负责可读之后的 walk；walk 时补 **map**（页表）不等于 reserve（不进分配器）。
+
+**表区映射（`acpi_init` 内）：** 只对 RSDT / 子表调 `ensure_kernel_identity_range`（`mm_kernel_utils`，见页表篇）——常驻 ENSURE、只补 **4 KiB**、已有恒等 L2/L3 跳过；**不** unmap、**不**进 radix（非 zone 分配器交出的 PA）。**不**在 `acpi_init` 内 map RSDP（见 §1 / §6.1）。驱动类「全空才装」走 `map_kernel_identity_empty_range` / `unmap_kernel_identity_range`，与 ACPI 无关。
 
 ### 6.3 `acpi_init`（平台阶段）
 
 ```text
+rsdp_addr==0 → 失败（不解引用）
 rev==0:
-  若 RSDT 高半未 map → BSP Map_Handler 映 2MiB（GLOBAL|R|W|V）
-  验 RSDT 签名
+  假定 RSDP 页已可访问（探测阶段映射）
+  ensure(RSDT 头 ACPI_HEAD_SIZE) → 验 "RSDT" → ensure(整表 length)
   for each u32 entry:
-    KERNEL_PHY_TO_VIRT → 表头
-    按签名分类 → FACP→arch_parser_fadt / APIC→arch_parser_madt；其它打印或 -E（返回值被忽略）
-rev!=0: 失败
+    ensure(表头) → ensure(整表 length)
+    按签名 → FACP→arch_parser_fadt / APIC→arch_parser_madt
+    未知签名：打印并跳过；已知表 parser 失败则 acpi_init 失败
+else: unsupported revision → 失败
 ```
 
-注意：`parser_acpi_tables` 的错误码在 walk 循环里 **未检查**；没有 MADT 时 `acpi_init` 仍可能 `SUCCESS`，`madt_table` 保持 NULL——`init_irq` 里解引用会崩溃。正常 QEMU 镜像会带 MADT。
-
-**已知 bug（walk 未知表分支）：** `get_acpi_table_type_from_sig` 未命中时返回 **`-E_RENDEZVOS`（-1024）**，但 `acpi_init` 写的是 `if (sig == -1)`。条件永不成立，未知签名落入 `else`，把 `-1024` 当 `acpi_table_sig_enum` 交给 `parser_acpi_tables`（走 `default` 打印）。`acpi_table_sig_check` 本身返回 `bool`，RSDT 签名校验用 `!` 是对的——问题只在「枚举查找返回值 vs `== -1`」错位。
+没有 MADT 时 `madt_table` 仍可能为 NULL（未强制要求存在）——`init_irq` 解引用会崩；正常 QEMU 带 MADT。
 
 ### 6.4 `arch_parser_madt`
 
@@ -284,15 +285,15 @@ for_each_madt_ctrl_head:
 
 ## 7. 公开 API
 
-以 `modules/acpi/*.h`、`arch_fadt.h` / `arch_madt.h` 注释为准（已与 `.c` 核对）。拓扑唤醒、LAPIC map、PMM reserve、`prepare_arch` 编排见对应专篇（§3 表）。
+以 `modules/acpi/*.h`、`arch_fadt.h` / `arch_madt.h` 注释为准（已与 `.c` 核对）。拓扑唤醒、LAPIC map、mmap 建区、`prepare_arch` 编排见对应专篇（§3 表）。
 
 ### 7.1 编排顺序（调用方须遵守）
 
 | 阶段 | 顺序 |
 |------|------|
-| 探测（`04`） | `prepare_arch`：`acpi_probe_rsdp` → 记 `setup_info->rsdp_addr`；不支持的 revision 失败 |
-| 保留页面（`06`） | `reserve_arch_region`：有 `rsdp_addr` 则保留 RSDT 所在 2 MiB 窗（不探测） |
-| 平台（本篇） | VSpace 就绪后 **`acpi_init(rsdp_addr)`**，walk RSDT；签名 FACP/APIC → FADT/MADT parser |
+| 探测（`04`） | `prepare_arch`：`acpi_probe_rsdp` → 记 **VA** `rsdp_addr`（RSDP 页须已可访问）；不支持的 revision 失败 |
+| 物理内存（`06`） | `arch_init_pmm`：只插入 mmap `AVAILABLE`；**无**按 `rsdp_addr` 的 ACPI reserve |
+| 平台（本篇） | VSpace 就绪后 **`acpi_init(rsdp_addr)`**：ensure RSDT/子表并 walk；**不再** map RSDP |
 | MADT | **`arch_parser_madt`**（见签名 `"APIC"` 时调用）填拓扑 |
 | 之后 | `init_irq` 读 `madt_table->Local_int_ctrl_address`；`arch_start_smp` 遍历 `cpu_disable` |
 
@@ -309,11 +310,10 @@ error_t acpi_init(vaddr rsdp_addr);
 
 | 接口 | 说明 |
 |------|------|
-| `acpi_probe_rsdp` | 今日内调 legacy BIOS 两段窗、16 字节步进；**无** checksum。找不到返回 NULL。 |
-| `acpi_init` | **仅 revision 0**；map RSDT；walk u32 条目。parser 返回值**被忽略**——无 MADT 仍可能 SUCCESS。 |
-| `get_acpi_table_type_from_sig` | 未命中返回 **`-E_RENDEZVOS`**；`acpi_init` 却判 **`sig == -1`**（已知 bug，未知表误入 parser）。 |
+| `acpi_probe_rsdp` | 今日内调 legacy BIOS 两段窗、16 字节步进；**无** checksum。返回已映射窗内的 **VA**；找不到返回 NULL。 |
+| `acpi_init` | 参数为 RSDP **VA**（调用前须可解引用）。`rsdp_addr==0` 或 `revision!=0` 失败；对 RSDT/子表 `ensure_kernel_identity_range` 后 walk；`arch_parser_*` 失败则失败返回。无 MADT 不强制失败。 |
+| `get_acpi_table_type_from_sig` | 未命中返回 **`-E_RENDEZVOS`**；walk 侧按此跳过未知表。 |
 | `acpi_table_sig_check` | 返回 **`bool`**；RSDT 路径 `!check` 正确。 |
-| 签名分类 | ECDT 行绑 `ACPI_SIG_DSDT`（笔误，只影响打印）。 |
 
 ### 7.3 Arch parsers 与 MADT 游标
 
@@ -332,16 +332,15 @@ bool final_madt_int_ctrl_head(madt, curr);
 | 接口 / 字段 | 说明 |
 |-------------|------|
 | `arch_parser_fadt` | 空壳；挂好 `fadt_table` 后即返回成功（SCI/复位等未消费）。 |
-| `arch_parser_madt` | 把 `CPU_STATE` 清成 `no_cpu`；Local APIC 条目：`NR_CPU++`、`STATE[id]=cpu_disable`。**不读** enable flags。 |
+| `arch_parser_madt` | 清 `CPU_STATE`；Local APIC 且 **Enabled**：`NR_CPU++`、`STATE[id]=cpu_disable`。 |
 | `Local_int_ctrl_address` | 期望 `0xFEE00000`（消费在 `26`）。 |
 | IOAPIC / ISO / x2APIC / Addr Override | 空 `break`；不解析。 |
-| `online_capable` 宏 | `(1 < 1)` 笔误且未读。 |
 
 ### 7.4 不变量（实现）
 
 - `NR_CPU` = 合法 Local APIC 条目**个数**，不是 `max_id+1`。
 - `apic_id` 直接当下标（可稀疏）——与 `cpu_id_is_online` 稠密假设冲突见 `28`/`16`。
-- `rsdp_addr==0` 仍调 `acpi_init` 会解引用——启动路径缺口。
+- `rsdp_addr==0` 时 `acpi_init` 直接失败返回（不再解引用）；平台启动随之失败。
 
 ---
 
@@ -361,18 +360,12 @@ bool final_madt_int_ctrl_head(madt, curr);
 
 **框架已就位、尚未填实：**
 
-- `arch_parser_fadt` 空壳（SCI / 复位 / `IAPC_BOOT_ARCH` 等）。
-- `acpi_probe_rsdp` 仅 legacy BIOS；UEFI / Multiboot2 等「直接给 RSDP 指针」路径未接。
+- `arch_parser_fadt` 空壳；IOAPIC / ISO / Address Override 未消费。
+- `acpi_probe_rsdp` 仅 legacy BIOS；无 UEFI / Multiboot2 hint。接入 UEFI 时：在写 `rsdp_addr` 前 ensure RSDP 物理页，仍向 `acpi_init` 传 VA（见 §1 / §6.1）。
 - 只走 RSDT（rev0）；无 XSDT、无 RSDP/表 checksum。
-
-**行为 / 正确性缺口：**
-
-- 忽略 Local APIC enable flags；disabled 条目仍可能被 SIPI。
-- RSDP 缺失仍可能走到 `acpi_init(0)` 解引用。
-- IOAPIC / ISO / Address Override 未消费。
-- ECDT 签名表笔误；`online_capable` 宏笔误。
-- RSDT walk 忽略 parser 返回值；无 MADT 时仍可能报成功。
-- **已知 bug：** 未知表分支判 `sig == -1`，与 `get_acpi_table_type_from_sig` 返回 `-E_RENDEZVOS` 不一致。
+- 表区不进 buddy 依赖 mmap 类型正确；若固件误把表标成 `AVAILABLE`，本仓库**不再**按 RSDT 窗兜底 reserve，存在被覆盖风险。
+- 无 MADT 时不强制失败；`madt_table==NULL` 时中断路径仍危险。
+- Local APIC `Online Capable` 热插拔未做。
 
 远期项记 `v0.1/evolution/TODO.md`。
 
@@ -380,8 +373,13 @@ bool final_madt_int_ctrl_head(madt, curr);
 
 ## 11. 变更记录
 
+- 2026-10-24：写清 RSDP VA 契约——映射在探测/`rsdp_addr` 写出之前；`acpi_init` 只 ensure 表区；UEFI 接入要点；三件套命名（ensure / empty / unmap）；§1/§6/§7/§10 同步。
+- 2026-10-24：表映射改调 `ensure_kernel_identity_range`（常驻 ENSURE；与 empty 安装分路）；§6.2/§6.3/§7 同步。
+- 2026-10-24：曾用本地 4 KiB ensure；禁止为 ACPI 新建 2 MiB 叶（已并入 `mm_kernel_utils`）。
+- 2026-10-24：去掉 PMM `reserve_arch_region`；生命周期改为探测→解析；§1/§3/§6.2/§7.1/§10 与 `06` 对齐（靠 mmap 非 Available）。
+- 2026-10-24：修 `acpi_init(0)`、`sig==-1`、parser 返回值、ECDT 签名、次级表 map、Local APIC Enabled；文档 §2/§6/§7/§10 同步。`online_capable` 宏本身已是 `(1<<1)`（旧文档误记）。
 - 2026-10-24：§1 压成概述；命名进 §4；生命周期细节归 §3；中断接点细节归 `26` 交叉引用。
-- 2026-10-24：全文对齐当前代码——`arch_fadt`/`arch_madt`；表名 FADT vs 签名 FACP；三段式生命周期。
+- 2026-10-24：全文对齐当时代码——`arch_fadt`/`arch_madt`；表名 FADT vs 签名 FACP；曾写三段式（含保留页面，已废止）。
 - 2026-10-24：去掉空壳 `acpi_parser.h`；arch 侧改为 `arch_fadt.{h,c}` / `arch_madt.{h,c}`；`acpi_arch_hooks.h` 仅作 module 契约。
 - 2026-10-24：arch hook 按**表名**命名：`arch_parser_fadt` / `arch_parser_madt`；RSDP 探测在 `prepare_arch`；`acpi_init` 在 module。
 - 2026-10-04：补硬件知识——§4.1 加 ACPI 表层级结构图（RSDP→RSDT/XSDT→次级表）、RSDT vs XSDT 差异表、RSDP 签名与 checksum 说明、表头与表校验和说明；§4.2 加 MADT 项类型一览表（type 0~9）与游标推进图；§6.1 加 RSDP 搜索窗 ASCII 图。结构无大改。语言润色——「喂给」→「供…使用」、「认真消费」→「真正消费」、「扫」→「遍历」、「lock 住」→「reserve」、「被踩」→「被覆盖」、「炸」→「崩溃」、「挂在」→「卡在」、「脏点」→「瑕疵」；首次出现 INIT-SIPI 处补一句展开。

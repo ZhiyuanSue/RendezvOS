@@ -26,7 +26,7 @@ v0.1 · 2026-10-02
 
 本篇覆盖：`kernel/mm/pmm.c`、`kernel/mm/buddy_pmm.c`、`include/rendezvos/mm/pmm.h`、`include/rendezvos/mm/buddy_pmm.h`、`arch/x86_64/mm/pmm.c`、`arch/aarch64/mm/pmm.c` 及对应 `include/arch/*/mm/pmm.h`。
 
-调用时机见 `01-启动与初始化/02-启动流程总览.md`：`phy_mm_init` 在 `virt_mm_init` 之前。页表 / Map_Handler 见同分区虚拟地址篇；内核堆见 `09-kmalloc与内核堆.md`。x86 上：RSDP **探测**在启动篇 `prepare_arch`，本篇 `arch/.../mm/pmm.c` 只按已有 `rsdp_addr` **保留** RSDT 窗；表 walk 见 ACPI 篇。aarch64 的 DTB memory 节点细节链到 DTB 篇，本篇写它们如何进入 `m_regions`。
+调用时机见 `01-启动与初始化/02-启动流程总览.md`：`phy_mm_init` 在 `virt_mm_init` 之前。页表 / Map_Handler 见同分区虚拟地址篇；内核堆见 `09-kmalloc与内核堆.md`。x86 上：RSDP **探测**在启动篇 `prepare_arch`，表 walk 见 ACPI 篇。aarch64 的 DTB memory 节点细节链到 DTB 篇，本篇写它们如何进入 `m_regions`。
 
 ---
 
@@ -37,7 +37,7 @@ v0.1 · 2026-10-02
 物理内存子系统在启动阶段做四件事：
 
  - 把固件给出的可用物理区间（x86 来自 Multiboot memmap，aarch64 来自设备树 `/memory` 节点）读进 `m_regions` 数组，统一不同架构下可用内存的描述方式。
- - 从中扣除内核镜像、percpu 区、PMM 自身元数据，以及架构必须保留的区间（例如 x86 上 ACPI 表所在窗口）。这些区间不能再被分配出去。
+ - 从中扣除内核镜像、percpu 区、PMM 自身元数据。这些区间不能再被分配出去。
  - 把剩下的可用内存按 **zone** 划分。默认只有一个 `ZONE_NORMAL`，挂全局的 `buddy_pmm`；也可以通过 `configure_pmm_zones_hook` 配置多个 zone，但每个 zone 必须指向**各自独立**的 `struct pmm` 实例。
  - 按各 zone 的 `pmm_calculate_manage_space` 切出私有管理区并 `pmm_init`。默认 buddy 在其中生成 `buddy_page[]`。此后凡是要取「物理上连续的若干页」——例如页表大页、kmalloc 的整页——都从选定 zone 的 `pmm->pmm_alloc` 申请，释放时调 `pmm_free`。
 
@@ -99,7 +99,7 @@ struct memory_regions {
 extern struct memory_regions m_regions;
 ```
 
-从中扣除已经占用的空间，叫 **reserve**。内核镜像、percpu 区、PMM 自身元数据，以及架构必须保留的洞（例如 x86 上 ACPI 表所在窗口），都走这条路。实现上是修改槽里的 `addr`/`len`：整段用光就把该槽**置零**（`delete`），并不把后面的槽往前挪；只切掉一头则缩短这一槽；从中间掏空则一槽裂成两槽。因此 `region_count` 只增不减，空槽靠 `addr==0 && len==0` 判断。这个数据结构主要适用于早期启动，所以在pmm分配器起来之后，这个表就作废，不能依赖它继续做现在有哪些可用的内存空间的判定——已经转移给各个zone了。
+从中扣除已经占用的空间，叫 **reserve**。内核镜像、percpu 区、PMM 自身元数据走这条路。实现上是修改槽里的 `addr`/`len`：整段用光就把该槽**置零**（`delete`），并不把后面的槽往前挪；只切掉一头则缩短这一槽；从中间掏空则一槽裂成两槽。因此 `region_count` 只增不减，空槽靠 `addr==0 && len==0` 判断。这个数据结构主要适用于早期启动，所以在pmm分配器起来之后，这个表就作废，不能依赖它继续做现在有哪些可用的内存空间的判定——已经转移给各个zone了。
 
 **zone（`MemZone`）** 是软件在物理地址上划出的窗口：`[lower_addr, upper_addr)`，再挂一个分配器 `struct pmm *`。它回答的是「这段地址归哪套策略管」，与固件原始的那几段 RAM 不是一回事。Linux 里常见 DMA / NORMAL / HIGHMEM 这种划分，本仓库沿用同一套骨架，但默认只有一个 **`ZONE_NORMAL`**，窗口覆盖扣除内核和 percpu 之后的可用范围，分配器用全局的 **buddy**（`buddy_pmm`）。`mem_zones[]` 编译期容量是 `ZONE_NR_MAX`（16），真正启用的个数是 `nr_mem_zones`，使用前缀 `[0, nr_mem_zones)`。也可以用 `configure_pmm_zones_hook` 再划窗口，但每个 zone 必须指向**各自独立**的 `pmm` 实例——两个窗口共用同一个 buddy 对象会把数据结构写乱。`pmm_zone_config_legal` 发现区间非法、`pmm` 为空、或指针重复，就退回默认单 zone。挂上的 `pmm` 必须能 `pmm_init`，否则 `phy_mm_init` 失败。
 
@@ -354,7 +354,7 @@ typedef bool (*pmm_reclaim_fn_t)(struct pmm *pmm, size_t need_pages,
 |------|------|
 | `kernel/mm/pmm.c` | `phy_mm_init`、regions、zone 切分、Page 生成、弱 hook |
 | `kernel/mm/buddy_pmm.c` | buddy 算法、reclaim 循环 |
-| `arch/x86_64/mm/pmm.c` | Multiboot memmap、ACPI 相关保留、boot 映射辅助 |
+| `arch/x86_64/mm/pmm.c` | Multiboot memmap、boot 映射辅助 |
 | `arch/aarch64/mm/pmm.c` | DTB `/memory`、以 `map_end` 为内核后可用位置起始 |
 | `pmm.h` / `buddy_pmm.h` | `struct pmm`、`Page`、`buddy_page`、API |
 
@@ -375,9 +375,8 @@ riscv / loongarch 的 `pmm.h` 为空桩，无实现。
 代码路径（`arch/x86_64/mm/pmm.c`）：
 
 1. 看 `setup_info->multiboot_magic`。Multiboot1 要求 info 的 `flags` 里同时有「基本 mem」和「mmap」位，否则直接失败；mmap 物理指针加 `KERNEL_VIRT_OFFSET` 后按 `for_each_multiboot_mmap` 遍历。Multiboot2 则扫描 tag，找到 `MULTIBOOT2_TAG_TYPE_MMAP` 后再遍历其中的各项。
-2. 插入条件写在宏 `multiboot_insert_memory_region` 里：**`type == AVAILABLE`，且 `addr + len > BIOS_MEM_UPPER`（`0x100000`）**。也就是说：整段都落在 1 MiB 以下的可用区不要；跨过 1 MiB 的区整段插入。插入时不再裁掉低 1 MiB 前缀，低地址的占用靠后面的 kernel/percpu/ACPI reserve 与「可用窗口」计算来扣除。
-3. 随后 `reserve_arch_region`：读 `setup_info->rsdp_addr`（已由 `prepare_arch` 探测写入；0 表示没有）。**没有 RSDP 直接返回成功**（不 halt）。若有且 revision 0，按 RSDT 地址对齐保留一个 2 MiB 窗口，避免 buddy 把 ACPI 表所在页分掉。更高 revision 返回失败，`arch_init_pmm` **halt**（正常路径上 `prepare_arch` 已挡掉）。**这里不再探测。**
-4. `next_region_phy_start = PHY(_end)`，即内核镜像物理末尾，percpu 紧随其后。
+2. 插入条件写在宏 `multiboot_insert_memory_region` 里：**`type == AVAILABLE`，且 `addr + len > BIOS_MEM_UPPER`（`0x100000`）**。也就是说：整段都落在 1 MiB 以下的可用区不要；跨过 1 MiB 的区整段插入。插入时不再裁掉低 1 MiB 前缀，低地址的占用靠后面的 kernel/percpu reserve 与「可用窗口」计算来扣除。ACPI reclaim、NVS、reserved 等类型本就不插入；表所在物理区是否进 buddy，完全取决于装载器 mmap 是否把它们标成 `AVAILABLE`（规范路径下不应）。
+3. `next_region_phy_start = PHY(_end)`，即内核镜像物理末尾，percpu 紧随其后。
 
 #### aarch64：设备树 `/memory`
 
@@ -445,7 +444,7 @@ void configure_pmm_zones_hook(paddr avail_lo, paddr avail_hi); /* weak */
 | 接口 | 说明 |
 |------|------|
 | `phy_mm_init` | BSP 物理内存总入口。成功 `REND_SUCCESS`；reserve/布局失败、或某个已启用 zone 没有 `pmm_init`，返回 `-E_RENDEZVOS`。不建线程、不建 Map_Handler。成功后各 zone 的 `pmm` 可分配。 |
-| `arch_init_pmm` | 填 `m_regions`，写出 percpu 起点位置（即`next_region_phy_start`）。**x86**：Multiboot mmap（AVAILABLE 且越过 1 MiB）；再按已有 `rsdp_addr` 保留 RSDT 所在 2 MiB 窗（`rsdp_addr==0` 则跳过；更高 revision 目前没支持则 **halt**；不探测）；设定percpu 起点=`PHY(_end)`。**aarch64**：DTB `device_type=memory` 的 `reg`（按 2×u64），mem_rsvmap 只打印，让内核之后可用位置=`PHY(map_end_virt_addr)`。区域为空或解析失败则 **`kernel_halt`**，不向 `phy_mm_init` 回错误码。 |
+| `arch_init_pmm` | 填 `m_regions`，写出 percpu 起点位置（即`next_region_phy_start`）。**x86**：Multiboot mmap（仅 AVAILABLE 且越过 1 MiB）；设定 percpu 起点=`PHY(_end)`。**aarch64**：DTB `device_type=memory` 的 `reg`（按 2×u64），mem_rsvmap 只打印，让内核之后可用位置=`PHY(map_end_virt_addr)`。区域为空或解析失败则 **`kernel_halt`**，不向 `phy_mm_init` 回错误码。 |
 | `configure_pmm_zones_hook` | 在已知可用窗、切 zone 之前调用；填 `mem_zones[0..nr_mem_zones)` 与各 zone 的 `pmm`（静态实例，**每个 zone 一份**）。弱默认：单 `ZONE_NORMAL` + `buddy_pmm`。区间非法、`pmm` 为空、或两个 zone 共用同一 `pmm` 指针：回退默认，不硬失败。 |
 
 最后，用于传递初始化的内存区域，主要经过全局 `m_regions` 上的方法指针：`memory_regions_reserve_region` / `memory_regions_reserve_region_with_length` 等，见 `struct memory_regions`。这些函数非本篇对外的功能接口，而是中间过程维护的数据结构和接口。
@@ -517,7 +516,8 @@ make ARCH=x86_64 config && make run
 
 ## 11. 变更记录
 
-- 2026-10-24：RSDP 探测已在 `prepare_arch`；§3 / §6.1 / §7 改为 `reserve_arch_region` 只按 `rsdp_addr` 保留页面。开篇标明：探测属 `04`，保留页面属本篇，walk 属 `35`（与启动/ACPI 篇去重）。
+- 2026-10-24：去掉 `reserve_arch_region`（不再按 RSDT 扣 2 MiB 窗）。§1 / §4 / §5 / §6.1 / §7：ACPI 表区只靠 mmap 非 `AVAILABLE` 不插入；探测属 `04`，walk 属 `35`。
+- 2026-10-24：RSDP 探测已在 `prepare_arch`；曾写 `reserve_arch_region` 只按 `rsdp_addr` 保留页面（已废止，见上条）。
 - 2026-10-07：开篇挂 `figures/memory_system.png` 作为 **02-内存管理整章栈总图**（未另开总览篇）；§1 起仍只覆盖物理页与 buddy。
 - 2026-10-06：厘清 `Page[]` 是 zone 通用描述，`buddy_page[]` 只是默认 buddy 的私有管理区；切片大小走 `pmm_calculate_manage_space`，内容由 `pmm_init` 填写。
 - 2026-10-06：§4.2 写清 PMM 预定含 L2 + `MemSection`/`Page[]` + 各 zone `buddy_page[]`；`buddy_page[]` 是 manage 切片不是 section 柔性数组；`struct buddy` 在静态 `buddy_pmm`。

@@ -19,9 +19,11 @@
  * the legacy BIOS scan, which searches [ @p search_start_vaddr + 0x80000, @p
  * search_start_vaddr + 0x80400) then [ @p search_start_vaddr +0xE0000, @p
  * search_start_vaddr +0x100000). No checksum validation. Returns NULL if not
- * found.
+ * found; on success returns a **VA** inside those already-mapped windows
+ * (suitable for @c setup_info->rsdp_addr / @c acpi_init).
  *
- * @note The search window must already be mapped to a virtual range.
+ * @note The search windows must already be mapped. Mapping the RSDP is the
+ * probe stage’s job—not @c acpi_init’s.
  */
 struct acpi_table_rsdp* acpi_probe_rsdp(vaddr search_start_vaddr);
 /**
@@ -35,11 +37,15 @@ bool acpi_table_sig_check(char* acpi_table_sig_ptr, char* sig_chars);
 enum acpi_table_sig_enum
 get_acpi_table_type_from_sig(struct acpi_table_head* acpi_head);
 /**
- * @brief Initialize ACPI from RSDP: check RSDT revision and parse known
- *        tables (e.g. FACP / APIC).
+ * @brief Initialize ACPI from an already-mapped RSDP: ensure RSDT / child
+ *        tables, walk RSDT, dispatch known signatures (e.g. FACP / APIC).
  *
- * @p rsdp_addr must be a valid RSDP virtual address.(must using acpi_probe_rsdp
- * to search it)
+ * @p rsdp_addr is a **virtual** address of the RSDP. The RSDP page must already
+ * be accessible (legacy probe windows today; future UEFI paths must map before
+ * storing this VA). This function does **not** map the RSDP itself—only RSDT
+ * and secondary tables via @c ensure_kernel_identity_range.
+ *
+ * Typical producer: @c acpi_probe_rsdp from @c prepare_arch.
  */
 error_t acpi_init(vaddr rsdp_addr);
 #endif

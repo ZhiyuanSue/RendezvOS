@@ -53,8 +53,9 @@ core 里的 `clone_vspace` 已经能做 `COW_PREP` / `COPY_PAGES`；真正在 fa
 ## 3. 分层与调用方
 
 - **兼容层 / 加载器**：通常先 `vmm_radix_tree_lock_range_big`，再多次 `lock_range_small_with_big_locked` + utils；L0 可以跨多次调用一直持有。utils **不会**自己去获取 L0。
-- **kmalloc 等**：可用 `vmm_radix_tree_lock_range_big_and_small`（内部取到 L2 后**释放 L0**），避免嵌套在已持有的 L0 临界区里。
+- **kmalloc 等**：可用 `vmm_radix_tree_lock_range_big_and_small`（内部取到 L2 后**释放 L0**），避免嵌套在已持有的 L0 临界区里。堆整页在 `root_vspace` 上自管 insert/map/bind（见 `09`），**不**走本篇 utils。
 - **utils**：一律拒绝 `&root_vspace`（内核的全局根地址空间，所有 VSpace 共享它的内核高半；只服务用户地址空间，见 §4.6）。调用方已持有 L0 时，用 `lock_range_small_with_big_locked` 那条路径。
+- **非 zone 分配器交出的 PA 的内核恒等映射**（固件表、MMIO 等）：走 `mm_kernel_utils`（页表篇：`ensure_*` / `map_*_empty` / `unmap_*`），**无** radix / rmap——与本篇用户组合层同级、职责互斥。Zone 内 RAM（含将来非 buddy 的 zone）仍走分配器 + 本篇 bind 路径。
 
 推荐生命周期：先 `insert_range`（LAZY），调用方 `map` 之后再 `leaf_bind`（VALID + rmap）；拆除时先 unbind，再 unmap，最后 DELETE。
 
@@ -172,10 +173,17 @@ L0 按大约 512 GiB（`HUGE_PAGE_SIZE`）一档，管的是「谁在驱动这
         叶子（Radix_node_t：flags + rmap + owner）
 ```
 
-两种常见入口：
+两种常见入口（实现权衡：细锁都是 L2；差别只在「L2 到手后还要不要握着 L0」）：
 
-1. `lock_range_big` +（多次）`lock_range_small_with_big_locked` —— 加载器 / fault / mmap 的路径；L0 跨多次 utils。
-2. `lock_range_big_and_small` —— 内部持有 L2 后**释放 L0**；clone 目标插入、kmalloc 整页映射等会用。
+1. `lock_range_big` +（多次）`lock_range_small_with_big_locked` —— 加载器 / fault / mmap / `mm_user_utils` 路径。上层握着 L0，再在子区间上拿 L2 调 utils，可循环「发现 → 动手」。
+2. `lock_range_big_and_small` —— 内部拿到 L2 后**释放 L0**；clone 目标插入、kmalloc / `core_get_free_pages` 等会用。
+
+**为何用户路径要一直握 L0，堆却可以早放：**
+
+- **堆**：VA 已知（分配页的恒等映射）、一段做完、不调用 `find_first_occupied_interval`。L0 只为进 L2 开路；map/bind 期间再握 L0 只加长临界区，无收益 → `big_and_small`。
+- **用户 + utils**：典型是 `lock L0` → `find_first_occupied_interval`（**要求已持 L0**；返回的叶在 L0 租约内才可继续用）→ util（L2）→ 可能再找下一段 → 再 util → … → `unlock L0`。若每次动手都改成 `big_and_small` 并在「发现」与「改叶」之间（或两次 utils 之间）放下 L0，别的核可以改 radix，视图与下一刀对不上（TOCTOU）。L0 =「谁在这段 512 GiB 分片上开扫/驱动」；L2 = 真正 mutate 的细锁。代价是同 L0 分片上其它要先抢 L0 的路径会等；换来的是多段发现+动手的一致视图。
+
+这不是「utils 不用细锁」——utils **会**拿 L2。只是 L0 的所有权留在上层，因为发现阶段与多段编排需要它。
 
 **Clone 窗口（源码强调）：** 在源上持有用户半的 L0，可以挡住**其他核再进入**该 radix，但**不表示**扫 interval 时没有别的核持有 L2——他核可能已经走 `big_and_small` 释放了 L0、手里还持有 L2。查找代码扫占用区间时必须 **获取 L2 并等待**。不要理解成「持有 L0 就包办一切」。
 
@@ -415,7 +423,8 @@ DELETE 不是独立函数，而是 `RADIX_RL_DELETE` 锁路径上的内部行为
 | 文件 | 职责 |
 |------|------|
 | `vmm_radix_tree.c` / `.h` | 树、L0/L2 锁、insert/delete/query/change、interval、占用、共享高半 |
-| `mm_user_utils.c` / `.h` | fill / clean / remap / set_flags 编排与回滚 |
+| `mm_user_utils.c` / `.h` | 用户 VA：fill / clean / remap / set_flags 编排与回滚 |
+| `mm_kernel_utils.c` / `.h` | 内核恒等区间（无 radix；见页表篇，本表仅交叉引用） |
 | `vmm.c` | `clone_vspace`、`register_vspace`、`vspace_clear_user_*` |
 
 API 一律带前缀：`vmm_radix_tree_*`、`mm_user_utils_*`。
@@ -618,6 +627,9 @@ make ARCH=x86_64 config && make all && make run
 
 ## 11. 变更记录
 
+- 2026-10-24：§4.2 写清用户路径握 L0 vs 堆 `big_and_small` 早放 L0 的权衡（interval 发现 / TOCTOU）；`mm_user_utils.h` 同步。
+- 2026-10-24：§3 交叉引用改为 ensure/empty/unmap 三件套命名。
+- 2026-10-24：§3/§5 标明与 `mm_kernel_utils` 同级互斥；`mm_user_utils.h` 去掉 Doxygen `@{` 分组噪音。
 - 2026-10-05（可读性二轮）：展开首次出现未解释的术语——rmap（反向映射）、VMA（虚拟内存区间）、granule（页粒度）、CAS（Compare-And-Swap）、MCS 锁（Mellor-Crummey-Scott）、`tp_new_none`（空 tagged pointer 标记）、`root_vspace`（§3 首次出现补一句指向 §4.6）、`have_mapped`（§6.3 补一句区分 radix VALID）；「port 的 name_index」改成不展开 IPC 的提醒；「头文件 I5」两次都补成「不变量第 5 条，见头文件注释」；CortenMM 补 SOSP 2025 出处；「interval 发现」→「区间发现」；「walk iter」→「遍历迭代器」。
 - 2026-10-05：补 §4.3 五阶段树锁、§4.4 锁序与 zone 锁、§4.5 变更操作一览（含 DELETE 收缩）；顺手校正章节号（原插入把 4.3/4.4 挤到后面）、INSERT overlap 条件（VALID|LAZY|owner）、Phase 5 L0 是否释放（分 big_and_small / with_big_locked）、L2 是 packed bit-lock 不是 mutex。来源：`core/docs/old/memory.md` 迁移审核 + `vmm_radix_tree.c`。
 - 2026-10-04：为辅助理解补示意图——§4.1 radix 树与硬件页表对齐（同一段 VA 两边切分一致，radix 记策略意图、PTE 记 MMU 所见，fault 时两面都读但以 radix 判定）；§4.2 L0（512 GiB bit-lock）/ L2（2 MiB mutex）两级锁粒度；§4.3 共享内核高半（L0[256..] 指向同一套 L1 模板，非整表拷贝）；§6.1 一页「预约→落页→卸页→删账本」生命周期里 radix 与 PTE 两面同步推进的流程。

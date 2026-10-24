@@ -7,13 +7,14 @@
 #include <rendezvos/error.h>
 #include <rendezvos/mm/vmm.h>
 #include <rendezvos/mm/map_handler.h>
+#include <rendezvos/mm/mm_kernel_utils.h>
 #include <rendezvos/smp/percpu.h>
 
 struct acpi_table_sig acpi_table_sigs[ACPI_NR_TABLES] = {
         {ACPI_APIC, ACPI_SIG_APIC}, {ACPI_BERT, ACPI_SIG_BERT},
         {ACPI_BGRT, ACPI_SIG_BGRT}, {ACPI_CCEL, ACPI_SIG_CCEL},
         {ACPI_CPEP, ACPI_SIG_CPEP}, {ACPI_DSDT, ACPI_SIG_DSDT},
-        {ACPI_ECDT, ACPI_SIG_DSDT}, {ACPI_EINJ, ACPI_SIG_EINJ},
+        {ACPI_ECDT, ACPI_SIG_ECDT}, {ACPI_EINJ, ACPI_SIG_EINJ},
         {ACPI_ERST, ACPI_SIG_ERST}, {ACPI_FACP, ACPI_SIG_FACP},
         {ACPI_FACS, ACPI_SIG_FACS}, {ACPI_FPDT, ACPI_SIG_FPDT},
         {ACPI_GTDT, ACPI_SIG_GTDT}, {ACPI_HEST, ACPI_SIG_HEST},
@@ -115,11 +116,9 @@ static inline error_t parser_acpi_tables(enum acpi_table_sig_enum sig_enum,
         case ACPI_FACP: /* signature "FACP" → FADT */
                 fadt_table = (struct acpi_table_fadt *)table_head;
                 return arch_parser_fadt();
-                break;
         case ACPI_APIC: /* signature "APIC" → MADT */
                 madt_table = (struct acpi_table_madt *)table_head;
                 return arch_parser_madt();
-                break;
         default:
                 return -E_RENDEZVOS;
         }
@@ -127,60 +126,95 @@ static inline error_t parser_acpi_tables(enum acpi_table_sig_enum sig_enum,
 
 error_t acpi_init(vaddr rsdp_addr)
 {
+        const ENTRY_FLAGS_t table_flags = PAGE_ENTRY_GLOBAL | PAGE_ENTRY_READ
+                                          | PAGE_ENTRY_VALID
+                                          | PAGE_ENTRY_WRITE;
+
+        if (!rsdp_addr) {
+                print("[ ACPI ] ERROR: rsdp_addr is 0\n");
+                return -E_RENDEZVOS;
+        }
+
         struct acpi_table_rsdp *rsdp_table =
-                (struct acpi_table_rsdp *)(rsdp_addr);
+                (struct acpi_table_rsdp *)rsdp_addr;
         if (rsdp_table->revision == 0) {
-                // we must use cpu 0 to map
-                paddr rsdt_page =
-                        ROUND_DOWN(rsdp_table->rsdt_address, MIDDLE_PAGE_SIZE);
-                vaddr rsdt_map_page =
-                        ROUND_DOWN(KERNEL_PHY_TO_VIRT(rsdp_table->rsdt_address),
-                                   MIDDLE_PAGE_SIZE);
-                if (!have_mapped(per_cpu(current_vspace, BSP_ID),
-                                 VPN(rsdt_map_page),
-                                 NULL,
-                                 NULL,
-                                 &per_cpu(Map_Handler, BSP_ID))) {
-                        map(per_cpu(current_vspace, BSP_ID),
-                            PPN(rsdt_page),
-                            VPN(rsdt_map_page),
-                            2,
-                            PAGE_ENTRY_GLOBAL | PAGE_ENTRY_READ
-                                    | PAGE_ENTRY_VALID | PAGE_ENTRY_WRITE,
-                            &per_cpu(Map_Handler, BSP_ID));
-                }
+                struct VSpace *vs = per_cpu(current_vspace, BSP_ID);
+                struct map_handler *handler = &per_cpu(Map_Handler, BSP_ID);
+
+                error_t error =
+                        ensure_kernel_identity_range(vs,
+                                                     rsdp_table->rsdt_address,
+                                                     ACPI_HEAD_SIZE,
+                                                     table_flags,
+                                                     handler);
+                if (error != REND_SUCCESS)
+                        return error;
+
                 struct acpi_table_rsdt *rsdt_table =
                         (struct acpi_table_rsdt *)KERNEL_PHY_TO_VIRT(
                                 rsdp_table->rsdt_address);
                 if (!acpi_table_sig_check(rsdt_table->signature,
                                           ACPI_SIG_RSDT)) {
-                        print("invalid signature of rsdt table\n");
+                        print("[ ACPI ] ERROR: invalid RSDT signature\n");
                         return -E_RENDEZVOS;
                 }
+
+                error = ensure_kernel_identity_range(vs,
+                                                     rsdp_table->rsdt_address,
+                                                     rsdt_table->length,
+                                                     table_flags,
+                                                     handler);
+                if (error != REND_SUCCESS)
+                        return error;
 
                 int nr_rsdt_entry = (rsdt_table->length - ACPI_HEAD_SIZE)
                                     / ACPI_RSDT_ENTRY_SIZE;
                 for (int i = 0; i < nr_rsdt_entry; i++) {
                         paddr entry_paddr = ((u32 *)&(rsdt_table->entry))[i];
-                        vaddr entry_vaddr =
-                                KERNEL_PHY_TO_VIRT((u64)entry_paddr);
-                        struct acpi_table_head *tmp_table_head =
-                                (struct acpi_table_head *)entry_vaddr;
-                        int sig = get_acpi_table_type_from_sig(tmp_table_head);
-                        if (sig == -1) {
-                                print("undefined acpi table ");
-                                for (int j = 0; j < ACPI_SIG_LENG; j++) {
+
+                        error = ensure_kernel_identity_range(vs,
+                                                             entry_paddr,
+                                                             ACPI_HEAD_SIZE,
+                                                             table_flags,
+                                                             handler);
+                        if (error != REND_SUCCESS)
+                                return error;
+
+                        struct acpi_table_head *table_head =
+                                (struct acpi_table_head *)KERNEL_PHY_TO_VIRT(
+                                        (u64)entry_paddr);
+
+                        error = ensure_kernel_identity_range(
+                                vs,
+                                entry_paddr,
+                                table_head->length,
+                                table_flags,
+                                handler);
+                        if (error != REND_SUCCESS)
+                                return error;
+
+                        int sig = get_acpi_table_type_from_sig(table_head);
+                        if (sig == -E_RENDEZVOS) {
+                                print("[ ACPI ] ERROR: undefined table ");
+                                for (int j = 0; j < ACPI_SIG_LENG; j++)
                                         print("%c",
-                                              tmp_table_head->signature[j]);
-                                }
+                                              table_head->signature[j]);
                                 print("\n");
-                        } else {
-                                parser_acpi_tables(sig, tmp_table_head);
+                                continue;
+                        }
+
+                        error = parser_acpi_tables(
+                                (enum acpi_table_sig_enum)sig, table_head);
+                        if (error != REND_SUCCESS) {
+                                print(
+                                        "[ ACPI ] ERROR: parser failed sig enum %d\n",
+                                        sig);
+                                return error;
                         }
                 }
         } else {
-                print("[ ACPI ] unsupported vision: %d\n",
-                      rsdp_table->revision);
+                print("[ ACPI ] ERROR: unsupported revision %d\n",
+                         rsdp_table->revision);
                 return -E_RENDEZVOS;
         }
         return REND_SUCCESS;

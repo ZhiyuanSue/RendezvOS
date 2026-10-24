@@ -2,7 +2,6 @@
 #include <arch/x86_64/mm/vmm.h>
 #include <arch/x86_64/power_ctrl.h>
 #include <modules/log/log.h>
-#include <modules/acpi/acpi.h>
 #include <rendezvos/error.h>
 #include <rendezvos/limits.h>
 #include <rendezvos/mm/pmm.h>
@@ -89,36 +88,6 @@ static error_t arch_get_memory_regions(struct setup_info *arch_setup_info)
 arch_init_pmm_error:
         return (-E_RENDEZVOS);
 }
-error_t reserve_arch_region(struct setup_info *arch_setup_info)
-{
-        struct acpi_table_rsdp *rsdp_table =
-                (struct acpi_table_rsdp *)arch_setup_info->rsdp_addr;
-
-        if (!rsdp_table)
-                return REND_SUCCESS;
-        if (rsdp_table->revision == 0) {
-                // print("====== rsdt @[0x%lx]] ======\n",
-                // rsdp_table->rsdt_address);
-                paddr acpi_reserve_phy_start =
-                        ROUND_DOWN(rsdp_table->rsdt_address, MIDDLE_PAGE_SIZE);
-                paddr acpi_reserve_phy_end =
-                        acpi_reserve_phy_start + MIDDLE_PAGE_SIZE;
-                int acpi_region = m_regions.memory_regions_reserve_region(
-                        acpi_reserve_phy_start, acpi_reserve_phy_end);
-                print("[ ACPI_DATA\t@\t< 0x%lx , 0x%lx >]\n",
-                      KERNEL_PHY_TO_VIRT(acpi_reserve_phy_start),
-                      KERNEL_PHY_TO_VIRT(acpi_reserve_phy_end));
-                if (acpi_region == -1) {
-                        print("cannot load acpi\n");
-                        return -E_RENDEZVOS;
-                }
-        } else {
-                print("[ ACPI ] unsupported vision: %d\n",
-                      rsdp_table->revision);
-                return -E_RENDEZVOS;
-        }
-        return REND_SUCCESS;
-}
 void arch_init_pmm(struct setup_info *arch_setup_info,
                    vaddr *next_region_phy_start)
 {
@@ -133,12 +102,6 @@ void arch_init_pmm(struct setup_info *arch_setup_info,
         if (!m_regions.region_count)
                 goto arch_init_pmm_error;
 
-        /*You need to check whether the arch reserve regions have been loaded
-         * all successfully*/
-        if (reserve_arch_region(arch_setup_info) < 0) {
-                print("cannot reserve arch region\n");
-                goto arch_init_pmm_error;
-        }
         *next_region_phy_start = KERNEL_VIRT_TO_PHY((vaddr)(&_end));
         return;
 arch_init_pmm_error:
