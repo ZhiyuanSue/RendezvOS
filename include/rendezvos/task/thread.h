@@ -121,7 +121,7 @@ extern u64 thread_kstack_page_num;
         u64 status;                                                 \
         u64 kstack_bottom; /*for stack,it's high addr*/             \
         u64 kstack_num;                                             \
-        Arch_Thread_Context ctx;                                     \
+        Arch_Thread_Context ctx;                                    \
         Thread_Init_Para* init_parameter;                           \
         ref_count_t refcount;                                       \
         ms_queue_t recv_msg_queue;                                  \
@@ -285,7 +285,8 @@ void del_init_parameter_structure(Thread_Init_Para* pm);
  */
 bool cpu_id_is_online(cpu_id_t cpu);
 
-/** @brief Per-CPU run queue for @p cpu; NULL if @c cpu_id_is_online is false. */
+/** @brief Per-CPU run queue for @p cpu; NULL if @c cpu_id_is_online is false.
+ */
 Task_Manager* task_manager_for_cpu(cpu_id_t cpu);
 
 /** @brief Owner CPU of @p thread's run queue, or @c CPU_ID_INVALID. */
@@ -363,7 +364,8 @@ error_t delete_thread(Thread_Base* thread);
  * @brief Look up a message port by name for the current thread (per-thread LRU
  * cache; caller must ref_put the returned port).
  * @param name Port name string.
- * @return Port with one extra ref for the caller, or NULL if not found or bad context.
+ * @return Port with one extra ref for the caller, or NULL if not found or bad
+ * context.
  */
 Message_Port_t* thread_lookup_port(const char* name);
 

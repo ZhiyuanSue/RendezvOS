@@ -15,7 +15,7 @@ u64 timer_freq;
 static u32 timer_irq_num; /* 0 = not probed; IRQ trap ids are ≥ 64 */
 
 static const struct of_device_id arch_timer_of_match[] = {
-        { .compatible = "arm,armv8-timer" },
+        {.compatible = "arm,armv8-timer"},
         {/*sentinel*/},
 };
 
@@ -45,10 +45,9 @@ u32 arch_get_timer_irq_num(bool is_bsp)
         cell0 = ARCH_TIMER_NS_PHYS * 3u;
         n_cells = cell0 + 3u;
 
-        irq_prop_name =
-                property_types[PROPERTY_TYPE_INTERRUPT].property_string;
-        prop = dev_node_find_property(node, (char *)irq_prop_name,
-                                      (int)strlen(irq_prop_name));
+        irq_prop_name = property_types[PROPERTY_TYPE_INTERRUPT].property_string;
+        prop = dev_node_find_property(
+                node, (char *)irq_prop_name, (int)strlen(irq_prop_name));
         if (!prop || prop->len < (int)(n_cells * sizeof(u32)))
                 goto fail;
 

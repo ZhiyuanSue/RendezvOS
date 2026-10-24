@@ -28,34 +28,37 @@ struct boot_header {
 } __attribute__((packed));
 
 /**
- * @brief aarch64 boot structure shared by boot.S and cmain and start_secondary_cpu.
- * Offsets in field comments must match boot.S stores
+ * @brief aarch64 boot structure shared by boot.S and cmain and
+ * start_secondary_cpu. Offsets in field comments must match boot.S stores
  */
 struct setup_info {
         u64 dtb_ptr; /*0x0: DTB physical addr passed by fireware
-                      * but will relocated by boot_map as boot_dtb_header_base_addr
+                      * but will relocated by boot_map as
+                      * boot_dtb_header_base_addr
                       */
         u64 res_x1; /*0x8*/
         u64 res_x2; /*0x10*/
         u64 res_x3; /*0x18*/
-        u64 map_end_virt_addr; /*0x20: end virtural address of kernel boot map work
-                                * the pmm and vmm should start after here
+        u64 map_end_virt_addr; /*0x20: end virtural address of kernel boot map
+                                * work the pmm and vmm should start after here
                                 */
-        u64 boot_uart_base_addr; /*0x28: PL011 MMIO base 
+        u64 boot_uart_base_addr; /*0x28: PL011 MMIO base
                                   * just for early uart output
                                   */
         u64 boot_dtb_header_base_addr; /*0x30: DTB header kernel VA
-                                        * the boot map stage should mov dtb ptr to property position
+                                        * the boot map stage should mov dtb ptr
+                                        * to property position
                                         */
         vaddr ap_boot_stack_ptr; /*0x38: SMP AP stack top
-                                  * AP start one by one, every time using a new ap_boot_stack
-                                  * so this ptr should update
+                                  * AP start one by one, every time using a new
+                                  * ap_boot_stack so this ptr should update
                                   */
         cpu_id_t cpu_id; /*0x40: BSP/AP start given cpu id*/
 };
 
 /**
- * @brief Map the copied and aligned DTB into the high half and validate FDT header.
+ * @brief Map the copied and aligned DTB into the high half and validate FDT
+ * header.
  *
  * @param arch_setup_info Boot-filled setup_info (dtb_ptr already relocated).
  * @return 0 on success; -E_RENDEZVOS if fdt_check_header fails.

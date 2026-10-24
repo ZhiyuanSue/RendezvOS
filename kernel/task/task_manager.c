@@ -150,12 +150,12 @@ void schedule(Task_Manager* tm)
                         percpu(current_vspace) = new_vs;
                         /*If necessary, clean the old vs*/
                         if (old_vs != &root_vspace) {
-                                arch_tlb_invalidate_vspace_page(
-                                        old_vs->asid, 0);
+                                arch_tlb_invalidate_vspace_page(old_vs->asid,
+                                                                0);
 
                                 lock_cas(&old_vs->tlb_cpu_mask_lock);
-                                vs_tlb_cpu_mask_clear(
-                                        old_vs, percpu(cpu_number));
+                                vs_tlb_cpu_mask_clear(old_vs,
+                                                      percpu(cpu_number));
                                 unlock_cas(&old_vs->tlb_cpu_mask_lock);
                                 ref_put(&old_vs->refcount, free_vspace_ref);
                         }

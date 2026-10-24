@@ -34,7 +34,8 @@ void register_irq_handler(size_t local_irq_id, cpu_id_t cpu_id,
                         return;
                 }
 
-                struct arch_global_irq *global_entry = irq_global_find(local_irq_id, cpu_id);
+                struct arch_global_irq *global_entry =
+                        irq_global_find(local_irq_id, cpu_id);
                 if (!global_entry) {
                         pr_error(
                                 "[trap] register_irq_handler: local_irq_id %zu cpu %u not allocated\n",

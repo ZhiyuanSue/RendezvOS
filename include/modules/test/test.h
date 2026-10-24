@@ -41,7 +41,7 @@ void single_cpu_test(void);
 /**
  * @brief Run registered SMP cases.
  * There's a lot of cross-cpu barrier,
- * so the SMP will run one case, and wait other cpu finish this case, 
+ * so the SMP will run one case, and wait other cpu finish this case,
  * BSP will check whether the result is right if @c check_result not NULL,
  * If pass, the SMP will test the next case.
  * else, finish the test and BSP_test will power off.

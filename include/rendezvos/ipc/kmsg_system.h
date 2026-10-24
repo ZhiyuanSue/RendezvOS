@@ -28,7 +28,7 @@
  * @c THREAD_FLAG_IPC_PORT_CLOSED instead — see @c unregister_port /
  * @c THREAD_FLAG_IPC_PORT_CLOSED.
  */
-#define KMSG_OP_SYSTEM_PORT_CLOSED  5u
+#define KMSG_OP_SYSTEM_PORT_CLOSED 5u
 /** Payload: constant 0; no semantic content. */
 #define KMSG_FMT_SYSTEM_PORT_CLOSED "q"
 

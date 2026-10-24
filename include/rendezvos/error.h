@@ -14,7 +14,8 @@ enum Error_t {
         E_IN_PARAM, /*Invalid argument*/
         E_REND_TEST, /*Test framework failure*/
         E_REND_IPC, /*IPC failure*/
-        E_REND_AGAIN, /* Retryable (non-blocking IPC, buddy reclaim exhausted, …) */
+        E_REND_AGAIN, /* Retryable (non-blocking IPC, buddy reclaim exhausted,
+                         …) */
         E_REND_ABANDON, /*abandon*/
         E_REND_NO_MSG, /*Empty message queue / no message available*/
         E_REND_RC_UNEQUAL, /*Refcount / ownership mismatch*/

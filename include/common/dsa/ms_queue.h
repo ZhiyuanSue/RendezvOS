@@ -386,7 +386,7 @@ static inline error_t msq_enqueue_check_tail(ms_queue_t* q,
  *
  * compare ptr and/or append bits according to
  * @p check_field_mask ( @c MSQ_CHECK_FIELD_PTR / @c MSQ_CHECK_FIELD_APPEND ).
- * 
+ *
  * Mismatch → return none.
  * if @c append_info_bits==0, just as normal @c msq_dequeue.
  */

@@ -2,12 +2,11 @@
 #include <arch/x86_64/PIC/LocalAPIC.h>
 #include <common/bit.h>
 #include <modules/log/log.h>
-#include <modules/acpi/acpi_madt.h>
+#include <arch/x86_64/acpi/arch_madt.h>
 
 enum IRQ_type arch_irq_type = NO_IRQ;
 static inline bool xapic_check_base_addr(void)
 {
-        extern struct acpi_table_madt *madt_table;
         if (madt_table->Local_int_ctrl_address != xAPIC_MMIO_BASE) {
                 print("[ERROR] using xAPIC but address is not match that in acpi table\n");
                 return false;

@@ -7,9 +7,9 @@
 #define AARCH64_IRQ_OFFSET 64
 
 /* the same bits as that in irq source
- *   [10:0]  trap id = INTID + AARCH64_IRQ_OFFSET (11 bits, max 2047; fits SPI 1019 + 64 = 1083)
- *   [13:11] IAR CPUID for SGI EOI (3 bits, max 7)
- *   higher  SRC_EL etc.
+ *   [10:0]  trap id = INTID + AARCH64_IRQ_OFFSET (11 bits, max 2047; fits SPI
+ * 1019 + 64 = 1083) [13:11] IAR CPUID for SGI EOI (3 bits, max 7) higher SRC_EL
+ * etc.
  *
  * Note: union irq_source in gic_v2.h mirrors the GICC_IAR/EOIR hardware
  * layout (INTID[9:0] + CPUID[12:10]) and is NOT affected by this software

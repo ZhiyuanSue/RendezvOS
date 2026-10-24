@@ -75,7 +75,8 @@ error_t smp_ipi_send(cpu_id_t cpu_id, ipi_id_t ipi_id)
                 new_pending = old_pending | (1ull << ipi_id);
                 if (new_pending == old_pending)
                         break;
-        } while (atomic64_cas(pending, old_pending, new_pending) != old_pending);
+        } while (atomic64_cas(pending, old_pending, new_pending)
+                 != old_pending);
 
         e = arch_smp_ipi_send(cpu_id);
         if (e != REND_SUCCESS) {

@@ -16,7 +16,7 @@
 /**
  * @brief Compiler memory barrier only.
  */
-#define barrier()        __asm__ __volatile__("" : : : "memory")
+#define barrier() __asm__ __volatile__("" : : : "memory")
 /**
  * @brief Spin hint: PAUSE.
  */

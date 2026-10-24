@@ -9,20 +9,21 @@ extern int log_level;
 extern char _bss_start, _bss_end;
 extern char _end;
 
-char* cmdline_ptr=NULL;
+char *cmdline_ptr = NULL;
 
 /**
  * @brief BSP-only kernel bootstrap entry (called from arch boot.S, not from C).
  *
- * @param arch_setup_info setup infomation filled by boot.S; must be non-NULL ptr
- *        (NULL → kernel_panic). Layout is arch-specific
- *        (see `struct setup_info` in include/arch/<isa>/boot/arch_setup.h).
+ * @param arch_setup_info setup infomation filled by boot.S; must be non-NULL
+ * ptr (NULL → kernel_panic). Layout is arch-specific (see `struct setup_info`
+ * in include/arch/<isa>/boot/arch_setup.h).
  *
  * @note Early step failures (prepare_arch … init_proc) call kernel_panic.
  *       kernel_port_register / kernel_handle_msg failure: pr_error then
- *       rendezvos_request_poweroff; kernel_port_register failure does not 
- *       stop start_smp, so the powerd thread poweroff might after the smp start.
- * 
+ *       rendezvos_request_poweroff; kernel_port_register failure does not
+ *       stop start_smp, so the powerd thread poweroff might after the smp
+ * start.
+ *
  * @note AP path is start_secondary_cpu (SMP).
  * @note Success path does not return , it's in kernel_handle_msg's while loop.
  */

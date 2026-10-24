@@ -15,7 +15,8 @@
 static void* powerd_thread(void* arg)
 {
         (void)arg;
-        Message_Port_t* port = create_message_port(RENDEZVOS_POWERD_PORT_NAME, NULL);
+        Message_Port_t* port =
+                create_message_port(RENDEZVOS_POWERD_PORT_NAME, NULL);
         if (!port) {
                 pr_error("[powerd] create port failed\n");
                 return NULL;

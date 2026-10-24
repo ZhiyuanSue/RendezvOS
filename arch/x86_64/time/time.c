@@ -19,7 +19,7 @@ u32 arch_get_timer_irq_num(bool is_bsp)
  * @brief x86 timer bring-up by arch_irq_type (PIC / xAPIC / x2APIC).
  *
  * PIC: BSP only programs 8254 one-shot + enable IRQ0→0x20.
- * x(2)APIC: 
+ * x(2)APIC:
  * - BSP calibrates (TSC-DDL if supported else LAPIC)
  * - APIC_timer_init
  * - software_enable_APIC to start the timer irq

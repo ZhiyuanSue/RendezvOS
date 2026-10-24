@@ -177,6 +177,17 @@ error_t prepare_arch(struct setup_info *arch_setup_info)
                 print("not using the multiboot protocol, stop\n");
                 return (-E_RENDEZVOS);
         }
+
+        struct acpi_table_rsdp *rsdp = acpi_probe_rsdp(KERNEL_VIRT_OFFSET);
+
+        if (!rsdp) {
+                print("not find any rsdp\n");
+        } else if (rsdp->revision != 0) {
+                print("[ ACPI ] unsupported vision: %d\n", rsdp->revision);
+                return -E_RENDEZVOS;
+        } else {
+                arch_setup_info->rsdp_addr = (vaddr)rsdp;
+        }
         return (0);
 }
 error_t arch_cpu_info(struct setup_info *arch_setup_info)

@@ -73,7 +73,7 @@ PC 上外设不会直接进入内核入口。CPU 侧永远是：
 
 ## 3. 分层与调用方
 
-**BSP 平台一次** — ACPI 经 `parser_apic()` 枚举 Local APIC 并填 `NR_CPU`；**不**在此 `init_irq`。
+**BSP 平台一次** — ACPI 经 `arch_parser_madt()` 枚举 MADT 里的 Local APIC 并填 `NR_CPU`；**不**在此 `init_irq`。
 
 **每核** — 见 §6.1。Timer / IPI 注册在 IRQ 篇与软 IPI 篇；本篇提供 LVT / ICR / SVR 原语。
 

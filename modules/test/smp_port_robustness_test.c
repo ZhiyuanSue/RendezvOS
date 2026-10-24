@@ -390,7 +390,8 @@ static int smp_port_mixed_test(u32 cpu_id)
                                        cpu_id + 2000,
                                        round);
 
-                        Message_Port_t* port = create_message_port(port_name, NULL);
+                        Message_Port_t* port =
+                                create_message_port(port_name, NULL);
                         if (!port) {
                                 state->error_count++;
                                 if (state->error_count <= 5) {

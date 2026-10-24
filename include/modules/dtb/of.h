@@ -18,8 +18,9 @@ struct of_device_id {
  * @param from Start node (NULL search from device_root)
  * @param match_out Optional: set to the matching table entry
  */
-struct device_node *of_find_matching_node(struct device_node *from,
-                                          const struct of_device_id *matches,
-                                          const struct of_device_id **match_out);
+struct device_node *
+of_find_matching_node(struct device_node *from,
+                      const struct of_device_id *matches,
+                      const struct of_device_id **match_out);
 
 #endif

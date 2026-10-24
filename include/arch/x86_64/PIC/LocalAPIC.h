@@ -73,21 +73,21 @@
 #define APIC_REG_ICR_HIGH \
         (0x31) /*only used in xAPIC, no 831H MSR reg in x2APIC*/
 
-#define APIC_ICR_VECTOR_MASK              (0xff)
-#define APIC_ICR_DEL_MODE_SHIFT           (8)
-#define APIC_ICR_DEL_MODE_FIXED           (0x0 << APIC_ICR_DEL_MODE_SHIFT)
-#define APIC_ICR_DEL_MODE_LOW_PRIO        (0x1 << APIC_ICR_DEL_MODE_SHIFT)
-#define APIC_ICR_DEL_MODE_SMI             (0x2 << APIC_ICR_DEL_MODE_SHIFT)
-#define APIC_ICR_DEL_MODE_NMI             (0x4 << APIC_ICR_DEL_MODE_SHIFT)
-#define APIC_ICR_DEL_MODE_INIT            (0x5 << APIC_ICR_DEL_MODE_SHIFT)
-#define APIC_ICR_DEL_MODE_START_UP        (0x6 << APIC_ICR_DEL_MODE_SHIFT)
+#define APIC_ICR_VECTOR_MASK       (0xff)
+#define APIC_ICR_DEL_MODE_SHIFT    (8)
+#define APIC_ICR_DEL_MODE_FIXED    (0x0 << APIC_ICR_DEL_MODE_SHIFT)
+#define APIC_ICR_DEL_MODE_LOW_PRIO (0x1 << APIC_ICR_DEL_MODE_SHIFT)
+#define APIC_ICR_DEL_MODE_SMI      (0x2 << APIC_ICR_DEL_MODE_SHIFT)
+#define APIC_ICR_DEL_MODE_NMI      (0x4 << APIC_ICR_DEL_MODE_SHIFT)
+#define APIC_ICR_DEL_MODE_INIT     (0x5 << APIC_ICR_DEL_MODE_SHIFT)
+#define APIC_ICR_DEL_MODE_START_UP (0x6 << APIC_ICR_DEL_MODE_SHIFT)
 /* ICR bit 11: 0 = physical dest, 1 = logical dest */
-#define APIC_ICR_DEST_PHYSICAL            (0x0)
-#define APIC_ICR_DEST_LOGICAL             (0x1 << 11)
-#define APIC_ICR_DELIVERY_STATUS          (0x1 << 12)
+#define APIC_ICR_DEST_PHYSICAL   (0x0)
+#define APIC_ICR_DEST_LOGICAL    (0x1 << 11)
+#define APIC_ICR_DELIVERY_STATUS (0x1 << 12)
 /* ICR bit 14: 0 = de-assert, 1 = assert (for INIT etc.) */
-#define APIC_ICR_LEVEL_DEASSERT           (0x0)
-#define APIC_ICR_LEVEL_ASSERT             (0x1 << 14)
+#define APIC_ICR_LEVEL_DEASSERT (0x0)
+#define APIC_ICR_LEVEL_ASSERT   (0x1 << 14)
 /* ICR bit 15: 0 = edge, 1 = level trigger */
 #define APIC_ICR_TRIGGER_EDGE             (0x0)
 #define APIC_ICR_TRIGGER_LEVEL            (0x1 << 15)
@@ -213,7 +213,8 @@ tick_t APIC_timer_read(enum timer_type sys_timer_type);
 void APIC_timer_reset(enum timer_type sys_timer_type, tick_t next_event_gap);
 
 /**
- * @brief enable APIC : set SW_ENABLE and spurious id = ARCH_IRQ_ID_SPURIOUS (0x27).
+ * @brief enable APIC : set SW_ENABLE and spurious id = ARCH_IRQ_ID_SPURIOUS
+ * (0x27).
  */
 void software_enable_APIC(void);
 
@@ -231,13 +232,13 @@ void APIC_EOI(void);
 /**
  * @brief Send an IPI via ICR (bring-up INIT/SIPI or soft IPI).
  *
- * xAPIC: 
+ * xAPIC:
  * - wait Delivery Status clear
- * - write ICR_HIGH (dest) then ICR_LOW(fires). 
+ * - write ICR_HIGH (dest) then ICR_LOW(fires).
  * x2APIC: single 64-bit MSR write (no Delivery Status poll).
  *
  * @param dest_field Destination APIC ID when shorthand is NO
- * @param dest_sh    APIC_ICR_DEST_SH_* 
+ * @param dest_sh    APIC_ICR_DEST_SH_*
  * @param trigger_mode APIC_ICR_TRIGGER_*
  * @param level      APIC_ICR_LEVEL_*
  * @param dest_mode  APIC_ICR_DEST_PHYSICAL / LOGICAL

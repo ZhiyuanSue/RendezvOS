@@ -141,7 +141,7 @@ v0.1/full/
 
 职责：x86 `boot.S` 到 `cmain`；只做一次的 `prepare_arch` / `arch_cpu_info` / `arch_start_platform`；每核 `arch_start_core`。AP 唤醒见 SMP 篇
 
-源码：`arch/x86_64/boot/boot.S` · `arch/x86_64/boot/gdt.c` · `arch/x86_64/boot/start_arch.c` · `arch/x86_64/boot/smp.c` · `arch/x86_64/acpi/acpi.c` · `arch/x86_64/acpi/madt.c` · `include/arch/x86_64/desc.h` · `include/arch/x86_64/boot/arch_setup.h`
+源码：`arch/x86_64/boot/boot.S` · `arch/x86_64/boot/gdt.c` · `arch/x86_64/boot/start_arch.c` · `arch/x86_64/boot/smp.c` · `include/arch/x86_64/desc.h` · `include/arch/x86_64/boot/arch_setup.h`（ACPI 见 `35`）
 
 ---
 
@@ -415,9 +415,9 @@ v0.1/full/
 
 ### [x] [ ] 09-平台模块/35-ACPI与MADT-x86_64.md
 
-职责：RSDP/MADT 遍历、CPU 枚举
+职责：RSDP 探测辅助与 RSDT walk（module）；FADT/MADT 的 `arch_parser_*`（arch）；CPU 枚举
 
-源码：`modules/acpi/acpi.c` · `modules/acpi/acpi_madt.c` · `include/modules/acpi/acpi.h` · `include/modules/acpi/acpi_madt.h` · `include/modules/acpi/acpi_table.h` · `include/modules/acpi/acpi_defs.h` · `include/modules/acpi/acpi_fadt.h` · `arch/x86_64/acpi/acpi.c` · `arch/x86_64/acpi/madt.c`
+源码：`modules/acpi/acpi.c` · `modules/acpi/acpi_madt.c` · `include/modules/acpi/acpi.h` · `include/modules/acpi/acpi_madt.h` · `include/modules/acpi/acpi_arch_hooks.h` · `include/modules/acpi/acpi_table.h` · `include/modules/acpi/acpi_defs.h` · `include/modules/acpi/acpi_fadt.h` · `arch/x86_64/acpi/arch_fadt.c` · `arch/x86_64/acpi/arch_madt.c` · `include/arch/x86_64/acpi/arch_fadt.h` · `include/arch/x86_64/acpi/arch_madt.h`
 
 ---
 

@@ -6,7 +6,8 @@ void uart_pl011_open(void *base_addr)
         pl011 = (UART_PL011 *)base_addr;
         pl011->ICR = 0x7ff;
         pl011->IFLS = 0;
-        /* RXIM: device may assert; GIC SPI still masked → CPU uses poll getc. */
+        /* RXIM: device may assert; GIC SPI still masked → CPU uses poll getc.
+         */
         pl011->IMSC = 1 << 4;
         pl011->CR = (1 << 0) | (1 << 8) | (1 << 9);
 }

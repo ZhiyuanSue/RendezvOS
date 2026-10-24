@@ -12,9 +12,9 @@
 #define TRAP_SRC(trap_info) (trap_info & AARCH64_TRAP_SRC_MASK)
 #define TRAP_GET_CPU(trap_info) \
         (((trap_info) & AARCH64_TRAP_CPU_MASK) >> AARCH64_TRAP_CPU_SHIFT)
-#define TRAP_SET_CPU(trap_info, cpu_id)                                      \
-        set_mask_u64(clear_mask_u64((trap_info), AARCH64_TRAP_CPU_MASK),     \
-                     (((u64)(cpu_id) << AARCH64_TRAP_CPU_SHIFT)              \
+#define TRAP_SET_CPU(trap_info, cpu_id)                                  \
+        set_mask_u64(clear_mask_u64((trap_info), AARCH64_TRAP_CPU_MASK), \
+                     (((u64)(cpu_id) << AARCH64_TRAP_CPU_SHIFT)          \
                       & AARCH64_TRAP_CPU_MASK))
 #define AARCH64_TRAP_GET_SRC_EL(trap_info) \
         ((trap_info & AARCH64_TRAP_SRC_EL_MASK) >> AARCH64_TRAP_SRC_EL_SHIFT)
@@ -41,7 +41,7 @@ struct aarch64_trap_info {
 };
 
 /**
- * @brief Parser and fill aarch64_trap_info from a trap_frame 
+ * @brief Parser and fill aarch64_trap_info from a trap_frame
  * including TRAP_COMMON and ESR fields.
  */
 void arch_populate_trap_info(struct trap_frame *tf,
@@ -62,7 +62,7 @@ struct trap_frame {
         u64 FAR;
         u64 HPFAR;
 };
-/* 
+/*
  * Cross arch macro for kernel using the same macro.
  * which means the syscall args and syscall id using what reg.
  */
@@ -100,7 +100,8 @@ static inline bool arch_int_from_kernel(struct trap_frame *tf)
 }
 
 /**
- * @brief get faulting VA after sync abort from tf->FAR(FAR_ELx); 0 if @p tf is NULL.
+ * @brief get faulting VA after sync abort from tf->FAR(FAR_ELx); 0 if @p tf is
+ * NULL.
  */
 static inline vaddr arch_get_fault_addr(struct trap_frame *tf)
 {

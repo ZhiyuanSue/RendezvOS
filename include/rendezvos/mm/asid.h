@@ -10,7 +10,7 @@
  * ASID 0 is reserved (boot / root_vspace / "no ASID"). Allocated ids are in
  * [1, asid_get_max()], where the max is @c (1u << width) - 1 from
  * @ref arch_asid_supported_width (aarch64: 8 or 16; x86: 12 for PCID).
- * 
+ *
  * There is no generation/epoch: reuse is safe only after tlb_cpu_mask is
  * empty and related CPUs have flushed (see TLB docs).
  *
@@ -31,7 +31,8 @@ static inline u32 arch_asid_supported_width(void)
 #endif
 
 /**
- * @brief Initialize the global ASID bitmap to all 0 and set asid_max).It's BSP-only.
+ * @brief Initialize the global ASID bitmap to all 0 and set asid_max).It's
+ * BSP-only.
  */
 void asid_init(void);
 
@@ -51,7 +52,7 @@ void asid_free(asid_t asid);
 /**
  * @brief get upper bound asid_max.
  *
- * Equal to @c (1u << arch_asid_supported_width()) - 1 
+ * Equal to @c (1u << arch_asid_supported_width()) - 1
  */
 asid_t asid_get_max(void);
 

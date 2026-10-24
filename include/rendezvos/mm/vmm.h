@@ -177,7 +177,7 @@ error_t unregister_vspace(VSpace* vs);
  * @return @c REND_SUCCESS; @c -E_IN_PARAM if still @c registered; clear/radix
  *         errors (notably @c -E_REND_RC_UNEQUAL if @c tlb_cpu_mask non-zero).
  *
- * @note Must be unregistered first. 
+ * @note Must be unregistered first.
  * @note No-op success if *@p vs is NULL or is root vspace.
  */
 error_t del_vspace(VSpace** vs);

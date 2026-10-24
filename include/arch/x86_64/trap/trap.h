@@ -5,7 +5,7 @@
 #include <arch/x86_64/desc.h>
 #include <rendezvos/smp/cpu_id.h>
 #include <rendezvos/trap/trap_common.h>
-#include "irq_space.h" 
+#include "irq_space.h"
 #include "trap_def.h"
 
 #define TRAP_ID(trap_info) (trap_info)
@@ -92,7 +92,7 @@ struct x86_64_trap_info {
 };
 
 /**
- * @brief Parser and fill x86_64_trap_info from a trap_frame 
+ * @brief Parser and fill x86_64_trap_info from a trap_frame
  * including TRAP_COMMON and pf_ec fields.
  *
  * @param tf Trap frame need to parser
@@ -127,7 +127,7 @@ struct trap_frame {
         u64 rsp;
         u64 ss;
 };
-/* 
+/*
  * Cross arch macro for kernel using the same macro.
  * which means the syscall args and syscall id using what reg.
  */

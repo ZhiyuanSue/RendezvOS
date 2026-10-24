@@ -129,8 +129,8 @@ void get_curr_el_trap_info(struct trap_frame *tf)
  * value)            | -               | -                    | ❌       | |
  * 0x11| Tag check fault (MTE)        | ARM ARM         | SECURITY             |
  * ✅       | | 0x15| SVC from lower EL            | ARM ARM         | SYSCALL
- * | ✅       | | 0x18| Trapped MSR/MRS (AArch64) | ARM ARM         | ILLEGAL_INSTR
- * | ✅       | | 0x20| Instruction abort (lower EL) | ARM ARM         |
+ * | ✅       | | 0x18| Trapped MSR/MRS (AArch64) | ARM ARM         |
+ * ILLEGAL_INSTR | ✅       | | 0x20| Instruction abort (lower EL) | ARM ARM |
  * PAGE_FAULT           | ✅       | | 0x21| Instruction abort (same EL)  | ARM
  * ARM         | PAGE_FAULT           | ✅       | | 0x22| PC alignment fault |
  * ARM ARM         | ALIGNMENT            | ✅       | | 0x24| Data abort (lower
@@ -404,7 +404,7 @@ void arch_populate_trap_info(struct trap_frame *tf,
  * @brief Register fixed trap handler (aarch64 implementation)
  */
 void arch_register_fixed_trap(enum trap_class trap_class,
-                         fixed_trap_handler_t handler, u64 irq_attr)
+                              fixed_trap_handler_t handler, u64 irq_attr)
 {
         if (trap_class >= TRAP_CLASS_UNKNOWN) {
                 return;

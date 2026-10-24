@@ -91,15 +91,11 @@ arch_init_pmm_error:
 }
 error_t reserve_arch_region(struct setup_info *arch_setup_info)
 {
-        // reserve acpi region
         struct acpi_table_rsdp *rsdp_table =
-                acpi_probe_rsdp(KERNEL_VIRT_OFFSET);
-        if (!rsdp_table) {
-                print("not find any rsdp\n");
+                (struct acpi_table_rsdp *)arch_setup_info->rsdp_addr;
+
+        if (!rsdp_table)
                 return REND_SUCCESS;
-        }
-        // print("====== rsdp @[0x%lx]] ======\n", rsdp_table);
-        arch_setup_info->rsdp_addr = (vaddr)rsdp_table;
         if (rsdp_table->revision == 0) {
                 // print("====== rsdt @[0x%lx]] ======\n",
                 // rsdp_table->rsdt_address);

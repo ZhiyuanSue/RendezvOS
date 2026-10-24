@@ -103,7 +103,8 @@ arch_tlb_invalidate_vspace_page_all_core(u64 asid, vaddr addr,
 }
 
 /**
- * @brief Local per-page @c tlbi vae1 over [start, end) (no ARMv8.4 range op support case).
+ * @brief Local per-page @c tlbi vae1 over [start, end) (no ARMv8.4 range op
+ * support case).
  */
 static inline void arch_tlb_invalidate_range(u_int64_t asid, vaddr start,
                                              vaddr end)

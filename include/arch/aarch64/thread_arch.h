@@ -61,11 +61,12 @@ static inline u64 arch_get_user_tls_base(const Arch_Thread_Context* ctx)
 /**
  * Return-to-user have two path (Path A vs Path B)
  *
- * Path A — same thread already inside a syscall/trap and want to change the exit info:
- *   rewrite the live @c trap_frame with @c arch_syscall_set_user_return
- *   (optional @c arch_syscall_set_user_int_arg ). Hardware exit ( @c eret ) reloads that same frame.
- *   Do not call @c arch_return_to_user afterward.
- *   Examples: execve replace-image, signal deliver onto the current frame.
+ * Path A — same thread already inside a syscall/trap and want to change the
+ * exit info: rewrite the live @c trap_frame with @c
+ * arch_syscall_set_user_return (optional @c arch_syscall_set_user_int_arg ).
+ * Hardware exit ( @c eret ) reloads that same frame. Do not call @c
+ * arch_return_to_user afterward. Examples: execve replace-image, signal deliver
+ * onto the current frame.
  *
  * Path B — no usable syscall frame (new thread / first drop):
  *   prepare a frame under @c kstack_bottom (empty or copy), and using
@@ -73,10 +74,11 @@ static inline u64 arch_get_user_tls_base(const Arch_Thread_Context* ctx)
  *   Examples: PID1 first entry, @c run_elf_program, @c run_copied_thread.
  */
 /**
- * @brief Path B: if have template_tf, install user return state under @p kstack_bottom 
- *        or using the exist trapframe under @p kstack_bottom
- *        and  leave the kernel via @c arch_drop_to_user.
- * @param kstack_bottom Thread kernel stack address; it must non-NULL, otherwise no-op.
+ * @brief Path B: if have template_tf, install user return state under @p
+ * kstack_bottom or using the exist trapframe under @p kstack_bottom and  leave
+ * the kernel via @c arch_drop_to_user.
+ * @param kstack_bottom Thread kernel stack address; it must non-NULL, otherwise
+ * no-op.
  * @param template_tf If non-NULL, copied onto @c ((trap_frame*)kstack_bottom)-1
  *        (after zeroing); if NULL, uses the frame already there.
  * @param syscall_ret Written to @c REGS[0]; also sets @c tf->SP to the save
@@ -96,22 +98,23 @@ void arch_return_to_user(u64 kstack_bottom,
  * @param tf target trap_frame (Path A: in-use syscall/trap frame)
  * @param ctx Optional; updated sp_el0 (user stack) when non-NULL
  */
-void arch_syscall_set_user_return(struct trap_frame* tf, Arch_Thread_Context* ctx,
-                                  vaddr user_pc, vaddr user_sp,
-                                  u64 syscall_ret);
+void arch_syscall_set_user_return(struct trap_frame* tf,
+                                  Arch_Thread_Context* ctx, vaddr user_pc,
+                                  vaddr user_sp, u64 syscall_ret);
 /**
  * @brief Read back user PC / SP / ret from a live frame.
  * Opposite of @c arch_syscall_set_user_return.
  */
 void arch_syscall_get_user_return(const struct trap_frame* tf,
-                                  const Arch_Thread_Context* ctx, vaddr* user_pc,
-                                  vaddr* user_sp, u64* syscall_ret);
+                                  const Arch_Thread_Context* ctx,
+                                  vaddr* user_pc, vaddr* user_sp,
+                                  u64* syscall_ret);
 /**
- * @brief Set AAPCS64 user int arg (let syscall REGS[ @p arg_index ] = @p value ).
- * the arch_syscall_set_user_return only set the PC / SP / ret, but some case
+ * @brief Set AAPCS64 user int arg (let syscall REGS[ @p arg_index ] = @p value
+ * ). the arch_syscall_set_user_return only set the PC / SP / ret, but some case
  * (like signal deliver, the sig param should be put at arg[0])
  * the trapframe should set the args, we can use this function.
- * 
+ *
  * @note If you also use the arch_syscall_set_user_return,
  * remember it will write x0 as syscall ret,
  * you should only write x0 once —— or the value will be rewrite.
@@ -185,9 +188,10 @@ extern void context_switch(Arch_Thread_Context* old_context,
  *
  * Saves/loads TPIDR_EL0 and SP_EL0; saves DAIF into @p old_context before
  * @c context_switch; after return to old context, restores DAIF.
- * Does not change TTBR0( handled by @c schedule ) 
+ * Does not change TTBR0( handled by @c schedule )
  */
-void switch_to(Arch_Thread_Context* old_context, Arch_Thread_Context* new_context);
+void switch_to(Arch_Thread_Context* old_context,
+               Arch_Thread_Context* new_context);
 /** @brief using @p tf to drop to user space.
  */
 void arch_drop_to_user(struct trap_frame* tf);

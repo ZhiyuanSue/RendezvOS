@@ -15,7 +15,7 @@ extern char elf_pt_type_str[ELF_PT_TYPE_NUM][ELF_STR_LEN];
 /**
  * @brief Debug-print ELF headers / program / section headers.
  *
- * @note Output controlled by DEBUG micro in elf_print.c (default off → pr_off). 
+ * @note Output controlled by DEBUG micro in elf_print.c (default off → pr_off).
  * It does not validate the image header, just print.
  */
 void print_elf_machine(u16 elf_machine_type);

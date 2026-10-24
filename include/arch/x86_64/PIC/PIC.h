@@ -92,7 +92,7 @@ read ISR*/
 /**
  * @brief init dual 8259A: ICW1–4 then OCW1 (master IMR=0xFB, slave=0xFF).
  *
- * Vector bases: master 0x20, slave 0x28. Manual EOI . 
+ * Vector bases: master 0x20, slave 0x28. Manual EOI .
  * Cascade IRQ2 left unmasked on master. Requires lidt already done.
  */
 void init_PIC(void);
@@ -103,7 +103,8 @@ void init_PIC(void);
 void disable_PIC(void);
 
 /**
- * @brief enable one interrupt: Clear IMR bit for @p irq_num (IDT vector in [0x20,0x2F]).
+ * @brief enable one interrupt: Clear IMR bit for @p irq_num (IDT vector in
+ * [0x20,0x2F]).
  * @return 0 on success, -E_RENDEZVOS if out of range
  * @note Slave path does not also unmask master IRQ2 in this function.
  */

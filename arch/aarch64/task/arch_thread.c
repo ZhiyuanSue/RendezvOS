@@ -23,7 +23,8 @@ void arch_set_user_tls_base(Arch_Thread_Context* ctx, u64 tls_base)
         msr("TPIDR_EL0", tls_base);
 }
 
-void switch_to(Arch_Thread_Context* old_context, Arch_Thread_Context* new_context)
+void switch_to(Arch_Thread_Context* old_context,
+               Arch_Thread_Context* new_context)
 {
         mrs("TPIDR_EL0", old_context->tpidr_el0);
         msr("TPIDR_EL0", new_context->tpidr_el0);
@@ -54,8 +55,9 @@ void arch_ctx_merge_from_src(Arch_Thread_Context* dst_ctx,
         dst_ctx->regs[aarch64_task_ctx_lr] = lr;
 }
 
-void arch_syscall_set_user_return(struct trap_frame* tf, Arch_Thread_Context* ctx,
-                                  vaddr user_pc, vaddr user_sp, u64 syscall_ret)
+void arch_syscall_set_user_return(struct trap_frame* tf,
+                                  Arch_Thread_Context* ctx, vaddr user_pc,
+                                  vaddr user_sp, u64 syscall_ret)
 {
         if (!tf) {
                 return;
@@ -70,8 +72,9 @@ void arch_syscall_set_user_return(struct trap_frame* tf, Arch_Thread_Context* ct
 }
 
 void arch_syscall_get_user_return(const struct trap_frame* tf,
-                                  const Arch_Thread_Context* ctx, vaddr* user_pc,
-                                  vaddr* user_sp, u64* syscall_ret)
+                                  const Arch_Thread_Context* ctx,
+                                  vaddr* user_pc, vaddr* user_sp,
+                                  u64* syscall_ret)
 {
         (void)ctx;
         if (user_pc) {

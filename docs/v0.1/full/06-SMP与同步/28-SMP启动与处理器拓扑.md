@@ -80,7 +80,7 @@ flowchart TB
 | 符号 | 含义 |
 |------|------|
 | `RENDEZVOS_MAX_CPU_NUMBER` | 编译时允许的 `cpu_id` 最大值加一（默认 128，或与 `NR_CPUS` 取较小者）。唤醒时从 0 扫到此上限减一 |
-| `NR_CPU` | 运行时认为有多少个核。初值 1。x86_64 解析 MADT 时改成合法 Local APIC 条目个数；aarch64 在 `arch_start_smp` 里先改回 1，再每处理完一颗加一（失败路径也可能加，见 §2、§6.5） |
+| `NR_CPU` | 运行时认为有多少个核。初值 1。x86_64 在 `arch_parser_madt` 里改成合法 Local APIC 条目个数；aarch64 在 `arch_start_smp` 里先改回 1，再每处理完一颗加一（失败路径也可能加，见 §2、§6.5） |
 | `NR_CPUS` | 构建宏，由构建系统注入，见`01-构建与链接.md`。仅为 1 时可以不启 AP |
 | `CPU_STATE` | 每个 `cpu_id` 一份：`no_cpu` / `cpu_disable` / `cpu_enable` |
 | `BSP_ID` | 软件侧认定的 BSP 编号。x86_64 由 `arch_cpu_info` 写成 APIC id；aarch64 固定 0 |
@@ -339,6 +339,7 @@ enum cpu_status { no_cpu, cpu_disable, cpu_enable };
 
 ## 11. 变更记录
 
+- 2026-10-24：`NR_CPU` 来源改为 `arch_parser_madt`（原笼统「解析 MADT」）。
 - 2026-10-04：校正 §6.5 误写成「关于 x86_64」；`all_enabled` 统一为「该试的都试过」，不是「每颗都 enable」。
 - 2026-10-04：§6 时间线改为 6.3 `start_smp` → 6.4/6.5 叫醒 → 6.6 AP；`start_secondary_cpu` 不再重复总览的「少做什么」，只写 `CPU_STATE` / `all_enabled` / initcall 同步点。
 - 2026-10-04：`setup_info` 从 §6.2 背景图挪到叫醒实现节；§6.1 / §6.2 只留 INIT–SIPI 与 PSCI `CPU_ON` 硬件。

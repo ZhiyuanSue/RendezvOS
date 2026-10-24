@@ -41,8 +41,8 @@ extern Init_Info _s_init, _e_init;
 /**
  * @brief Call every initcall between `_s_init` and `_e_init` in link order.
  *
- * Runs synchronously on the calling CPU/thread. If you creating a thread from an
- * initcall does not run that thread until a later @c schedule.
+ * Runs synchronously on the calling CPU/thread. If you creating a thread from
+ * an initcall does not run that thread until a later @c schedule.
  */
 static inline void do_init_call(void)
 {

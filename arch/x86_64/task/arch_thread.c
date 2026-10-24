@@ -10,7 +10,8 @@
 extern struct TSS cpu_tss;
 DEFINE_PER_CPU(vaddr, user_rsp_scratch);
 
-void switch_to(Arch_Thread_Context* old_context, Arch_Thread_Context* new_context)
+void switch_to(Arch_Thread_Context* old_context,
+               Arch_Thread_Context* new_context)
 {
         old_context->stack_bottom = get_rsp(&percpu(cpu_tss), 0);
         set_rsp(&percpu(cpu_tss), 0, new_context->stack_bottom);
@@ -63,8 +64,9 @@ void arch_set_user_tls_base(Arch_Thread_Context* ctx, u64 tls_base)
         wrmsrq(MSR_FS_BASE, tls_base);
 }
 
-void arch_syscall_set_user_return(struct trap_frame* tf, Arch_Thread_Context* ctx,
-                                  vaddr user_pc, vaddr user_sp, u64 syscall_ret)
+void arch_syscall_set_user_return(struct trap_frame* tf,
+                                  Arch_Thread_Context* ctx, vaddr user_pc,
+                                  vaddr user_sp, u64 syscall_ret)
 {
         if (!tf) {
                 return;
@@ -78,8 +80,9 @@ void arch_syscall_set_user_return(struct trap_frame* tf, Arch_Thread_Context* ct
 }
 
 void arch_syscall_get_user_return(const struct trap_frame* tf,
-                                  const Arch_Thread_Context* ctx, vaddr* user_pc,
-                                  vaddr* user_sp, u64* syscall_ret)
+                                  const Arch_Thread_Context* ctx,
+                                  vaddr* user_pc, vaddr* user_sp,
+                                  u64* syscall_ret)
 {
         (void)ctx;
         if (user_pc) {

@@ -5,7 +5,7 @@
 /**
  * @brief Platform power-off entry: using psci_func.system_off().
  *
- * This function should be used after psci_init. 
+ * This function should be used after psci_init.
  */
 static inline void arch_shutdown(void)
 {

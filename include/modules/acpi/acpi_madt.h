@@ -77,10 +77,6 @@ get_next_ctrl_head(struct madt_int_ctrl_head* curr_ctrl_head);
 bool final_madt_int_ctrl_head(struct acpi_table_madt* madt_table,
                               struct madt_int_ctrl_head* curr_ctrl_head);
 /**
- * @brief Parse MADT Local APIC records
- */
-error_t parser_apic(void);
-/**
  * @brief Iterate MADT @c int_ctrl_structure[] until past table end.
  */
 #define for_each_madt_ctrl_head(madt_table)                                      \

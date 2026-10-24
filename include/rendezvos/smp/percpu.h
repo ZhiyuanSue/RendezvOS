@@ -8,7 +8,7 @@
 #define PER_CPU_SECTION ".percpu..data"
 
 /**
- * @brief Place @p name in the .percpu..data section 
+ * @brief Place @p name in the .percpu..data section
  *
  * Initializers apply **only** to CPU0 (linker template). Slots for CPU1…MAX-1
  * are zeroed by @c clean_per_cpu_region — not copied from the template. Each AP
@@ -52,15 +52,16 @@ extern cpu_id_t cpu_number;
 /**
  * @brief Install this CPU's per-CPU virtual base into the arch register.
  *
- * After this returns, @c percpu() is valid on this CPU. 
- * 
+ * After this returns, @c percpu() is valid on this CPU.
+ *
  * @param cpu_id Index into @c __per_cpu_offset (APIC id or dense id)
  */
 void arch_enable_percpu(cpu_id_t cpu_id);
 
 /**
  * @brief Read the current CPU's per-CPU base from the arch register.
- * @return Virtual address matching @c __per_cpu_offset [ this cpu ] after enable
+ * @return Virtual address matching @c __per_cpu_offset [ this cpu ] after
+ * enable
  */
 vaddr get_per_cpu_base();
 

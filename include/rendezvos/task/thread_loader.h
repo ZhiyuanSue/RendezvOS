@@ -90,8 +90,9 @@ typedef void* (*kthread_func)(void*);
  * @param thread_name Name string (copied via @c thread_set_name_with_copy).
  * @param tm Task manager hosting the thread.
  * @param arg Single integer argument passed to @p thread.
- * @return @c REND_SUCCESS; @c -E_IN_PARAM if name or tm is NULL; @c -E_RENDEZVOS
- *         if root get or create_thread fails; otherwise the enqueue error from
+ * @return @c REND_SUCCESS; @c -E_IN_PARAM if name or tm is NULL; @c
+ * -E_RENDEZVOS if root get or create_thread fails; otherwise the enqueue error
+ * from
  *         @c add_thread_to_manager.
  *
  * Gets @c root_vspace then passes that live ref to @c create_thread

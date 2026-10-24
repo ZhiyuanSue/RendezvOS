@@ -34,7 +34,7 @@ Ipc_Request_t* create_ipc_request(Thread_Base* thread);
 void delete_ipc_request(Ipc_Request_t* req);
 
 /**
- * @brief Refcount destructor for @c Ipc_Request_t; 
+ * @brief Refcount destructor for @c Ipc_Request_t;
  */
 error_t free_ipc_request(ref_count_t* refcount);
 
@@ -188,8 +188,8 @@ Message_t* dequeue_recv_msg(void);
  * @param use_system_proxy True → stage as the per-CPU idle persona; false →
  *        stage on the current thread.
  * @return @c REND_SUCCESS; @c -E_REND_AGAIN (no waiter / no sender persona);
- *         @c -E_REND_PORT_CLOSED (begin deny/close); @c -E_REND_IPC (slot busy /
- *         bad refs); @c -E_IN_PARAM (@p port/@p msg NULL, or proxy without
+ *         @c -E_REND_PORT_CLOSED (begin deny/close); @c -E_REND_IPC (slot busy
+ * / bad refs); @c -E_IN_PARAM (@p port/@p msg NULL, or proxy without
  *         @c core_tm); other transfer errors.
  */
 error_t ipc_system_try_deliver(Message_Port_t* port, Message_t* msg,
@@ -214,7 +214,8 @@ error_t ipc_system_try_deliver(Message_Port_t* port, Message_t* msg,
  * @return @c REND_SUCCESS; @c -E_REND_AGAIN if receiver exiting or no sender
  *         persona; @c -E_REND_NO_MSG; @c -E_REND_IPC if slot busy / bad refs;
  *         @c -E_IN_PARAM if @p receiver or @p msg is NULL. Same ownership rule
- *         as @c ipc_system_try_deliver (pre-stage keep; post-stage clean/release).
+ *         as @c ipc_system_try_deliver (pre-stage keep; post-stage
+ * clean/release).
  */
 error_t ipc_system_deliver_to(Thread_Base* receiver, Message_t* msg,
                               bool use_system_proxy);

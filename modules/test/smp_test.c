@@ -41,7 +41,8 @@ static struct smp_test_case smp_test[MAX_SMP_TEST_CASE] = {
                 NULL,
         },
         {
-                /* ring create-time bind i→(i+1)%n; check_result: seen[j]==prev */
+                /* ring create-time bind i→(i+1)%n; check_result: seen[j]==prev
+                 */
                 smp_thread_affinity_test,
                 "smp thread affinity",
                 smp_thread_affinity_check,

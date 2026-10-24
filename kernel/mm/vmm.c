@@ -17,8 +17,8 @@ VSpace root_vspace;
 
 static error_t vspace_rb_tree_insert(VSpace* vs, VSpace* root_vs)
 {
-        struct rb_node **new = &root_vs->_vspace_rb_root.rb_root,
-                       *parent = NULL;
+        struct rb_node** new = &root_vs->_vspace_rb_root.rb_root,
+                         *parent = NULL;
         u64 key = vs->vspace_root_addr;
         while (*new) {
                 parent = *new;

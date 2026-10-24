@@ -9,8 +9,8 @@ extern enum IRQ_type arch_irq_type;
 
 void arch_smp_ipi_init(void (*handler)(struct trap_frame *tf))
 {
-        register_irq_handler(ARCH_IRQ_ID_IPI, percpu(cpu_number), handler,
-                             IRQ_NEED_EOI);
+        register_irq_handler(
+                ARCH_IRQ_ID_IPI, percpu(cpu_number), handler, IRQ_NEED_EOI);
 }
 
 error_t arch_smp_ipi_send(cpu_id_t cpu_id)

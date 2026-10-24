@@ -10,8 +10,7 @@ static int check_off_(u32 hdrsize, u32 totalsize, u32 off)
 {
         return (off >= hdrsize) && (off <= totalsize);
 }
-static int check_block_(u32 hdrsize, u32 totalsize, u32 base,
-                        u32 size)
+static int check_block_(u32 hdrsize, u32 totalsize, u32 base, u32 size)
 {
         if (!check_off_(hdrsize, totalsize, base))
                 return (0); /* block start out of bounds */
@@ -95,8 +94,9 @@ const void *fdt_offset_ptr(const void *fdt, int offset, unsigned int len)
         return (fdt_offset_ptr_(fdt, offset));
 }
 
-__attribute__((optimize("no-jump-tables"))) u32
-fdt_next_tag(const void *fdt, int startoffset, int *nextoffset)
+__attribute__((optimize("no-jump-tables"))) u32 fdt_next_tag(const void *fdt,
+                                                             int startoffset,
+                                                             int *nextoffset)
 {
         u32 tag;
         int offset;

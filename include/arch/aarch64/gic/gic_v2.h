@@ -187,14 +187,16 @@ union irq_source {
  */
 struct gic_v2 {
         struct gic_distributor* gicd; /**< Distributor MMIO mapped address*/
-        struct gic_cpu_interface* gicc; /**< Per-CPU interface MMIO mapped address*/
+        struct gic_cpu_interface* gicc; /**< Per-CPU interface MMIO mapped
+                                           address*/
         char* compatible; /** DTB compatible string for probe */
 
         /**
-         * @brief probe: Find DTB node, map GICD/GICC DEVICE and set gicd/gicc pointers.
+         * @brief probe: Find DTB node, map GICD/GICC DEVICE and set gicd/gicc
+         * pointers.
          *
-         * @return Expects reg = [gicd_phys, len, gicc_phys, len]. Silent return on
-         * missing node/property.
+         * @return Expects reg = [gicd_phys, len, gicc_phys, len]. Silent return
+         * on missing node/property.
          */
         void (*probe)(void);
 
@@ -240,7 +242,8 @@ struct gic_v2 {
         void (*set_affinity)(u32 irq_num, u32 cpu_id_mask);
 
         /**
-         * @brief Write GICD_SGIR to generate SGI to @p irq_num (must be SGI 0–15).
+         * @brief Write GICD_SGIR to generate SGI to @p irq_num (must be SGI
+         * 0–15).
          * @param target_mode GIC_V2_GICD_SGIR_TARGET_* (specified/other/self)
          * @param target_list_bit Pre-shifted TargetList field (bits [23:16])
          *        when mode is TARGET_SPECIFIED; ignored for OTHER/SELF
@@ -248,12 +251,14 @@ struct gic_v2 {
         void (*send_sgi)(u32 irq_num, u32 target_mode, u32 target_list_bit);
 
         /**
-         * @brief Read GICC_IAR (acknowledges the IRQ); returns INTID+CPUID union irq_source.
+         * @brief Read GICC_IAR (acknowledges the IRQ); returns INTID+CPUID
+         * union irq_source.
          */
         union irq_source (*read_irq_num)(void);
 
         /**
-         * @brief Write GICC_EOIR with @p source (typically the value raed from IAR).
+         * @brief Write GICC_EOIR with @p source (typically the value raed from
+         * IAR).
          */
         void (*eoi)(union irq_source source);
 

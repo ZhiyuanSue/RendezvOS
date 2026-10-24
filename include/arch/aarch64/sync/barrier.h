@@ -4,7 +4,7 @@
 /**
  * @brief Instruction sync barrier
  */
-#define isb()    __asm__ __volatile__("isb" : : : "memory")
+#define isb() __asm__ __volatile__("isb" : : : "memory")
 /**
  * @brief Data memory barrier
  */
@@ -17,7 +17,7 @@
 /**
  * @brief Compiler memory barrier
  */
-#define barrier()        __asm__ __volatile__("" : : : "memory")
+#define barrier() __asm__ __volatile__("" : : : "memory")
 /**
  * @brief Spin hint: YIELD.
  */

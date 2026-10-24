@@ -1,12 +1,14 @@
 #include <common/stddef.h>
-#include <modules/acpi/acpi.h>
+#include <arch/x86_64/acpi/arch_madt.h>
 #include <modules/log/log.h>
 #include <rendezvos/smp/smp.h>
 #include <rendezvos/smp/percpu.h>
 #include <rendezvos/error.h>
+
 struct acpi_table_madt *madt_table;
 extern int NR_CPU;
-error_t parser_apic(void)
+
+error_t arch_parser_madt(void)
 {
         NR_CPU = 0;
         for (int i = 0; i < RENDEZVOS_MAX_CPU_NUMBER; i++) {

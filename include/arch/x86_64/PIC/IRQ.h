@@ -14,7 +14,7 @@ enum IRQ_type {
 };
 
 /**
- * @brief PIC / xAPIC / x2APIC bring-up 
+ * @brief PIC / xAPIC / x2APIC bring-up
  */
 void init_irq(void);
 

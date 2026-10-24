@@ -61,9 +61,9 @@
 		},
 		"acpi":
 		{
-			"use":true ,
+			"use":false ,
 			"features":[
-
+				"ACPI"
 			],
 			"depend_module":[
 				"log"

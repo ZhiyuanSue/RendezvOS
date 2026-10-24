@@ -72,7 +72,8 @@ typedef struct Msg_Port Message_Port_t;
 
 /**
  * @brief Optional hook on first port allocation (before @c register_port).
- * @param port Port to initialize; append bytes at @c port->append_port_info when
+ * @param port Port to initialize; append bytes at @c port->append_port_info
+ * when
  *        @c append_info_len is non-zero.
  * @return @c REND_SUCCESS on success; any other @c error_t aborts create (alloc
  *         rolled back).
@@ -103,8 +104,9 @@ enum port_ops_type {
  *
  * Invoked on the **accessor CPU context**: policy must use
  * @c get_cpu_current_thread() (and thread append) to identify who is acting.
- * Core does not pass a separate actor and does not implement namespace/capability
- * tables; the @c name index key is whatever string was registered.
+ * Core does not pass a separate actor and does not implement
+ * namespace/capability tables; the @c name index key is whatever string was
+ * registered.
  *
  * @param port Target port (always the port being looked up, sent to, received
  *        on, or registered).
@@ -164,7 +166,8 @@ struct Msg_Port {
          */
         atomic64_t ops_count;
         const struct port_append_hooks* append_hooks;
-        char append_port_info[]; /* FAM; length @c append_hooks->append_info_len. */
+        char append_port_info[]; /* FAM; length @c
+                                    append_hooks->append_info_len. */
 };
 
 /* ---- ops basic funcs ---- */
@@ -259,7 +262,8 @@ static inline size_t message_port_total_size(const port_append_hooks_t* hooks)
  *
  * Requires @p op_type of @c PORT_OPS_SEND or @c PORT_OPS_RECV, life
  * @c PORT_OPS_LIFE_REGISTERED, and optional @c ops_allow success; then
- * increments @c ops_count and re-checks still REGISTERED (else undoes and fails).
+ * increments @c ops_count and re-checks still REGISTERED (else undoes and
+ * fails).
  *
  * @return true if entered; false if wrong op_type, not registered / closing,
  *         or @c ops_allow denied. Callers fold false to @c -E_REND_PORT_CLOSED.
@@ -271,7 +275,8 @@ static inline size_t message_port_total_size(const port_append_hooks_t* hooks)
 bool port_ops_begin(Message_Port_t* port, enum port_ops_type op_type);
 
 /**
- * @brief Leave the critical section started by @c port_ops_begin (@c ops_count--).
+ * @brief Leave the critical section started by @c port_ops_begin (@c
+ * ops_count--).
  */
 void port_ops_end(Message_Port_t* port);
 
@@ -393,7 +398,8 @@ bool port_table_port_is_live(struct Port_Table* table, const char* name,
  *
  * @note Runs under the table MCS lock. On success: life becomes
  *       @c PORT_OPS_LIFE_REGISTERED, @c port->table is set, and the table holds
- *       one ref. @c PORT_OPS_REGISTER @c ops_allow (if any) runs under that lock.
+ *       one ref. @c PORT_OPS_REGISTER @c ops_allow (if any) runs under that
+ * lock.
  */
 error_t register_port(struct Port_Table* table, Message_Port_t* port);
 

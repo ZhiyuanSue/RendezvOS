@@ -31,8 +31,9 @@
  *    vmm_radix_tree_insert_range on @c [ @p vaddr_start , @p vaddr_end ):
  *    grows path as needed (@ref RADIX_RL_INSERT), reserves each crossed leaf as
  *    LAZY, and writes the caller-supplied @c owner_info into each leaf .
- *    Convention: user low-half paths pass a tagged pointer to the owning vspace (+
- *    optional CPU tag); kernel high-half / heap paths typically tag @c root_vspace
+ *    Convention: user low-half paths pass a tagged pointer to the owning vspace
+ * (+ optional CPU tag); kernel high-half / heap paths typically tag @c
+ * root_vspace
  *    (+ allocating CPU). Callers do not need PTEs yet.
  * -# @ref vmm_radix_tree_leaf_bind_range (or @ref vmm_radix_tree_leaf_bind for
  *    one page): one internal range lock over the same VA span

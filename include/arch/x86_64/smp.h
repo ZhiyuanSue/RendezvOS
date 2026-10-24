@@ -47,7 +47,8 @@ struct trap_frame;
 void arch_smp_ipi_init(void (*handler)(struct trap_frame *tf));
 
 /**
- * @brief Send IPI to @p cpu_id (APIC id) via ICR with vector @c ARCH_IRQ_ID_IPI.
+ * @brief Send IPI to @p cpu_id (APIC id) via ICR with vector @c
+ * ARCH_IRQ_ID_IPI.
  *
  * @return REND_SUCCESS, or -E_RENDEZVOS if arch_irq_type is not xAPIC/x2APIC
  */

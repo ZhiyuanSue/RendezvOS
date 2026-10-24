@@ -22,7 +22,7 @@
 #include <arch/aarch64/sync/barrier.h>
 
 extern u64 L2_table;
-extern char* cmdline_ptr;
+extern char *cmdline_ptr;
 cpu_id_t BSP_ID = 0;
 struct cpuinfo cpu_info = {0};
 
