@@ -10,19 +10,19 @@ v0.1 · 2026-09-26
 
 ## 1. 概述
 
-core 的调度对象是 **线程 + 地址空间**，没有一等公民「进程」。需要 pid / wait / fd 的个性层自己挂状态，通常放入 `append_thread_info[]`。
+core 的调度对象是 **线程 + 地址空间**，没有一等公民「进程」。要 pid / wait / fd 这些「个性」的一方，自己挂状态，通常放进 `append_thread_info[]`。
 
 每个可调度实体是 `Thread_Base`，挂在本 CPU 的 **`Task_Manager`（per-CPU）** 环形就绪链表上。`schedule()` 持 `sched_lock` 选出下一个 `thread_status_ready`，再在锁外 `switch_to`。默认策略是环形 next-ready（`round_robin_schedule`）：没有时间片字段、没有优先级——这里的「RR」就是绕环找 ready。
 
 调度故意做得很薄。真正要守住的是骨架，而不是「更好的调度算法」：
 
-- **per-CPU TM**：就绪环、current、锁都在本核。跨核 MCS（Mellor-Crummey & Scott 锁，一种可扩展自旋锁）的 `me`、IPC 阻塞归属、`tlb_cpu_mask` 都假设「线程不轻易跑到别的核」。
+- **per-CPU TM**：就绪环、current、锁都在本核。跨核 MCS（Mellor-Crummey & Scott 锁，一种可扩展自旋锁）的 `me`、IPC 阻塞归属、`tlb_cpu_mask` 全都假定「线程不会自己跑到别的核上去」。
 - **创建时绑核**：入队时选定 CPU；**没有**运行期迁移 API。
 - **status 与 exit flag 分开**：IPC 会改 `block_on_*`；退出意图只能用 `THREAD_FLAG_EXIT_REQUESTED`，不能靠换一个 status 位。
 - **append hooks**：上层可用 `append_thread_info[]` 挂私有数据；`schedule` 热路径不读这段。
 - **`scheduler` 函数指针**：预留换算法；v0.1 **始终**装 `round_robin_schedule`。
 
-这和「单执行流 server + 无锁 IPC」是同一哲学：并发难点收束在少数原语；策略用 hook / 换指针，而不是在每个 syscall 里演化出一套锁。完整可插拔调度器属于演进（evolution E4）。
+这和「单执行流 server + 无锁 IPC」是同一个思路：难处理的并发都收在少数几个原语上；要换策略就挂 hook、换函数指针，而不是让每个 syscall 各自长出一套锁。完整可插拔的调度器是演进项（evolution E4）。
 
 ---
 
@@ -38,7 +38,7 @@ core 的调度对象是 **线程 + 地址空间**，没有一等公民「进程�
 
 **内核 / server 线程** — `gen_thread_from_func(..., tm, arg)`，或 `create_thread` 再 `add_thread_to_manager` / `add_thread_to_cpu`。线程体经 `thread_entry` 进入 `run_thread`；返回后 OR `EXIT_REQUESTED` 再 `schedule`。
 
-**用户线程** — `gen_thread_from_elf` / `copy_thread`：须 `THREAD_FLAG_USER` + 独立用户 `VSpace`（见创建篇）。用户返回会覆盖内核栈上的 `thread_entry` 帧，正常不落回入口尾部清理。
+**用户线程** — `gen_thread_from_elf` / `copy_thread`：须 `THREAD_FLAG_USER` + 独立用户 `VSpace`（见创建篇）。返回用户时会盖掉内核栈上的 `thread_entry` 帧，所以正常情况下回不到入口尾部那套清理。
 
 **boot** — 不走 `create_thread`：`new_thread_structure` 认领当前执行流；`vs == NULL`；栈 = per-CPU boot 栈。之后 BSP 上跑 `kernel_handle_msg`（模块入口篇）。
 
@@ -58,7 +58,7 @@ core 的调度对象是 **线程 + 地址空间**，没有一等公民「进程�
 
 ### 4.1 `Thread_Base` / `THREAD_COMMON`
 
-一条可调度执行流对应一颗 `Thread_Base`。字段大致分几块：身份与调度、地址空间与栈、引用计数、IPC 相关槽位、挂在 TM 环上的链表节，以及可选的结构体末尾可变长区域（给上层挂私有数据）。
+一条可调度执行流对应一个 `Thread_Base`。字段大致分几块：身份与调度、地址空间与栈、引用计数、IPC 相关槽位、挂在 TM 环上的链表节，以及可选的结构体末尾可变长区域（给上层挂私有数据）。
 
 ```c
 #define THERAD_SCHE_COMMON                           \
@@ -110,7 +110,7 @@ struct Thread_Base {
 
 调用方须守住的约定：
 
-- `add_thread_to_manager` 期望入队前 `status == init`，成功则 CAS 成 `ready`（失败只 `pr_warn`，仍可能返回 SUCCESS）。
+- `add_thread_to_manager` 要求入队前 `status == init`，成功则 CAS 成 `ready`（失败只 `pr_warn`，仍然可能返回 SUCCESS）。
 - `create_thread` 成功 ⇒ **caller 不得再** `ref_put` 传入的 `vs`。
 
 ### 4.2 status 与 flags
@@ -132,7 +132,7 @@ enum thread_status_base {
 |------|--------|----------|
 | `running` / `ready` | `schedule` demote / promote | RR 只选 `ready` |
 | `block_on_*` | IPC 路径 | 先改 status 再 `schedule`；demote CAS 失败则保持阻塞 |
-| `zombie` | owner CPU 在切走带 `EXIT_REQUESTED` 的 ready 线程时 | 仍可挂在环上；clean 观测 |
+| `zombie` | owner CPU 在切走带 `EXIT_REQUESTED` 的 ready 线程时 | 还可以挂在环上；等 clean 那边来看 |
 | `exit` | `delete_thread` 入口 | **不是** zombie；拆除结构前的标记 |
 
 状态机示意（箭头上的标签是触发方）：
@@ -164,7 +164,7 @@ enum thread_status_base {
             （del_thread_structure）
 ```
 
-`block_on_*` ↔ `ready` 的 CAS 由 IPC 路径与 `schedule` 共用同一原子位；`zombie` 仍可挂在环上，等 clean / EBR 那侧观测（见 `17`）。
+`block_on_*` ↔ `ready` 的 CAS 由 IPC 路径与 `schedule` 共用同一原子位；`zombie` 还可以挂在环上，等 clean / EBR 那边来看（见 `17`）。
 
 三条退出路径不可混淆：
 
@@ -174,7 +174,7 @@ enum thread_status_base {
 
 `THREAD_FLAG_EXIT_REQUESTED` = 意图；`zombie` = owner CPU「已切走」证明。IPC 改 status **擦不掉** flag。
 
-默认 `flags = THREAD_FLAG_NONE` 即内核线程；用户须显式 `THREAD_FLAG_USER`。`USER` **不得**搭配 `&root_vspace`（`schedule` 当 misconfig）。
+默认 `flags = THREAD_FLAG_NONE` 就是内核线程；用户线程要显式给 `THREAD_FLAG_USER`。`USER` **不能**配 `&root_vspace`（`schedule` 会按配错处理）。
 
 ### 4.3 Task_Manager
 
@@ -230,13 +230,13 @@ struct task_manager {
 
 - `DEFINE_PER_CPU(Task_Manager*, core_tm)` — **始终** `percpu(core_tm)` / `per_cpu(core_tm, cpu)`；头文件 `extern Task_Manager* core_tm` 是模板声明，不是全局单例。
 - `choose_schedule` 只装 RR，并顺带 `is_print_sche_info = false`。
-- `new_task_manager`：alloc 后立刻 `choose_schedule`（alloc 失败未判空——已知缺口）。
+- `new_task_manager`：alloc 之后立刻 `choose_schedule`（alloc 失败没有判空——已知缺口）。
 
 ### 4.4 tid
 
 全局 `Id_Manager tid_manager`；`get_new_id` 用 MCS，`me = &percpu(id_spin_lock)`。从 0 单调递增，到 `INVALID_ID`（`U64_MAX`）后不再自增。**不回收**。
 
-MCS 节点是 `DEFINE_PER_CPU(..., id_spin_lock)`（`id.c`）。`init_core_id_system()` 没有参数，只把 `tid_manager` 的 `id` 置 0、锁指针置空；真正加锁发生在后来的 `get_new_id`。它不枚举 CPU。`cmain` 在 `arch_start_core` 之后、`global_port_init` 和 `init_proc` 之前调用，这样后面建线程时管理器已经在。
+MCS 节点是 `DEFINE_PER_CPU(..., id_spin_lock)`（`id.c`）。`init_core_id_system()` 没有参数，只把 `tid_manager` 的 `id` 置 0、锁指针置空；真正加锁发生在后来的 `get_new_id`。它不枚举 CPU。`cmain` 在 `arch_start_core` 之后、`global_port_init` 和 `init_proc` 之前调用，这样后面建线程时管理器已经就绪。
 
 ### 4.5 append hooks
 
@@ -249,6 +249,7 @@ MCS 节点是 `DEFINE_PER_CPU(..., id_spin_lock)`（`id.c`）。`init_core_id_sy
 | `fini` | `del_thread_structure`，在释放 vs / 堆之前（此时 vs 仍有效） | 释放 append 区持有的资源 |
 
 成员可为 NULL。`schedule` 热路径不读 append 区。
+
 ---
 
 ## 5. 代码对应
@@ -294,15 +295,15 @@ unlock
 switch_to(curr → next)
 ```
 
-本篇只划清边界：仅当**切入**线程带 `THREAD_FLAG_USER` 才尝试换用户 AS；切入内核 / idle **不**强制回 `root_vspace`，可能继续跑在上一用户页表上（mask / extra ref 滞后清理由 VSpace 篇管）。
+本篇只划清边界：仅当**切入**线程带 `THREAD_FLAG_USER` 才尝试换用户 AS；切入内核 / idle **不**强制回 `root_vspace`，所以可能继续跑在上一个用户的页表上（mask / extra ref 的滞后清理，VSpace 篇负责）。
 
-谁调 `schedule`：idle 循环；IPC 阻塞后；`delete_thread` 重试；用户态进入的 trap / IRQ 末尾（内核态 trap **不**自动让出）。
+谁调 `schedule`：idle 循环；IPC 阻塞之后；`delete_thread` 重试；从用户态进来的 trap / IRQ 收尾（内核态的 trap **不**自动让出）。
 
 ### 6.3 round_robin_schedule
 
 从 `current->sched_thread_list.next` 绕环，跳过哨兵与非 `ready`。若选中自己，上层走 `use_old_thread`。
 
-环上**全无 ready** 时 while **死循环**——惯例上靠 idle 始终维持 ready。无时间片。
+环上**一个 ready 都没有**时，那个 while 会**死循环**——所以靠 idle 一直留着一个 ready。没有时间片。
 
 ### 6.4 delete_thread
 
@@ -322,7 +323,7 @@ boot **没有** `arch_set_new_thread_ctx`；首次保存靠这次 `switch_to`。
 
 **这次切换存什么、不存什么。** 调用约定里，有些通用寄存器由「被调用的函数」负责保存。`context_switch` 只存这一组，外加内核栈指针：x86 是 `r15`–`r12`、`rbp`、`rbx` 和 `rsp`；aarch64 是 `x19`–`x30`、`sp` 和 `SPSR`。
 
-浮点和向量是**另一套**寄存器，现在**不存**。x86 上这是 SSE 用的 **XMM**（每个 128 位；更宽的 AVX 再加长），以及浮点控制/状态。aarch64 上浮点和向量共用最多 32 个 128 位寄存器，汇编里常写成 `v0`–`v31`，和 `x0`–`x30` 不是同一组。启动时已经打开硬件（`04` 的 `start_simd`、`05` 的 `enable_fp`），因为不能假定用户不用。保存还没做：用户线程若执行这些指令，切走再切回，寄存器里的数会乱。这是以后要补的（evolution 待办 **E13**）。内核 C 用 `-mno-sse` / `-mgeneral-regs-only`，避免在补上之前由内核踩掉用户状态。
+浮点和向量是**另一套**寄存器，现在**不存**。x86 上这是 SSE 用的 **XMM**（每个 128 位；更宽的 AVX 再加长），以及浮点控制/状态。aarch64 上浮点和向量共用最多 32 个 128 位寄存器，汇编里常写成 `v0`–`v31`，和 `x0`–`x30` 不是同一组。启动时已经打开硬件（`04` 的 `start_simd`、`05` 的 `enable_fp`），因为不能假定用户不用。保存还没做：用户线程只要执行了这些指令，切走再切回来，寄存器里的数就是乱的。这是以后要补的（evolution 待办 **E13**）。内核自己的 C 用 `-mno-sse` / `-mgeneral-regs-only`，免得保存还没补上、内核先把用户状态踩掉。
 
 线程栈布局（用户线程；内核线程只有 kstack，无 ustack）：
 
@@ -349,7 +350,7 @@ boot **没有** `arch_set_new_thread_ctx`；首次保存靠这次 `switch_to`。
 
 `arch/x86_64/task/arch_thread.c` 的 `switch_to`：
 
-1. **TSS.RSP0**：x86_64 的 TSS（Task State Segment，见 Intel SDM Vol.3 §7.2）在 64 位模式下不再承担「硬件任务切换」，但仍是 ring 3→0 栈切换的来源——CPU 在 `SYSCALL` / 中断 / 异常从 CPL=3 进入 CPL=0 时，把 RSP 替换为 `TSS.RSP0`。本核每切一个线程，就把 `TSS.RSP0` 改成新线程的内核栈底，使下一次 ring 3→0 落到正确的内核栈。读旧线程的 RSP0 进 `old_context->stack_bottom` 是为了下次切回它时能复原。
+1. **TSS.RSP0**：x86_64 的 TSS（Task State Segment，见 Intel SDM Vol.3 §7.2）在 64 位模式下不再承担「硬件任务切换」，但仍是 ring 3→0 栈切换的来源——CPU 在 `SYSCALL` / 中断 / 异常从 CPL=3 进入 CPL=0 时，把 RSP 替换为 `TSS.RSP0`。本核每切一个线程，就把 `TSS.RSP0` 改成新线程的内核栈底，好让下一次 ring 3→0 落到正确的内核栈上。旧线程的 RSP0 则读进 `old_context->stack_bottom`，这样下次切回它时能还原。
 2. **`MSR_KERNEL_GS_BASE`（0xC0000102）与 `MSR_FS_BASE`（0xC0000100）**：x86_64 的 SWAPGS 约定下，内核入口 `SWAPGS` 把 `IA32_GS_BASE` 与 `IA32_KERNEL_GS_BASE` 互换，使内核侧 GS 指向 per-CPU 数据，而 `KERNEL_GS_BASE` 保存用户 GS 镜像；`FS_BASE` 在用户态作 TLS 段基址。切换线程时成对读写这两个 MSR，避免下一线程继承上一线程的 TLS / per-CPU GS。
 3. **`user_rsp_scratch`（per-CPU）**：syscall 入口把用户 RSP 暂存在这里；切换时一并换掉，与 trap frame 里的用户返回现场对齐。
 4. 然后 `context_switch`（`arch_switch.S`）：`pushf` + 保存 `rsp/r15–r12/rbp/rbx`，加载新线程同组寄存器，`popf` 后 `ret`——返回地址在新栈上，等于跳进新线程上次离开的地方。
@@ -521,7 +522,7 @@ extern void run_thread(Thread_Init_Para *para); /* asm；见 thread.h */
 
 - `smp_test` — 多核调度 / IPC
 - `thread_affinity_test`（`smp_test[]`）— 创建时绑核
-- 大量测试用例经 `gen_thread_from_func` 造内核线程；`RENDEZVOS_TEST` 下 boot 进 `kernel_handle_msg` 后由 `recv_msg` 阻塞，RR 不会再选中它
+- 大量测试用例用 `gen_thread_from_func` 造内核线程；`RENDEZVOS_TEST` 下 boot 进了 `kernel_handle_msg` 之后会卡在 `recv_msg` 上，RR 不会再选中它
 
 ```bash
 cd core && make ARCH=x86_64 config && make all && make run
@@ -544,7 +545,8 @@ cd core && make ARCH=x86_64 config && make all && make run
 
 ## 11. 变更记录
 
-- 2026-10-05：§6.6 / §7 写清 `context_switch` 只存通用寄存器；浮点/向量是另一套（x86 XMM，aarch64 `v0`–`v31`），保存为 **E13**。
+- 2026-10-25：全文语言整理：回退上一轮的书面化替换，顺掉「在这里首先是」一类直译句和生硬量词，技术内容未动。
+- 2026-10-05：最终词句顺畅；§6.6 / §7 写清 `context_switch` 只存通用寄存器；浮点/向量是另一套（x86 XMM，aarch64 `v0`–`v31`），保存为 **E13**。
 - 2026-10-04：补硬件/架构知识——§4.2 加线程状态机 ASCII 图；§4.3 加 per-CPU TM 就绪环结构图；§6.6 加线程栈布局图与 `switch_to` 时序图，并扩写 TSS.RSP0 在 64 位模式下的角色（Intel SDM Vol.3 §7.2）与 SWAPGS / KERNEL_GS_BASE / FS_BASE 的语义。语言润色：塞→放入、随便跑→轻易跑、永远→始终、属演进→属于演进。
 - 2026-10-03：去掉未接线的 `thread_status_suspend`（原仅 `cmain` 测例路径写一次，且会被 `recv_msg` 覆盖；RR 只认 `ready`）。
 - 2026-10-02：删除已无定义的死声明 `tid_spin_lock`；tid MCS 仅 `percpu(id_spin_lock)`。

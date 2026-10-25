@@ -8,7 +8,9 @@
 #include <common/types.h>
 #include <common/bit.h>
 #include <modules/log/log.h>
+#include <rendezvos/error.h>
 #include <rendezvos/mm/map_handler.h>
+#include <rendezvos/mm/mm_kernel_utils.h>
 #include <rendezvos/mm/vmm.h>
 #include <rendezvos/smp/percpu.h>
 #include <rendezvos/time.h>
@@ -92,27 +94,20 @@ void software_enable_APIC(void)
 bool map_LAPIC(void)
 {
         if (arch_irq_type != xAPIC_IRQ)
-                return false; /*only xAPIC need mmio*/
-        VSpace *vs = percpu(current_vspace);
-        paddr lapic_phy_page = xAPIC_MMIO_BASE;
-        vaddr lapic_virt_page = KERNEL_PHY_TO_VIRT(xAPIC_MMIO_BASE);
-        if (!have_mapped(vs,
-                         VPN(lapic_virt_page),
-                         NULL,
-                         NULL,
-                         &percpu(Map_Handler))) {
-                if (map(vs,
-                        PPN(lapic_phy_page),
-                        VPN(lapic_virt_page),
-                        3,
-                        PAGE_ENTRY_UNCACHED | PAGE_ENTRY_GLOBAL
-                                | PAGE_ENTRY_READ | PAGE_ENTRY_VALID
-                                | PAGE_ENTRY_WRITE, // the LAPIC should be set
-                                                    // as uncached
-                        &percpu(Map_Handler))) {
-                        print("[ LAPIC ] ERROR: map error\n");
-                        return false;
-                }
+                return false; /* only xAPIC needs MMIO */
+
+        const ENTRY_FLAGS_t lapic_flags = PAGE_ENTRY_UNCACHED
+                                          | PAGE_ENTRY_GLOBAL | PAGE_ENTRY_READ
+                                          | PAGE_ENTRY_VALID | PAGE_ENTRY_WRITE;
+
+        error_t error = ensure_kernel_identity_range(percpu(current_vspace),
+                                                     xAPIC_MMIO_BASE,
+                                                     PAGE_SIZE,
+                                                     lapic_flags,
+                                                     &percpu(Map_Handler));
+        if (error != REND_SUCCESS) {
+                print("[ LAPIC ] ERROR: ensure identity map failed\n");
+                return false;
         }
         return true;
 }

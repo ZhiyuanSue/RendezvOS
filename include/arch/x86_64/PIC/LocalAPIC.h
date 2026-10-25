@@ -219,8 +219,11 @@ void APIC_timer_reset(enum timer_type sys_timer_type, tick_t next_event_gap);
 void software_enable_APIC(void);
 
 /**
- * @brief Map physical 0xFEE00000 UNCACHED into the kernel VSpace (xAPIC only).
- * @return true on success / already mapped; false if not xAPIC or map fails
+ * @brief Ensure physical 0xFEE00000 is identity-mapped UNCACHED (xAPIC only).
+ *
+ * Uses @c ensure_kernel_identity_range; skips if already identity.
+ *
+ * @return true on success / already identity; false if not xAPIC or ensure fails
  */
 bool map_LAPIC(void);
 

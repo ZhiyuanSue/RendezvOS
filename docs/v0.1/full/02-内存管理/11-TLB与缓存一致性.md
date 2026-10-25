@@ -2,24 +2,24 @@
 
 v0.1 · 2026-09-25
 
-本篇覆盖：`include/rendezvos/mm/tlb_cpu_mask.h`、`include/arch/x86_64/sync/tlb.h`、`include/arch/aarch64/sync/tlb.h`、`arch/x86_64/mm/arch_smp_tlb_flush.c`；以及 `schedule` / `map_handler` 里和它们的交界。软 IPI 的握手细节见 `06-SMP与同步/30-软IPI机制.md` 与 `32-TLB_shootdown与跨核一致性.md`——本篇不把那一套再抄录一遍。
+本篇覆盖：`include/rendezvos/mm/tlb_cpu_mask.h`、`include/arch/x86_64/sync/tlb.h`、`include/arch/aarch64/sync/tlb.h`、`arch/x86_64/mm/arch_smp_tlb_flush.c`；以及 `schedule` / `map_handler` 里和它们的交界。软 IPI 的握手细节见 `06-SMP与同步/30-软IPI机制.md` 与 `32-TLB_shootdown与跨核一致性.md`——本篇不把那一套再抄一遍。
 
-关于标题里的「缓存」：aarch64 的 `sync/cache.h` 目前是空的，树里也没有对称的 x86 `cache.h`。本篇**没有**通用 dcache/icache 维护 API；设备 / DMA 路径后续另写。这里说的「一致性」，主要指 **CPU 侧页表翻译（TLB）** 在改 PTE、换地址空间之后还能不能保持一致。
+关于标题里的「缓存」：aarch64 的 `sync/cache.h` 目前是空的，树里也没有对称的 x86 `cache.h`。本篇**没有**通用 dcache/icache 维护 API；设备 / DMA 路径另写一篇。这里说的「一致性」，主要指 **CPU 侧页表翻译（TLB）** 在改完 PTE、换了地址空间之后还对不对得上。
 
-何时在 `map` / `unmap` 里调哪一类 invalidate，页表篇 §6.2 已经锁定过；本篇把 **mask 是什么意思、跨核如何发送、和调度怎么衔接**，以及各 ISA 硬件指令分别对应什么，讲清楚。
+何时在 `map` / `unmap` 里调哪一类 invalidate，页表篇 §6.2 已经锁定过；本篇讲清楚 mask 是什么意思、跨核怎么发出去、和调度怎么衔接，以及各 ISA 的硬件指令分别对应什么。
 
 ---
 
 ## 1. 概述
 
-改了 PTE，或者拆了用户映射之后，别的核上的 TLB 里可能还保留着旧翻译。若不知道「谁跑过这个地址空间」，要么不敢拆 AS，要么只能全机全部刷掉。
+改了 PTE，或者拆了用户映射之后，别的核的 TLB 里可能还留着旧翻译。问题在于不知道「谁跑过这个地址空间」——不知道，就要么不敢拆 AS，要么只能全机刷一遍。
 
 core 的答案分两层：
 
 1. **`VSpace::tlb_cpu_mask`**：哪些 CPU **可能**还缓存着这个用户地址空间的翻译。
-2. **arch 的 invalidate API**：本地刷，或者跨核。x86 走 **按 mask 的软 IPI + `invlpg`**；aarch64 在用户 / 跨核路径上多用 **`tlbi …is` 广播**（常常**忽略** mask 参数），但 mask 仍然约束拆除能不能放行。
+2. **arch 的 invalidate API**：本地刷，或者跨核。x86 走 **按 mask 的软 IPI + `invlpg`**；aarch64 在用户 / 跨核路径上多用 **`tlbi …is` 广播**（常常把 mask 参数**直接丢掉**），但 mask 仍然卡着拆除能不能放行。
 
-mask 回答「该通知谁、能不能拆」；具体怎么刷是架构的事。少了任一层，要么漏刷，要么 ASID 不敢回收（见 ASID 篇）。
+mask 回答「该通知谁、能不能拆」，具体怎么刷是架构的事。少了任一层，要么漏刷，要么 ASID 不敢回收（见 ASID 篇）。
 
 ---
 
@@ -27,14 +27,14 @@ mask 回答「该通知谁、能不能拆」；具体怎么刷是架构的事。
 
 提供：mask 类型与调度维护约定；与 `map_handler` / `schedule` 对齐的 invalidate 策略；x86 IPI shootdown 入口；各 ISA 硬件指令与官方手册的对照。
 
-不做：通用 cache 维护 API；把 SMP 篇里的 IPI 握手再详细写一遍。
+不做：通用 cache 维护 API；把 SMP 篇里的 IPI 握手再写一遍。
 
 ---
 
 ## 3. 分层与调用方
 
-- 首次 map 还是改映射、走本地还是 all-core：位于 `map_handler.c`（页表篇）。
-- 切线程时 set / clear mask、本地刷旧 AS：位于 `schedule`（VSpace 所有权篇）。
+- 首次 map 还是改映射、走本地还是 all-core：在 `map_handler.c`（页表篇）。
+- 切线程时 set / clear mask、本地刷旧 AS：在 `schedule`（VSpace 所有权篇）。
 - x86 远程 `invlpg`：`arch_smp_tlb_flush.c` + 软 IPI。
 - aarch64 的 IS 广播：主要在 `arch/aarch64/sync/tlb.h` 的 inline 里。
 
@@ -55,7 +55,7 @@ vs_tlb_cpu_bitmap_t tlb_cpu_mask;
 cas_lock_t tlb_cpu_mask_lock;
 ```
 
-用户线程切到另一个用户地址空间时，`schedule` 里的顺序不能打乱：
+用户线程切到另一个用户地址空间时，`schedule` 里的顺序不能乱：
 
 1. `ref_get` 新的 vs；
 2. **先**在**新** mask 上 set 本 CPU 这一位；
@@ -64,16 +64,16 @@ cas_lock_t tlb_cpu_mask_lock;
 5. **再** clear 本 CPU 在**旧** mask 上的位；
 6. `ref_put` 旧的。
 
-先 set 再装表，是为了避免「新线程已经在新 AS 上运行了，mask 里却还没有本核」——这时别人发 shootdown 会漏掉本核。先本地刷再 clear，是为了避免「mask 里已经没有本核了，本地 TLB 却还留有脏项」。
+先 set 再装表，是为了不出「新线程已经跑在新 AS 上，mask 里却还没有本核」这种窗口——这时别人发 shootdown 会漏掉本核。先本地刷再 clear，是为了不出「mask 里已经没有本核，本地 TLB 里还留着脏项」这种情况。
 
-还有一处故意的滞后：下一线程若不是用户态，schedule **可以不**清 mask、也可以不换硬件根。位和 CPU 侧引用会保留到之后某次用户态到用户态的切换。拆除回收必须等 mask 空，细节见所有权篇 / ASID 篇。
+还有一处故意的滞后：下一个线程若不是用户态，schedule **可以不清** mask，也可以不换硬件根。这一位和 CPU 侧引用就一直留着，直到之后某次用户态到用户态的切换才处理。拆除回收要等 mask 空，细节见所有权篇 / ASID 篇。
 
 ### 4.2 map 路径：新 vs 改
 
 决策条件**不是**「是不是只有本 CPU」，而是 **「是不是第一次把这个 VA 映射上」**：
 
 - 首次 map（`new_map`）：内核 VA 做本地 kernel invalidate；用户 VA 做本地 `invalidate_page(asid, v)`。假定别人还没缓存过这个翻译。
-- remap / unmap：内核走 `*_kernel_page_all_core`；用户走 `*_page_all_core(asid, v, &mask)`。改过、拆过的翻译，运行过的核都要处理到。
+- remap / unmap：内核走 `*_kernel_page_all_core`；用户走 `*_page_all_core(asid, v, &mask)`。改过、拆过的翻译，跑过这个地址空间的核都得动到。
 
 各 ISA 具体用哪条指令刷 TLB，见 §6.1；cache 相关名词（本仓库尚无通用 API）见 §6.3；函数签名见 §7。
 
@@ -93,23 +93,23 @@ cas_lock_t tlb_cpu_mask_lock;
 
 ## 6. 流程
 
-`tlb_cpu_mask`、切地址空间、以及 `map` 何时本地刷、何时跨核刷，约定在 §4。下面补充两件事：硬件实际用什么指令；启动时各核还要不要额外 init。cache 维护和 TLB 不是同一件事，附录放在 §6.3。
+`tlb_cpu_mask`、切地址空间、以及 `map` 何时本地刷、何时跨核刷，约定在 §4。下面补两件事：硬件实际用什么指令；启动时各核还要不要额外 init。cache 维护和 TLB 不是一回事，附录放在 §6.3。
 
 ### 6.1 背景：x86_64 / aarch64 怎样让 TLB 失效旧项
 
 #### x86_64（Intel SDM：TLB 管理 / Multiprocessor）
 
-手册里，改完页表之后要用合适的方式让 TLB 失效旧项。本实现常用的本地手段是 **`invlpg`**（按线性地址失效一页）。没有 PCID 时，换 **CR3** 会把当前核上与该地址空间相关的用户 TLB 一并刷掉——`arch_tlb_invalidate_all` 一类路径就是靠重载 CR3 这类方式。
+手册的要求是：改完页表，要用合适的方式把 TLB 里的旧项作废。本实现常用的本地手段是 **`invlpg`**（按线性地址作废一页）。没有 PCID 时，换 **CR3** 会把当前核上这个地址空间相关的用户 TLB 一并刷掉——`arch_tlb_invalidate_all` 一类路径就是重载 CR3。
 
-跨核没有「一条总线广播让所有核 `invlpg`」的通用指令可用，所以要依赖 **IPI**：本仓库在 `arch_smp_tlb_flush.c` 里，每个 CPU 一条 flush 消息（generation / busy）；发送方先在本地刷，再按 mask 给其他 online 核发软 IPI，等到 `done_gen`。APIC 尚未就绪时，可能只做本地。文件头注释写明：**no PCID**。
+跨核没有「一条指令让所有核都 `invlpg`」的通用手段，只能靠 **IPI**：本仓库在 `arch_smp_tlb_flush.c` 里给每个 CPU 一条 flush 消息（generation / busy）；发送方先在本地刷，再按 mask 给其他 online 核发软 IPI，然后等对方做到 `done_gen`。APIC 还没就绪时，可能只做本地。文件头注释写明了：**no PCID**。
 
-内核侧的 `arch_tlb_invalidate_kernel_page_all_core` 在源码注释里倾向 **只本地 `invlpg`**（按「内核映射 percpu / 不共享脏翻译」来解释）——读实现，不要想当然地当成全机广播。
+内核侧的 `arch_tlb_invalidate_kernel_page_all_core` 在源码注释里倾向 **只本地 `invlpg`**（按「内核映射 percpu / 不共享脏翻译」来理解）——以读实现为准，别想当然当成全机广播。
 
 #### aarch64（ARM ARM：TLBI / 屏障）
 
 AArch64 用 **`TLBI`** 系列指令做 TLB 维护，参数里常带 ASID 与页号。本仓库 inline 里能直接对应的有：
 
-| 本仓库 API（概念） | 指令侧 | 含义（简要说明） |
+| 本仓库 API（概念） | 指令侧 | 含义 |
 |--------------------|--------|------------------|
 | 本地按页（带 ASID） | `tlbi vae1` | EL1 当前 VMID，按 VA+ASID |
 | 跨核按页 | `tlbi vae1is` | 同上，带 **Inner Shareable** 广播 |
@@ -118,17 +118,17 @@ AArch64 用 **`TLBI`** 系列指令做 TLB 维护，参数里常带 ASID 与页�
 | 内核页（常不看 ASID） | `tlbi vaale1` / `vaale1is` | 任意 ASID 的该 VA |
 | 全清 | `tlbi vmalle1` | 当前 EL1 翻译 |
 
-前后用 `dsb(ISHST)` / `dsb(ISH)` / `isb` 做同步，这是 ARM 要求的 TLBI 上下文同步流程，不是随意添加的装饰。`*_all_core` 路径上 **mask 参数常被 `(void)cpu_mask` 丢弃**——硬件广播已经覆盖 shareable domain 里的观察者；软件 mask 仍然用来约束 `del_vspace` / `vspace_clear_user_mappings(allow_self_use=false)`，避免「还有人可能持有旧翻译就拆 AS」。
+前后要用 `dsb(ISHST)` / `dsb(ISH)` / `isb` 同步，这是 ARM 规定的 TLBI 上下文同步流程，不是随手加的装饰。`*_all_core` 路径上 **mask 参数常被 `(void)cpu_mask` 丢掉**——硬件广播已经盖住 shareable domain 里的观察者；软件 mask 仍然卡着 `del_vspace` / `vspace_clear_user_mappings(allow_self_use=false)`，避免「还有人可能拿着旧翻译就把 AS 拆了」。
 
-范围失效若要用 `rvae1` 一类，需要更新的 TLBI 扩展；本实现的 range 路径目前仍可能退化为逐页 `vae1`（头文件注释已写明）。
+范围失效要用 `rvae1` 一类指令，得有更进的 TLBI 扩展；本实现的 range 路径目前还是会退化成逐页 `vae1`（头文件注释里写明了）。
 
 ### 6.2 启动时还要做什么
 
-每核都会执行到 `arch_start_core`。里面会 `smp_ipi_init`；x86_64 另外再调 `arch_smp_flush_tlb_init`：给本核准备一条 flush 消息槽，并（全局一次）把 TLB 的软 IPI handler 注册上。aarch64 **没有**对等的「靠 IPI 刷 TLB」的 init——跨核依赖 `tlbi *is` 广播，不经过这条通道。
+每核都会走到 `arch_start_core`。里面会 `smp_ipi_init`；x86_64 另外再调 `arch_smp_flush_tlb_init`：给本核准备一条 flush 消息槽，并（全局一次）把 TLB 的软 IPI handler 注册上。aarch64 **没有**对等的「靠 IPI 刷 TLB」的 init——跨核靠 `tlbi *is` 广播，不走这条通道。
 
 ### 6.3 附录：内存类型与 cache 维护（尚无通用 API）
 
-树内 **没有** 可移植 `dcache_clean` / `icache_invalidate` 族（aarch64 `sync/cache.h` 为空）。设备 / DMA / 自修改代码接入之前，先把硬件名词记录在此，避免和 TLB 篇混为一谈。
+树内 **没有** 可移植 `dcache_clean` / `icache_invalidate` 族（aarch64 `sync/cache.h` 为空）。设备 / DMA / 自修改代码接进来之前，先把硬件名词记在这里，免得和 TLB 混为一谈。
 
 #### 6.3.1 x86 内存类型与 PAT
 
@@ -154,7 +154,7 @@ AArch64 用 **`TLBI`** 系列指令做 TLB 维护，参数里常带 ASID 与页�
 
 **PAT（Page Attribute Table）**（SDM 卷三 §11.12）：8 项寄存器，把 PTE 的 `PAT|PCD|PWT` 三位（共 8 种组合）映射到上表的具体内存类型。v0.1 **未编程 PAT**——上电默认布局足以让 `PCD|PWT=11` 解析为 UC、`00` 解析为 WB，覆盖 MMIO 与普通 RAM 两类需求；后续若要在大块 RAM 上开 WC（例如图形缓冲、大 DMA 描述符），再写 IA32_PAT 并同步到所有核。本仓库页表篇 §4.5 已写明粗粒度策略。
 
-**缓存拓扑发现：CPUID.02H**（SDM 卷二 CPUID）：EAX=2 一次性枚举 cache / TLB 描述符，调用方按 Intel 公布的查找表解码一字节（例如 `0x0E` = 24 KiB L1 数据 cache、6-way、行 64 B）。core 当前不依赖此信息——buddy / map_handler 不做 cache-aware 着色；记录在此供后续 cache 优化或自修改代码路径使用。
+**缓存拓扑发现：CPUID.02H**（SDM 卷二 CPUID）：EAX=2 一次性枚举 cache / TLB 描述符，调用方按 Intel 公布的查找表解码一字节（例如 `0x0E` = 24 KiB L1 数据 cache、6-way、行 64 B）。core 目前不依赖这些信息——buddy / map_handler 不做 cache-aware 着色；记在这里，供以后做 cache 优化或自修改代码路径时参考。
 
 #### 6.3.2 aarch64 屏障域与 DMB/DSB 参数
 
@@ -196,7 +196,7 @@ ARM 屏障按 **共享域** × **访问类型** 两维取参数。共享域四�
 | `RVA*` / `RVAA*` | Range 失效（ARMv8.4 起；带 `base / num / scale / ttl`） |
 | `…L`（如 `VALE1`） | Last level only（只刷最后一级翻译，不刷中间级） |
 
-带 `VM*` 的后缀多与 VMID / 虚拟化翻译相关；RendezvOS v0.1 不开 EL2 stage-2，stage-2 变体不在 inline 里。Range 失效若启用，可把 §7.3 表里 `invalidate_range` 的逐页循环换成单条 `rva*is`，但需要 **FEAT_TLBIRANGE**（ARMv8.4）——目前仍退化逐页。
+带 `VM*` 的后缀多与 VMID / 虚拟化翻译相关；RendezvOS v0.1 不开 EL2 stage-2，stage-2 变体不在 inline 里。Range 失效若启用，可把 §7.3 表里 `invalidate_range` 的逐页循环换成单条 `rva*is`，但需要 **FEAT_TLBIRANGE**（ARMv8.4）——目前还是会退化成逐页。
 
 #### 6.3.4 aarch64 IC / DC 维护指令
 
@@ -235,9 +235,9 @@ ARM 屏障按 **共享域** × **访问类型** 两维取参数。共享域四�
 | **DZP**（bit 4） | 0 = 允许 `DC ZVA`；1 = 禁止。需在用户态使用前确认已清零 |
 | **BS**（bits [3:0]） | 块大小为 2^(BS+2) 字节；BS 最大为 9，对应 2 KiB |
 
-`DC ZVA` 常用于大块用户清零（`memset(p, 0, big)`）：先确认 `DCZID_EL0.DZP==0`，再按行大小（`BS` 算出）逐行清零，比按字节写快得多。core 当前未封装此路径——`map_handler_zero_page` 走普通 `memset`；记录在此供后续 zero-on-fault 优化。
+`DC ZVA` 常用于大块用户清零（`memset(p, 0, big)`）：先确认 `DCZID_EL0.DZP==0`，再按块大小（`BS` 算出）逐块清零，比按字节写快得多。core 目前没有这条路径——`map_handler_zero_page` 走普通 `memset`；记在这里，供以后做 zero-on-fault 优化时参考。
 
-改可执行页、加载固件 blob、将来 DMA 缓冲与 CPU 共享时，需要「先 DC clean 到 PoC / PoU，再 IC invalidate」一类序列——接入业务路径时再写入 `sync/cache.h`，本篇不假装已有实现。
+改可执行页、加载固件 blob、将来 DMA 缓冲与 CPU 共享时，都需要「先 DC clean 到 PoC / PoU，再 IC invalidate」一类序列——等接进业务路径时再写进 `sync/cache.h`，本篇不假装已经有实现。
 
 ---
 
@@ -317,7 +317,7 @@ void arch_smp_flush_tlb_init(void);
 
 ## 9. 测试
 
-没有单独的 TLB 单元测试；依赖 SMP 加上用户 map / unmap / 切换间接覆盖。
+没有单独的 TLB 单元测试；靠 SMP 加上用户 map / unmap / 切换间接覆盖。
 
 ---
 
@@ -332,6 +332,7 @@ void arch_smp_flush_tlb_init(void);
 
 ## 11. 变更记录
 
+- 2026-10-25：全文语言整理：回退 2026-10-04 机械替换造成的生硬（抄录→抄、如何发送→怎么发出去、约束拆除→卡着拆除、位于→在、执行到→走到、失效旧项→把旧项作废、随意添加的装饰→随手加的装饰等），并补顺几处省略过紧的句子，技术内容未动。
 - 2026-10-05：§6.3 扩写硬件背景（PAT/CR0/CPUID.02H、DMB 矩阵、TLBI 目录、DC ZVA）。打分前校正：CPUID `0x0E` 按 SDM 为 24 KiB/6-way 而非 64-set×8-way；range TLBI 是 FEAT_TLBIRANGE 不是 TLS；`DC ZVA` 清的是 DCZID 块（2^(BS+2)）不是 cache 行；`ALLE1` 是当前 VMID 的 stage-1 全清。来源：`core/docs/old/cache&tlb.md` 迁移审核。
 - 2026-10-04：全文中文表述整理——「再抄一遍」→「再抄录一遍」；「以后另写」→「后续另写」；「对得上」→「保持一致」；「怎么送」→「如何发送」；「留着」→「保留着」；「全机狂刷」→「全机全部刷掉」；「不理」→「忽略」；「卡着」→「约束」；「再写长一遍」→「再详细写一遍」；「落在」→「位于」；「拿着」→「持有」；「不能乱」→「不能打乱」；「人已经跑在…你」→「新线程已经在…本核」；「漏掉你」→「漏掉本核」；「没你了/脏着」→「没有本核/留有脏项」；「留到」→「保留到」；「装上」→「映射上」；「跑过的核都得动到」→「运行过的核都要处理到」；「补两件事」→「补充两件事」；「不是一回事」→「不是同一件事」；「丢掉旧项」→「失效旧项」；「冲掉」→「刷掉」；「靠」→「依赖」；「还没就绪」→「尚未就绪」；「叙事」→「解释」；「想当然当成」→「想当然地当成」；「对上」→「对应」；「点到为止」→「简要说明」；「套路/随便加点装饰」→「流程/随意添加的装饰」；「丢掉」→「丢弃」；「带着」→「持有」；「写了」→「已写明」；「走到」→「执行到」；「注册上」→「注册」；「不走这条通道」→「不经过这条通道」；「接上/混谈」→「接入/混为一谈」；旧稿「记在某处」一类用语改为「记录在此」；「粗控」→「粗粒度控制」；「直观」→「直观含义」；「解成」→「解析为」；「未接」→「未接入」；「整机关缓存」→「整机关闭缓存」；「装固件 blob/接到业务路径时再写进」→「加载固件 blob/接入业务路径时再写入」；「整刷」→「整空间刷」；「单测/靠」→「单元测试/依赖」；「属远期」→「属于远期」；§7「本篇拥有」→「本篇涉及的接口分布在」。
 - 2026-10-04：§4.1 补 `vs_tlb_cpu_bitmap_t` / `tlb_cpu_mask` 字段。

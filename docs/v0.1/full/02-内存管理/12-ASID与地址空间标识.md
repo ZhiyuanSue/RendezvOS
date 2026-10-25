@@ -10,14 +10,14 @@ TLB mask / shootdown 见 `11-TLB与缓存一致性.md`；调度时装根见 `03-
 
 ## 1. 概述
 
-**ASID**（Address Space ID）在这里首先是软件给用户地址空间分配的编号：切换时若硬件识别这个标签，就不必把用户 TLB 整段刷掉。
+**ASID**（Address Space ID）首先是软件给用户地址空间分的编号：切换时硬件要是认这个标签，就不必把用户 TLB 整段刷掉。
 
 但软件号 **不等于** 硬件一定在用：
 
-- **aarch64：** 装用户根时，把 ASID 写入 **TTBR0_EL1** 的高位；`tlbi` 也可以按 ASID 靶向失效。boot 若从 `ID_AA64MMFR0_EL1` 读到 16-bit ASID，还会置位 `TCR_EL1.AS`（平台启动篇 §4.6 提过）。
-- **x86：** `vs->asid` 按 **12-bit PCID** 上界分配，但 `arch_set_current_user_vspace_root_asid` **丢弃** asid 参数，只写 **CR3**；invalidate 路径里也对 asid 做 `(void)asid`。头文件里虽有 `CR3_PCID` / `CR4_PCIDE` 一类宏，**当前未启用 PCID**。号码是为了 API 对称，并为将来启用 PCID 预留同一取值范围。
+- **aarch64：** 装用户根时把 ASID 写进 **TTBR0_EL1** 的高位；`tlbi` 也能按 ASID 精确刷。boot 如果从 `ID_AA64MMFR0_EL1` 读到 16-bit ASID，还会把 `TCR_EL1.AS` 置上（平台启动篇 §4.6 提过）。
+- **x86：** `vs->asid` 按 **12-bit PCID** 上界分配，但 `arch_set_current_user_vspace_root_asid` **丢弃** asid 参数，只写 **CR3**；invalidate 路径里也对 asid 做 `(void)asid`。头文件里虽有 `CR3_PCID` / `CR4_PCIDE` 一类宏，**当前没开 PCID**。留这个号是为了 API 对称，也给以后开 PCID 留出同一个取值范围。
 
-没有 **generation / epoch**：同一个数字回收后再分配给别人，完全靠「mask 已经清空、且相关核本地已经刷过」保证没有人还持有旧翻译。这条纪律一旦被破坏，就会静默错译——这是刻意不做 generation 的代价。
+没有 **generation / epoch**：同一个号回收后再发给别人，全靠「mask 已经清空、相关核本地也刷过了」来保证没有谁还拿着旧翻译。这条纪律一破就是静默错译——这是刻意不做 generation 要付的代价。
 
 ---
 
@@ -32,9 +32,9 @@ TLB mask / shootdown 见 `11-TLB与缓存一致性.md`；调度时装根见 `03-
 ## 3. 分层与调用方
 
 - `asid_init`：**仅 BSP** 在 `virt_mm_init` 里、`init_root_vspace` 之前调用。
-- `asid_alloc`：经过 `alloc_user_vs_structure`（`create_vspace` / `clone_vspace` 都经过此）。
+- `asid_alloc`：由 `alloc_user_vs_structure` 调用（`create_vspace` / `clone_vspace` 都走这里）。
 - 装 TTBR0|ASID 或 CR3：在 `schedule` 里，配合 TLB 篇的 mask 顺序。
-- `asid_free`：在 `del_vspace` 等把用户映射拆除干净、mask 已空之后。
+- `asid_free`：在 `del_vspace` 里，等用户映射拆干净、mask 空了之后。
 
 `root_vspace.asid = 0`（保留号，不是普通用户 AS）。clone **不会**继承父 ASID，父子地址空间各自分配新号。
 
@@ -44,9 +44,9 @@ TLB mask / shootdown 见 `11-TLB与缓存一致性.md`；调度时装根见 `03-
 
 ### 4.1 软件分配器
 
-全局位图，上界由 `arch_asid_supported_width()` 决定：`asid_max = (1u << width) - 1`（aarch64 为 8 位对应 255、或 16 位对应 65535；x86 为 12 位对应 4095，对齐 PCID 字段宽）。**0 永远保留**；分配失败返回 0，create 路径会释放已建结构体。锁是 MCS：`asid_lock` + 本核 `asid_mcs_node`。
+全局位图，上界由 `arch_asid_supported_width()` 决定：`asid_max = (1u << width) - 1`（aarch64 为 8 位对应 255、或 16 位对应 65535；x86 为 12 位对应 4095，对齐 PCID 字段宽）。**0 永远保留**；分配失败返回 0，create 路径会把已经建好的结构体释放掉。锁是 MCS：`asid_lock` + 本核 `asid_mcs_node`。
 
-注意 x86 返回 **12** 只表示 PCID 标识位宽；**当前并未启用 PCID**（装 CR3 仍忽略 asid）——不要写成「x86 已经启用 PCID」。
+注意 x86 返回 **12** 只表示 PCID 的标识位宽；**当前没开 PCID**（装 CR3 仍然忽略 asid）——别写成「x86 已经启用 PCID」。
 
 分配器没有单独的公开结构体，状态在 `asid.c` 里：
 
@@ -62,12 +62,12 @@ static asid_bitmap_t asid_bitmap;
 
 ### 4.2 没有 generation 时，怎样保证旧号已经没人再用
 
-本仓库不为 ASID 做世代号：同一个数字回收后再分配给别人，全靠下面这条链保证没有核还持有旧翻译。
+本仓库不给 ASID 做世代号：同一个号回收后再发给别人，全靠下面这条链保证没有哪个核还拿着旧翻译。
 
 1. `schedule` 只在本核刷完旧地址空间之后，才清除本核在旧 `tlb_cpu_mask` 上的位；
-2. mask 里还有位时，unmap / 跨核 invalidate / 清用户映射仍然会覆盖那些核；
+2. mask 里还有位时，unmap / 跨核 invalidate / 清用户映射仍然会通知到那些核；
 3. `vspace_clear_user_mappings(allow_self_use=false)` / `del_vspace` 要求 mask 已经为空才放行；
-4. 用户线程切到内核线程时，可以暂时保留 mask 和 CPU 侧引用——ASID 仍然有效，直到之后某次用户切到另一个用户地址空间再清除。
+4. 用户线程切到内核线程时，mask 和 CPU 侧引用可以先留着——ASID 仍然有效，直到之后某次用户线程切到另一个用户地址空间才清掉。
 
 原地 exec（`allow_self_use=true`）可以保留本 CPU 这一位，**ASID 不更换**。
 
@@ -103,13 +103,13 @@ static asid_bitmap_t asid_bitmap;
 
   也就是把软件 ASID 写入 TTBR0 的高 16 位字段（与常见 AArch64 ASID 打包方式一致；具体位宽还受 `TCR_EL1.AS` 约束）。
 - `TCR_EL1.AS`：`ID_AA64MMFR0_EL1.ASIDBits` 为 16-bit 时，`boot.S` 的 `init_mmu` **会**置位；否则按 8-bit。`arch_asid_supported_width()` 读同一字段，把 8/16 告诉分配器。
-- 页表叶上的 **nG（非全局）** 位：非全局项才会随 ASID 生效；全局项换 ASID 也不一定清除。这与页表篇里 `PAGE_ENTRY_GLOBAL` 对应到清/置 `nG` 的编解码一致。
+- 页表叶上的 **nG（非全局）** 位：非全局项才随 ASID 生效；全局项换了 ASID 也不一定被清掉。这与页表篇里 `PAGE_ENTRY_GLOBAL` 对应到清/置 `nG` 的编解码一致。
 - 失效：`tlbi vae1` / `aside1` 等把 ASID 编进操作数（TLB 篇 §6.1）。
 
 **x86_64（Intel SDM，PCID / CR3）**
 
-- 启用 **PCID** 时，CR3 低 **12** 位可携带 process-context identifier，换地址空间时可以选择不刷光全部 TLB。本实现：**不写 PCID，不置位 `CR4.PCIDE`**；`arch_set_current_user_vspace_root_asid` 直接忽略 asid，只把根物理地址写入 CR3。
-- 软件仍按 12-bit 上界分配 `vs->asid`，为将来启用 PCID 预留同一取值范围；跨核仍依赖 mask + IPI `invlpg` / 全清（TLB 篇）。
+- 启用 **PCID** 时，CR3 低 **12** 位可以携带 process-context identifier，换地址空间时就不用把 TLB 全刷掉。本实现：**不写 PCID，不置位 `CR4.PCIDE`**；`arch_set_current_user_vspace_root_asid` 直接忽略 asid，只把根物理地址写进 CR3。
+- 软件还是按 12-bit 上界分配 `vs->asid`，给以后开 PCID 留出同一个取值范围；跨核还是靠 mask + IPI `invlpg` / 全清（TLB 篇）。
 
 ### 6.2 生命周期时间线
 
@@ -184,20 +184,21 @@ void arch_set_current_user_vspace_root(paddr u_root); /* 兼容；无 ASID 标�
 
 ## 9. 测试
 
-没有单独的 ASID 测试用例；随用户 AS 的创建 / 切换 / 销毁间接覆盖。
+没有单独的 ASID 测试；跟着用户 AS 的创建 / 切换 / 销毁间接覆盖。
 
 ---
 
 ## 10. 限制与后续
 
-- 无 generation：完全依赖 TLB 篇的 mask / 刷序纪律。
-- 号码耗尽则无法 create。
-- x86 PCID 属于远期；正文不要写成已支持。
+- 无 generation：全靠 TLB 篇的 mask / 刷序纪律。
+- 号码用完就无法 create。
+- x86 PCID 是远期项；正文不要写成已支持。
 
 ---
 
 ## 11. 变更记录
 
+- 2026-10-25：全文语言整理：回退上一轮的书面化替换（靶向失效→精确刷、当前并未启用→当前没开、仍依赖→还是靠、可以暂时保留→可以先留着、号码耗尽→号码用完、一旦被破坏→一破），并顺掉「在这里首先是」「可以选择不刷光」一类直译句，技术内容未动。
 - 2026-10-04：中文用语整理——分配给别人/持有/清除/覆盖/保留/有效/不更换、写入/置位/随 ASID 生效/依赖、本篇涉及的接口分布在、扫描空位、已启用、测试用例、属于远期；§1 概述补「分配的编号/识别/刷掉/写入/丢弃/分配给别人/持有/一旦被破坏」。
 - 2026-10-04：§4.1 补 `asid.c` 里的 bitmap / 锁。
 - 2026-10-04：§4 只留分配器与「没有 generation 时怎样保证旧号没人再用」；硬件 TTBR/PCID 对照迁入 §6.1。

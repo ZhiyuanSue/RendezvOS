@@ -16,7 +16,7 @@ v0.1 · 2026-09-25
 
 无锁 IPC 的常态是：对象在 A 核分配，消息到 B 核的 server，再在 B 上释放。若堆仍是全局一把锁，业务锁和 IPC 锁迁走之后，瓶颈只是换个形式重新出现。
 
-所以做成每核本地堆：同核 alloc / free 不与他人竞争。异核释放时，**不要直接改其他核的 chunk 链表**，而是把对象（或整页回收请求）投递到**归属核**的无锁队列，让归属核自己 drain。承认「所有权在分配核」，用和 IPC 同一套 MSQ 哲学把对象归还回去。
+所以做成每核本地堆：同核 alloc / free 不与他人竞争。异核释放时，**不要直接改其他核的 chunk 链表**，而是把对象（或整页回收请求）投递到**归属核**的无锁队列，让归属核自己 drain。这一设计承认「所有权在分配核」，借用的正是 IPC 那套 MSQ 哲学来归还对象。
 
 ### 1.2 两条跨核队列
 
@@ -35,7 +35,7 @@ drain 顺序：先清 `kfree_page_msq`，再清 `buffer_msq`。触发点有两�
 
 不做：用户态 malloc；跨进程共享堆；Linux SLUB 那套 sysfs。
 
-权衡很清楚：去掉全局堆锁，就必须 drain、必须把 owner 标正确；整页和小对象用「是否 4 KiB 对齐」区分，误判会走错 free 路径。
+权衡很清楚：去掉全局堆锁，就必须 drain、必须把 owner 标对；整页和小对象用「是否 4 KiB 对齐」区分，误判会走错 free 路径。
 
 ---
 
@@ -190,7 +190,7 @@ struct allocator {
 
 | 接口 | 说明 |
 |------|------|
-| `m_alloc(a, Bytes)` | 合法：`1 ≤ Bytes ≤ MIDDLE_PAGE_SIZE`（2 MiB）；否则 NULL。`Bytes > 2048`（`slot_size[11]`）走整页：先小对象分配 `page_chunk_node`，再 `core_get_free_pages` 映入 `&root_vspace`，memset，插入 RB。否则走 chunk/`_k_alloc`。失败 NULL。 |
+| `m_alloc(a, Bytes)` | 合法：`1 ≤ Bytes ≤ MIDDLE_PAGE_SIZE`（2 MiB）；否则 NULL。`Bytes > 2048`（`slot_size[11]`）走整页：先小对象分配 `page_chunk_node`，再 `core_get_free_pages` 映射到 `&root_vspace`，memset，插入 RB。否则走 chunk/`_k_alloc`。失败 NULL。 |
 | `m_free(a, p)` | `p` 页对齐时查 radix owner：异核投 `kfree_page_msq`，本核 `kfree_page_local`。非对齐则读 `object_header.allocator_id`：本核归还 chunk，异核投 `buffer_msq`。`a`/`p` 为空则记录日志返回。 |
 | `allocator_id` | 与 CPU id 对齐；写入小对象 header / chunk。 |
 
@@ -205,7 +205,7 @@ void kalloc_process_cross_cpu_frees(void);
 
 | 接口 | 说明 |
 |------|------|
-| `kinit` | `allocator_id < 0` 返回 NULL。用静态 `tmp_k_alloctor` 自举真正的 `mem_allocator` 与两条 MSQ，装入 `per_cpu(kallocator, id)`。同 id 已存在也返回 NULL。 |
+| `kinit` | `allocator_id < 0` 返回 NULL。用静态 `tmp_k_alloctor` 自举真正的 `mem_allocator` 与两条 MSQ，装入 `per_cpu(kallocator, id)`。同 id 已存在时返回 NULL。 |
 | `kalloc_process_cross_cpu_frees` | 对本核 `kallocator` 调 `mem_allocator_remote_frees`；`kallocator` 为空则 no-op。 |
 
 尺寸常量（实现）：`slot_size[] = {8…2048}` 共 `MAX_GROUP_SLOTS`(12)；`PAGE_PER_CHUNK == 4`。整页路径 **禁止** `mm_user_utils_*`（只操作 `root_vspace`）。
@@ -246,6 +246,7 @@ make ARCH=x86_64 config && make all && make run
 
 ## 11. 变更记录
 
+- 2026-10-25：全文语言整理：理顺个别直译句与过度书面化的替换（标正确→标对、映入→映射到），技术内容未动。
 - 2026-10-04：全文中文表述整理——「换了个马甲回来」→「换个形式重新出现」；「不抢别人」→「不与他人竞争」；「他核的」→「其他核的」；「丢进」→「投递到」；「把东西还回去」→「把对象归还」；「怎么找到主人」→「如何确定归属核」；「好让…把积压清掉」→「让…清理积压」；「低分配核」→「分配较少的核」；「一直涨」→「持续增长」；「标对」→「标正确」；「好让」→「以便」；「落在 empty 这一侧」→「归入 empty 侧」；「只许…改」→「只允许…修改」；「拿到」→「获取」；「偷」→「借用」；「再不行就」→「仍不够则」；「往对方的」→「向归属核的」；「空 chunk 多了可以还给系统」→「空 chunk 过多时可归还系统」；「本核回 chunk」→「本核归还 chunk」；「打日志」→「记录日志」；「再跑一轮」→「再执行一次」；「挂 RB」→「插入 RB」；「不要当正式堆长期使用」→「不要作为正式堆长期使用」；「要留心/落到/要对得上」→「需要注意/落在/要能对应上」；§7「本篇拥有」→「本篇涉及的接口分布在」。
 - 2026-10-04：§4 补 `mem_chunk` / `mem_group` / `mem_allocator` / `page_chunk_node` 结构体。
 - 2026-09-27：中文用语整理（契约→约定；§7「以头文件注释为准」；「吃这个堆」→「从这份堆分配」）。

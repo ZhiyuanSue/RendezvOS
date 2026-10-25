@@ -26,7 +26,7 @@ Buddy（伙伴分配器，按 2 的幂次合并/拆分物理页，见 `09-kmallo
 
 不做：文件系统页缓存策略；用户 `mmap`；硬件 MMU pin——`PAGE_SLICE_FLAG_PIN` 只表示 destroy / remove 时**不要**对内容 kva 调 `m_free`，不是页表 pin。
 
-也**不是 COW**：`page_slice_clone` 是对新页做 **memcpy 深拷贝**，只实现已 VALID 的 pgoff；没有「共享再 fault」。
+也**不是 COW**：`page_slice_clone` 是对新页做 **memcpy 深拷贝**，只深拷已 VALID 的 pgoff；没有「共享再 fault」。
 
 ---
 
@@ -81,7 +81,7 @@ struct page_slice {
 
 ### 4.2 高度与覆盖范围
 
-`slice->root` 上的 height（stored height，存储高度）表示当前 radix 深度。**`ps_entry_new(NULL, height, 0)` 不是空槽**——它构造一个 tag 非零但指针为空的 tagged pointer，会被当成「已占用但 ptr 为空」，导致后续 `-E_RENDEZVOS`。空槽必须是 `tp_new_none()`（全 0 的 tagged pointer，即「这里什么都没有」的标记）。
+`slice->root` 上的 height（stored height，存储高度）表示当前 radix 深度。**`ps_entry_new(NULL, height, 0)` 不是空槽**——它构造一个 tag 非零但指针为空的 tagged pointer，等于把槽位当成「已占用但 ptr 为空」，后续会报 `-E_RENDEZVOS`。空槽必须是 `tp_new_none()`（全 0 的 tagged pointer，即「这里什么都没有」的标记）。
 
 | `PS_HEIGHT_*` | 值 | 含义 | 约可覆盖 pgoff |
 |---------------|-----|------|----------------|
@@ -100,7 +100,7 @@ struct page_slice {
 | 2（`slice->root` 为 index 页） | index 页内非空子 slot 数 | 512 |
 | 3–4（指向 index 的项） | 子 index 页内非空 slot 数 | 512 |
 
-`slice->mapped_entries` 仅上层统计（带 `PAGE_SLICE_FLAG_VALID` 的 pgoff 数）；grow / shrink **不**读它，靠 `live` 驱动回收。
+`slice->mapped_entries` 仅上层统计（带 `PAGE_SLICE_FLAG_VALID` 的 pgoff 数）；grow / shrink **不**读它，回收由 `live` 计数驱动。
 
 ### 4.3 PIN
 
@@ -128,7 +128,7 @@ struct page_slice {
    空槽一律 tp_new_none()，绝不 ps_entry_new(NULL, h, 0)
 ```
 
-**`ps_descend_pgoff`**：按 pgoff 算出每层 slot 索引，从 root 向下走；遇到空 slot 且 `create=true` 就 alloc 一页、发布到父 slot、`ps_entry_live_inc` 父项；走到最底层拿到 leaf 槽。同时把走过的 structural path（root / index1 / index2）记下来，供后续 remove 的 cascade 使用。
+**`ps_descend_pgoff`**：按 pgoff 算出每层 slot 索引，从 root 向下走；遇到空 slot 且 `create=true` 就 alloc 一页、发布到父 slot、`ps_entry_live_inc` 父项；走到最底层拿到 leaf 槽。同时把走过的 structural path（root / index1 / index2）记下来，remove 时做 cascade 就用它。
 
 ```text
    descend_pgoff(pgoff=P, create=true)：
@@ -217,11 +217,11 @@ struct page_slice {
 - `page_slice_copy_to_buffer`：区间必须**全部已映射**，否则失败（**不**跳过空洞、不零填）。
 - `page_slice_copy_to_slice`：目标 pgoff 须**已绑定**；拒绝危险自重叠。
 - `page_slice_copy_to_user`：同样要求已映射，再经 `map_handler_user_kernel_copy`。
-- `page_slice_clone`：新建同 `size` 的 slice；只深拷贝 VALID；清除 PIN；空洞不实现。
+- `page_slice_clone`：新建同 `size` 的 slice；只深拷贝 VALID；清除 PIN；空洞仍是空洞。
 
 ### 6.3 shrink
 
-`page_slice_set_size` 变小时：先拆除超出新长度的高 pgoff（`ps_remove_page_locked`），再 `ps_shrink` unwrap 只剩一个子项的 root。算法见 §4.5。
+`page_slice_set_size` 变小时：先拆除超出新长度的高 pgoff（`ps_remove_page_locked`），再 `ps_shrink` 把只剩一个子项的 root 逐层 unwrap。算法见 §4.5。
 
 ---
 
@@ -261,7 +261,7 @@ error_t page_slice_remove_page(struct page_slice *slice, u64 pgoff);
 |------|------|
 | `create` | 空树；`slice_size` 须 ∈ (0, `PAGE_SLICE_MAX_BYTE_SIZE]`。柔性数组尾 `append_page_slice_info[]` 长度=`append_info_size`（可为 0）。失败 NULL。 |
 | `destroy` | 递归释放壳页；对叶 kva 调 `m_free`，除非 `PAGE_SLICE_FLAG_PIN`。成功 `*slice=NULL`。 |
-| `set_size` | `new_size==0` 等价 destroy。变大只改逻辑长度（树长高在后续 insert）。变小拆除高 pgoff 并可 unwrap 空壳。超上限返回 `-E_REND_OVERFLOW`。 |
+| `set_size` | `new_size==0` 等价 destroy。变大只改逻辑长度（树在后续 insert 时才长高）。变小拆除高 pgoff，并可逐层 unwrap 空壳。超上限返回 `-E_REND_OVERFLOW`。 |
 | `insert_page` | 绑定已有 `kva`（非 0）；成功必置 `VALID`。同 kva 幂等；异 kva 且已 VALID 则返回 `-E_REND_AGAIN`。**不**分配内容页。 |
 | `lookup` | 已绑定返回 entry 指针；缺失/无效/越界返回 NULL。**返回前释放锁**。 |
 | `remove_page` | 清叶；非 PIN 则 `m_free` kva；可级联释放空壳。未映射返回 `-E_REND_NOFOUND`。 |
@@ -284,7 +284,7 @@ error_t page_slice_clone(struct page_slice **dst_out, struct page_slice *src);
 | `copy_to_buffer` | 区间须**全部已映射**，遇到空洞返回 `-E_RENDEZVOS`（不零填）。`len==0` 成功。 |
 | `copy_to_slice` | 目标 pgoff 须已绑定；不为 dst 插入；拒绝危险自重叠。 |
 | `copy_to_user` | 同源须已映射；经 `map_handler_user_kernel_copy` 写入 `vs`。 |
-| `clone` | 同 `size` 新 slice；只深拷贝 VALID（新页归 dst）；空洞不实现；清除 PIN；**不**拷贝 `append_page_slice_info[]` 柔性数组尾。**不是 COW**。 |
+| `clone` | 同 `size` 新 slice；只深拷贝 VALID（新页归 dst）；空洞仍是空洞；清除 PIN；**不**拷贝 `append_page_slice_info[]` 柔性数组尾。**不是 COW**。 |
 
 壳页与 clone 新内容页均来自 `percpu(kallocator)`。
 
@@ -312,12 +312,13 @@ make ARCH=x86_64 config && make all && make run
 - lookup 返回的指针生命周期短。
 - copy **遇到空洞即失败**。
 - 无内置 COW / 页缓存策略。
-- 跨 CPU 共享同一 slice 只有粗锁，上层宜自己串行化。
+- 跨 CPU 共享同一 slice 只靠一把粗锁，上层宜自己串行化。
 
 ---
 
 ## 11. 变更记录
 
+- 2026-10-25：全文语言整理：修掉上一轮机械替换造成的歧义（「空洞不实现」→「空洞仍是空洞」等），技术内容未动。
 - 2026-10-05（可读性二轮）：展开首次出现未解释的术语——Buddy（伙伴分配器）、KVA（内核虚拟地址）、tagged pointer（带 tag 的指针，补 bit 布局说明）、`tp_new_none()`（全 0 的空 tagged pointer 标记）；§4.1「壳页」补一句括注说明是树结构自己的索引页/叶页而非内容页；§7 表里「FAM append」改成「柔性数组尾」与 §4.1 一致。
 - 2026-10-05：补 §4.2 高度覆盖表（EMPTY=0/LEAF=1/INDEX1=2/INDEX2=3/INDEX3=4）与 `ps_entry_new(NULL,height,0)` 反例；补 §4.4 树的生长（`ps_raise_height` 包一层 index、`ps_descend_pgoff` 下降时 alloc + live_inc，含 ASCII 图示）；补 §4.5 树的收缩（`ps_remove_page_locked` 清叶 + `ps_cascade_up_empty_index` 自下而上释放空 index 页 + `ps_shrink` root 降层，含 cascade 与 shrink 图示，点出 grow/shrink 与 descend/cascade 的对偶性）。恢复 `struct page_slice` 定义。来源：`core/docs/old/page-slice.md` 迁移审核。
 - 2026-10-04：全文中文表述整理——「顶在」→「上限约为」；「摸一块」→「取一块」；「绑到」→「绑定到」；「指望…顺手给你」→「期望…同时分配」；「物化」→「实现」；「打交道」→「交互」；「放锁」→「释放锁」；「塞」→「放入」；「数的是」→「统计的是」；「靠它回收」→「依赖它回收」；「挂元数据」→「附加元数据」；「不拷」→「不拷贝」；「缺壳」→「缺少壳页时」；「标 VALID」→「置位 VALID」；「跳洞」→「跳过空洞」；「深拷/剥掉/物化」→「深拷贝/清除/实现」；「拆掉」→「拆除」；「整拆」→「整体销毁」；「放壳页/放空壳」→「释放壳页/释放空壳」；「拆高 pgoff」→「拆除高 pgoff」；「返回前解锁」→「返回前释放锁」；「遇洞」→「遇到空洞」；「不替 dst insert」→「不为 dst 插入」；「拒」→「拒绝」；「剥 PIN」→「清除 PIN」；§7「本篇拥有」→「本篇涉及的接口分布在」。
