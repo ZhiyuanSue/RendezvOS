@@ -162,9 +162,6 @@ struct arch_global_irq *irq_global_find(size_t local_irq_id, cpu_id_t cpu_id);
  */
 size_t arch_local_lookup_global_irq_id(cpu_id_t cpu_id, size_t local_irq_id);
 
-/** True if @p local_irq_id is free to claim on @p cpu_id. */
-bool arch_local_irq_id_available(cpu_id_t cpu_id, size_t local_irq_id);
-
 /**
  * Arch policy: choose a @c local_irq_id for @p global_irq_id on @p cpu_id.
  *

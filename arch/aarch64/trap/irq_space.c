@@ -21,19 +21,6 @@ size_t arch_local_lookup_global_irq_id(cpu_id_t cpu_id, size_t local_irq_id)
         return hw_irq - (size_t)GIC_V2_SPI_START;
 }
 
-bool arch_local_irq_id_available(cpu_id_t cpu_id, size_t local_irq_id)
-{
-        if (cpu_id != CPU_ID_INVALID
-            && cpu_id >= (cpu_id_t)RENDEZVOS_MAX_CPU_NUMBER)
-                return false;
-        size_t global_irq_id = arch_local_lookup_global_irq_id(cpu_id, local_irq_id);
-        if (global_irq_id >= nr_global_irq)
-                return false;
-        /* Free to claim: that global entry not yet used. */
-        return !irq_atomic_attr_is_used(
-                &global_irq_vector[global_irq_id].irq_attr);
-}
-
 size_t arch_choose_local_irq_id(size_t global_irq_id, cpu_id_t cpu_id)
 {
         size_t hw_irq; /* GIC INTID */

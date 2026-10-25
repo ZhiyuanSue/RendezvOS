@@ -27,27 +27,18 @@ size_t arch_local_lookup_global_irq_id(cpu_id_t cpu_id, size_t local_irq_id)
         return map_value ? (size_t)(map_value - 1u) : IRQ_GLOBAL_ID_INVALID;
 }
 
-bool arch_local_irq_id_available(cpu_id_t cpu_id, size_t local_irq_id)
-{
-        if (cpu_id != CPU_ID_INVALID
-            && cpu_id >= (cpu_id_t)RENDEZVOS_MAX_CPU_NUMBER)
-                return false;
-        if (irq_trap_is_local(local_irq_id)
-            || local_irq_id >= (size_t)NR_IDT_VECTORS)
-                return false;
-        /* Free to claim: not yet mapped on cpu_id. */
-        return arch_local_lookup_global_irq_id(cpu_id, local_irq_id)
-               == IRQ_GLOBAL_ID_INVALID;
-}
-
 size_t arch_choose_local_irq_id(size_t global_irq_id, cpu_id_t cpu_id)
 {
         (void)global_irq_id;
-        /* choose a free id in the alloc window. */
+        if (cpu_id != CPU_ID_INVALID
+            && cpu_id >= (cpu_id_t)RENDEZVOS_MAX_CPU_NUMBER)
+                return IRQ_LOCAL_ID_INVALID;
+        /* Scan alloc window for a local id not yet mapped on cpu_id. */
         for (size_t candidate = ARCH_IRQ_ID_ALLOC_LO;
              candidate <= ARCH_IRQ_ID_ALLOC_HI;
              candidate++) {
-                if (arch_local_irq_id_available(cpu_id, candidate))
+                if (arch_local_lookup_global_irq_id(cpu_id, candidate)
+                    == IRQ_GLOBAL_ID_INVALID)
                         return candidate;
         }
         return IRQ_LOCAL_ID_INVALID;

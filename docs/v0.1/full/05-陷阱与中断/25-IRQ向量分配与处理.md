@@ -529,6 +529,7 @@ void arch_unknown_trap_handler(struct trap_frame *tf);
 - 2026-10-23：明确 `USED` CAS 只挡并发 alloc；`irq_global_free` 强制属主 CPU（caller == `cpu_id`），注释与 §4.4 / §7.3 同步。顺带收紧 `irq_global_alloc` 里仅扫描分支使用的 `mapped`。
 - 2026-10-23：模块文件改名 `irq` → `irq_space`（表达 id 命名空间）；`struct global_irq` → `struct arch_global_irq`。API 前缀（`irq_global_*` 等）与 `global_irq_vector` 符号名不变。
 - 2026-10-23：软件 id / map / alloc 抽到 `kernel/trap/irq_space.c` + `include/rendezvos/trap/irq_space.h`，arch 侧 `arch/*/trap/irq_space.c` / `irq_space.h`；`trap.c`/`trap.h` 只留分发与装表。逻辑未改，仅迁移。
+- 2026-10-25：去掉跨 arch 的 `arch_local_irq_id_available`；空闲判断内联进 x86 `arch_choose_local_irq_id`。
 - 2026-10-25：§4.2 / §4.3 / §7 / §8 / §10 去掉残留 `arch_map_*` / `try_direct` / 「写下 map」表述，与 choose/lookup/bind 对齐。
 - 2026-10-25：`arch_map_global_irq_id` → `arch_local_lookup_global_irq_id`；`arch_map_local_irq_id` → `arch_global_bind_local_irq_id`。
 - 2026-10-25：`arch_try_direct_map_local_irq_id` → `arch_choose_local_irq_id`；选号策略（含 x86 扫窗）下沉到 arch，common 只做 claim/bind。
