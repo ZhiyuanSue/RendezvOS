@@ -1,7 +1,7 @@
 #include <rendezvos/trap/irq_space.h>
 #include <rendezvos/limits.h>
 
-size_t arch_map_global_irq_id(cpu_id_t cpu_id, size_t local_irq_id)
+size_t arch_local_lookup_global_irq_id(cpu_id_t cpu_id, size_t local_irq_id)
 {
         size_t hw_irq; /* GIC INTID */
 
@@ -26,7 +26,7 @@ bool arch_local_irq_id_available(cpu_id_t cpu_id, size_t local_irq_id)
         if (cpu_id != CPU_ID_INVALID
             && cpu_id >= (cpu_id_t)RENDEZVOS_MAX_CPU_NUMBER)
                 return false;
-        size_t global_irq_id = arch_map_global_irq_id(cpu_id, local_irq_id);
+        size_t global_irq_id = arch_local_lookup_global_irq_id(cpu_id, local_irq_id);
         if (global_irq_id >= nr_global_irq)
                 return false;
         /* Free to claim: that global entry not yet used. */
@@ -34,18 +34,20 @@ bool arch_local_irq_id_available(cpu_id_t cpu_id, size_t local_irq_id)
                 &global_irq_vector[global_irq_id].irq_attr);
 }
 
-size_t arch_try_direct_map_local_irq_id(size_t global_irq_id)
+size_t arch_choose_local_irq_id(size_t global_irq_id, cpu_id_t cpu_id)
 {
         size_t hw_irq; /* GIC INTID */
 
+        (void)cpu_id;
         hw_irq = global_irq_id + (size_t)GIC_V2_SPI_START;
         if (hw_irq > (size_t)GIC_V2_SPI_END)
                 return IRQ_LOCAL_ID_INVALID;
-        /* Direct: SPI index → INTID → local_irq_id (= intid + 64). */
-        return (size_t)AARCH64_IRQ_TO_TRAP_ID(hw_irq);
+        /* Formula: SPI index → INTID → local_irq_id (= intid + 64). */
+        size_t local_irq_id = (size_t)AARCH64_IRQ_TO_TRAP_ID(hw_irq);
+        return local_irq_id;
 }
 
-bool arch_map_local_irq_id(cpu_id_t cpu_id, size_t local_irq_id,
+bool arch_global_bind_local_irq_id(cpu_id_t cpu_id, size_t local_irq_id,
                            size_t global_irq_id)
 {
         (void)local_irq_id;

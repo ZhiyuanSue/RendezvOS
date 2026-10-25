@@ -152,34 +152,33 @@ bool irq_trap_is_local(size_t local_irq_id);
  */
 struct arch_global_irq *irq_global_find(size_t local_irq_id, cpu_id_t cpu_id);
 
-/* === arch map helpers (arch implements in arch/<arch>/trap/irq_space.c) === */
+/* === arch local↔global helpers (arch/<arch>/trap/irq_space.c) === */
 /*
- * local_irq_id ↔ global_irq_id mapping.
- *
- * For APIs that take @p cpu_id: pass a concrete id, or @c CPU_ID_INVALID
- * to mean the current CPU.
+ * For APIs that take @p cpu_id: concrete id, or @c CPU_ID_INVALID = current.
  */
 
-/** Resolve @p local_irq_id on @p cpu_id to a global_irq_id, or INVALID. */
-size_t arch_map_global_irq_id(cpu_id_t cpu_id, size_t local_irq_id);
+/**
+ * using @p local_irq_id on @p cpu_id to lookup @c global_irq_id, or INVALID.
+ */
+size_t arch_local_lookup_global_irq_id(cpu_id_t cpu_id, size_t local_irq_id);
 
 /** True if @p local_irq_id is free to claim on @p cpu_id. */
 bool arch_local_irq_id_available(cpu_id_t cpu_id, size_t local_irq_id);
 
 /**
- * Try a direct local_irq_id for @p global_irq_id (arch formula / 1:1).
- * @return the local_irq_id, or @c IRQ_LOCAL_ID_INVALID if this arch has no
- *         direct map — @c irq_global_alloc then scans for a free local id.
+ * Arch policy: choose a @c local_irq_id for @p global_irq_id on @p cpu_id.
+ *
+ * @return chosen @c local_irq_id, or @c IRQ_LOCAL_ID_INVALID if none.
  */
-size_t arch_try_direct_map_local_irq_id(size_t global_irq_id);
+size_t arch_choose_local_irq_id(size_t global_irq_id, cpu_id_t cpu_id);
 
 /**
- * Establish or clear the local_irq_id → global_irq_id map on @p cpu_id.
- * @p global_irq_id @c IRQ_GLOBAL_ID_INVALID clears the mapping.
- * @return false if the update fails (e.g. already mapped).
+ * Bind a @p local_irq_id on @p cpu_id to @p global_irq_id.
+ * if @p global_irq_id == @c IRQ_GLOBAL_ID_INVALID unbinds (clears the mapping).
+ * @return false if the update fails (e.g. already bound).
  */
-bool arch_map_local_irq_id(cpu_id_t cpu_id, size_t local_irq_id,
-                           size_t global_irq_id);
+bool arch_global_bind_local_irq_id(cpu_id_t cpu_id, size_t local_irq_id,
+                                    size_t global_irq_id);
 
 /** Reset arch-private fields of an unused global irq entry. */
 void arch_irq_global_entry_reset(struct arch_global_irq *entry);
@@ -197,19 +196,16 @@ void arch_irq_global_entry_reset(struct arch_global_irq *entry);
 error_t irq_global_vector_alloc(size_t count);
 
 /**
- * Claim @p global_irq_id and map a local_irq_id on @p cpu_id (concrete).
+ * Claim @p global_irq_id and bind a local_irq_id on @p cpu_id (concrete).
  *
- * Flow: try @c arch_try_direct_map_local_irq_id first. If the arch accepts
- * a direct map, use that local_irq_id. If not (@c IRQ_LOCAL_ID_INVALID —
- * e.g. no formula on x86), scan for a free local_irq_id on @p cpu_id.
- * Ownership is CAS on the entry's @c irq_attr (@c IRQ_ATTR_USED). On map
- * failure the claim is rolled back.
- * @p local_irq_id_out receives the id for @c register_irq_handler.
+ * Flow: @c arch_choose_local_irq_id → CAS @c IRQ_ATTR_USED →
+ * @c arch_global_bind_local_irq_id. Bind failure rolls back the claim.
+ * @p local_irq_id_out is for @c register_irq_handler.
  *
  * @return @c REND_SUCCESS,
  *         @c -E_IN_PARAM on bad arguments,
- *         @c -E_REND_AGAIN if the entry is busy or the map update raced,
- *         @c -E_REND_OVERFLOW if no free local_irq_id remains.
+ *         @c -E_REND_AGAIN if USED or bind failed,
+ *         @c -E_REND_OVERFLOW if the arch cannot choose a local_irq_id.
  */
 error_t irq_global_alloc(size_t global_irq_id, cpu_id_t cpu_id,
                          size_t *local_irq_id_out);

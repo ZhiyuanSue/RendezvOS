@@ -220,10 +220,10 @@ extern size_t nr_global_irq;
 | 本核表长度 | `NR_ARCH_LOCAL_IRQ` = LO（`0x40`） | 同宏（EC+SGI+PPI 上界） |
 | IDT / 硬件全宽 | IDT **256**（SDM：向量 0–255）；表外号仍可作 IDT 向量，但不进 `local_irq_vector[]` | CPU **没有** 256 项向量表；GIC 用 INTID |
 | 身份 | 向量号 = `local_irq_id` | `[0,64)` = EC；`[64,…)` = intid+64 |
-| 表外窗口 | `[ALLOC_LO, ALLOC_HI]` = `[0x40, 0xEF]` | 同；`try_direct`：local = INTID + 偏移 |
+| 表外窗口 | `[ALLOC_LO, ALLOC_HI]` = `[0x40, 0xEF]` | 同；`arch_choose`：local = INTID + 偏移 |
 | 全局数组长度 | 启动时申请（暂定 `NR_ARCH_GLOBAL_IRQ`，待 MADT） | `gic.nr_spi()` |
 
-x86 上 Intel 保留 **0–31** 给架构异常。设备 / timer / IPI 必须落在 ≥32 的向量上；timer / spurious / IPI 用固定宏，设备走表外窗口再 map 进全局表。
+x86 上 Intel 保留 **0–31** 给架构异常。设备 / timer / IPI 必须落在 ≥32 的向量上；timer / spurious / IPI 用固定宏，设备走表外窗口再 bind 进全局表。
 
 aarch64 上为了复用同一套「按编号分发」外形，把 EC 放入前 64 槽、IRQ 整体平移 +64——Trap 篇说的「假统一、真映射」。SGI+PPI 落在本核表内；SPI 是表外号，经公式映到 `global_irq_vector[]`。
 
@@ -239,7 +239,7 @@ aarch64 上为了复用同一套「按编号分发」外形，把 EC 放入前 6
 
 外设 SPI / 将来 IOAPIC·MSI 用大于等于 LO 的 `local_irq_id`。软件上先 `irq_global_alloc(global_irq_id, cpu_id, &local)`，再 `register_irq_handler`。全局表全机一份；亲和写在表项的 `(local_irq_id, cpu_id)` 上。
 
-`irq_global_alloc` 怎么定本核编号：先问架构 `arch_try_direct_map_local_irq_id`——aarch64 用公式能直接给出就用它；架构给不出（例如 x86 没有 GSI 与向量的固定公式，返回无效）时，再在目标核上扫描 `[ALLOC_LO, ALLOC_HI]` 找空闲号。定下之后用原子操作占全局项，并写下 map。
+`irq_global_alloc` 怎么定本核编号：交给 `arch_choose_local_irq_id`——aarch64 用公式直接给出；x86 在目标核上扫描 `[ALLOC_LO, ALLOC_HI]` 找空闲号。定下之后公共层 CAS `USED` 占全局项，再 `arch_global_bind_local_irq_id`。
 
 **③ 空洞（本核表长度内、又未被固定宏占用的空隙）**
 
@@ -395,7 +395,7 @@ x86 上多个设备可共享同一 IDT 向量（典型 PCI legacy 共享线）�
 
 **首次占用（装驱动）：**
 
-1. `irq_global_alloc(global_irq_id, cpu_id, &local_irq_id);` — **勿**手写 timer / IPI / EC 当设备号。内部先 `arch_try_direct_map_local_irq_id`；架构不给直接映射再扫空闲 local（见 §4.3 ②、§7.3）。可在别的核上替目标 `cpu_id` 调用。
+1. `irq_global_alloc(global_irq_id, cpu_id, &local_irq_id);` — **勿**手写 timer / IPI / EC 当设备号。内部由 `arch_choose_local_irq_id` 选号（见 §4.3 ②、§7.3）。可在别的核上替目标 `cpu_id` 调用。
 2. 在**属主核**上 `register_irq_handler(local_irq_id, cpu_id, isr, IRQ_NEED_EOI);` — 软件表就绪。
 3. **再**由平台改路由 / 打开线路：
    - x86：向量 = `local_irq_id`（IOAPIC / MSI 见 APIC 篇；v0.1 IOAPIC 还是空壳，外设线基本接不上）。
@@ -411,7 +411,7 @@ x86 上多个设备可共享同一 IDT 向量（典型 PCI legacy 共享线）�
 
 ## 7. 公开 API
 
-本篇涉及的接口分布在：两套 id（`irq_space.h` / `irq_space.c`）与分发（`trap.h` / `trap.c`）——`struct local_irq` / `struct arch_global_irq`、`irq_global_*`、`register_irq_handler`、`trap_handler`、`init_interrupt`、`arch_map_*`（`arch/*/trap/irq_space.c`）/ `arch_init_interrupt`、`arch_eoi_irq`、`arch_unknown_trap_handler`。说明改写自 `irq_space.h` / `trap.h` / `arch/*/trap/irq_space.h` Doxygen。
+本篇涉及的接口分布在：两套 id（`irq_space.h` / `irq_space.c`）与分发（`trap.h` / `trap.c`）——`struct local_irq` / `struct arch_global_irq`、`irq_global_*`、`register_irq_handler`、`trap_handler`、`init_interrupt`、`arch_choose_local_irq_id` / `arch_local_lookup_global_irq_id` / `arch_global_bind_local_irq_id`（`arch/*/trap/irq_space.c`）/ `arch_init_interrupt`、`arch_eoi_irq`、`arch_unknown_trap_handler`。说明改写自 `irq_space.h` / `trap.h` / `arch/*/trap/irq_space.h` Doxygen。
 
 **本篇不涉及：** `arch_register_fixed_trap` / `trap_class`（见 `23`）；weak `syscall`（见 `24`）；APIC / PIC / GIC 寄存器与路由（见 `26` / `27`）；timer / IPI 业务语义（见时间篇 / `30`）。
 
@@ -451,16 +451,14 @@ struct arch_global_irq *irq_global_find(size_t local_irq_id, cpu_id_t cpu_id);
 | 接口 | 说明 |
 |------|------|
 | `irq_global_vector_alloc` | 全机一次；表项初值为无效 id / 未占用。`count==0` → `-E_IN_PARAM`；已分配或分配器失败 → `-E_RENDEZVOS`。 |
-| `irq_global_alloc` | 见下。可替任意目标 `cpu_id` 抢未占用项。错误：map/忙 → `-E_REND_AGAIN`；窗口用尽 → `-E_REND_OVERFLOW`；参数非法 → `-E_IN_PARAM`。 |
-| `irq_global_free` | **须在属主 CPU 调用**（否则 `-E_IN_PARAM`）。清 map → 清亲和字段 → 复位架构私有字段 → **最后** `try_set_unused`（保留 handler 与 `NEED_EOI`）。亲和不符或未占用 → `-E_REND_NOFOUND`。 |
-| `irq_global_find` | map 后再核占用 / local / cpu_id；`CPU_ID_INVALID` = 当前 CPU。 |
+| `irq_global_alloc` | 见下。可替任意目标 `cpu_id` 抢未占用项。错误：USED/bind 失败 → `-E_REND_AGAIN`；窗口用尽 → `-E_REND_OVERFLOW`；参数非法 → `-E_IN_PARAM`。 |
+| `irq_global_free` | **须在属主 CPU 调用**（否则 `-E_IN_PARAM`）。unbind → 清亲和字段 → 复位架构私有字段 → **最后** `try_set_unused`（保留 handler 与 `NEED_EOI`）。亲和不符或未占用 → `-E_REND_NOFOUND`。 |
+| `irq_global_find` | `arch_local_lookup_global_irq_id` 后再核占用 / local / cpu_id；`CPU_ID_INVALID` = 当前 CPU。 |
 
-`irq_global_alloc` 的过程可以概括成两步：
+`irq_global_alloc` 的过程：
 
-1. **先试架构直接映射**：调用 `arch_try_direct_map_local_irq_id(global_irq_id)`。架构若能给出确定的 `local_irq_id`（aarch64：SPI 下标 ↔ INTID ↔ local），就用它——前提是该号在目标核上仍空闲。
-2. **架构不允许直接映射时再找 id**：返回 `IRQ_LOCAL_ID_INVALID`（x86：没有 GSI 与向量的公式对应）时，在目标核上扫描 `[ALLOC_LO, ALLOC_HI]` 挑空闲 `local_irq_id`，再 `arch_map_local_irq_id` 写进 per-CPU map。
-
-两步都会 CAS 占全局项；map 失败则回滚占用。
+1. **`arch_choose_local_irq_id(global_irq_id, cpu_id)`** 选出 `local_irq_id`（aarch64：公式；x86：扫 `[ALLOC_LO, ALLOC_HI]`）。失败 → `-E_REND_OVERFLOW`。
+2. CAS `USED` 占全局项 → `arch_global_bind_local_irq_id`；bind 失败则回滚。调用方可对 `-E_REND_AGAIN` 重试。
 
 ### 7.4 注册与分发
 
@@ -491,8 +489,8 @@ void arch_unknown_trap_handler(struct trap_frame *tf);
 
 | | x86_64 | aarch64 |
 |--|--------|---------|
-| 表外 map | 每核一份；同 LO 可异 GSI | 公式；同 LO 必同 SPI |
-| alloc 时的 local | `try_direct` → INVALID → 扫描空闲表外号 | `try_direct` → 公式算出 local |
+| 表外绑定 | 每核 `local_irq_map`；同 LO 可异 GSI | 公式；同 LO 必同 SPI |
+| `arch_choose_local_irq_id` | 扫 `[ALLOC_LO, ALLOC_HI]` 空闲号 | 公式算出 local |
 | 打开外设线 | IOAPIC 未实现 | `gic.unmask_irq` |
 
 控制器细节见 APIC / GIC 篇。riscv / loongarch 非 v0.1 主线。
@@ -509,7 +507,7 @@ void arch_unknown_trap_handler(struct trap_frame *tf);
 
 **平台与功能缺口：**
 
-- `irq_global_alloc`：忙或 map 冲突 → `-E_REND_AGAIN`；表外窗口用尽 → `-E_REND_OVERFLOW`；参数非法 → `-E_IN_PARAM`。
+- `irq_global_alloc`：USED/bind 失败 → `-E_REND_AGAIN`；表外窗口用尽 → `-E_REND_OVERFLOW`；参数非法 → `-E_IN_PARAM`。
 - x86 全局数组长度仍是启动时的暂定值；待 MADT 给出真实 GSI 数量。IOAPIC 路由未齐时，占出来的表外号还无处可编程。
 - 伪中断（spurious）无专用 handler。
 - 没有「同一编号挂多设备」的共享链（后写覆盖）；电平共享见 §6.2。
@@ -531,6 +529,9 @@ void arch_unknown_trap_handler(struct trap_frame *tf);
 - 2026-10-23：明确 `USED` CAS 只挡并发 alloc；`irq_global_free` 强制属主 CPU（caller == `cpu_id`），注释与 §4.4 / §7.3 同步。顺带收紧 `irq_global_alloc` 里仅扫描分支使用的 `mapped`。
 - 2026-10-23：模块文件改名 `irq` → `irq_space`（表达 id 命名空间）；`struct global_irq` → `struct arch_global_irq`。API 前缀（`irq_global_*` 等）与 `global_irq_vector` 符号名不变。
 - 2026-10-23：软件 id / map / alloc 抽到 `kernel/trap/irq_space.c` + `include/rendezvos/trap/irq_space.h`，arch 侧 `arch/*/trap/irq_space.c` / `irq_space.h`；`trap.c`/`trap.h` 只留分发与装表。逻辑未改，仅迁移。
+- 2026-10-25：§4.2 / §4.3 / §7 / §8 / §10 去掉残留 `arch_map_*` / `try_direct` / 「写下 map」表述，与 choose/lookup/bind 对齐。
+- 2026-10-25：`arch_map_global_irq_id` → `arch_local_lookup_global_irq_id`；`arch_map_local_irq_id` → `arch_global_bind_local_irq_id`。
+- 2026-10-25：`arch_try_direct_map_local_irq_id` → `arch_choose_local_irq_id`；选号策略（含 x86 扫窗）下沉到 arch，common 只做 claim/bind。
 - 2026-10-22：`arch_map_fixed_local_irq_id` 更名为 `arch_try_direct_map_local_irq_id`——alloc 先试直接映射，架构不接受再扫描空闲 local。
 - 2026-10-22：对齐两套 id 模型——`local_irq_vector` / `global_irq_vector`、`irq_global_*`、按 `cpu_id` 注册；补本核表↔全局表图；§4.3 / §6 / §7 由旧 reserve/pool 叙述改写为现行语义。**保留** EOI / 共享时序图、编号空间布局、驱动 checklist 与既有变更记录条目。
 - 2026-10-07：§1 概述瘦身——EOI 时序图与 IRQ 共享图迁入 §6.2，与 `trap_handler` 流程合并；§1.3 只留概念句并回指。

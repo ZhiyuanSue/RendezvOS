@@ -10,7 +10,7 @@
  */
 DEFINE_PER_CPU(u64, local_irq_map[NR_IDT_VECTORS]);
 
-size_t arch_map_global_irq_id(cpu_id_t cpu_id, size_t local_irq_id)
+size_t arch_local_lookup_global_irq_id(cpu_id_t cpu_id, size_t local_irq_id)
 {
         u64 map_value;
 
@@ -36,19 +36,25 @@ bool arch_local_irq_id_available(cpu_id_t cpu_id, size_t local_irq_id)
             || local_irq_id >= (size_t)NR_IDT_VECTORS)
                 return false;
         /* Free to claim: not yet mapped on cpu_id. */
-        return arch_map_global_irq_id(cpu_id, local_irq_id)
+        return arch_local_lookup_global_irq_id(cpu_id, local_irq_id)
                == IRQ_GLOBAL_ID_INVALID;
 }
 
-size_t arch_try_direct_map_local_irq_id(size_t global_irq_id)
+size_t arch_choose_local_irq_id(size_t global_irq_id, cpu_id_t cpu_id)
 {
         (void)global_irq_id;
-        /* No formula local↔GSI; irq_global_alloc scans for a free local id. */
+        /* choose a free id in the alloc window. */
+        for (size_t candidate = ARCH_IRQ_ID_ALLOC_LO;
+             candidate <= ARCH_IRQ_ID_ALLOC_HI;
+             candidate++) {
+                if (arch_local_irq_id_available(cpu_id, candidate))
+                        return candidate;
+        }
         return IRQ_LOCAL_ID_INVALID;
 }
 
-bool arch_map_local_irq_id(cpu_id_t cpu_id, size_t local_irq_id,
-                           size_t global_irq_id)
+bool arch_global_bind_local_irq_id(cpu_id_t cpu_id, size_t local_irq_id,
+                                   size_t global_irq_id)
 {
         volatile u64 *cell;
 
@@ -68,7 +74,11 @@ bool arch_map_local_irq_id(cpu_id_t cpu_id, size_t local_irq_id,
         }
         if (!nr_global_irq || global_irq_id >= nr_global_irq)
                 return false;
-        /* CAS not-mapped(0) → global_irq_id+1; fail if already mapped. */
+        /*
+         * CAS not-mapped(0) → global_irq_id+1.two GSIs can still race for the
+         * same local vector on this CPU, So using CAS to decide who can get
+         * this local_irq_map slot.
+         */
         return atomic64_cas(cell, 0, (u64)global_irq_id + 1u) == 0;
 }
 

@@ -67,8 +67,8 @@ struct arch_global_irq {
 /*
  * local_irq_id → global_irq_id by formula (no per-CPU map table).
  * @c cpu_id is recorded at alloc for later GIC routing.
- * @c arch_map_local_irq_id is a no-op (always succeeds if cpu is valid).
- * @c arch_try_direct_map_local_irq_id returns the formula local_irq_id.
+ * @c arch_global_bind_local_irq_id is a no-op (always succeeds if cpu is valid).
+ * @c arch_choose_local_irq_id returns the formula local_irq_id.
  * Common APIs: @c rendezvos/trap/irq_space.h.
  */
 
