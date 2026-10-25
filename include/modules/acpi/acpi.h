@@ -11,41 +11,41 @@
 #include "acpi_fadt.h"
 #include "acpi_madt.h"
 #include <common/stdbool.h>
+#include <rendezvos/common.h>
 
 /**
- * @brief Locate RSDP (today: IA-PC legacy BIOS windows via internal helper).
+ * @brief Locate RSDP (today: IA-PC legacy BIOS path only).
  *
- * @p search_start_vaddr is the virt base for low physical identity used by
- * the legacy BIOS scan, which searches [ @p search_start_vaddr + 0x80000, @p
- * search_start_vaddr + 0x80400) then [ @p search_start_vaddr +0xE0000, @p
- * search_start_vaddr +0x100000). No checksum validation. Returns NULL if not
- * found; on success returns a **VA** inside those already-mapped windows
- * (suitable for @c setup_info->rsdp_addr / @c acpi_init).
+ * The legacy path ensures physical windows [0x80000,0x80400) and
+ * [0xE0000,0x100000) via identity map, then scans at @c KERNEL_PHY_TO_VIRT.
+ * No checksum. Other sources (e.g. UEFI) would be separate branches without
+ * those ensures.
  *
- * @note The search windows must already be mapped. Mapping the RSDP is the
- * probe stage’s job—not @c acpi_init’s.
+ * @param[out] rsdp_out On success, identity VA of the RSDP.
+ * @return @c REND_SUCCESS, or negative @c error_t (ensure failure / not found).
  */
-struct acpi_table_rsdp* acpi_probe_rsdp(vaddr search_start_vaddr);
+error_t acpi_probe_rsdp(struct acpi_table_rsdp **rsdp_out);
 /**
  * @brief Compare @c ACPI_SIG_LENG bytes of table signature.
  */
-bool acpi_table_sig_check(char* acpi_table_sig_ptr, char* sig_chars);
+bool acpi_table_sig_check(char *acpi_table_sig_ptr, char *sig_chars);
 /**
  * @brief Map table signature string to @c acpi_table_sig_enum.
  * @return Enum value, or -E_RENDEZVOS if unknown.
  */
 enum acpi_table_sig_enum
-get_acpi_table_type_from_sig(struct acpi_table_head* acpi_head);
+get_acpi_table_type_from_sig(struct acpi_table_head *acpi_head);
 /**
- * @brief Initialize ACPI from an already-mapped RSDP: ensure RSDT / child
- *        tables, walk RSDT, dispatch known signatures (e.g. FACP / APIC).
+ * @brief Full ACPI bring-up after VSpace / Map_Handler are ready.
  *
- * @p rsdp_addr is a **virtual** address of the RSDP. The RSDP page must already
- * be accessible (legacy probe windows today; future UEFI paths must map before
- * storing this VA). This function does **not** map the RSDP itself—only RSDT
- * and secondary tables via @c ensure_kernel_identity_range.
+ * Probes RSDP (legacy path maps its own windows), then ensures RSDT / child
+ * tables and walks them (FACP / APIC → arch parsers).
  *
- * Typical producer: @c acpi_probe_rsdp from @c prepare_arch.
+ * @param arch_setup_info Boot setup_info; unused on legacy BIOS today.
+ *        UEFI may carry an RSDP hint (or related) here later.
+ *
+ * @return @c REND_SUCCESS, or negative @c error_t (no RSDP, bad revision,
+ *         ensure/map failure, parser failure).
  */
-error_t acpi_init(vaddr rsdp_addr);
+error_t acpi_init(struct setup_info *arch_setup_info);
 #endif

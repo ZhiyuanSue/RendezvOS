@@ -297,7 +297,6 @@ setup_info:
 	.long 0	/* multiboot info struct ptr */
 	.long 0	/* phy addr width */
 	.long 0	/* linear addr width*/
-	.quad 0	/*rsdp ptr*/
 ap_boot_stack_ptr:
     .quad 0 /*ap_boot_stack_ptr*/;
 	.quad 0 /*cpu_id*/

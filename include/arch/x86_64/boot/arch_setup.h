@@ -37,13 +37,11 @@ struct setup_info {
                              * means the physicall address width
                              */
         u32 vir_addr_width; /*0xc: linear address width from same CPUID leaf*/
-        vaddr rsdp_addr; /**0x10: Filled by prepare_arch (RSDP probe); 0 if
-                            none.*/
-        vaddr ap_boot_stack_ptr; /**0x18: SMP AP stack top
+        vaddr ap_boot_stack_ptr; /**0x10: SMP AP stack top
                                   * AP start one by one, every time using a new
                                   * ap_boot_stack so this ptr should update
                                   */
-        cpu_id_t cpu_id; /*0x20: BSP/AP start given cpu id*/
+        cpu_id_t cpu_id; /*0x18: BSP/AP start given cpu id*/
 } __attribute__((packed));
 
 /**
@@ -68,11 +66,10 @@ GET_MULTIBOOT2_INFO(struct setup_info *setup_info)
 
 /**
  * @brief Early arch prepare after cmain opens UART/log (before phy_mm_init).
- * Do some basic Multiboot(1 or 2) and platform acpi RSDP probe for later work.
+ * Multiboot(1 or 2) check and cmdline
  *
  * @param arch_setup_info Boot-filled setup_info (from boot.S).
- * @return 0 on success; -E_RENDEZVOS if magic is neither Multiboot1 nor 2,
- *         or RSDP revision is unsupported.
+ * @return 0 on success; -E_RENDEZVOS if magic is neither Multiboot1 nor 2.
  *
  * @note Portable name; aarch64 has the same symbol with DTB semantics.
  */
@@ -93,10 +90,10 @@ error_t arch_cpu_info(struct setup_info *arch_setup_info);
 /**
  * @brief platform bring-up after virt_mm_init let the kallocator available.
  *
- * - acpi_init
+ * - acpi_init(arch_setup_info) (probe RSDP + ensure tables; UEFI hint later)
  * - scan pci
  *
- * @param arch_setup_info Must have rsdp_addr filled by prepare_arch.
+ * @param arch_setup_info Boot setup_info; passed through to acpi_init.
  * @return REND_SUCCESS, or error from acpi_init / pci_scan_all.
  */
 error_t arch_start_platform(struct setup_info *arch_setup_info);

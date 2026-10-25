@@ -177,17 +177,6 @@ error_t prepare_arch(struct setup_info *arch_setup_info)
                 print("not using the multiboot protocol, stop\n");
                 return (-E_RENDEZVOS);
         }
-
-        struct acpi_table_rsdp *rsdp = acpi_probe_rsdp(KERNEL_VIRT_OFFSET);
-
-        if (!rsdp) {
-                print("not find any rsdp\n");
-        } else if (rsdp->revision != 0) {
-                print("[ ACPI ] unsupported vision: %d\n", rsdp->revision);
-                return -E_RENDEZVOS;
-        } else {
-                arch_setup_info->rsdp_addr = (vaddr)rsdp;
-        }
         return (0);
 }
 error_t arch_cpu_info(struct setup_info *arch_setup_info)
@@ -232,7 +221,7 @@ struct pci_node *pci_tree_build_callback(u8 bus, u8 device, u8 func,
 error_t arch_start_platform(struct setup_info *arch_setup_info)
 {
         struct allocator *malloc = per_cpu(kallocator, BSP_ID);
-        error_t e = acpi_init(arch_setup_info->rsdp_addr);
+        error_t e = acpi_init(arch_setup_info);
         if (e != REND_SUCCESS)
                 goto arch_start_platform_error;
         /*

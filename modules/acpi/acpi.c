@@ -32,21 +32,34 @@ struct acpi_table_sig acpi_table_sigs[ACPI_NR_TABLES] = {
 
 /**
  * IA-PC legacy BIOS RSDP search (ACPI "Finding the RSDP on IA-PC Systems").
- * @p search_start_vaddr is the virt base of low physical identity (e.g.
- * KERNEL_VIRT_OFFSET).
+ * Ensures the two physical windows via identity map, then scans at
+ * KERNEL_PHY_TO_VIRT — same VA contract as ensure_kernel_identity_range.
  */
-static struct acpi_table_rsdp *
-acpi_probe_rsdp_legacy_bios(vaddr search_start_vaddr)
+static error_t acpi_probe_rsdp_legacy_bios(struct acpi_table_rsdp **rsdp_out)
 {
+        const ENTRY_FLAGS_t probe_flags = PAGE_ENTRY_GLOBAL | PAGE_ENTRY_READ
+                                          | PAGE_ENTRY_VALID | PAGE_ENTRY_WRITE;
+        struct VSpace *vs = per_cpu(current_vspace, BSP_ID);
+        struct map_handler *handler = &per_cpu(Map_Handler, BSP_ID);
+        error_t error;
         struct acpi_table_rsdp *rsdp = NULL;
-        vaddr first_region_start = search_start_vaddr + 0x00080000;
-        vaddr first_region_end = first_region_start + 0x400;
         u8 cmp_str[8] = ACPI_SIG_RSDP;
 
-        vaddr second_region_start = search_start_vaddr + 0x000E0000;
-        vaddr second_region_end = search_start_vaddr + 0x000FFFFF + 1;
-        for (vaddr search_addr = first_region_start;
-             search_addr < first_region_end;
+        error = ensure_kernel_identity_range(vs,
+                                             ACPI_RSDP_EBDA_PHY,
+                                             ACPI_RSDP_EBDA_LEN,
+                                             probe_flags,
+                                             handler);
+        if (error != REND_SUCCESS)
+                return error;
+        error = ensure_kernel_identity_range(
+                vs, ACPI_RSDP_ROM_PHY, ACPI_RSDP_ROM_LEN, probe_flags, handler);
+        if (error != REND_SUCCESS)
+                return error;
+
+        for (vaddr search_addr = KERNEL_PHY_TO_VIRT(ACPI_RSDP_EBDA_PHY);
+             search_addr
+             < KERNEL_PHY_TO_VIRT(ACPI_RSDP_EBDA_PHY) + ACPI_RSDP_EBDA_LEN;
              search_addr += 16) {
                 bool find = true;
                 for (int i = 0; i < 8; i++) {
@@ -60,32 +73,38 @@ acpi_probe_rsdp_legacy_bios(vaddr search_start_vaddr)
                         break;
                 }
         }
-        if (rsdp)
-                return rsdp;
-        for (vaddr search_addr = second_region_start;
-             search_addr < second_region_end;
-             search_addr += 16) {
-                bool find = true;
-                for (int i = 0; i < 8; i++) {
-                        if (((u8 *)search_addr)[i] != cmp_str[i]) {
-                                find = false;
+        if (!rsdp) {
+                for (vaddr search_addr = KERNEL_PHY_TO_VIRT(ACPI_RSDP_ROM_PHY);
+                     search_addr < KERNEL_PHY_TO_VIRT(ACPI_RSDP_ROM_PHY)
+                                           + ACPI_RSDP_ROM_LEN;
+                     search_addr += 16) {
+                        bool find = true;
+                        for (int i = 0; i < 8; i++) {
+                                if (((u8 *)search_addr)[i] != cmp_str[i]) {
+                                        find = false;
+                                        break;
+                                }
+                        }
+                        if (find) {
+                                rsdp = (struct acpi_table_rsdp *)search_addr;
                                 break;
                         }
                 }
-                if (find) {
-                        rsdp = (struct acpi_table_rsdp *)search_addr;
-                        break;
-                }
         }
-        return rsdp;
+
+        if (!rsdp)
+                return -E_RENDEZVOS;
+        *rsdp_out = rsdp;
+        return REND_SUCCESS;
 }
 
-struct acpi_table_rsdp *acpi_probe_rsdp(vaddr search_start_vaddr)
+error_t acpi_probe_rsdp(struct acpi_table_rsdp **rsdp_out)
 {
         /*
-         * Today only legacy BIOS windows.
+         * Today only legacy BIOS windows (ensure + scan). UEFI would be a
+         * separate branch that does not map these windows.
          */
-        return acpi_probe_rsdp_legacy_bios(search_start_vaddr);
+        return acpi_probe_rsdp_legacy_bios(rsdp_out);
 }
 
 bool acpi_table_sig_check(char *acpi_table_sig_ptr, char *sig_chars)
@@ -124,25 +143,27 @@ static inline error_t parser_acpi_tables(enum acpi_table_sig_enum sig_enum,
         }
 }
 
-error_t acpi_init(vaddr rsdp_addr)
+error_t acpi_init(struct setup_info *arch_setup_info)
 {
         const ENTRY_FLAGS_t table_flags = PAGE_ENTRY_GLOBAL | PAGE_ENTRY_READ
-                                          | PAGE_ENTRY_VALID
-                                          | PAGE_ENTRY_WRITE;
+                                          | PAGE_ENTRY_VALID | PAGE_ENTRY_WRITE;
+        struct VSpace *vs = per_cpu(current_vspace, BSP_ID);
+        struct map_handler *handler = &per_cpu(Map_Handler, BSP_ID);
+        struct acpi_table_rsdp *rsdp_table = NULL;
+        error_t error;
 
-        if (!rsdp_addr) {
-                print("[ ACPI ] ERROR: rsdp_addr is 0\n");
-                return -E_RENDEZVOS;
+        /* UEFI may read an RSDP hint from setup_info; legacy BIOS ignores it.
+         */
+        (void)arch_setup_info;
+
+        error = acpi_probe_rsdp(&rsdp_table);
+        if (error != REND_SUCCESS) {
+                print("[ ACPI ] ERROR: RSDP probe failed\n");
+                return error;
         }
 
-        struct acpi_table_rsdp *rsdp_table =
-                (struct acpi_table_rsdp *)rsdp_addr;
         if (rsdp_table->revision == 0) {
-                struct VSpace *vs = per_cpu(current_vspace, BSP_ID);
-                struct map_handler *handler = &per_cpu(Map_Handler, BSP_ID);
-
-                error_t error =
-                        ensure_kernel_identity_range(vs,
+                error = ensure_kernel_identity_range(vs,
                                                      rsdp_table->rsdt_address,
                                                      ACPI_HEAD_SIZE,
                                                      table_flags,
@@ -184,12 +205,11 @@ error_t acpi_init(vaddr rsdp_addr)
                                 (struct acpi_table_head *)KERNEL_PHY_TO_VIRT(
                                         (u64)entry_paddr);
 
-                        error = ensure_kernel_identity_range(
-                                vs,
-                                entry_paddr,
-                                table_head->length,
-                                table_flags,
-                                handler);
+                        error = ensure_kernel_identity_range(vs,
+                                                             entry_paddr,
+                                                             table_head->length,
+                                                             table_flags,
+                                                             handler);
                         if (error != REND_SUCCESS)
                                 return error;
 
@@ -197,8 +217,7 @@ error_t acpi_init(vaddr rsdp_addr)
                         if (sig == -E_RENDEZVOS) {
                                 print("[ ACPI ] ERROR: undefined table ");
                                 for (int j = 0; j < ACPI_SIG_LENG; j++)
-                                        print("%c",
-                                              table_head->signature[j]);
+                                        print("%c", table_head->signature[j]);
                                 print("\n");
                                 continue;
                         }
@@ -206,15 +225,14 @@ error_t acpi_init(vaddr rsdp_addr)
                         error = parser_acpi_tables(
                                 (enum acpi_table_sig_enum)sig, table_head);
                         if (error != REND_SUCCESS) {
-                                print(
-                                        "[ ACPI ] ERROR: parser failed sig enum %d\n",
-                                        sig);
+                                print("[ ACPI ] ERROR: parser failed sig enum %d\n",
+                                      sig);
                                 return error;
                         }
                 }
         } else {
                 print("[ ACPI ] ERROR: unsupported revision %d\n",
-                         rsdp_table->revision);
+                      rsdp_table->revision);
                 return -E_RENDEZVOS;
         }
         return REND_SUCCESS;

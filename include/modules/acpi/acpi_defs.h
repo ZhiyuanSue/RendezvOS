@@ -134,4 +134,11 @@ struct acpi_table_sig {
 #define ACPI_SIG_RSV_WPBT "WPBT"
 #define ACPI_SIG_RSV_WSMT "WSMT"
 #define ACPI_SIG_RSV_XENV "XENV"
+
+/* Legacy BIOS RSDP search windows (physical). */
+#define ACPI_RSDP_EBDA_PHY 0x00080000UL
+#define ACPI_RSDP_EBDA_LEN 0x400UL
+#define ACPI_RSDP_ROM_PHY  0x000E0000UL
+#define ACPI_RSDP_ROM_LEN  0x20000UL /* [0xE0000, 0x100000) */
+
 #endif

@@ -63,7 +63,7 @@ OOM 时换出哪个页面、杀掉哪个进程试图回收页面、回收哪些�
 
 本篇内容的调用方通常是 core 封装好的虚拟页面分配方案，或内核对象分配器。它们持有 `struct pmm *`（一般是 `mem_zones[ZONE_NORMAL].pmm`），调用其中通用的方法即可。分配失败时要不要腾页、怎么腾，不走这些内部调用方，而由兼容层经 `pmm_set_reclaim_hook` 注入（即`00`里 §3 说的第三条路用hook的方式）。
 
-与启动篇的衔接：`prepare_arch` 保证「能读到平台描述」（x86 认出 Multiboot 并探测 RSDP 写入 `rsdp_addr`，aarch64 映射好 DTB 头），真正把可用内存整理成区域表是 `arch_init_pmm` 的工作。`phy_mm_init` 成功之后，`virt_mm_init` 和 `arch_start_platform` 才能去分配物理页。
+与启动篇的衔接：`prepare_arch` 保证「能读到平台描述」（x86 认出 Multiboot；aarch64 映射好 DTB 头）。真正把可用内存整理成区域表是 `arch_init_pmm` 的工作。`phy_mm_init` 成功之后，`virt_mm_init` 和 `arch_start_platform` 才能去分配物理页。
 
 ---
 
@@ -517,7 +517,7 @@ make ARCH=x86_64 config && make run
 ## 11. 变更记录
 
 - 2026-10-24：去掉 `reserve_arch_region`（不再按 RSDT 扣 2 MiB 窗）。§1 / §4 / §5 / §6.1 / §7：ACPI 表区只靠 mmap 非 `AVAILABLE` 不插入；探测属 `04`，walk 属 `35`。
-- 2026-10-24：RSDP 探测已在 `prepare_arch`；曾写 `reserve_arch_region` 只按 `rsdp_addr` 保留页面（已废止，见上条）。
+- 2026-10-24：RSDP 探测已迁到 `acpi_init()`；曾写 `reserve_arch_region` / `setup_info.rsdp_addr`（已废止，见上条）。
 - 2026-10-07：开篇挂 `figures/memory_system.png` 作为 **02-内存管理整章栈总图**（未另开总览篇）；§1 起仍只覆盖物理页与 buddy。
 - 2026-10-06：厘清 `Page[]` 是 zone 通用描述，`buddy_page[]` 只是默认 buddy 的私有管理区；切片大小走 `pmm_calculate_manage_space`，内容由 `pmm_init` 填写。
 - 2026-10-06：§4.2 写清 PMM 预定含 L2 + `MemSection`/`Page[]` + 各 zone `buddy_page[]`；`buddy_page[]` 是 manage 切片不是 section 柔性数组；`struct buddy` 在静态 `buddy_pmm`。
