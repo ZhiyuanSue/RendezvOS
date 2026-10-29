@@ -1945,7 +1945,7 @@ error_t vmm_radix_tree_destroy(struct map_handler* handler, VSpace* vs)
 }
 
 /* shared high half l1 pages */
-static ppn_t kernel_radix_l1_table_base_ppn;
+static ppn_t kernel_radix_l1_table_base_ppn = -E_REND_NOFOUND;
 
 error_t
 vmm_radix_tree_bootstrap_shared_kernel_high_half(struct map_handler* handler,

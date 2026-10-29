@@ -87,7 +87,8 @@ int arch_vmm_test(void)
                 pr_error("[ ERROR ] ERROR:try get a ppn fail\n");
                 goto arch_vmm_test_error;
         }
-        if (have_mapped(vs, VPN(vp_1), NULL, NULL, &Map_Handler) > 0) {
+        if (!invalid_ppn(
+                    have_mapped(vs, VPN(vp_1), NULL, NULL, &Map_Handler))) {
                 pr_error(
                         "unexpected result have mapped check,here expect unmapped\n");
                 goto arch_vmm_test_error;

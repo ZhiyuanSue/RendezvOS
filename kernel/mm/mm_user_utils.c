@@ -66,8 +66,7 @@ static void mm_user_restore_range_pte_prefix(struct VSpace* vs,
                 ENTRY_FLAGS_t pte_flags = 0;
                 ppn_t mapped_ppn = have_mapped(
                         vs, VPN(page_va), &pte_flags, &pte_level, handler);
-                if ((i64)mapped_ppn < 0 || invalid_ppn(mapped_ppn)
-                    || pte_level != 3) {
+                if (invalid_ppn(mapped_ppn) || pte_level != 3) {
                         continue;
                 }
                 (void)map(vs,
@@ -467,14 +466,10 @@ error_t mm_user_utils_remap_page(struct VSpace* vs, vaddr page_va,
         int pte_level = 3;
         ppn_t old_ppn =
                 have_mapped(vs, VPN(page_va), NULL, &pte_level, handler);
-        if ((i64)old_ppn < 0) {
+        if (invalid_ppn(old_ppn)) {
                 (void)vmm_radix_tree_unlock_range_small(
                         (VSpace*)vs, page_va, page_range_end);
                 return (error_t)old_ppn;
-        } else if (invalid_ppn(old_ppn)) {
-                (void)vmm_radix_tree_unlock_range_small(
-                        (VSpace*)vs, page_va, page_range_end);
-                return -E_REND_NOFOUND;
         } else if (!invalid_ppn(expect_old_ppn) && old_ppn != expect_old_ppn) {
                 (void)vmm_radix_tree_unlock_range_small(
                         (VSpace*)vs, page_va, page_range_end);
@@ -597,12 +592,8 @@ error_t mm_user_utils_set_range_flags(struct VSpace* vs, vaddr range_start,
                 ENTRY_FLAGS_t pte_flags = 0;
                 ppn_t mapped_ppn = have_mapped(
                         vs, VPN(page_va), &pte_flags, &pte_level, handler);
-                if ((i64)mapped_ppn < 0) {
-                        err = (error_t)mapped_ppn;
-                        goto out_unlock_l2;
-                }
                 if (invalid_ppn(mapped_ppn)) {
-                        err = -E_REND_NOFOUND;
+                        err = (error_t)mapped_ppn;
                         goto out_unlock_l2;
                 }
                 if (pte_level != 3) {
@@ -634,11 +625,11 @@ error_t mm_user_utils_set_range_flags(struct VSpace* vs, vaddr range_start,
                 ENTRY_FLAGS_t pte_flags = 0;
                 ppn_t mapped_ppn = have_mapped(
                         vs, VPN(page_va), &pte_flags, &pte_level, handler);
-                if ((i64)mapped_ppn < 0) {
+                if (invalid_ppn(mapped_ppn)) {
                         err = (error_t)mapped_ppn;
                         goto out_rollback_pte;
                 }
-                if (invalid_ppn(mapped_ppn) || pte_level != 3) {
+                if (pte_level != 3) {
                         err = -E_RENDEZVOS;
                         goto out_rollback_pte;
                 }

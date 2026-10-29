@@ -29,7 +29,7 @@
 #define L3_entry_addr(entry)      (((u64)(entry.paddr)) << 12)
 
 typedef i64 ppn_t;
-#define invalid_ppn(ppn) (ppn <= 0)
+#define invalid_ppn(ppn) ((ppn_t)(ppn) < 0)
 typedef u64 vpn_t;
 #define PPN(p_addr) ((paddr)(p_addr) >> 12)
 #define VPN(v_addr) ((vaddr)(v_addr) >> 12)

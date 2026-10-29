@@ -161,11 +161,11 @@ struct buddy_page {
 };
 ```
 
-**`struct pmm`** 是 zone 对外的分配器接口，包含 `pmm_alloc` / `pmm_free` / `pmm_init` 等函数指针。调用方拿着 `zone->pmm` 要页、还页。默认实现是 buddy（`struct buddy` 开头就是这份 `PMM_COMMON`）；换别的分配器也走同一组函数指针。页帧号记作 **ppn**（physical page number）；`invalid_ppn` 把 `ppn <= 0` 都当非法，所以 **0 号页不能拿来分配**。
+**`struct pmm`** 是 zone 对外的分配器接口，包含 `pmm_alloc` / `pmm_free` / `pmm_init` 等函数指针。调用方拿着 `zone->pmm` 要页、还页。默认实现是 buddy（`struct buddy` 开头就是这份 `PMM_COMMON`）；换别的分配器也走同一组函数指针。页帧号记作 **ppn**（physical page number）；**0 号帧合法**（firmware / boot identity 等），`invalid_ppn` 仅把 **负值** 当非法（含 miss / `-E_*`）；见 `common/mm.h`。
 
 ```c
 typedef i64 ppn_t;
-#define invalid_ppn(ppn) (ppn <= 0)
+#define invalid_ppn(ppn) ((ppn_t)(ppn) < 0)
 
 #define PMM_COMMON                                                            \
         void (*pmm_init)(struct pmm * pmm,                                    \
@@ -470,7 +470,7 @@ error_t pmm_change_pages_ref(struct pmm *, ppn_t start, size_t n, bool inc);
 |------|------|
 | `pmm_init` | 用 `[start, end)` 这块已经 reserve 好的物理区间，填写本 pmm 的私有管理结构。buddy：在其中铺 `buddy_page[]`。 |
 | `pmm_calculate_manage_space` | 按该 zone 的页数回报私有管理区要多少页。core 只按返回值切片，不理解布局。buddy：`ROUND_UP(n * sizeof(buddy_page), PAGE_SIZE) / PAGE_SIZE`。 |
-| `pmm_alloc` | 分配至少 `page_number` 页；成功返回起始 **ppn**（`ppn_t`=`i64`），`*alloced_page_number` 为向上取整到 2ⁿ 的实际页数。`page_number==0` 则返回 `0` 且 alloced=0。失败返回**负** `error_t`：超 `2^BUDDY_MAXORDER` 且总数够，或 buddy 账本不一致，则 `-E_RENDEZVOS`（不 reclaim）；无 hook / 重试耗尽则 `-E_REND_AGAIN`；hook 放弃则 `-E_REND_NO_MEM`。判断失败用 `invalid_ppn`（`ppn<=0`）；空请求的 `0` 也被该宏判为非法，调用方需区分。core **不**自动跨 zone 借用。 |
+| `pmm_alloc` | 分配至少 `page_number` 页；成功返回起始 **ppn**（`ppn_t`=`i64`，**含 0**），`*alloced_page_number` 为向上取整到 2ⁿ 的实际页数。`page_number==0` 会返回 `-E_IN_PARAM`（非法参数，不是成功空分配）。其它失败亦为**负** `error_t`：超 `2^BUDDY_MAXORDER` 且总数够，或 buddy 账本不一致，则 `-E_RENDEZVOS`（不 reclaim）；无 hook / 重试耗尽则 `-E_REND_AGAIN`；hook 放弃则 `-E_REND_NO_MEM`。判断失败用 `invalid_ppn`宏。core **不**自动跨 zone 借用。 |
 | `pmm_free` | 从 `ppn` 起释放 `page_number` 页（调用约定应与当初分配跨度一致）。成功 `0`，失败负错误码。按页降 `Page` 引用计数，减到 0 再并回桶；**不**检查这是不是一次 alloc 的整块。 |
 | `pmm_set_reclaim_hook` | 兼容层安装/清空 reclaim 回调。core 不注册。回调只在 `pmm_alloc` 当时拿不到页时调用，且 **锁已放**。hook 可对本 `pmm` `pmm_free`，**禁止** `pmm_alloc`。最多 64 次。 |
 | `pmm_lock` / `pmm_unlock` | MCS；`me` 必须是**当前核**的 `pmm_spin_lock[zone_id]`。 |
@@ -517,6 +517,7 @@ make ARCH=x86_64 config && make run
 ## 11. 变更记录
 
 - 2026-10-24：去掉 `reserve_arch_region`（不再按 RSDT 扣 2 MiB 窗）。§1 / §4 / §5 / §6.1 / §7：ACPI 表区只靠 mmap 非 `AVAILABLE` 不插入；探测属 `04`，walk 属 `35`。
+- 2026-10-29：`pmm_alloc(page_number==0)` 改为 `-E_IN_PARAM`；成功 `0` 仅表示真实 ppn0，不再用 `*alloced_page_number` 区分空请求。
 - 2026-10-24：RSDP 探测已迁到 `acpi_init()`；曾写 `reserve_arch_region` / `setup_info.rsdp_addr`（已废止，见上条）。
 - 2026-10-07：开篇挂 `figures/memory_system.png` 作为 **02-内存管理整章栈总图**（未另开总览篇）；§1 起仍只覆盖物理页与 buddy。
 - 2026-10-06：厘清 `Page[]` 是 zone 通用描述，`buddy_page[]` 只是默认 buddy 的私有管理区；切片大小走 `pmm_calculate_manage_space`，内容由 `pmm_init` 填写。

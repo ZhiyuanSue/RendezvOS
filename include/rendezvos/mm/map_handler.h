@@ -83,8 +83,8 @@ error_t map(VSpace* vs, ppn_t ppn, vpn_t vpn, int level, ENTRY_FLAGS_t eflags,
  * @param new_entry_addr After zeroing the leaf, written into the PTE @c paddr
  *                       field only; the entry stays invalid (not a live remap).
  * @param handler        Per-CPU map handler.
- * @return Former mapped ppn on success (may be 0 if the L3 leaf was empty);
- *         negative @c error_t on walk failure. Null @p vs/@p handler → 0.
+ * @return Former mapped @c ppn_t (>=0, including 0) on success;
+ *         negative (@c invalid_ppn) if absent or on walk / param failure.
  */
 ppn_t unmap(VSpace* vs, vpn_t vpn, u64 new_entry_addr,
             struct map_handler* handler);
@@ -97,7 +97,8 @@ ppn_t unmap(VSpace* vs, vpn_t vpn, u64 new_entry_addr,
  * @param entry_flags_out  Optional: portable flags of the leaf (may be NULL).
  * @param entry_level_out  Optional: 2 (huge) or 3 (4K) (may be NULL).
  * @param handler          Per-CPU map handler.
- * @return Mapped ppn (>0); 0 if not present / invalid; negative on error.
+ * @return Mapped @c ppn_t (>=0, including 0); negative (@c invalid_ppn) if
+ *         not present or on error.
  */
 ppn_t have_mapped(VSpace* vs, vpn_t vpn, ENTRY_FLAGS_t* entry_flags_out,
                   int* entry_level_out, struct map_handler* handler);

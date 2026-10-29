@@ -268,11 +268,11 @@ typedef bool (*pmm_reclaim_fn_t)(struct pmm* pmm, size_t need_pages,
  * Callers pick a zone's @c pmm (usually @c mem_zones[ZONE_NORMAL].pmm );
  *
  * @par pmm_alloc
- * Request @p page_number pages; on success returns starting @c ppn_t and
- * writes the actual count to @p alloced_page_number (buddy rounds up to 2^n).
- * @c page_number == 0 → returns 0 and alloced 0 (success). Do not use
- * @c invalid_ppn() on that path: it treats 0 as invalid.
- * Other failures are negative @c error_t (@c invalid_ppn() is true):
+ * Request @p page_number pages (@p page_number must be > 0). On success
+ * returns the starting @c ppn_t and writes the actual count to @p
+ * alloced_page_number (buddy rounds up to 2^n). Test the return with @c
+ * invalid_ppn(): only negatives are failures. Failure codes:
+ * @c -E_IN_PARAM — @c page_number == 0 (not a no-op success);
  * @c -E_RENDEZVOS — request larger than the allocator can give, or metadata
  * broken (no reclaim);
  * @c -E_REND_AGAIN — reclaim unset or exhausted (typical OOM);

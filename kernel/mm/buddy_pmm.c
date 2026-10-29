@@ -98,8 +98,8 @@ void pmm_init(struct pmm *pmm, paddr pmm_phy_start_addr, paddr pmm_phy_end_addr)
         }
         return;
 }
-i64 pmm_alloc_zone(struct buddy *bp, int alloc_order,
-                   size_t *alloced_page_number)
+ppn_t pmm_alloc_zone(struct buddy *bp, int alloc_order,
+                     size_t *alloced_page_number)
 {
         int tmp_order;
         struct buddy_page *del_node = NULL;
@@ -207,8 +207,9 @@ i64 pmm_alloc(struct pmm *pmm, size_t page_number, size_t *alloced_page_number)
         size_t have_tried_reclaim_attempt = 0;
 
         if (page_number == 0) {
-                *alloced_page_number = 0;
-                return (0);
+                if (alloced_page_number)
+                        *alloced_page_number = 0;
+                return (-E_IN_PARAM);
         }
 
 retry:
@@ -231,13 +232,13 @@ retry:
 
         /*calculate the upper 2^n size*/
         alloc_order = log2_of_next_power_of_two(page_number);
-        i64 res = pmm_alloc_zone(bp, alloc_order, alloced_page_number);
+        ppn_t ppn = pmm_alloc_zone(bp, alloc_order, alloced_page_number);
         pmm_unlock(pmm);
-        if (!invalid_ppn(res))
-                return res;
+        if (!invalid_ppn(ppn))
+                return ppn;
         /*The buddy data have been broken*/
-        if (res == -E_RENDEZVOS)
-                return res;
+        if (ppn == -E_RENDEZVOS)
+                return ppn;
 
 try_reclaim:
         if (!pmm->reclaim_fn

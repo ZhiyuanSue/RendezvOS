@@ -46,9 +46,7 @@ error_t ensure_kernel_identity_range(struct VSpace *vs, paddr phy, size_t len,
                                         &entry_level,
                                         handler);
 
-                if (ppn < 0)
-                        return (error_t)ppn;
-                if (ppn > 0) {
+                if (!invalid_ppn(ppn)) {
                         if (!identity_mapped_ppn_legal(
                                     ppn, entry_level, page_iter)) {
                                 pr_error(
@@ -58,6 +56,8 @@ error_t ensure_kernel_identity_range(struct VSpace *vs, paddr phy, size_t len,
                         }
                         continue;
                 }
+                if (ppn != -E_REND_NOFOUND)
+                        return (error_t)ppn;
 
                 map_error = map(vs,
                                 PPN(page_iter),
@@ -112,15 +112,15 @@ error_t map_kernel_identity_empty_range(struct VSpace *vs, paddr phy,
                                         &entry_level,
                                         handler);
 
-                if (ppn < 0)
-                        return (error_t)ppn;
-                if (ppn > 0) {
+                if (!invalid_ppn(ppn)) {
                         pr_error(
                                 "[ KMAP ] ERROR: not empty phy=0x%lx level=%d\n",
                                 (u64)page_iter,
                                 entry_level);
                         return -E_RENDEZVOS;
                 }
+                if (ppn != -E_REND_NOFOUND)
+                        return (error_t)ppn;
         }
 
         while (page_iter > page_start) {
@@ -171,15 +171,15 @@ error_t unmap_kernel_identity_range(struct VSpace *vs, paddr phy, size_t len,
                                         &entry_level,
                                         handler);
 
-                if (ppn < 0) {
+                if (ppn == -E_REND_NOFOUND)
+                        continue;
+                if (invalid_ppn(ppn)) {
                         pr_error("[ KMAP ] ERROR: have_mapped phy=0x%lx e=%d\n",
                                  (u64)page_iter,
                                  (int)ppn);
                         error = (error_t)ppn;
                         continue;
                 }
-                if (ppn == 0)
-                        continue;
 
                 if (entry_level == 3
                     && identity_mapped_ppn_legal(ppn, entry_level, page_iter)) {
