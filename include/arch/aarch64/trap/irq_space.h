@@ -4,7 +4,7 @@
 #include <common/types.h>
 #include <arch/aarch64/gic/gic_v2.h>
 #include <rendezvos/smp/cpu_id.h>
-#include <rendezvos/trap/trap_common.h>
+#include <rendezvos/trap/irq_space_common.h>
 #include "trap_def.h"
 
 #define AARCH64_IRQ_TO_TRAP_ID(irq_number) (irq_number + AARCH64_IRQ_OFFSET)
@@ -67,7 +67,8 @@ struct arch_global_irq {
 /*
  * local_irq_id → global_irq_id by formula (no per-CPU map table).
  * @c cpu_id is recorded at alloc for later GIC routing.
- * @c arch_global_bind_local_irq_id is a no-op (always succeeds if cpu is valid).
+ * @c arch_global_bind_local_irq_id is a no-op (always succeeds if cpu is
+ * valid).
  * @c arch_choose_local_irq_id returns the formula local_irq_id.
  * Common APIs: @c rendezvos/trap/irq_space.h.
  */

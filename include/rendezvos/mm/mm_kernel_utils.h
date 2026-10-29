@@ -23,10 +23,12 @@
  * Two install contracts — named by **policy**, not by device class
  * (@p eflags carries attributes such as Device):
  *
- * | Function                          | Policy                         | Already mapped   | Holes            |
+ * | Function                          | Policy                         |
+ * Already mapped   | Holes            |
  * |-----------------------------------|--------------------------------|------------------|------------------|
- * | @c ensure_kernel_identity_range   | Make span reachable (ENSURE)   | identity → skip  | 4KiB + @p eflags |
- * | @c map_kernel_identity_empty_range| Install into a fully empty span| **any** → fail   | 4KiB + @p eflags |
+ * | @c ensure_kernel_identity_range   | Make span reachable (ENSURE)   |
+ * identity → skip  | 4KiB + @p eflags | | @c map_kernel_identity_empty_range|
+ * Install into a fully empty span| **any** → fail   | 4KiB + @p eflags |
  *
  * Tear-down for empty-install ranges: @c unmap_kernel_identity_range
  * (best-effort). ENSURE / firmware ranges are not unmapped by design.

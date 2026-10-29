@@ -7,7 +7,7 @@
  * This module owns local_irq_vector / global_irq_vector, the local↔global
  * map, and @c irq_global_* claim/release. It does not program interrupt
  * controllers (route, mask, EOI registers): that is platform code.
- * Dispatch (@c trap_handler / @c register_irq_handler) lives in
+ * Dispatch (@c trap_handler / @c register_irq_handler, etc.) lives in
  * @c rendezvos/trap/trap.h; register's global path follows the ownership
  * rules below.
  *
@@ -38,7 +38,7 @@
 #include <common/atomic.h>
 #include <rendezvos/error.h>
 #include <rendezvos/smp/cpu_id.h>
-#include <rendezvos/trap/trap_common.h>
+#include <rendezvos/trap/irq_space_common.h>
 
 #ifdef _AARCH64_
 #include <arch/aarch64/trap/irq_space.h>
@@ -58,8 +58,9 @@ struct local_irq {
 };
 
 /*
- * Allocated once in @c arch_start_platform via @c irq_global_vector_alloc.
- * @c nr_global_irq is the length of that vector.
+ * Optional external-irq table. NULL / @c nr_global_irq == 0 if the platform
+ * has no global irq case (e.g. no IOAPIC). Filled by @c
+ * irq_global_vector_alloc.
  */
 extern struct arch_global_irq *global_irq_vector;
 extern size_t nr_global_irq;
@@ -143,14 +144,15 @@ static inline bool irq_atomic_attr_try_set_unused(atomic64_t *attr)
                == old_attr;
 }
 
-bool irq_trap_is_local(size_t local_irq_id);
+bool irq_trap_is_local(local_irq_id_t local_irq_id);
 
 /**
  * Look up the global irq entry for @p local_irq_id on @p cpu_id.
  * @p cpu_id @c CPU_ID_INVALID means the current CPU.
  * @return the entry, or NULL if not allocated / affinity mismatch.
  */
-struct arch_global_irq *irq_global_find(size_t local_irq_id, cpu_id_t cpu_id);
+struct arch_global_irq *irq_global_find(local_irq_id_t local_irq_id,
+                                        cpu_id_t cpu_id);
 
 /* === arch local↔global helpers (arch/<arch>/trap/irq_space.c) === */
 /*
@@ -160,22 +162,24 @@ struct arch_global_irq *irq_global_find(size_t local_irq_id, cpu_id_t cpu_id);
 /**
  * using @p local_irq_id on @p cpu_id to lookup @c global_irq_id, or INVALID.
  */
-size_t arch_local_lookup_global_irq_id(cpu_id_t cpu_id, size_t local_irq_id);
+global_irq_id_t arch_local_lookup_global_irq_id(cpu_id_t cpu_id,
+                                                local_irq_id_t local_irq_id);
 
 /**
  * Arch policy: choose a @c local_irq_id for @p global_irq_id on @p cpu_id.
  *
  * @return chosen @c local_irq_id, or @c IRQ_LOCAL_ID_INVALID if none.
  */
-size_t arch_choose_local_irq_id(size_t global_irq_id, cpu_id_t cpu_id);
+local_irq_id_t arch_choose_local_irq_id(global_irq_id_t global_irq_id,
+                                        cpu_id_t cpu_id);
 
 /**
  * Bind a @p local_irq_id on @p cpu_id to @p global_irq_id.
  * if @p global_irq_id == @c IRQ_GLOBAL_ID_INVALID unbinds (clears the mapping).
  * @return false if the update fails (e.g. already bound).
  */
-bool arch_global_bind_local_irq_id(cpu_id_t cpu_id, size_t local_irq_id,
-                                    size_t global_irq_id);
+bool arch_global_bind_local_irq_id(cpu_id_t cpu_id, local_irq_id_t local_irq_id,
+                                   global_irq_id_t global_irq_id);
 
 /** Reset arch-private fields of an unused global irq entry. */
 void arch_irq_global_entry_reset(struct arch_global_irq *entry);
@@ -183,12 +187,12 @@ void arch_irq_global_entry_reset(struct arch_global_irq *entry);
 /**
  * Allocate @c global_irq_vector of @p count entries and set @c nr_global_irq.
  *
- * Called once from @c arch_start_platform on the BSP, after @c kallocator
- * exists. @p count is the platform external-irq count. Entries start unused;
- * id fields are @c IRQ_LOCAL_ID_INVALID / @c CPU_ID_INVALID.
+ * Called once from platform bring-up after
+ * @c kallocator exists. @p count == 0 leaves the table empty (NULL / 0).
+ * Non-zero: entries start unused; id fields set to @c IRQ_LOCAL_ID_INVALID /
+ * @c CPU_ID_INVALID.
  *
- * @return @c REND_SUCCESS, @c -E_IN_PARAM if @p count is 0,
- *         @c -E_RENDEZVOS if already allocated or @c kallocator fails.
+ * @return @c REND_SUCCESS, or @c -E_RENDEZVOS if already set / alloc fails.
  */
 error_t irq_global_vector_alloc(size_t count);
 
@@ -204,8 +208,8 @@ error_t irq_global_vector_alloc(size_t count);
  *         @c -E_REND_AGAIN if USED or bind failed,
  *         @c -E_REND_OVERFLOW if the arch cannot choose a local_irq_id.
  */
-error_t irq_global_alloc(size_t global_irq_id, cpu_id_t cpu_id,
-                         size_t *local_irq_id_out);
+error_t irq_global_alloc(global_irq_id_t global_irq_id, cpu_id_t cpu_id,
+                         local_irq_id_t *local_irq_id_out);
 
 /**
  * Release @p global_irq_id previously claimed for @p cpu_id (concrete).
@@ -220,6 +224,6 @@ error_t irq_global_alloc(size_t global_irq_id, cpu_id_t cpu_id,
  *         @c -E_IN_PARAM on bad arguments or caller is not @p cpu_id,
  *         @c -E_REND_NOFOUND if not claimed or affinity mismatch.
  */
-error_t irq_global_free(size_t global_irq_id, cpu_id_t cpu_id);
+error_t irq_global_free(global_irq_id_t global_irq_id, cpu_id_t cpu_id);
 
 #endif /* _RENDEZVOS_IRQ_SPACE_H_ */

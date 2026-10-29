@@ -223,7 +223,8 @@ void software_enable_APIC(void);
  *
  * Uses @c ensure_kernel_identity_range; skips if already identity.
  *
- * @return true on success / already identity; false if not xAPIC or ensure fails
+ * @return true on success / already identity; false if not xAPIC or ensure
+ * fails
  */
 bool map_LAPIC(void);
 

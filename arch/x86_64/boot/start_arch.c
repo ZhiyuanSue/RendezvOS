@@ -1,4 +1,5 @@
 #include <arch/x86_64/PIC/IRQ.h>
+#include <arch/x86_64/PIC/IOAPIC.h>
 #include <arch/x86_64/boot/arch_setup.h>
 #include <arch/x86_64/boot/multiboot.h>
 #include <arch/x86_64/boot/multiboot2.h>
@@ -224,11 +225,7 @@ error_t arch_start_platform(struct setup_info *arch_setup_info)
         error_t e = acpi_init(arch_setup_info);
         if (e != REND_SUCCESS)
                 goto arch_start_platform_error;
-        /*
-         * TODO: parse MADT and pass the machine GSI count.
-         * Until then the global irq vector length is NR_ARCH_GLOBAL_IRQ (256).
-         */
-        e = irq_global_vector_alloc(NR_ARCH_GLOBAL_IRQ);
+        e = ioapic_init();
         if (e != REND_SUCCESS)
                 goto arch_start_platform_error;
         /*alloc a pci root node without any info*/

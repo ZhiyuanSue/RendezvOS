@@ -4,8 +4,7 @@
  * This header must NOT include any architecture-specific headers
  * to avoid circular dependencies.
  *
- * Included by rendezvos/trap/irq_space.h, rendezvos/trap/trap.h, and arch
- * trap/irq_space headers.
+ * Included by arch trap headers and (indirectly) @c rendezvos/trap/trap.h.
  */
 #ifndef _RENDEZVOS_TRAP_COMMON_H_
 #define _RENDEZVOS_TRAP_COMMON_H_
@@ -20,30 +19,6 @@
 
 /* Forward declaration (defined in arch-specific trap.h) */
 struct trap_frame;
-
-/**
- * Fields shared by every arch's @c struct arch_global_irq.
- * Arch headers embed this macro, then append arch-only fields.
- *
- * Not used by @c struct local_irq (handler + plain @c u64 irq_attr there).
- */
-#define GLOBAL_IRQ_COMMON                                         \
-        void (*irq_handler)(struct trap_frame * tf);              \
-        atomic64_t irq_attr; /* CAS USED at alloc; NEED_EOI, … */ \
-        size_t local_irq_id; /* per-CPU id mapped on cpu_id */    \
-        cpu_id_t cpu_id;
-
-#define IRQ_NO_ATTR  (0ull)
-#define IRQ_NEED_EOI BIT_U64(0) /* trap_handler EOI after irq_handler returns \
-                                 */
-#define IRQ_ATTR_USED BIT_U64(1) /* this irq has been claimed / is in use */
-
-/** No global_irq_id (not an index into @c global_irq_vector). */
-#define IRQ_GLOBAL_ID_INVALID ((size_t)-1)
-/**
- * No local_irq_id (@c arch_choose_local_irq_id failed), or entry unset.
- */
-#define IRQ_LOCAL_ID_INVALID ((size_t)-1)
 
 /*
  * TRAP_COMMON macro (similar to PMM_COMMON pattern).

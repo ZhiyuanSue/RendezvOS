@@ -3,12 +3,8 @@
 
 #include <common/types.h>
 #include <common/stddef.h>
-
-/*
- * I/O APIC is MMIO (like xAPIC).
- * But only two registers are mapped; internal regs are
- * reached by index through IOREGSEL and IOWIN register.
- */
+#include <rendezvos/error.h>
+#include <arch/x86_64/PIC/gsi.h>
 
 /* each RTE has 2 u32 registers (internal indices 0x10+2n / 0x11+2n) */
 struct IOAPIC_RTE {
@@ -59,7 +55,11 @@ struct IOAPIC_RTE {
 #define IOAPIC_ID_OFF  24
 #define IOAPIC_ID_MASK (0xf << IOAPIC_ID_OFF)
 
-/* Version register (index 1): Max Redirection Entry = nr_pins - 1. */
+/*
+ * Version register (index 1): MaxRTE in bits 23:16 (8-bit, 0..255).
+ * Software stores nr_pins = MaxRTE + 1 (1..256), so @c struct ioapic::nr_pins
+ * is @c u16 — @c u8 cannot hold 256.
+ */
 #define IOAPIC_VERSION_MAX_RTE_OFF  16
 #define IOAPIC_VERSION_MAX_RTE_MASK (0xff << IOAPIC_VERSION_MAX_RTE_OFF)
 #define IOAPIC_VERSION_MASK         0xff
@@ -91,12 +91,19 @@ struct IOAPIC_RTE {
 /* Runtime IOAPIC descriptors (MADT discovery + Version probe). */
 struct ioapic {
         u8 ioapic_id;
-        u8 nr_pins; /* 0 until Version MMIO read */
+        u16 nr_pins;
         paddr mmio_phy_base;
-        u32 gsi_base;
+        gsi_id_t gsi_base;
 };
 
 extern struct ioapic *ioapics;
 extern size_t nr_ioapics;
+
+/**
+ * @brief init ioapic data and structures.
+ *
+ * Requires @c ioapics[] from @c arch_parser_madt.
+ */
+error_t ioapic_init(void);
 
 #endif

@@ -17,15 +17,17 @@ DEFINE_PER_CPU(struct local_irq, local_irq_vector[NR_ARCH_LOCAL_IRQ]);
 struct arch_global_irq *global_irq_vector;
 size_t nr_global_irq;
 
-bool irq_trap_is_local(size_t local_irq_id)
+bool irq_trap_is_local(local_irq_id_t local_irq_id)
 {
-        return local_irq_id < (size_t)NR_ARCH_LOCAL_IRQ;
+        return local_irq_id < (local_irq_id_t)NR_ARCH_LOCAL_IRQ;
 }
 
-struct arch_global_irq *irq_global_find(size_t local_irq_id, cpu_id_t cpu_id)
+struct arch_global_irq *irq_global_find(local_irq_id_t local_irq_id,
+                                        cpu_id_t cpu_id)
 {
-        size_t global_irq_id = arch_local_lookup_global_irq_id(cpu_id, local_irq_id);
-        if (global_irq_id >= nr_global_irq)
+        global_irq_id_t global_irq_id =
+                arch_local_lookup_global_irq_id(cpu_id, local_irq_id);
+        if (global_irq_id >= (global_irq_id_t)nr_global_irq)
                 return NULL;
         struct arch_global_irq *entry = &global_irq_vector[global_irq_id];
 
@@ -42,10 +44,11 @@ struct arch_global_irq *irq_global_find(size_t local_irq_id, cpu_id_t cpu_id)
 
 error_t irq_global_vector_alloc(size_t count)
 {
-        if (!count)
-                return -E_IN_PARAM;
         if (global_irq_vector)
                 return -E_RENDEZVOS;
+
+        if (!count)
+                return REND_SUCCESS;
 
         struct allocator *cpu_kallocator = percpu(kallocator);
         if (!cpu_kallocator || !cpu_kallocator->m_alloc)
@@ -67,15 +70,17 @@ error_t irq_global_vector_alloc(size_t count)
         return REND_SUCCESS;
 }
 
-error_t irq_global_alloc(size_t global_irq_id, cpu_id_t cpu_id,
-                         size_t *local_irq_id_out)
+error_t irq_global_alloc(global_irq_id_t global_irq_id, cpu_id_t cpu_id,
+                         local_irq_id_t *local_irq_id_out)
 {
-        if (!local_irq_id_out || global_irq_id >= nr_global_irq)
+        if (!local_irq_id_out
+            || global_irq_id >= (global_irq_id_t)nr_global_irq)
                 return -E_IN_PARAM;
         if (cpu_id >= (cpu_id_t)RENDEZVOS_MAX_CPU_NUMBER)
                 return -E_IN_PARAM;
 
-        size_t local_irq_id = arch_choose_local_irq_id(global_irq_id, cpu_id);
+        local_irq_id_t local_irq_id =
+                arch_choose_local_irq_id(global_irq_id, cpu_id);
         if (local_irq_id == IRQ_LOCAL_ID_INVALID)
                 return -E_REND_OVERFLOW;
 
@@ -83,7 +88,8 @@ error_t irq_global_alloc(size_t global_irq_id, cpu_id_t cpu_id,
                 &global_irq_vector[global_irq_id];
         if (!irq_atomic_attr_try_set_used(&global_entry->irq_attr))
                 return -E_REND_AGAIN;
-        if (!arch_global_bind_local_irq_id(cpu_id, local_irq_id, global_irq_id)) {
+        if (!arch_global_bind_local_irq_id(
+                    cpu_id, local_irq_id, global_irq_id)) {
                 (void)irq_atomic_attr_try_set_unused(&global_entry->irq_attr);
                 return -E_REND_AGAIN;
         }
@@ -94,11 +100,11 @@ error_t irq_global_alloc(size_t global_irq_id, cpu_id_t cpu_id,
         return REND_SUCCESS;
 }
 
-error_t irq_global_free(size_t global_irq_id, cpu_id_t cpu_id)
+error_t irq_global_free(global_irq_id_t global_irq_id, cpu_id_t cpu_id)
 {
         struct arch_global_irq *global_entry;
 
-        if (global_irq_id >= nr_global_irq)
+        if (global_irq_id >= (global_irq_id_t)nr_global_irq)
                 return -E_IN_PARAM;
         if (cpu_id >= (cpu_id_t)RENDEZVOS_MAX_CPU_NUMBER)
                 return -E_IN_PARAM;

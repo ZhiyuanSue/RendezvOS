@@ -1,7 +1,8 @@
 #include <rendezvos/trap/irq_space.h>
 #include <rendezvos/limits.h>
 
-size_t arch_local_lookup_global_irq_id(cpu_id_t cpu_id, size_t local_irq_id)
+global_irq_id_t arch_local_lookup_global_irq_id(cpu_id_t cpu_id,
+                                                local_irq_id_t local_irq_id)
 {
         size_t hw_irq; /* GIC INTID */
 
@@ -18,24 +19,24 @@ size_t arch_local_lookup_global_irq_id(cpu_id_t cpu_id, size_t local_irq_id)
         if (hw_irq < (size_t)GIC_V2_SPI_START
             || hw_irq > (size_t)GIC_V2_SPI_END)
                 return IRQ_GLOBAL_ID_INVALID;
-        return hw_irq - (size_t)GIC_V2_SPI_START;
+        return (global_irq_id_t)(hw_irq - (size_t)GIC_V2_SPI_START);
 }
 
-size_t arch_choose_local_irq_id(size_t global_irq_id, cpu_id_t cpu_id)
+local_irq_id_t arch_choose_local_irq_id(global_irq_id_t global_irq_id,
+                                        cpu_id_t cpu_id)
 {
         size_t hw_irq; /* GIC INTID */
 
         (void)cpu_id;
-        hw_irq = global_irq_id + (size_t)GIC_V2_SPI_START;
+        hw_irq = (size_t)global_irq_id + (size_t)GIC_V2_SPI_START;
         if (hw_irq > (size_t)GIC_V2_SPI_END)
                 return IRQ_LOCAL_ID_INVALID;
         /* Formula: SPI index → INTID → local_irq_id (= intid + 64). */
-        size_t local_irq_id = (size_t)AARCH64_IRQ_TO_TRAP_ID(hw_irq);
-        return local_irq_id;
+        return (local_irq_id_t)AARCH64_IRQ_TO_TRAP_ID(hw_irq);
 }
 
-bool arch_global_bind_local_irq_id(cpu_id_t cpu_id, size_t local_irq_id,
-                           size_t global_irq_id)
+bool arch_global_bind_local_irq_id(cpu_id_t cpu_id, local_irq_id_t local_irq_id,
+                                   global_irq_id_t global_irq_id)
 {
         (void)local_irq_id;
         (void)global_irq_id;

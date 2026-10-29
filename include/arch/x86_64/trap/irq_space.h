@@ -3,21 +3,22 @@
 #include <common/types.h>
 #include <common/stdbool.h>
 #include <rendezvos/smp/cpu_id.h>
-#include <rendezvos/trap/trap_common.h> /* GLOBAL_IRQ_COMMON */
+#include <rendezvos/trap/irq_space_common.h> /* GLOBAL_IRQ_COMMON */
 
 /*
- * Arch piece of irq_space (software ids + per-CPU map). Does not touch
- * IOAPIC/LAPIC programming — only how software numbers relate to GSI and
- * the 256-wide IDT vector line (@c NR_IDT_VECTORS). Map code:
- * @c arch/x86_64/trap/irq_space.c.
+ * x86_64 irq_space: software local/global ids and the per-CPU map.
+ * Implementation: @c arch/x86_64/trap/irq_space.c.
  *
- * LOCAL: [0, ALLOC_LO) — exceptions + APIC LVT/IPI (structural; no reserve).
- * GLOBAL: one entry per global_irq_id (GSI). local_irq_id → global_irq_id
- * via the per-CPU map below. IDT is always @c NR_IDT_VECTORS (256).
+ * This header must not include PIC/irqchip headers (IOAPIC, etc.): it only
+ * describes software numbering. On x86, global_irq_id equals @c gsi_id_t
+ * (@c arch/x86_64/PIC/gsi.h); chip/ISO/RTE stay under PIC/.
  *
- * Each CPU has the same local_irq_id number line. Low ids live in
- * local_irq_vector[]; high ids are virtual (not in that vector) and map into
- * the shared global_irq_vector[].
+ * LOCAL:  [0, ALLOC_LO) — exceptions + APIC LVT/IPI (in local_irq_vector[]).
+ * GLOBAL: one slot per global_irq_id; local_irq_id → global_irq_id via the
+ *         per-CPU map below. IDT width is @c NR_IDT_VECTORS (256).
+ *
+ * Each CPU shares the same local_irq_id number line. Low ids are real local
+ * slots; high ids are virtual and map into the shared global_irq_vector[].
  *
  *   CPU0 local_irq_vector[] (real, private)     virtual ids (not in local)
  *   +-----+-----+-----+-----+                   +-----+-------+-----+
@@ -51,18 +52,14 @@
 #define ARCH_IRQ_ID_ALLOC_HI 0xEFu
 
 #define NR_ARCH_LOCAL_IRQ ARCH_IRQ_ID_ALLOC_LO
-/*
- * Temporary global_irq_id count until MADT is parsed (GSI count).
- * @c arch_start_platform passes this to @c irq_global_vector_alloc.
- */
-#define NR_ARCH_GLOBAL_IRQ 256
-#define NR_IDT_VECTORS     256
-#define NR_IRQ             NR_IDT_VECTORS
+
+#define NR_IDT_VECTORS 256
+#define NR_IRQ         NR_IDT_VECTORS
 
 /**
- * Arch global external irq entry. Index is @c global_irq_id (GSI).
+ * Arch global external irq entry. Index is @c global_irq_id (== GSI).
  * Dispatch: local_irq_id → per-CPU map → @c global_irq_vector[global_irq_id].
- * Extra fields: IOAPIC pin, filled when the route is programmed.
+ * @c ioapic_id / @c pin filled by @c ioapic_init (not by this module).
  */
 struct arch_global_irq {
         GLOBAL_IRQ_COMMON

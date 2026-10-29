@@ -2,7 +2,8 @@
 #include <rendezvos/error.h>
 #include <rendezvos/mm/mm_kernel_utils.h>
 
-static bool identity_mapped_ppn_legal(ppn_t ppn, int entry_level, paddr page_phy)
+static bool identity_mapped_ppn_legal(ppn_t ppn, int entry_level,
+                                      paddr page_phy)
 {
         if (invalid_ppn(ppn))
                 return false;
@@ -48,8 +49,8 @@ error_t ensure_kernel_identity_range(struct VSpace *vs, paddr phy, size_t len,
                 if (ppn < 0)
                         return (error_t)ppn;
                 if (ppn > 0) {
-                        if (!identity_mapped_ppn_legal(ppn, entry_level,
-                                                       page_iter)) {
+                        if (!identity_mapped_ppn_legal(
+                                    ppn, entry_level, page_iter)) {
                                 pr_error(
                                         "[ KMAP ] ERROR: non-identity at phy=0x%lx\n",
                                         (u64)page_iter);
@@ -65,10 +66,9 @@ error_t ensure_kernel_identity_range(struct VSpace *vs, paddr phy, size_t len,
                                 leaf_eflags,
                                 handler);
                 if (map_error != REND_SUCCESS) {
-                        pr_error(
-                                "[ KMAP ] ERROR: map fail phy=0x%lx e=%d\n",
-                                (u64)page_iter,
-                                map_error);
+                        pr_error("[ KMAP ] ERROR: map fail phy=0x%lx e=%d\n",
+                                 (u64)page_iter,
+                                 map_error);
                         /* No rollback: caller fails the subsystem / boot. */
                         return map_error;
                 }
@@ -172,10 +172,9 @@ error_t unmap_kernel_identity_range(struct VSpace *vs, paddr phy, size_t len,
                                         handler);
 
                 if (ppn < 0) {
-                        pr_error(
-                                "[ KMAP ] ERROR: have_mapped phy=0x%lx e=%d\n",
-                                (u64)page_iter,
-                                (int)ppn);
+                        pr_error("[ KMAP ] ERROR: have_mapped phy=0x%lx e=%d\n",
+                                 (u64)page_iter,
+                                 (int)ppn);
                         error = (error_t)ppn;
                         continue;
                 }
@@ -191,10 +190,9 @@ error_t unmap_kernel_identity_range(struct VSpace *vs, paddr phy, size_t len,
                         continue;
                 }
 
-                pr_error(
-                        "[ KMAP ] ERROR: cannot unmap phy=0x%lx level=%d\n",
-                        (u64)page_iter,
-                        entry_level);
+                pr_error("[ KMAP ] ERROR: cannot unmap phy=0x%lx level=%d\n",
+                         (u64)page_iter,
+                         entry_level);
                 error = -E_RENDEZVOS;
         }
         return error;

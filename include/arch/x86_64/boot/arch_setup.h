@@ -90,11 +90,12 @@ error_t arch_cpu_info(struct setup_info *arch_setup_info);
 /**
  * @brief platform bring-up after virt_mm_init let the kallocator available.
  *
- * - acpi_init(arch_setup_info) (probe RSDP + ensure tables; UEFI hint later)
+ * - acpi_init (MADT: LAPIC + IOAPIC discover)
+ * - ioapic_init (probe → irq_space alloc → fill pins)
  * - scan pci
  *
  * @param arch_setup_info Boot setup_info; passed through to acpi_init.
- * @return REND_SUCCESS, or error from acpi_init / pci_scan_all.
+ * @return REND_SUCCESS, or error from ACPI / IOAPIC / irq / pci.
  */
 error_t arch_start_platform(struct setup_info *arch_setup_info);
 

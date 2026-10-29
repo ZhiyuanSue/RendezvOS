@@ -2,12 +2,38 @@
 #define _RENDEZVOS_TRAP_H_
 
 /*
- * Trap dispatch: @c trap_handler, @c register_irq_handler, @c init_interrupt,
- * fixed traps, EOI. Software irq id alloc/map: @c rendezvos/trap/irq_space.h
- * (included below so existing callers keep one include).
+ * Trap: CPU exception/IRQ entry, handler install, and (later) irq
+ * enable/migrate.
  *
- * @c CPU_ID_INVALID on @c register_irq_handler: not allowed (concrete cpu_id).
- * Global register: caller must be the owning CPU (see irq_space ownership).
+ * Who calls whom:
+ *
+ *              ┌─────────────────────────────────┐
+ *              │ trap  (this module)             │
+ *              └───────────────┬─────────────────┘
+ *                 ┌────────────┴────────────┐
+ *                 ▼                         ▼
+ *        ┌────────────────┐       ┌─────────────────────────┐
+ *        │ irq_space      │◄──────│ arch irqchip module     │
+ *        │                │       │ x86 IOAPIC /            │
+ *        │                │       │ aarch64 GIC             │
+ *        └────────────────┘       └─────────────────────────┘
+ *
+ * Two jobs (do not conflate):
+ *
+ * (A) When an interrupt already hit the CPU  —  @c trap_handler path
+ *     IDT/vector → trap_handler → look up irq_space → call handler → EOI
+ *     Uses irq_space (+ arch EOI) only. Does not program IOAPIC/GIC routes.
+ *     @c register_irq_handler stores the ISR into irq_space.
+ *
+ * (B) Turn a line on/off or move it to another CPU  —  mostly TODO
+ *     Example enable: irq_global_alloc + register_irq_handler + write RTE
+ *     Public API will live here; body calls irq_space and arch irqchip.
+ *     Today @c ioapic_init already shows irqchip → irq_space at boot.
+ *
+ * This common header includes irq_space only — never IOAPIC/GIC headers.
+ *
+ * @c register_irq_handler needs a concrete @c cpu_id (@c CPU_ID_INVALID
+ * forbidden). Global path: caller must be the owning CPU (irq_space rules).
  */
 #include <rendezvos/trap/irq_space.h>
 
@@ -41,7 +67,7 @@ void arch_register_fixed_trap(enum trap_class trap_class,
  * to clear the ISR (e.g. before module unload). Migrate without changing
  * the ISR does not need another register — free keeps the pointer.
  */
-void register_irq_handler(size_t local_irq_id, cpu_id_t cpu_id,
+void register_irq_handler(local_irq_id_t local_irq_id, cpu_id_t cpu_id,
                           void (*handler)(struct trap_frame *tf), u64 irq_attr);
 
 void init_interrupt(void);

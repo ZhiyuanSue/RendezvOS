@@ -6,7 +6,7 @@
 
 extern Task_Manager *core_tm;
 
-void register_irq_handler(size_t local_irq_id, cpu_id_t cpu_id,
+void register_irq_handler(local_irq_id_t local_irq_id, cpu_id_t cpu_id,
                           void (*handler)(struct trap_frame *tf), u64 irq_attr)
 {
         if (cpu_id >= (cpu_id_t)RENDEZVOS_MAX_CPU_NUMBER) {
@@ -51,7 +51,7 @@ void register_irq_handler(size_t local_irq_id, cpu_id_t cpu_id,
 
 void trap_handler(struct trap_frame *tf)
 {
-        size_t local_irq_id = (size_t)TRAP_ID((tf->trap_info));
+        local_irq_id_t local_irq_id = (local_irq_id_t)TRAP_ID((tf->trap_info));
         void (*handler)(struct trap_frame *) = NULL;
         u64 attr = IRQ_NO_ATTR;
 
@@ -82,7 +82,5 @@ void trap_handler(struct trap_frame *tf)
 
 void init_interrupt(void)
 {
-        if (!global_irq_vector || !nr_global_irq)
-                kernel_panic("init_interrupt: global irq vector not allocated");
         arch_init_interrupt();
 }
