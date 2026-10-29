@@ -2,7 +2,7 @@
 
 v0.1 · 2026-09-27
 
-本篇覆盖：`arch/x86_64/PIC/PIC.c`、`LocalAPIC.c`、`PIT.c`、`IRQ.c`、`include/arch/x86_64/PIC/*.h`（含**空壳** `IOAPIC.h`）、以及与 `arch_start_core` / timer / IPI 的衔接。
+本篇覆盖：`arch/x86_64/PIC/PIC.c`、`LocalAPIC.c`、`IOAPIC.c`、`PIT.c`、`IRQ.c`、`include/arch/x86_64/PIC/*.h`，以及与 `arch_start_core` / timer / IPI 的衔接。
 
 软件 id / `register_irq_handler` 见 `25-IRQ向量分配与处理.md`；IDT / `trap_handler` 见 Trap 篇；软 IPI 协议见 `06-SMP与同步/30-软IPI机制.md`；MADT 枚举见 `09-平台模块/35-ACPI与MADT-x86_64.md`；timer 校准语义见时间子系统篇。
 
@@ -18,7 +18,7 @@ PC 上外设不会直接进入内核入口。CPU 侧永远是：
 
 ```text
 外设线 / 定时器 / IPI
-  → 中断控制器（8259 或 Local APIC [+ 将来 I/O APIC]）
+  → 中断控制器（8259 或 Local APIC [+ I/O APIC 发现已接、RTE 未写]）
   → 选出一个 IDT 向量号
   → CPU 查 IDT → trap_vec → trap_handler(trap_info=向量)
 ```
@@ -40,9 +40,9 @@ PC 上外设不会直接进入内核入口。CPU 侧永远是：
 | 部件 | 角色 | 本仓库 |
 |------|------|--------|
 | **Local APIC（LAPIC）** | **每核一个**；接收投递给本核的中断；自带 timer、LINT、IPI、spurious | **已实现**（`LocalAPIC.c`） |
-| **I/O APIC** | 板级 / 芯片组；把 PCI / ISA 线编成「发到某个 LAPIC 的某个向量」 | **`IOAPIC.h` 空壳**；MADT IOAPIC 条目 `break` 为空操作 (no-op) |
+| **I/O APIC** | 板级 / 芯片组；把 PCI / ISA 线编成「发到某个 LAPIC 的某个向量」 | **发现 + bring-up 已接**（MADT → MMIO identity ensure → Version probe → `irq_global_vector_alloc` → GSI→pin 表）；**RTE / ISO / mask 未做** |
 
-没有 IOAPIC，就没有规范的「外设 IRQ 到向量」编程路径——timer / IPI 仍可走 LAPIC 自有源；PCI 设备中断基本无法接入。
+软件侧已有 GSI 全局表槽；硬件路由（写 RTE、打开引脚）未做，故尚无规范「外设 IRQ → 向量」路径——timer / IPI 仍走 LAPIC；PCI 设备中断还接不上。
 
 ### 1.3 OS 对硬件的硬依赖（读代码前先对齐）
 
@@ -59,7 +59,7 @@ PC 上外设不会直接进入内核入口。CPU 侧永远是：
 - **边沿（edge）**：电平一变就记一次。ISR 执行完成后，线即使还停在新电平上，也不会再要一次，除非再翻一次边沿。
 - **电平（level）**：只要线还维持在有效电平，控制器就认为中断还在。漏 EOI、或 ISR 里没把设备状态清除，同一条线会反复打进来。
 
-8259 初始化走边沿；Local APIC 用 **TMR** 记住每个向量当时是边沿还是电平。电平向量在写 EOI 时，硬件还可能向 I/O APIC 广播一次（见 §5.6）——本仓库没有 IOAPIC，这条广播目前没有消费者，但读手册时不要当成「写 0 即可」。
+8259 初始化走边沿；Local APIC 用 **TMR** 记住每个向量当时是边沿还是电平。电平向量在写 EOI 时，硬件还可能向 I/O APIC 广播一次（见 §5.6）——本仓库已发现 IOAPIC 但未接电平 EOI / RTE，这条广播目前没有有效消费者，但读手册时不要当成「写 0 即可」。
 
 ---
 
@@ -67,7 +67,7 @@ PC 上外设不会直接进入内核入口。CPU 侧永远是：
 
 **提供：** QEMU / 常见 PC 可启动的最小中断树——8259 或 LAPIC（含 x2APIC 模式切换）、LVT timer、ICR IPI、EOI、PIT 校准源。
 
-**不做（当前）：** 完整 IOAPIC 实现 / MSI / HPET 校准源；Linux IRQ domain；把 MADT 当 IOAPIC 编程入口。IOAPIC **硬件与投递背景**见 §9.6（技术参考）。
+**不做（当前）：** IOAPIC **RTE 写 / ISO / mask·unmask / 设备路由**；MSI；HPET 校准源；Linux IRQ domain。发现与 GSI 软件表见 §9.6.8；硬件背景见 §9.6。
 
 ---
 
@@ -172,7 +172,7 @@ CPU 只有一根 INTR；8259 用中断向量号告诉 CPU「查 IDT 哪一项」
 
 ## 5. 硬件深度：Local APIC
 
-Local APIC 是**每核一份**的控制器：管本核的 timer / LINT / IPI 接收，也管「向量已经到了本核之后」的排队与 EOI。板级外设线本来该由 I/O APIC 编成「打给哪个 LAPIC、哪个向量」——那一层本仓库还是空壳，所以下面只讲 **CPU 脚边这一块**。
+Local APIC 是**每核一份**的控制器：管本核的 timer / LINT / IPI 接收，也管「向量已经到了本核之后」的排队与 EOI。板级外设线该由 I/O APIC 编路由——bring-up（MMIO + GSI 表）已做、RTE 未写，所以下面仍主要讲 **CPU 脚边这一块**。
 
 手册入口：SDM Vol.3 第 10 章。寄存器占一个 4 KiB 窗口，复位物理基址 **`0xFEE00000`**。xAPIC 必须映成 **strong uncacheable（UC）**（SDM 11.3）；访问 32 位以上的寄存器要对齐（手册要求 128-bit align）。可选把窗口迁到别处（10.4.5），本仓库**不迁**，且要求 MADT 里的地址与 `0xFEE00000` **完全一致**。
 
@@ -253,7 +253,7 @@ x2APIC 把 xAPIC 的 4 KiB MMIO 窗口整体搬到 MSR 空间，索引 = `0x800 
 - **bit8 `SW_ENABLE`**：Local APIC 软件使能（soft-enable）。关着时大量投递被吞或行为异常。
 - **低 8 位**：spurious 向量——硬件无法交付「真」中断时可能投这个向量。
 
-其余位：Focus Processor Checking（bit 9）；**bit 12** 控制写 EOI 时要不要向 I/O APIC **广播**（电平触发、且 VERSION 允许禁用时才有意义）。默认是允许广播的；手册更推荐关掉广播、改写产生该中断的那颗 IOAPIC 的 EOI——本仓库没有 IOAPIC，bit 12 也未特意去关。
+其余位：Focus Processor Checking（bit 9）；**bit 12** 控制写 EOI 时要不要向 I/O APIC **广播**（电平触发、且 VERSION 允许禁用时才有意义）。默认是允许广播的；手册更推荐关掉广播、改写产生该中断的那颗 IOAPIC 的 EOI——本仓库尚未接 IOAPIC 电平 EOI / RTE，bit 12 也未特意去关。
 
 本仓库：`software_enable_APIC()` 置 enable，并把 spurious 写成 **`ARCH_IRQ_ID_SPURIOUS`（0x27）**。
 
@@ -439,7 +439,8 @@ MSI（Message Signaled Interrupt）走 PCI 的 message address/data，最终仍�
 | `PIC/PIC.c` | 8259 init / mask / EOI |
 | `PIC/LocalAPIC.c` | MMIO / MSR、reset、SVR、LVT、ICR、EOI、校准 |
 | `PIC/PIT.c` | 8254 编程 / `PIT_mdelay` |
-| `PIC/IOAPIC.h` | **空壳** |
+| `PIC/gsi.h` | `@c gsi_id_t`（ACPI GSI；与 x86 `global_irq_id` 同号） |
+| `PIC/IOAPIC.h` / `IOAPIC.c` | 描述符、RD/WR 宏、公开入口 `ioapic_init`；内部 static：MMIO `ensure_kernel_identity_range`、Version probe、`irq_global_vector_alloc`、填 GSI→pin；**无** RTE / ISO / mask API |
 | `arch/.../trap/trap.c` `arch_eoi_irq` | PIC：`PIC_EOI(向量)`；APIC：`APIC_EOI()` 写 0（**不**带向量） |
 | `arch/.../time/time.c` | 校准 + 调 LVT；`software_enable_APIC` |
 | `arch/.../time/rtc.c` | **墙钟 CMOS 读**——不是 IRQ 路径 |
@@ -486,7 +487,7 @@ EOI 分支差异（实现细节）：PIC 路径 `PIC_EOI(向量号)` 区分主/�
 
 ## 9. 公开 API
 
-本篇涉及的接口分布在：x86_64 中断控制器原语——`init_irq` / `arch_irq_type`、8259（`PIC.h`）、Local APIC（`LocalAPIC.h`：SVR / EOI / ICR / LVT timer 后端）、8254 PIT（`PIT.h`）。说明改写自上述头文件 Doxygen（已与 `.c` 核对）。`IOAPIC.h` **空壳，无 API**。
+本篇涉及的接口分布在：x86_64 中断控制器原语——`init_irq` / `arch_irq_type`、8259（`PIC.h`）、Local APIC（`LocalAPIC.h`：SVR / EOI / ICR / LVT timer 后端）、I/O APIC 发现（`IOAPIC.h`）、8254 PIT（`PIT.h`）。说明改写自上述头文件 Doxygen（已与 `.c` 核对）。
 
 **本篇不涉及：** `irq_global_*` / `register_irq_handler` / `trap_handler`（见 `25`）；`arch_eoi_irq` 声明与分发约定（见 `25`；实现调本篇 `PIC_EOI` / `APIC_EOI`）；可移植 `rendezvos_time_*`（见 `33`）；软 IPI 协议（见 `30`）；MADT 枚举（见 `35`）。
 
@@ -563,9 +564,9 @@ u64 PIT_timer_read(void);
 u64 PIT_get_hz(void);             /* PIT_TICK_RATE = 1193181 */
 ```
 
-### 9.6 IOAPIC（技术参考；本仓库仍为空壳）
+### 9.6 IOAPIC（硬件参考 + 启动发现）
 
-**实现状态：** `IOAPIC.h` 空；`arch_parser_madt` 对 MADT Type=1（IOAPIC）与 Source Override 均为空 `break`（见 `35`）。下文是接入前的**硬件 / 投递 / 发现**参考，对照 Intel 82093AA 与 ACPI MADT；**不是**本仓库当前 API。
+**实现状态：** MADT Type=1 两轮发现、`ioapic_init`（对每颗 IOAPIC MMIO 做恒等 `ensure` → 读 Version/`nr_pins` → `irq_global_vector_alloc(nr_gsi)` → 填 GSI→`(ioapic_id,pin)`）已接；**无 IOAPIC 合法**（空表 / `alloc(0)`，`init_interrupt` 不强制）。**仍未做：** 写 RTE、ISO 表、mask/unmask、设备侧 `irq_global_alloc`+路由、电平 EOI。层级：trap → IOAPIC + irq_space；IOAPIC → irq_space（软件表）+ `mm_kernel_utils`（MMIO VA）。下文含 82093AA 硬件背景；启动步骤见 §9.6.8。
 
 #### 9.6.1 为什么需要 IOAPIC
 
@@ -629,12 +630,12 @@ rte_high = 0x00;   // Destination = APIC ID 0
 
 #### 9.6.4 边沿触发 vs 电平触发
 
-与 §1.4 一致，落到 IOAPIC 上时：
+与 §1.4 一致，落到 IOAPIC 上时（硬件行为；本仓库尚未写 RTE）：
 
 - **边沿（edge）**：「激发即遗忘」。采样到跳变后转发，不再盯着线。边沿过密可能丢第二次。典型：键盘、定时器。Linux `/proc/interrupts` 常标 `IO-APIC-edge`。
 - **电平（level）**：线保持有效直到设备侧在处理后撤销。Remote IRR：投递给 CPU 后置 1，收到 EOI 后清 0，再重新评估引脚。典型：PCI 设备。共享 IRQ 时电平更稳妥——边沿在多设备叠线上易丢。Linux 常标 `IO-APIC-level`。
 
-LAPIC 的 **TMR** 会记住该向量当时是边沿还是电平；电平向量写 EOI 时可能向 I/O APIC **广播 EOI**（§5.6）。没有 IOAPIC 实现时这条广播无消费者。
+LAPIC 的 **TMR** 会记住该向量当时是边沿还是电平；电平向量写 EOI 时可能向 I/O APIC **广播 EOI**（§5.6）。本仓库尚未接 IOAPIC 电平 EOI / RTE，这条广播仍无有效消费者。
 
 #### 9.6.5 从引脚到 handler 的投递链
 
@@ -648,33 +649,34 @@ LAPIC 的 **TMR** 会记住该向量当时是边沿还是电平；电平向量�
 
 #### 9.6.6 OS 如何发现 IOAPIC：MADT Type=1
 
-ACPI **MADT** 中 Type=1 描述一颗 IOAPIC（字段见 `35` §4.2 表；本仓库解析为空操作）：
+ACPI **MADT** 中 Type=1 描述一颗 IOAPIC（字段见 `35` §4.2 表；本仓库 **已消费**）：
 
 | 字段 | 说明 |
 |------|------|
 | I/O APIC ID | 该实例 APIC ID |
-| I/O APIC Address | MMIO 基址（32-bit 物理） |
+| I/O APIC Address | MMIO 基址（32-bit 物理）；`ioapic_init` 对其做恒等 `ensure` 后读 Version |
 | Global System Interrupt Base | 本实例引脚 0 对应的 **GSI** 起点 |
 
-**GSI（Global System Interrupt）：** 把「第几颗 IOAPIC 的第几脚」编成全局编号。例如 GSI Base=0、24 脚 → GSI 0..23；下一颗 Base 可能是 24。OS 建立 `GSI → (ioapic, pin)` 后再写对应 RTE。
+**GSI（Global System Interrupt）：** 把「第几颗 IOAPIC 的第几脚」编成全局编号。例如 GSI Base=0、24 脚 → GSI 0..23；下一颗 Base 可能是 24。本仓库在 `ioapic_setup_global_irq` 里填软件 `GSI → (ioapic_id, pin)`；**写对应 RTE** 仍属后续。
 
 旧式 **MP Table**（Entry Type `0x01`）也可描述 IOAPIC；现代路径优先 MADT。Linux 等还可在 MP 表损坏时用 `pirq=` 等手工路由（本仓库不涉及）。
 
 #### 9.6.7 与 Linux 对照（背景，非本仓库）
 
-Linux 在 `arch/x86/kernel/apic/io_apic.c` 用 `ioapics[]` 记每颗实例的引脚数、挂起时保存的 RTE、GSI 区间、`irq_domain` 等；`/proc/interrupts` 上 `IO-APIC-edge` / `IO-APIC-level` / 少量 `XT-PIC` 可粗判路由是否走 IOAPIC。本仓库无对等结构。
+Linux 在 `arch/x86/kernel/apic/io_apic.c` 用 `ioapics[]` 记每颗实例的引脚数、挂起时保存的 RTE、GSI 区间、`irq_domain` 等；`/proc/interrupts` 上 `IO-APIC-edge` / `IO-APIC-level` / 少量 `XT-PIC` 可粗判路由是否走 IOAPIC。本仓库有轻量 `ioapics[]` + GSI 软件表，**无** `irq_domain` / RTE 保存恢复。
 
-#### 9.6.8 对本仓库接入的含义（后续）
+#### 9.6.8 对本仓库接入的含义
 
-接入时大致顺序（与 `arch_parser_madt` / `mm_kernel_utils` 衔接，**尚未做**）：
+启动路径（已接）：
 
-1. MADT 消费 Type=1：记录 `ioapic_id`、**物理** MMIO 基址、`gsi_base`；读 Version 得引脚数。
-2. 用 `map_kernel_identity_empty_range`（或当时约定的恒等 map）把 IOAPIC MMIO 映成可访问（Device/UNCACHED 属性由 `eflags`）。
-3. 封装 IOREGSEL/IOWIN；按 GSI/IRQ 策略写 RTE（向量须已在 `25` 侧分配并注册）。
-4. 电平路径与 LAPIC EOI 广播 / 显式 IOAPIC EOI 策略对齐 §5.6。
-5. 再考虑 ISO（Interrupt Source Override）、多 IOAPIC、PCI 共享等。
+1. `arch_parser_madt` 两轮：数 Type=1 → 分配 `ioapics[]` → 填 `ioapic_id` / 物理 MMIO / `gsi_base`。
+2. `arch_start_platform` → **`ioapic_init()`**（头文件仅此入口）：
+   - 对每颗实例 `ensure_kernel_identity_range`（UNCACHED/DEVICE 等由调用方 `eflags`）映射 MMIO；
+   - 读 Version，得 `nr_pins`；
+   - `irq_global_vector_alloc(nr_gsi)`（`nr_gsi==0` 合法）；
+   - 填每脚的 GSI 全局项元数据（`ioapic_id` / pin）。
 
-在此之前：timer / IPI 仍可只靠 LAPIC；**无规范 PCI 设备 IRQ 路径**。
+仍未做：写 RTE、ISO 表、mask/unmask、设备 `irq_global_alloc`+改路由、电平 EOI。timer / IPI 仍可只靠 LAPIC。MMIO 恒等映射依赖 `invalid_ppn` / `have_mapped` 以 **VALID** 判空（含 boot 2 MiB@PA0），见内存篇 `06`/`07`。
 
 ---
 
@@ -692,7 +694,7 @@ Linux 在 `arch/x86/kernel/apic/io_apic.c` 用 `ioapics[]` 记每颗实例的引
 
 ## 12. 限制与后续 / 已知缺口
 
-- **IOAPIC 空壳**；MADT IOAPIC 未消费，故无规范 PCI IRQ（硬件参考 §9.6；接入步骤 §9.6.8）。
+- **IOAPIC 已 bring-up（MMIO + GSI 软件表）、未编程 RTE**；故仍无规范 PCI IRQ（§9.6 / §9.6.8）。
 - **xAPIC MADT/map 失败半初始化**：`arch_irq_type` 已 xAPIC、PIC 已 disable，无回退。
 - **x2APIC ICR** 定向目的地可疑（`dest_field` 仅 u8，写入 [63:56]；[55:32] 恒 0）。
 - **`disable_APIC` 清 bit 用了 `&` 组合**（逻辑可疑）。
@@ -705,6 +707,10 @@ Linux 在 `arch/x86/kernel/apic/io_apic.c` 用 `ioapics[]` 记每颗实例的引
 
 ## 13. 变更记录
 
+- 2026-10-29：对齐 bring-up——MMIO 恒等 ensure、GSI 表、`irq_global_vector_alloc`；明确缺口仍是 RTE/ISO/mask/设备路由；修正「解析为空操作 / 空壳」表述；交叉引用 ppn0/`ensure`（`06`/`07`）。
+- 2026-10-28：允许无 IOAPIC（MADT / `ioapic_init` / `init_interrupt` / `alloc(0)`）。
+- 2026-10-27：`gsi_id_t`（`PIC/gsi.h`）；irq_space 侧 `local_irq_id_t` / `global_irq_id_t`。收敛层级——平台只调 `ioapic_init`。
+- 2026-10-26：IOAPIC 启动接入——MADT 两轮 + `ioapic_probe_all` / `ioapic_nr_gsi` / `ioapic_setup_global_irq`；§9.6.8 改为 ensure + 已实现步骤。
 - 2026-10-24：§9.6 扩为 IOAPIC 技术参考（间接寻址、RTE、边沿/电平、投递链、MADT GSI、接入顺序）；标明实现仍为空壳。
 - 2026-10-22：与两 id 模型对齐——去掉「reserve+lidt / irq_vector_*」表述；init 注释改为装 IDT + 已申请 `global_irq_vector`。
 - 2026-10-05：§4.2 补 early 笔记里的 8259A 入门链接（非正式；以 `PIC.c` 为准）。

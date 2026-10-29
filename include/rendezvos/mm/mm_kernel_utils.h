@@ -74,15 +74,16 @@
 /**
  * @brief ENSURE @p [phy, phy+len) is reachable via identity VA.
  *
- * Typical caller: ACPI / firmware tables that stay mapped for the life of the
- * kernel. Boot may already cover part of the span with an identity L2 huge
- * leaf — that is **not** an error.
+ * Typical callers: ACPI / firmware tables, IOAPIC MMIO windows, and similar
+ * spans that stay mapped for the life of the kernel. Boot may already cover
+ * part of the span with an identity L2 huge leaf — that is **not** an error.
  *
  * Per page-aligned frame in the rounded span:
- * - unmapped → @c map(...,level3, @p eflags);
+ * - @c have_mapped miss (@c -E_REND_NOFOUND) → @c map(...,level3, @p eflags);
  * - already identity (L3 PPN matches, or L2 huge base matches the 2MiB
  *   window) → skip (existing flags are **not** checked or updated);
- * - already mapped, non-identity → fail.
+ * - already mapped, non-identity → fail;
+ * - other negative @c have_mapped results → return as-is (do not call @c map).
  *
  * @p eflags applies only to newly installed 4KiB leaves.
  *
@@ -90,7 +91,7 @@
  * installed by this call (upper layer fails boot / skips the subsystem).
  *
  * @return @c REND_SUCCESS; or negative on bad parameters, non-identity
- *         collision, or @c map failure.
+ *         collision, @c have_mapped walk error, or @c map failure.
  */
 error_t ensure_kernel_identity_range(struct VSpace *vs, paddr phy, size_t len,
                                      ENTRY_FLAGS_t eflags,

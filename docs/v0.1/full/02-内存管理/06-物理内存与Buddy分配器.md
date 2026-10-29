@@ -409,7 +409,7 @@ riscv / loongarch 的 `pmm.h` 为空桩，无实现。
 
 ### 6.3 alloc / free
 
-alloc：持锁找到 ≥ 所需阶的块后，**先**给范围内 `Page` 加引用计数，**再**分裂 buddy 块，然后返回起始 ppn，实际页数 **向上取整到 2ⁿ**（经 `alloced_page_number` 传出）。`page_number` 超过 `2^BUDDY_MAXORDER` 且当时空闲总数够，或 `pmm_alloc_zone` 返回 `-E_RENDEZVOS`（数据结构出现严重错误），直接返回该错误码，不 reclaim。空闲总数不够，或 `_zone` 返回 `-E_REND_NO_MEM`（拼不出连续 2ⁿ），则**解锁后** reclaim（若已注册）；无 hook / 次数用尽则返回 `-E_REND_AGAIN`。
+alloc：`page_number` 必须 `> 0`，否则 `-E_IN_PARAM`。持锁找到 ≥ 所需阶的块后，**先**给范围内 `Page` 加引用计数，**再**分裂 buddy 块，然后返回起始 ppn（**含 0**），实际页数 **向上取整到 2ⁿ**（经 `alloced_page_number` 传出）。失败用 `invalid_ppn`（仅负值）。`page_number` 超过 `2^BUDDY_MAXORDER` 且当时空闲总数够，或 `pmm_alloc_zone` 返回 `-E_RENDEZVOS`（数据结构出现严重错误），直接返回该错误码，不 reclaim。空闲总数不够，或 `_zone` 返回 `-E_REND_NO_MEM`（拼不出连续 2ⁿ），则**解锁后** reclaim（若已注册）；无 hook / 次数用尽则返回 `-E_REND_AGAIN`。
 
 free：降低引用计数；减到 0 再合并回桶。**不**进入 reclaim。实现按页处理，并不核对「这是某次 alloc 交出去的整块」。
 

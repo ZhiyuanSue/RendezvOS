@@ -354,7 +354,7 @@ GICD 开 **Group0**、GICC 开 **「Group1」** 宏位——在**无 Security �
 
 | 问题 | x86 Local APIC | GICv2 |
 |------|----------------|-------|
-| 板级外设怎么进核 | 本该经 IOAPIC 到 LAPIC（本仓库 IOAPIC 空） | GICD 配 SPI + ITARGETSR，再投到各核 GICC |
+| 板级外设怎么进核 | 本该经 IOAPIC 到 LAPIC（本仓库 GSI 表已 bring-up，**RTE 未写**） | GICD 配 SPI + ITARGETSR，再投到各核 GICC |
 | 核间门铃 | ICR（向量号） | GICD_SGIR（SGI 号 + filter） |
 | 应答 | 向量已在 IDT 投递里；软件写 EOI=0 | **必须读 IAR** 才知道 INTID |
 | 结束 | EOI 清最高 ISR | EOIR 写回 INTID[+CPUID] |

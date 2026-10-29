@@ -335,9 +335,9 @@ v0.1/full/
 
 ### [x] [ ] 05-陷阱与中断/26-平台中断-x86_64-APIC与PIC.md
 
-职责：8259、Local APIC/x2APIC、PIT/HPET、timer IPI、**IOAPIC 空壳**（§9.6 硬件技术参考）
+职责：8259、Local APIC/x2APIC、PIT/HPET、timer IPI、**IOAPIC bring-up**（MADT + MMIO ensure + GSI 软件表；RTE/ISO 未做，§9.6）
 
-源码：`arch/x86_64/PIC/PIC.c` · `arch/x86_64/PIC/LocalAPIC.c` · `arch/x86_64/PIC/IRQ.c` · `arch/x86_64/PIC/PIT.c` · `arch/x86_64/time/time.c` · `arch/x86_64/time/rtc.c` · `include/arch/x86_64/PIC/*.h` · `include/arch/x86_64/time.h` · `include/arch/x86_64/io.h` · `include/arch/x86_64/io_port.h` · `include/arch/x86_64/msr.h`
+源码：`arch/x86_64/PIC/PIC.c` · `arch/x86_64/PIC/LocalAPIC.c` · `arch/x86_64/PIC/IOAPIC.c` · `arch/x86_64/PIC/IRQ.c` · `arch/x86_64/PIC/PIT.c` · `arch/x86_64/time/time.c` · `arch/x86_64/time/rtc.c` · `include/arch/x86_64/PIC/*.h` · `include/arch/x86_64/time.h` · `include/arch/x86_64/io.h` · `include/arch/x86_64/io_port.h` · `include/arch/x86_64/msr.h`
 
 ---
 

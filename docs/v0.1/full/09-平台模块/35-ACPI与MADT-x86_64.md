@@ -28,7 +28,7 @@ RSDP 探测调用点见启动篇 `04`；表所占物理区是否进 buddy 见物
 
 - XSDT / RSDP revision ≥ 1；RSDP / 次级表 checksum（只比签名字符串）
 - Local APIC **online_capable** 热插拔（boot 只认 `Enabled`；未置位则跳过）
-- IOAPIC 编程、Interrupt Source Override、x2APIC MADT 条目（type 9）——MADT 里对应分支为空操作
+- IOAPIC **RTE 编程**、Interrupt Source Override、x2APIC MADT 条目（type 9）——ISO/x2APIC 仍空操作；IOAPIC Type=1 **已发现**并由 `ioapic_init` bring-up（见 `26`）
 - AML / DSDT、设备热插拔、sleep 状态机
 
 ---
@@ -172,13 +172,13 @@ struct madt_Local_APIC { /* type = 0 */
 实现约定：`NR_CPU` = 合法条目**个数**（`apic_id < MAX` 时 `++`），**不是** `max_id+1`。`CPU_STATE[apic_id]` 先置 `cpu_disable`，SIPI 成功后再变 `cpu_enable`。
 #### 4.2.1 MADT 项类型一览
 
-MADT 的 `int_ctrl_structure[]` 是一串 `{u8 type; u8 length; …}` 的变长记录，游标按 `length` 推进。规范定义了十余种 type，本仓库只对 Local APIC 真正消费，其余一律空 `break`：
+MADT 的 `int_ctrl_structure[]` 是一串 `{u8 type; u8 length; …}` 的变长记录，游标按 `length` 推进。规范定义了十余种 type；本仓库消费 Local APIC 与 IOAPIC（发现），其余空 `break`：
 
 | type | 名称 | 字段（除头外） | 本仓库行为 |
 |------|------|----------------|------------|
 | 0 | Local APIC | `acpi_processor_uid`、`apic_id`、`flags` | `NR_CPU++`、`STATE[apic_id]=cpu_disable` |
-| 1 | IOAPIC | `ioapic_id`、`reserved`、`ioapic_addr`、`gsi_base` | 空 `break`（空壳；硬件/GSI/RTE 参考 `26` §9.6） |
-| 2 | Interrupt Source Override | `bus_source`、`irq_source`、`gsi`、`flags` | 空 `break` |
+| 1 | IOAPIC | `ioapic_id`、`reserved`、`ioapic_addr`、`gsi_base` | 两轮：计数 → 分配 `ioapics[]` → 填描述；**计数 0 合法**（无 IOAPIC）；Version/`nr_pins` 在 `ioapic_init`（`26`） |
+| 2 | Interrupt Source Override | `bus_source`、`irq_source`、`gsi`、`flags` | 空 `break`；将来填 IOAPIC 侧 ISO 表（ISA→GSI），不进 irq_space |
 | 3 | Local APIC NMI | `acpi_processor_uid`、`flags`、`lintin` | 空 `break` |
 | 4 | Local APIC Address Override | `reserved`、`lapic_addr`（u64） | 空 `break`（非默认基址机器会挂在 §6.5 检查） |
 | 5 | IOAPIC Source Override | 类似 type 2 | 空 `break` |
@@ -327,9 +327,9 @@ bool final_madt_int_ctrl_head(madt, curr);
 | 接口 / 字段 | 说明 |
 |-------------|------|
 | `arch_parser_fadt` | 空壳；挂好 `fadt_table` 后即返回成功（SCI/复位等未消费）。 |
-| `arch_parser_madt` | 清 `CPU_STATE`；Local APIC 且 **Enabled**：`NR_CPU++`、`STATE[id]=cpu_disable`。 |
+| `arch_parser_madt` | 清 `CPU_STATE`；Local APIC 且 **Enabled**：`NR_CPU++`、`STATE[id]=cpu_disable`；IOAPIC 两轮填 `ioapics[]`。 |
 | `Local_int_ctrl_address` | 期望 `0xFEE00000`（消费在 `26`）。 |
-| IOAPIC / ISO / x2APIC / Addr Override | 空 `break`；不解析。 |
+| ISO / x2APIC / Addr Override | 空 `break`；不解析。 |
 
 ### 7.4 不变量（实现）
 
@@ -355,7 +355,7 @@ bool final_madt_int_ctrl_head(madt, curr);
 
 **框架已就位、尚未填实：**
 
-- `arch_parser_fadt` 空壳；IOAPIC / ISO / Address Override 未消费。
+- `arch_parser_fadt` 空壳；ISO / Address Override 未消费（IOAPIC Type=1 已消费，见 `26`）。
 - `acpi_probe_rsdp` 仅 legacy BIOS；无 UEFI / Multiboot2 hint。接入 UEFI 时在 `acpi_init` 内加分支即可。
 - 只走 RSDT（rev0）；无 XSDT、无 RSDP/表 checksum。
 - 表区不进 buddy 依赖 mmap 类型正确；若固件误把表标成 `AVAILABLE`，本仓库**不再**按 RSDT 窗兜底 reserve，存在被覆盖风险。
@@ -368,6 +368,8 @@ bool final_madt_int_ctrl_head(madt, curr);
 
 ## 11. 变更记录
 
+- 2026-10-29：§2/§10 与 IOAPIC bring-up 对齐——Type=1 已消费；缺口收窄为 RTE/ISO 等（见 `26`）。
+- 2026-10-26：`arch_parser_madt` 消费 IOAPIC Type=1（两轮 + `ioapics[]`）；§4.2 / §7.3 同步。
 - 2026-10-25：去掉 `search_start_vaddr`；legacy 扫窗改用 `KERNEL_PHY_TO_VIRT`，与 ensure identity 一致。
 - 2026-10-24：`acpi_init(setup_info)` 传参预留 UEFI；今日 `(void)`；§1/§3/§6/§7 同步。
 - 2026-10-24：legacy 探测窗 ensure 下沉到 `acpi_probe_rsdp_legacy_bios`；`acpi_probe_rsdp` 改为 `error_t` + out；§1/§6/§7 同步。

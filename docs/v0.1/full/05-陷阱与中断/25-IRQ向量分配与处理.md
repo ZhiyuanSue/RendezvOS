@@ -46,7 +46,7 @@ Trap 分类与装表见 `23`；系统调用旁路见 `24`；timer / 软 IPI 见�
 | 硬件交付物 | **IDT 向量**（0–255） | **GIC INTID**（0–1019…），CPU 只看见 VBAR 的 IRQ 槽 |
 | `local_irq_id` | **= 向量号** | **`intid + 64`**（前 64 槽留给 ESR.EC）；LO 以下含 EC、SGI、PPI |
 | `global_irq_id` | GSI 下标（长度暂由启动时申请决定） | SPI 下标 = `INTID - SPI_START` |
-| 谁写出这个号 | PIC 基址 / LAPIC LVT·SVR·ICR /（将来）IOAPIC RTE | `GICC_IAR` 读出 INTID；SGI 由 `GICD_SGIR` 注入 |
+| 谁写出这个号 | PIC 基址 / LAPIC LVT·SVR·ICR /（将来写）IOAPIC RTE | `GICC_IAR` 读出 INTID；SGI 由 `GICD_SGIR` 注入 |
 | 表外编号怎么进全局表 | 每核 `local_irq_map[]`（用原子操作更新；**同号在不同核可映不同 GSI**） | 公式一一对应（无每核 map；**同号各核必映同一 SPI**） |
 
 OS 必须保证：**硬件还会交出来的那个号，在软件表里已经有着落**（本核表内可直接 `register_irq_handler`；表外须先 `irq_global_alloc`，并且通常还要挂好 handler——迁移时 handler 可能是上次留下的，见 §1.4）。否则进 `unknown` 再 panic。
@@ -57,7 +57,7 @@ OS 必须保证：**硬件还会交出来的那个号，在软件表里已经有
 
 硬件原因：SMP 上同一外设可能被路由到不同核（或 IPI 投递到指定核）；每核都有自己的 IDT / VBAR / GICC，入口汇编跑在**被中断的那颗核**上，查的是**本核**表（及本核 map）。若只在 BSP 上挂 handler、AP 上同一编号空着，AP 收到中断就会 panic。
 
-`register_irq_handler(local_irq_id, cpu_id, …)` 只写**那一个** `cpu_id` 上的槽（或已占到该核的全局项）。v0.1 **没有**「同一全局中断在每核挂不同处理函数」；绑核靠软件记的 `cpu_id`，再加上硬件路由（GIC 的目标寄存器 / 将来的 IOAPIC），不是靠在每核各挂一套函数指针。
+`register_irq_handler(local_irq_id, cpu_id, …)` 只写**那一个** `cpu_id` 上的槽（或已占到该核的全局项）。v0.1 **没有**「同一全局中断在每核挂不同处理函数」；绑核靠软件记的 `cpu_id`，再加上硬件路由（GIC 的目标寄存器 / x86 上将来的 IOAPIC RTE），不是靠在每核各挂一套函数指针。
 
 两套数组的关系（与 `arch/*/trap/trap.h` 注释一致）：
 
@@ -153,7 +153,7 @@ CPU1  local_irq_vector[]（本核私有，有格子） +-----+-------+-----+
 `irq_global_alloc` / `register_irq_handler` **只**改软件表。外设线还要在控制器里打开或改路由：
 
 - aarch64 的 SPI：`gic.unmask_irq(INTID)`（需要时再改亲和）；
-- x86 外设：IOAPIC 等（v0.1 尚未接上）。
+- x86 外设：写 IOAPIC RTE / mask（bring-up 与 GSI 软件表已接，**路由未做**，见 `26` §9.6.8）。
 
 本核本地中断（异常、IPI、timer 的 LVT / PPI 等）一般在每核启动时已经使能，不走「先占全局表再打开外设线」这条路径。
 
@@ -221,7 +221,7 @@ extern size_t nr_global_irq;
 | IDT / 硬件全宽 | IDT **256**（SDM：向量 0–255）；表外号仍可作 IDT 向量，但不进 `local_irq_vector[]` | CPU **没有** 256 项向量表；GIC 用 INTID |
 | 身份 | 向量号 = `local_irq_id` | `[0,64)` = EC；`[64,…)` = intid+64 |
 | 表外窗口 | `[ALLOC_LO, ALLOC_HI]` = `[0x40, 0xEF]` | 同；`arch_choose`：local = INTID + 偏移 |
-| 全局数组长度 | 启动时申请（暂定 `NR_ARCH_GLOBAL_IRQ`，待 MADT） | `gic.nr_spi()` |
+| 全局数组长度 | `ioapic_init` 内按 `ioapic_nr_gsi()` 申请 | `gic.nr_spi()` |
 
 x86 上 Intel 保留 **0–31** 给架构异常。设备 / timer / IPI 必须落在 ≥32 的向量上；timer / spurious / IPI 用固定宏，设备走表外窗口再 bind 进全局表。
 
@@ -237,7 +237,7 @@ aarch64 上为了复用同一套「按编号分发」外形，把 EC 放入前 6
 
 **② 表外窗口 → `global_irq_vector[]`**
 
-外设 SPI / 将来 IOAPIC·MSI 用大于等于 LO 的 `local_irq_id`。软件上先 `irq_global_alloc(global_irq_id, cpu_id, &local)`，再 `register_irq_handler`。全局表全机一份；亲和写在表项的 `(local_irq_id, cpu_id)` 上。
+外设 SPI / IOAPIC·GSI（及将来 MSI）用大于等于 LO 的 `local_irq_id`。软件上先 `irq_global_alloc(global_irq_id, cpu_id, &local)`，再 `register_irq_handler`。全局表全机一份（x86 上 `ioapic_init` 已按 GSI 数申请）；亲和写在表项的 `(local_irq_id, cpu_id)` 上。x86 设备路由（写 RTE）仍未做。
 
 `irq_global_alloc` 怎么定本核编号：交给 `arch_choose_local_irq_id`——aarch64 用公式直接给出；x86 在目标核上扫描 `[ALLOC_LO, ALLOC_HI]` 找空闲号。定下之后公共层 CAS `USED` 占全局项，再 `arch_global_bind_local_irq_id`。
 
@@ -272,7 +272,7 @@ aarch64 local_irq_id 布局示意：
 | `0x20`（`ARCH_IRQ_ID_TIMER`） | Timer | PIC：master IRQ0 基址；APIC：**LVT Timer** 的向量字段 |
 | `0x27`（`ARCH_IRQ_ID_SPURIOUS`） | Spurious | **SVR** 的 spurious 字段；当前无专用 handler，误入可 panic |
 | `0x30`（`ARCH_IRQ_ID_IPI`） | IPI | **ICR** FIXED 投递 |
-| `[0x40, 0xEF]`（`ALLOC_LO..HI`） | 表外设备号 | 将来 IOAPIC / MSI；经 per-CPU map 进 `global_irq_vector` |
+| `[0x40, 0xEF]`（`ALLOC_LO..HI`） | 表外设备号 | IOAPIC GSI（表已申请）/ 将来 MSI；经 per-CPU map 进 `global_irq_vector` |
 
 中间空洞（如 `0x21–0x26`）既不在表外窗口、也未被固定宏占用——勿写进 LVT。
 
@@ -320,7 +320,7 @@ aarch64 local_irq_id 布局示意：
 
 ### 6.1 Boot（软件表必须先于「能收到中断」）
 
-1. BSP 的 `arch_start_platform`：申请 `global_irq_vector`（此时须已有内核分配器；长度 x86 暂定常量、aarch64 跟 SPI 条数走）。
+1. BSP 的 `arch_start_platform`：x86 经 `ioapic_init`、aarch64 经 GIC 路径申请 `global_irq_vector`（须已有内核分配器）。
 2. 每核 `init_interrupt`：确认全局数组已就绪（否则 panic）→ `arch_init_interrupt`（lidt / VBAR；aarch64 路径上可能立刻 enable IRQ）。
 3. 平台 IRQ 接口（x86 `init_irq` / aarch64 `gic.init_cpu_interface`）→ `smp_ipi_init` → …… → `rendezvos_time_init`（register timer；x86 路径上才 `software_enable_APIC`——SVR 软件使能）。
 
@@ -398,7 +398,7 @@ x86 上多个设备可共享同一 IDT 向量（典型 PCI legacy 共享线）�
 1. `irq_global_alloc(global_irq_id, cpu_id, &local_irq_id);` — **勿**手写 timer / IPI / EC 当设备号。内部由 `arch_choose_local_irq_id` 选号（见 §4.3 ②、§7.3）。可在别的核上替目标 `cpu_id` 调用。
 2. 在**属主核**上 `register_irq_handler(local_irq_id, cpu_id, isr, IRQ_NEED_EOI);` — 软件表就绪。
 3. **再**由平台改路由 / 打开线路：
-   - x86：向量 = `local_irq_id`（IOAPIC / MSI 见 APIC 篇；v0.1 IOAPIC 还是空壳，外设线基本接不上）。
+   - x86：向量 = `local_irq_id`（须再写 IOAPIC RTE / mask；见 `26`——GSI 软件表已有，RTE 未做，外设线仍接不上）。
    - aarch64：`intid = AARCH64_TRAP_ID_TO_IRQ(local_irq_id)`，再调用 GIC 的打开与（可选）改亲和。
 4. 未占号就挂函数、或非属主核去挂全局号：打错误日志后返回。
 5. 处理函数返回后由 `trap_handler` 做 EOI——函数里面**不要**自己写 EOI，除非故意不设「需要 EOI」。
@@ -491,7 +491,7 @@ void arch_unknown_trap_handler(struct trap_frame *tf);
 |--|--------|---------|
 | 表外绑定 | 每核 `local_irq_map`；同 LO 可异 GSI | 公式；同 LO 必同 SPI |
 | `arch_choose_local_irq_id` | 扫 `[ALLOC_LO, ALLOC_HI]` 空闲号 | 公式算出 local |
-| 打开外设线 | IOAPIC 未实现 | `gic.unmask_irq` |
+| 打开外设线 | IOAPIC RTE/mask **未做**（GSI 表已申请） | `gic.unmask_irq` |
 
 控制器细节见 APIC / GIC 篇。riscv / loongarch 非 v0.1 主线。
 
@@ -508,7 +508,7 @@ void arch_unknown_trap_handler(struct trap_frame *tf);
 **平台与功能缺口：**
 
 - `irq_global_alloc`：USED/bind 失败 → `-E_REND_AGAIN`；表外窗口用尽 → `-E_REND_OVERFLOW`；参数非法 → `-E_IN_PARAM`。
-- x86 全局数组长度仍是启动时的暂定值；待 MADT 给出真实 GSI 数量。IOAPIC 路由未齐时，占出来的表外号还无处可编程。
+- x86：IOAPIC bring-up 已申请 GSI 全局表；**写 RTE / ISO / mask、设备侧占号并编程路由**未齐时，表外号仍无处写入硬件，外设中断接不上（见 `26` §9.6.8）。
 - 伪中断（spurious）无专用 handler。
 - 没有「同一编号挂多设备」的共享链（后写覆盖）；电平共享见 §6.2。
 - 没有「同一全局中断每核不同 handler」。
@@ -523,6 +523,7 @@ void arch_unknown_trap_handler(struct trap_frame *tf);
 
 ## 11. 变更记录
 
+- 2026-10-29：对齐 IOAPIC bring-up——GSI 全局表已由 `ioapic_init` 申请；缺口改为「RTE/ISO/mask/设备路由未齐」而非「IOAPIC 空壳」；§1.6 / §4 / §6.3 / §8 / §10 与 `26` 同步。
 - 2026-10-23：理顺 §1 结构（去掉重复的 1.3 编号）；开篇用表格划清「编号空间 / 分发 / 硬件」；§5 / §10 同步。中文表述按阅读习惯整理。
 - 2026-10-23：`IRQ_COMMON` 改为 `GLOBAL_IRQ_COMMON`（handler + atomic attr + local/cpu 亲和）；`local_irq` 直接写字段，不再共用该宏。
 - 2026-10-23：占有模型落地——全局 `register` 亦要求属主核；`free` 改为 `try_set_unused` 且保留 handler（换核不必再 register；卸模块须自行摘 handler）。新增占有规则小节，并改 §4.4 / §6.3 / §7。
