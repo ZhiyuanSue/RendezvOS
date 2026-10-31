@@ -96,12 +96,18 @@ ppn_t unmap(VSpace* vs, vpn_t vpn, u64 new_entry_addr,
  * @param vpn              Virtual page number.
  * @param entry_flags_out  Optional: portable flags of the leaf (may be NULL).
  * @param entry_level_out  Optional: 2 (huge) or 3 (4K) (may be NULL).
+ * @param pin              If true and the leaf is a live mapping, take an
+ *                         allocator ownership share via
+ *                         @c pmm_change_pages_ref(pmm, ppn, 1, true) before
+ *                         dropping @c vspace_lock. Pair drop with @c pmm_free
+ *                         of that ppn. Fails the query if the get fails.
  * @param handler          Per-CPU map handler.
  * @return Mapped @c ppn_t (>=0, including 0); negative (@c invalid_ppn) if
  *         not present or on error.
  */
 ppn_t have_mapped(VSpace* vs, vpn_t vpn, ENTRY_FLAGS_t* entry_flags_out,
-                  int* entry_level_out, struct map_handler* handler);
+                  int* entry_level_out, bool pin,
+                  struct map_handler* handler);
 
 /**
  * @brief Temporarily map a physical page into a per-CPU handler mapping window.
@@ -157,8 +163,9 @@ static inline error_t map_handler_copy_page(struct map_handler* handler,
 /**
  * @brief Copy between a user VA range in @p vs and a kernel buffer.
  *
- * Resolves each user page via @c have_mapped (4 KiB leaves only), then copies
- * through the mapping window. Independent of which address space is loaded.
+ * Resolves each user page via @c have_mapped(..., pin=true) (4 KiB only),
+ * copies through the mapping window, then @c pmm_free to drop the pin.
+ * Pin keeps the frame out of buddy if another CPU unmaps+frees during copy.
  *
  * @param vs      User address space (not @c root_vspace ).
  * @param user_va User virtual address.
@@ -166,9 +173,8 @@ static inline error_t map_handler_copy_page(struct map_handler* handler,
  * @param len     Bytes to copy ( @c 0 succeeds immediately).
  * @param to_user @c true: @p kbuf → user; @c false: user → @p kbuf.
  *
- * @return @c REND_SUCCESS, or negative @c error_t (unmapped / non-4K leaf).
- * No roll back if in some page copy have an error, the data have mapped will
- * not delete
+ * @return @c REND_SUCCESS, or negative @c error_t (unmapped / non-4K leaf /
+ *         pin failure). Partial copies are not rolled back.
  */
 error_t map_handler_user_kernel_copy(VSpace* vs, u64 user_va, void* kbuf,
                                      size_t len, bool to_user);

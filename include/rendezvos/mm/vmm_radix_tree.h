@@ -498,9 +498,13 @@ error_t vmm_radix_tree_leaf_bind_range(VSpace* vs, vaddr vaddr_start,
  *
  * @return @c REND_SUCCESS or an error code.
  *
- * @note Caller must hold an L2 band lock with
- *       @ref RADIX_RL_QUERY_OR_CHANGE on the band, then @ref
- * vmm_radix_tree_unlock_range_small.
+ * @note Typical callers hold an L2 band lock with @ref
+ *       RADIX_RL_QUERY_OR_CHANGE on the band, then @ref
+ *       vmm_radix_tree_unlock_range_small. The same L2 exclusion is satisfied
+ *       if the band is already covered by an earlier @ref RADIX_RL_INSERT
+ *       lock in the same critical section (same rule as @ref
+ *       vmm_radix_tree_leaf_bind_range); this routine does not re-acquire
+ *       range locks.
  *
  * @note Does not adjust L2 occupancy counts; drop reservation with an L2
  *       @ref RADIX_RL_DELETE band acquire (@ref

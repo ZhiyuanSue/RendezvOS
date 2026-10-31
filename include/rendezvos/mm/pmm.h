@@ -81,21 +81,69 @@ typedef struct {
         size_t zone_pmm_manage_pages;
 } MemZone;
 typedef struct {
+        /**
+         * we do not using the refcount.h 's refcount_t but using the i64.
+         * for the refcount_t using some atomic funcs.
+         * But we using the pmm lock to protect this, so no need for cas.
+         * - pmm_alloc: claim 0→1
+         * - COW share / pin: get only if >0 (no 0→1 revival)
+         * - pmm_free: minus; return to buddy at 0
+         */
         i64 ref_count;
         MemSection* sec;
         struct list_entry rmap_list;
 } Page;
-static inline void phy_Page_ref_plus(Page* page)
+
+/**
+ * @brief Alloc-time claim: free frame @c 0 → owned @c 1.
+ * @param page Zone @c Page for the frame (must be non-NULL).
+ * @return @c true on success; @c false if @p page is NULL or @c ref_count was
+ *         not 0 (corrupt metadata / forbidden revival).
+ * @note Call only under the zone @c pmm lock.
+ */
+static inline bool phy_Page_ref_claim(Page* page)
 {
+        if (!page || page->ref_count != 0)
+                return false;
+        page->ref_count = 1;
+        return true;
+}
+
+/**
+ * @brief Extra hold (COW share / pin) if the frame is still owned (@c ref > 0).
+ * @param page Zone @c Page for the frame.
+ * @return @c true if @c ref_count was > 0 and was incremented; @c false if
+ *         @p page is NULL or @c ref_count <= 0 (dead / in buddy).
+ * @note Call only under the zone @c pmm lock. Prevents 0→1 revival.
+ */
+static inline bool phy_Page_ref_get(Page* page)
+{
+        if (!page || page->ref_count <= 0)
+                return false;
         page->ref_count++;
+        return true;
 }
-static inline void phy_Page_ref_minus(Page* page)
+
+/**
+ * @brief Drop one ownership share (pair with claim/get, or @c pmm_free body).
+ * @param page Zone @c Page for the frame; NULL is a no-op.
+ * @note Call only under the zone @c pmm lock. Does not return the frame to
+ *       buddy; @c pmm_free does that when the count hits 0.
+ */
+static inline void phy_Page_ref_put(Page* page)
 {
-        page->ref_count--;
+        if (page)
+                page->ref_count--;
 }
+
+/**
+ * @brief Whether @p page currently holds a positive ownership share.
+ * @param page Zone @c Page, or NULL.
+ * @return @c true if @p page is non-NULL and @c ref_count > 0.
+ */
 static inline bool phy_Page_refed(Page* page)
 {
-        return page->ref_count > 0;
+        return page && page->ref_count > 0;
 }
 struct mem_section {
         struct list_entry section_list;
@@ -254,7 +302,7 @@ typedef bool (*pmm_reclaim_fn_t)(struct pmm* pmm, size_t need_pages,
                          paddr pmm_phy_end_addr);                             \
         ppn_t (*pmm_alloc)(struct pmm * pmm,                                  \
                            size_t page_number,                                \
-                           size_t* alloced_page_number);                      \
+                           size_t * alloced_page_number);                     \
         error_t (*pmm_free)(struct pmm * pmm, ppn_t ppn, size_t page_number); \
         size_t (*pmm_calculate_manage_space)(size_t zone_page_number);        \
         void (*pmm_show_info)(struct pmm * pmm);                              \
@@ -322,10 +370,18 @@ static inline void pmm_unlock(struct pmm* pmm)
  * @brief Increase or decrease reference counts for a range of physical pages.
  * @param pmm Zone allocator owning the pages.
  * @param start_ppn Starting physical page number.
- * @param page_number Number of pages to modify.
- * @param increment @c true to increase @c ref_count, @c false to decrease.
- * @return @c REND_SUCCESS, or a negative @c error_t
- * On failure, automatically rolls back any changes made during this call.
+ * @param page_number Number of pages to modify
+ * @param increment @c true to @c phy_Page_ref_get each page (fails if any
+ *                  @c ref_count was 0 — no 0→1 revival); @c false to decrease
+ *                  @c phy_Page_ref_put each page (fails if any @c ref_count
+ *                  was already <= 0).
+ * @return @c REND_SUCCESS, or a negative @c error_t.
+ *         On failure, automatically rolls back any changes made during this
+ *         call. Callers must check the return value and undo more if needed.
+ * @note Dropping after a successful increment usually use pmm_free, which puts
+ *         the share and returns the frame to buddy if the count hits 0.
+ *         If increment==false only puts and never merges back into
+ *         buddy by itself.
  */
 static inline error_t pmm_change_pages_ref(struct pmm* pmm, ppn_t start_ppn,
                                            size_t page_number, bool increment)
@@ -346,10 +402,14 @@ static inline error_t pmm_change_pages_ref(struct pmm* pmm, ppn_t start_ppn,
                 if (!p)
                         goto fail_unroll;
 
-                if (increment)
-                        phy_Page_ref_plus(p);
-                else
-                        phy_Page_ref_minus(p);
+                if (increment) {
+                        if (!phy_Page_ref_get(p))
+                                goto fail_unroll;
+                } else {
+                        if (!phy_Page_refed(p))
+                                goto fail_unroll;
+                        phy_Page_ref_put(p);
+                }
 
                 if (i + 1 < page_number) {
                         if (!zone_page_cursor_next(&cur))
@@ -366,9 +426,9 @@ fail_unroll:
                         Page* p = zone_page_cursor_page(&unroll_cur);
                         if (p) {
                                 if (increment)
-                                        phy_Page_ref_minus(p);
+                                        phy_Page_ref_put(p);
                                 else
-                                        phy_Page_ref_plus(p);
+                                        (void)phy_Page_ref_get(p);
                         }
                         if (j + 1 < i)
                                 zone_page_cursor_next(&unroll_cur);

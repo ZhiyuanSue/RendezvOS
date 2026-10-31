@@ -13,6 +13,8 @@
 #include <rendezvos/mm/vmm.h>
 #include <rendezvos/mm/vmm_radix_tree.h>
 #include <rendezvos/smp/percpu.h>
+#include <rendezvos/system/panic.h>
+#include <rendezvos/system/powerd.h>
 
 /** PTE/radix flags for @c map(): drop SW bits; keep VALID if @p in had it. */
 static ENTRY_FLAGS_t mm_user_canonical_pte_flags(ENTRY_FLAGS_t in)
@@ -64,8 +66,12 @@ static void mm_user_restore_range_pte_prefix(struct VSpace* vs,
                         range_start + (vaddr)page_index * (vaddr)PAGE_SIZE;
                 int pte_level = 3;
                 ENTRY_FLAGS_t pte_flags = 0;
-                ppn_t mapped_ppn = have_mapped(
-                        vs, VPN(page_va), &pte_flags, &pte_level, handler);
+                ppn_t mapped_ppn = have_mapped(vs,
+                                               VPN(page_va),
+                                               &pte_flags,
+                                               &pte_level,
+                                               false,
+                                               handler);
                 if (invalid_ppn(mapped_ppn) || pte_level != 3) {
                         continue;
                 }
@@ -174,13 +180,19 @@ vaddr mm_user_utils_set_range_and_fill(struct VSpace* vs, vaddr range_start,
         (void)vmm_radix_tree_unlock_range_small(
                 (VSpace*)vs, range_start, range_end);
 
+        /*
+         * Zero after L2 unlock. Failure is a Map_Handler / ownership invariant
+         * break — ask powerd to shut down, then panic (never return).
+         */
         for (size_t zi = 0; zi < page_count; zi++) {
                 err = map_handler_zero_page(handler, ppn_first + (ppn_t)zi);
                 if (err != REND_SUCCESS) {
                         pr_error(
                                 "[MM_USER] set_range_and_fill: zero page %lu failed\n",
                                 (unsigned long)zi);
-                        goto out_unmap_pte_prefix;
+                        (void)rendezvos_request_poweroff();
+                        kernel_panic(
+                                "[MM_USER] set_range_and_fill: map_handler_zero_page failed");
                 }
         }
 
@@ -194,8 +206,6 @@ out_unmap_pte_prefix:
         }
 out_delete_radix:
         if (radix_range_inserted
-            && vmm_radix_tree_calculate_end_check(
-                    range_start, page_count, &range_end)
             && vmm_radix_tree_lock_range_small_with_big_locked(handler,
                                                                (VSpace*)vs,
                                                                range_start,
@@ -301,13 +311,17 @@ error_t mm_user_utils_fill_page_with_exist_range(struct VSpace* vs,
                 (VSpace*)vs, page_va, page_range_end);
         if (err != REND_SUCCESS)
                 return err;
+        /*
+         * Same as set_range_and_fill: zero failure is a Map_Handler /
+         * ownership invariant break — not a recoverable unbind/free path.
+         */
         err = map_handler_zero_page(handler, new_ppn);
         if (err != REND_SUCCESS) {
                 pr_error(
                         "[MM_USER] fill_page_with_exist_range: zero via map_handler failed\n");
-                (void)unmap(vs, VPN(page_va), 0, handler);
-                (void)vs->pmm->pmm_free(vs->pmm, new_ppn, 1);
-                return err;
+                (void)rendezvos_request_poweroff();
+                kernel_panic(
+                        "[MM_USER] fill_page_with_exist_range: map_handler_zero_page failed");
         }
         return REND_SUCCESS;
 
@@ -465,7 +479,7 @@ error_t mm_user_utils_remap_page(struct VSpace* vs, vaddr page_va,
 
         int pte_level = 3;
         ppn_t old_ppn =
-                have_mapped(vs, VPN(page_va), NULL, &pte_level, handler);
+                have_mapped(vs, VPN(page_va), NULL, &pte_level, false, handler);
         if (invalid_ppn(old_ppn)) {
                 (void)vmm_radix_tree_unlock_range_small(
                         (VSpace*)vs, page_va, page_range_end);
@@ -590,8 +604,12 @@ error_t mm_user_utils_set_range_flags(struct VSpace* vs, vaddr range_start,
                 }
                 int pte_level = 3;
                 ENTRY_FLAGS_t pte_flags = 0;
-                ppn_t mapped_ppn = have_mapped(
-                        vs, VPN(page_va), &pte_flags, &pte_level, handler);
+                ppn_t mapped_ppn = have_mapped(vs,
+                                               VPN(page_va),
+                                               &pte_flags,
+                                               &pte_level,
+                                               false,
+                                               handler);
                 if (invalid_ppn(mapped_ppn)) {
                         err = (error_t)mapped_ppn;
                         goto out_unlock_l2;
@@ -623,8 +641,12 @@ error_t mm_user_utils_set_range_flags(struct VSpace* vs, vaddr range_start,
                         range_start + (vaddr)page_index * (vaddr)PAGE_SIZE;
                 int pte_level = 3;
                 ENTRY_FLAGS_t pte_flags = 0;
-                ppn_t mapped_ppn = have_mapped(
-                        vs, VPN(page_va), &pte_flags, &pte_level, handler);
+                ppn_t mapped_ppn = have_mapped(vs,
+                                               VPN(page_va),
+                                               &pte_flags,
+                                               &pte_level,
+                                               false,
+                                               handler);
                 if (invalid_ppn(mapped_ppn)) {
                         err = (error_t)mapped_ppn;
                         goto out_rollback_pte;

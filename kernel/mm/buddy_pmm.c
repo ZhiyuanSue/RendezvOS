@@ -134,8 +134,8 @@ ppn_t pmm_alloc_zone(struct buddy *bp, int alloc_order,
         }
 
         /*
-         * Phase 1 (no buddy metadata mutation yet): increment Page refcount for
-         * the allocated range. If this fails, we can safely return without
+         * Phase 1 (no buddy metadata mutation yet): claim Page refs for the
+         * range. On failure goto undo already-claimed refs; If this fails, we can safely return without
          * rolling back buddy buckets/splits because we haven't touched them.
          */
         ZonePageCursor cur;
@@ -149,8 +149,13 @@ ppn_t pmm_alloc_zone(struct buddy *bp, int alloc_order,
         u64 done = 0;
         do {
                 Page *page = zone_page_cursor_page(&cur);
-                if (page)
-                        phy_Page_ref_plus(page);
+                if (!phy_Page_ref_claim(page)) {
+                        pr_error(
+                                "[ BUDDY ] alloc: ref claim fail ppn %lx (done %lx)\n",
+                                del_node->ppn,
+                                done);
+                        goto fail_undo_refs;
+                }
                 done++;
         } while (--remaining && zone_page_cursor_next(&cur));
         if (remaining) {
@@ -158,16 +163,7 @@ ppn_t pmm_alloc_zone(struct buddy *bp, int alloc_order,
                         "[ BUDDY ] alloc: cursor traversal failed (ppn %lx remaining %lx)\n",
                         del_node->ppn,
                         remaining);
-                if (zone_page_cursor_init(&cur, bp->zone, del_node->ppn)) {
-                        u64 undo = done;
-                        do {
-                                Page *page = zone_page_cursor_page(&cur);
-                                if (page)
-                                        phy_Page_ref_minus(page);
-                        } while (--undo && zone_page_cursor_next(&cur));
-                }
-                *alloced_page_number = 0;
-                return (-E_RENDEZVOS);
+                goto fail_undo_refs;
         }
 
         /* Phase 2: mutate buddy metadata (split + mark allocated). */
@@ -199,6 +195,17 @@ ppn_t pmm_alloc_zone(struct buddy *bp, int alloc_order,
         //       *alloced_page_number);
 
         return del_node->ppn;
+
+fail_undo_refs:
+        if (done && zone_page_cursor_init(&cur, bp->zone, del_node->ppn)) {
+                do {
+                        Page *page = zone_page_cursor_page(&cur);
+                        if (page)
+                                phy_Page_ref_put(page);
+                } while (--done && zone_page_cursor_next(&cur));
+        }
+        *alloced_page_number = 0;
+        return (-E_RENDEZVOS);
 }
 i64 pmm_alloc(struct pmm *pmm, size_t page_number, size_t *alloced_page_number)
 {
@@ -348,7 +355,7 @@ error_t pmm_free(struct pmm *pmm, ppn_t ppn, size_t page_number)
                 if (!free_phy_page)
                         goto next_page;
 
-                phy_Page_ref_minus(free_phy_page);
+                phy_Page_ref_put(free_phy_page);
                 if (phy_Page_refed(free_phy_page))
                         goto next_page;
 

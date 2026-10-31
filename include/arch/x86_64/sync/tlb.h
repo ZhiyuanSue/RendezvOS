@@ -71,8 +71,24 @@ static inline void arch_tlb_invalidate_kernel_page(vaddr addr)
         invlpg(addr);
 }
 /**
- * @brief For Kernel pages, the RendezvOS is designed percpu.
- * So we only need to invlpg of current core
+ * @brief For Kernel pages, the RendezvOS kmalloc is designed percpu.
+ * So we only need to invlpg of current core map handler.
+ *
+ * And if it's not percpu, It might have huge problem. As ipi can be ignored by
+ * `cli`. So if core A try to unmap, and core B is in a `cli` range and cannot
+ * get the interrupt immediately, core B might still try to access this page, so
+ * old translate might be used and the unmapped page have been change. If this
+ * page is re-allocated and mapped, another core will find this page is changing.
+ *
+ * But the kmalloc's percpu strategy will let it work.
+ *
+ * It doesn't mean core B cannot access a page that hold by core A.
+ * It can access a kernel object using IPC, which might send a pointer to core
+ * B. The reason is that if a page need to unmap by core A, no any core B will
+ * hold it, it's promised by kmalloc, a MSQ is used for return the kernel object
+ * to the core that alloc it. So this percpu is used just for emmmm, lifecycle.
+ * Only the core that alloc this page can free it after it's sure no other core
+ * hold it.
  */
 static inline void arch_tlb_invalidate_kernel_page_all_core(vaddr addr)
 {

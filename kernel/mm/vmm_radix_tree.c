@@ -1848,7 +1848,7 @@ static void radix_clean_user_leaf(VSpace* vs, struct map_handler* handler,
          * Radix metadata pages are normally accessed without walking user PTEs;
          * clean_user is an exception: drop the user mapping before pmm_free.
          */
-        ppn_t ppn = have_mapped(vs, VPN(va), NULL, NULL, handler);
+        ppn_t ppn = have_mapped(vs, VPN(va), NULL, NULL, false, handler);
         if (invalid_ppn(ppn))
                 return;
         (void)unmap(vs, VPN(va), 0, handler);

@@ -187,7 +187,7 @@ static void clone_rollback_src_write_pte_pages(VSpace* src_vs, vaddr va_start,
         for (vaddr va = va_start; va < va_end; va += PAGE_SIZE) {
                 ENTRY_FLAGS_t src_map_flag;
                 ppn_t src_ppn = have_mapped(
-                        src_vs, VPN(va), &src_map_flag, NULL, handler);
+                        src_vs, VPN(va), &src_map_flag, NULL, false, handler);
                 if (invalid_ppn(src_ppn)) {
                         pr_error(
                                 "[Error] vspace clone rollback src have_mapped\n");
@@ -253,6 +253,7 @@ error_t clone_vspace(VSpace* src_vs, VSpace** dst_vs_out,
         vaddr searched_end;
         ENTRY_FLAGS_t range_flags;
         vaddr page_iter = USER_SPACE_TOP + 1;
+        ppn_t src_ppn = -E_RENDEZVOS;
 
         int interval_count = 0;
         while (vmm_radix_tree_find_first_occupied_interval(src_vs,
@@ -304,11 +305,12 @@ error_t clone_vspace(VSpace* src_vs, VSpace** dst_vs_out,
                              page_iter += PAGE_SIZE) {
                                 /*need to find the src's page*/
                                 ENTRY_FLAGS_t src_map_flag;
-                                ppn_t src_ppn = have_mapped(src_vs,
-                                                            VPN(page_iter),
-                                                            &src_map_flag,
-                                                            NULL,
-                                                            handler);
+                                src_ppn = have_mapped(src_vs,
+                                                      VPN(page_iter),
+                                                      &src_map_flag,
+                                                      NULL,
+                                                      false,
+                                                      handler);
                                 if (invalid_ppn(src_ppn)) {
                                         e = -E_RENDEZVOS;
                                         (void)vmm_radix_tree_unlock_range_big_and_small(
@@ -392,15 +394,16 @@ error_t clone_vspace(VSpace* src_vs, VSpace** dst_vs_out,
                                                     src_map_flag)
                                             != REND_SUCCESS) {
                                                 e = -E_RENDEZVOS;
-                                                (void)vmm_radix_tree_unlock_range_big_and_small(
-                                                        dst_vs,
-                                                        searched_start,
-                                                        searched_end);
-                                                goto rollback_prev_interval;
+                                                goto rollback_cow_unlock;
                                         }
-                                        /*map the dst*/
-                                        pmm_change_pages_ref(
-                                                dst_vs->pmm, src_ppn, 1, true);
+                                        if (pmm_change_pages_ref(dst_vs->pmm,
+                                                                 src_ppn,
+                                                                 1,
+                                                                 true)
+                                            != REND_SUCCESS) {
+                                                e = -E_RENDEZVOS;
+                                                goto rollback_cow_bind;
+                                        }
                                         if (map(dst_vs,
                                                 src_ppn,
                                                 VPN(page_iter),
@@ -410,16 +413,7 @@ error_t clone_vspace(VSpace* src_vs, VSpace** dst_vs_out,
                                                 handler)
                                             != REND_SUCCESS) {
                                                 e = -E_RENDEZVOS;
-                                                pmm_change_pages_ref(
-                                                        dst_vs->pmm,
-                                                        src_ppn,
-                                                        1,
-                                                        false);
-                                                (void)vmm_radix_tree_unlock_range_big_and_small(
-                                                        dst_vs,
-                                                        searched_start,
-                                                        searched_end);
-                                                goto rollback_prev_interval;
+                                                goto rollback_cow_ref;
                                         }
                                         /*change the src pte flags*/
                                         if (map(src_vs,
@@ -431,11 +425,11 @@ error_t clone_vspace(VSpace* src_vs, VSpace** dst_vs_out,
                                                 handler)
                                             != REND_SUCCESS) {
                                                 e = -E_RENDEZVOS;
-                                                (void)vmm_radix_tree_unlock_range_big_and_small(
-                                                        dst_vs,
-                                                        searched_start,
-                                                        searched_end);
-                                                goto rollback_pte_flags_prev;
+                                                (void)unmap(dst_vs,
+                                                            VPN(page_iter),
+                                                            0,
+                                                            handler);
+                                                goto rollback_cow_ref;
                                         }
                                 }
                         }
@@ -489,6 +483,13 @@ error_t clone_vspace(VSpace* src_vs, VSpace** dst_vs_out,
         }
         *dst_vs_out = dst_vs;
         return e;
+rollback_cow_ref:
+        (void)pmm_change_pages_ref(dst_vs->pmm, src_ppn, 1, false);
+rollback_cow_bind:
+        (void)vmm_radix_tree_leaf_unbind(dst_vs, page_iter, src_ppn);
+rollback_cow_unlock:
+        (void)vmm_radix_tree_unlock_range_big_and_small(
+                dst_vs, searched_start, searched_end);
 rollback_pte_flags_prev:
         /* Same half-open range as the descending loop: [searched_start,
          * page_iter). */

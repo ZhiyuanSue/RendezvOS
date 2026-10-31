@@ -148,7 +148,7 @@ struct mem_section {
 
 | 结构 | 跟谁走 | 记什么 |
 |------|--------|--------|
-| `Page` | 跟 `MemSection`，与物理页一一对应 | 引用计数、所属 section、rmap 链表（谁映射了这一页，radix 篇再用） |
+| `Page` | 跟 `MemSection`，与物理页一一对应 | **分配器所有权份额** `ref_count`、所属 section、rmap 链表（谁映射了这一页，radix 篇再用） |
 | pmm 私有管理区 | 跟该 zone 的 `struct pmm` | 由实现自定。buddy：`buddy_page[]`（空闲阶、空闲链、`ppn`），见 §4.3 |
 
 默认 buddy 的私有项（`buddy_pmm.h`），不是 zone 通用结构：
@@ -409,7 +409,7 @@ riscv / loongarch 的 `pmm.h` 为空桩，无实现。
 
 ### 6.3 alloc / free
 
-alloc：`page_number` 必须 `> 0`，否则 `-E_IN_PARAM`。持锁找到 ≥ 所需阶的块后，**先**给范围内 `Page` 加引用计数，**再**分裂 buddy 块，然后返回起始 ppn（**含 0**），实际页数 **向上取整到 2ⁿ**（经 `alloced_page_number` 传出）。失败用 `invalid_ppn`（仅负值）。`page_number` 超过 `2^BUDDY_MAXORDER` 且当时空闲总数够，或 `pmm_alloc_zone` 返回 `-E_RENDEZVOS`（数据结构出现严重错误），直接返回该错误码，不 reclaim。空闲总数不够，或 `_zone` 返回 `-E_REND_NO_MEM`（拼不出连续 2ⁿ），则**解锁后** reclaim（若已注册）；无 hook / 次数用尽则返回 `-E_REND_AGAIN`。
+alloc：`page_number` 必须 `> 0`，否则 `-E_IN_PARAM`。持锁找到 ≥ 所需阶的块后，**先**对范围内每个 `Page` 结构体做 `phy_Page_ref_claim`（要求当时 `ref==0`），**再**分裂 buddy 块，然后返回起始 ppn（**含 0**），实际页数 **向上取整到 2ⁿ**（经 `alloced_page_number` 传出）。失败用 `invalid_ppn`（仅负值）。`page_number` 超过 `2^BUDDY_MAXORDER` 且当时空闲总数够，或 `pmm_alloc_zone` 返回 `-E_RENDEZVOS`（数据结构出现严重错误），直接返回该错误码，不 reclaim。空闲总数不够，或 `_zone` 返回 `-E_REND_NO_MEM`（拼不出连续 2ⁿ），则**解锁后** reclaim（若已注册）；无 hook / 次数用尽则返回 `-E_REND_AGAIN`。
 
 free：降低引用计数；减到 0 再合并回桶。**不**进入 reclaim。实现按页处理，并不核对「这是某次 alloc 交出去的整块」。
 
@@ -516,6 +516,7 @@ make ARCH=x86_64 config && make run
 
 ## 11. 变更记录
 
+- 2026-10-31：`Page.ref` 拆 claim/get；与 rmap 解耦写清；alloc 用 claim，COW/pin 用 get（禁 0→1 复活）。
 - 2026-10-24：去掉 `reserve_arch_region`（不再按 RSDT 扣 2 MiB 窗）。§1 / §4 / §5 / §6.1 / §7：ACPI 表区只靠 mmap 非 `AVAILABLE` 不插入；探测属 `04`，walk 属 `35`。
 - 2026-10-29：`pmm_alloc(page_number==0)` 改为 `-E_IN_PARAM`；成功 `0` 仅表示真实 ppn0，不再用 `*alloced_page_number` 区分空请求。
 - 2026-10-24：RSDP 探测已迁到 `acpi_init()`；曾写 `reserve_arch_region` / `setup_info.rsdp_addr`（已废止，见上条）。

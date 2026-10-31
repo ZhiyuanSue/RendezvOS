@@ -220,7 +220,7 @@ error_t map_handler_copy_data_range(struct map_handler *handler,
         return REND_SUCCESS;
 }
 /*
- * User VA <-> kernel buffer via have_mapped + map_handler_copy_data_range.
+ * User VA <-> kernel buffer via have_mapped(pin) + copy_data_range + pmm_free.
  */
 error_t map_handler_user_kernel_copy(VSpace *vs, u64 user_va, void *kbuf,
                                      size_t len, bool to_user)
@@ -255,8 +255,12 @@ error_t map_handler_user_kernel_copy(VSpace *vs, u64 user_va, void *kbuf,
                         chunk = len - done;
                 }
 
-                uppn = have_mapped(
-                        vs, VPN(page_base), &pte_flags, &level, handler);
+                uppn = have_mapped(vs,
+                                   VPN(page_base),
+                                   &pte_flags,
+                                   &level,
+                                   true,
+                                   handler);
                 if (invalid_ppn(uppn) || !(pte_flags & PAGE_ENTRY_VALID)
                     || level != 3) {
                         return -E_RENDEZVOS;
@@ -272,6 +276,8 @@ error_t map_handler_user_kernel_copy(VSpace *vs, u64 user_va, void *kbuf,
                         e = map_handler_copy_data_range(
                                 handler, kern_p, user_p, (u64)chunk);
                 }
+                /* Unpin even on copy failure (ownership share from pin). */
+                (void)vs->pmm->pmm_free(vs->pmm, uppn, 1);
                 if (e != REND_SUCCESS) {
                         return e;
                 }
@@ -785,7 +791,7 @@ unmap_fail:
         return ppn;
 }
 ppn_t have_mapped(VSpace *vs, vpn_t vpn, ENTRY_FLAGS_t *entry_flags_out,
-                  int *entry_level_out, struct map_handler *handler)
+                  int *entry_level_out, bool pin, struct map_handler *handler)
 {
         vaddr v = VADDR(vpn);
         ppn_t ppn = -E_REND_NOFOUND;
@@ -860,6 +866,18 @@ ppn_t have_mapped(VSpace *vs, vpn_t vpn, ENTRY_FLAGS_t *entry_flags_out,
         entry_level = 3;
         ppn = (ppn_t)L3_E.paddr;
 have_mapped_succ:
+        if (pin) {
+                /*
+                 * Still holding vspace_lock so unmap cannot finish; get under
+                 * pmm lock (nested like map()). Drop pin later with pmm_free.
+                 */
+                if (!vs->pmm
+                    || pmm_change_pages_ref(vs->pmm, ppn, 1, true)
+                               != REND_SUCCESS) {
+                        ppn = -E_RENDEZVOS;
+                        goto have_mapped_unlock;
+                }
+        }
         if (entry_flags_out)
                 *entry_flags_out = entry_flags;
         if (entry_level_out)
