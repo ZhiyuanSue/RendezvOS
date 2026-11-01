@@ -1,37 +1,21 @@
 #include <arch/aarch64/gic/gic_v2.h>
 #include <arch/aarch64/sync/barrier.h>
 #include <common/bit.h>
+#include <common/stddef.h>
 #include <modules/dtb/dtb.h>
+#include <modules/log/log.h>
+#include <rendezvos/limits.h>
 #include <rendezvos/mm/vmm.h>
 #include <rendezvos/mm/map_handler.h>
 #include <rendezvos/smp/percpu.h>
-/*
- * @brief map the arm gic v2 register to a virtual address
- *
- * @param gicd_base_addr using the base addr and length to indicate the range of
- * gic distributor
- * @param gicd_len gicd length
- * @gicc_base_addr using the base addr and length to indicate the range of the
- * gic controlor
- * @gicc_len gicc length
- * @note using PAGE_ENTRY_DEVICE to indicate that it's a device memory
- */
-void map_gic_mem(u64 gicd_base_addr, u64 gicd_len, u64 gicc_base_addr,
-                 u64 gicc_len)
+
+/* Private GICv2 MMIO; public surface is @c struct gic_chip gic. */
+static struct gic_distributor *gicd_v2;
+static struct gic_cpu_interface *gicc_v2;
+
+static void map_gic_range(u64 phy_base, u64 len)
 {
-        /*here we set it as device memory to avoid dsb and dmb*/
-        for (paddr base = gicd_base_addr; base < gicd_base_addr + gicd_len;
-             base += PAGE_SIZE) {
-                map(per_cpu(current_vspace, BSP_ID),
-                    PPN(base),
-                    VPN(KERNEL_PHY_TO_VIRT(base)),
-                    3,
-                    PAGE_ENTRY_DEVICE | PAGE_ENTRY_GLOBAL | PAGE_ENTRY_READ
-                            | PAGE_ENTRY_VALID | PAGE_ENTRY_WRITE,
-                    &per_cpu(Map_Handler, BSP_ID));
-        }
-        for (paddr base = gicc_base_addr; base < gicc_base_addr + gicc_len;
-             base += PAGE_SIZE) {
+        for (paddr base = phy_base; base < phy_base + len; base += PAGE_SIZE) {
                 map(per_cpu(current_vspace, BSP_ID),
                     PPN(base),
                     VPN(KERNEL_PHY_TO_VIRT(base)),
@@ -41,195 +25,218 @@ void map_gic_mem(u64 gicd_base_addr, u64 gicd_len, u64 gicc_base_addr,
                     &per_cpu(Map_Handler, BSP_ID));
         }
 }
-void gic_v2_probe(void)
+
+static void gicd_v2_unmask_irq(u32 irq_num)
 {
-        char* reg_property = "reg";
-        struct device_node* gic_node =
-                dev_node_find_by_compatible(NULL, gic.compatible);
-        if (!gic_node) {
-                print("[ GIC ] wrong gic node\n");
-                return;
-        }
-        struct property* reg_prop =
-                dev_node_find_property(gic_node, reg_property, 4);
-        if (!reg_prop) {
-                print("[ GIC ] wrong gic node property\n");
-                return;
-        }
-        u64 gic_regs[4];
-        property_read_u64_arr(reg_prop, gic_regs, 4);
-        map_gic_mem(gic_regs[0], gic_regs[1], gic_regs[2], gic_regs[3]);
-        gic.gicd = (struct gic_distributor*)KERNEL_PHY_TO_VIRT(gic_regs[0]);
-        gic.gicc = (struct gic_cpu_interface*)KERNEL_PHY_TO_VIRT(gic_regs[2]);
+        gicd_v2->GICD_ISENABLERn[irq_num / 32] |= 1u << (irq_num % 32);
 }
-void gicd_v2_unmask_irq(u32 irq_num)
+
+static void gicd_v2_mask_irq(u32 irq_num)
 {
-        /*write the GICD_ISENABLER reg to unmask*/
-        gic.gicd->GICD_ISENABLERn[irq_num / 32] |= 1 << (irq_num % 32);
-}
-void gicd_v2_mask_irq(u32 irq_num)
-{
-        /*write the GICD_ICENABLER reg to mask*/
-        gic.gicd->GICD_ICENABLERn[irq_num / 32] |= 1 << (irq_num % 32);
+        gicd_v2->GICD_ICENABLERn[irq_num / 32] |= 1u << (irq_num % 32);
         isb();
 }
-void gicd_v2_set_type(u32 irq_num, u32 type)
+
+static void gicd_v2_set_type(u32 irq_num, u32 type)
 {
         u32 idx = irq_num / 16;
         u32 shift = (irq_num % 16) * 2;
         u32 field_mask = 0x3u << shift;
-        u32 val = gic.gicd->GICD_ICFGRn[idx];
+        u32 val = gicd_v2->GICD_ICFGRn[idx];
 
         val = clear_mask_u32(val, field_mask);
         val = set_mask_u32(val, (type & 0x3u) << shift);
-        gic.gicd->GICD_ICFGRn[idx] = val;
+        gicd_v2->GICD_ICFGRn[idx] = val;
         isb();
 }
-void gicd_v2_set_priority(u32 irq_num, u32 prio)
+
+static void gicd_v2_set_priority(u32 irq_num, u32 prio)
 {
-        /*write the GICD_IPRIORITYR reg*/
-        gic.gicd->GICD_IPRIORITYRn[irq_num / 4] |=
+        gicd_v2->GICD_IPRIORITYRn[irq_num / 4] |=
                 (prio & GIC_V2_IPRIORITYR_MASK) << ((irq_num % 4) * 8);
 }
-void gicd_v2_set_affinity(u32 irq_num, u32 cpu_id_mask)
+
+/** ITARGETSR: replace the SPI's target byte (logical cpu_id → one-hot). */
+static error_t gicd_v2_set_cpu_affinity(u32 irq_num, cpu_id_t cpu_id)
 {
-        /*write the GICD_ITARGETSR reg*/
-        if (!gic_v2_is_spi(irq_num) || cpu_id_mask >= GIC_V2_ITARGETSR_MASK)
-                return; /*must >= 32 as spi*/
-        u32 spi_irq_num = irq_num - GIC_V2_SPI_START;
-        gic.gicd->GICD_ITARGETSRn_RW[spi_irq_num / 4] |=
-                (cpu_id_mask & GIC_V2_ITARGETSR_MASK)
-                << ((spi_irq_num % 4) * 8);
+        u32 spi;
+        u32 shift;
+        u32 val;
+        u32 mask;
+
+        if (!gic_is_spi(irq_num))
+                return -E_IN_PARAM;
+        if (cpu_id
+            >= (cpu_id_t)MIN(RENDEZVOS_MAX_CPU_NUMBER, GIC_V2_NR_CPU_MAX))
+                return -E_IN_PARAM;
+
+        mask = 1u << (u32)cpu_id;
+        spi = irq_num - GIC_SPI_START;
+        shift = (spi % 4) * 8;
+        val = gicd_v2->GICD_ITARGETSRn_RW[spi / 4];
+        val = clear_mask_u32(val, (u32)GIC_V2_ITARGETSR_MASK << shift);
+        val = set_mask_u32(val, mask << shift);
+        gicd_v2->GICD_ITARGETSRn_RW[spi / 4] = val;
+        isb();
+        return REND_SUCCESS;
 }
-void gicd_v2_pending_clr(u32 irq_num)
+
+static void gicd_v2_pending_clr(u32 irq_num)
 {
-        gic.gicd->GICD_ICPENDRn[irq_num / 32] |= 1 << (irq_num % 32);
+        gicd_v2->GICD_ICPENDRn[irq_num / 32] |= 1u << (irq_num % 32);
         isb();
 }
-void gicd_v2_send_sgi(u32 irq_num, u32 target_mode, u32 target_list_bit)
+
+static void gicd_v2_send_sgi(u32 irq_num, u32 target_mode, u32 target_list_bit)
 {
-        /*write the GICD_SGIR reg*/
-        if (!gic_v2_is_sgi(irq_num))
+        if (!gic_is_sgi(irq_num))
                 return;
+
         switch (target_mode & GIC_V2_GICD_SGIR_TARGET_LIST_FLITER_MASK) {
         case GIC_V2_GICD_SGIR_TARGET_SPECIFIED:
-                gic.gicd->GICD_SGIR =
+                gicd_v2->GICD_SGIR =
                         GIC_V2_GICD_SGIR_TARGET_SPECIFIED | irq_num
                         | (target_list_bit & GIC_V2_GICD_SGIR_TARGET_LIST_MASK);
                 break;
         case GIC_V2_GICD_SGIR_TARGET_OTHER:
-                gic.gicd->GICD_SGIR = GIC_V2_GICD_SGIR_TARGET_OTHER | irq_num;
+                gicd_v2->GICD_SGIR = GIC_V2_GICD_SGIR_TARGET_OTHER | irq_num;
                 break;
         case GIC_V2_GICD_SGIR_TARGET_SELF:
-                gic.gicd->GICD_SGIR = GIC_V2_GICD_SGIR_TARGET_SELF | irq_num;
+                gicd_v2->GICD_SGIR = GIC_V2_GICD_SGIR_TARGET_SELF | irq_num;
                 break;
         default:
                 break;
         }
         isb();
 }
-void gicc_v2_eoi(union irq_source source)
+
+static void gicc_v2_eoi(union irq_source source)
 {
-        /*
-            here we should set the EOI mode and then just use GICC_EOIR reg
-            without the GICC_DIR reg
-        */
-        gic.gicc->GICC_EOIR = source.irq_source_value;
+        gicc_v2->GICC_EOIR = (u32)source.irq_source_value;
         isb();
 }
-union irq_source gicc_v2_read_irq(void)
+
+static union irq_source gicc_v2_read_irq(void)
 {
-        /*read the GICC_IAR reg*/
-        u32 gicc_iar_value = gic.gicc->GICC_IAR;
         union irq_source source = {
-                .irq_source_value = gicc_iar_value,
+                .irq_source_value = gicc_v2->GICC_IAR,
         };
+
         isb();
         return source;
 }
-void gic_v2_init_distributor(void)
-{
-        /*disable gicd first*/
-        gic.gicd->GICD_CTLR = 0;
 
-        /*read the gicd type reg*/
-        u32 gicd_typer_value = gic.gicd->GICD_TYPER;
-        u32 nr_it_lines =
-                (gicd_typer_value & GIC_V2_GICD_TYPER_IT_LINE_MASK) + 1;
-        u32 irq_num = nr_it_lines << 5;
-        if (irq_num > GIC_V2_SPI_END)
-                irq_num = GIC_V2_SPI_END;
-        u32 cpu_num = (gicd_typer_value & GIC_V2_GICD_TYPER_CPU_NUM_MASK)
+static error_t gic_v2_enable_spi(u32 intid, cpu_id_t cpu_id,
+                                 enum irq_trigger trigger)
+{
+        error_t e;
+        u32 type;
+
+        if (!gicd_v2)
+                return -E_RENDEZVOS;
+        if (!gic_is_spi(intid))
+                return -E_IN_PARAM;
+
+        /* Portable sense → GICD_ICFGR bit encoding (not the same 0/1). */
+        type = (trigger == IRQ_TRIGGER_LEVEL) ? GIC_V2_GICD_LEVEL_TRIGGER :
+                                                GIC_V2_GICD_EDGE_TRIGGER;
+        gicd_v2_set_type(intid, type);
+        e = gicd_v2_set_cpu_affinity(intid, cpu_id);
+        if (e != REND_SUCCESS)
+                return e;
+        gicd_v2_unmask_irq(intid);
+        return REND_SUCCESS;
+}
+
+static error_t gic_v2_disable_spi(u32 intid)
+{
+        if (!gicd_v2)
+                return -E_RENDEZVOS;
+        if (!gic_is_spi(intid))
+                return -E_IN_PARAM;
+        gicd_v2_mask_irq(intid);
+        return REND_SUCCESS;
+}
+
+static void gic_v2_init_distributor(void)
+{
+        u32 typer = gicd_v2->GICD_TYPER;
+        u32 irq_num = ((typer & GIC_V2_GICD_TYPER_IT_LINE_MASK) + 1u) << 5;
+        u32 cpu_num = (typer & GIC_V2_GICD_TYPER_CPU_NUM_MASK)
                       >> GIC_V2_GICD_TYPER_CPU_NUM_SHIFT;
-        print("[ GIC ] irq num %d and cpu num %d\n", irq_num, cpu_num);
 
-        /*set all the irq type , */
-        for (u32 irq = GIC_V2_SPI_START; irq < irq_num; irq++) {
-                gic.set_type(irq, GIC_V2_GICD_EDGE_TRIGGER | GIC_V2_GICD_1_N);
-        }
-        /*set all the irq send to core 0*/
-        for (u32 irq = GIC_V2_SPI_START; irq < irq_num; irq++) {
-                gic.set_affinity(irq, 0);
-        }
-        /*set priority*/
-        for (u32 irq = GIC_V2_SPI_START; irq < irq_num; irq++) {
-                gic.set_priority(irq, irq / 8);
-        }
-        /*disable all irqs*/
-        for (u32 irq = GIC_V2_SPI_START; irq < irq_num; irq++) {
-                gic.mask_irq(irq);
-        }
-        /*enable gicd*/
-        gic.gicd->GICD_CTLR = GIC_V2_GICD_CTLR_GROUP0_ENABLE;
-        isb();
-}
-void gic_v2_init_cpu_interface(void)
-{
-        /*set the sgi priority*/
-        for (u32 irq = GIC_V2_SGI_START; irq <= GIC_V2_SGI_END; irq++) {
-                gic.set_priority(irq, irq / 8);
-        }
-        /*set the ppi priority*/
-        for (u32 irq = GIC_V2_PPI_START; irq <= GIC_V2_PPI_END; irq++) {
-                gic.set_priority(irq, irq / 8);
-        }
-        /*enable ppi and sgi*/
-        for (u32 irq = GIC_V2_SGI_START; irq <= GIC_V2_SGI_END; irq++) {
-                gic.unmask_irq(irq);
-        }
-        for (u32 irq = GIC_V2_PPI_START; irq <= GIC_V2_PPI_END; irq++) {
-                gic.unmask_irq(irq);
-        }
-        /*set all the ppi and sgi type */
-        for (u32 irq = GIC_V2_SGI_START; irq <= GIC_V2_SGI_END; irq++) {
-                gic.set_type(irq, GIC_V2_GICD_EDGE_TRIGGER);
-        }
-        for (u32 irq = GIC_V2_PPI_START; irq <= GIC_V2_PPI_END; irq++) {
-                gic.set_type(irq, GIC_V2_GICD_LEVEL_TRIGGER);
+        if (irq_num > GIC_SPI_END)
+                irq_num = GIC_SPI_END;
+
+        gicd_v2->GICD_CTLR = 0;
+        print("[ GIC ] irq num %u cpu num %u\n", irq_num, cpu_num);
+
+        for (u32 irq = GIC_SPI_START; irq < irq_num; irq++) {
+                gicd_v2_set_type(irq,
+                                 GIC_V2_GICD_EDGE_TRIGGER | GIC_V2_GICD_1_N);
+                gicd_v2_set_priority(irq, irq / 8);
+                gicd_v2_mask_irq(irq);
         }
 
-        gic.gicc->GICC_BPR = 0x3; /*we set 8 irq as the same priority group*/
-        gic.gicc->GICC_PMR = 0xff; /*support all the interrupts for this cpu*/
-        gic.gicc->GICC_CTLR = GIC_V2_GICC_CTLR_ENABLE_GROUP1;
+        gicd_v2->GICD_CTLR = GIC_V2_GICD_CTLR_GROUP0_ENABLE;
         isb();
 }
 
-u32 gic_v2_nr_spi(void)
+static void gic_v2_init_cpu_interface(void)
 {
-        return (u32)(GIC_V2_SPI_END - GIC_V2_SPI_START + 1);
+        for (u32 irq = GIC_SGI_START; irq <= GIC_PPI_END; irq++) {
+                gicd_v2_set_priority(irq, irq / 8);
+                gicd_v2_unmask_irq(irq);
+                gicd_v2_set_type(irq,
+                                 irq <= GIC_SGI_END ?
+                                         GIC_V2_GICD_EDGE_TRIGGER :
+                                         GIC_V2_GICD_LEVEL_TRIGGER);
+        }
+
+        gicc_v2->GICC_BPR = 0x3;
+        gicc_v2->GICC_PMR = 0xff;
+        gicc_v2->GICC_CTLR = GIC_V2_GICC_CTLR_ENABLE_GROUP1;
+        isb();
 }
 
-struct gic_v2 gic = {.compatible = "arm,cortex-a15-gic",
-                     .probe = gic_v2_probe,
-                     .init_distributor = gic_v2_init_distributor,
-                     .init_cpu_interface = gic_v2_init_cpu_interface,
-                     .unmask_irq = gicd_v2_unmask_irq,
-                     .mask_irq = gicd_v2_mask_irq,
-                     .set_type = gicd_v2_set_type,
-                     .set_priority = gicd_v2_set_priority,
-                     .set_affinity = gicd_v2_set_affinity,
-                     .send_sgi = gicd_v2_send_sgi,
-                     .read_irq_num = gicc_v2_read_irq,
-                     .eoi = gicc_v2_eoi,
-                     .pending_clr = gicd_v2_pending_clr,
-                     .nr_spi = gic_v2_nr_spi};
+static u32 gic_v2_nr_spi(void)
+{
+        return (u32)(GIC_SPI_END - GIC_SPI_START + 1);
+}
+
+error_t gic_v2_setup(struct device_node *node)
+{
+        struct property *reg_prop;
+        u64 gic_regs[4];
+
+        if (!node)
+                return -E_IN_PARAM;
+
+        reg_prop = dev_node_find_property(node, "reg", 4);
+        if (!reg_prop) {
+                print("[ GIC ] GICv2 node missing reg\n");
+                return -E_RENDEZVOS;
+        }
+
+        property_read_u64_arr(reg_prop, gic_regs, 4);
+        map_gic_range(gic_regs[0], gic_regs[1]);
+        map_gic_range(gic_regs[2], gic_regs[3]);
+        gicd_v2 = (struct gic_distributor *)KERNEL_PHY_TO_VIRT(gic_regs[0]);
+        gicc_v2 = (struct gic_cpu_interface *)KERNEL_PHY_TO_VIRT(gic_regs[2]);
+
+        gic = (struct gic_chip){
+                .version = GIC_VER_V2,
+                .init_distributor = gic_v2_init_distributor,
+                .init_cpu_interface = gic_v2_init_cpu_interface,
+                .enable_spi = gic_v2_enable_spi,
+                .disable_spi = gic_v2_disable_spi,
+                .mask_irq = gicd_v2_mask_irq,
+                .unmask_irq = gicd_v2_unmask_irq,
+                .send_sgi = gicd_v2_send_sgi,
+                .read_irq_num = gicc_v2_read_irq,
+                .eoi = gicc_v2_eoi,
+                .pending_clr = gicd_v2_pending_clr,
+                .nr_spi = gic_v2_nr_spi,
+        };
+        return REND_SUCCESS;
+}

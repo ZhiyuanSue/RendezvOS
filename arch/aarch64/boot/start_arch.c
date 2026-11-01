@@ -3,7 +3,7 @@
 #include <arch/aarch64/mm/vmm.h>
 #include <arch/aarch64/power_ctrl.h>
 #include <arch/aarch64/cpuinfo.h>
-#include <arch/aarch64/gic/gic_v2.h>
+#include <arch/aarch64/gic/gic.h>
 #include <common/endianness.h>
 #include <common/mm.h>
 #include <modules/dtb/dtb.h>
@@ -256,14 +256,15 @@ error_t arch_start_platform(struct setup_info *arch_setup_info)
                         }
                         curr_property = curr_property->next;
                 }
-                if (cmdline_ptr) {
+                if (cmdline_ptr)
                         print("cmdline:%s\n", cmdline_ptr);
-                } else {
+                else
                         print("no input cmdline\n");
-                }
         }
         psci_init();
-        gic.probe();
+        error_t e = gic_probe();
+        if (e != REND_SUCCESS)
+                return e;
         gic.init_distributor();
         return irq_global_vector_alloc(gic.nr_spi());
 }
@@ -279,9 +280,10 @@ error_t arch_start_core(cpu_id_t cpu_id)
         per_cpu(cpu_number, cpu_id) = cpu_id;
         isb();
         init_interrupt();
-        gic.init_cpu_interface();
+        if (gic_ready())
+                gic.init_cpu_interface();
         smp_ipi_init();
         rendezvos_time_init();
         init_syscall();
-        return (0);
+        return REND_SUCCESS;
 }

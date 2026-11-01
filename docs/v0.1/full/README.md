@@ -335,7 +335,7 @@ v0.1/full/
 
 ### [x] [ ] 05-陷阱与中断/26-平台中断-x86_64-APIC与PIC.md
 
-职责：8259、Local APIC/x2APIC、PIT/HPET、timer IPI、**IOAPIC bring-up**（MADT + MMIO ensure + GSI 软件表；RTE/ISO 未做，§9.6）
+职责：8259、Local APIC/x2APIC、PIT/HPET、timer IPI、**IOAPIC**（MADT + MMIO + GSI 表 + RTE/mask/`irq_enable`/EOI；ISO/MSI/设备未做，§9.6）
 
 源码：`arch/x86_64/PIC/PIC.c` · `arch/x86_64/PIC/LocalAPIC.c` · `arch/x86_64/PIC/IOAPIC.c` · `arch/x86_64/PIC/IRQ.c` · `arch/x86_64/PIC/PIT.c` · `arch/x86_64/time/time.c` · `arch/x86_64/time/rtc.c` · `include/arch/x86_64/PIC/*.h` · `include/arch/x86_64/time.h` · `include/arch/x86_64/io.h` · `include/arch/x86_64/io_port.h` · `include/arch/x86_64/msr.h`
 
@@ -343,9 +343,9 @@ v0.1/full/
 
 ### [x] [ ] 05-陷阱与中断/27-平台中断-aarch64-GIC.md
 
-职责：GICv2 驱动、SPI/SGI、EOI、`gicd_v2_set_affinity`（arch 内部）
+职责：`gic_chip` + DT probe、GICv2 `enable_spi`/EOI/SGI（v3 匹配后失败）
 
-源码：`arch/aarch64/gic/gic_v2.c` · `include/arch/aarch64/gic/gic_v2.h` · `include/arch/aarch64/gic/gic_v3.h` · `arch/aarch64/time/generic_time.c` · `include/arch/aarch64/time.h`
+源码：`include/arch/aarch64/gic/gic.h` · `arch/aarch64/gic/gic.c` · `arch/aarch64/gic/gic_v2.c` · `include/arch/aarch64/gic/gic_v2.h` · `arch/aarch64/gic/gic_v3.c` · `include/arch/aarch64/gic/gic_v3.h` · `arch/aarch64/time/generic_time.c` · `include/arch/aarch64/time.h`
 
 ---
 

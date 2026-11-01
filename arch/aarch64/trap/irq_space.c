@@ -16,10 +16,9 @@ global_irq_id_t arch_local_lookup_global_irq_id(cpu_id_t cpu_id,
         if (irq_trap_is_local(local_irq_id))
                 return IRQ_GLOBAL_ID_INVALID;
         hw_irq = AARCH64_TRAP_ID_TO_IRQ(local_irq_id);
-        if (hw_irq < (size_t)GIC_V2_SPI_START
-            || hw_irq > (size_t)GIC_V2_SPI_END)
+        if (hw_irq < (size_t)GIC_SPI_START || hw_irq > (size_t)GIC_SPI_END)
                 return IRQ_GLOBAL_ID_INVALID;
-        return (global_irq_id_t)(hw_irq - (size_t)GIC_V2_SPI_START);
+        return (global_irq_id_t)(hw_irq - (size_t)GIC_SPI_START);
 }
 
 local_irq_id_t arch_choose_local_irq_id(global_irq_id_t global_irq_id,
@@ -28,8 +27,8 @@ local_irq_id_t arch_choose_local_irq_id(global_irq_id_t global_irq_id,
         size_t hw_irq; /* GIC INTID */
 
         (void)cpu_id;
-        hw_irq = (size_t)global_irq_id + (size_t)GIC_V2_SPI_START;
-        if (hw_irq > (size_t)GIC_V2_SPI_END)
+        hw_irq = (size_t)global_irq_id + (size_t)GIC_SPI_START;
+        if (hw_irq > (size_t)GIC_SPI_END)
                 return IRQ_LOCAL_ID_INVALID;
         /* Formula: SPI index → INTID → local_irq_id (= intid + 64). */
         return (local_irq_id_t)AARCH64_IRQ_TO_TRAP_ID(hw_irq);

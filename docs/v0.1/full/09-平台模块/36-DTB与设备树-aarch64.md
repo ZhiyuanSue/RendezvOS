@@ -42,7 +42,7 @@ aarch64 **不用** ACPI 枚举板级资源；**Flattened Device Tree（FDT）** 
 | early UART | raw compatible | `arm,pl011`（ARM PrimeCell PL011 UART），读其 `reg`（假定两个 64-bit addr/size） |
 | pmm | raw `device_type` | `memory` 节点上的 `reg` |
 | PSCI | 树 + compatible | `arm,psci`（list 常另含 `arm,psci-0.2`；查找为逐条全等） |
-| GIC | 树 + compatible | **写死** `arm,cortex-a15-gic`（仅 `arm,gic-400` 的 blob **对不上**） |
+| GIC | 树 + compatible | `gic_probe` 表：`arm,cortex-a15/a7/a9-gic`、`arm,gic-400`、`arm,arm11mp-gic`；`arm,gic-v3` 识别但 v0.1 失败返回（见 `27`） |
 | SMP | 树 + type | `device_type=cpu` + `reg` + `enable-method` |
 | cmdline | 树 + name | `chosen` 下的 `bootargs` |
 
@@ -209,7 +209,7 @@ DT 允许节点用 `phandle`（property handle，属性句柄；或别名 `linux
 
 ### 4.3 compatible 匹配（逐条全等）
 
-`_dev_node_find_by_compatible`：在 NUL 分隔的 compatible string list 上，对**每条**串做字符全等——仅当搜索串与当前条目同时走到 `\0` 才命中。因此查找 `arm,psci` **不会**命中单条的 `arm,psci-0.2`；常见 DT 会在 list 里同时列出 `arm,psci-0.2` 与 `arm,psci`，从而仍可命中。GIC 写死的串过长时，若 blob 只有 `arm,gic-400` 会对不上。
+`_dev_node_find_by_compatible`：在 NUL 分隔的 compatible string list 上，对**每条**串做字符全等——仅当搜索串与当前条目同时走到 `\0` 才命中。因此查找 `arm,psci` **不会**命中单条的 `arm,psci-0.2`；常见 DT 会在 list 里同时列出 `arm,psci-0.2` 与 `arm,psci`，从而仍可命中。GIC 由 `gic_probe` 依次尝试多条 compatible（含 `arm,gic-400`），见 `27` §6.3。
 
 ---
 
@@ -241,7 +241,7 @@ arch_init_pmm:
 arch_start_platform:
   device_root = build_device_tree(kallocator, …)
   chosen/bootargs → cmdline_ptr
-  psci_init(); gic.probe(); gic.init_distributor()
+  psci_init(); gic_probe(); gic.init_distributor()
 arch_start_smp（稍后）:
   遍历 device_type=cpu，读 enable-method / reg
 ```
@@ -256,7 +256,7 @@ arch_start_smp（稍后）:
 
 ### 6.4 与硬件中断 / 电源的接点
 
-- **GIC：** probe 用写死 compatible；从节点 `reg` 取 GICD/GICC 基址（细节 GIC 篇）。DT 只有 `arm,gic-400` 时会找不到节点。
+- **GIC：** `gic_probe` 按表匹配多 compatible；从节点 `reg` 取 GICD/GICC 基址（细节见 `27`）。
 - **PSCI：** 从 DT 读 method（SMC/HVC）与功能 ID（PSCI 篇）。
 - **UART：** 运行期 `uart_open` 用 early 映好的高半窗；不再二次查找 DT。
 
@@ -312,7 +312,7 @@ error_t property_read_string / _u32 / _u64 / _u*_arr(…);
 |------|------|
 | `build_device_tree` | 实现在 **`start_arch.c`**；名字/属性数据仍指向 FDT blob。 |
 | `dev_node_find_by_compatible` | 对 list 中每条 NUL 串**全等**匹配（非前缀）；`arm,psci` 命中靠 list 含该条目（常与 `arm,psci-0.2` 并存）。 |
-| GIC 消费者 | 写死 `arm,cortex-a15-gic`（仅 `arm,gic-400` 的 blob 对不上）。 |
+| GIC 消费者 | `gic_probe` 多 compatible（见 `27` §6.3）；不再写死单一串。 |
 
 调试：`print_device_tree` / `parse_print_dtb`（非常用路径，约定从略）。
 
@@ -333,7 +333,7 @@ error_t property_read_string / _u32 / _u64 / _u*_arr(…);
 ## 10. 限制与后续
 
 - compatible 为 string list 上的**逐条全等**（非前缀）；过短搜索串不会“吃掉”长串。
-- GIC compatible **写死** `arm,cortex-a15-gic`。
+- GIC：由 `gic_probe` 表匹配（v2 多串；v3 匹配后失败）；细节见 `27`。
 - PCI host 节点未接入。
 - early raw 与 `device_root` 两阶段指针域不同，勿混。
 - early UART 假定 `#address-cells/#size-cells` 布局；换板可能要改解析。
@@ -344,6 +344,7 @@ error_t property_read_string / _u32 / _u64 / _u*_arr(…);
 
 ## 11. 变更记录
 
+- 2026-11-01：GIC 消费者改为 `gic_probe` 多 compatible（不再写死 `arm,cortex-a15-gic`）；交叉引用 `27`。
 - 2026-10-05：修正 §4.1.4 两个 "2 MiB" 的混淆——arm64 booting 协议**无** "DTB < 2 MiB" 要求（协议只要求 DTB 位于低 128 MiB RAM 内、8 字节对齐）；"2 MiB" 实为 early map 的 block 粒度（aarch64 L2 block on 4K granule = 2 MiB），DTB 应 < 2 MiB 是该实现的一次覆盖约束，非协议上限。原 "通常 < 2 MiB" 改为 "位于低 128 MiB RAM 内"，并补两者关系说明。
 - 2026-10-04：补硬件知识——§4.1 加 FDT 整体布局 ASCII 图（header/reservation/struct/strings 四块）、structure block token 表与节点序列化示例、memory reservation block 说明、aarch64 启动时 `x0` 传 DTB 指针约定；§4.2 加 `device_node` 树结构图（孩子/兄弟二叉链表）与 phandle 引用说明。结构无大改。语言润色——「假装」→「假设」、「长出 C 树」→「构建 C 树」、「扫」→「遍历」、「搜 compatible」→「按 compatible 查找」；§10 补 memory reservation block 与 phandle 两条限制交叉引用。
 - 2026-09-27：语言润色——「真源 = … Doxygen」改为「以头文件注释为准」；one-shot→单次、bring-up→拉起、非热路径契约→非常用路径，约定从略；符号与技术事实未改。

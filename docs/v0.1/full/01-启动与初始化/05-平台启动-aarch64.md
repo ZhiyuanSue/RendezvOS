@@ -289,7 +289,7 @@ GAS 的 `.align n`：在 **aarch64 上按 2ⁿ 对齐**（`.align 4` 是 16 字�
 
 `arch_cpu_info` 不用它的参数。它读 `MPIDR_EL1`，只把多线程（MT）和是否单核（U）记进全局 `cpu_info`，再把 `BSP_ID` 固定写成 0。不把硬件亲和性当软件编号。
 
-`arch_start_platform` 必须在虚拟内存和堆起来之后，并用 BSP 的堆。它从已映射的 DTB 头递归建成全局 `device_root`；在名为 `chosen` 的节点里找 `bootargs` 赋给 `cmdline_ptr`（没有节点或没有属性只打印，**不失败**）；再 `psci_init` 填 PSCI 调用方法；然后 `gic.probe()` 加 `gic.init_distributor()`，只初始化分发器；最后申请全局外设中断用的 `global_irq_vector`（长度跟 GIC 共享外设中断条数走）。CPU 接口不在这里。缺 cmdline 不失败；申请失败则把错误码交回。AP 不会进这个函数。
+`arch_start_platform` 必须在虚拟内存和堆起来之后，并用 BSP 的堆。它从已映射的 DTB 头递归建成全局 `device_root`；在名为 `chosen` 的节点里找 `bootargs` 赋给 `cmdline_ptr`（没有节点或没有属性只打印，**不失败**）；再 `psci_init` 填 PSCI 调用方法；然后 `gic_probe()`（DT compatible 表绑定驱动）加 `gic.init_distributor()`，只初始化分发器；最后申请全局外设中断用的 `global_irq_vector`（长度跟 `gic.nr_spi()` 走）。CPU 接口不在这里。缺 cmdline 不失败；`gic_probe` / 申请失败则把错误码交回。AP 不会进这个函数。
 
 ### 6.5 每个核：`arch_start_core(cpu_id)`
 

@@ -1,5 +1,6 @@
 #include <rendezvos/trap/trap.h>
 #include <arch/aarch64/sys_ctrl.h>
+#include <arch/aarch64/gic/gic.h>
 #include <modules/log/log.h>
 #include <arch/aarch64/power_ctrl.h>
 #include <common/string.h>
@@ -65,10 +66,34 @@ void arch_eoi_irq(u64 trap_info)
 {
         union irq_source source = {0};
 
-        /* set GICC_EOIR value from packed trap_info. */
+        if (!gic_ready())
+                return;
+        /* Pack ack payload from trap_info (INTID + SGI source CPU). */
         source.irq_id = AARCH64_TRAP_ID_TO_IRQ(TRAP_ID(trap_info));
         source.cpu_id = TRAP_GET_CPU(trap_info);
         gic.eoi(source);
+}
+
+error_t arch_irq_enable(global_irq_id_t global_irq_id,
+                        local_irq_id_t local_irq_id, cpu_id_t cpu_id,
+                        enum irq_trigger trigger, enum irq_polarity polarity)
+{
+        (void)local_irq_id;
+        (void)polarity; /* GIC has no pin polarity like IOAPIC */
+
+        if (!gic_ready())
+                return -E_RENDEZVOS;
+
+        /* global_irq_id is SPI index; driver rejects non-SPI INTIDs. */
+        return gic.enable_spi(gic_spi_intid((u32)global_irq_id), cpu_id,
+                              trigger);
+}
+
+error_t arch_irq_disable(global_irq_id_t global_irq_id)
+{
+        if (!gic_ready())
+                return -E_RENDEZVOS;
+        return gic.disable_spi(gic_spi_intid((u32)global_irq_id));
 }
 
 void get_curr_el_trap_info(struct trap_frame *tf)
@@ -77,12 +102,15 @@ void get_curr_el_trap_info(struct trap_frame *tf)
         case TRAP_TYPE_SYNC:
                 tf->trap_info = AARCH64_ESR_GET_EC(tf->ESR);
                 break;
-        case TRAP_TYPE_IRQ:
+        case TRAP_TYPE_IRQ: {
+                if (!gic_ready())
+                        break;
                 union irq_source source = gic.read_irq_num();
                 /* trap id = INTID+64; [12:10] = IAR CPUID (for SGI EOI). */
                 tf->trap_info = AARCH64_IRQ_TO_TRAP_ID(source.irq_id);
                 tf->trap_info = TRAP_SET_CPU(tf->trap_info, source.cpu_id);
                 break;
+        }
         case TRAP_TYPE_FIQ:
                 break;
         default:

@@ -28,7 +28,7 @@ RSDP 探测调用点见启动篇 `04`；表所占物理区是否进 buddy 见物
 
 - XSDT / RSDP revision ≥ 1；RSDP / 次级表 checksum（只比签名字符串）
 - Local APIC **online_capable** 热插拔（boot 只认 `Enabled`；未置位则跳过）
-- IOAPIC **RTE 编程**、Interrupt Source Override、x2APIC MADT 条目（type 9）——ISO/x2APIC 仍空操作；IOAPIC Type=1 **已发现**并由 `ioapic_init` bring-up（见 `26`）
+- Interrupt Source Override、x2APIC MADT 条目（type 9）——仍空操作；IOAPIC Type=1 **已发现**并由 `ioapic_init` bring-up；RTE 编程在 `26`（非本篇）
 - AML / DSDT、设备热插拔、sleep 状态机
 
 ---
@@ -368,6 +368,7 @@ bool final_madt_int_ctrl_head(madt, curr);
 
 ## 11. 变更记录
 
+- 2026-10-31：缺口表述——RTE 已在 `26`；本篇剩余 ISO / x2APIC Type=9 等。
 - 2026-10-29：§2/§10 与 IOAPIC bring-up 对齐——Type=1 已消费；缺口收窄为 RTE/ISO 等（见 `26`）。
 - 2026-10-26：`arch_parser_madt` 消费 IOAPIC Type=1（两轮 + `ioapics[]`）；§4.2 / §7.3 同步。
 - 2026-10-25：去掉 `search_start_vaddr`；legacy 扫窗改用 `KERNEL_PHY_TO_VIRT`，与 ensure identity 一致。

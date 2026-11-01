@@ -12,7 +12,7 @@
 
 /*
  * arm,armv8-timer interrupts[] entry order
- * (each entry = 3 GIC cells: type, irq, flags — see gic_dt.h).
+ * (each entry = 3 GIC cells: type, irq, flags — see GIC_DT_* in gic.h).
  * Binding order:
  *   secure EL1 physical
  *   non-secure EL1 physical (CNTP),

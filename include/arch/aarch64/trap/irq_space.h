@@ -2,7 +2,7 @@
 #define _RENDEZVOS_AARCH64_IRQ_SPACE_H_
 #include <common/bit.h>
 #include <common/types.h>
-#include <arch/aarch64/gic/gic_v2.h>
+#include <arch/aarch64/gic/gic.h>
 #include <rendezvos/smp/cpu_id.h>
 #include <rendezvos/trap/irq_space_common.h>
 #include "trap_def.h"
@@ -15,14 +15,14 @@
  * above). Does not program the GIC distributor/CPU interface. Map helpers:
  * @c arch/aarch64/trap/irq_space.c.
  */
-#define ARCH_IRQ_INTID_IPI   GIC_V2_SGI_START /* 0 */
+#define ARCH_IRQ_INTID_IPI   GIC_SGI_START /* 0 */
 #define ARCH_IRQ_ID_IPI      AARCH64_IRQ_TO_TRAP_ID(ARCH_IRQ_INTID_IPI)
-#define ARCH_IRQ_ID_ALLOC_LO AARCH64_IRQ_TO_TRAP_ID(GIC_V2_SPI_START)
-#define ARCH_IRQ_ID_ALLOC_HI AARCH64_IRQ_TO_TRAP_ID(GIC_V2_SPI_END)
+#define ARCH_IRQ_ID_ALLOC_LO AARCH64_IRQ_TO_TRAP_ID(GIC_SPI_START)
+#define ARCH_IRQ_ID_ALLOC_HI AARCH64_IRQ_TO_TRAP_ID(GIC_SPI_END)
 
 /*
  * LOCAL: [0, ALLOC_LO) = EC + SGI/PPI (structural; no reserve).
- * GLOBAL: one entry per global_irq_id; length from @c gic_v2_nr_spi.
+ * GLOBAL: one entry per global_irq_id; length from @c gic.nr_spi().
  * global_irq_id is SPI index = INTID - SPI_START.
  * local_irq_id = INTID + AARCH64_IRQ_OFFSET (offset 64).
  *

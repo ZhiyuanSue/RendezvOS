@@ -1,7 +1,16 @@
-#include "gic_v2.h"
+#ifndef _RENDEZVOS_GIC_V3_H_
+#define _RENDEZVOS_GIC_V3_H_
+
+#include <arch/aarch64/gic/gic.h>
+#include <modules/dtb/dev_tree.h>
 
 /*
- * GICv3 placeholder: v0.1 only implements GICv2 (gic_v3 support all key
- * features of v2,so this header just re-exports gic_v2.h). No any usable GICv3
- * driver.
+ * GICv3: not implemented.
+ *
+ * @c gic_probe may match "arm,gic-v3"; @c gic_v3_setup returns @c -E_RENDEZVOS
+ * (no Redistributor / IROUTER / ITS). Callers use only @c gic_chip in gic.h.
  */
+
+error_t gic_v3_setup(struct device_node *node);
+
+#endif /* _RENDEZVOS_GIC_V3_H_ */

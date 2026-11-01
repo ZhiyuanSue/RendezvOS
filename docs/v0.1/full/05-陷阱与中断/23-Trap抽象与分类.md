@@ -119,7 +119,7 @@ struct local_irq { /* per-CPU；local_irq_id < NR_ARCH_LOCAL_IRQ */
 
 | 路径 | 职责 |
 |------|------|
-| `trap_common.h` / `trap/trap.h` | class、TRAP_COMMON、公开 API |
+| `trap_common.h` / `trap/trap.h` | class、TRAP_COMMON、`irq_trigger`/`irq_polarity`、公开 API |
 | `kernel/trap/trap.c` | `trap_handler`、`register_irq_handler`、EOI、schedule（id 表见 `irq_space.c`） |
 | `kernel/trap/irq_space.c` | `local_irq_vector` / `global_irq_vector`、`irq_global_*` |
 | `arch/x86_64/trap/*` | IDT、`x86_trap_class_map`、populate、`trap_vec.S`、**`tss.c`** |

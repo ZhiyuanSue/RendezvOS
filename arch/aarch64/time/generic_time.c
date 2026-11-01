@@ -1,5 +1,5 @@
 #include <arch/aarch64/time.h>
-#include <arch/aarch64/gic/gic_dt.h>
+#include <arch/aarch64/gic/gic.h>
 #include <arch/aarch64/sync/barrier.h>
 #include <arch/aarch64/trap/trap.h>
 #include <common/string.h>
@@ -59,8 +59,8 @@ u32 arch_get_timer_irq_num(bool is_bsp)
         if (type != GIC_DT_TYPE_PPI)
                 goto fail;
 
-        intid = GIC_V2_PPI_START + ppi;
-        if (!gic_v2_is_ppi(intid))
+        intid = GIC_PPI_START + ppi;
+        if (!gic_is_ppi(intid))
                 goto fail;
 
         timer_irq_num = AARCH64_IRQ_TO_TRAP_ID(intid);
