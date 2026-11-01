@@ -56,14 +56,18 @@
 #define NR_IDT_VECTORS 256
 #define NR_IRQ         NR_IDT_VECTORS
 
+/* Defined in PIC/IOAPIC.h */
+struct ioapic;
+
 /**
  * Arch global external irq entry. Index is @c global_irq_id (== GSI).
  * Dispatch: local_irq_id → per-CPU map → @c global_irq_vector[global_irq_id].
- * @c ioapic_id / @c pin filled by @c ioapic_init (not by this module).
+ * @c ioapic / @c pin filled by @c ioapic_init (not by this module) . @c ioapic
+ * points into the MADT-allocated @c ioapics[] (stable for the boot lifetime).
  */
 struct arch_global_irq {
         GLOBAL_IRQ_COMMON
-        u8 ioapic_id;
+        struct ioapic *ioapic;
         u8 pin;
 };
 

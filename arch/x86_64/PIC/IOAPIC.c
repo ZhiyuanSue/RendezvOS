@@ -9,6 +9,77 @@
 struct ioapic *ioapics;
 size_t nr_ioapics;
 
+static inline vaddr ioapic_get_base_va(const struct ioapic *ioapic_entry)
+{
+        return KERNEL_PHY_TO_VIRT(ioapic_entry->mmio_phy_base);
+}
+
+static inline u32 ioapic_rte_low_index(u16 pin)
+{
+        return IOAPIC_RTE_START_NUM + (u32)pin * 2;
+}
+
+static inline u32 ioapic_rte_high_index(u16 pin)
+{
+        return ioapic_rte_low_index(pin) + 1;
+}
+
+/**
+ * Look up @c ioapics[] by @p gsi .
+ */
+static error_t ioapic_get_entry_from_gsi(gsi_id_t gsi,
+                                         struct ioapic **ioapic_entry_out,
+                                         u16 *pin_out)
+{
+        if (!ioapics || !nr_ioapics)
+                return -E_REND_NOFOUND;
+
+        for (size_t i = 0; i < nr_ioapics; i++) {
+                struct ioapic *ioapic_entry = &ioapics[i];
+                gsi_id_t end = ioapic_entry->gsi_base
+                               + (gsi_id_t)ioapic_entry->nr_pins;
+
+                if (gsi >= ioapic_entry->gsi_base && gsi < end) {
+                        *ioapic_entry_out = ioapic_entry;
+                        *pin_out = (u16)(gsi - ioapic_entry->gsi_base);
+                        return REND_SUCCESS;
+                }
+        }
+        return -E_REND_NOFOUND;
+}
+
+static void ioapic_write_rte(struct ioapic *ioapic_entry, u16 pin,
+                             struct IOAPIC_RTE *rte)
+{
+        vaddr base = ioapic_get_base_va(ioapic_entry);
+
+        /* High dword first */
+        IOAPIC_WR_REG(base, ioapic_rte_high_index(pin), rte->reg_2);
+        IOAPIC_WR_REG(base, ioapic_rte_low_index(pin), rte->reg_1);
+}
+
+static struct IOAPIC_RTE ioapic_read_rte(struct ioapic *ioapic_entry, u16 pin)
+{
+        struct IOAPIC_RTE rte;
+        vaddr base = ioapic_get_base_va(ioapic_entry);
+
+        rte.reg_1 = IOAPIC_RD_REG(base, ioapic_rte_low_index(pin));
+        rte.reg_2 = IOAPIC_RD_REG(base, ioapic_rte_high_index(pin));
+        return rte;
+}
+
+static void ioapic_mask_all_pins(struct ioapic *ioapic_entry)
+{
+        for (u16 pin = 0; pin < ioapic_entry->nr_pins; pin++) {
+                struct IOAPIC_RTE rte = ioapic_read_rte(ioapic_entry, pin);
+
+                rte.Mask = 1;
+                /* High dword unchanged; Only change the low dword.
+                 */
+                ioapic_write_rte(ioapic_entry, pin, &rte);
+        }
+}
+
 static error_t ioapic_probe_all(void)
 {
         const ENTRY_FLAGS_t ioapic_flags =
@@ -33,13 +104,24 @@ static error_t ioapic_probe_all(void)
                         return error;
                 }
 
-                vaddr base = KERNEL_PHY_TO_VIRT(ioapic_entry->mmio_phy_base);
+                vaddr base = ioapic_get_base_va(ioapic_entry);
                 u32 version = IOAPIC_RD_REG(base, IOAPIC_VERSION_NUM);
                 u32 max_rte = (version & IOAPIC_VERSION_MAX_RTE_MASK)
                               >> IOAPIC_VERSION_MAX_RTE_OFF;
+                ioapic_entry->version = (u8)(version & IOAPIC_VERSION_MASK);
                 ioapic_entry->nr_pins = (u16)(max_rte + 1u);
-                print("[ IOAPIC ] id %u pins %u gsi [%u, %u)\n",
+                if (ioapic_entry->version < IOAPIC_VERSION_VALUE_LEGAL) {
+                        print("[ IOAPIC ] ERROR: id %u ver 0x%x < 0x%x (need EOI reg)\n",
+                              ioapic_entry->ioapic_id,
+                              ioapic_entry->version,
+                              IOAPIC_VERSION_VALUE_LEGAL);
+                        return -E_RENDEZVOS;
+                }
+
+                ioapic_mask_all_pins(ioapic_entry);
+                print("[ IOAPIC ] id %u ver 0x%x pins %u gsi [%u, %u)\n",
                       ioapic_entry->ioapic_id,
+                      ioapic_entry->version,
                       ioapic_entry->nr_pins,
                       (u32)ioapic_entry->gsi_base,
                       (u32)(ioapic_entry->gsi_base + ioapic_entry->nr_pins));
@@ -49,8 +131,10 @@ static error_t ioapic_probe_all(void)
 
 static size_t ioapic_nr_gsi(void)
 {
-        struct ioapic *last = &ioapics[nr_ioapics - 1];
-        return (size_t)last->gsi_base + (size_t)last->nr_pins;
+        struct ioapic *last_ioapic_entry = &ioapics[nr_ioapics - 1];
+
+        return (size_t)last_ioapic_entry->gsi_base
+               + (size_t)last_ioapic_entry->nr_pins;
 }
 
 static error_t ioapic_setup_global_irq(void)
@@ -60,11 +144,11 @@ static error_t ioapic_setup_global_irq(void)
 
                 for (u16 pin = 0; pin < ioapic_entry->nr_pins; pin++) {
                         gsi_id_t gsi = (gsi_id_t)(ioapic_entry->gsi_base + pin);
-                        struct arch_global_irq *entry =
+                        struct arch_global_irq *irq_entry =
                                 &global_irq_vector[(global_irq_id_t)gsi];
 
-                        entry->ioapic_id = ioapic_entry->ioapic_id;
-                        entry->pin = (u8)pin;
+                        irq_entry->ioapic = ioapic_entry;
+                        irq_entry->pin = (u8)pin;
                 }
         }
         return REND_SUCCESS;
@@ -92,4 +176,58 @@ error_t ioapic_init(void)
         if (e != REND_SUCCESS)
                 return e;
         return ioapic_setup_global_irq();
+}
+
+error_t ioapic_configure_rte(gsi_id_t gsi, u8 vector, u8 dest_apic_id,
+                             u32 delivery_mode, u32 dest_mode, u32 trigger_mode,
+                             u32 pin_polarity)
+{
+        struct ioapic *ioapic_entry;
+        u16 pin;
+        struct IOAPIC_RTE rte = {.reg_1 = 0, .reg_2=0};
+
+        /* APIC-delivered vectors 0–15 are reserved for exceptions. */
+        if (vector < 16u)
+                return -E_IN_PARAM;
+        if (delivery_mode > 0x7u || dest_mode > 1u || trigger_mode > 1u
+            || pin_polarity > 1u)
+                return -E_IN_PARAM;
+
+        error_t e = ioapic_get_entry_from_gsi(gsi, &ioapic_entry, &pin);
+        if (e != REND_SUCCESS)
+                return e;
+
+        rte.vector = vector;
+        rte.Delivery_Mode = delivery_mode;
+        rte.Dest_Mode = dest_mode;
+        rte.Pin_Polarity = pin_polarity;
+        rte.Trigger_Mode = trigger_mode;
+        rte.Mask = 1; /* stay masked until ioapic_change_mask(..., false) */
+        rte.Destination = dest_apic_id;
+        ioapic_write_rte(ioapic_entry, pin, &rte);
+        return REND_SUCCESS;
+}
+
+error_t ioapic_change_mask(gsi_id_t gsi, bool mask)
+{
+        struct ioapic *ioapic_entry;
+        u16 pin;
+
+        error_t e = ioapic_get_entry_from_gsi(gsi, &ioapic_entry, &pin);
+        if (e != REND_SUCCESS)
+                return e;
+
+        struct IOAPIC_RTE rte = ioapic_read_rte(ioapic_entry, pin);
+        rte.Mask = mask ? 1 : 0;
+        ioapic_write_rte(ioapic_entry, pin, &rte);
+        return REND_SUCCESS;
+}
+
+void ioapic_eoi(struct ioapic *ioapic_entry, u8 vector)
+{
+        if (!ioapic_entry)
+                return;
+
+        *((volatile u32 *)(ioapic_get_base_va(ioapic_entry) + IOAPIC_EOI)) =
+                (u32)vector;
 }

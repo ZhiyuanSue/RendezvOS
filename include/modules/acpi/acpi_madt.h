@@ -2,21 +2,20 @@
 #define _ACPI_TABLE_MADT_H_
 #include "acpi_table.h"
 #include <common/stdbool.h>
-#pragma pack(1)
 struct acpi_table_madt {
         ACPI_TABLE_HEAD;
         u32 Local_int_ctrl_address;
         u32 flags;
 #define MADT_PCAT_COMPAT 1
         char int_ctrl_structure[];
-};
+} __attribute__((packed));
 #define MADT_CTRL_HEAD \
         u8 type;       \
         u8 length
 
 struct madt_int_ctrl_head {
         MADT_CTRL_HEAD;
-};
+} __attribute__((packed));
 enum madt_int_ctrl_type {
         madt_ctrl_type_Local_APIC,
         madt_ctrl_type_IO_APIC,
@@ -50,21 +49,21 @@ struct madt_Local_APIC { // type = 0
         u32 flags;
 #define Local_APIC_flags_enable         (1 << 0)
 #define Local_APIC_flags_online_capable (1 << 1)
-};
+} __attribute__((packed));
 struct madt_IO_APIC {
         MADT_CTRL_HEAD;
         u8 IO_APIC_ID;
         u8 res;
         u32 IO_APIC_Addr;
         u32 Global_Sys_Int_Base;
-};
+} __attribute__((packed));
 struct madt_Source_Override {
         MADT_CTRL_HEAD;
         u8 Bus;
         u8 Source;
         u32 Global_Sys_Int;
         u16 flags; /*MPS INTI flags*/
-};
+} __attribute__((packed));
 
 /**
  * @brief Advance to next MADT interrupt-controller record by length.
@@ -87,4 +86,5 @@ bool final_madt_int_ctrl_head(struct acpi_table_madt* madt_table,
              !final_madt_int_ctrl_head((struct acpi_table_madt*)madt_table,      \
                                        curr_ctrl_head);                          \
              curr_ctrl_head = get_next_ctrl_head(curr_ctrl_head))
+
 #endif

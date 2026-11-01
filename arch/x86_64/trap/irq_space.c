@@ -80,6 +80,6 @@ void arch_irq_global_entry_reset(struct arch_global_irq *entry)
 {
         if (!entry)
                 return;
-        entry->ioapic_id = U8_MAX;
+        entry->ioapic = NULL;
         entry->pin = U8_MAX;
 }

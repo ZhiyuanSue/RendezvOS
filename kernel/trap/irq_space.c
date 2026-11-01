@@ -125,8 +125,6 @@ error_t irq_global_free(global_irq_id_t global_irq_id, cpu_id_t cpu_id)
                 cpu_id, global_entry->local_irq_id, IRQ_GLOBAL_ID_INVALID);
         global_entry->local_irq_id = IRQ_LOCAL_ID_INVALID;
         global_entry->cpu_id = CPU_ID_INVALID;
-        /* Keep irq_handler and sticky attr bits (e.g. NEED_EOI) for migrate. */
-        arch_irq_global_entry_reset(global_entry);
         /*
          * Drop USED last so find that already resolved the map fails the
          * used/affinity check. Do not store IRQ_NO_ATTR — that would wipe

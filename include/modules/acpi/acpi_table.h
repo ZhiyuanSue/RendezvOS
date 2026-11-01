@@ -8,16 +8,6 @@
 #include <modules/acpi/acpi_defs.h>
 
 /*
- * I have to tell this line of pack is necessary.
- * If you understand the layout of a struct, you must know why.
- * If you don't, just try to learn it.
- * Otherwise, there might left some hole in the members of a struct.
- * And because of the unknown alignment of different compliers and platform you
- * use, the size of the hole is unknown So you have to use the pack(1) to
- * eliminate the possible hole and keep the members close.
- */
-#pragma pack(1)
-/*
  * For only acpi version 1.0 RSDP table
  */
 #define ACPI_TABLE_RSDP(version) (struct acpi_table_rsdp_##version)
@@ -45,7 +35,7 @@
         u32 rsdt_address; /* 32 bit physical address of the RSDT. */
 struct acpi_table_rsdp {
         ACPI_TABLE_RSDP_1
-};
+} __attribute__((packed));
 /*
  * For acpi version 2.0 RSDP table
  */
@@ -60,7 +50,7 @@ struct acpi_table_rsdp_2 {
         u8 extended_checksum; /* This is a checksum of the entire table,
                                  including both checksum fields. */
         u8 reserved[3]; /* Reserved field */
-};
+} __attribute__((packed));
 
 /*
  *	Generic address structure, which is used to express register addresses
@@ -101,7 +91,7 @@ struct acpi_gas {
 #define ACPI_GAS_ACCESS_SIZE_Qword     4
         u64 address; /* The 64-bit address of the data structure or register in
                         the given address space (relative to the processor). */
-};
+} __attribute__((packed));
 /*
  *	For PCI Bar Target, which address_space_id is
  *ACPI_GAS_ID_Pci_Bar_Target(0x06),the address must be the following: [63:56]
@@ -149,19 +139,19 @@ struct acpi_gas {
 /*Root System Description Tables*/
 struct acpi_table_head {
         ACPI_TABLE_HEAD;
-};
+} __attribute__((packed));
 #define ACPI_HEAD_SIZE sizeof(struct acpi_table_head)
 struct acpi_table_rsdt {
         ACPI_TABLE_HEAD;
         u32 *entry;
-};
+} __attribute__((packed));
 #define ACPI_RSDT_ENTRY_SIZE (4)
 
 /*Extended System Description Table XSDT*/
 struct acpi_table_xsdt {
         ACPI_TABLE_HEAD;
         u64 *entry;
-};
+} __attribute__((packed));
 #define ACPI_XSDT_ENTRY_SIZE (8)
 
 #endif

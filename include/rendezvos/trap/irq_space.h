@@ -25,9 +25,11 @@
  *   keeps @c irq_handler and sticky bits such as @c IRQ_NEED_EOI so a later
  *   alloc on another CPU can reuse the same ISR. Clear the handler with
  *   @c register_irq_handler(..., NULL, ...) on the owner before unload.
- * - Migrate (caller also stops delivery in hardware): free on owner →
- *   alloc for the new CPU → reprogram route. No register unless the ISR
- *   changes.
+ *   Arch fields are also kept — @c arch_irq_global_entry_reset is only for
+ *   fresh @c vector_alloc slots.
+ * - Migrate : disable(stops delivery in hardware) → free on
+ *   owner → alloc for the new CPU → @c irq_enable. No register unless the
+ *   ISR changes.
  *
  * @c CPU_ID_INVALID: map/find → current CPU. alloc/free/global register
  * need a concrete cpu_id; free and global register also require
@@ -215,10 +217,10 @@ error_t irq_global_alloc(global_irq_id_t global_irq_id, cpu_id_t cpu_id,
  * Release @p global_irq_id previously claimed for @p cpu_id (concrete).
  *
  * Must run on the owning CPU (@p cpu_id == current). Clears the per-CPU map
- * binding and affinity fields, resets arch-private fields, then drops
- * @c IRQ_ATTR_USED via @c irq_atomic_attr_try_set_unused (preserves
- * @c IRQ_NEED_EOI and leaves @c irq_handler unchanged for migrate-without-
- * re-register). Mask / stop delivery before calling.
+ * binding and affinity fields, then drops @c IRQ_ATTR_USED via
+ * @c irq_atomic_attr_try_set_unused (preserves @c IRQ_NEED_EOI,
+ * @c irq_handler, and arch fields). Mask / stop delivery (@c irq_disable)
+ * before calling.
  *
  * @return @c REND_SUCCESS,
  *         @c -E_IN_PARAM on bad arguments or caller is not @p cpu_id,
