@@ -7,10 +7,10 @@
 /*
  * GICv3: not implemented.
  *
- * @c gic_probe may match "arm,gic-v3"; @c gic_v3_setup returns @c -E_RENDEZVOS
+ * @c gic_probe may match "arm,gic-v3"; @c gic_v3_bind returns @c -E_RENDEZVOS
  * (no Redistributor / IROUTER / ITS). Callers use only @c gic_chip in gic.h.
  */
 
-error_t gic_v3_setup(struct device_node *node);
+error_t gic_v3_bind(struct device_node *node);
 
 #endif /* _RENDEZVOS_GIC_V3_H_ */

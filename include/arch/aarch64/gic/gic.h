@@ -52,9 +52,9 @@
 /* bits[3:0]: may OR together (e.g. EDGE_BOTH = RISING | FALLING). */
 #define GIC_DT_IRQ_EDGE_RISING  0x1u
 #define GIC_DT_IRQ_EDGE_FALLING 0x2u
-#define GIC_DT_IRQ_EDGE_BOTH    (GIC_DT_IRQ_EDGE_RISING | GIC_DT_IRQ_EDGE_FALLING)
-#define GIC_DT_IRQ_LEVEL_HIGH   0x4u
-#define GIC_DT_IRQ_LEVEL_LOW    0x8u
+#define GIC_DT_IRQ_EDGE_BOTH  (GIC_DT_IRQ_EDGE_RISING | GIC_DT_IRQ_EDGE_FALLING)
+#define GIC_DT_IRQ_LEVEL_HIGH 0x4u
+#define GIC_DT_IRQ_LEVEL_LOW  0x8u
 #define GIC_DT_IRQ_TRIGGER_MASK 0xfu
 
 /*
@@ -85,7 +85,8 @@ union irq_source {
 } __attribute__((packed));
 
 /**
- * Bound by @c gic_probe. Callers must check @c gic_ready() (or @c version).
+ * Bound by a successful @c gic_probe. After that, callers use @c gic ops
+ * directly — boot fails if probe did not bind a complete chip.
  */
 struct gic_chip {
         enum gic_version version;
@@ -93,23 +94,15 @@ struct gic_chip {
         void (*init_distributor)(void);
         void (*init_cpu_interface)(void);
 
-        /**
-         * Program SPI trigger + route to @p cpu_id + unmask.
-         * @p trigger is the portable @c enum irq_trigger; the driver maps it
-         * to version-specific ICFGR / affinity bits.
-         */
         error_t (*enable_spi)(u32 intid, cpu_id_t cpu_id,
                               enum irq_trigger trigger);
-        /** Mask SPI @p intid. */
         error_t (*disable_spi)(u32 intid);
+
+        void (*set_priority)(u32 intid, u32 prio);
 
         void (*mask_irq)(u32 irq_num);
         void (*unmask_irq)(u32 irq_num);
 
-        /**
-         * Generate SGI. @p target_mode / @p target_list_bit follow the bound
-         * driver's encoding (GICv2: GICD_SGIR filter/list fields).
-         */
         void (*send_sgi)(u32 irq_num, u32 target_mode, u32 target_list_bit);
 
         union irq_source (*read_irq_num)(void);
@@ -124,15 +117,9 @@ extern struct gic_chip gic;
  * Walk DT compatible strings, bind the first supported GIC driver into @c gic.
  *
  * @return @c REND_SUCCESS, @c -E_REND_NOFOUND if no node, @c -E_RENDEZVOS if
- *         matched but unsupported (e.g. GICv3) or setup failed.
+ *         matched but unsupported (e.g. GICv3) or bind failed.
  */
 error_t gic_probe(void);
-
-static inline bool gic_ready(void)
-{
-        return gic.version != GIC_VER_NONE && gic.enable_spi
-               && gic.init_distributor && gic.init_cpu_interface;
-}
 
 static inline u32 gic_spi_intid(u32 spi_index)
 {

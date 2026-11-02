@@ -6,14 +6,12 @@
 
 /*
  * GICv2 MMIO layout and SGIR constants. Public chip ops live in gic.h;
- * @c gic_v2_setup binds them after a DT match.
+ * @c gic_v2_bind binds them after a DT match.
  *
  * Ref notes: https://developer.aliyun.com/article/1532907
  */
 
 #define GIC_V2_NR_CPU_MAX 8
-
-/* INTID ranges / classifiers: GIC_* / gic_is_* in gic.h (shared across versions). */
 
 struct gic_distributor {
 #define GIC_V2_GICD_CTLR_GROUP0_ENABLE (0x1)
@@ -136,9 +134,10 @@ struct gic_virtual_interface {
 } __attribute__((packed));
 
 /**
- * Map GICD/GICC from @p node and install GICv2 ops into the global @c gic chip.
- * Does not set @c gic.version — @c gic_probe does that on success.
+ * Map GICD/GICC from @p node and install GICv2 ops into the global @c gic chip
+ * (including @c version). Does not program the distributor / CPU interface —
+ * that is @c gic.init_distributor / @c gic.init_cpu_interface.
  */
-error_t gic_v2_setup(struct device_node *node);
+error_t gic_v2_bind(struct device_node *node);
 
 #endif /* _RENDEZVOS_GIC_V2_H_ */

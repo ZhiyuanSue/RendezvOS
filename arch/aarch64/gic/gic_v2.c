@@ -56,24 +56,18 @@ static void gicd_v2_set_priority(u32 irq_num, u32 prio)
                 (prio & GIC_V2_IPRIORITYR_MASK) << ((irq_num % 4) * 8);
 }
 
-/** ITARGETSR: replace the SPI's target byte (logical cpu_id → one-hot). */
 static error_t gicd_v2_set_cpu_affinity(u32 irq_num, cpu_id_t cpu_id)
 {
-        u32 spi;
-        u32 shift;
-        u32 val;
-        u32 mask;
-
         if (!gic_is_spi(irq_num))
                 return -E_IN_PARAM;
         if (cpu_id
             >= (cpu_id_t)MIN(RENDEZVOS_MAX_CPU_NUMBER, GIC_V2_NR_CPU_MAX))
                 return -E_IN_PARAM;
 
-        mask = 1u << (u32)cpu_id;
-        spi = irq_num - GIC_SPI_START;
-        shift = (spi % 4) * 8;
-        val = gicd_v2->GICD_ITARGETSRn_RW[spi / 4];
+        u32 mask = 1u << (u32)cpu_id;
+        u32 spi = irq_num - GIC_SPI_START;
+        u32 shift = (spi % 4) * 8;
+        u32 val = gicd_v2->GICD_ITARGETSRn_RW[spi / 4];
         val = clear_mask_u32(val, (u32)GIC_V2_ITARGETSR_MASK << shift);
         val = set_mask_u32(val, mask << shift);
         gicd_v2->GICD_ITARGETSRn_RW[spi / 4] = val;
@@ -112,36 +106,38 @@ static void gicd_v2_send_sgi(u32 irq_num, u32 target_mode, u32 target_list_bit)
 
 static void gicc_v2_eoi(union irq_source source)
 {
+        /*
+            here we should set the EOI mode and then just use GICC_EOIR reg
+            without the GICC_DIR reg
+        */
         gicc_v2->GICC_EOIR = (u32)source.irq_source_value;
         isb();
 }
 
 static union irq_source gicc_v2_read_irq(void)
 {
+        /*read the GICC_IAR reg*/
         union irq_source source = {
                 .irq_source_value = gicc_v2->GICC_IAR,
         };
-
         isb();
         return source;
 }
 
 static error_t gic_v2_enable_spi(u32 intid, cpu_id_t cpu_id,
-                                 enum irq_trigger trigger)
+                                 enum irq_trigger trigger_mode)
 {
-        error_t e;
-        u32 type;
-
         if (!gicd_v2)
                 return -E_RENDEZVOS;
         if (!gic_is_spi(intid))
                 return -E_IN_PARAM;
 
         /* Portable sense → GICD_ICFGR bit encoding (not the same 0/1). */
-        type = (trigger == IRQ_TRIGGER_LEVEL) ? GIC_V2_GICD_LEVEL_TRIGGER :
-                                                GIC_V2_GICD_EDGE_TRIGGER;
+        u32 type = (trigger_mode == IRQ_TRIGGER_LEVEL) ?
+                           GIC_V2_GICD_LEVEL_TRIGGER :
+                           GIC_V2_GICD_EDGE_TRIGGER;
         gicd_v2_set_type(intid, type);
-        e = gicd_v2_set_cpu_affinity(intid, cpu_id);
+        error_t e = gicd_v2_set_cpu_affinity(intid, cpu_id);
         if (e != REND_SUCCESS)
                 return e;
         gicd_v2_unmask_irq(intid);
@@ -160,13 +156,15 @@ static error_t gic_v2_disable_spi(u32 intid)
 
 static void gic_v2_init_distributor(void)
 {
-        u32 typer = gicd_v2->GICD_TYPER;
-        u32 irq_num = ((typer & GIC_V2_GICD_TYPER_IT_LINE_MASK) + 1u) << 5;
-        u32 cpu_num = (typer & GIC_V2_GICD_TYPER_CPU_NUM_MASK)
-                      >> GIC_V2_GICD_TYPER_CPU_NUM_SHIFT;
-
+        /*read the gicd type reg*/
+        u32 gicd_typer_value = gicd_v2->GICD_TYPER;
+        u32 nr_it_lines =
+                (gicd_typer_value & GIC_V2_GICD_TYPER_IT_LINE_MASK) + 1;
+        u32 irq_num = nr_it_lines << 5;
         if (irq_num > GIC_SPI_END)
                 irq_num = GIC_SPI_END;
+        u32 cpu_num = (gicd_typer_value & GIC_V2_GICD_TYPER_CPU_NUM_MASK)
+                      >> GIC_V2_GICD_TYPER_CPU_NUM_SHIFT;
 
         gicd_v2->GICD_CTLR = 0;
         print("[ GIC ] irq num %u cpu num %u\n", irq_num, cpu_num);
@@ -174,8 +172,8 @@ static void gic_v2_init_distributor(void)
         for (u32 irq = GIC_SPI_START; irq < irq_num; irq++) {
                 gicd_v2_set_type(irq,
                                  GIC_V2_GICD_EDGE_TRIGGER | GIC_V2_GICD_1_N);
-                gicd_v2_set_priority(irq, irq / 8);
-                gicd_v2_mask_irq(irq);
+                gic.set_priority(irq, irq / 8);
+                gic.mask_irq(irq);
         }
 
         gicd_v2->GICD_CTLR = GIC_V2_GICD_CTLR_GROUP0_ENABLE;
@@ -185,16 +183,16 @@ static void gic_v2_init_distributor(void)
 static void gic_v2_init_cpu_interface(void)
 {
         for (u32 irq = GIC_SGI_START; irq <= GIC_PPI_END; irq++) {
-                gicd_v2_set_priority(irq, irq / 8);
-                gicd_v2_unmask_irq(irq);
+                gic.set_priority(irq, irq / 8);
+                gic.unmask_irq(irq);
                 gicd_v2_set_type(irq,
                                  irq <= GIC_SGI_END ?
                                          GIC_V2_GICD_EDGE_TRIGGER :
                                          GIC_V2_GICD_LEVEL_TRIGGER);
         }
 
-        gicc_v2->GICC_BPR = 0x3;
-        gicc_v2->GICC_PMR = 0xff;
+        gicc_v2->GICC_BPR = 0x3; /*we set 8 irq as the same priority group*/
+        gicc_v2->GICC_PMR = 0xff; /*support all the interrupts for this cpu*/
         gicc_v2->GICC_CTLR = GIC_V2_GICC_CTLR_ENABLE_GROUP1;
         isb();
 }
@@ -204,7 +202,7 @@ static u32 gic_v2_nr_spi(void)
         return (u32)(GIC_SPI_END - GIC_SPI_START + 1);
 }
 
-error_t gic_v2_setup(struct device_node *node)
+error_t gic_v2_bind(struct device_node *node)
 {
         struct property *reg_prop;
         u64 gic_regs[4];
@@ -230,6 +228,7 @@ error_t gic_v2_setup(struct device_node *node)
                 .init_cpu_interface = gic_v2_init_cpu_interface,
                 .enable_spi = gic_v2_enable_spi,
                 .disable_spi = gic_v2_disable_spi,
+                .set_priority = gicd_v2_set_priority,
                 .mask_irq = gicd_v2_mask_irq,
                 .unmask_irq = gicd_v2_unmask_irq,
                 .send_sgi = gicd_v2_send_sgi,

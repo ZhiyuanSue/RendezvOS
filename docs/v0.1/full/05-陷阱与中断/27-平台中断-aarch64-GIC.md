@@ -34,14 +34,14 @@ GICv2 两块：**GICD（Distributor，全局一份）** 负责 SPI 配置 / 路�
 2. **进 IRQ 入口后必须读 IAR**（`gic.read_irq_num`）才能知道 INTID——只靠 VBAR 偏移不够。
 3. 软件侧 `local_irq_id` 必须 = `intid+64`，且已 `register_irq_handler`（设备 SPI：先 `irq_global_alloc`，再 register，再 `irq_global_enable`，见 `25`）。
 4. **处理完必须 EOI**（`GICC_EOIR`）；漏 EOI 则同 INTID 可能卡在 active。
-5. **GIC 寄存器必须 DEVICE 属性映射**（`gic_v2_setup` 内 map）——普通缓存页会导致 MMIO 乱序 / 丢失。
+5. **GIC 寄存器必须 DEVICE 属性映射**（`gic_v2_bind` 内 map）——普通缓存页会导致 MMIO 乱序 / 丢失。
 6. **SPI 默认全 mask**；SGI+PPI 在 CPU IF init 时全 unmask——timer / IPI 才能响；外设 SPI 经 `irq_global_enable` → `enable_spi` 打开。
 
 ---
 
 ## 2. 目标与边界
 
-**提供：** virt 可启动的 GICv2 最小驱动——`gic_probe` / map、dist / CPU IF、`enable_spi` / `disable_spi`、EOI、SGI；公共 `gic_chip` 面。
+**提供：** virt 可启动的 GICv2 最小驱动——`gic_probe` / map、dist / CPU IF、`enable_spi` / `disable_spi` / `set_priority`、EOI、SGI；公共 `gic_chip` 面。
 
 **不做：** Linux irqchip 层级；ITS / LPI / MSI；GICv3 / v4 真驱动；GICH 虚拟化。
 
@@ -391,7 +391,7 @@ GICv2 最多按 8 个 core 来理解 SGI 的 CPUID 字段；同一 SGI 号可以
 
 ### 6.3 `compatible`（`gic_probe` 表）
 
-`gic.c` 按表依次 `dev_node_find_by_compatible`：**先**常见 GICv2（`arm,cortex-a15-gic` / `a7` / `a9` / `gic-400` / `arm11mp-gic`），**再** `arm,gic-v3`（识别但 `gic_v3_setup` 返回失败——v0.1 无真驱动）。匹配失败 → `-E_REND_NOFOUND`；匹配到未实现版本 → `-E_RENDEZVOS`。`arch_start_platform` 检查返回值。
+`gic.c` 按表依次 `dev_node_find_by_compatible`：**先**常见 GICv2（`arm,cortex-a15-gic` / `a7` / `a9` / `gic-400` / `arm11mp-gic`），**再** `arm,gic-v3`（识别但 `gic_v3_bind` 返回失败——v0.1 无真驱动）。匹配失败 → `-E_REND_NOFOUND`；匹配到未实现版本 → `-E_RENDEZVOS`。`arch_start_platform` 检查返回值。
 
 ---
 
@@ -400,7 +400,7 @@ GICv2 最多按 8 个 core 来理解 SGI 的 CPUID 字段；同一 SGI 号可以
 | 路径 | 职责 |
 |------|------|
 | `gic.h` / `gic.c` | `struct gic_chip`、DT compatible 表、`gic_probe` |
-| `gic_v2.c` / `.h` | MMIO、`gic_v2_setup`、dist / CPU IF、`enable_spi`（ITARGETSR） |
+| `gic_v2.c` / `.h` | MMIO、`gic_v2_bind`、dist / CPU IF、`enable_spi`（ITARGETSR） |
 | `gic_v3.c` / `.h` | 未实现：匹配后返回失败 |
 | `arch/.../trap/trap.c` | IAR → `local_irq_id`；`arch_eoi_irq`；`enable_spi`/`disable_spi` |
 | `generic_time.c` | arch timer（CNTP_*）+ 消费 PPI 线 |
@@ -449,7 +449,7 @@ Generic timer 在 EL1 编程 **CNTP_***（non-secure physical）；到期拉高 
 
 ## 9. 公开 API
 
-本篇涉及的接口分布在：`gic.h` 的 `struct gic_chip gic` + `gic_probe`；GICv2 经 `gic_v2_setup` 绑定。trap 不 include `gic_v2.h`。`gic_v3` 仅 DT 识别 + 失败。
+本篇涉及的接口分布在：`gic.h` 的 `struct gic_chip gic` + `gic_probe`；GICv2 经 `gic_v2_bind` 绑定。trap 不 include `gic_v2.h`。`gic_v3` 仅 DT 识别 + 失败。
 
 **本篇不涉及：** `irq_global_*` / `register_irq_handler` / `trap_handler`（见 `25`）；`arch_eoi_irq` / `get_curr_el_trap_info` 约定（见 `25`/`23`）；软 IPI 协议（见 `30`）；DTB 解析（见 `36`）；可移植 timer（见 `33`）。
 
@@ -473,16 +473,15 @@ Generic timer 在 EL1 编程 **CNTP_***（non-secure physical）；到期拉高 
 #define GIC_PPI_START/END   /* 16–31；timer INTID 由 DTB ns-phys 决定 */
 #define GIC_SPI_START/END   /* 32–1019；本核表外编号从 96 起，见 25 */
 bool gic_is_sgi/ppi/spi(u32 irq_num);
-bool gic_ready(void);
 
-extern struct gic_chip gic;  /* filled by gic_probe → gic_v2_setup */
+extern struct gic_chip gic;  /* filled by gic_probe → gic_v2_bind */
 error_t gic_probe(void);
 ```
 
 | 符号 | 说明 |
 |------|------|
-| `gic_probe` | DT compatible 表；成功则 `gic.version` + ops；失败返回错误码。 |
-| MMIO | `gic_v2_setup` 用 `PAGE_ENTRY_DEVICE` 映射；指针不在 `gic_chip` 上。 |
+| `gic_probe` | DT compatible 表；成功则 `gic.version` + 完整 ops；失败则平台启动返回错误。此后热路径直接调 `gic.*`，不再逐次探测。 |
+| MMIO | `gic_v2_bind` 用 `PAGE_ENTRY_DEVICE` 映射；指针不在 `gic_chip` 上。 |
 
 ### 9.3 `gic` ops（版本无关）
 
@@ -492,6 +491,7 @@ gic.init_distributor();
 gic.init_cpu_interface();
 gic.enable_spi(u32 intid, cpu_id_t cpu_id, enum irq_trigger);
 gic.disable_spi(u32 intid);
+gic.set_priority(u32 intid, u32 prio);
 gic.unmask_irq / mask_irq(u32 intid);
 gic.send_sgi(u32 sgi, u32 target_mode, u32 target_list);
 union irq_source gic.read_irq_num(void);
@@ -503,10 +503,11 @@ u32 gic.nr_spi(void);
 | 接口 | 说明 |
 |------|------|
 | `gic_probe` | 见 §6.3。 |
-| `init_distributor` | 只配 **SPI**：edge、priority、**全 mask**；开 GICD Group0（不再空转 affinity(0)）。 |
-| `init_cpu_interface` | **unmask 全部 SGI+PPI**；PMR=`0xff`、BPR=`0x3`；开 GICC Group1。 |
+| `init_distributor` | 只配 **SPI**：edge、`set_priority`、**全 mask**；开 GICD Group0（不再空转 affinity(0)）。 |
+| `init_cpu_interface` | **unmask 全部 SGI+PPI**；`set_priority`；PMR=`0xff`、BPR=`0x3`；开 GICC Group1。 |
 | `enable_spi` | 收便携 `enum irq_trigger`（`trap_common.h`）；驱动内译成 ICFGR 位（`GIC_V2_GICD_*_TRIGGER`）+ 按 `cpu_id` 写 ITARGETSR + unmask。`cpu_id`≥8 或越界 → `-E_IN_PARAM`。 |
 | `disable_spi` | mask SPI。 |
+| `set_priority` | 写 INTID 优先级（数值越小越高）；与 enable 正交。 |
 | `send_sgi` | GICv2 写 SGIR；参数仍为 v2 字段（软 IPI 用 SGI **0**，见 `30`）。 |
 | `read_irq_num` / `eoi` | IAR / EOIR。 |
 
@@ -547,8 +548,10 @@ u32 gic.nr_spi(void);
 
 ## 13. 变更记录
 
+- 2026-11-02：驱动绑定改名 `gic_v2_bind` / `gic_v3_bind`（原 setup）；与 `gic_probe`、`init_*` 三层对齐。
+- 2026-11-02：`set_priority` 回到 `gic_chip`；删公开 `gic_ready`（probe 失败即停，热路径直接调 ops）。
 - 2026-11-01：删 `enum gic_irq_trigger`；`enable_spi` 直接收 `enum irq_trigger`（`trap_common.h`）；仅在 `gic_v2` 内译成 `GIC_V2_GICD_*_TRIGGER`。
-- 2026-11-01：`gic.h`/`gic.c` 公共 `gic_chip` + DT compatible 表；trap/`start_arch` 只认 `gic.h`；`enable_spi(cpu_id)` 收 ITARGETSR；`gic_v3_setup` 匹配后失败；去掉 INTID 别名与「new code」措辞；与 `25`/`36` 交叉对齐。
+- 2026-11-01：`gic.h`/`gic.c` 公共 `gic_chip` + DT compatible 表；trap/`start_arch` 只认 `gic.h`；`enable_spi(cpu_id)` 收 ITARGETSR；`gic_v3_bind` 匹配后失败；去掉 INTID 别名与「new code」措辞；与 `25`/`36` 交叉对齐。
 - 2026-10-22：与两 id 模型对齐——全文「trap id / pool / 软 claim」改为 `local_irq_id` / `irq_global_alloc`；SPI 表与宏注释跟 `25` 一致。
 - 2026-10-07：§1 概述瘦身——GICD/GICC 表与拓扑迁入 §4；INTID 分段迁入 §6.1；四态与 EOI 模式迁入 §5.2 并与应答叙述合并；§1 只留入口因果与硬依赖清单。
 - 2026-10-04：补 GICv2 拓扑与中断流向图（GICD/GICC、SPI 路由 vs PPI/SGI banked）；补 EOI 两种模式对比图（合并 vs 分离，priority drop vs deactivate）；补优先级比较与抢占门槛图（BPR 切分、PMR/RPR 门槛链）；「塞进/碰到/本篇拥有」改地道中文（放入/遇到/本篇涉及的接口分布在）。

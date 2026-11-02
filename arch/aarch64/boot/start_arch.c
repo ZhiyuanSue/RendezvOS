@@ -280,8 +280,7 @@ error_t arch_start_core(cpu_id_t cpu_id)
         per_cpu(cpu_number, cpu_id) = cpu_id;
         isb();
         init_interrupt();
-        if (gic_ready())
-                gic.init_cpu_interface();
+        gic.init_cpu_interface();
         smp_ipi_init();
         rendezvos_time_init();
         init_syscall();
