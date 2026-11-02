@@ -20,7 +20,7 @@
  * Delivery — @c trap_handler: vector → irq_space lookup → ISR → EOI.
  * Does not program the irqchip; @c register_irq_handler installs the ISR.
  *
- * Line control — @c irq_enable / @c irq_disable:
+ * Line control — @c irq_global_enable / @c irq_global_disable:
  *   alloc + register first, then enable (arch programs the chip + unmask).
  *   disable only masks; free is separate (mask before free).
  *   Migrate: disable → free → alloc → enable.
@@ -91,7 +91,7 @@ void register_irq_handler(local_irq_id_t local_irq_id, cpu_id_t cpu_id,
  *
  * Expects @c irq_global_alloc and a non-NULL @c irq_handler on
  * @c global_irq_vector[@p global_irq_id]. Loads @c local_irq_id / @c cpu_id
- * from that entry and calls @c arch_irq_enable.
+ * from that entry and calls @c arch_irq_global_enable.
  *
  * @param global_irq_id Index into @c global_irq_vector.
  * @param trigger       Edge or level.
@@ -100,9 +100,9 @@ void register_irq_handler(local_irq_id_t local_irq_id, cpu_id_t cpu_id,
  * @return @c REND_SUCCESS on success.
  * @retval -E_IN_PARAM     Bad id / trigger / polarity.
  * @retval -E_REND_NOFOUND Not claimed, affinity unset, or no handler.
- * @return Else an error from @c arch_irq_enable.
+ * @return Else an error from @c arch_irq_global_enable.
  */
-error_t irq_enable(global_irq_id_t global_irq_id, enum irq_trigger trigger,
+error_t irq_global_enable(global_irq_id_t global_irq_id, enum irq_trigger trigger,
                    enum irq_polarity polarity);
 
 /**
@@ -116,17 +116,17 @@ error_t irq_enable(global_irq_id_t global_irq_id, enum irq_trigger trigger,
  * @return @c REND_SUCCESS on success.
  * @retval -E_IN_PARAM     Bad id.
  * @retval -E_REND_NOFOUND Entry not marked USED.
- * @return Else an error from @c arch_irq_disable.
+ * @return Else an error from @c arch_irq_global_disable.
  */
-error_t irq_disable(global_irq_id_t global_irq_id);
+error_t irq_global_disable(global_irq_id_t global_irq_id);
 
 /**
- * @brief Arch irqchip hook for @c irq_enable.
+ * @brief Arch irqchip hook for @c irq_global_enable.
  *
  * Declared here so this header never includes irqchip headers. Drivers
- * should call @c irq_enable, not this hook directly.
+ * should call @c irq_global_enable, not this hook directly.
  *
- * @param global_irq_id Same as @c irq_enable.
+ * @param global_irq_id Same as @c irq_global_enable.
  * @param local_irq_id  Delivery id from the global entry (arch-defined).
  * @param cpu_id        Destination CPU recorded at alloc.
  * @param trigger       Edge or level.
@@ -134,17 +134,17 @@ error_t irq_disable(global_irq_id_t global_irq_id);
  *
  * @return @c REND_SUCCESS or an arch error.
  */
-error_t arch_irq_enable(global_irq_id_t global_irq_id,
+error_t arch_irq_global_enable(global_irq_id_t global_irq_id,
                         local_irq_id_t local_irq_id, cpu_id_t cpu_id,
                         enum irq_trigger trigger, enum irq_polarity polarity);
 
 /**
- * @brief Arch irqchip hook for @c irq_disable (mask only).
+ * @brief Arch irqchip hook for @c irq_global_disable (mask only).
  *
- * @param global_irq_id Same as @c irq_disable.
+ * @param global_irq_id Same as @c irq_global_disable.
  * @return @c REND_SUCCESS or an arch error.
  */
-error_t arch_irq_disable(global_irq_id_t global_irq_id);
+error_t arch_irq_global_disable(global_irq_id_t global_irq_id);
 
 /**
  * @brief Per-CPU interrupt bring-up.

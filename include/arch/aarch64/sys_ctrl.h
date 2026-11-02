@@ -15,15 +15,15 @@ static inline void set_vbar_el1(vaddr trap_vec)
         msr("VBAR_EL1", trap_vec);
 }
 
-static inline void arch_disable_irq(void)
+static inline void arch_irq_local_disable(void)
 {
         __asm__ __volatile__("msr daifset, 0x3" ::: "memory");
 }
-static inline void arch_enable_irq(void)
+static inline void arch_irq_local_enable(void)
 {
         __asm__ __volatile__("msr daifclr, 0x3" ::: "memory");
 }
-static inline u64 arch_save_and_disable_irq(void)
+static inline u64 arch_irq_local_save(void)
 {
         u64 flags;
         __asm__ __volatile__("mrs %0, daif\n\t"
@@ -34,7 +34,7 @@ static inline u64 arch_save_and_disable_irq(void)
         return flags;
 }
 
-static inline void arch_irq_restore(u64 flags)
+static inline void arch_irq_local_restore(u64 flags)
 {
         __asm__ __volatile__("msr daif, %0" : : "r"(flags) : "memory");
 }

@@ -116,7 +116,7 @@ POSIX errno 与 Linux 内核的 `error_t` 取向相反：POSIX errno 是正数�
 
 ```text
 kernel_panic(msg) / kernel_halt()
-  → local_irq_disable()        // 关中断：避免打印途中被时钟/IPI 打断
+  → local_irq_global_disable()        // 关中断：避免打印途中被时钟/IPI 打断
   → pr_error(msg)              // 经 log 通路输出到 UART/serial
   → arch_shutdown()            // 期望不返回：
        x86_64   → outw(0x604, 0x2000)        // QEMU ACPI PM1a 风格关机口

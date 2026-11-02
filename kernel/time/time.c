@@ -212,10 +212,10 @@ error_t rendezvos_timer_event_fini(rendezvos_timer_event *event)
 {
         if (event->periodic_gap)
                 return -E_IN_PARAM;
-        u64 flags = arch_save_and_disable_irq();
+        u64 flags = arch_irq_local_save();
         if (rendezvos_timer_event_exist_inner(event))
                 rendezvos_timer_event_del_inner(event);
-        arch_irq_restore(flags);
+        arch_irq_local_restore(flags);
         if (event->wait_port) {
                 ref_put(&event->wait_port->refcount, free_message_port_ref);
                 event->wait_port = NULL;
@@ -228,10 +228,10 @@ error_t rendezvos_timer_event_cancel(rendezvos_timer_event *event)
         if (!event || event->periodic_gap || !event->wait_port)
                 return -E_IN_PARAM;
 
-        u64 flags = arch_save_and_disable_irq();
+        u64 flags = arch_irq_local_save();
         if (rendezvos_timer_event_exist_inner(event))
                 rendezvos_timer_event_del_inner(event);
-        arch_irq_restore(flags);
+        arch_irq_local_restore(flags);
         return timer_event_deliver_kmsg(event->wait_port,
                                         KMSG_OP_SYSTEM_TIMER_CANCEL,
                                         event->delivery_token,
@@ -240,36 +240,36 @@ error_t rendezvos_timer_event_cancel(rendezvos_timer_event *event)
 error_t rendezvos_timer_event_add(rendezvos_timer_event *event,
                                   tick_t expires_at)
 {
-        u64 flags = arch_save_and_disable_irq();
+        u64 flags = arch_irq_local_save();
         error_t e = rendezvos_timer_event_add_inner(event, expires_at);
-        arch_irq_restore(flags);
+        arch_irq_local_restore(flags);
         return e;
 }
 
 error_t rendezvos_timer_event_del(rendezvos_timer_event *event)
 {
-        u64 flags = arch_save_and_disable_irq();
+        u64 flags = arch_irq_local_save();
         error_t e = rendezvos_timer_event_del_inner(event);
-        arch_irq_restore(flags);
+        arch_irq_local_restore(flags);
         return e;
 }
 
 error_t rendezvos_timer_event_change(rendezvos_timer_event *event,
                                      tick_t expires_at)
 {
-        u64 flags = arch_save_and_disable_irq();
+        u64 flags = arch_irq_local_save();
         error_t res = rendezvos_timer_event_del_inner(event);
         if (res == REND_SUCCESS)
                 res = rendezvos_timer_event_add_inner(event, expires_at);
-        arch_irq_restore(flags);
+        arch_irq_local_restore(flags);
         return res;
 }
 
 bool rendezvos_timer_event_exist(const rendezvos_timer_event *event)
 {
-        u64 flags = arch_save_and_disable_irq();
+        u64 flags = arch_irq_local_save();
         bool res = rendezvos_timer_event_exist_inner(event);
-        arch_irq_restore(flags);
+        arch_irq_local_restore(flags);
         return res;
 }
 

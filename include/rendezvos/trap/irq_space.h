@@ -28,7 +28,7 @@
  *   Arch fields are also kept — @c arch_irq_global_entry_reset is only for
  *   fresh @c vector_alloc slots.
  * - Migrate : disable(stops delivery in hardware) → free on
- *   owner → alloc for the new CPU → @c irq_enable. No register unless the
+ *   owner → alloc for the new CPU → @c irq_global_enable. No register unless the
  *   ISR changes.
  *
  * @c CPU_ID_INVALID: map/find → current CPU. alloc/free/global register
@@ -219,7 +219,7 @@ error_t irq_global_alloc(global_irq_id_t global_irq_id, cpu_id_t cpu_id,
  * Must run on the owning CPU (@p cpu_id == current). Clears the per-CPU map
  * binding and affinity fields, then drops @c IRQ_ATTR_USED via
  * @c irq_atomic_attr_try_set_unused (preserves @c IRQ_NEED_EOI,
- * @c irq_handler, and arch fields). Mask / stop delivery (@c irq_disable)
+ * @c irq_handler, and arch fields). Mask / stop delivery (@c irq_global_disable)
  * before calling.
  *
  * @return @c REND_SUCCESS,

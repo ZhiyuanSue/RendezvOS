@@ -40,9 +40,9 @@ PC 上外设不会直接进入内核入口。CPU 侧永远是：
 | 部件 | 角色 | 本仓库 |
 |------|------|--------|
 | **Local APIC（LAPIC）** | **每核一个**；接收投递给本核的中断；自带 timer、LINT、IPI、spurious | **已实现**（`LocalAPIC.c`） |
-| **I/O APIC** | 板级 / 芯片组；把 PCI / ISA 线编成「发到某个 LAPIC 的某个向量」 | **发现 + RTE/mask/EOI 已接**（MADT → MMIO ensure → Version → mask 全脚 → GSI 表；`ioapic_configure_rte` / `change_mask` / `ioapic_eoi`；trap `irq_enable`/`disable` / EOI 反查）；**ISO / MSI / 设备接线未做** |
+| **I/O APIC** | 板级 / 芯片组；把 PCI / ISA 线编成「发到某个 LAPIC 的某个向量」 | **发现 + RTE/mask/EOI 已接**（MADT → MMIO ensure → Version → mask 全脚 → GSI 表；`ioapic_configure_rte` / `change_mask` / `ioapic_eoi`；trap `irq_global_enable`/`disable` / EOI 反查）；**ISO / MSI / 设备接线未做** |
 
-软件侧 GSI 表 + RTE 编程 / mask / 定向 EOI 已接；驱动路径为 `irq_global_alloc` → `register_irq_handler` → `irq_enable`。ISA→GSI 的 ISO 与 PCI/MSI 接线仍未做——timer / IPI 仍走 LAPIC。
+软件侧 GSI 表 + RTE 编程 / mask / 定向 EOI 已接；驱动路径为 `irq_global_alloc` → `register_irq_handler` → `irq_global_enable`。ISA→GSI 的 ISO 与 PCI/MSI 接线仍未做——timer / IPI 仍走 LAPIC。
 
 ### 1.3 OS 对硬件的硬依赖（读代码前先对齐）
 
@@ -67,7 +67,7 @@ PC 上外设不会直接进入内核入口。CPU 侧永远是：
 
 **提供：** QEMU / 常见 PC 可启动的最小中断树——8259 或 LAPIC（含 x2APIC 模式切换）、LVT timer、ICR IPI、EOI、PIT 校准源。
 
-**不做（当前）：** MADT **ISO**；MSI；HPET 校准源；Linux IRQ domain；关掉 LAPIC EOI 广播后的纯定向 EOI 策略调优。RTE/mask/`irq_enable` 见 §9.6.8；硬件背景见 §9.6。
+**不做（当前）：** MADT **ISO**；MSI；HPET 校准源；Linux IRQ domain；关掉 LAPIC EOI 广播后的纯定向 EOI 策略调优。RTE/mask/`irq_global_enable` 见 §9.6.8；硬件背景见 §9.6。
 
 ---
 
@@ -441,7 +441,7 @@ MSI（Message Signaled Interrupt）走 PCI 的 message address/data，最终仍�
 | `PIC/PIT.c` | 8254 编程 / `PIT_mdelay` |
 | `PIC/gsi.h` | `@c gsi_id_t`（ACPI GSI；与 x86 `global_irq_id` 同号） |
 | `PIC/IOAPIC.h` / `IOAPIC.c` | `ioapic_init`（MMIO ensure、Version、**mask 全脚**、GSI 表）；`ioapic_configure_rte` / `change_mask` / `ioapic_eoi`（定点写 `+0x40`）；ISO 未做 |
-| `arch/.../trap/trap.c` | `arch_eoi_irq`：PIC→`PIC_EOI`；APIC→`APIC_EOI` + irq_space 反查后 `ioapic_eoi`；`arch_irq_enable`/`disable` → IOAPIC |
+| `arch/.../trap/trap.c` | `arch_eoi_irq`：PIC→`PIC_EOI`；APIC→`APIC_EOI` + irq_space 反查后 `ioapic_eoi`；`arch_irq_global_enable`/`disable` → IOAPIC |
 | `arch/.../time/time.c` | 校准 + 调 LVT；`software_enable_APIC` |
 | `arch/.../time/rtc.c` | **墙钟 CMOS 读**——不是 IRQ 路径 |
 
@@ -456,7 +456,7 @@ init_interrupt()          // 装 IDT（须已申请 global_irq_vector，见 25�
 init_irq()                // 三选一；APIC 路径 disable_PIC + enable + reset_APIC
 smp_ipi_init()            // register 0x30
 … init_syscall …
-arch_enable_irq()         // sti
+arch_irq_local_enable()         // sti
 rendezvos_time_init()
   └ arch_init_timer()     // 校准 + LVT timer + software_enable_APIC()
 ```
@@ -566,7 +566,7 @@ u64 PIT_get_hz(void);             /* PIT_TICK_RATE = 1193181 */
 
 ### 9.6 IOAPIC（硬件参考 + 启动发现）
 
-**实现状态：** MADT Type=1 发现、`ioapic_init`（MMIO ensure → Version/`nr_pins` → **mask 全 RTE** → `irq_global_vector_alloc` → GSI→pin）已接；运行时 `ioapic_configure_rte`/`change_mask`/`ioapic_eoi` 与 trap `irq_enable`/`irq_disable` 已接。**无 IOAPIC 合法**。**仍未做：** ISO、MSI、具体设备接线、SVR 关 EOI 广播。层级：trap → IOAPIC + irq_space；RTE/mask 按 GSI 扫 `ioapics[]`，EOI 由 trap 经 irq_space 取 `ioapic *` 后定点 `ioapic_eoi`。下文含 82093AA 硬件背景；启动步骤见 §9.6.8。
+**实现状态：** MADT Type=1 发现、`ioapic_init`（MMIO ensure → Version/`nr_pins` → **mask 全 RTE** → `irq_global_vector_alloc` → GSI→pin）已接；运行时 `ioapic_configure_rte`/`change_mask`/`ioapic_eoi` 与 trap `irq_global_enable`/`irq_global_disable` 已接。**无 IOAPIC 合法**。**仍未做：** ISO、MSI、具体设备接线、SVR 关 EOI 广播。层级：trap → IOAPIC + irq_space；RTE/mask 按 GSI 扫 `ioapics[]`，EOI 由 trap 经 irq_space 取 `ioapic *` 后定点 `ioapic_eoi`。下文含 82093AA 硬件背景；启动步骤见 §9.6.8。
 
 #### 9.6.1 为什么需要 IOAPIC
 
@@ -694,7 +694,7 @@ ACPI **MADT** 中 Type=1 描述一颗 IOAPIC（字段见 `35` §4.2 表；本仓
 | I/O APIC Address | MMIO 基址（32-bit 物理）；`ioapic_init` 对其做恒等 `ensure` 后读 Version |
 | Global System Interrupt Base | 本实例引脚 0 对应的 **GSI** 起点 |
 
-**GSI（Global System Interrupt）：** 把「第几颗 IOAPIC 的第几脚」编成全局编号。例如 GSI Base=0、24 脚 → GSI 0..23；下一颗 Base 可能是 24。本仓库在 `ioapic_setup_global_irq` 里填软件 `GSI → (ioapic *, pin)`；RTE 由 `irq_enable` → `ioapic_configure_rte` 写入（arch 默认 Fixed + physical）。
+**GSI（Global System Interrupt）：** 把「第几颗 IOAPIC 的第几脚」编成全局编号。例如 GSI Base=0、24 脚 → GSI 0..23；下一颗 Base 可能是 24。本仓库在 `ioapic_setup_global_irq` 里填软件 `GSI → (ioapic *, pin)`；RTE 由 `irq_global_enable` → `ioapic_configure_rte` 写入（arch 默认 Fixed + physical）。
 
 旧式 **MP Table**（Entry Type `0x01`）也可描述 IOAPIC；现代路径优先 MADT。Linux 等还可在 MP 表损坏时用 `pirq=` 等手工路由（本仓库不涉及）。
 
@@ -711,7 +711,7 @@ Linux 在 `arch/x86/kernel/apic/io_apic.c` 用 `ioapics[]` 记每颗实例的引
    - 对每颗实例 `ensure_kernel_identity_range` 映射 MMIO；
    - 读 Version → `nr_pins` / `version`；**若 `version < 0x20` 则失败返回**（无 EOI 寄存器，本仓库不支持）；
    - **mask 全部 RTE**；`irq_global_vector_alloc(nr_gsi)`；填 GSI→`(ioapic *,pin)`（sticky）。
-3. 设备开线：`irq_global_alloc` → `register_irq_handler(..., IRQ_NEED_EOI)` → `irq_enable(gsi, trigger, polarity)`。
+3. 设备开线：`irq_global_alloc` → `register_irq_handler(..., IRQ_NEED_EOI)` → `irq_global_enable(gsi, trigger, polarity)`。
 4. EOI：`arch_eoi_irq` → `APIC_EOI`；设备向量经 irq_space 反查目标芯片后再 `ioapic_eoi`（写 `+0x40`）。
 
 仍未做：ISO、MSI、设备驱动接线；**不**实现 Linux `ack_ioapic_quirk_irq`（见 §9.6.4.1）。timer / IPI 仍可只靠 LAPIC。
@@ -732,7 +732,7 @@ Linux 在 `arch/x86/kernel/apic/io_apic.c` 用 `ioapics[]` 记每颗实例的引
 
 ## 12. 限制与后续 / 已知缺口
 
-- **IOAPIC RTE/mask/EOI 与 `irq_enable` 已接**；仍无 ISO / MSI / 设备接线，故尚无规范 PCI IRQ（§9.6 / §9.6.8）。
+- **IOAPIC RTE/mask/EOI 与 `irq_global_enable` 已接**；仍无 ISO / MSI / 设备接线，故尚无规范 PCI IRQ（§9.6 / §9.6.8）。
 - **要求 Version ≥ `0x20`**（有定向 EOI）；`0x11` 等旧片 `ioapic_init` 直接失败。电平/边沿 IRR quirk 仅文档记录，无 `ack_ioapic_quirk_irq`（§9.6.4.1）。
 - **xAPIC MADT/map 失败半初始化**：`arch_irq_type` 已 xAPIC、PIC 已 disable，无回退。
 - **x2APIC ICR** 定向目的地可疑（`dest_field` 仅 u8，写入 [63:56]；[55:32] 恒 0）。
@@ -747,7 +747,7 @@ Linux 在 `arch/x86/kernel/apic/io_apic.c` 用 `ioapics[]` 记每颗实例的引
 ## 13. 变更记录
 
 - 2026-10-31：§9.6.4.1 记录电平误投递/IRR 粘住 quirk 与 Linux `ack_ioapic_quirk_irq`（本仓库不实现）；`ioapic_init` **拒绝** Version `< 0x20`；补 MMIO `+0x40` EOI 与版本表。
-- 2026-10-31：RTE/`ioapic_configure`·mask·unmask·EOI；trap `irq_enable`/`disable`；`arch_eoi_irq` 定向 EOI；init mask 全脚；`irq_global_free` 保留 pin 拓扑。缺口收窄为 ISO/MSI/设备接线。
+- 2026-10-31：RTE/`ioapic_configure`·mask·unmask·EOI；trap `irq_global_enable`/`disable`；`arch_eoi_irq` 定向 EOI；init mask 全脚；`irq_global_free` 保留 pin 拓扑。缺口收窄为 ISO/MSI/设备接线。
 - 2026-11-01：`ioapic_eoi(ioapic, vector)` 定点写；`arch_global_irq` 存 `ioapic *`（非 id），`arch_eoi_irq` 经 irq_space 直接 EOI（无按 id 扫描）。正文去掉 Job (B) 措辞。
 - 2026-10-29：对齐 bring-up——MMIO 恒等 ensure、GSI 表、`irq_global_vector_alloc`；明确缺口仍是 RTE/ISO/mask/设备路由；修正「解析为空操作 / 空壳」表述；交叉引用 ppn0/`ensure`（`06`/`07`）。
 - 2026-10-28：允许无 IOAPIC（MADT / `ioapic_init` / `init_interrupt` / `alloc(0)`）。

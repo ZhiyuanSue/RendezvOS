@@ -32,10 +32,10 @@ GICv2 两块：**GICD（Distributor，全局一份）** 负责 SPI 配置 / 路�
 
 1. **先 `set_vbar_el1`**，IRQ 槽指向 `el*_trap_entry`；否则开中断即崩溃。
 2. **进 IRQ 入口后必须读 IAR**（`gic.read_irq_num`）才能知道 INTID——只靠 VBAR 偏移不够。
-3. 软件侧 `local_irq_id` 必须 = `intid+64`，且已 `register_irq_handler`（设备 SPI：先 `irq_global_alloc`，再 register，再 `irq_enable`，见 `25`）。
+3. 软件侧 `local_irq_id` 必须 = `intid+64`，且已 `register_irq_handler`（设备 SPI：先 `irq_global_alloc`，再 register，再 `irq_global_enable`，见 `25`）。
 4. **处理完必须 EOI**（`GICC_EOIR`）；漏 EOI 则同 INTID 可能卡在 active。
 5. **GIC 寄存器必须 DEVICE 属性映射**（`gic_v2_setup` 内 map）——普通缓存页会导致 MMIO 乱序 / 丢失。
-6. **SPI 默认全 mask**；SGI+PPI 在 CPU IF init 时全 unmask——timer / IPI 才能响；外设 SPI 经 `irq_enable` → `enable_spi` 打开。
+6. **SPI 默认全 mask**；SGI+PPI 在 CPU IF init 时全 unmask——timer / IPI 才能响；外设 SPI 经 `irq_global_enable` → `enable_spi` 打开。
 
 ---
 
@@ -53,7 +53,7 @@ GICv2 两块：**GICD（Distributor，全局一份）** 负责 SPI 配置 / 路�
 
 **每核** — `init_interrupt`（VBAR + **立刻 enable IRQ**）之后 `gic.init_cpu_interface`，再注册 IPI / timer。
 
-**驱动** — `irq_global_alloc` + `register_irq_handler` 后经 trap `irq_enable` → `gic.enable_spi(intid, cpu_id, trigger)`（亲和/触发在驱动内）；勿把手写 EC 当设备号。
+**驱动** — `irq_global_alloc` + `register_irq_handler` 后经 trap `irq_global_enable` → `gic.enable_spi(intid, cpu_id, trigger)`（亲和/触发在驱动内）；勿把手写 EC 当设备号。
 
 ---
 
@@ -354,7 +354,7 @@ GICD 开 **Group0**、GICC 开 **「Group1」** 宏位——在**无 Security �
 
 | 问题 | x86 Local APIC | GICv2 |
 |------|----------------|-------|
-| 板级外设怎么进核 | IOAPIC → LAPIC（本仓库 RTE/`irq_enable`/定向 EOI 已接；ISO/MSI/设备接线未做） | GICD 配 SPI + ITARGETSR，再投到各核 GICC |
+| 板级外设怎么进核 | IOAPIC → LAPIC（本仓库 RTE/`irq_global_enable`/定向 EOI 已接；ISO/MSI/设备接线未做） | GICD 配 SPI + ITARGETSR，再投到各核 GICC |
 | 核间门铃 | ICR（向量号） | GICD_SGIR（SGI 号 + filter） |
 | 应答 | 向量已在 IDT 投递里；软件写 EOI=0 | **必须读 IAR** 才知道 INTID |
 | 结束 | EOI 清最高 ISR | EOIR 写回 INTID[+CPUID] |
@@ -419,7 +419,7 @@ GICv2 最多按 8 个 core 来理解 SGI 的 CPUID 字段；同一 SGI 号可以
 
 ```text
 init_interrupt()
-  └ set_vbar + arch_enable_irq()   // 已启用 IRQ！
+  └ set_vbar + arch_irq_local_enable()   // 已启用 IRQ！
 gic.init_cpu_interface()           // 然后才配 GICC / unmask SGI+PPI
 smp_ipi_init()                     // SGI0 → local_irq_id 64
 rendezvos_time_init()              // arch_get_timer_irq_num → register
@@ -453,7 +453,7 @@ Generic timer 在 EL1 编程 **CNTP_***（non-secure physical）；到期拉高 
 
 **本篇不涉及：** `irq_global_*` / `register_irq_handler` / `trap_handler`（见 `25`）；`arch_eoi_irq` / `get_curr_el_trap_info` 约定（见 `25`/`23`）；软 IPI 协议（见 `30`）；DTB 解析（见 `36`）；可移植 timer（见 `33`）。
 
-上层设备：按 `25` 完成 alloc + register 后走 **`irq_enable` → `arch_irq_enable` → `gic.enable_spi`**。
+上层设备：按 `25` 完成 alloc + register 后走 **`irq_global_enable` → `arch_irq_global_enable` → `gic.enable_spi`**。
 
 ### 9.1 编排顺序（调用方须遵守）
 
@@ -461,7 +461,7 @@ Generic timer 在 EL1 编程 **CNTP_***（non-secure physical）；到期拉高 
 |------|------|
 | BSP 平台一次 | DTB 就绪后 **`gic_probe()`**，再 **`gic.init_distributor`**（另有 `psci_init`，见 `39`） |
 | 每核 | **`init_interrupt`**（VBAR + **已 enable IRQ**）之后 **`gic.init_cpu_interface`**，再 `smp_ipi_init`、`rendezvos_time_init` |
-| 设备 SPI | `irq_global_alloc` → `register_irq_handler` → **`irq_enable`**（内部 `gic.enable_spi`） |
+| 设备 SPI | `irq_global_alloc` → `register_irq_handler` → **`irq_global_enable`**（内部 `gic.enable_spi`） |
 | IRQ 运行时 | VBAR 入口读 `read_irq_num`(IAR)，得 `local_irq_id=intid+64`，调 handler，最后 **`eoi`(EOIR)** |
 
 与 x86 相反：本平台 **先开 IRQ 再配 GICC**（启动窗口，见 §8.2）。
@@ -514,7 +514,7 @@ u32 gic.nr_spi(void);
 
 1. `irq_global_alloc(global_irq_id /* SPI index */, cpu_id, &local_irq_id)`。
 2. `register_irq_handler(local_irq_id, cpu_id, isr, IRQ_NEED_EOI)`。
-3. `irq_enable(...)` → `gic.enable_spi`。
+3. `irq_global_enable(...)` → `gic.enable_spi`。
 4. EOI 交给 `trap_handler`；勿在 ISR 内自行 `gic.eoi`，除非明确绕过 `IRQ_NEED_EOI`。
 
 ---

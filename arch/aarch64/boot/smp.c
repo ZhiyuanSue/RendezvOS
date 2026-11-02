@@ -22,7 +22,7 @@ void arch_start_smp(struct setup_info* arch_setup_info)
         if (NR_CPUS == 1)
                 return;
 #endif
-        arch_disable_irq();
+        arch_irq_local_disable();
         struct device_node* cpu_node = dev_node_find_by_type(NULL, "cpu");
         while (cpu_node) {
                 struct property* reg_prop =
@@ -82,5 +82,5 @@ void arch_start_smp(struct setup_info* arch_setup_info)
                 cpu_node = dev_node_find_by_type(dev_tree_get_next(cpu_node),
                                                  "cpu");
         }
-        arch_enable_irq();
+        arch_irq_local_enable();
 }

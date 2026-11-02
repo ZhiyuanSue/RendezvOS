@@ -47,7 +47,7 @@ void arch_start_smp(struct setup_info* arch_setup_info)
 {
         per_cpu(CPU_STATE, BSP_ID) = cpu_enable;
         if (NR_CPU > 1) {
-                arch_disable_irq();
+                arch_irq_local_disable();
                 /*
                     if we only have one cpu,no need for this,
                     we only have one single cpu and we needn't mark that this
@@ -101,7 +101,7 @@ void arch_start_smp(struct setup_info* arch_setup_info)
                                 }
                         }
                 }
-                arch_enable_irq();
+                arch_irq_local_enable();
                 /* if all ap is enabled, then we should clean ap start
                  * code*/
                 clean_ap_start_code();

@@ -6,7 +6,7 @@
 
 extern Task_Manager *core_tm;
 
-error_t irq_enable(global_irq_id_t global_irq_id, enum irq_trigger trigger,
+error_t irq_global_enable(global_irq_id_t global_irq_id, enum irq_trigger trigger,
                    enum irq_polarity polarity)
 {
         if (global_irq_id >= (global_irq_id_t)nr_global_irq)
@@ -21,21 +21,21 @@ error_t irq_enable(global_irq_id_t global_irq_id, enum irq_trigger trigger,
             || entry->local_irq_id == IRQ_LOCAL_ID_INVALID
             || entry->cpu_id == CPU_ID_INVALID || !entry->irq_handler)
                 return -E_REND_NOFOUND;
-        return arch_irq_enable(global_irq_id,
+        return arch_irq_global_enable(global_irq_id,
                                entry->local_irq_id,
                                entry->cpu_id,
                                trigger,
                                polarity);
 }
 
-error_t irq_disable(global_irq_id_t global_irq_id)
+error_t irq_global_disable(global_irq_id_t global_irq_id)
 {
         if (global_irq_id >= (global_irq_id_t)nr_global_irq)
                 return -E_IN_PARAM;
         struct arch_global_irq *entry = &global_irq_vector[global_irq_id];
         if (!irq_atomic_attr_is_used(&entry->irq_attr))
                 return -E_REND_NOFOUND;
-        return arch_irq_disable(global_irq_id);
+        return arch_irq_global_disable(global_irq_id);
 }
 
 void register_irq_handler(local_irq_id_t local_irq_id, cpu_id_t cpu_id,

@@ -10,7 +10,7 @@ extern u64 trap_vec_table;
 void arch_init_interrupt(void)
 {
         set_vbar_el1((vaddr)(&trap_vec_table));
-        arch_enable_irq();
+        arch_irq_local_enable();
 }
 void arch_unknown_trap_handler(struct trap_frame *tf)
 {
@@ -74,7 +74,7 @@ void arch_eoi_irq(u64 trap_info)
         gic.eoi(source);
 }
 
-error_t arch_irq_enable(global_irq_id_t global_irq_id,
+error_t arch_irq_global_enable(global_irq_id_t global_irq_id,
                         local_irq_id_t local_irq_id, cpu_id_t cpu_id,
                         enum irq_trigger trigger, enum irq_polarity polarity)
 {
@@ -89,7 +89,7 @@ error_t arch_irq_enable(global_irq_id_t global_irq_id,
                               trigger);
 }
 
-error_t arch_irq_disable(global_irq_id_t global_irq_id)
+error_t arch_irq_global_disable(global_irq_id_t global_irq_id)
 {
         if (!gic_ready())
                 return -E_RENDEZVOS;

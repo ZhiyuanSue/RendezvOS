@@ -46,7 +46,7 @@ IRQ 软件编号空间（`irq_space`：两套 id、占有/释放）与分发衔�
 
 **兼容层** — initcall 后：`arch_register_fixed_trap(TRAP_CLASS_PAGE_FAULT, …)`；handler 内 `arch_populate_trap_info(tf, &info)` 读可移植字段。勿硬编码 14 / 0x24。
 
-**arch boot** — `arch_start_core` 调用 `init_interrupt()`，再经平台 IRQ 初始化后到 `init_syscall`（x86 还要再 `arch_enable_irq`）。见 §6.1 开中断时序差异。
+**arch boot** — `arch_start_core` 调用 `init_interrupt()`，再经平台 IRQ 初始化后到 `init_syscall`（x86 还要再 `arch_irq_local_enable`）。见 §6.1 开中断时序差异。
 
 **设备** — `irq_global_alloc` + `register_irq_handler(local_irq_id, cpu_id, …, IRQ_NEED_EOI)`（IRQ 篇）。
 
@@ -141,7 +141,7 @@ Boot 汇编（`boot.S`）**不**提前装 IDT / VBAR。可捕窗口从 `arch_sta
 | | x86 | aarch64 |
 |--|-----|---------|
 | 装表 | `init_interrupt` 内 `lidt` | `set_vbar_el1` |
-| 开 IRQ | **`init_syscall`（装 LSTAR）之后**才 `arch_enable_irq` | **`arch_init_interrupt` 内立刻 enable**（早于 GIC CPU interface 与 syscall 注册） |
+| 开 IRQ | **`init_syscall`（装 LSTAR）之后**才 `arch_irq_local_enable` | **`arch_init_interrupt` 内立刻 enable**（早于 GIC CPU interface 与 syscall 注册） |
 
 ### 6.2 x86：IDT 链（Intel SDM：IDT / interrupt gates / TSS）
 

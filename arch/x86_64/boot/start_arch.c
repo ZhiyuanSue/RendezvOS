@@ -253,7 +253,7 @@ error_t arch_start_core(cpu_id_t cpu_id)
         smp_ipi_init();
         arch_smp_flush_tlb_init();
         init_syscall();
-        arch_enable_irq();
+        arch_irq_local_enable();
         rendezvos_time_init();
         enable_cache();
         start_fp();

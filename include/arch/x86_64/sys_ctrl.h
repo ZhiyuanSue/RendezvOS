@@ -141,16 +141,16 @@ inline static void sti(void)
 {
         __asm__ __volatile__("sti");
 }
-inline static void arch_disable_irq(void)
+inline static void arch_irq_local_disable(void)
 {
         cli();
 }
-inline static void arch_enable_irq(void)
+inline static void arch_irq_local_enable(void)
 {
         sti();
 }
 
-static inline u64 arch_save_and_disable_irq(void)
+static inline u64 arch_irq_local_save(void)
 {
         u64 flags;
         __asm__ __volatile__("pushfq\n\t"
@@ -162,7 +162,7 @@ static inline u64 arch_save_and_disable_irq(void)
         return flags;
 }
 
-static inline void arch_irq_restore(u64 flags)
+static inline void arch_irq_local_restore(u64 flags)
 {
         __asm__ __volatile__("pushq %0\n\t"
                              "popfq"
