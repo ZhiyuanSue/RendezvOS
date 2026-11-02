@@ -39,7 +39,7 @@ static bool gic_ops_complete(void)
 
 error_t gic_probe(void)
 {
-        for (struct gic_dt_driver *drv = gic_dt_drivers; drv->compatible;
+        for (const struct gic_dt_driver *drv = gic_dt_drivers; drv->compatible;
              drv++) {
                 struct device_node *node = dev_node_find_by_compatible(
                         NULL, (char *)drv->compatible);
