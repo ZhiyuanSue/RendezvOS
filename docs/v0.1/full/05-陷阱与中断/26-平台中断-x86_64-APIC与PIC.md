@@ -374,6 +374,8 @@ IRR 和 ISR 都是 **256 位**，向量 0–15 保留（CPU 异常，不是 APIC
 
 本仓库：`APIC_EOI()` 即 `APIC_WR_REG(EOI, …, 0)`；由 `arch_eoi_irq` 在 `IRQ_NEED_EOI` 时调用。**不要**在 ISR 里提前 EOI 再做长任务（除非明确理解电平触发会立刻重入）。
 
+换核 / 拆线时，`irq_global_disable` 在 IOAPIC mask 之后用 `arch_irq_local_pending` 读本核该向量的 **IRR|ISR**（经 `lapic_get_vec`），确认不会再进 handler 才返回（见 `25` §1.7）。
+
 ### 5.7 ICR — 核间中断（SDM：Interrupt Command Register）
 
 IPI / AP 启动（INIT-SIPI）都走 ICR：
@@ -746,6 +748,7 @@ Linux 在 `arch/x86/kernel/apic/io_apic.c` 用 `ioapics[]` 记每颗实例的引
 
 ## 13. 变更记录
 
+- 2026-11-07：§5.6 补 `arch_irq_local_pending`（IRR|ISR）与 `irq_global_disable` 排空的关系（见 `25` §1.7）。
 - 2026-10-31：§9.6.4.1 记录电平误投递/IRR 粘住 quirk 与 Linux `ack_ioapic_quirk_irq`（本仓库不实现）；`ioapic_init` **拒绝** Version `< 0x20`；补 MMIO `+0x40` EOI 与版本表。
 - 2026-10-31：RTE/`ioapic_configure`·mask·unmask·EOI；trap `irq_global_enable`/`disable`；`arch_eoi_irq` 定向 EOI；init mask 全脚；`irq_global_free` 保留 pin 拓扑。缺口收窄为 ISO/MSI/设备接线。
 - 2026-11-01：`ioapic_eoi(ioapic, vector)` 定点写；`arch_global_irq` 存 `ioapic *`（非 id），`arch_eoi_irq` 经 irq_space 直接 EOI（无按 id 扫描）。正文去掉 Job (B) 措辞。

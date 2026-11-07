@@ -106,8 +106,7 @@ ppn_t unmap(VSpace* vs, vpn_t vpn, u64 new_entry_addr,
  *         not present or on error.
  */
 ppn_t have_mapped(VSpace* vs, vpn_t vpn, ENTRY_FLAGS_t* entry_flags_out,
-                  int* entry_level_out, bool pin,
-                  struct map_handler* handler);
+                  int* entry_level_out, bool pin, struct map_handler* handler);
 
 /**
  * @brief Temporarily map a physical page into a per-CPU handler mapping window.

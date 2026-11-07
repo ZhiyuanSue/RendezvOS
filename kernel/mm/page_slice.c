@@ -473,11 +473,9 @@ static error_t ps_remove_page_locked(struct page_slice* slice,
                 return REND_SUCCESS;
 
         path_len = !path0 ? 0 : !path1 ? 1 : !path2 ? 2 : 3;
-        structural_parent =
-                path_len > 0 ?
-                        ps_structural_path_entry(
-                                path0, path1, path2, (u8)(path_len - 1)) :
-                        NULL;
+        structural_parent = path_len > 0 ? ps_structural_path_entry(
+                                    path0, path1, path2, (u8)(path_len - 1)) :
+                                           NULL;
         if (!page_slice_index_entry_empty(*leaf_index)) {
                 if (leaf_index == &slice->root
                     && page_slice_root_is_leaf(slice))

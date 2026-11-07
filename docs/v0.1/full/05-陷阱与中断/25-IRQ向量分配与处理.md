@@ -121,7 +121,7 @@ CPU1  local_irq_vector[]（本核私有，有格子） +-----+-------+-----+
 | 阶段 | 谁可以做 | 说明 |
 |------|----------|------|
 | 还未占用 | 任意核 `irq_global_alloc(编号, 目标 cpu, …)` | 启动时可以替别的核抢号；换核时也可以由旧核替新核抢号 |
-| 已经占用 | 仅属主：`irq_global_free`、全局路径的 `register_irq_handler` | 调用方必须跑在该 `cpu_id` 上，否则直接拒绝 |
+| 已经占用 | 仅属主：`irq_global_free`、全局路径的 `register_irq_handler` | free 从条目读 owner 并要求 `percpu(cpu_number) == owner`；register 须带具体 `cpu_id` 且调用方即属主，否则拒绝 |
 | 分发 | 硬件打到哪颗核，哪颗核跑 `trap_handler` → `find(本核)` | 软件假定「路由目标」和表里记的亲和一致 |
 
 **为什么释放时不清 handler，只放下「已占用」位？**
@@ -132,7 +132,7 @@ CPU1  local_irq_vector[]（本核私有，有格子） +-----+-------+-----+
 - **保留** `irq_handler`；
 - 属性只用 `irq_atomic_attr_try_set_unused` **清掉「已占用」**，留下「需要 EOI」等。
 
-换核可以按这个顺序做：在属主上先挡住投递（屏蔽线路或改路由）→ `irq_global_free` →（可在旧核上）给新核 `irq_global_alloc` → 改硬件路由并重新打开。**中间不必再挂处理函数**，除非处理函数本身换了。
+换核（migrate）整段应在**旧属主**上做：`irq_global_disable`（内含 mask 与排空本核 local pending）→ `free` → `alloc` → `enable`。道理与步骤见 **§1.7**；英文动机见 `trap.h` 文件头 `@note_start` … `@note_end`（请勿改动该段注释）。
 
 **什么时候才要改 handler？**
 
@@ -156,6 +156,46 @@ CPU1  local_irq_vector[]（本核私有，有格子） +-----+-------+-----+
 - x86 外设：`irq_global_enable` → `ioapic_configure_rte` + `change_mask`（见 `26` §9.6.8）。ISO / MSI / 具体设备接线仍可能未齐。
 
 本核本地中断（异常、IPI、timer 的 LVT / PPI 等）一般在每核启动时已经使能，不走「先占全局表再 `irq_global_enable`」这条路径。
+
+### 1.7 全局外设中断怎么换核（migrate）
+
+这一小节讲的是：**已经占着的全局外设线**，想把软件亲和（以及随后的硬件路由）从 CPU A 换到 CPU B，上层该怎么做、为什么必须这么做。编排仍由上层拼原语；core 暂不提供「一键 migrate」API。更细的英文说明以 `include/rendezvos/trap/trap.h` 文件头里 `@note_start` … `@note_end` 为准。
+
+口令（在**旧属主**上）：
+
+`irq_global_disable` → `irq_global_free` → `irq_global_alloc`（把条目记到新属主）→ `irq_global_enable`（仍由**旧属主**去写芯片并 unmask；**不必**再发 IPI 让新属主去做 enable）。
+
+其中 **`irq_global_disable` 已包含**「arch mask + 排空本核 local pending」；上层**不必**再单独调一步 wait，也**没有**对外的 nosync / 软件计数式接口。处理函数不变时，**不要**为换核再 `register` 一遍（free 会留下 handler，见 §1.4）。
+
+#### 1.7.1 为什么换核相关的操作都要由旧属主来做？
+
+先看竞态。设一开始 CPU A 是中断 I 的属主。
+
+接着 I 来了，A 已经进了 handler。若此时 **CPU B** 去改 I 的映射 / 亲和，把它改成打到 B，就会变成：handler 还在 A 上跑，软件里记的亲和却已经是 B。这不安全。举例：handler 末尾做 EOI 时，可能因为 `irq_global_find` 失败而找不到对应的 `struct arch_global_irq`（映射已经对不上「本核 + 旧 local」），EOI 也就做不全——x86 上定向 `ioapic_eoi` 尤其依赖这次 find（见 `26`）。
+
+所以要把换核整段都放在旧属主上，针对的就是「非属主改亲和」这类问题。对本线 **mask 掉、并把本核 local 接口上可能还要进 handler 的 pending 排空之后**，亲和变更与这条 I 的处理都在同一颗属主核上推进：本线被 mask 住以后，新的 I 不会再从全局分发打出来，属主再改亲和是安全的——它会给 B 选出并绑上新的 `local_irq_id`，再 unmask；改 B 侧 map 时，同样处在「本线已 mask、本核侧已排空」的前提下，也是安全的。
+
+（说明：`irq_global_alloc` **仍然允许**任意核替目标 CPU 去抢未占用项——那是 §1.4 的占有规则本身。这里约束的是**换核编排**：让旧属主连「替新核 alloc」和「最后 enable」一并做完，并不是改掉 alloc 的异核能力。）
+
+上层怎么用？
+
+- 调用方**已经在属主核**上：直接按口令做 `irq_global_disable` → `free` → `alloc`（给另一核的 local 号并 map）→ `enable`。替新核 `alloc` 时，靠条目上 CAS `USED`，以及给目标核绑 map（`irq_global_alloc` 本就支持为别的核选 local 号）。
+- 调用方**不在属主核**上：按 IPC 侧约定，发给「系统 / 内核」的消息应由该核的 **boot 线程**代收（boot 与 `kernel_handle_msg` 见线程篇 `13`）。把换核请求发到**属主核的 boot 线程**，由它在本核跑完整段口令。这条执行流须**开着中断**：`irq_global_disable` 在 mask 之后靠本核还能进 handler，才能把 local 接口上已 latched 的那次 I 处理完；关着中断空转 `arch_irq_local_pending` 没有意义。
+
+#### 1.7.2 为什么 `irq_global_disable` 在 mask 之后还要等？
+
+这里说的投递链**不含 MSI / MSI-X**（本仓库尚未接上；migrate 的 mask / pending 叙述以管脚线 + IOAPIC RTE / GIC Distributor 为准，见 `26` / `27`）：
+
+设备 → 管脚 → 全局分发（如 IOAPIC、GIC GICD 等）→ 核本地中断接口（如 LAPIC、GICC 等）→ 核
+
+`arch_irq_global_disable`（mask）挡的是「管脚 → 全局分发」上**再新发出去的 I**；已经落在**核本地中断接口**上的状态，mask 挡不住，之后仍可能进本核 handler。因此 `irq_global_disable` 在属主上校验软表后：先 mask，再 **`while (arch_irq_local_pending(local_irq_id))`**（开着中断、`arch_cpu_relax`），确认本核上这条 local 号不会再在未 unmask 的情况下跑 handler，然后才返回给上层去做 `free`。
+
+`arch_irq_local_pending` 是硬件查询，不是软件计数：
+
+- x86：本核 LAPIC 上该向量的 **IRR ∪ ISR**（见 `26` §5.6）；
+- aarch64：GIC 上该 INTID 的 **Active**；若仍 enable 则也看 Pending。mask 之后单独亮着的 distributor Pending **不**用来空转（见 `27`）。
+
+当前按芯片模型假定：这条线上「mask 之后还可能再进 handler」的 latched 状态可被上述查询覆盖；GIC 对同一 INTID 是状态位而非无限长队列。riscv64 irqchip 未接前无此 hook。对外暂不提供「只 mask、不等待」的 API；若以后有调用方需要再拆。
 
 ---
 
@@ -290,8 +330,9 @@ aarch64 local_irq_id 布局示意：
 
 细则与「为什么」见 §1.4，这里列硬规则：
 
-- `register_irq_handler` / `irq_global_alloc` / `irq_global_free`：**必须给具体 `cpu_id`**（不能用 `CPU_ID_INVALID`）。
-- `irq_global_free`、**全局**路径的 `register_irq_handler`：调用方必须是属主（`percpu(cpu_number) == cpu_id`），否则 free 返回 `-E_IN_PARAM`，register 打 error 后返回。
+- `register_irq_handler` / `irq_global_alloc`：**必须给具体 `cpu_id`**（不能用 `CPU_ID_INVALID`）。
+- `irq_global_free`：只收 `global_irq_id`；owner 取自条目，调用方必须是属主（`percpu(cpu_number) == entry->cpu_id`），否则 `-E_IN_PARAM`。
+- **全局**路径的 `register_irq_handler`：调用方必须是属主（`percpu(cpu_number) == cpu_id`），否则打 error 后返回。
 - `irq_global_alloc`：允许任意核替目标 `cpu_id` 抢未占用项（启动 / 迁移）。
 - 换核：属主先挡住投递 → 属主 `free`（保留 handler 与「需要 EOI」）→ 再 `alloc` 给新核 → 改硬件路由并打开；处理函数不变则**不必**再 register。
 - map / find：`CPU_ID_INVALID` 表示当前 CPU。
@@ -401,7 +442,7 @@ x86 上多个设备可共享同一 IDT 向量（典型 PCI legacy 共享线）�
 4. 未占号就挂函数、或非属主核去挂全局号：打错误日志后返回。
 5. 处理函数返回后由 `trap_handler` 做 EOI——函数里面**不要**自己写 EOI，除非故意不设「需要 EOI」。
 
-**只换核、处理函数不变：** 属主上先 `irq_global_disable`（或等价挡住投递）→ `irq_global_free` → `irq_global_alloc` 给新核 → `irq_global_enable`。**不要**为换核再 register 一遍（见 §1.4）。
+**只换核、处理函数不变：** 在**旧属主**上：`irq_global_disable` → `irq_global_free` → `irq_global_alloc` 给新核 → `irq_global_enable`（仍由旧属主调用）。不在属主上则 IPC 到属主 boot 线程代做。**不要**为换核再 register 一遍（见 §1.4、**§1.7**）。
 
 **卸模块 / 换处理函数：** 属主上先挡住投递 →（建议）`register(..., NULL, …)` 或直接挂新函数 → 若不再占用则 `irq_global_free` → 再卸代码。切记释放不会替你清掉 handler。
 
@@ -409,7 +450,7 @@ x86 上多个设备可共享同一 IDT 向量（典型 PCI legacy 共享线）�
 
 ## 7. 公开 API
 
-本篇涉及的接口分布在：两套 id（`irq_space.h` / `irq_space.c`）与分发（`trap.h` / `trap.c`）——`struct local_irq` / `struct arch_global_irq`、`irq_global_*`、`register_irq_handler`、`irq_global_enable` / `irq_global_disable`、`trap_handler`、`init_interrupt`、`arch_choose_local_irq_id` / `arch_local_lookup_global_irq_id` / `arch_global_bind_local_irq_id`（`arch/*/trap/irq_space.c`）/ `arch_init_interrupt`、`arch_eoi_irq`、`arch_unknown_trap_handler`。说明改写自 `irq_space.h` / `trap.h` / `arch/*/trap/irq_space.h` Doxygen。
+本篇涉及的接口分布在：两套 id（`irq_space.h` / `irq_space.c`）与分发（`trap.h` / `trap.c`）——`struct local_irq` / `struct arch_global_irq`、`irq_global_*`、`register_irq_handler`、`irq_global_enable` / `irq_global_disable`、`arch_irq_local_pending`、`trap_handler`、`init_interrupt`、`arch_choose_local_irq_id` / `arch_local_lookup_global_irq_id` / `arch_global_bind_local_irq_id`（`arch/*/trap/irq_space.c`）/ `arch_init_interrupt`、`arch_eoi_irq`、`arch_unknown_trap_handler`。说明改写自 `irq_space.h` / `trap.h` / `arch/*/trap/irq_space.h` Doxygen。
 
 **本篇不涉及：** `arch_register_fixed_trap` / `trap_class`（见 `23`）；weak `syscall`（见 `24`）；irqchip 寄存器细节（见 `26` / `27`）；timer / IPI 业务语义（见时间篇 / `30`）。
 
@@ -420,7 +461,7 @@ x86 上多个设备可共享同一 IDT 向量（典型 PCI legacy 共享线）�
 | BSP 一次 | `arch_start_platform` 里 **`irq_global_vector_alloc`**（须已有 `kallocator`） |
 | 每核装表 | `arch_start_core` 调 **`init_interrupt`**（检查全局数组 → `arch_init_interrupt`），然后平台 IRQ iface、`smp_ipi_init`，……再到 `rendezvos_time_init` |
 | 设备驱动（首次） | **先 `irq_global_alloc`，再在属主核 `register_irq_handler(..., IRQ_NEED_EOI)`，再 `irq_global_enable(gid, trigger, polarity)`** |
-| 设备换核 | 属主 `irq_global_disable` → `free` → `alloc` 给新核 → `irq_global_enable`（处理函数不变则不 register） |
+| 设备换核 | **旧属主**上：`irq_global_disable`（mask + `arch_irq_local_pending`）→ `free` → `alloc` 给新核 → `irq_global_enable`（旧属主 enable；处理函数不变则不 register）。详述与 IPC/boot、MSI 边界见 **§1.7** |
 | Fault / SVC | `arch_register_fixed_trap`（内部再 `register_irq_handler`；本核表内编号） |
 | Timer / IPI | 本核表内固定号，直接 `register_irq_handler(ARCH_IRQ_ID_*, this_cpu, …)` |
 
@@ -442,7 +483,7 @@ x86 上多个设备可共享同一 IDT 向量（典型 PCI legacy 共享线）�
 error_t irq_global_vector_alloc(size_t count);
 error_t irq_global_alloc(size_t global_irq_id, cpu_id_t cpu_id,
                          size_t *local_irq_id_out);
-error_t irq_global_free(size_t global_irq_id, cpu_id_t cpu_id);
+error_t irq_global_free(size_t global_irq_id);
 struct arch_global_irq *irq_global_find(size_t local_irq_id, cpu_id_t cpu_id);
 ```
 
@@ -450,7 +491,7 @@ struct arch_global_irq *irq_global_find(size_t local_irq_id, cpu_id_t cpu_id);
 |------|------|
 | `irq_global_vector_alloc` | 全机一次；表项初值为无效 id / 未占用。`count==0` 合法（空表，如无 IOAPIC）；已分配或分配器失败 → `-E_RENDEZVOS`。 |
 | `irq_global_alloc` | 见下。可替任意目标 `cpu_id` 抢未占用项。错误：USED/bind 失败 → `-E_REND_AGAIN`；窗口用尽 → `-E_REND_OVERFLOW`；参数非法 → `-E_IN_PARAM`。 |
-| `irq_global_free` | **须在属主 CPU 调用**（否则 `-E_IN_PARAM`）。unbind → 清 `local_irq_id`/`cpu_id` → **最后** `try_set_unused`（保留 handler、`NEED_EOI` 与 arch 拓扑字段；**不**调 `arch_irq_global_entry_reset`）。亲和不符或未占用 → `-E_REND_NOFOUND`。 |
+| `irq_global_free` | 只收 `global_irq_id`；**须在属主 CPU 调用**（`percpu == entry->cpu_id`，否则 `-E_IN_PARAM`）。unbind → 清 `local_irq_id`/`cpu_id` → **最后** `try_set_unused`（保留 handler、`NEED_EOI` 与 arch 拓扑字段；**不**调 `arch_irq_global_entry_reset`）。未占用 → `-E_REND_NOFOUND`。 |
 | `irq_global_find` | `arch_local_lookup_global_irq_id` 后再核占用 / local / cpu_id；`CPU_ID_INVALID` = 当前 CPU。 |
 
 `irq_global_alloc` 的过程：
@@ -510,17 +551,22 @@ void arch_unknown_trap_handler(struct trap_frame *tf);
 - 伪中断（spurious）无专用 handler。
 - 没有「同一编号挂多设备」的共享链（后写覆盖）；电平共享见 §6.2。
 - 没有「同一全局中断每核不同 handler」。
-- 没有可移植的 `irq_set_affinity` API；绑核靠 alloc 时的 `cpu_id` + `irq_global_enable` 下发（见 `26` / `27`）。
+- 没有可移植的 `irq_set_affinity` API；绑核靠 alloc 时的 `cpu_id` + `irq_global_enable` 下发；换核编排见 **§1.7**（见 `26` / `27`）。
+- MSI / MSI-X 未接，§1.7 的 mask / local pending 叙述不含 MSI；对外无 disable-nosync。
+- riscv64：`arch_irq_local_pending` 随 irqchip 再补。
 
 **irq_space 本身仍靠约定、代码未再加锁的点：**
 
-- 同核上：若未先挡住投递就释放或改 handler，仍可能和正在跑的 `trap_handler` 交错——属主检查挡不住这件事。
+- 同核上：若未先挡住投递就释放或改 handler，仍可能和正在跑的 `trap_handler` 交错——属主检查挡不住这件事；换核须先 `irq_global_disable`（含排空）再 `free`，见 §1.7。
 - 释放留下旧 handler：调用方卸模块前必须自己摘掉，否则下次只占号不挂函数会踩旧指针。
 
 ---
 
 ## 11. 变更记录
 
+- 2026-11-07：§1.7 / §6.3 / §7.1 / §10——`irq_global_disable` 已落地 mask + `arch_irq_local_pending` 排空（x86 IRR|ISR；aarch64 Active / 仍 enable 的 Pending）；口令不再单列 wait；靠硬件 pending/active 查询、对外无 nosync。MSI 与 riscv pending hook 仍为缺口。
+- 2026-11-03：新增 §1.7 换核（migrate）：旧属主执行 disable→free→alloc→enable（当时文档将 wait 写成独立步骤且标明未实现）；说明非属主改亲和与 EOI/`find` 竞态、mask 后仍可能有 local 接口 pending、非属主经 boot 线程 IPC；MSI 缺口。§1.4 / §6.3 / §7.1 / §10 交叉引用。对齐 `trap.h` `@note_start`…`@note_end`。
+- 2026-11-03：`irq_global_free` 去掉 `cpu_id` 入参；owner 从条目读取并与 `percpu(cpu_number)` 比较。
 - 2026-11-01：`enum irq_trigger` / `enum irq_polarity` 下沉到 `trap_common.h`；`GLOBAL_IRQ_COMMON` / `IRQ_*` 归属改为 `irq_space_common.h`。
 - 2026-11-01：文档对齐——去掉 Job (A)/(B) 说法；§1.6/§6.3/§8/§10 改为 alloc→register→`irq_global_enable`（§8 表不再写「RTE 未做 / gic.unmask」）；`free` 不 reset arch 拓扑；`vector_alloc(0)` 合法。
 - 2026-10-31：`irq_global_enable`/`irq_global_disable`；free 保留 arch 拓扑；checklist 改为 alloc→register→enable。

@@ -127,7 +127,8 @@ enum trap_class {
 TRAP_CLASS_U8_BOUNDARY_CHECK;
 
 /**
- * @brief Edge vs level sense for @c irq_global_enable / arch irqchip programming.
+ * @brief Edge vs level sense for @c irq_global_enable / arch irqchip
+ * programming.
  *
  * Lives here (not @c trap.h) so irqchip headers can use it without pulling
  * arch trap or forming include cycles. Arch maps this to chip register bits.

@@ -135,8 +135,9 @@ ppn_t pmm_alloc_zone(struct buddy *bp, int alloc_order,
 
         /*
          * Phase 1 (no buddy metadata mutation yet): claim Page refs for the
-         * range. On failure goto undo already-claimed refs; If this fails, we can safely return without
-         * rolling back buddy buckets/splits because we haven't touched them.
+         * range. On failure goto undo already-claimed refs; If this fails, we
+         * can safely return without rolling back buddy buckets/splits because
+         * we haven't touched them.
          */
         ZonePageCursor cur;
         if (!zone_page_cursor_init(&cur, bp->zone, del_node->ppn)) {

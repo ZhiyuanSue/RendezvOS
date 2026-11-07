@@ -73,20 +73,26 @@ void arch_eoi_irq(u64 trap_info)
 }
 
 error_t arch_irq_global_enable(global_irq_id_t global_irq_id,
-                        local_irq_id_t local_irq_id, cpu_id_t cpu_id,
-                        enum irq_trigger trigger, enum irq_polarity polarity)
+                               local_irq_id_t local_irq_id, cpu_id_t cpu_id,
+                               enum irq_trigger trigger,
+                               enum irq_polarity polarity)
 {
         (void)local_irq_id;
         (void)polarity; /* GIC has no pin polarity like IOAPIC */
 
         /* global_irq_id is SPI index; driver rejects non-SPI INTIDs. */
-        return gic.enable_spi(gic_spi_intid((u32)global_irq_id), cpu_id,
-                              trigger);
+        return gic.enable_spi(
+                gic_spi_intid((u32)global_irq_id), cpu_id, trigger);
 }
 
 error_t arch_irq_global_disable(global_irq_id_t global_irq_id)
 {
         return gic.disable_spi(gic_spi_intid((u32)global_irq_id));
+}
+
+bool arch_irq_local_pending(local_irq_id_t local_irq_id)
+{
+        return gic.intid_is_pending((u32)AARCH64_TRAP_ID_TO_IRQ(local_irq_id));
 }
 
 void get_curr_el_trap_info(struct trap_frame *tf)

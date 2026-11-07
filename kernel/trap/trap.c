@@ -1,13 +1,14 @@
 #include <modules/log/log.h>
 #include <rendezvos/smp/percpu.h>
+#include <rendezvos/sync/barrier.h>
 #include <rendezvos/task/thread.h>
 #include <rendezvos/trap/trap.h>
 #include <rendezvos/system/panic.h>
 
 extern Task_Manager *core_tm;
 
-error_t irq_global_enable(global_irq_id_t global_irq_id, enum irq_trigger trigger,
-                   enum irq_polarity polarity)
+error_t irq_global_enable(global_irq_id_t global_irq_id,
+                          enum irq_trigger trigger, enum irq_polarity polarity)
 {
         if (global_irq_id >= (global_irq_id_t)nr_global_irq)
                 return -E_IN_PARAM;
@@ -22,10 +23,10 @@ error_t irq_global_enable(global_irq_id_t global_irq_id, enum irq_trigger trigge
             || entry->cpu_id == CPU_ID_INVALID || !entry->irq_handler)
                 return -E_REND_NOFOUND;
         return arch_irq_global_enable(global_irq_id,
-                               entry->local_irq_id,
-                               entry->cpu_id,
-                               trigger,
-                               polarity);
+                                      entry->local_irq_id,
+                                      entry->cpu_id,
+                                      trigger,
+                                      polarity);
 }
 
 error_t irq_global_disable(global_irq_id_t global_irq_id)
@@ -33,9 +34,28 @@ error_t irq_global_disable(global_irq_id_t global_irq_id)
         if (global_irq_id >= (global_irq_id_t)nr_global_irq)
                 return -E_IN_PARAM;
         struct arch_global_irq *entry = &global_irq_vector[global_irq_id];
-        if (!irq_atomic_attr_is_used(&entry->irq_attr))
+        if (!irq_atomic_attr_is_used(&entry->irq_attr)
+            || entry->local_irq_id == IRQ_LOCAL_ID_INVALID
+            || entry->cpu_id >= (cpu_id_t)RENDEZVOS_MAX_CPU_NUMBER)
                 return -E_REND_NOFOUND;
-        return arch_irq_global_disable(global_irq_id);
+        /* Same owner rule. */
+        if (percpu(cpu_number) != entry->cpu_id)
+                return -E_IN_PARAM;
+
+        error_t e = arch_irq_global_disable(global_irq_id);
+        if (e != REND_SUCCESS)
+                return e;
+        /** Do not change the following comments:
+         * even the arch target irq is disabled,
+         * There still might have a pending irq.
+         * just see the comments at the begining of the trap.h
+         * here is the wait part.
+         * But here only just check the arch pending register is enough.
+         * for some arch, such a check also no need.
+         */
+        while (arch_irq_local_pending(entry->local_irq_id))
+                arch_cpu_relax();
+        return REND_SUCCESS;
 }
 
 void register_irq_handler(local_irq_id_t local_irq_id, cpu_id_t cpu_id,

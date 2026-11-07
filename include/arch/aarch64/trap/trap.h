@@ -11,7 +11,7 @@
 #define TRAP_ID(trap_info)  (trap_info & AARCH64_TRAP_ID_MASK)
 #define TRAP_SRC(trap_info) (trap_info & AARCH64_TRAP_SRC_MASK)
 #define TRAP_GET_CPU(trap_info) \
-        (((trap_info) & AARCH64_TRAP_CPU_MASK) >> AARCH64_TRAP_CPU_SHIFT)
+        (((trap_info)&AARCH64_TRAP_CPU_MASK) >> AARCH64_TRAP_CPU_SHIFT)
 #define TRAP_SET_CPU(trap_info, cpu_id)                                  \
         set_mask_u64(clear_mask_u64((trap_info), AARCH64_TRAP_CPU_MASK), \
                      (((u64)(cpu_id) << AARCH64_TRAP_CPU_SHIFT)          \
@@ -77,7 +77,7 @@ struct trap_frame {
 
 #define AARCH64_ESR_EC_MASK (0xffUL << AARCH64_ESR_EC_SHIFT)
 #define AARCH64_ESR_GET_EC(esr_value) \
-        (((u64)(esr_value) & AARCH64_ESR_EC_MASK) >> AARCH64_ESR_EC_SHIFT)
+        (((u64)(esr_value)&AARCH64_ESR_EC_MASK) >> AARCH64_ESR_EC_SHIFT)
 
 /**
  * @brief Set VBAR_EL1 to trap_vec_table and enable IRQ.

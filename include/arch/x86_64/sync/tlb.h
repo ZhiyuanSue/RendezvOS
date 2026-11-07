@@ -78,7 +78,8 @@ static inline void arch_tlb_invalidate_kernel_page(vaddr addr)
  * `cli`. So if core A try to unmap, and core B is in a `cli` range and cannot
  * get the interrupt immediately, core B might still try to access this page, so
  * old translate might be used and the unmapped page have been change. If this
- * page is re-allocated and mapped, another core will find this page is changing.
+ * page is re-allocated and mapped, another core will find this page is
+ * changing.
  *
  * But the kmalloc's percpu strategy will let it work.
  *

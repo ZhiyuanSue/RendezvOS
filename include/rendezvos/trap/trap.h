@@ -23,12 +23,68 @@
  * Line control — @c irq_global_enable / @c irq_global_disable:
  *   alloc + register first, then enable (arch programs the chip + unmask).
  *   disable only masks; free is separate (mask before free).
- *   Migrate: disable → free → alloc → enable.
+ *   Migrate: disable (the irq's old owner cpu),wait → free → alloc(set irq
+ * space record to new owner) → enable(the old owner enable it, not using IPI to
+ * let new owner do).
  *
  * This header includes irq_space only — never arch irqchip headers.
  *
  * @c register_irq_handler needs a concrete @c cpu_id (@c CPU_ID_INVALID
  * forbidden). Global path: caller must be the owning CPU (irq_space rules).
+ */
+
+/* === Migrate Problem !!! ===
+ * This thing is a bit complex, emmm, let me tell you.
+ * Do not change the following comments from the @note_start to @note_end.
+ *
+ * @note_start
+ * 1.why the migrate must all be done by the old owner core?
+ *
+ * There's a race condition. Consider core A and core B, the core A owns the
+ * interrupt I at the beginning.
+ *
+ * And then an I int happens, core A start running the handler function.
+ * Then the core B try to change the mapping relationship and set the affinity
+ * of I to core B. Fininally, a handler running on core A, and the I's affinity
+ * is B. It's unsafe, for example, when the handler try's to send an EOI, it
+ * might cannot find the struct arch_global_irq(caused by irq_global_find fail)
+ * with the new mapping relationship.
+ *
+ * So, why all the migrate ops be done by the old owner can solve the problem?
+ * The upper race condition is caused by the affinity is change by the non-owner
+ * core. And if the change affinity and interrupt is all handled on one core
+ * with the interrupt are enabled, it cannot do those two things at the same
+ * time after the interrupt I is masked and cleaned. After we mask the interrupt
+ * I(but all other ints are enabled), the new int from I will not come, and the
+ * owner core now change the affinity of I is safe. It will alloc a local irq id
+ * on core B, and map it and then unmask the I, but it's also safe when change
+ * the mapping relationship of core B.
+ *
+ * So, how the upper layer using migrate? If the caller is on the owner core,
+ * just disable, free, alloc another core's local irq id and map, and enable
+ * it(irq_global_alloc allows lock another core's local irq id with CAS unused
+ * attr). If not, the upper layer need to send a IPC to the boot thread on the
+ * owner core(because all the message sent to the system should be sent to the
+ * boot thread as we designed in IPC part. And we need the instruction stream
+ * with the interrupt enabled, otherwise the interrupt I which happened before
+ * we mask cannot be handled correctly). And the boot thread of the owner core
+ * will disable, wait, free, alloc, and enable it.
+ *
+ * 2. why need to wait before we free, even we have masked the interrupt I.
+ *
+ * The order of a interrupt is like that(without MSI/MSI-x case):
+ * Device → Pin → global irq distributor(like IOAPIC/GIC gicd, etc.) → core
+ * local intrrupt interface(like GIC gicc/LAPIC, etc.) → core
+ *
+ * The mask work only stop a new interrupt I sent on Pin → global irq
+ * distributor, but an old pending irq might exists on local intrrupt interface.
+ * So after we mask the interrupt I, an pending I still have a chance to
+ * trigger(inflight).
+ *
+ * The way to solve this problem is just enable interrupt and wait this(might
+ * exists) interrupt I be handled. Of course we assume that the current chips
+ * only pending one irq.
+ * @note_end
  */
 #include <rendezvos/trap/irq_space.h>
 
@@ -85,7 +141,6 @@ void arch_register_fixed_trap(enum trap_class trap_class,
 void register_irq_handler(local_irq_id_t local_irq_id, cpu_id_t cpu_id,
                           void (*handler)(struct trap_frame *tf), u64 irq_attr);
 
-
 /**
  * @brief Route a claimed global irq on the irqchip and unmask it.
  *
@@ -102,20 +157,25 @@ void register_irq_handler(local_irq_id_t local_irq_id, cpu_id_t cpu_id,
  * @retval -E_REND_NOFOUND Not claimed, affinity unset, or no handler.
  * @return Else an error from @c arch_irq_global_enable.
  */
-error_t irq_global_enable(global_irq_id_t global_irq_id, enum irq_trigger trigger,
-                   enum irq_polarity polarity);
+error_t irq_global_enable(global_irq_id_t global_irq_id,
+                          enum irq_trigger trigger, enum irq_polarity polarity);
 
 /**
- * @brief Mask hardware delivery for @p global_irq_id; keep the soft claim.
+ * @brief Mask the line then drain local pending; keep the soft claim.
  *
- * Does not clear @c irq_handler or drop @c IRQ_ATTR_USED. Call before
- * @c irq_global_free when tearing down or migrating.
+ * Must run on the owning CPU with IRQs enabled (e.g. owner boot thread):
+ * USED claim, valid local/cpu, caller is owner (same rule as
+ * @c irq_global_free) → @c arch_irq_global_disable → wait while
+ * @c arch_irq_local_pending. Use before @c irq_global_free / migrate.
+ *
+ * Mask-only (Linux-style nosync) is not exported yet; split later if a
+ * caller needs disable without waiting.
  *
  * @param global_irq_id Index into @c global_irq_vector.
  *
  * @return @c REND_SUCCESS on success.
- * @retval -E_IN_PARAM     Bad id.
- * @retval -E_REND_NOFOUND Entry not marked USED.
+ * @retval -E_IN_PARAM     Bad id or caller is not the recorded owner.
+ * @retval -E_REND_NOFOUND Entry not claimed or affinity/local unset.
  * @return Else an error from @c arch_irq_global_disable.
  */
 error_t irq_global_disable(global_irq_id_t global_irq_id);
@@ -135,16 +195,32 @@ error_t irq_global_disable(global_irq_id_t global_irq_id);
  * @return @c REND_SUCCESS or an arch error.
  */
 error_t arch_irq_global_enable(global_irq_id_t global_irq_id,
-                        local_irq_id_t local_irq_id, cpu_id_t cpu_id,
-                        enum irq_trigger trigger, enum irq_polarity polarity);
+                               local_irq_id_t local_irq_id, cpu_id_t cpu_id,
+                               enum irq_trigger trigger,
+                               enum irq_polarity polarity);
 
 /**
- * @brief Arch irqchip hook for @c irq_global_disable (mask only).
+ * @brief Arch irqchip hook: mask delivery for @p global_irq_id only.
+ *
+ * Used by @c irq_global_disable before the local pending drain.
  *
  * @param global_irq_id Same as @c irq_global_disable.
  * @return @c REND_SUCCESS or an arch error.
  */
 error_t arch_irq_global_disable(global_irq_id_t global_irq_id);
+
+/**
+ * @brief Whether @p local_irq_id may still run a handler on *this* CPU
+ *        without unmasking the line again.
+ *
+ * After @c arch_irq_global_disable, @c irq_global_disable spins while this
+ * is true (owner CPU, IRQs enabled).
+ *
+ * @param local_irq_id Delivery id from the global entry (arch-defined:
+ *        the same id used for dispatch on this CPU after alloc/map).
+ * @return true — keep waiting; false — safe to free/teardown on this CPU.
+ */
+bool arch_irq_local_pending(local_irq_id_t local_irq_id);
 
 /**
  * @brief Per-CPU interrupt bring-up.

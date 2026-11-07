@@ -52,9 +52,9 @@
 /* bits[3:0]: may OR together (e.g. EDGE_BOTH = RISING | FALLING). */
 #define GIC_DT_IRQ_EDGE_RISING  0x1u
 #define GIC_DT_IRQ_EDGE_FALLING 0x2u
-#define GIC_DT_IRQ_EDGE_BOTH  (GIC_DT_IRQ_EDGE_RISING | GIC_DT_IRQ_EDGE_FALLING)
-#define GIC_DT_IRQ_LEVEL_HIGH 0x4u
-#define GIC_DT_IRQ_LEVEL_LOW  0x8u
+#define GIC_DT_IRQ_EDGE_BOTH    (GIC_DT_IRQ_EDGE_RISING | GIC_DT_IRQ_EDGE_FALLING)
+#define GIC_DT_IRQ_LEVEL_HIGH   0x4u
+#define GIC_DT_IRQ_LEVEL_LOW    0x8u
 #define GIC_DT_IRQ_TRIGGER_MASK 0xfu
 
 /*
@@ -84,10 +84,6 @@ union irq_source {
         } __attribute__((packed));
 } __attribute__((packed));
 
-/**
- * Bound by a successful @c gic_probe. After that, callers use @c gic ops
- * directly — boot fails if probe did not bind a complete chip.
- */
 struct gic_chip {
         enum gic_version version;
 
@@ -107,6 +103,7 @@ struct gic_chip {
 
         union irq_source (*read_irq_num)(void);
         void (*eoi)(union irq_source source);
+        bool (*intid_is_pending)(u32 intid);
         void (*pending_clr)(u32 irq_number);
         u32 (*nr_spi)(void);
 };

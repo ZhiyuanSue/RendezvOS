@@ -43,7 +43,8 @@ error_t ensure_kernel_identity_range(struct VSpace *vs, paddr phy, size_t len,
                 ppn_t ppn = have_mapped(vs,
                                         VPN(KERNEL_PHY_TO_VIRT(page_iter)),
                                         NULL,
-                                        &entry_level, false,
+                                        &entry_level,
+                                        false,
                                         handler);
 
                 if (!invalid_ppn(ppn)) {
@@ -109,7 +110,8 @@ error_t map_kernel_identity_empty_range(struct VSpace *vs, paddr phy,
                 ppn_t ppn = have_mapped(vs,
                                         VPN(KERNEL_PHY_TO_VIRT(page_iter)),
                                         NULL,
-                                        &entry_level, false,
+                                        &entry_level,
+                                        false,
                                         handler);
 
                 if (!invalid_ppn(ppn)) {
@@ -168,7 +170,8 @@ error_t unmap_kernel_identity_range(struct VSpace *vs, paddr phy, size_t len,
                 ppn_t ppn = have_mapped(vs,
                                         VPN(KERNEL_PHY_TO_VIRT(page_iter)),
                                         NULL,
-                                        &entry_level, false,
+                                        &entry_level,
+                                        false,
                                         handler);
 
                 if (ppn == -E_REND_NOFOUND)

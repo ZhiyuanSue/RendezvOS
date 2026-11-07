@@ -27,7 +27,7 @@
 /** Freelist head when empty (never a valid row index). */
 #define NAME_INDEX_FREE_HEAD_INVALID U64_MAX
 /** Invalid row index in a cache token (never a valid row index). */
-#define NAME_INDEX_ROW_INDEX_INVALID ((u32) - 1)
+#define NAME_INDEX_ROW_INDEX_INVALID ((u32)-1)
 
 /**
  * @brief Cacheable handle for a name_index row (gen truncated to u16).

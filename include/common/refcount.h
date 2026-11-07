@@ -66,7 +66,7 @@ static inline error_t ref_put(ref_count_t* refcount,
                               error_t (*free_func)(ref_count_t*))
 {
         i64 prev = atomic64_fetch_dec(&refcount->counter);
-        if (prev == 1 && free_func != (error_t (*)(ref_count_t*))0) {
+        if (prev == 1 && free_func != (error_t(*)(ref_count_t*))0) {
                 error_t e = free_func(refcount);
                 if (e != REND_SUCCESS)
                         return e;

@@ -184,7 +184,7 @@ error_t ioapic_configure_rte(gsi_id_t gsi, u8 vector, u8 dest_apic_id,
 {
         struct ioapic *ioapic_entry;
         u16 pin;
-        struct IOAPIC_RTE rte = {.reg_1 = 0, .reg_2=0};
+        struct IOAPIC_RTE rte = {.reg_1 = 0, .reg_2 = 0};
 
         /* APIC-delivered vectors 0–15 are reserved for exceptions. */
         if (vector < 16u)

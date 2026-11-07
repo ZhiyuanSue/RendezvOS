@@ -176,7 +176,8 @@ error_t ioapic_change_mask(gsi_id_t gsi, bool mask);
  *
  * Clears Remote IRR for level-triggered RTEs on this chip matching @p vector.
  * Harmless if Remote IRR is already clear. Caller resolves which IOAPIC
- * (e.g. via irq_space GSI → @c arch_global_irq::ioapic); this API does not scan.
+ * (e.g. via irq_space GSI → @c arch_global_irq::ioapic); this API does not
+ * scan.
  */
 void ioapic_eoi(struct ioapic *ioapic_entry, u8 vector);
 

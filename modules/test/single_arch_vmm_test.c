@@ -87,8 +87,8 @@ int arch_vmm_test(void)
                 pr_error("[ ERROR ] ERROR:try get a ppn fail\n");
                 goto arch_vmm_test_error;
         }
-        if (!invalid_ppn(
-                    have_mapped(vs, VPN(vp_1), NULL, NULL, false, &Map_Handler))) {
+        if (!invalid_ppn(have_mapped(
+                    vs, VPN(vp_1), NULL, NULL, false, &Map_Handler))) {
                 pr_error(
                         "unexpected result have mapped check,here expect unmapped\n");
                 goto arch_vmm_test_error;
@@ -104,7 +104,8 @@ int arch_vmm_test(void)
                 goto arch_vmm_test_error;
         }
         memset((void *)vp_1, 0, PAGE_SIZE);
-        if (have_mapped(vs, VPN(vp_1), NULL, NULL, false, &Map_Handler) != ppn_1) {
+        if (have_mapped(vs, VPN(vp_1), NULL, NULL, false, &Map_Handler)
+            != ppn_1) {
                 pr_error(
                         "unexpected result have mapped check,here expect have mapped\n");
                 goto arch_vmm_test_error;

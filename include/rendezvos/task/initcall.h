@@ -27,9 +27,9 @@ extern Init_Info _s_init, _e_init;
  *       Gate BSP-only / per-CPU work with @c percpu(cpu_number) inside the
  *       function.
  */
-#define DEFINE_INIT_LEVEL(func_ptr, level)                              \
-        __attribute__((used, section(__INIT_SECTION(level)))) Init_Info \
-                __init_##func_ptr = {.init_func_ptr = (func_ptr)}
+#define DEFINE_INIT_LEVEL(func_ptr, level)                    \
+        __attribute__((used, section(__INIT_SECTION(level)))) \
+        Init_Info __init_##func_ptr = {.init_func_ptr = (func_ptr)}
 
 /**
  * @brief Register @p func_ptr at default init level 3.

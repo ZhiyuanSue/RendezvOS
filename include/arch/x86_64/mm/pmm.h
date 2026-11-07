@@ -11,7 +11,7 @@
 
 #define KERNEL_VIRT_OFFSET_MASK   (~KERNEL_VIRT_OFFSET)
 #define KERNEL_PHY_TO_VIRT(paddr) ((paddr) + KERNEL_VIRT_OFFSET)
-#define KERNEL_VIRT_TO_PHY(vaddr) ((vaddr) - KERNEL_VIRT_OFFSET)
+#define KERNEL_VIRT_TO_PHY(vaddr) ((vaddr)-KERNEL_VIRT_OFFSET)
 #else
 #error "A KERNEL_VIRT_OFFSET micro must be defined"
 #endif

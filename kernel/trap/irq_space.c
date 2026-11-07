@@ -100,29 +100,29 @@ error_t irq_global_alloc(global_irq_id_t global_irq_id, cpu_id_t cpu_id,
         return REND_SUCCESS;
 }
 
-error_t irq_global_free(global_irq_id_t global_irq_id, cpu_id_t cpu_id)
+error_t irq_global_free(global_irq_id_t global_irq_id)
 {
-        struct arch_global_irq *global_entry;
-
         if (global_irq_id >= (global_irq_id_t)nr_global_irq)
                 return -E_IN_PARAM;
-        if (cpu_id >= (cpu_id_t)RENDEZVOS_MAX_CPU_NUMBER)
-                return -E_IN_PARAM;
-        /*
-         * Only the owning CPU may tear down the entry. A remote free could
-         * race with that CPU's trap_handler / register path that already
-         * obtained the entry pointer after seeing USED; USED is not a lease.
-         */
-        if (percpu(cpu_number) != cpu_id)
-                return -E_IN_PARAM;
 
-        global_entry = &global_irq_vector[global_irq_id];
-        if (!irq_atomic_attr_is_used(&global_entry->irq_attr)
-            || global_entry->cpu_id != cpu_id)
+        struct arch_global_irq *global_entry =
+                &global_irq_vector[global_irq_id];
+        if (!irq_atomic_attr_is_used(&global_entry->irq_attr))
                 return -E_REND_NOFOUND;
 
+        cpu_id_t owner = global_entry->cpu_id;
+        /*
+         * Owner is recorded on the entry at alloc. Only that CPU may tear
+         * down: a remote free could race with the owner's trap_handler /
+         * register path that already obtained the entry after seeing USED;
+         * USED is not a lease.
+         */
+        if (owner >= (cpu_id_t)RENDEZVOS_MAX_CPU_NUMBER
+            || percpu(cpu_number) != owner)
+                return -E_IN_PARAM;
+
         (void)arch_global_bind_local_irq_id(
-                cpu_id, global_entry->local_irq_id, IRQ_GLOBAL_ID_INVALID);
+                owner, global_entry->local_irq_id, IRQ_GLOBAL_ID_INVALID);
         global_entry->local_irq_id = IRQ_LOCAL_ID_INVALID;
         global_entry->cpu_id = CPU_ID_INVALID;
         /*

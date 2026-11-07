@@ -28,11 +28,12 @@
  *   Arch fields are also kept — @c arch_irq_global_entry_reset is only for
  *   fresh @c vector_alloc slots.
  * - Migrate : disable(stops delivery in hardware) → free on
- *   owner → alloc for the new CPU → @c irq_global_enable. No register unless the
- *   ISR changes.
+ *   owner → alloc for the new CPU → @c irq_global_enable. No register unless
+ * the ISR changes.
  *
- * @c CPU_ID_INVALID: map/find → current CPU. alloc/free/global register
- * need a concrete cpu_id; free and global register also require
+ * @c CPU_ID_INVALID: map/find → current CPU. alloc / global register need a
+ * concrete cpu_id; free takes only @c global_irq_id and requires
+ * caller == the entry's recorded owner. Global register also requires
  * caller == that cpu_id.
  */
 #include <common/bit.h>
@@ -214,18 +215,19 @@ error_t irq_global_alloc(global_irq_id_t global_irq_id, cpu_id_t cpu_id,
                          local_irq_id_t *local_irq_id_out);
 
 /**
- * Release @p global_irq_id previously claimed for @p cpu_id (concrete).
+ * Release @p global_irq_id previously claimed for some CPU.
  *
- * Must run on the owning CPU (@p cpu_id == current). Clears the per-CPU map
- * binding and affinity fields, then drops @c IRQ_ATTR_USED via
- * @c irq_atomic_attr_try_set_unused (preserves @c IRQ_NEED_EOI,
- * @c irq_handler, and arch fields). Mask / stop delivery (@c irq_global_disable)
- * before calling.
+ * Must run on the owning CPU (@c percpu(cpu_number) == entry's recorded
+ * @c cpu_id). Clears the per-CPU map binding and affinity fields, then drops
+ * @c IRQ_ATTR_USED via @c irq_atomic_attr_try_set_unused (preserves
+ * @c IRQ_NEED_EOI, @c irq_handler, and arch fields). Mask / stop delivery
+ * (@c irq_global_disable) before calling.
  *
  * @return @c REND_SUCCESS,
- *         @c -E_IN_PARAM on bad arguments or caller is not @p cpu_id,
- *         @c -E_REND_NOFOUND if not claimed or affinity mismatch.
+ *         @c -E_IN_PARAM if @p global_irq_id is out of range or caller is
+ *         not the recorded owner,
+ *         @c -E_REND_NOFOUND if the entry is not claimed.
  */
-error_t irq_global_free(global_irq_id_t global_irq_id, cpu_id_t cpu_id);
+error_t irq_global_free(global_irq_id_t global_irq_id);
 
 #endif /* _RENDEZVOS_IRQ_SPACE_H_ */

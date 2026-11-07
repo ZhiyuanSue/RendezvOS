@@ -30,6 +30,5 @@
 #define clear_bit_u32(w, n) clear_mask_u32((w), BIT_U32(n))
 #define clear_bit_u64(w, n) clear_mask_u64((w), BIT_U64(n))
 
-#define BCD_TO_BIN(bcd_code) \
-        (((bcd_code) & 0xF) + 10 * (((bcd_code) >> 4) & 0xF))
+#define BCD_TO_BIN(bcd_code) (((bcd_code)&0xF) + 10 * (((bcd_code) >> 4) & 0xF))
 #endif

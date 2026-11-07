@@ -278,8 +278,8 @@ u64 irr_reg[8] = {
 };
 bool lapic_get_vec(int bit, enum lapic_vec_type t)
 {
-        if (!(bit >= 0 && bit <= 127))
-                return REND_SUCCESS;
+        if (bit < 0 || bit > 255)
+                return false;
         int index = bit / APIC_REG_SIZE;
         int offset = bit % APIC_REG_SIZE;
         u32 reg_val = 0;
@@ -295,7 +295,7 @@ bool lapic_get_vec(int bit, enum lapic_vec_type t)
                         reg_val = (*((u32 *)(xAPIC_REG_PHY_ADDR(irr_reg[index])
                                              + KERNEL_VIRT_OFFSET)));
                 } else {
-                        return REND_SUCCESS;
+                        return false;
                 }
         } else if (arch_irq_type == x2APIC_IRQ) {
                 if (t == lapic_isr_type) {
@@ -305,8 +305,10 @@ bool lapic_get_vec(int bit, enum lapic_vec_type t)
                 } else if (t == lapic_irr_type) {
                         reg_val = rdmsr(x2APIC_REG_ADDR(irr_reg[index]));
                 } else {
-                        return REND_SUCCESS;
+                        return false;
                 }
+        } else {
+                return false;
         }
         return (reg_val & BIT_U32(offset)) != 0;
 }

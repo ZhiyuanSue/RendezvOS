@@ -387,7 +387,7 @@ GICv2 最多按 8 个 core 来理解 SGI 的 CPUID 字段；同一 SGI 号可以
 
 ### 6.2 全局 `gic`（`struct gic_chip`）
 
-版本无关 ops（`enable_spi` / `disable_spi` / EOI / …）。MMIO 指针留在各版本驱动私有状态。映射属性：**DEVICE**。
+版本无关 ops（`enable_spi` / `disable_spi` / EOI / `line_pending_on_cpu` / …）。各版本用 **静态完整 chip 表**（如 `gic_v2_chip`）在 `bind` 成功时整表装入 `gic`；`gic_probe` 只认 bind 成败，不再维护 ops checklist。MMIO 指针留在各版本驱动私有状态。映射属性：**DEVICE**。
 
 ### 6.3 `compatible`（`gic_probe` 表）
 
@@ -402,7 +402,7 @@ GICv2 最多按 8 个 core 来理解 SGI 的 CPUID 字段；同一 SGI 号可以
 | `gic.h` / `gic.c` | `struct gic_chip`、DT compatible 表、`gic_probe` |
 | `gic_v2.c` / `.h` | MMIO、`gic_v2_bind`、dist / CPU IF、`enable_spi`（ITARGETSR） |
 | `gic_v3.c` / `.h` | 未实现：匹配后返回失败 |
-| `arch/.../trap/trap.c` | IAR → `local_irq_id`；`arch_eoi_irq`；`enable_spi`/`disable_spi` |
+| `arch/.../trap/trap.c` | IAR → `local_irq_id`；`arch_eoi_irq`；`enable_spi`/`disable_spi`；`arch_irq_local_pending` → `line_pending_on_cpu` |
 | `generic_time.c` | arch timer（CNTP_*）+ 消费 PPI 线 |
 | `arch_smp_ipi` | SGI0 |
 
@@ -498,11 +498,12 @@ union irq_source gic.read_irq_num(void);
 gic.eoi(union irq_source);
 gic.pending_clr(u32 intid);
 u32 gic.nr_spi(void);
+bool gic.line_pending_on_cpu(u32 intid);
 ```
 
 | 接口 | 说明 |
 |------|------|
-| `gic_probe` | 见 §6.3。 |
+| `gic_probe` | 见 §6.3；bind 成功即整表可用。 |
 | `init_distributor` | 只配 **SPI**：edge、`set_priority`、**全 mask**；开 GICD Group0（不再空转 affinity(0)）。 |
 | `init_cpu_interface` | **unmask 全部 SGI+PPI**；`set_priority`；PMR=`0xff`、BPR=`0x3`；开 GICC Group1。 |
 | `enable_spi` | 收便携 `enum irq_trigger`（`trap_common.h`）；驱动内译成 ICFGR 位（`GIC_V2_GICD_*_TRIGGER`）+ 按 `cpu_id` 写 ITARGETSR + unmask。`cpu_id`≥8 或越界 → `-E_IN_PARAM`。 |
@@ -510,6 +511,7 @@ u32 gic.nr_spi(void);
 | `set_priority` | 写 INTID 优先级（数值越小越高）；与 enable 正交。 |
 | `send_sgi` | GICv2 写 SGIR；参数仍为 v2 字段（软 IPI 用 SGI **0**，见 `30`）。 |
 | `read_irq_num` / `eoi` | IAR / EOIR。 |
+| `line_pending_on_cpu` | 供 `arch_irq_local_pending`：mask 后是否仍可能进 handler。GICv2：Active；仍 enable 时才看 Pending（已 mask 的 ISPENDR 不空转）。见 `25` §1.7。 |
 
 ### 9.4 驱动 checklist（SPI）
 
@@ -548,6 +550,7 @@ u32 gic.nr_spi(void);
 
 ## 13. 变更记录
 
+- 2026-11-07：`gic_v2_chip` 静态整表；删 `gic_ops_complete`；新增 `line_pending_on_cpu`（sync `irq_global_disable` / `arch_irq_local_pending`）。
 - 2026-11-02：驱动绑定改名 `gic_v2_bind` / `gic_v3_bind`（原 setup）；与 `gic_probe`、`init_*` 三层对齐。
 - 2026-11-02：`set_priority` 回到 `gic_chip`；删公开 `gic_ready`（probe 失败即停，热路径直接调 ops）。
 - 2026-11-01：删 `enum gic_irq_trigger`；`enable_spi` 直接收 `enum irq_trigger`（`trap_common.h`）；仅在 `gic_v2` 内译成 `GIC_V2_GICD_*_TRIGGER`。

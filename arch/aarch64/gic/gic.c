@@ -27,16 +27,6 @@ static const struct gic_dt_driver gic_dt_drivers[] = {
         {/* sentinel */},
 };
 
-/** Probe-only: required ops present after a successful bind. */
-static bool gic_ops_complete(void)
-{
-        return gic.version != GIC_VER_NONE && gic.init_distributor
-               && gic.init_cpu_interface && gic.enable_spi && gic.disable_spi
-               && gic.set_priority && gic.mask_irq && gic.unmask_irq
-               && gic.send_sgi && gic.read_irq_num && gic.eoi && gic.pending_clr
-               && gic.nr_spi;
-}
-
 error_t gic_probe(void)
 {
         for (const struct gic_dt_driver *drv = gic_dt_drivers; drv->compatible;
@@ -56,12 +46,7 @@ error_t gic_probe(void)
                         memset(&gic, 0, sizeof(gic));
                         return e;
                 }
-                if (!gic_ops_complete()) {
-                        print("[ GIC ] ops incomplete after \"%s\"\n",
-                              drv->compatible);
-                        memset(&gic, 0, sizeof(gic));
-                        return -E_RENDEZVOS;
-                }
+                /* bind success ⇒ driver's static chip table installed. */
                 print("[ GIC ] bound version %d\n", (int)gic.version);
                 return REND_SUCCESS;
         }

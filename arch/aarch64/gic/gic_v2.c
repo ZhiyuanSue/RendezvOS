@@ -75,12 +75,6 @@ static error_t gicd_v2_set_cpu_affinity(u32 irq_num, cpu_id_t cpu_id)
         return REND_SUCCESS;
 }
 
-static void gicd_v2_pending_clr(u32 irq_num)
-{
-        gicd_v2->GICD_ICPENDRn[irq_num / 32] |= 1u << (irq_num % 32);
-        isb();
-}
-
 static void gicd_v2_send_sgi(u32 irq_num, u32 target_mode, u32 target_list_bit)
 {
         if (!gic_is_sgi(irq_num))
@@ -154,6 +148,35 @@ static error_t gic_v2_disable_spi(u32 intid)
         return REND_SUCCESS;
 }
 
+static bool gic_v2_intid_is_pending(u32 intid)
+{
+        if (!gicd_v2)
+                return false;
+        if (intid > (u32)GIC_SPI_END)
+                return false;
+
+        u32 idx = intid / 32;
+        u32 bit = 1u << (intid % 32);
+
+        if (gicd_v2->GICD_ISACTIVERn[idx] & bit)
+                return true;
+        if ((gicd_v2->GICD_ISENABLERn[idx] & bit)
+            && (gicd_v2->GICD_ISPENDRn[idx] & bit))
+                return true;
+        return false;
+}
+
+static void gicd_v2_pending_clr(u32 irq_num)
+{
+        gicd_v2->GICD_ICPENDRn[irq_num / 32] |= 1u << (irq_num % 32);
+        isb();
+}
+
+static u32 gic_v2_nr_spi(void)
+{
+        return (u32)(GIC_SPI_END - GIC_SPI_START + 1);
+}
+
 static void gic_v2_init_distributor(void)
 {
         /*read the gicd type reg*/
@@ -197,10 +220,22 @@ static void gic_v2_init_cpu_interface(void)
         isb();
 }
 
-static u32 gic_v2_nr_spi(void)
-{
-        return (u32)(GIC_SPI_END - GIC_SPI_START + 1);
-}
+static const struct gic_chip gic_v2_chip = {
+        .version = GIC_VER_V2,
+        .init_distributor = gic_v2_init_distributor,
+        .init_cpu_interface = gic_v2_init_cpu_interface,
+        .enable_spi = gic_v2_enable_spi,
+        .disable_spi = gic_v2_disable_spi,
+        .set_priority = gicd_v2_set_priority,
+        .mask_irq = gicd_v2_mask_irq,
+        .unmask_irq = gicd_v2_unmask_irq,
+        .send_sgi = gicd_v2_send_sgi,
+        .read_irq_num = gicc_v2_read_irq,
+        .eoi = gicc_v2_eoi,
+        .intid_is_pending = gic_v2_intid_is_pending,
+        .pending_clr = gicd_v2_pending_clr,
+        .nr_spi = gic_v2_nr_spi,
+};
 
 error_t gic_v2_bind(struct device_node *node)
 {
@@ -222,20 +257,6 @@ error_t gic_v2_bind(struct device_node *node)
         gicd_v2 = (struct gic_distributor *)KERNEL_PHY_TO_VIRT(gic_regs[0]);
         gicc_v2 = (struct gic_cpu_interface *)KERNEL_PHY_TO_VIRT(gic_regs[2]);
 
-        gic = (struct gic_chip){
-                .version = GIC_VER_V2,
-                .init_distributor = gic_v2_init_distributor,
-                .init_cpu_interface = gic_v2_init_cpu_interface,
-                .enable_spi = gic_v2_enable_spi,
-                .disable_spi = gic_v2_disable_spi,
-                .set_priority = gicd_v2_set_priority,
-                .mask_irq = gicd_v2_mask_irq,
-                .unmask_irq = gicd_v2_unmask_irq,
-                .send_sgi = gicd_v2_send_sgi,
-                .read_irq_num = gicc_v2_read_irq,
-                .eoi = gicc_v2_eoi,
-                .pending_clr = gicd_v2_pending_clr,
-                .nr_spi = gic_v2_nr_spi,
-        };
+        gic = gic_v2_chip;
         return REND_SUCCESS;
 }

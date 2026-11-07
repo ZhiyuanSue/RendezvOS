@@ -5,8 +5,8 @@
 #include <rendezvos/smp/percpu.h>
 #include <rendezvos/sync/spin_lock.h>
 
-#define NAME_INDEX_HT_EMPTY ((i64) - 1)
-#define NAME_INDEX_HT_TOMB  ((i64) - 2)
+#define NAME_INDEX_HT_EMPTY ((i64)-1)
+#define NAME_INDEX_HT_TOMB  ((i64)-2)
 
 #ifndef NAME_INDEX_ROWS_INITIAL_CAP
 #define NAME_INDEX_ROWS_INITIAL_CAP (32ULL)
@@ -77,11 +77,9 @@ static error_t name_index_ht_rehash(name_index_t* idx, u64 new_ht_cap)
                 if (idx->rows[row_idx].used != NAME_INDEX_ROW_USED
                     || !idx->rows[row_idx].storage.value)
                         continue;
-                const char* n =
-                        idx->get_name ?
-                                idx->get_name(
+                const char* n = idx->get_name ? idx->get_name(
                                         idx->rows[row_idx].storage.value) :
-                                NULL;
+                                                NULL;
                 u32 h = name_index_hash_name(idx, n);
                 bool placed = false;
                 for (u64 probe = 0; probe < new_ht_cap; probe++) {
@@ -298,10 +296,9 @@ static i64 name_index_ht_find_bucket(name_index_t* idx, const char* name,
                     || !idx->rows[row_idx].storage.value)
                         continue;
                 const char* row_name =
-                        idx->get_name ?
-                                idx->get_name(
-                                        idx->rows[row_idx].storage.value) :
-                                NULL;
+                        idx->get_name ? idx->get_name(
+                                idx->rows[row_idx].storage.value) :
+                                        NULL;
                 if (!row_name)
                         continue;
                 if (strcmp_s(row_name, name, (size_t)idx->name_len_max) == 0) {

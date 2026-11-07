@@ -255,12 +255,8 @@ error_t map_handler_user_kernel_copy(VSpace *vs, u64 user_va, void *kbuf,
                         chunk = len - done;
                 }
 
-                uppn = have_mapped(vs,
-                                   VPN(page_base),
-                                   &pte_flags,
-                                   &level,
-                                   true,
-                                   handler);
+                uppn = have_mapped(
+                        vs, VPN(page_base), &pte_flags, &level, true, handler);
                 if (invalid_ppn(uppn) || !(pte_flags & PAGE_ENTRY_VALID)
                     || level != 3) {
                         return -E_RENDEZVOS;

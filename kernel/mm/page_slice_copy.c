@@ -231,7 +231,7 @@ static error_t ps_clone_copy_leaf_entry(struct page_slice* dst,
 
 #define PS_INDEX_SLOT_STRIDE(stored_h) \
         ((u64)PAGE_SLICE_LEAF_CAPACITY \
-         << (PAGE_SLICE_INDEX_SHIFT * ((stored_h) - PS_HEIGHT_INDEX1)))
+         << (PAGE_SLICE_INDEX_SHIFT * ((stored_h)-PS_HEIGHT_INDEX1)))
 
 static error_t ps_clone_copy_leaf_page(struct page_slice* dst,
                                        struct allocator* alloc, u64 pgoff_base,
