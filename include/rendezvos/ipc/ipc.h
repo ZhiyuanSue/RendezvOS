@@ -134,7 +134,7 @@ error_t ipc_try_recv_msg(Message_Port_t* port);
  * @param msg Message to enqueue; must not be NULL; msg (and data if set) must
  *        have live refcount.
  * @return @c REND_SUCCESS; @c -E_IN_PARAM if @p msg is NULL; @c -E_REND_AGAIN
- *         if no current thread; @c -E_REND_IPC if refcounts invalid.
+ *         if no current thread; @c -E_REND_RC_UNEQUAL if refcounts invalid.
  * @note After enqueue the queue owns a ref (@c ref_put on the caller's
  *       Message_t). Do not use for @c ipc_system_* deliver (those stage via
  *       @c send_pending_msg instead).
@@ -187,10 +187,12 @@ Message_t* dequeue_recv_msg(void);
  * @param msg Message to deliver.
  * @param use_system_proxy True → stage as the per-CPU idle persona; false →
  *        stage on the current thread.
- * @return @c REND_SUCCESS; @c -E_REND_AGAIN (no waiter / no sender persona);
- *         @c -E_REND_PORT_CLOSED (begin deny/close); @c -E_REND_IPC (slot busy
- * / bad refs); @c -E_IN_PARAM (@p port/@p msg NULL, or proxy without
- *         @c core_tm); other transfer errors.
+ * @return @c REND_SUCCESS; @c -E_REND_AGAIN (no waiter / no sender persona /
+ *         send_pending slot busy); @c -E_REND_PORT_CLOSED (begin deny/close);
+ *         @c -E_REND_RC_UNEQUAL (bad refs); @c -E_REND_NO_MEM (transfer alloc
+ *         fail);
+ *         @c -E_IN_PARAM (@p port/@p msg NULL, or proxy without @c core_tm);
+ *         other transfer errors.
  */
 error_t ipc_system_try_deliver(Message_Port_t* port, Message_t* msg,
                                bool use_system_proxy);
@@ -211,8 +213,10 @@ error_t ipc_system_try_deliver(Message_Port_t* port, Message_t* msg,
  * @param receiver Target thread (@c recv_msg_queue).
  * @param msg Message to deliver.
  * @param use_system_proxy True → idle persona; false → current thread.
- * @return @c REND_SUCCESS; @c -E_REND_AGAIN if receiver exiting or no sender
- *         persona; @c -E_REND_NO_MSG; @c -E_REND_IPC if slot busy / bad refs;
+ * @return @c REND_SUCCESS; @c -E_REND_AGAIN if receiver exiting, no sender
+ *         persona, or send_pending slot busy; @c -E_REND_NO_MSG;
+ *         @c -E_REND_RC_UNEQUAL if bad refs; @c -E_REND_NO_MEM (transfer
+ *         alloc fail);
  *         @c -E_IN_PARAM if @p receiver or @p msg is NULL. Same ownership rule
  *         as @c ipc_system_try_deliver (pre-stage keep; post-stage
  * clean/release).

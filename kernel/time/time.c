@@ -114,11 +114,11 @@ static error_t timer_event_deliver_kmsg(Message_Port_t *port, u16 opcode,
                               KMSG_FMT_SYSTEM_TIMER,
                               (i64)delivery_token);
         if (!msgdata)
-                return -E_REND_IPC;
+                return -E_REND_NO_MEM;
         msg = create_message_with_msg(msgdata);
         ref_put(&msgdata->refcount, free_msgdata_ref_default);
         if (!msg)
-                return -E_REND_IPC;
+                return -E_REND_NO_MEM;
         return ipc_system_try_deliver(port, msg, use_system_proxy);
 }
 
@@ -146,7 +146,7 @@ error_t rendezvos_timer_event_init(rendezvos_timer_event *event,
         if (periodic_gap && wait_port)
                 return -E_IN_PARAM;
         if (!periodic_gap && !ref_get_not_zero(&wait_port->refcount))
-                return -E_REND_IPC;
+                return -E_REND_RC_UNEQUAL;
 
         memset(event, 0, sizeof(*event));
         INIT_LIST_HEAD(&event->same_expired_list);
@@ -365,11 +365,19 @@ void rendezvos_do_time_irq(struct trap_frame *tf)
                                 KMSG_OP_SYSTEM_TIMER_EXPIRE,
                                 current_event->delivery_token,
                                 true);
-                        if (e == REND_SUCCESS) {
-                                rendezvos_timer_event_fini(current_event);
-                        } else {
+                        if (e == -E_REND_AGAIN || e == -E_REND_NO_MEM) {
+                                /* Retryable: no waiter / slot busy, or OOM. */
+                                tick_t retry_gap = jeffy_ticks ? jeffy_ticks :
+                                                                 1;
                                 rendezvos_timer_event_change(current_event,
-                                                             now + 1);
+                                                             now + retry_gap);
+                        } else {
+                                /*
+                                 * Success, or permanent failure: fini.
+                                 * Permanent failure drops this EXPIRE — a
+                                 * waiter may never receive it.
+                                 */
+                                rendezvos_timer_event_fini(current_event);
                         }
                 }
         }

@@ -75,14 +75,14 @@ POSIX errno 与 Linux 内核的 `error_t` 取向相反：POSIX errno 是正数�
 | `0` | `REND_SUCCESS` | |
 | `-E_IN_PARAM` | `E_IN_PARAM` | 几乎全核；最常用 |
 | `-E_RENDEZVOS` | `E_RENDEZVOS` | 通用失败兜底 |
-| `-E_REND_AGAIN` | `E_REND_AGAIN` | 可重试：IPC 非阻塞、buddy reclaim 耗尽等（**不是** OOM 同义词；hook 放弃用 `NO_MEM`） |
+| `-E_REND_AGAIN` | `E_REND_AGAIN` | 可重试：无 waiter、`send_pending` 槽忙、buddy reclaim 等（**不是** OOM 同义词） |
 | `-E_REND_NOFOUND` | `E_REND_NOFOUND` | page_slice / radix / unmap / timer |
 | `-E_REND_OVERFLOW` | `E_REND_OVERFLOW` | IPI / page_slice / radix（**不仅** IPI） |
-| `-E_REND_NO_MEM` | `E_REND_NO_MEM` | buddy / page_slice |
+| `-E_REND_NO_MEM` | `E_REND_NO_MEM` | 分配失败：buddy / page_slice |
 | `-E_REND_PORT_CLOSED` | `E_REND_PORT_CLOSED` | send / recv |
-| `-E_REND_IPC` | `E_REND_IPC` | 协议 / 资源 |
+| `-E_REND_IPC` | `E_REND_IPC` | IPC **协议**失败（不包括IPC过程中的 OOM / 槽位忙等） |
 | `-E_REND_NO_MSG` | `E_REND_NO_MSG` | 空队列 |
-| `-E_REND_RC_UNEQUAL` | `E_REND_RC_UNEQUAL` | VSpace mask / teardown |
+| `-E_REND_RC_UNEQUAL` | `E_REND_RC_UNEQUAL` | refcount / ownership：VSpace mask / teardown；msg 坏 ref |
 | `-E_REND_TEST` | `E_REND_TEST` | 几乎仅 `modules/test` |
 | （无调用） | `E_REND_ABANDON` | **仅枚举**；死码，勿编造语义 |
 

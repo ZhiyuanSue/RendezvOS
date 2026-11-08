@@ -34,20 +34,21 @@ static inline error_t rendezvos_request_poweroff(void)
                 port->service_id, KMSG_OP_SYSTEM_POWER_SHUTDOWN, "");
         if (!d) {
                 ref_put(&port->refcount, free_message_port_ref);
-                return -E_RENDEZVOS;
+                return -E_REND_NO_MEM;
         }
         Message_t* m = create_message_with_msg(d);
         ref_put(&d->refcount, free_msgdata_ref_default);
         if (!m) {
                 ref_put(&port->refcount, free_message_port_ref);
-                return -E_RENDEZVOS;
+                return -E_REND_NO_MEM;
         }
-        if (enqueue_msg_for_send(m) != REND_SUCCESS) {
+        error_t e = enqueue_msg_for_send(m);
+        if (e != REND_SUCCESS) {
                 ref_put(&m->ms_queue_node.refcount, free_message_ref);
                 ref_put(&port->refcount, free_message_port_ref);
-                return -E_RENDEZVOS;
+                return e;
         }
-        error_t e = send_msg(port);
+        e = send_msg(port);
         ref_put(&port->refcount, free_message_port_ref);
         return e;
 }

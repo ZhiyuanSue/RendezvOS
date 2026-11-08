@@ -163,7 +163,7 @@ error_t ipc_port_enqueue_wait(Message_Port_t* port, u16 my_ipc_state,
 
         Ipc_Request_t* req = create_ipc_request(my_thread);
         if (!req) {
-                return -E_REND_IPC;
+                return -E_REND_NO_MEM;
         }
 
         atomic64_store((volatile u64*)&req->queue_ptr,
@@ -201,7 +201,7 @@ error_t ipc_transfer_message(Thread_Base* sender, Thread_Base* receiver)
 
         Message_t* recv_msg_ptr = create_message_structure();
         if (!recv_msg_ptr)
-                return -E_RENDEZVOS;
+                return -E_REND_NO_MEM;
         /*
          - Problem 1:
         if the sender try to send, but we find the receiver is exiting, a
@@ -677,7 +677,7 @@ error_t enqueue_msg_for_send(Message_t* msg)
                 return -E_REND_AGAIN;
         if (!ref_count(&msg->ms_queue_node.refcount)
             || (msg->data && !ref_count(&msg->data->refcount))) {
-                return -E_REND_IPC;
+                return -E_REND_RC_UNEQUAL;
         }
         msq_enqueue(
                 &self->send_msg_queue, &msg->ms_queue_node, free_message_ref);
@@ -743,7 +743,7 @@ error_t ipc_system_try_deliver(Message_Port_t* port, Message_t* msg,
                 return -E_IN_PARAM;
         if (!ref_count(&msg->ms_queue_node.refcount)
             || (msg->data && !ref_count(&msg->data->refcount))) {
-                return -E_REND_IPC;
+                return -E_REND_RC_UNEQUAL;
         }
         if (!sender)
                 return -E_REND_AGAIN;
@@ -754,7 +754,8 @@ error_t ipc_system_try_deliver(Message_Port_t* port, Message_t* msg,
                          (u64)NULL,
                          (u64)msg)
             != (u64)NULL) {
-                return -E_REND_IPC;
+                /* Slot busy: retryable */
+                return -E_REND_AGAIN;
         }
 
         if (use_system_proxy)
@@ -785,7 +786,7 @@ error_t ipc_system_deliver_to(Thread_Base* receiver, Message_t* msg,
                 return -E_IN_PARAM;
         if (!ref_count(&msg->ms_queue_node.refcount)
             || (msg->data && !ref_count(&msg->data->refcount))) {
-                return -E_REND_IPC;
+                return -E_REND_RC_UNEQUAL;
         }
 
         sender = use_system_proxy ? percpu(idle_thread_ptr) :
@@ -797,7 +798,8 @@ error_t ipc_system_deliver_to(Thread_Base* receiver, Message_t* msg,
                          (u64)NULL,
                          (u64)msg)
             != (u64)NULL) {
-                return -E_REND_IPC;
+				/* Same as the ipc_system_try_deliver retry */
+                return -E_REND_AGAIN;
         }
 
         err = ipc_transfer_message(sender, receiver);
