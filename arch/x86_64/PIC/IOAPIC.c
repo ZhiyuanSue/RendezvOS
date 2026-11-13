@@ -1,10 +1,13 @@
 #include <arch/x86_64/PIC/IOAPIC.h>
+#include <arch/x86_64/PIC/LocalAPIC.h>
+#include <common/limits.h>
 #include <modules/log/log.h>
 #include <rendezvos/error.h>
+#include <rendezvos/limits.h>
 #include <rendezvos/mm/mm_kernel_utils.h>
 #include <rendezvos/mm/vmm.h>
 #include <rendezvos/smp/percpu.h>
-#include <rendezvos/trap/irq_space.h>
+#include <arch/x86_64/trap/irq_space.h>
 
 struct ioapic *ioapics;
 size_t nr_ioapics;
@@ -24,12 +27,9 @@ static inline u32 ioapic_rte_high_index(u16 pin)
         return ioapic_rte_low_index(pin) + 1;
 }
 
-/**
- * Look up @c ioapics[] by @p gsi .
- */
-static error_t ioapic_get_entry_from_gsi(gsi_id_t gsi,
-                                         struct ioapic **ioapic_entry_out,
-                                         u16 *pin_out)
+error_t ioapic_get_entry_from_gsi(gsi_id_t gsi,
+                                  struct ioapic **ioapic_entry_out,
+                                  u16 *pin_out)
 {
         if (!ioapics || !nr_ioapics)
                 return -E_REND_NOFOUND;
@@ -53,7 +53,6 @@ static void ioapic_write_rte(struct ioapic *ioapic_entry, u16 pin,
 {
         vaddr base = ioapic_get_base_va(ioapic_entry);
 
-        /* High dword first */
         IOAPIC_WR_REG(base, ioapic_rte_high_index(pin), rte->reg_2);
         IOAPIC_WR_REG(base, ioapic_rte_low_index(pin), rte->reg_1);
 }
@@ -74,8 +73,6 @@ static void ioapic_mask_all_pins(struct ioapic *ioapic_entry)
                 struct IOAPIC_RTE rte = ioapic_read_rte(ioapic_entry, pin);
 
                 rte.Mask = 1;
-                /* High dword unchanged; Only change the low dword.
-                 */
                 ioapic_write_rte(ioapic_entry, pin, &rte);
         }
 }
@@ -129,35 +126,19 @@ static error_t ioapic_probe_all(void)
         return REND_SUCCESS;
 }
 
-static size_t ioapic_nr_gsi(void)
+size_t ioapic_nr_gsi(void)
 {
+        if (!ioapics || !nr_ioapics)
+                return 0;
         struct ioapic *last_ioapic_entry = &ioapics[nr_ioapics - 1];
 
         return (size_t)last_ioapic_entry->gsi_base
                + (size_t)last_ioapic_entry->nr_pins;
 }
 
-static error_t ioapic_setup_global_irq(void)
-{
-        for (size_t i = 0; i < nr_ioapics; i++) {
-                struct ioapic *ioapic_entry = &ioapics[i];
-
-                for (u16 pin = 0; pin < ioapic_entry->nr_pins; pin++) {
-                        gsi_id_t gsi = (gsi_id_t)(ioapic_entry->gsi_base + pin);
-                        struct arch_global_irq *irq_entry =
-                                &global_irq_vector[(global_irq_id_t)gsi];
-
-                        irq_entry->ioapic = ioapic_entry;
-                        irq_entry->pin = (u8)pin;
-                }
-        }
-        return REND_SUCCESS;
-}
-
 error_t ioapic_init(void)
 {
         error_t e;
-        size_t nr_gsi;
 
         if (!ioapics || !nr_ioapics)
                 return REND_SUCCESS;
@@ -165,17 +146,7 @@ error_t ioapic_init(void)
         e = ioapic_probe_all();
         if (e != REND_SUCCESS)
                 return e;
-
-        nr_gsi = ioapic_nr_gsi();
-        if (!nr_gsi) {
-                print("[ IOAPIC ] ERROR: GSI 0 with %lu not 0 ioapics\n",
-                      (unsigned long)nr_ioapics);
-                return -E_RENDEZVOS;
-        }
-        e = irq_global_vector_alloc(nr_gsi);
-        if (e != REND_SUCCESS)
-                return e;
-        return ioapic_setup_global_irq();
+        return irq_space_ioapic_register();
 }
 
 error_t ioapic_configure_rte(gsi_id_t gsi, u8 vector, u8 dest_apic_id,

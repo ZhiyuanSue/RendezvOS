@@ -115,9 +115,9 @@ static inline bool list_node_is_valid(struct list_entry *n)
  * @member: the name of the list_head within the struct.
  */
 #define list_for_each_entry(pos, head, member)                     \
-        for (pos = list_entry((head)->next, typeof(*pos), member); \
+        for (pos = list_entry((head)->next, __typeof__(*pos), member); \
              &pos->member != (head);                               \
-             pos = list_entry(pos->member.next, typeof(*pos), member))
+             pos = list_entry(pos->member.next, __typeof__(*pos), member))
 
 /**
  * list_for_each_entry_safe - iterate over list of given type safe against
@@ -128,10 +128,10 @@ static inline bool list_node_is_valid(struct list_entry *n)
  * @member: the name of the list_head within the struct.
  */
 #define list_for_each_entry_safe(pos, n, head, member)              \
-        for (pos = list_entry((head)->next, typeof(*pos), member),  \
-            n = list_entry(pos->member.next, typeof(*pos), member); \
+        for (pos = list_entry((head)->next, __typeof__(*pos), member),  \
+            n = list_entry(pos->member.next, __typeof__(*n), member); \
              &pos->member != (head);                                \
-             pos = n, n = list_entry(n->member.next, typeof(*n), member))
+             pos = n, n = list_entry(n->member.next, __typeof__(*n), member))
 
 /**
  * list_entry - get the struct for this entry

@@ -4,8 +4,12 @@
 #include <common/types.h>
 #include <common/stddef.h>
 #include <common/stdbool.h>
+#include <common/limits.h>
 #include <rendezvos/error.h>
-#include <arch/x86_64/PIC/gsi.h>
+
+/* ACPI GSI; IOAPIC space uses global_irq_id == GSI (base 0). */
+typedef u32 gsi_id_t;
+#define GSI_ID_INVALID ((gsi_id_t)U32_MAX)
 
 /* each RTE has 2 u32 registers (internal indices 0x10+2n / 0x11+2n) */
 struct IOAPIC_RTE {
@@ -135,10 +139,16 @@ struct ioapic {
 extern struct ioapic *ioapics;
 extern size_t nr_ioapics;
 
+size_t ioapic_nr_gsi(void);
+
+error_t ioapic_get_entry_from_gsi(gsi_id_t gsi, struct ioapic **ioapic_entry_out,
+                                  u16 *pin_out);
+
 /**
  * @brief init ioapic data and structures.
  *
- * Requires @c ioapics[] from @c arch_parser_madt.
+ * Requires @c ioapics[] from @c arch_parser_madt. After probe, registers the
+ * IOAPIC irq_space (@c irq_space_ioapic_register).
  */
 error_t ioapic_init(void);
 
@@ -176,8 +186,7 @@ error_t ioapic_change_mask(gsi_id_t gsi, bool mask);
  *
  * Clears Remote IRR for level-triggered RTEs on this chip matching @p vector.
  * Harmless if Remote IRR is already clear. Caller resolves which IOAPIC
- * (e.g. via irq_space GSI → @c arch_global_irq::ioapic); this API does not
- * scan.
+ * (e.g. via irq_space entry to @c ioapic); this API does not scan.
  */
 void ioapic_eoi(struct ioapic *ioapic_entry, u8 vector);
 

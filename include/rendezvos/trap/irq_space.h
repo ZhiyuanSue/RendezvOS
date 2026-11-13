@@ -2,46 +2,45 @@
 #define _RENDEZVOS_IRQ_SPACE_H_
 
 /*
- * irq_space — software id tables only.
+ * irq_space — software irq numbering (common layer).
+ * INCLUDING:
  *
- * This module owns local_irq_vector / global_irq_vector, the local↔global
- * map, and @c irq_global_* claim/release. It does not program interrupt
- * controllers (route, mask, EOI registers): that is platform code.
- * Dispatch (@c trap_handler / @c register_irq_handler, etc.) lives in
- * @c rendezvos/trap/trap.h; register's global path follows the ownership
- * rules below.
+ *   1) local irq wrappers
+ *   2) irq_space registry — register / unregister (cold; state machine life)
+ *   3) global irq claim — alloc / free by gid; find by local
  *
- * Two ids:
- * - local_irq_id: per-CPU number line. Below @c NR_ARCH_LOCAL_IRQ it indexes
- *   @c local_irq_vector; at or above that limit it maps to a global_irq_id.
- * - global_irq_id: index into @c global_irq_vector (GSI / SPI index, etc.).
+ * Refcount ownership (transfer, not dual-hold):
+ *   create     → refcount 1 (creator)
+ *   register   → transfer that 1 to the registry list (still 1; creator drops
+ *                logical ownership; no extra get)
+ *   ops_begin  → ref_get_not_zero while REGISTERED (in-flight alloc/free)
+ *   ops_end    → ref_put one.
+ *   unregister → CLOSING while linked; idle means refcount==1 (list only hold
+ *             refcount); unlink + CLOSED transfers that 1 to the unregisterer,
+ *             who ref_put → free. Busy (refcount!=1 or nr_used!=0) → restore
+ *             REGISTERED, stay linked, -E_REND_AGAIN.
  *
- * Ownership (global entries):
- * - Idle claim may race; @c IRQ_ATTR_USED CAS picks a winner, who records
- *   (local_irq_id, cpu_id). Any CPU may alloc for a target cpu_id.
- * - After claim, only the owning CPU may free or (global) register.
- *   @c IRQ_ATTR_USED is not a refcount; find returns a raw vector slot.
- * - Free clears the claim with @c irq_atomic_attr_try_set_unused only:
- *   keeps @c irq_handler and sticky bits such as @c IRQ_NEED_EOI so a later
- *   alloc on another CPU can reuse the same ISR. Clear the handler with
- *   @c register_irq_handler(..., NULL, ...) on the owner before unload.
- *   Arch fields are also kept — @c arch_irq_global_entry_reset is only for
- *   fresh @c vector_alloc slots.
- * - Migrate : disable(stops delivery in hardware) → free on
- *   owner → alloc for the new CPU → @c irq_global_enable. No register unless
- * the ISR changes.
- *
- * @c CPU_ID_INVALID: map/find → current CPU. alloc / global register need a
- * concrete cpu_id; free takes only @c global_irq_id and requires
- * caller == the entry's recorded owner. Global register also requires
- * caller == that cpu_id.
+ * Global entry (see @c GLOBAL_IRQ_COMMON): USED admits alloc. No per-entry
+ * refcount. @c nr_used tracks claimed slots (inc on alloc, dec when USED
+ * cleared on free). 
+ * 
+ * Ownership window:
+ *   After line @c enable until @c free completes — only the owner CPU
+ *   (@c cpu_id) may operate the entry (disable/free/register/delivery).
+ *   Before enable (claim exists but line masked) — other CPUs may update
+ *   soft state (e.g. migrate: old owner alloc+enable for the new affinity);
+ *   no IRQ delivery yet so that is safe. @c irq_global_free keeps
+ *   @c irq_handler for migrate without re-register.
  */
 #include <common/bit.h>
 #include <common/stdbool.h>
 #include <common/atomic.h>
+#include <common/refcount.h>
+#include <common/dsa/list.h>
 #include <rendezvos/error.h>
 #include <rendezvos/smp/cpu_id.h>
 #include <rendezvos/trap/irq_space_common.h>
+#include <rendezvos/trap/trap_common.h>
 
 #ifdef _AARCH64_
 #include <arch/aarch64/trap/irq_space.h>
@@ -55,23 +54,118 @@
 #include <arch/x86_64/trap/irq_space.h>
 #endif
 
+/* === local irq === */
+
 struct local_irq {
         void (*irq_handler)(struct trap_frame *tf);
         u64 irq_attr; /* plain store; per-CPU, no CAS */
 };
 
-/*
- * Optional external-irq table. NULL / @c nr_global_irq == 0 if the platform
- * has no global irq case (e.g. no IOAPIC). Filled by @c
- * irq_global_vector_alloc.
- */
-extern struct arch_global_irq *global_irq_vector;
-extern size_t nr_global_irq;
-
-/* Per-CPU; @c DEFINE_PER_CPU in irq_space.c. */
 extern struct local_irq local_irq_vector[NR_ARCH_LOCAL_IRQ];
 
-/* ----- irq_attr bit helpers (work on a u64 snapshot) ----- */
+bool irq_trap_is_local(local_irq_id_t local_irq_id);
+struct local_irq *irq_local_find(local_irq_id_t local_irq_id, cpu_id_t cpu_id);
+
+/* === irq space === */
+
+#define IRQ_SPACE_LIFE_CLOSED     0
+#define IRQ_SPACE_LIFE_ACTIVE     1 /* created, not on the registry list */
+#define IRQ_SPACE_LIFE_REGISTERED 2
+#define IRQ_SPACE_LIFE_CLOSING    3
+
+struct irq_space {
+        /*for multi spaces*/
+        struct list_entry node;
+        /*data*/
+        void *priv;
+        /*global irq id ranges*/
+        global_irq_id_t global_irq_id_base;
+        size_t nr_global_irq_id;
+        atomic64_t nr_used; /* claimed (!idle) entries; 0 before unregister */
+
+        ref_count_t refcount; /* list(1) + in-flight ops; idle registered == 1
+                               */
+        atomic64_t life; /* @c IRQ_SPACE_LIFE_* */
+
+        struct arch_global_irq *(*lookup_global_irq_id)(
+                struct irq_space *space, global_irq_id_t global_irq_id);
+        local_irq_id_t (*choose_local)(struct irq_space *space,
+                                       global_irq_id_t global_irq_id,
+                                       cpu_id_t cpu_id);
+        bool (*bind_local)(struct irq_space *space, cpu_id_t cpu_id,
+                           local_irq_id_t local_irq_id,
+                           struct arch_global_irq *entry);
+        error_t (*enable)(struct arch_global_irq *entry,
+                          enum irq_trigger trigger, enum irq_polarity polarity);
+        error_t (*disable)(struct arch_global_irq *entry);
+        void (*eoi)(struct arch_global_irq *entry, u64 trap_info);
+        void (*destroy_priv)(struct irq_space *space);
+};
+
+static inline bool irq_space_covers(const struct irq_space *space,
+                                    global_irq_id_t global_irq_id)
+{
+        return global_irq_id >= space->global_irq_id_base
+               && global_irq_id
+                          < space->global_irq_id_base
+                                    + (global_irq_id_t)space->nr_global_irq_id;
+}
+
+/** Read @c life (port @c port_ops_life_get). */
+static inline i64 irq_space_life_load(const struct irq_space *space)
+{
+        return (i64)atomic64_load(
+                (volatile const u64 *)&space->life.counter);
+}
+
+/** CAS @c life expect→target (port @c port_ops_set_life_with_expect). */
+static inline bool irq_space_set_life_with_expect(struct irq_space *space,
+                                                  i64 expect, i64 target)
+{
+        return atomic64_cas((volatile u64 *)&space->life.counter,
+                            (u64)expect,
+                            (u64)target)
+               == (u64)expect;
+}
+
+/**
+ * Cold critical section: pin @c refcount while life is REGISTERED.
+ * Pair with @c irq_space_ops_end (@c ref_put, no free).
+ */
+static inline bool irq_space_ops_begin(struct irq_space *space)
+{
+        if (atomic64_load((volatile const u64 *)&space->life.counter)
+            != IRQ_SPACE_LIFE_REGISTERED)
+                return false;
+        if (!ref_get_not_zero(&space->refcount))
+                return false;
+        if (atomic64_load((volatile const u64 *)&space->life.counter)
+            != IRQ_SPACE_LIFE_REGISTERED) {
+                ref_put(&space->refcount, NULL);
+                return false;
+        }
+        return true;
+}
+
+static inline void irq_space_ops_end(struct irq_space *space)
+{
+        ref_put(&space->refcount, NULL);
+}
+
+/** Backend create-time: ACTIVE life, creator holds refcount 1, nr_used 0. */
+static inline void irq_space_common_init(struct irq_space *space)
+{
+        INIT_LIST_HEAD(&space->node);
+        ref_init(&space->refcount);
+        atomic64_init(&space->life, IRQ_SPACE_LIFE_ACTIVE);
+        atomic64_init(&space->nr_used, 0);
+}
+
+error_t irq_space_register(struct irq_space *space);
+error_t irq_space_unregister(struct irq_space *space);
+error_t free_irq_space_ref(ref_count_t *ref_count_ptr);
+
+/* === global irq attr / entry === */
 
 static inline bool irq_attr_used(u64 attr)
 {
@@ -93,11 +187,6 @@ static inline bool irq_attr_need_eoi(u64 attr)
         return (attr & IRQ_NEED_EOI) != 0;
 }
 
-/*
- * Atomic irq_attr helpers (atomic64_t storage).
- * Plain u64 attrs use irq_attr_* on a snapshot, then a normal store.
- */
-
 static inline u64 irq_atomic_attr_load(atomic64_t *attr)
 {
         return atomic64_load((volatile const u64 *)&attr->counter);
@@ -113,121 +202,42 @@ static inline bool irq_atomic_attr_is_used(atomic64_t *attr)
         return irq_attr_used(irq_atomic_attr_load(attr));
 }
 
-/**
- * Apply @c irq_attr_set_used to the current value and CAS it in.
- * False if already used, or if a concurrent write won the CAS.
- */
 static inline bool irq_atomic_attr_try_set_used(atomic64_t *attr)
 {
-        u64 old_attr;
-        u64 new_attr;
-
-        old_attr = irq_atomic_attr_load(attr);
+        u64 old_attr = irq_atomic_attr_load(attr);
         if (irq_attr_used(old_attr))
                 return false;
-        new_attr = irq_attr_set_used(old_attr);
+        u64 new_attr = irq_attr_set_used(old_attr);
         return atomic64_cas((volatile u64 *)&attr->counter, old_attr, new_attr)
                == old_attr;
 }
 
-/**
- * Apply @c irq_attr_set_unused to the current value and CAS it in.
- * False if already unused, or if a concurrent write won the CAS.
- */
 static inline bool irq_atomic_attr_try_set_unused(atomic64_t *attr)
 {
-        u64 old_attr;
-        u64 new_attr;
+        u64 old_attr = irq_atomic_attr_load(attr);
 
-        old_attr = irq_atomic_attr_load(attr);
         if (!irq_attr_used(old_attr))
                 return false;
-        new_attr = irq_attr_set_unused(old_attr);
+        u64 new_attr = irq_attr_set_unused(old_attr);
         return atomic64_cas((volatile u64 *)&attr->counter, old_attr, new_attr)
                == old_attr;
 }
 
-bool irq_trap_is_local(local_irq_id_t local_irq_id);
+static inline void irq_global_entry_common_init(struct arch_global_irq *entry,
+                                                struct irq_space *space)
+{
+        atomic64_init(&entry->irq_attr, 0);
+        entry->local_irq_id = IRQ_LOCAL_ID_INVALID;
+        entry->cpu_id = CPU_ID_INVALID;
+        entry->irq_handler = NULL;
+        entry->space = space;
+}
 
-/**
- * Look up the global irq entry for @p local_irq_id on @p cpu_id.
- * @p cpu_id @c CPU_ID_INVALID means the current CPU.
- * @return the entry, or NULL if not allocated / affinity mismatch.
- */
-struct arch_global_irq *irq_global_find(local_irq_id_t local_irq_id,
-                                        cpu_id_t cpu_id);
-
-/* === arch local↔global helpers (arch/<arch>/trap/irq_space.c) === */
-/*
- * For APIs that take @p cpu_id: concrete id, or @c CPU_ID_INVALID = current.
- */
-
-/**
- * using @p local_irq_id on @p cpu_id to lookup @c global_irq_id, or INVALID.
- */
-global_irq_id_t arch_local_lookup_global_irq_id(cpu_id_t cpu_id,
-                                                local_irq_id_t local_irq_id);
-
-/**
- * Arch policy: choose a @c local_irq_id for @p global_irq_id on @p cpu_id.
- *
- * @return chosen @c local_irq_id, or @c IRQ_LOCAL_ID_INVALID if none.
- */
-local_irq_id_t arch_choose_local_irq_id(global_irq_id_t global_irq_id,
-                                        cpu_id_t cpu_id);
-
-/**
- * Bind a @p local_irq_id on @p cpu_id to @p global_irq_id.
- * if @p global_irq_id == @c IRQ_GLOBAL_ID_INVALID unbinds (clears the mapping).
- * @return false if the update fails (e.g. already bound).
- */
-bool arch_global_bind_local_irq_id(cpu_id_t cpu_id, local_irq_id_t local_irq_id,
-                                   global_irq_id_t global_irq_id);
-
-/** Reset arch-private fields of an unused global irq entry. */
-void arch_irq_global_entry_reset(struct arch_global_irq *entry);
-
-/**
- * Allocate @c global_irq_vector of @p count entries and set @c nr_global_irq.
- *
- * Called once from platform bring-up after
- * @c kallocator exists. @p count == 0 leaves the table empty (NULL / 0).
- * Non-zero: entries start unused; id fields set to @c IRQ_LOCAL_ID_INVALID /
- * @c CPU_ID_INVALID.
- *
- * @return @c REND_SUCCESS, or @c -E_RENDEZVOS if already set / alloc fails.
- */
-error_t irq_global_vector_alloc(size_t count);
-
-/**
- * Claim @p global_irq_id and bind a local_irq_id on @p cpu_id (concrete).
- *
- * Flow: @c arch_choose_local_irq_id → CAS @c IRQ_ATTR_USED →
- * @c arch_global_bind_local_irq_id. Bind failure rolls back the claim.
- * @p local_irq_id_out is for @c register_irq_handler.
- *
- * @return @c REND_SUCCESS,
- *         @c -E_IN_PARAM on bad arguments,
- *         @c -E_REND_AGAIN if USED or bind failed,
- *         @c -E_REND_OVERFLOW if the arch cannot choose a local_irq_id.
- */
+error_t irq_global_find(local_irq_id_t local_irq_id, cpu_id_t cpu_id,
+                        struct arch_global_irq **entry_out);
 error_t irq_global_alloc(global_irq_id_t global_irq_id, cpu_id_t cpu_id,
                          local_irq_id_t *local_irq_id_out);
-
-/**
- * Release @p global_irq_id previously claimed for some CPU.
- *
- * Must run on the owning CPU (@c percpu(cpu_number) == entry's recorded
- * @c cpu_id). Clears the per-CPU map binding and affinity fields, then drops
- * @c IRQ_ATTR_USED via @c irq_atomic_attr_try_set_unused (preserves
- * @c IRQ_NEED_EOI, @c irq_handler, and arch fields). Mask / stop delivery
- * (@c irq_global_disable) before calling.
- *
- * @return @c REND_SUCCESS,
- *         @c -E_IN_PARAM if @p global_irq_id is out of range or caller is
- *         not the recorded owner,
- *         @c -E_REND_NOFOUND if the entry is not claimed.
- */
+/** Owner-CPU unclaim: unbind, clear USED, nr_used-- (not entry memory free). */
 error_t irq_global_free(global_irq_id_t global_irq_id);
 
 #endif /* _RENDEZVOS_IRQ_SPACE_H_ */

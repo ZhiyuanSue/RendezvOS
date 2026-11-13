@@ -62,32 +62,14 @@ void arch_unknown_trap_handler(struct trap_frame *tf)
 
         pr_info("far\t:\t0x%lx\n", tf->FAR);
 }
-void arch_eoi_irq(u64 trap_info)
+void arch_local_eoi(u64 trap_info)
 {
         union irq_source source = {0};
 
-        /* Pack ack payload from trap_info (INTID + SGI source CPU). */
+        /* GICC EOI for local and SPI; chip->eoi is unused on GICv2 SPI. */
         source.irq_id = AARCH64_TRAP_ID_TO_IRQ(TRAP_ID(trap_info));
         source.cpu_id = TRAP_GET_CPU(trap_info);
         gic.eoi(source);
-}
-
-error_t arch_irq_global_enable(global_irq_id_t global_irq_id,
-                               local_irq_id_t local_irq_id, cpu_id_t cpu_id,
-                               enum irq_trigger trigger,
-                               enum irq_polarity polarity)
-{
-        (void)local_irq_id;
-        (void)polarity; /* GIC has no pin polarity like IOAPIC */
-
-        /* global_irq_id is SPI index; driver rejects non-SPI INTIDs. */
-        return gic.enable_spi(
-                gic_spi_intid((u32)global_irq_id), cpu_id, trigger);
-}
-
-error_t arch_irq_global_disable(global_irq_id_t global_irq_id)
-{
-        return gic.disable_spi(gic_spi_intid((u32)global_irq_id));
 }
 
 bool arch_irq_local_pending(local_irq_id_t local_irq_id)

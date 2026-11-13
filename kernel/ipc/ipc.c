@@ -798,7 +798,7 @@ error_t ipc_system_deliver_to(Thread_Base* receiver, Message_t* msg,
                          (u64)NULL,
                          (u64)msg)
             != (u64)NULL) {
-				/* Same as the ipc_system_try_deliver retry */
+                /* Same as the ipc_system_try_deliver retry */
                 return -E_REND_AGAIN;
         }
 

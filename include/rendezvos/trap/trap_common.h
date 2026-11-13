@@ -127,11 +127,10 @@ enum trap_class {
 TRAP_CLASS_U8_BOUNDARY_CHECK;
 
 /**
- * @brief Edge vs level sense for @c irq_global_enable / arch irqchip
- * programming.
+ * @brief Edge vs level sense for @c irq_enable / space ops programming.
  *
- * Lives here (not @c trap.h) so irqchip headers can use it without pulling
- * arch trap or forming include cycles. Arch maps this to chip register bits.
+ * Lives here (not @c trap.h) so controller headers can use it without
+ * pulling arch trap or forming include cycles. Arch maps this to register bits.
  */
 enum irq_trigger {
         IRQ_TRIGGER_EDGE = 0, /**< Edge-triggered. */
@@ -139,9 +138,9 @@ enum irq_trigger {
 };
 
 /**
- * @brief Asserted-level polarity for @c irq_global_enable.
+ * @brief Asserted-level polarity for @c irq_enable.
  *
- * Arch irqchip maps this to pin polarity when applicable; may be ignored
+ * Space ops map this to pin polarity when applicable; may be ignored
  * (e.g. GIC has no IOAPIC-style pin polarity).
  */
 enum irq_polarity {

@@ -2,35 +2,47 @@
 #define _RENDEZVOS_TRAP_H_
 
 /*
- * Trap: exception/IRQ entry, handler install, and global line enable/disable.
+ * Trap: exception/IRQ entry, handler install, and line enable/disable.
  *
  * Who calls whom:
  *
  *              ┌─────────────────────────────────┐
  *              │ trap  (this module)             │
  *              └───────────────┬─────────────────┘
- *                 ┌────────────┴────────────┐
- *                 ▼                         ▼
- *        ┌────────────────┐       ┌─────────────────────────┐
- *        │ irq_space      │◄──────│ arch irqchip            │
- *        └────────────────┘       └─────────────────────────┘
+ *                              ▼
+ *                     ┌────────────────┐
+ *                     │ irq_space      │
+ *                     └───────┬────────┘
+ *                             ▼
+ *                     ┌─────────────────────────┐
+ *                     │ arch controllers        │
+ *                     │ (IOAPIC / GIC SPI / …)  │
+ *                     └─────────────────────────┘
  *
  * Two paths (do not conflate):
  *
- * Delivery — @c trap_handler: vector → irq_space lookup → ISR → EOI.
- * Does not program the irqchip; @c register_irq_handler installs the ISR.
+ * Delivery — @c trap_handler: local id → irq_space lookup → ISR → EOI.
+ * Does not program controllers; @c register_irq_handler installs the ISR.
  *
- * Line control — @c irq_global_enable / @c irq_global_disable:
- *   alloc + register first, then enable (arch programs the chip + unmask).
+ * Line control — @c irq_enable / @c irq_disable (local coordinates):
+ *   alloc + register first, then enable (space->enable programs + unmask).
  *   disable only masks; free is separate (mask before free).
  *   Migrate: disable (the irq's old owner cpu),wait → free → alloc(set irq
  * space record to new owner) → enable(the old owner enable it, not using IPI to
  * let new owner do).
  *
- * This header includes irq_space only — never arch irqchip headers.
+ * This header includes irq_space only — never arch controller headers.
  *
  * @c register_irq_handler needs a concrete @c cpu_id (@c CPU_ID_INVALID
- * forbidden). Global path: caller must be the owning CPU (irq_space rules).
+ * forbidden). Global path / enable / disable use @c irq_global_find(local,
+ * cpu); register also checks the caller is the owner.
+ *
+ * Ownership window (we do not using per-entry refcount to manage the life of
+ * entry): from line @c irq_enable until @c irq_global_free finishes, only the
+ * owner CPU operates that entry (disable/free/register/delivery). Before
+ * enable, other CPUs may update soft state (migrate: old owner alloc then
+ * enable for the new affinity). @c irq_global_free keeps @c irq_handler so
+ * migrate need not re-register.
  */
 
 /* === Migrate Problem !!! ===
@@ -46,9 +58,9 @@
  * And then an I int happens, core A start running the handler function.
  * Then the core B try to change the mapping relationship and set the affinity
  * of I to core B. Fininally, a handler running on core A, and the I's affinity
- * is B. It's unsafe, for example, when the handler try's to send an EOI, it
- * might cannot find the struct arch_global_irq(caused by irq_global_find fail)
- * with the new mapping relationship.
+ * is B. It's unsafe, for example, when the handler try's to irq_global_find in
+ * a trap_handler function, it might cannot find the struct arch_global_irq with
+ * the new mapping relationship.
  *
  * So, why all the migrate ops be done by the old owner can solve the problem?
  * The upper race condition is caused by the affinity is change by the non-owner
@@ -107,12 +119,6 @@
 typedef void (*fixed_trap_handler_t)(struct trap_frame *tf);
 
 /**
- * @brief Arch EOI after a handled IRQ.
- * @param trap_info Packed trap id / source fields from @c trap_frame.
- */
-void arch_eoi_irq(u64 trap_info);
-
-/**
  * @brief Register a fixed-trap handler for @p trap_class on every CPU.
  * @param trap_class Semantic class from @c enum trap_class.
  * @param handler    ISR to install (via @c register_irq_handler).
@@ -142,85 +148,62 @@ void register_irq_handler(local_irq_id_t local_irq_id, cpu_id_t cpu_id,
                           void (*handler)(struct trap_frame *tf), u64 irq_attr);
 
 /**
- * @brief Route a claimed global irq on the irqchip and unmask it.
+ * @brief Route a claimed irq and unmask it via @c entry->space->enable.
  *
- * Expects @c irq_global_alloc and a non-NULL @c irq_handler on
- * @c global_irq_vector[@p global_irq_id]. Loads @c local_irq_id / @c cpu_id
- * from that entry and calls @c arch_irq_global_enable.
+ * Expects @c irq_global_alloc and a non-NULL @c irq_handler. @p local_irq_id
+ * and @p cpu_id are the affinity pair from alloc (caller need not be that
+ * CPU — migrate enables from the old owner).
  *
- * @param global_irq_id Index into @c global_irq_vector.
- * @param trigger       Edge or level.
- * @param polarity      Active high or low (arch may ignore).
+ * @param local_irq_id Delivery id on @p cpu_id.
+ * @param cpu_id       Affinity CPU from alloc (concrete).
+ * @param trigger      Edge or level.
+ * @param polarity     Active high or low (backend may ignore).
  *
  * @return @c REND_SUCCESS on success.
- * @retval -E_IN_PARAM     Bad id / trigger / polarity.
+ * @retval -E_IN_PARAM     Bad ids / trigger / polarity.
  * @retval -E_REND_NOFOUND Not claimed, affinity unset, or no handler.
- * @return Else an error from @c arch_irq_global_enable.
+ * @retval -E_RENDEZVOS    Entry has no space ops.
+ * @return Else an error from @c space->enable.
  */
-error_t irq_global_enable(global_irq_id_t global_irq_id,
-                          enum irq_trigger trigger, enum irq_polarity polarity);
+error_t irq_enable(local_irq_id_t local_irq_id, cpu_id_t cpu_id,
+                   enum irq_trigger trigger, enum irq_polarity polarity);
 
 /**
  * @brief Mask the line then drain local pending; keep the soft claim.
  *
  * Must run on the owning CPU with IRQs enabled (e.g. owner boot thread):
- * USED claim, valid local/cpu, caller is owner (same rule as
- * @c irq_global_free) → @c arch_irq_global_disable → wait while
+ * find by @p local_irq_id on this CPU → @c space->disable → wait while
  * @c arch_irq_local_pending. Use before @c irq_global_free / migrate.
  *
- * Mask-only (Linux-style nosync) is not exported yet; split later if a
- * caller needs disable without waiting.
+ * Mask-only (nosync) is not exported yet; split later if needed.
  *
- * @param global_irq_id Index into @c global_irq_vector.
+ * @param local_irq_id Delivery id on the owning (current) CPU.
  *
  * @return @c REND_SUCCESS on success.
  * @retval -E_IN_PARAM     Bad id or caller is not the recorded owner.
  * @retval -E_REND_NOFOUND Entry not claimed or affinity/local unset.
- * @return Else an error from @c arch_irq_global_disable.
+ * @return Else an error from @c space->disable.
  */
-error_t irq_global_disable(global_irq_id_t global_irq_id);
-
-/**
- * @brief Arch irqchip hook for @c irq_global_enable.
- *
- * Declared here so this header never includes irqchip headers. Drivers
- * should call @c irq_global_enable, not this hook directly.
- *
- * @param global_irq_id Same as @c irq_global_enable.
- * @param local_irq_id  Delivery id from the global entry (arch-defined).
- * @param cpu_id        Destination CPU recorded at alloc.
- * @param trigger       Edge or level.
- * @param polarity      Active high or low (arch may ignore).
- *
- * @return @c REND_SUCCESS or an arch error.
- */
-error_t arch_irq_global_enable(global_irq_id_t global_irq_id,
-                               local_irq_id_t local_irq_id, cpu_id_t cpu_id,
-                               enum irq_trigger trigger,
-                               enum irq_polarity polarity);
-
-/**
- * @brief Arch irqchip hook: mask delivery for @p global_irq_id only.
- *
- * Used by @c irq_global_disable before the local pending drain.
- *
- * @param global_irq_id Same as @c irq_global_disable.
- * @return @c REND_SUCCESS or an arch error.
- */
-error_t arch_irq_global_disable(global_irq_id_t global_irq_id);
+error_t irq_disable(local_irq_id_t local_irq_id);
 
 /**
  * @brief Whether @p local_irq_id may still run a handler on *this* CPU
  *        without unmasking the line again.
  *
- * After @c arch_irq_global_disable, @c irq_global_disable spins while this
- * is true (owner CPU, IRQs enabled).
+ * After @c space->disable, @c irq_disable spins while this is true
+ * (owner CPU, IRQs enabled).
  *
  * @param local_irq_id Delivery id from the global entry (arch-defined:
  *        the same id used for dispatch on this CPU after alloc/map).
  * @return true — keep waiting; false — safe to free/teardown on this CPU.
  */
 bool arch_irq_local_pending(local_irq_id_t local_irq_id);
+
+/**
+ * @brief CPU-interface EOI after a handled IRQ (before optional space eoi).
+ * @param trap_info Packed trap id / source fields from @c trap_frame.
+ */
+void arch_local_eoi(u64 trap_info);
 
 /**
  * @brief Per-CPU interrupt bring-up.
@@ -232,8 +215,8 @@ void init_interrupt(void);
 /**
  * @brief Common trap/IRQ entry after arch decoded @c tf->trap_info.
  *
- * Looks up the ISR in irq_space, runs it, optionally @c arch_eoi_irq, then
- * may @c schedule if the trap came from user context.
+ * Looks up the ISR in irq_space, runs it, optionally @c arch_local_eoi then
+ * optional @c space->eoi, then may @c schedule if from user context.
  *
  * @param tf Trap frame (must have @c trap_info filled).
  */

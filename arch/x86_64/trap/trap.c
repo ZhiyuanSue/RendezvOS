@@ -4,7 +4,6 @@
 #include <arch/x86_64/sys_ctrl_def.h>
 #include <arch/x86_64/power_ctrl.h>
 #include <arch/x86_64/PIC/IRQ.h>
-#include <arch/x86_64/PIC/IOAPIC.h>
 #include <arch/x86_64/PIC/LocalAPIC.h>
 #include <arch/x86_64/trap/tss.h>
 #include <modules/log/log.h>
@@ -90,61 +89,14 @@ void arch_unknown_trap_handler(struct trap_frame *tf)
         pr_info("r15\t:\t0x%lx\n", tf->r15);
 }
 
-void arch_eoi_irq(u64 trap_info)
+void arch_local_eoi(u64 trap_info)
 {
+        /* CPU-local EOI; chip->eoi may follow for IOAPIC directed EOI. */
         if (arch_irq_type == PIC_IRQ) {
                 PIC_EOI(TRAP_ID(trap_info));
         } else if (arch_irq_type == xAPIC_IRQ || arch_irq_type == x2APIC_IRQ) {
                 APIC_EOI();
-                local_irq_id_t irq_id = TRAP_ID(trap_info);
-                if (!irq_trap_is_local(irq_id)) {
-                        struct arch_global_irq *entry = irq_global_find(
-                                (local_irq_id_t)irq_id, CPU_ID_INVALID);
-
-                        if (entry && entry->ioapic)
-                                ioapic_eoi(entry->ioapic, (u8)irq_id);
-                }
         }
-}
-
-error_t arch_irq_global_enable(global_irq_id_t global_irq_id,
-                               local_irq_id_t local_irq_id, cpu_id_t cpu_id,
-                               enum irq_trigger trigger,
-                               enum irq_polarity polarity)
-{
-        if (arch_irq_type != xAPIC_IRQ && arch_irq_type != x2APIC_IRQ)
-                return -E_RENDEZVOS;
-        if (local_irq_id > (local_irq_id_t)0xFFu
-            || cpu_id >= (cpu_id_t)RENDEZVOS_MAX_CPU_NUMBER)
-                return -E_IN_PARAM;
-
-        gsi_id_t gsi = (gsi_id_t)global_irq_id;
-        u32 trigger_mode = (trigger == IRQ_TRIGGER_LEVEL) ?
-                                   IOAPIC_TRIGGER_MODE_LEVEL :
-                                   IOAPIC_TRIGGER_MODE_EDGE;
-        u32 pin_polarity = (polarity == IRQ_POLARITY_ACTIVE_LOW) ?
-                                   IOAPIC_PIN_POLARITY_LOW :
-                                   IOAPIC_PIN_POLARITY_HIGH;
-        /*
-         * v0.1 device path: Fixed + physical;
-         */
-        error_t e = ioapic_configure_rte(gsi,
-                                         (u8)local_irq_id,
-                                         (u8)cpu_id,
-                                         IOAPIC_DELIVERY_MODE_FIXED,
-                                         IOAPIC_DEST_PHYSICAL,
-                                         trigger_mode,
-                                         pin_polarity);
-        if (e != REND_SUCCESS)
-                return e;
-        return ioapic_change_mask(gsi, false);
-}
-
-error_t arch_irq_global_disable(global_irq_id_t global_irq_id)
-{
-        if (arch_irq_type != xAPIC_IRQ && arch_irq_type != x2APIC_IRQ)
-                return -E_RENDEZVOS;
-        return ioapic_change_mask((gsi_id_t)global_irq_id, true);
 }
 
 bool arch_irq_local_pending(local_irq_id_t local_irq_id)

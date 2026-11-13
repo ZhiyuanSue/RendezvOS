@@ -266,7 +266,7 @@ error_t arch_start_platform(struct setup_info *arch_setup_info)
         if (e != REND_SUCCESS)
                 return e;
         gic.init_distributor();
-        return irq_global_vector_alloc(gic.nr_spi());
+        return irq_space_gic_spi_register(gic.nr_spi());
 }
 /*
  * @brief the arch_start_core function is used for each core start,

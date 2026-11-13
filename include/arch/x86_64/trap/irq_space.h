@@ -9,41 +9,27 @@
  * x86_64 irq_space: software local/global ids and the per-CPU map.
  * Implementation: @c arch/x86_64/trap/irq_space.c.
  *
- * This header must not include PIC/irqchip headers (IOAPIC, etc.): it only
- * describes software numbering. On x86, global_irq_id equals @c gsi_id_t
- * (@c arch/x86_64/PIC/gsi.h); chip/ISO/RTE stay under PIC/.
+ * This header must not include PIC/controller headers (IOAPIC, etc.): it only
+ * describes software numbering. On x86, today's IOAPIC space uses
+ * global_irq_id == GSI with base 0; hardware programming uses entry fields.
  *
  * LOCAL:  [0, ALLOC_LO) — exceptions + APIC LVT/IPI (in local_irq_vector[]).
- * GLOBAL: one slot per global_irq_id; local_irq_id → global_irq_id via the
+ * GLOBAL: per-space entry tables; local_irq_id → global_irq_id via the
  *         per-CPU map below. IDT width is @c NR_IDT_VECTORS (256).
  *
  * Each CPU shares the same local_irq_id number line. Low ids are real local
- * slots; high ids are virtual and map into the shared global_irq_vector[].
+ * slots; high ids are virtual and map into a registered space's entries[].
  *
  *   CPU0 local_irq_vector[] (real, private)     virtual ids (not in local)
  *   +-----+-----+-----+-----+                   +-----+-------+-----+
  *   |  0  |  1  | ... |LO-1 |                   | LO  | LO+1  | ... |
  *   +-----+-----+-----+-----+                   +--+--+--+----+-----+
- *                                                  |     |
- *                                                  |     +-----> (unmapped)
- *                                                  v
- *   CPU1 local_irq_vector[] (real, private)     virtual ids
- *   +-----+-----+-----+-----+                   +-----+-------+-----+
- *   |  0  |  1  | ... |LO-1 |                   | LO  | LO+1  | ... |
- *   +-----+-----+-----+-----+                   +--+--+--+----+-----+
  *                                                  |
  *                                                  v
- *                    shared global_irq_vector[] (real, machine-wide)
- *                    +------+------+-----+------+-----+-------+
- *                    | g[0] | g[1] | ... | g[j] | ... | g[k]  | ...
- *                    +------+------+-----+--+---+-----+--+----+
- *                                          ^             ^
- *                                          |             |
- *                               CPU0 LO ---+             |
- *                               CPU1 LO -----------------+
+ *                    irq_space (e.g. IOAPIC) entries[] by global_irq_id
  *
- * Same virtual id LO on CPU0 and CPU1 can map to different g[i].
- * LO = ARCH_IRQ_ID_ALLOC_LO; g[i] = global_irq_vector[i].
+ * Same virtual id LO on CPU0 and CPU1 can map to different global ids.
+ * LO = ARCH_IRQ_ID_ALLOC_LO.
  */
 #define ARCH_IRQ_ID_TIMER    0x20u
 #define ARCH_IRQ_ID_SPURIOUS 0x27u
@@ -60,23 +46,35 @@
 struct ioapic;
 
 /**
- * Arch global external irq entry. Index is @c global_irq_id (== GSI).
- * Dispatch: local_irq_id → per-CPU map → @c global_irq_vector[global_irq_id].
- * @c ioapic / @c pin filled by @c ioapic_init (not by this module) . @c ioapic
- * points into the MADT-allocated @c ioapics[] (stable for the boot lifetime).
+ * Arch global external irq entry. @c global_irq_id is the machine-wide id
+ * (IOAPIC space: GSI). @c ioapic caches the chip for EOI; GSI for
+ * enable/disable is the entry index in @c space->priv (+ base).
+ * Dispatch: local_irq_id → per-CPU map → space entry.
+ * Topology filled by @c irq_space_ioapic_register.
  */
 struct arch_global_irq {
         GLOBAL_IRQ_COMMON
-        struct ioapic *ioapic;
-        u8 pin;
+        struct ioapic *ioapic; /* EOI hot path; NULL if GSI unbound at init */
 };
 
 /*
- * Per-CPU map @c local_irq_map[] (u64, CAS): local_irq_id → global_irq_id+1
- * (0 = not mapped). Alloc: CAS irq_attr on the chosen global_irq_id, then
- * CAS this map on cpu_id only. @c arch_choose_local_irq_id scans
- * [ALLOC_LO, ALLOC_HI] for a free id.
- * Implementation: @c arch/x86_64/trap/irq_space.c.
+ * Shared IDT delivery helpers for all x86 spaces (IOAPIC / MSI / …).
+ * Implementation: @c arch/x86_64/trap/irq_space.c (per-CPU map of entry *).
+ * Hot find: @c arch_irq_entry_from_local.
+ *
+ * Per-controller space bring-up lives elsewhere, e.g.
+ * @c irq_space_ioapic.c — not in this file (MSI will get its own).
  */
+struct arch_global_irq *arch_irq_entry_from_local(cpu_id_t cpu_id,
+                                                  local_irq_id_t local_irq_id);
+local_irq_id_t arch_irq_space_choose_local(struct irq_space *space,
+                                           global_irq_id_t global_irq_id,
+                                           cpu_id_t cpu_id);
+bool arch_irq_space_bind_local(struct irq_space *space, cpu_id_t cpu_id,
+                               local_irq_id_t local_irq_id,
+                               struct arch_global_irq *entry);
+
+/** Register the IOAPIC GSI irq_space (after @c ioapic probe). */
+error_t irq_space_ioapic_register(void);
 
 #endif /* _RENDEZVOS_X86_64_IRQ_SPACE_H_ */

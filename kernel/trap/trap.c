@@ -7,42 +7,37 @@
 
 extern Task_Manager *core_tm;
 
-error_t irq_global_enable(global_irq_id_t global_irq_id,
-                          enum irq_trigger trigger, enum irq_polarity polarity)
+error_t irq_enable(local_irq_id_t local_irq_id, cpu_id_t cpu_id,
+                   enum irq_trigger trigger, enum irq_polarity polarity)
 {
-        if (global_irq_id >= (global_irq_id_t)nr_global_irq)
-                return -E_IN_PARAM;
+        struct arch_global_irq *entry;
+
         if (trigger != IRQ_TRIGGER_EDGE && trigger != IRQ_TRIGGER_LEVEL)
                 return -E_IN_PARAM;
         if (polarity != IRQ_POLARITY_ACTIVE_HIGH
             && polarity != IRQ_POLARITY_ACTIVE_LOW)
                 return -E_IN_PARAM;
-        struct arch_global_irq *entry = &global_irq_vector[global_irq_id];
-        if (!irq_atomic_attr_is_used(&entry->irq_attr)
-            || entry->local_irq_id == IRQ_LOCAL_ID_INVALID
-            || entry->cpu_id == CPU_ID_INVALID || !entry->irq_handler)
+        error_t e = irq_global_find(local_irq_id, cpu_id, &entry);
+        if (e != REND_SUCCESS)
+                return e;
+        if (!entry->irq_handler)
                 return -E_REND_NOFOUND;
-        return arch_irq_global_enable(global_irq_id,
-                                      entry->local_irq_id,
-                                      entry->cpu_id,
-                                      trigger,
-                                      polarity);
+        if (!entry->space || !entry->space->enable)
+                return -E_RENDEZVOS;
+        return entry->space->enable(entry, trigger, polarity);
 }
 
-error_t irq_global_disable(global_irq_id_t global_irq_id)
+error_t irq_disable(local_irq_id_t local_irq_id)
 {
-        if (global_irq_id >= (global_irq_id_t)nr_global_irq)
-                return -E_IN_PARAM;
-        struct arch_global_irq *entry = &global_irq_vector[global_irq_id];
-        if (!irq_atomic_attr_is_used(&entry->irq_attr)
-            || entry->local_irq_id == IRQ_LOCAL_ID_INVALID
-            || entry->cpu_id >= (cpu_id_t)RENDEZVOS_MAX_CPU_NUMBER)
-                return -E_REND_NOFOUND;
-        /* Same owner rule. */
-        if (percpu(cpu_number) != entry->cpu_id)
-                return -E_IN_PARAM;
+        struct arch_global_irq *entry;
 
-        error_t e = arch_irq_global_disable(global_irq_id);
+        error_t e = irq_global_find(local_irq_id, CPU_ID_INVALID, &entry);
+        if (e != REND_SUCCESS)
+                return e;
+        if (!entry->space || !entry->space->disable)
+                return -E_RENDEZVOS;
+
+        e = entry->space->disable(entry);
         if (e != REND_SUCCESS)
                 return e;
         /** Do not change the following comments:
@@ -61,38 +56,38 @@ error_t irq_global_disable(global_irq_id_t global_irq_id)
 void register_irq_handler(local_irq_id_t local_irq_id, cpu_id_t cpu_id,
                           void (*handler)(struct trap_frame *tf), u64 irq_attr)
 {
-        if (cpu_id >= (cpu_id_t)RENDEZVOS_MAX_CPU_NUMBER) {
-                pr_error("[trap] register_irq_handler: bad cpu %u\n",
-                         (u32)cpu_id);
-                return;
-        }
-
         if (irq_trap_is_local(local_irq_id)) {
                 struct local_irq *local_entry =
-                        &per_cpu(local_irq_vector[local_irq_id], cpu_id);
+                        irq_local_find(local_irq_id, cpu_id);
+                if (!local_entry) {
+                        pr_error(
+                                "[trap] register_irq_handler: local_irq_id %zu cpu %u find failed\n",
+                                local_irq_id,
+                                (u32)cpu_id);
+                        return;
+                }
                 local_entry->irq_handler = handler;
                 local_entry->irq_attr = irq_attr_set_used(irq_attr);
         } else {
-                /*
-                 * Global path: after irq_global_alloc, only the owning CPU
-                 * may install or replace the handler (same rule as free).
-                 */
-                if (percpu(cpu_number) != cpu_id) {
+                struct arch_global_irq *global_entry;
+                error_t e;
+
+                if (cpu_id == CPU_ID_INVALID
+                    || percpu(cpu_number) != cpu_id) {
                         pr_error(
-                                "[trap] register_irq_handler: global local_irq_id %zu cpu %u not owner (caller cpu %u)\n",
+                                "[trap] register_irq_handler: local_irq_id %zu cpu %u not owner (caller cpu %u)\n",
                                 local_irq_id,
                                 (u32)cpu_id,
                                 (u32)percpu(cpu_number));
                         return;
                 }
-
-                struct arch_global_irq *global_entry =
-                        irq_global_find(local_irq_id, cpu_id);
-                if (!global_entry) {
+                e = irq_global_find(local_irq_id, cpu_id, &global_entry);
+                if (e != REND_SUCCESS) {
                         pr_error(
-                                "[trap] register_irq_handler: local_irq_id %zu cpu %u not allocated\n",
+                                "[trap] register_irq_handler: local_irq_id %zu cpu %u find failed (%d)\n",
                                 local_irq_id,
-                                (u32)cpu_id);
+                                (u32)cpu_id,
+                                (int)e);
                         return;
                 }
                 global_entry->irq_handler = handler;
@@ -106,15 +101,19 @@ void trap_handler(struct trap_frame *tf)
         local_irq_id_t local_irq_id = (local_irq_id_t)TRAP_ID((tf->trap_info));
         void (*handler)(struct trap_frame *) = NULL;
         u64 attr = IRQ_NO_ATTR;
+        struct arch_global_irq *global_entry = NULL;
 
         if (irq_trap_is_local(local_irq_id)) {
-                handler = percpu(local_irq_vector[local_irq_id].irq_handler);
-                attr = percpu(local_irq_vector[local_irq_id].irq_attr);
-        } else {
-                struct arch_global_irq *global_entry =
-                        irq_global_find(local_irq_id, CPU_ID_INVALID);
+                struct local_irq *local_entry =
+                        irq_local_find(local_irq_id, CPU_ID_INVALID);
 
-                if (global_entry) {
+                if (local_entry) {
+                        handler = local_entry->irq_handler;
+                        attr = local_entry->irq_attr;
+                }
+        } else {
+                if (irq_global_find(local_irq_id, CPU_ID_INVALID, &global_entry)
+                    == REND_SUCCESS) {
                         handler = global_entry->irq_handler;
                         attr = irq_atomic_attr_load(&global_entry->irq_attr);
                 }
@@ -126,8 +125,12 @@ void trap_handler(struct trap_frame *tf)
                 arch_unknown_trap_handler(tf);
                 kernel_panic("Unhandled trap: unknown IRQ");
         }
-        if (irq_attr_need_eoi(attr))
-                arch_eoi_irq(tf->trap_info);
+        if (irq_attr_need_eoi(attr)) {
+                arch_local_eoi(tf->trap_info);
+                if (global_entry && global_entry->space
+                    && global_entry->space->eoi)
+                        global_entry->space->eoi(global_entry, tf->trap_info);
+        }
         if (!arch_int_from_kernel(tf) && percpu(core_tm))
                 schedule(percpu(core_tm));
 }
