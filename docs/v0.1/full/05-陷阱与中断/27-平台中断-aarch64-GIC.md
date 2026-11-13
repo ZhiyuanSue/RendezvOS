@@ -32,10 +32,10 @@ GICv2 两块：**GICD（Distributor，全局一份）** 负责 SPI 配置 / 路�
 
 1. **先 `set_vbar_el1`**，IRQ 槽指向 `el*_trap_entry`；否则开中断即崩溃。
 2. **进 IRQ 入口后必须读 IAR**（`gic.read_irq_num`）才能知道 INTID——只靠 VBAR 偏移不够。
-3. 软件侧 `local_irq_id` 必须 = `intid+64`，且已 `register_irq_handler`（设备 SPI：先 `irq_global_alloc`，再 register，再 `irq_global_enable`，见 `25`）。
+3. 软件侧 `local_irq_id` 必须 = `intid+64`，且已 `register_irq_handler`（设备 SPI：先 `irq_global_alloc`，再 register，再 `irq_enable`，见 `25`）。
 4. **处理完必须 EOI**（`GICC_EOIR`）；漏 EOI 则同 INTID 可能卡在 active。
 5. **GIC 寄存器必须 DEVICE 属性映射**（`gic_v2_bind` 内 map）——普通缓存页会导致 MMIO 乱序 / 丢失。
-6. **SPI 默认全 mask**；SGI+PPI 在 CPU IF init 时全 unmask——timer / IPI 才能响；外设 SPI 经 `irq_global_enable` → `enable_spi` 打开。
+6. **SPI 默认全 mask**；SGI+PPI 在 CPU IF init 时全 unmask——timer / IPI 才能响；外设 SPI 经 `irq_enable` → `enable_spi` 打开。
 
 ---
 
@@ -53,7 +53,7 @@ GICv2 两块：**GICD（Distributor，全局一份）** 负责 SPI 配置 / 路�
 
 **每核** — `init_interrupt`（VBAR + **立刻 enable IRQ**）之后 `gic.init_cpu_interface`，再注册 IPI / timer。
 
-**驱动** — `irq_global_alloc` + `register_irq_handler` 后经 trap `irq_global_enable` → `gic.enable_spi(intid, cpu_id, trigger)`（亲和/触发在驱动内）；勿把手写 EC 当设备号。
+**驱动** — `irq_global_alloc` + `register_irq_handler` 后经 trap `irq_enable` → `gic.enable_spi(intid, cpu_id, trigger)`（亲和/触发在驱动内）；勿把手写 EC 当设备号。
 
 ---
 
@@ -325,11 +325,11 @@ VBAR IRQ → get_curr_el_trap_info
   source = gic.read_irq_num()          // 读 IAR
   tf->trap_info = TRAP_SET_CPU(intid + 64, CPUID)
 → trap_handler → ISR
-→ NEED_EOI → arch_eoi_irq
+→ NEED_EOI → arch_local_eoi
   从 TRAP_ID / TRAP_GET_CPU 还原 irq_source → gic.eoi  // 写 EOIR
 ```
 
-IRQ 路径用 `TRAP_SET_CPU` 把 **INTID(+64)** 与 **IAR.CPUID** 一并写入 `trap_info`（`AARCH64_TRAP_CPU_*` 与 IAR 同布局）；`arch_eoi_irq` 再还原后写 EOIR，满足 SGI 对源 CPU ID 的要求。
+IRQ 路径用 `TRAP_SET_CPU` 把 **INTID(+64)** 与 **IAR.CPUID** 一并写入 `trap_info`（`AARCH64_TRAP_CPU_*` 与 IAR 同布局）；`arch_local_eoi` 再还原后写 EOIR，满足 SGI 对源 CPU ID 的要求。
 
 ### 5.3 `init_cpu_interface` 在做什么
 
@@ -354,7 +354,7 @@ GICD 开 **Group0**、GICC 开 **「Group1」** 宏位——在**无 Security �
 
 | 问题 | x86 Local APIC | GICv2 |
 |------|----------------|-------|
-| 板级外设怎么进核 | IOAPIC → LAPIC（本仓库 RTE/`irq_global_enable`/定向 EOI 已接；ISO/MSI/设备接线未做） | GICD 配 SPI + ITARGETSR，再投到各核 GICC |
+| 板级外设怎么进核 | IOAPIC → LAPIC（本仓库 RTE/`irq_enable`/定向 EOI 已接；ISO/MSI/设备接线未做） | GICD 配 SPI + ITARGETSR，再投到各核 GICC |
 | 核间门铃 | ICR（向量号） | GICD_SGIR（SGI 号 + filter） |
 | 应答 | 向量已在 IDT 投递里；软件写 EOI=0 | **必须读 IAR** 才知道 INTID |
 | 结束 | EOI 清最高 ISR | EOIR 写回 INTID[+CPUID] |
@@ -383,11 +383,11 @@ GICv2 最多按 8 个 core 来理解 SGI 的 CPUID 字段；同一 SGI 号可以
 |------|-------|---------|
 | IPI | SGI **0** | **64**（本地区间） |
 | Timer | DTB ns-phys PPI（virt 常 **30**） | `arch_get_timer_irq_num`（常 **94**，本地区间） |
-| 设备 SPI | SPI 32–1019 | 96 起（本核表外；公式进 `global_irq_vector[]`，见 `25`） |
+| 设备 SPI | SPI 32–1019 | 96 起（本核表外；公式进 SPI space `priv[]`，见 `25`） |
 
 ### 6.2 全局 `gic`（`struct gic_chip`）
 
-版本无关 ops（`enable_spi` / `disable_spi` / EOI / `line_pending_on_cpu` / …）。各版本用 **静态完整 chip 表**（如 `gic_v2_chip`）在 `bind` 成功时整表装入 `gic`；`gic_probe` 只认 bind 成败，不再维护 ops checklist。MMIO 指针留在各版本驱动私有状态。映射属性：**DEVICE**。
+版本无关 ops（`enable_spi` / `disable_spi` / EOI / `intid_is_pending` / …）。各版本用 **静态完整 chip 表**（如 `gic_v2_chip`）在 `bind` 成功时整表装入 `gic`；`gic_probe` 只认 bind 成败，不再维护 ops checklist。MMIO 指针留在各版本驱动私有状态。映射属性：**DEVICE**。
 
 ### 6.3 `compatible`（`gic_probe` 表）
 
@@ -402,7 +402,8 @@ GICv2 最多按 8 个 core 来理解 SGI 的 CPUID 字段；同一 SGI 号可以
 | `gic.h` / `gic.c` | `struct gic_chip`、DT compatible 表、`gic_probe` |
 | `gic_v2.c` / `.h` | MMIO、`gic_v2_bind`、dist / CPU IF、`enable_spi`（ITARGETSR） |
 | `gic_v3.c` / `.h` | 未实现：匹配后返回失败 |
-| `arch/.../trap/trap.c` | IAR → `local_irq_id`；`arch_eoi_irq`；`enable_spi`/`disable_spi`；`arch_irq_local_pending` → `line_pending_on_cpu` |
+| `arch/.../trap/trap.c` | IAR → `local_irq_id`；`arch_local_eoi`；`arch_irq_local_pending` → `gic.intid_is_pending` |
+| `arch/.../trap/irq_space_gic_spi.c` | SPI space；`enable`/`disable` → `gic.enable_spi`/`disable_spi`；公式 `from_local` |
 | `generic_time.c` | arch timer（CNTP_*）+ 消费 PPI 线 |
 | `arch_smp_ipi` | SGI0 |
 
@@ -435,7 +436,7 @@ x86 是先配控制器再 `sti`；aarch64 **先开 IRQ 再配 GICC**——启动
   → 读 GICC_IAR → INTID[+CPUID]
   → trap_info = TRAP_SET_CPU(INTID+64, CPUID)   // SGI EOI 需要 CPUID
   → trap_handler → ISR
-  → arch_eoi_irq → 还原后写 GICC_EOIR
+  → arch_local_eoi → 还原后写 GICC_EOIR
   → 用户来源则 schedule → eret
 ```
 
@@ -451,9 +452,9 @@ Generic timer 在 EL1 编程 **CNTP_***（non-secure physical）；到期拉高 
 
 本篇涉及的接口分布在：`gic.h` 的 `struct gic_chip gic` + `gic_probe`；GICv2 经 `gic_v2_bind` 绑定。trap 不 include `gic_v2.h`。`gic_v3` 仅 DT 识别 + 失败。
 
-**本篇不涉及：** `irq_global_*` / `register_irq_handler` / `trap_handler`（见 `25`）；`arch_eoi_irq` / `get_curr_el_trap_info` 约定（见 `25`/`23`）；软 IPI 协议（见 `30`）；DTB 解析（见 `36`）；可移植 timer（见 `33`）。
+**本篇不涉及：** `irq_global_*` / `register_irq_handler` / `trap_handler`（见 `25`）；`arch_local_eoi` / `get_curr_el_trap_info` 约定（见 `25`/`23`）；软 IPI 协议（见 `30`）；DTB 解析（见 `36`）；可移植 timer（见 `33`）。
 
-上层设备：按 `25` 完成 alloc + register 后走 **`irq_global_enable` → `arch_irq_global_enable` → `gic.enable_spi`**。
+上层设备：按 `25` 完成 alloc + register 后走 **`irq_enable` → SPI `space->enable` → `gic.enable_spi`**。
 
 ### 9.1 编排顺序（调用方须遵守）
 
@@ -461,7 +462,7 @@ Generic timer 在 EL1 编程 **CNTP_***（non-secure physical）；到期拉高 
 |------|------|
 | BSP 平台一次 | DTB 就绪后 **`gic_probe()`**，再 **`gic.init_distributor`**（另有 `psci_init`，见 `39`） |
 | 每核 | **`init_interrupt`**（VBAR + **已 enable IRQ**）之后 **`gic.init_cpu_interface`**，再 `smp_ipi_init`、`rendezvos_time_init` |
-| 设备 SPI | `irq_global_alloc` → `register_irq_handler` → **`irq_global_enable`**（内部 `gic.enable_spi`） |
+| 设备 SPI | `irq_global_alloc` → `register_irq_handler` → **`irq_enable`**（内部 `gic.enable_spi`） |
 | IRQ 运行时 | VBAR 入口读 `read_irq_num`(IAR)，得 `local_irq_id=intid+64`，调 handler，最后 **`eoi`(EOIR)** |
 
 与 x86 相反：本平台 **先开 IRQ 再配 GICC**（启动窗口，见 §8.2）。
@@ -498,7 +499,7 @@ union irq_source gic.read_irq_num(void);
 gic.eoi(union irq_source);
 gic.pending_clr(u32 intid);
 u32 gic.nr_spi(void);
-bool gic.line_pending_on_cpu(u32 intid);
+bool gic.intid_is_pending(u32 intid);
 ```
 
 | 接口 | 说明 |
@@ -511,13 +512,13 @@ bool gic.line_pending_on_cpu(u32 intid);
 | `set_priority` | 写 INTID 优先级（数值越小越高）；与 enable 正交。 |
 | `send_sgi` | GICv2 写 SGIR；参数仍为 v2 字段（软 IPI 用 SGI **0**，见 `30`）。 |
 | `read_irq_num` / `eoi` | IAR / EOIR。 |
-| `line_pending_on_cpu` | 供 `arch_irq_local_pending`：mask 后是否仍可能进 handler。GICv2：Active；仍 enable 时才看 Pending（已 mask 的 ISPENDR 不空转）。见 `25` §1.7。 |
+| `intid_is_pending` | 供 `arch_irq_local_pending`：mask 后是否仍可能进 handler。GICv2：Active；仍 enable 时才看 Pending（已 mask 的 ISPENDR 不空转）。见 `25` §1.7。 |
 
 ### 9.4 驱动 checklist（SPI）
 
 1. `irq_global_alloc(global_irq_id /* SPI index */, cpu_id, &local_irq_id)`。
 2. `register_irq_handler(local_irq_id, cpu_id, isr, IRQ_NEED_EOI)`。
-3. `irq_global_enable(...)` → `gic.enable_spi`。
+3. `irq_enable(...)` → `gic.enable_spi`。
 4. EOI 交给 `trap_handler`；勿在 ISR 内自行 `gic.eoi`，除非明确绕过 `IRQ_NEED_EOI`。
 
 ---
@@ -550,7 +551,8 @@ bool gic.line_pending_on_cpu(u32 intid);
 
 ## 13. 变更记录
 
-- 2026-11-07：`gic_v2_chip` 静态整表；删 `gic_ops_complete`；新增 `line_pending_on_cpu`（sync `irq_global_disable` / `arch_irq_local_pending`）。
+- 2026-11-13：对齐 irq_space——`arch_local_eoi`；线控经 SPI space ops；`intid_is_pending`；SPI entry 不缓存 intid；`gic_spi_space` 为投递旁路非 ref（见 `25` §1.8）。
+- 2026-11-07：`gic_v2_chip` 静态整表；删 `gic_ops_complete`；新增 `line_pending_on_cpu`（sync `irq_disable` / `arch_irq_local_pending`）。
 - 2026-11-02：驱动绑定改名 `gic_v2_bind` / `gic_v3_bind`（原 setup）；与 `gic_probe`、`init_*` 三层对齐。
 - 2026-11-02：`set_priority` 回到 `gic_chip`；删公开 `gic_ready`（probe 失败即停，热路径直接调 ops）。
 - 2026-11-01：删 `enum gic_irq_trigger`；`enable_spi` 直接收 `enum irq_trigger`（`trap_common.h`）；仅在 `gic_v2` 内译成 `GIC_V2_GICD_*_TRIGGER`。

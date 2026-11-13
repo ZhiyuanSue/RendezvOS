@@ -66,7 +66,6 @@ error_t free_irq_space_ref(ref_count_t *ref_count_ptr)
                 return -E_RENDEZVOS;
         if (space->destroy_priv)
                 space->destroy_priv(space);
-        space->priv = NULL;
         cpu_kallocator->m_free(cpu_kallocator, space);
         return REND_SUCCESS;
 }

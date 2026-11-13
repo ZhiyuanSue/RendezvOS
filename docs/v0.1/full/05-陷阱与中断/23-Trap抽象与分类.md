@@ -23,7 +23,7 @@ IRQ 软件编号空间（`irq_space`：两套 id、占有/释放）与分发衔�
 
 若上层硬编码「向量 14 / EC 0x24」，每加一架构就要产生一次分裂。
 
-汇编只建 `trap_frame*`；语义用 `trap_class`；分发见 `25`（`local_irq_vector[]` / `global_irq_vector[]`）。
+汇编只建 `trap_frame*`；语义用 `trap_class`；分发见 `25`（`local_irq_vector[]` / space `priv[]`）。
 
 历史动机（仍成立）：先有 x86 固定 IDT 数组外形；迁 aarch64 时**不改「数组分发」**，把 EC 放入前 64 槽、IRQ 偏移 +64——**假统一、真映射**。本篇必须讲清这条链，不能只列 API。
 
@@ -73,11 +73,11 @@ struct local_irq { /* per-CPU；local_irq_id < NR_ARCH_LOCAL_IRQ */
         void (*irq_handler)(struct trap_frame *tf);
         u64 irq_attr;  /* IRQ_ATTR_USED, IRQ_NEED_EOI, … */
 };
-/* arch_global_irq：共享 global_irq_vector[]；≥LO 经 arch map 进入 */
+/* arch_global_irq：space priv[]；≥LO 经 map(x86)/公式(aarch64) 进入 */
 ```
 
 - x86：本核表到 `ARCH_IRQ_ID_ALLOC_LO`；IDT 全宽 256，更高编号不进本核表、须 map。
-- aarch64：**`[0, ALLOC_LO)` = EC+SGI+PPI**；SPI 不进本核表，公式映到 `global_irq_vector[]`。
+- aarch64：**`[0, ALLOC_LO)` = EC+SGI+PPI**；SPI 不进本核表，公式映到 SPI space `priv[]`（`gic_spi_space`）。
 
 ### 4.4 两级注册（同一 `local_irq_id` 互斥，后写覆盖）
 
@@ -95,7 +95,7 @@ struct local_irq { /* per-CPU；local_irq_id < NR_ARCH_LOCAL_IRQ */
 查 local / global（`TRAP_ID` → `local_irq_id`，见 `25`）
   有 handler → 调用
   无 → arch_unknown_trap_handler + kernel_panic
-若 NEED_EOI → arch_eoi_irq(...)
+若 NEED_EOI → arch_local_eoi(...) [→ space->eoi]
 若 !arch_int_from_kernel(tf) && core_tm → schedule(core_tm)
 ```
 
@@ -121,7 +121,7 @@ struct local_irq { /* per-CPU；local_irq_id < NR_ARCH_LOCAL_IRQ */
 |------|------|
 | `trap_common.h` / `trap/trap.h` | class、TRAP_COMMON、`irq_trigger`/`irq_polarity`、公开 API |
 | `kernel/trap/trap.c` | `trap_handler`、`register_irq_handler`、EOI、schedule（id 表见 `irq_space.c`） |
-| `kernel/trap/irq_space.c` | `local_irq_vector` / `global_irq_vector`、`irq_global_*` |
+| `kernel/trap/irq_space.c` | `local_irq_vector`、space registry、`irq_global_*` |
 | `arch/x86_64/trap/*` | IDT、`x86_trap_class_map`、populate、`trap_vec.S`、**`tss.c`** |
 | `arch/x86_64/trap/kernel_entry.S` | **syscall MSR 旁路** |
 | `arch/aarch64/trap/*` | VBAR 16 槽、`trap_vec.S`、EC 映射、GIC 读号 |
@@ -393,7 +393,7 @@ EC 映射：`0x20/21/24/25` 对应 `PAGE_FAULT`（DFSC `0x21` 在 populate 可�
 
 本篇涉及的接口分布在：语义分类与 fixed 注册——`enum trap_class`、`TRAP_COMMON` / `*_trap_info`、`fixed_trap_handler_t`、`arch_register_fixed_trap`、`arch_populate_trap_info`、`arch_get_fault_addr`、`arch_int_from_kernel`。说明改写自 `trap_common.h` / `trap.h` / `arch/*/trap/trap.h` Doxygen（已与 `arch/*/trap/trap.c` 核对）。
 
-**本篇不涉及：** `trap_handler` / `init_interrupt` / `register_irq_handler` / `irq_global_*` / `arch_eoi_irq`（见 `25`）；syscall ABI / 弱符号 / LSTAR（见 `24`）。
+**本篇不涉及：** `trap_handler` / `init_interrupt` / `register_irq_handler` / `irq_global_*` / `arch_local_eoi`（见 `25`）；syscall ABI / 弱符号 / LSTAR（见 `24`）。
 
 签名注意：`arch_register_fixed_trap` 返回 **`void`**（非法 class 静默 return），不是 `error_t`。
 
@@ -488,6 +488,8 @@ bool arch_int_from_kernel(struct trap_frame *tf);
 
 ## 11. 变更记录
 
+- 2026-11-13：对齐 irq_space——去掉 `global_irq_vector` 表述；EOI 可接 `space->eoi`。
+- 2026-11-13：正文 EOI 名与代码对齐为 `arch_local_eoi`。
 - 2026-10-05：修正 §6.4 EC 表 SError 条目——`0b000111`（0x07）实为 FP/AdvSIMD 访问陷阱（→`FP_FAULT`），非 SError；SError 的 EC 是 `0b001111`（0x0f，from lower EL）与 `0b101111`（0x2f，interrupt），均映射 `ASYNC_ABORT`。原表两处 `0b000111 SError`（一写 `UNKNOWN/panic`、一写 `ASYNC_ABORT`）系 EC 值写错 + VBAR 路由（`unexpected_trap`→panic）与 EC 映射（`ASYNC_ABORT`）混列；现拆清：FP 访问陷阱单列，SError 两 EC 合并并注明 VBAR 当前接 `unexpected_trap`。速记同步。
 - 2026-10-04：补 x86 IDT 门描述符位布局图（Task/Interrupt/Trap Gate、DPL、IST 字段）；补 aarch64 ESR_ELx 寄存器位布局与 EC 值对照表；补同步异常 vs 异步中断分类总图；「塞进/碰到/本篇拥有」改地道中文（放入/匹配到/本篇涉及的接口分布在）。
 - 2026-10-02：补 x86 Fault/Trap/Abort 返回 RIP；IST 用意与为何未用；aarch64 异常入口序列与 ELR（async/sync/SVC）规则；IRQ 路径注明 `TRAP_SET_CPU`；§6.6 双侧速查。

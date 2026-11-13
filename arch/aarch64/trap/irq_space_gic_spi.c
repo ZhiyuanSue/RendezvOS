@@ -145,10 +145,10 @@ error_t irq_space_gic_spi_register(size_t nr_spi)
         space->eoi = NULL;
         space->destroy_priv = gic_spi_space_destroy_priv;
 
-        for (int i = 0; i < nr_spi; i++)
+        for (size_t i = 0; i < nr_spi; i++)
                 irq_global_entry_common_init(&entries[i], space);
 
-		error_t e = irq_space_register(space);
+        error_t e = irq_space_register(space);
         if (e != REND_SUCCESS) {
                 cpu_kallocator->m_free(cpu_kallocator, entries);
                 cpu_kallocator->m_free(cpu_kallocator, space);

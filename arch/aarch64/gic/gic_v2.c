@@ -28,12 +28,12 @@ static void map_gic_range(u64 phy_base, u64 len)
 
 static void gicd_v2_unmask_irq(u32 irq_num)
 {
-        gicd_v2->GICD_ISENABLERn[irq_num / 32] |= 1u << (irq_num % 32);
+        gicd_v2->GICD_ISENABLERn[irq_num / 32] = 1u << (irq_num % 32);
 }
 
 static void gicd_v2_mask_irq(u32 irq_num)
 {
-        gicd_v2->GICD_ICENABLERn[irq_num / 32] |= 1u << (irq_num % 32);
+        gicd_v2->GICD_ICENABLERn[irq_num / 32] = 1u << (irq_num % 32);
         isb();
 }
 
@@ -52,8 +52,11 @@ static void gicd_v2_set_type(u32 irq_num, u32 type)
 
 static void gicd_v2_set_priority(u32 irq_num, u32 prio)
 {
-        gicd_v2->GICD_IPRIORITYRn[irq_num / 4] |=
-                (prio & GIC_V2_IPRIORITYR_MASK) << ((irq_num % 4) * 8);
+        gicd_v2->GICD_IPRIORITYRn[irq_num / 4] = set_mask_u32(
+                clear_mask_u32(gicd_v2->GICD_IPRIORITYRn[irq_num / 4],
+                               (u32)GIC_V2_IPRIORITYR_MASK
+                                       << ((irq_num % 4) * 8)),
+                (prio & GIC_V2_IPRIORITYR_MASK) << ((irq_num % 4) * 8));
 }
 
 static error_t gicd_v2_set_cpu_affinity(u32 irq_num, cpu_id_t cpu_id)
@@ -168,7 +171,7 @@ static bool gic_v2_intid_is_pending(u32 intid)
 
 static void gicd_v2_pending_clr(u32 irq_num)
 {
-        gicd_v2->GICD_ICPENDRn[irq_num / 32] |= 1u << (irq_num % 32);
+        gicd_v2->GICD_ICPENDRn[irq_num / 32] = 1u << (irq_num % 32);
         isb();
 }
 

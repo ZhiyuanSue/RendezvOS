@@ -150,7 +150,7 @@ error_t irq_space_ioapic_register(void)
         space->eoi = ioapic_space_eoi;
         space->destroy_priv = ioapic_space_destroy_priv;
 
-        for (int i = 0; i < nr_gsi; i++) {
+        for (size_t i = 0; i < nr_gsi; i++) {
                 global_irq_id_t global_irq_id = (global_irq_id_t)i;
 
                 irq_global_entry_common_init(&entries[i], space);

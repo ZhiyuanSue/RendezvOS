@@ -327,7 +327,7 @@ v0.1/full/
 
 ### [x] [ ] 05-陷阱与中断/25-IRQ向量分配与处理.md
 
-职责：**irq_space**（两套软件编号、占有/释放/map）与分发衔接；对照硬件号，但**不写** APIC/GIC 寄存器（见 `26`/`27`）
+职责：**irq_space**（两套软件编号、占有/释放/map）与分发衔接；对照硬件号；线控经 space ops，寄存器细节见 26/27（见 `26`/`27`）
 
 源码：`kernel/trap/irq_space.c` · `include/rendezvos/trap/irq_space.h` · `arch/*/trap/irq_space.*` · `kernel/trap/trap.c` · `include/rendezvos/trap/trap.h` · `kernel/time/time.c`
 
@@ -335,7 +335,7 @@ v0.1/full/
 
 ### [x] [ ] 05-陷阱与中断/26-平台中断-x86_64-APIC与PIC.md
 
-职责：8259、Local APIC/x2APIC、PIT/HPET、timer IPI、**IOAPIC**（MADT + MMIO + GSI 表 + RTE/mask/`irq_global_enable`/EOI；ISO/MSI/设备未做，§9.6）
+职责：8259、Local APIC/x2APIC、PIT/HPET、timer IPI、**IOAPIC**（MADT + MMIO + GSI 表 + RTE/mask/`irq_enable`/EOI；ISO/MSI/设备未做，§9.6）
 
 源码：`arch/x86_64/PIC/PIC.c` · `arch/x86_64/PIC/LocalAPIC.c` · `arch/x86_64/PIC/IOAPIC.c` · `arch/x86_64/PIC/IRQ.c` · `arch/x86_64/PIC/PIT.c` · `arch/x86_64/time/time.c` · `arch/x86_64/time/rtc.c` · `include/arch/x86_64/PIC/*.h` · `include/arch/x86_64/time.h` · `include/arch/x86_64/io.h` · `include/arch/x86_64/io_port.h` · `include/arch/x86_64/msr.h`
 
