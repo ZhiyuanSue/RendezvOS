@@ -50,6 +50,32 @@
 #define XCR0_ZMM_HI256 (1 << 6)
 #define XCR0_HI16_ZMM  (1 << 7)
 #define XCR0_PKRU      (1 << 9)
+
+/*
+ * x87 FPU control word (FCW)
+ * Exception masks 0–5; bit 6 reserved (FNINIT leaves 1); PC 9:8; RC 11:10.
+ */
+#define FCW_IM (1 << 0)
+#define FCW_DM (1 << 1)
+#define FCW_ZM (1 << 2)
+#define FCW_OM (1 << 3)
+#define FCW_UM (1 << 4)
+#define FCW_PM (1 << 5)
+/* Reserved */
+#define FCW_RSVD6 (1 << 6)
+#define FCW_PC_SHIFT    8
+#define FCW_PC_SINGLE   (0 << FCW_PC_SHIFT)
+#define FCW_PC_DOUBLE   (2 << FCW_PC_SHIFT)
+#define FCW_PC_EXTENDED (3 << FCW_PC_SHIFT)
+#define FCW_RC_SHIFT    10
+#define FCW_RC_NEAREST  (0 << FCW_RC_SHIFT)
+#define FCW_RC_DOWN     (1 << FCW_RC_SHIFT)
+#define FCW_RC_UP       (2 << FCW_RC_SHIFT)
+#define FCW_RC_ZERO     (3 << FCW_RC_SHIFT)
+#define FCW_DEFAULT                                                     \
+        (FCW_IM | FCW_DM | FCW_ZM | FCW_OM | FCW_UM | FCW_PM | FCW_RSVD6 \
+         | FCW_PC_EXTENDED | FCW_RC_NEAREST)
+
 /*MXCSR*/
 #define MXCSR_IE  (1 << 0)
 #define MXCSR_DE  (1 << 1)
@@ -64,6 +90,15 @@
 #define MXCSR_OM  (1 << 10)
 #define MXCSR_UM  (1 << 11)
 #define MXCSR_PM  (1 << 12)
-#define MXCSR_FZ  (1 << 16)
+#define MXCSR_RC_SHIFT   13
+#define MXCSR_RC_NEAREST (0 << MXCSR_RC_SHIFT)
+#define MXCSR_RC_DOWN    (1 << MXCSR_RC_SHIFT)
+#define MXCSR_RC_UP      (2 << MXCSR_RC_SHIFT)
+#define MXCSR_RC_ZERO    (3 << MXCSR_RC_SHIFT)
+#define MXCSR_FZ         (1 << 16)
+#define MXCSR_DEFAULT \
+        (MXCSR_IM | MXCSR_DM | MXCSR_ZM | MXCSR_OM | MXCSR_UM | MXCSR_PM \
+         | MXCSR_RC_NEAREST)
+
 
 #endif

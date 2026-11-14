@@ -10,6 +10,7 @@
 #include <arch/x86_64/desc.h>
 #include <arch/x86_64/trap/tss.h>
 #include <arch/x86_64/msr.h>
+#include <common/bit.h>
 #include <modules/log/log.h>
 #include <modules/acpi/acpi.h>
 #include <modules/pci/pci_ops.h>
@@ -121,14 +122,15 @@ static void start_simd(void)
                 /*set osxmmexcpt flag: cr4 bit 10*/
                 set_cr4_bit(CR4_OSXMMEXCPT);
                 /*set the mask bit and flags in mxcsr register*/
-                set_mxcsr(MXCSR_IM | MXCSR_DM | MXCSR_ZM | MXCSR_OM | MXCSR_UM
-                          | MXCSR_PM);
-                /*the following codes seems useless for enable sse,emmm*/
+                set_mxcsr(MXCSR_DEFAULT);
                 if ((cpu_info.feature_1) & X86_CPUID_FEATURE_ECX_XSAVE) {
                         /*to enable the xcr0, must set the cr4 osxsave*/
                         set_cr4_bit(CR4_OSXSAVE);
                         xcr_value = get_xcr(0);
-                        set_xcr(0, xcr_value | XCR0_X87 | XCR0_SSE | XCR0_AVX);
+                        xcr_value =
+                                set_mask_u64(xcr_value, XCR0_X87 | XCR0_SSE);
+                        xcr_value = clear_mask_u64(xcr_value, XCR0_AVX);
+                        set_xcr(0, xcr_value);
                 }
         } else {
                 goto start_simd_fail;

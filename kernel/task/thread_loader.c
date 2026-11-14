@@ -290,7 +290,10 @@ error_t gen_thread_from_elf(Thread_Base **elf_thread_ptr,
         }
         arch_set_thread_user_sp(&elf_thread->ctx, user_sp);
 
-        thread_set_flags(elf_thread, THREAD_FLAG_USER);
+        e = thread_enable_user(elf_thread);
+        if (e != REND_SUCCESS) {
+                goto generate_user_stack_error;
+        }
         if (elf_thread_ptr)
                 *elf_thread_ptr = elf_thread;
         e = add_thread_to_manager(percpu(core_tm), elf_thread);

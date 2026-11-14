@@ -1,4 +1,5 @@
 #include <arch/aarch64/thread_arch.h>
+#include <rendezvos/task/fp.h>
 #include <arch/aarch64/sys_ctrl.h>
 #include <arch/aarch64/sync/barrier.h>
 #include <common/string.h>
@@ -12,6 +13,9 @@ void arch_ctx_refresh(Arch_Thread_Context* ctx)
         /* Refresh user-visible state from EL1 system registers. */
         mrs("SP_EL0", ctx->sp_el0);
         mrs("TPIDR_EL0", ctx->tpidr_el0);
+
+        if (ctx->fp)
+                (void)fp_state_save(ctx->fp);
 }
 
 void arch_set_user_tls_base(Arch_Thread_Context* ctx, u64 tls_base)
@@ -31,6 +35,12 @@ void switch_to(Arch_Thread_Context* old_context,
         mrs("SP_EL0", old_context->sp_el0);
         msr("SP_EL0", new_context->sp_el0);
         mrs("DAIF", old_context->daif);
+
+        if (old_context->fp)
+                (void)fp_state_save(old_context->fp);
+        if (new_context->fp)
+                (void)fp_state_restore(new_context->fp);
+
         context_switch(old_context, new_context);
         /* here we should not using new context, because if the context switch
          * have return to here, it means we return to the old thread context, we
@@ -48,11 +58,16 @@ void arch_ctx_merge_from_src(Arch_Thread_Context* dst_ctx,
         if (!dst_ctx || !src_ctx) {
                 return;
         }
+        u8* dst_fp = dst_ctx->fp;
+
         sp_el1 = dst_ctx->sp_el1;
         lr = dst_ctx->regs[aarch64_task_ctx_lr];
         *dst_ctx = *src_ctx;
         dst_ctx->sp_el1 = sp_el1;
         dst_ctx->regs[aarch64_task_ctx_lr] = lr;
+
+        dst_ctx->fp = dst_fp;
+        fp_copy_ctx(dst_ctx, src_ctx);
 }
 
 void arch_syscall_set_user_return(struct trap_frame* tf,

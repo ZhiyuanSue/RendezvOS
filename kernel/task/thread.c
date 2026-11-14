@@ -181,6 +181,7 @@ static void thread_release_owned_resources(Thread_Base* thread)
                 cpu_kallocator->m_free(cpu_kallocator, thread_stack_start);
                 thread->kstack_bottom = 0;
         }
+        thread_disable_user(thread);
         atomic64_store((volatile u64*)&thread->port_ptr, (u64)NULL);
         thread_port_cache_clear(&thread->port_cache);
 
@@ -553,6 +554,11 @@ Thread_Base* copy_thread(Thread_Base* src_thread, VSpace* vs,
         if (!dst_thread) {
                 pr_error("[copy_thread] create_thread failed\n");
                 goto drop_vs_error;
+        }
+
+        if (thread_enable_user(dst_thread) != REND_SUCCESS) {
+                pr_error("[copy_thread] thread_enable_user failed\n");
+                goto del_dst_error;
         }
 
         src_trap_frame = ((struct trap_frame*)(src_thread->kstack_bottom)) - 1;

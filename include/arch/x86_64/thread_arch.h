@@ -4,7 +4,6 @@
 #include <common/types.h>
 #include <common/string.h>
 #include <arch/x86_64/trap/trap.h>
-#include <rendezvos/smp/percpu.h>
 /*
  * RFLAGS image for arch_x86_sched_switch_pair (POPF then RET in
  * context_switch).
@@ -26,6 +25,13 @@ in rendezvos, we do not use xmm regs in kernel,but we list the number
 #define NR_ABI_PARAMETER_INT_REG   6
 #define NR_ABI_PARAMETER_FLOAT_REG 8
 
+#define ARCH_FP_SIZE     512
+#define ARCH_FP_ALIGN    64
+#define ARCH_FP_BUF_SIZE (ARCH_FP_SIZE + ARCH_FP_ALIGN)
+
+#define ARCH_X86_FXSAVE_FCW_OFF   0
+#define ARCH_X86_FXSAVE_MXCSR_OFF 24
+
 typedef struct {
         u64 rsp;
         /*following is the callee saved regs*/
@@ -39,7 +45,13 @@ typedef struct {
         u64 user_gs;
         u64 user_fs;
         u64 user_rsp;
+        /* user thread only; NULL for kernel threads. */
+        u8* fp;
 } Arch_Thread_Context;
+
+void arch_fp_save_to(void* buf);
+void arch_fp_load_from(const void* buf);
+void arch_fp_init_area(u8* area);
 
 /*
  * Per-CPU scratch for saving the live user RSP on syscall/trap entry.
@@ -157,18 +169,13 @@ static inline void arch_task_ctx_init(Arch_Thread_Context* ctx)
         ctx->r15 = ctx->r14 = 0;
         ctx->r13 = ctx->r12 = 0;
         ctx->user_gs = ctx->user_fs = 0;
+        ctx->fp = NULL;
 }
 /**
  * @brief set first-time kernel entry context: push return to @p func_ptr on the
  *        kstack and set @c ctx->rsp / @c stack_bottom.
  * @param reserve_trap_frame If true, reserve a @c trap_frame space below
  *        @p kstack_bottom before the RFLAGS/return-address pair.
- *
- * [中文临时对照 — 审阅后可删]
- * 首次内核入口上下文：在 kstack 上压入返回到 @p func_ptr，并设置
- * @c ctx->rsp / @c stack_bottom。
- * @param reserve_trap_frame 为真时，在 RFLAGS/返回地址对之前于
- *        @p kstack_bottom 下预留一个 @c trap_frame 槽。
  */
 static inline void arch_set_new_thread_ctx(Arch_Thread_Context* ctx,
                                            void* func_ptr, void* kstack_bottom,
@@ -210,7 +217,8 @@ extern void context_switch(Arch_Thread_Context* old_context,
  * @brief Arch context switch after @c schedule unlocks @c sched_lock.
  *
  * Saves TSS.RSP0, KERNEL_GS_BASE, FS_BASE, and per-CPU user_rsp_scratch into
- * @p old_context; loads the same from @p new_context; then @c context_switch.
+ * @p old_context; loads the same from @p new_context; then
+ * @c fp_state_save / @c fp_state_restore on ctx->fp; then @c context_switch.
  * Does not write CR3 / user page-table root (handled by schedule).
  */
 void switch_to(Arch_Thread_Context* old_context,

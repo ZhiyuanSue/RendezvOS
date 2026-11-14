@@ -1,4 +1,5 @@
 #include <arch/x86_64/thread_arch.h>
+#include <rendezvos/task/fp.h>
 #include <rendezvos/smp/percpu.h>
 #include <arch/x86_64/desc.h>
 #include <arch/x86_64/trap/tss.h>
@@ -21,6 +22,11 @@ void switch_to(Arch_Thread_Context* old_context,
         wrmsrq(MSR_FS_BASE, new_context->user_fs);
         old_context->user_rsp = percpu(user_rsp_scratch);
         percpu(user_rsp_scratch) = new_context->user_rsp;
+
+        if (old_context->fp)
+                (void)fp_state_save(old_context->fp);
+        if (new_context->fp)
+                (void)fp_state_restore(new_context->fp);
         context_switch(old_context, new_context);
 }
 
@@ -39,6 +45,8 @@ void arch_ctx_merge_from_src(Arch_Thread_Context* dst_ctx,
         dst_ctx->user_gs = src_ctx->user_gs;
         dst_ctx->user_fs = src_ctx->user_fs;
         dst_ctx->user_rsp = src_ctx->user_rsp;
+
+        fp_copy_ctx(dst_ctx, src_ctx);
 }
 
 void arch_ctx_refresh(Arch_Thread_Context* ctx)
@@ -53,6 +61,9 @@ void arch_ctx_refresh(Arch_Thread_Context* ctx)
         /* Read live TLS bases (GS uses MSR_KERNEL_GS_BASE in this codebase). */
         ctx->user_fs = rdmsrq(MSR_FS_BASE);
         ctx->user_gs = rdmsrq(MSR_KERNEL_GS_BASE);
+
+        if (ctx->fp)
+                (void)fp_state_save(ctx->fp);
 }
 
 void arch_set_user_tls_base(Arch_Thread_Context* ctx, u64 tls_base)

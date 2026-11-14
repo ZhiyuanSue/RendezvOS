@@ -43,8 +43,8 @@ error_t run_elf_program(struct page_slice* slice);
  * @brief Create a user thread from an ELF @p slice (no filesystem image).
  *
  * Creates a VSpace, a thread that runs @c run_elf_program, maps a user stack,
- * sets @c THREAD_FLAG_USER (assigns the whole flags word; clears other
- * bits), and enqueues on this CPU's @c core_tm only.
+ * calls @c thread_enable_user (alloc FP buffer then set @c THREAD_FLAG_USER
+ * flag), and enqueues on this CPU's @c core_tm only.
  *
  * @param elf_thread_ptr Optional out pointer for the new thread.
  * @param thread_append_hooks Optional lifecycle hooks (NULL ok). @c init is

@@ -28,6 +28,11 @@ enum aarch64_callee_saved_regs {
         aarch64_task_ctx_fp = 10,
         aarch64_task_ctx_lr = 11,
 };
+
+#define ARCH_FP_SIZE     ((32 * 16) + 8) /* Q0–Q31 and FPCR + FPSR */
+#define ARCH_FP_ALIGN    16
+#define ARCH_FP_BUF_SIZE (ARCH_FP_SIZE + ARCH_FP_ALIGN)
+
 typedef struct {
         u64 sp_el1; /*we only need to consider the el1 in task context*/
         u64 spsr_el1;
@@ -36,7 +41,16 @@ typedef struct {
         u64 tpidr_el0;
         u64 sp_el0;
         u64 daif;
+        /* user thread only; NULL for kernel threads. */
+        u8* fp;
 } Arch_Thread_Context;
+
+void arch_fp_save_to(void* buf);
+void arch_fp_load_from(const void* buf);
+static inline void arch_fp_init_area(u8* area)
+{
+        (void)area;
+}
 
 /* Declared in arch-specific task/arch_thread.c (context merge & syscall-trap
  * return). */
@@ -142,6 +156,8 @@ static inline void arch_task_ctx_init(Arch_Thread_Context* ctx)
         ctx->sp_el1 = ctx->spsr_el1 = ctx->tpidr_el0 = ctx->sp_el0 = 0;
         ctx->daif = 0;
         memset(&(ctx->regs), 0, sizeof(u64) * NR_AARCH64_CALLEE_SAVED_REGS);
+        /* FP buffer allocated only for THREAD_FLAG_USER (fp_alloc). */
+        ctx->fp = NULL;
 }
 /**
  * @brief set first-time kernel entry context: set EL1 SP, LR= @p func_ptr,
@@ -186,12 +202,14 @@ extern void context_switch(Arch_Thread_Context* old_context,
 /**
  * @brief Arch context switch after @c schedule unlocks @c sched_lock.
  *
- * Saves/loads TPIDR_EL0 and SP_EL0; saves DAIF into @p old_context before
- * @c context_switch; after return to old context, restores DAIF.
- * Does not change TTBR0( handled by @c schedule )
+ * Saves/loads TPIDR_EL0, SP_EL0; if @c old/new->fp is non-NULL, saves/loads
+ * FP (Q0–Q31, FPCR, FPSR); saves DAIF into @p old_context before
+ * @c context_switch; after return to old context, restores DAIF. Does not
+ * change TTBR0 (handled by @c schedule).
  */
 void switch_to(Arch_Thread_Context* old_context,
                Arch_Thread_Context* new_context);
+
 /** @brief using @p tf to drop to user space.
  */
 void arch_drop_to_user(struct trap_frame* tf);

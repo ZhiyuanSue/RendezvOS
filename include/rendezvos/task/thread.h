@@ -2,6 +2,7 @@
 #define _RENDEZVOS_THREAD_H_
 
 #include <common/types.h>
+#include <common/bit.h>
 #include <common/dsa/list.h>
 #include <common/dsa/rb_tree.h>
 #include <rendezvos/mm/vmm.h>
@@ -19,6 +20,7 @@
 #else /*for default config is x86_64*/
 #include <arch/x86_64/thread_arch.h>
 #endif
+#include <rendezvos/task/fp.h>
 
 #include "id.h"
 #include <rendezvos/ipc/message.h>
@@ -414,7 +416,58 @@ static inline void thread_or_flags(Thread_Base* thread, u64 bits)
 {
         if (!thread)
                 return;
-        thread->flags |= bits;
+        thread->flags = set_mask_u64(thread->flags, bits);
+}
+
+/**
+ * @brief Clear @p bits from thread->flags (preserves other flags).
+ * @param thread Thread (no-op if NULL).
+ * @param bits Flag mask to clear.
+ */
+static inline void thread_clear_flags(Thread_Base* thread, u64 bits)
+{
+        if (!thread)
+                return;
+        thread->flags = clear_mask_u64(thread->flags, bits);
+}
+
+/**
+ * @brief After @c create_thread: allocate user FP buffer, then mark USER.
+ *
+ * Call this (not bare @c thread_set_flags(USER)) when turning a freshly
+ * created thread into a user thread. Steps are sequential and separate, now
+ * only have 2 steps, but if more steps are used, also need to put here:
+ * 1) @c fp_alloc — on failure, flags are left unchanged;
+ * 2) @c thread_or_flags(@c THREAD_FLAG_USER) only if (1) succeeded.
+ *
+ * @param thread Thread from @c create_thread.
+ * @return @c REND_SUCCESS, @c -E_IN_PARAM, or @c -E_REND_NO_MEM if no memory
+ * for ctx's fp area.
+ */
+static inline error_t thread_enable_user(Thread_Base* thread)
+{
+        error_t e;
+
+        if (!thread)
+                return -E_IN_PARAM;
+        e = fp_alloc(&thread->ctx);
+        if (e != REND_SUCCESS)
+                return e;
+        thread_or_flags(thread, THREAD_FLAG_USER);
+        return REND_SUCCESS;
+}
+
+/**
+ * @brief Opposite op of @c thread_enable_user: drop USER, then free FP buffer.
+ *
+ * @param thread Thread (no-op if NULL).
+ */
+static inline void thread_disable_user(Thread_Base* thread)
+{
+        if (!thread)
+                return;
+        thread_clear_flags(thread, THREAD_FLAG_USER);
+        fp_free(&thread->ctx);
 }
 
 /**
