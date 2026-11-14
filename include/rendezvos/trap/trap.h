@@ -27,9 +27,9 @@
  * Line control — @c irq_enable / @c irq_disable (local coordinates):
  *   alloc + register first, then enable (space->enable programs + unmask).
  *   disable only masks; free is separate (mask before free).
- *   Migrate: disable (the irq's old owner cpu),wait → free → alloc(set irq
- * space record to new owner) → enable(the old owner enable it, not using IPI to
- * let new owner do).
+ *   Migrate: disable on old owner (mask +
+ *   wait local pending) → free → alloc (record new owner) → enable from the
+ *   old owner (no IPI to make the new owner enable).
  *
  * This header includes irq_space only — never arch controller headers.
  *
@@ -84,14 +84,25 @@
  *
  * 2. why need to wait before we free, even we have masked the interrupt I.
  *
- * The order of a interrupt is like that(without MSI/MSI-x case):
- * Device → Pin → global irq distributor(like IOAPIC/GIC gicd, etc.) → core
- * local intrrupt interface(like GIC gicc/LAPIC, etc.) → core
+ * Soft migrate (old owner: disable → free → alloc → enable) is meant for
+ * every irq_space, including a future MSI / MSI-X space. The problem happens at
+ * where space->disable stops *new* deliveries.
  *
- * The mask work only stop a new interrupt I sent on Pin → global irq
- * distributor, but an old pending irq might exists on local intrrupt interface.
- * So after we mask the interrupt I, an pending I still have a chance to
- * trigger(inflight).
+ * The order of a Pin-backed interrupt path is like that(IOAPIC RTE / GIC
+ * SPI,without MSI/MSI-x case):
+ *
+ * Device → Pin → global irq distributor(like IOAPIC/GIC gicd, etc.) → core
+ * local interrupt interface(like GIC gicc/LAPIC, etc.) → core
+ *
+ * Here mask only stops a new interrupt I on Pin → global irq distributor,
+ * but an old pending irq might exist on the local interrupt interface. So
+ * after we mask I, a pending I still have a chance to trigger (inflight).
+ *
+ * MSI / MSI-X (not wired yet): mask is typically at the device (PCI MSI /
+ * MSI-X mask, or interrupt remapping), not a pin → distributor hop; in-flight
+ * messages may still sit on the local interface (e.g. LAPIC IRR). So the rule
+ * is the same: space->disable must stop new I, then drain local pending before
+ * free.
  *
  * The way to solve this problem is just enable interrupt and wait this(might
  * exists) interrupt I be handled. Of course we assume that the current chips
