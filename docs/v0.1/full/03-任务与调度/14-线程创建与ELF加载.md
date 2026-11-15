@@ -10,7 +10,7 @@ loader **消费** `modules/elf` 格式库（`check_elf_header` / `for_each_progr
 
 ## 1. 概述
 
-core **没有进程对象**。能调度的是线程；用户镜像进地址空间靠 loader helper；怎么回到用户态则分两条原语（下面叫 Path A / B）。加载与回到用户态可以拆开组合——写文档时最容易把它们混在一起。
+core **没有进程对象**。能调度的是线程；用户镜像进地址空间靠 loader helper；怎么回到用户态则分两条原语（下面叫 Path A / B）。加载与回到用户态可以拆开组合——这两步最容易混在一起。
 
 按「你想做的事」选 API：
 
@@ -130,7 +130,7 @@ typedef struct elf_load_info {
 |------|------|
 | `thread_loader.c` / `.h` | `gen_thread_from_*`、`run_elf_program`、`load_elf_to_vs`、`generate_user_stack` |
 | `thread.c` | `create_thread`、`copy_thread`、`run_copied_thread` |
-| `modules/elf/*`（详见 **37**） | 格式校验 / Phdr 遍历宏 / 打印；本篇只调用 |
+| `modules/elf/*`（详见 `37`） | 格式校验 / Phdr 遍历宏 / 打印；本篇只调用 |
 | `mm_user_utils` / radix | 用户 range map |
 | `page_slice_copy` | 文件拷到 user |
 | arch `arch_thread` / `arch_user_switch` / `arch_run_thread` | ctx、drop、syscall return、ABI call |
@@ -145,7 +145,7 @@ typedef struct elf_load_info {
 |--|-----------------|------------------------|----------------------|---------------|
 | 入口 | 任意 | kthread | 固定 `run_elf_program` | 固定 `run_copied_thread` |
 | reserve_trap_frame | 参数 | **false** | **true** | **true** |
-| USER flag | 不设 | 不设 | `thread_set_flags(USER)`（**整字赋值**，清其它位） | 拷 `src->flags` |
+| USER flag | 不设 | 不设 | `thread_enable_user()`（`fp_alloc` 成功后 OR 置 USER） | 拷 `src->flags` |
 | user stack | 否 | 否 | enqueue **前** `generate_user_stack`（PT_LOAD 更晚） | 否 |
 | 入队 | **否** | **是**（指定 tm） | **是**（固定 `percpu(core_tm)`） | **否** |
 | hooks.init | 不调 | 无 hooks | 晚到 `run_elf_program` | 调 **copy** |
@@ -158,7 +158,7 @@ typedef struct elf_load_info {
 
 **func：** 先 get root，再 create(`reserve=false`)，然后拷名字，最后 `add_thread_to_manager(tm)`。失败：create 失败 put root；add 失败 `del_thread_structure`（含 put root）。成功才写可选 out 指针。
 
-**elf：** create_vspace + register 后 create(`run_elf_program`, reserve=true, slice)，再 `generate_user_stack` + `arch_set_thread_user_sp`，设 flags=USER，最后 add 到本核。失败：按阶段 `del_thread_structure` / put 尚未移交的 vs。
+**elf：** create_vspace + register 后 create(`run_elf_program`, reserve=true, slice)，再 `generate_user_stack` + `arch_set_thread_user_sp`，`thread_enable_user`（分配 FP 缓冲后置 USER），最后 add 到本核。失败：按阶段 `del_thread_structure` / put 尚未移交的 vs。
 
 ### 6.4 `load_elf_to_vs`
 
@@ -230,7 +230,7 @@ Phdr 遍历：拿 page0 的 KVA 做指针算术，内容通过 copy_to_buffer �
 
 ### 6.7 `copy_thread` / `run_copied_thread`
 
-前置：src 必须是 USER，否则 put 掉传入的 vs 并失败返回。create(`run_copied_thread`, src hooks, vs, true, ret) 后拷 `*(kstack_bottom-1)` trap frame，再 `arch_ctx_refresh` + `arch_ctx_merge_from_src`，并处理 flags / name / copy hook。返回时仍为 **init**。子线程：`run_copied_thread` 写返回值后 `arch_return_to_user(kstack_bottom, NULL, ret)`。
+前置：src 必须是 USER，否则 put 掉传入的 vs 并失败返回。create(`run_copied_thread`, src hooks, vs, true, ret) 后 `thread_enable_user`（分配 FP 缓冲），再拷 `*(kstack_bottom-1)` trap frame，`arch_ctx_refresh` + `arch_ctx_merge_from_src`，随后整字拷 `src->flags`，并处理 name / copy hook。返回时仍为 **init**。子线程：`run_copied_thread` 写返回值后 `arch_return_to_user(kstack_bottom, NULL, ret)`。
 
 ### 6.8 回到用户态：软件原语与硬件出口
 
@@ -295,7 +295,7 @@ void run_copied_thread(u64 syscall_return_value);
 |------|------|
 | `create_thread` | `vs` 非 NULL；成功则**接管**活引用。设置好 `thread_entry`、kstack、`arch_set_new_thread_ctx`、tid 与参数。**不**入队、**不**调 hooks.init。失败不接管 `vs`。 |
 | `gen_thread_from_func` | 先 get `root_vspace`，再 create(`reserve=false`)，然后拷贝 name（堆分配副本），最后 `add_thread_to_manager(tm)`。create 失败 put root；add 失败 `del_thread_structure`（含 put root）。成功才写可选 out 指针。 |
-| `gen_thread_from_elf` | create/register vs 后 create(`run_elf_program`, reserve=true, slice)，再 `generate_user_stack`，`thread_set_flags(USER)`（**整字赋值**），最后挂到**本核** `core_tm`。失败按阶段回滚。**不** destroy slice。树内目前没有调用方。 |
+| `gen_thread_from_elf` | create/register vs 后 create(`run_elf_program`, reserve=true, slice)，再 `generate_user_stack`，`thread_enable_user`（分配 FP 缓冲后置 USER），最后挂到**本核** `core_tm`。失败按阶段回滚。**不** destroy slice。树内目前没有调用方。 |
 | `copy_thread` | src 必须是 USER；成功接管 `vs`，**任意失败都会 put 传入的 `vs`**。拷 trap frame 并 refresh/merge ctx；调 hooks.copy。返回时仍为 `init`，由调用方入队。 |
 | `run_copied_thread` | 调 `arch_return_to_user(kstack, NULL, ret)`；若意外返回则 OR exit 再 `schedule`。 |
 
@@ -364,7 +364,7 @@ extern void run_thread(Thread_Init_Para *); /* asm；见 thread.h */
 
 ## 9. 测试
 
-现在的测试用例大量用 `gen_thread_from_func`；`gen_thread_from_elf` 目前没有 C 代码调用它。ELF 加载时可能 `print_elf_ph64`。
+多数测例经 `gen_thread_from_func` 创建；`gen_thread_from_elf` 目前没有 C 侧调用方。ELF 加载时可能调用 `print_elf_ph64` 打印程序头。
 
 ```bash
 cd core && make ARCH=x86_64 config && make all && make run
@@ -384,6 +384,7 @@ cd core && make ARCH=x86_64 config && make all && make run
 
 ## 11. 变更记录
 
+- 2026-11-15：Maintainer 复审前通读 + E13 跟进：§5/§6.5/§9 三处仍写 `thread_set_flags(USER)`（**整字赋值**）——E13 后代码已改为 `thread_enable_user`（先 `fp_alloc` 再 OR 置 USER），已更新；`copy_thread` 段补上 `thread_enable_user` 步骤并把「处理 flags」写实为「整字拷 `src->flags`」；§1「写文档时」编者视角改读者视角；§5 `**37**` 改反引号 `` `37` ``；§9「大量用」→「多数测例经」、「可能 `print_elf_ph64`」补谓语。其余轻微口语为 2026-10-25 有意风格，未再改动。
 - 2026-10-25：全文语言整理：「现网」→「现在/目前」、「体跑」→「线程体跑」、「回环 3」→「ring 3」，顺掉「名字堆拷贝」「失败已赋值」「不要求物理连续可 deref」一类生硬短句；§6.2 与 §6.3 之间补空行。另按 `kernel_entry.S` / `arch_thread.c` 纠正两处表述：x86 用户 RSP 是内核入口用 `%gs` 存进 per-CPU `user_rsp_scratch`（与 MSR_LSTAR 无关）；aarch64 陷入后 `SP_EL0` 原样保留用户栈指针，不存在硬件自动保存。技术内容未动。
 - 2026-10-05：最终词句顺畅；任务 1/3/5 精读——§1/§9「测例」→「测试用例」；§1「揉成一团」→「混在一起」、「两条回用户原语」→「两条原语」、「一次造用户线程」→「一次创建用户线程」、「怎么回用户」→「怎么回到用户态」；§1 表「syscall 返回路径带走」→「由 syscall 返回路径承担」；§6.6「落到 return」→「走到 return」；§6.8 标题「回用户」→「回到用户态」、「落到不同的」→「对应到不同的」；§7.2「装好」→「设置好」。
 - 2026-10-04：补硬件/架构知识——§6.4 加 Elf64_Ehdr / Elf64_Phdr 结构 ASCII 图与字段说明；§6.5 加用户栈图像布局图，写清两次 −8 的来源；§6.8 扩写 SYSRET 用 RCX 当返回 RIP、`eret` 从 ELR_EL1/SPSR_EL1 恢复 PC/PSTATE 的硬件语义（Intel SDM Vol.2 / ARM ARM）。语言润色：塞进→装入。

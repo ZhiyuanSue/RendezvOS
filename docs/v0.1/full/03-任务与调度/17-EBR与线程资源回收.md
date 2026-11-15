@@ -108,13 +108,13 @@ static atomic64_t ebr_global_epoch;
 | `ebr_retired_recs[]` | **本核**的待回收表。节点 retire 在调用 `ebr_retire_ref` 的那颗核上；别的核的 `ebr_try_reclaim` 扫不到。 |
 | `ebr_global_epoch` | 全局世代；某核 exit 到深度 0 时自增，推动「更老的 retire」变为可回收。 |
 
-lazy init：`ebr_inited` 走 0（未初始化）、1（初始化中）、再到 2（就绪）。
+lazy init：`ebr_inited` 取 0（未初始化）、1（初始化中）、2（就绪）三态，先到先初始化，其余核自旋等 2。
 
 ### 4.2 安全条件与时序（必须写对）
 
 ```text
 safe = global_epoch
-for each online-ish cpu: if active: safe = min(safe, local_epoch)
+for each cpu i in 0..NR_CPU: if active[i]: safe = min(safe, local_epoch[i])
 reclaim iff rec.retire_epoch < safe     // 是 < 不是 ≤
 ```
 
@@ -130,7 +130,7 @@ reclaim iff rec.retire_epoch < safe     // 是 < 不是 ≤
    │  CPU 1:  active=0, local=E-1    ── 已退出，但落后一个 epoch        │
    │  CPU 2:  active=0, local=E      ── 已退出且追平                   │
    │                                                                  │
-   │  safe = min(E /*active*/, …) 与 global 按上式；本例可到 E-1        │
+   │  safe = min(global E, active local E) = E；可回收 retire ≤ E-1     │
    │  rec.retire_epoch < safe 才可调 free_func                         │
    └─────────────────────────────────────────────────────────────────┘
 ```
@@ -176,7 +176,7 @@ reclaim iff rec.retire_epoch < safe     // 是 < 不是 ≤
 
 ### 4.3 Overflow
 
-槽满：先 reclaim 腾位；仍满则 **leak + 日志**，仍返回 `REND_SUCCESS`。不是「稍后一定 free」——宁可泄漏，也不提前调 `free_func` 冒 UAF。
+槽满：先 reclaim 腾位；仍满则 **leak + 日志**，仍返回 `REND_SUCCESS`。不是「稍后一定 free」——宁可泄漏，也不提前调 `free_func` 冒 UAF（use-after-free）风险。
 
 ### 4.4 线程回收不变量
 
@@ -242,6 +242,7 @@ ref_put → free_thread_ref → del_thread_structure:
     exchange send_pending_msg
     msq_clean_queue(send/recv, free_message_ref)  // 节点进 EBR
     m_free(name), m_free(kstack)
+    thread_disable_user（释放 FP 缓冲）
     清 port_ptr / port_cache
     ref_put(vs)               // 只 put
   del_init_parameter
@@ -289,7 +290,7 @@ void ebr_dump_stats(void);
 | `ebr_enter` | 深度从 0 到 1：把 global 快照到 local，置 active。可嵌套。 |
 | `ebr_exit` | 深度从 1 回到 0：清 active，`global++`，再对本核做 `ebr_try_reclaim`。 |
 | `ebr_try_reclaim` | 只扫**本核**槽；`retire_epoch < safe`（**严格小于**）才调 `free_func`。 |
-| `ebr_retire_ref` | 记入本核表（默认 512 槽）；前后会尝试 reclaim。满则 **leak，但仍返回 SUCCESS**（防 UAF，use-after-free）。`ref` / `free_func` 为空则返回 `-E_IN_PARAM`。 |
+| `ebr_retire_ref` | 记入本核表（默认 512 槽）；前后会尝试 reclaim。满则 **leak，但仍返回 SUCCESS**（防 UAF）。`ref` / `free_func` 为空则返回 `-E_IN_PARAM`。 |
 | `ebr_dump_stats` | 打印每核的 retire / reclaim / overflow 统计。 |
 
 `Thread_Base` **不**走 EBR；但 `Ipc_Request` 可持有 thread 引用，从而间接推迟 `del_thread_structure`。
@@ -330,14 +331,16 @@ void del_thread_structure(Thread_Base *thread);
 - reclaim 不跨核扫别人的槽。
 - 线程不同步走 EBR，但可被 request 间接推迟。
 - 与 kmalloc 跨核 free 并列，勿合并。
-- 更大 slot / 水位见编译选项与 evolution（若有）。
+- 更大 slot / 水位见编译选项与 evolution TODO **E11**。
 
 ---
 
 ## 11. 变更记录
 
+- 2026-11-15：Maintainer 复审前可读性通读：§4.2 伪代码「online-ish cpu」改为按代码实际的「0..NR_CPU 全扫、只以 active 为闸」，同节示例行明确 safe=E 与可回收集合 retire ≤ E-1 的区分；§6.2 回收流水补 `thread_disable_user`（释放 FP 缓冲，E13 后续，对照 `thread.c` 现行顺序）；§10 回链明确为 evolution TODO E11；§4.1 `ebr_inited` 三态句、UAF 简称首次出现位置（§4.3）补释并收敛 §7.2 括注；§11 一条 10-05 条目原漂在「08-27 初稿」之后，归位。安全条件 `<`、overflow leak 仍返 SUCCESS、512 槽、`ebr_exit` 深度回 0 时 global++ 再 reclaim、schedule 先排 kfree 再 reclaim、request 持 thread 引用（`ref_get_not_zero`/`ref_put` 配对）均对照 `ebr.c` / `ebr.h` / `thread.c` / `task_manager.c` / `ipc.c` 核实无误；技术结论未动。
 - 2026-10-11：§4 对齐 18 审阅结论——延期的是 `*_real`/`free_func`（非直接 `m_free`）；迁入世代泳道图与读图说明；明确机制权威在本篇、MSQ 咬合见 `18` §4.4。
 - 2026-10-07：§1 概述瘦身——对象分类表与交汇点迁入 §4 开头并与不变量合并。
+- 2026-10-05：最终词句顺畅。
 - 2026-10-05：任务 1/3/5 精读——§1 首次出现 EBR 补全称（Epoch-Based Reclamation，基于世代的回收）、MSQ 补说明（Message Queue，无锁消息队列）、TCB 补全称（Thread Control Block）；§4.2/§4.5/§8 残留的「靠」→「依赖」（前轮漏改的三处）；§7.2 首次出现 UAF 补说明（use-after-free）。
 - 2026-10-04：补硬件/架构知识——§4.2 加 EBR 三阶段（quiet / propagate / reclaim）状态图与 `safe = min(active local_epoch)` 推导；§4.5 新增 EBR 与 hazard pointer 对照表（读侧开销 / 回收时机 / 内存占用 / 适用场景）。语言润色：靠→依赖、hold→持有、抢地址复用→抢占地址复用、死转→死循环。
 - 2026-09-27：中文表述润色（母语习惯）。
@@ -346,4 +349,3 @@ void del_thread_structure(Thread_Base *thread);
 - 2026-09-25：语言整理；强调与跨核 kfree 排水并列、非同一种机制。
 - 2026-08-29：整篇重做——拆开「节点 EBR vs 线程同步回收」叙述；`<` 安全条件；overflow leak；schedule 双钩子；request 持有 thread 引用；禁止二次 drain。
 - 2026-08-27：初稿。
-- 2026-10-05：最终词句顺畅。

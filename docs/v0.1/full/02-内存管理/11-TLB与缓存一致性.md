@@ -44,7 +44,7 @@ mask 回答「该通知谁、能不能拆」，具体怎么刷是架构的事。
 
 ### 4.1 `tlb_cpu_mask`
 
-位图宽度是 `RENDEZVOS_MAX_CPU_NUMBER`，修改时要持有 `tlb_cpu_mask_lock`（CAS）。字段在 `VSpace` 上（完整结构见 07 §4.2）：
+位图宽度是 `RENDEZVOS_MAX_CPU_NUMBER`，修改时要持有 `tlb_cpu_mask_lock`（CAS）。字段在 `VSpace` 上（完整结构见页表篇 §4.2）：
 
 ```c
 #define VS_TLB_CPU_MASK_BITS (RENDEZVOS_MAX_CPU_NUMBER)
@@ -59,7 +59,7 @@ cas_lock_t tlb_cpu_mask_lock;
 
 1. `ref_get` 新的 vs；
 2. **先**在**新** mask 上 set 本 CPU 这一位；
-3. 装硬件根（aarch64 还会带上 ASID，见下篇）；
+3. 装硬件根（aarch64 还会带上 ASID，见 ASID 篇）；
 4. 本地 invalidate **旧** ASID / 旧空间；
 5. **再** clear 本 CPU 在**旧** mask 上的位；
 6. `ref_put` 旧的。
@@ -68,7 +68,7 @@ cas_lock_t tlb_cpu_mask_lock;
 
 还有一处故意的滞后：下一个线程若不是用户态，schedule **可以不清** mask，也可以不换硬件根。这一位和 CPU 侧引用就一直留着，直到之后某次用户态到用户态的切换才处理。拆除回收要等 mask 空，细节见所有权篇 / ASID 篇。
 
-### 4.2 map 路径：新 vs 改
+### 4.2 map 路径：首次映射与改 / 拆
 
 决策条件**不是**「是不是只有本 CPU」，而是 **「是不是第一次把这个 VA 映射上」**：
 
@@ -77,23 +77,23 @@ cas_lock_t tlb_cpu_mask_lock;
 
 各 ISA 具体用哪条指令刷 TLB，见 §6.1；cache 相关名词（本仓库尚无通用 API）见 §6.3；函数签名见 §7。
 
-### 4.3 在内核页面也按需映射下，通过 IPI 中断进行tlb清理的注意点
+### 4.3 内核页同样按需映射时，经 IPI 清理 TLB 的注意点
 
-这里需要注意一点就是，IPI本身也是一个中断，所以一定会受到屏蔽中断的影响。然而，参考文档 `07-虚拟地址空间与页表` 里面的设计，它的内核部分，也是按需映射的，这就带来一个巨大的bug。如果有两个核心， A 和 B 都使用 Root vspace 修改内核的页面，A 试图取消一个页面的映射并且发IPI给核心 B ，但是核心 B 关了中断，然后正在使用这个页面，就会因为没有及时的进行tlb flush，产生问题，他可能使用旧的映射，而如果该页面又被分走了，就会发现不知道为什么内容被改掉了。
+需要注意：IPI 本身也是中断，一定受关中断影响。而页表篇的设计里，内核部分同样是按需映射的，这就带来一个严重问题。设两个核心 A 和 B 都使用 Root vspace 修改内核页映射：A 试图取消某个页面的映射并向 B 发 IPI，但 B 正关着中断并使用该页——TLB flush 被推迟，B 可能继续使用旧映射；若该页又被重新分配出去，B 就会读写到内容已被改写的页面，却难以定位原因。
 
-这件事情在内核侧是非常危险的，若依赖跨核 IPI 刷内核 TLB，会遇到 cli 推迟；因此本核路径选择不发 IPI，只本地刷：在`core/include/arch/x86_64/sync/tlb.h`里面，`arch_tlb_invalidate_kernel_page_all_core`函数实际上，只清理本核心的tlb。并把相关的安全建立在页面分配模型之上，多个核心需要清理 tlb 时候，需要考虑的页面分为以下几类：
+这在内核侧非常危险：若依赖跨核 IPI 刷内核 TLB，`cli` 关中断会让 IPI 被推迟。因此内核路径选择不发 IPI、只刷本地——`include/arch/x86_64/sync/tlb.h` 里的 `arch_tlb_invalidate_kernel_page_all_core` 实际只清理本核 TLB，其安全性转而建立在页面分配模型之上。多核需要清理 TLB 时，涉及的页面分为以下几类：
 
- - 用户部分页面。用户 PTE 的 shootdown 走 mask + IPI（用户态通常开中断）。内核若要碰用户页内容，并不会走用户映射，而是用本核 Map_Handler 槽位映物理页——map handler的槽位是 percpu 的，不受用户 PTE 修改的影响。当然这阻挡不了一个问题，就是如果一个核心 A 释放了用户页面之后，耦合了上面的问题的情况下，核心 B 试图访问一个用户页面，然后这时候核心 A unmap之后的页面被free并被重新分配走了，这会导致核心 B 实际上可能读写一个已经被 A 释放又被分配走的页面，但因为他在cli的关闭中断临界区，无法感知到这个问题，就会出很神秘学的bug。
+ - 用户页面。用户 PTE 的 shootdown 走 mask + IPI（用户态通常开中断）。内核若要访问用户页内容，并不走用户映射，而是用本核 `map_handler` 槽位映射物理页——该槽位是 per-CPU 的，不受用户 PTE 修改影响。但这并不能挡住另一种情况：核心 A 释放用户页后，页面被 free 并重新分配；此时核心 B 正在 `cli` 关中断临界区内访问该用户页，无法及时感知 shootdown，就可能读写到已被 A 释放、又分配给别人的页面，产生难以定位的错误。
 
- - 内核部分的使用kmalloc管理的页面。这部分也是没有问题的。他是恒等映射加percpu。所以一个页面一旦映射走了，只会属于某个核心上的 kmalloc 分配器。该核心可以使用 IPC 的 send，将该页面上的对象，传递给其他核心使用，但是，他不会 remap改页面属性，也不会在其他核心没有通过 MSQ 还回来之前，就 unmap 掉这个页面。所以当他试图 unmap 的时候，一定没有其他核心在使用这个页面，所以只清理该核心上该页面的tlb是安全的。
+ - 内核中由 kmalloc 管理的页面。其页是恒等映射 + per-CPU 的：一个页面一旦映射，只属于某个核心上的 kmalloc 分配器。该核心可以用 IPC send 把该页上的对象传给其他核心使用，但既不会 remap 或修改页面属性，也不会在其他核心通过 MSQ 归还之前 unmap 该页。因此 unmap 时一定没有其他核心仍在使用它，只清理本核该页的 TLB 是安全的。
 
- - 内核部分不使用kmalloc管理的其他zone的页面。这个，需要在设计其他zone的映射分配机制的时候进行良好的设计。（TODO）
+ - 内核中不由 kmalloc 管理、属于其他 zone 的页面。需在后续设计其他 zone 的映射分配机制时一并考虑（TODO）。
 
- - 内核部分不属于zone的页面。其中又分为 ensure_kernel_identity_range 函数实现的映射（通常用于生命周期和整个内核一样长的内存部分），和 map_kernel_identity_empty_range （主要用于类似于MMIO等区间进行映射的内存，可能在整个内核生命周期期间，比如类似Linux的insmod和rmmod方式进行更改，但是也属于非常低频率的操作），前者无所谓啊，映射了也不会再去改了。后者内存属于设备嘛，它可能会存在迁移，也就是从A核心到B核心，但是，按照我们的模型，它一定是单 server 在操作这些寄存器，它不会存在同时 AB 两个核心一起使用的情况。所以这样也是没问题的。
+ - 内核中不属于 zone 的页面。又分两类：`ensure_kernel_identity_range` 建立的映射（通常用于生命周期与内核等长的内存），映射一旦建立就不再改动，无一致性问题；`map_kernel_identity_empty_range` 建立的映射（主要用于 MMIO 等区间，可能在内核生命周期内以类似 Linux insmod / rmmod 的方式变更，但频率极低）。后者的内存属于设备，其映射可能从 A 核迁移到 B 核；但按本模型，一定是单个 server 在操作这些寄存器，不会 A、B 两核同时使用，因此同样安全。
 
- - 其他的启动时候常驻的页面，包括percpu，pmm 元数据，还有map handler自己的窗口，这些虽然是手动构建的，但是根本不会被刷。可以直接忽略。
+ - 启动期常驻页面，包括 per-CPU 数据、pmm 元数据、`map_handler` 自身窗口等。这些映射虽为手动构建，但运行期不再修改，无需刷新，可直接忽略。
 
- - 页表页本身。这个只有map handler里面的窗口tlb要刷，而这是percpu的。其他的情况下只有地址空间被清理掉的时候才清除，所以其实也没啥问题。
+ - 页表页本身。只有 `map_handler` 窗口内的 TLB 需要刷新，而该窗口是 per-CPU 的；其余情况只在整个地址空间被回收时才清除，因此同样安全。
 
 
 ---
@@ -122,7 +122,7 @@ cas_lock_t tlb_cpu_mask_lock;
 
 跨核没有「一条指令让所有核都 `invlpg`」的通用手段，只能靠 **IPI**：本仓库在 `arch_smp_tlb_flush.c` 里给每个 CPU 一条 flush 消息（generation / busy）；发送方先在本地刷，再按 mask 给其他 online 核发软 IPI，然后等对方做到 `done_gen`。APIC 还没就绪时，可能只做本地。文件头注释写明了：**no PCID**。
 
-内核侧的 `arch_tlb_invalidate_kernel_page_all_core` 在源码注释里倾向 **只本地 `invlpg`**（按「内核映射 percpu / 不共享脏翻译」来理解）——以读实现为准，别想当然当成全机广播。
+内核侧的 `arch_tlb_invalidate_kernel_page_all_core` 在源码注释里倾向 **只本地 `invlpg`**（按「内核映射 percpu / 不共享脏翻译」来理解）——以实际实现为准，不要当成全机广播。
 
 #### aarch64（ARM ARM：TLBI / 屏障）
 
@@ -139,7 +139,7 @@ AArch64 用 **`TLBI`** 系列指令做 TLB 维护，参数里常带 ASID 与页�
 
 前后要用 `dsb(ISHST)` / `dsb(ISH)` / `isb` 同步，这是 ARM 规定的 TLBI 上下文同步流程，不是随手加的装饰。`*_all_core` 路径上 **mask 参数常被 `(void)cpu_mask` 丢掉**——硬件广播已经盖住 shareable domain 里的观察者；软件 mask 仍然卡着 `del_vspace` / `vspace_clear_user_mappings(allow_self_use=false)`，避免「还有人可能拿着旧翻译就把 AS 拆了」。
 
-范围失效要用 `rvae1` 一类指令，得有更进的 TLBI 扩展；本实现的 range 路径目前还是会退化成逐页 `vae1`（头文件注释里写明了）。
+范围失效要用 `rvae1` 一类指令，依赖更新的 TLBI 扩展；本实现的 range 路径目前还是会退化成逐页 `vae1`（头文件注释里写明了）。
 
 ### 6.2 启动时还要做什么
 
@@ -266,7 +266,7 @@ ARM 屏障按 **共享域** × **访问类型** 两维取参数。共享域四�
 `include/arch/{x86_64,aarch64}/sync/tlb.h`（x86 另有 `arch_smp_flush_*` /
 `arch_smp_flush_tlb_init` 在 `arch/x86_64/mm/arch_smp_tlb_flush.c`）。
 `vs_tlb_cpu_mask_*` inline 在 `vmm.h`（与 `VSpace` 同篇生命周期相关，本篇说明语义）。
-IPI 握手细节见 30 / 32 篇。无通用 dcache/icache API。
+IPI 握手细节见 `30-软IPI机制.md` 与 `32-TLB_shootdown与跨核一致性.md`。无通用 dcache/icache API。
 
 ### 7.1 编排顺序（与调用方约定）
 
@@ -324,7 +324,7 @@ void arch_smp_flush_all_tlb(const vs_tlb_cpu_bitmap_t *cpu_mask);
 void arch_smp_flush_tlb_init(void);
 ```
 
-细节（generation / busy、APIC 未就绪仅本地）见 `arch_smp_tlb_flush.c` 与 32 篇。
+细节（generation / busy、APIC 未就绪仅本地）见 `arch_smp_tlb_flush.c` 与 `32-TLB_shootdown与跨核一致性.md`。
 
 ---
 
@@ -344,13 +344,14 @@ void arch_smp_flush_tlb_init(void);
 
 - cache 头文件为空。
 - x86 内核 `*_all_core` 是否真广播：以源码为准。
-- 与 `32-TLB_shootdown` 篇的分工：本篇讲策略、mask 与硬件对照；那篇写 IPI 握手细节。
+- 与 `32-TLB_shootdown与跨核一致性.md` 的分工：本篇讲策略、mask 与硬件对照；那篇写 IPI 握手细节。
 - x86 启用 PCID 后，本地 / 远程失效语义会变——属于远期，见 ASID 篇。
 
 ---
 
 ## 11. 变更记录
 
+- 2026-11-15：Maintainer 复审前可读性通读：§4.3 整节重写——去掉「巨大的bug / 神秘学的bug / 无所谓啊 / 也没啥问题」等口语残留，`percpu`→per-CPU、`map handler`→`map_handler`，并核对 `arch_tlb_invalidate_kernel_page_all_core` 确为本核 `invlpg`；§4.2 标题「新 vs 改」→「首次映射与改 / 拆」；§4.1/§8/§10 裸篇号引用（07、下篇、30 / 32）补全篇名。技术内容未动。
 - 2026-10-31：§6.1 用户页：槽位路径 + `have_mapped(pin)` / `pmm_free` unpin；去掉「待查 ref」TODO。
 - 2026-10-25：全文语言整理：回退 2026-10-04 机械替换造成的生硬（抄录→抄、如何发送→怎么发出去、约束拆除→卡着拆除、位于→在、执行到→走到、失效旧项→把旧项作废、随意添加的装饰→随手加的装饰等），并补顺几处省略过紧的句子，技术内容未动。
 - 2026-10-05：§6.3 扩写硬件背景（PAT/CR0/CPUID.02H、DMB 矩阵、TLBI 目录、DC ZVA）。打分前校正：CPUID `0x0E` 按 SDM 为 24 KiB/6-way 而非 64-set×8-way；range TLBI 是 FEAT_TLBIRANGE 不是 TLS；`DC ZVA` 清的是 DCZID 块（2^(BS+2)）不是 cache 行；`ALLE1` 是当前 VMID 的 stage-1 全清。来源：`core/docs/old/cache&tlb.md` 迁移审核。

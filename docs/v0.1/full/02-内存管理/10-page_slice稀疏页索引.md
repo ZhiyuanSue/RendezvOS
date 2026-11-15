@@ -10,7 +10,7 @@ v0.1 · 2026-09-25
 
 ## 1. 概述
 
-Buddy（伙伴分配器，按 2 的幂次合并/拆分物理页，见 `09-kmalloc与内核堆.md`）单次连续物理分配的上限约为 **2 MiB**。内核有时还想按「文件偏移 / 大数组下标」这种**逻辑连续**的方式取一块远大于 2 MiB 的缓冲，但物理上、甚至 KVA 上并不要求连成一片。
+Buddy（伙伴分配器，按 2 的幂次合并/拆分物理页，见 `06-物理内存与Buddy分配器.md`）单块上限为 **4 MiB**（`BUDDY_MAXORDER = 10`，即 1024 张连续 4 KiB 页）。内核有时还想按「文件偏移 / 大数组下标」这种**逻辑连续**的方式取一块远超此上限的缓冲，但物理上、甚至 KVA 上并不要求连成一片。
 
 **page_slice** 做的就是这件事：在一个 slice 里用稀疏多级索引，把 **pgoff（页号偏移）** 绑定到调用方已经准备好的 **离散内核虚拟地址（KVA，Kernel Virtual Address）**。连续性只在偏移算术上成立。
 
@@ -46,7 +46,7 @@ Buddy（伙伴分配器，按 2 的幂次合并/拆分物理页，见 `09-kmallo
 [ L2:9 | L1:9 | L0:9 | leaf_idx:7 | page_off:12 ]
 ```
 
-叶页大约 128 槽（`PAGE_SLICE_LEAF_CAPACITY`）；索引页 512 个 tagged_ptr（`PAGE_SLICE_INDEX_CAPACITY`）。高度上限使逻辑跨度大约到 64 TiB 量级（以头文件 `PAGE_SLICE_MAX_*` 为准）。
+叶页 128 槽（`PAGE_SLICE_LEAF_CAPACITY`）；索引页 512 个 tagged_ptr（`PAGE_SLICE_INDEX_CAPACITY`）。最多 3 层索引（`PAGE_SLICE_MAX_INDEX_HEIGHT = 3`），逻辑跨度上限 `PAGE_SLICE_MAX_BYTE_SIZE`，即 64 TiB。
 
 ```c
 struct page_slice_entry {
@@ -83,13 +83,13 @@ struct page_slice {
 
 `slice->root` 上的 height（stored height，存储高度）表示当前 radix 深度。**`ps_entry_new(NULL, height, 0)` 不是空槽**——它构造一个 tag 非零但指针为空的 tagged pointer，等于把槽位当成「已占用但 ptr 为空」，后续会报 `-E_RENDEZVOS`。空槽必须是 `tp_new_none()`（全 0 的 tagged pointer，即「这里什么都没有」的标记）。
 
-| `PS_HEIGHT_*` | 值 | 含义 | 约可覆盖 pgoff |
+| `PS_HEIGHT_*` | 值 | 含义 | 可覆盖 pgoff 范围 |
 |---------------|-----|------|----------------|
 | `EMPTY` | 0 | 无映射 | — |
 | `LEAF` | 1 | root 直接指向 leaf 页（无 index 父） | 0 … 127 |
-| `INDEX1` | 2 | root 为 index 页，子为 leaf | … ≈ 64K 页 |
-| `INDEX2` | 3 | 多一层 index | … ≈ 32M 页 |
-| `INDEX3` | 4 | 再一层 index | … ≈ 16G 页（`PAGE_SLICE_MAX_BYTE_SIZE` 上限） |
+| `INDEX1` | 2 | root 为 index 页，子为 leaf | … 64K 页 |
+| `INDEX2` | 3 | 多一层 index | … 32M 页 |
+| `INDEX3` | 4 | 再一层 index | … 16G 页（对应 `PAGE_SLICE_MAX_BYTE_SIZE` 上限） |
 
 `live` 计数的对象随 entry 的 height 变化（以 `ps_entry_live_max_table` 为准）：
 
@@ -202,7 +202,7 @@ struct page_slice {
 | `page_slice.h` / `.c` | 稀疏索引、锁、insert / lookup / remove、`set_size` |
 | `page_slice_copy.h` / `.c` | buffer / slice / user 拷贝与 `clone` |
 
-测试用例：`modules/test/single_page_slice_test.c`（以树内实际文件名为准）。
+测试用例：`modules/test/single_page_slice_test.c`。
 
 ---
 
@@ -227,9 +227,9 @@ struct page_slice {
 
 ## 7. 公开 API
 
-本篇涉及的接口分布在：`include/rendezvos/mm/page_slice.h`、`include/rendezvos/mm/page_slice_copy.h`。接口说明以头文件注释为准，并已与实现核对。内容页须调用方先 `m_alloc` 再 `insert`；slice 只维护 index/leaf 壳。不替代用户 radix（见 08）。
+本篇涉及的接口分布在：`include/rendezvos/mm/page_slice.h`、`include/rendezvos/mm/page_slice_copy.h`。接口说明以头文件注释为准，并已与实现核对。内容页须调用方先 `m_alloc` 再 `insert`；slice 只维护 index/leaf 壳。不替代用户 radix（见 `08-Radix树与用户映射.md`）。
 
-**纠正：** `page_slice_lookup` 返回 `struct page_slice_entry *`（不是 `error_t`）；`create` 参数类型为 `size_t`。
+**注意：** `page_slice_lookup` 返回 `struct page_slice_entry *`（不是 `error_t`）；`create` 参数类型为 `size_t`。
 
 ### 7.1 编排顺序（典型上层用法）
 
@@ -298,12 +298,11 @@ error_t page_slice_clone(struct page_slice **dst_out, struct page_slice *src);
 
 ## 9. 测试
 
-page_slice 相关测试用例。在 `core/` 内：
+以 `modules/test/` 现有 `single_page_slice_test` 为准。在 `core/` 内：
 
 ```bash
 make ARCH=x86_64 config && make all && make run
 ```
-
 
 ---
 
@@ -312,12 +311,13 @@ make ARCH=x86_64 config && make all && make run
 - lookup 返回的指针生命周期短。
 - copy **遇到空洞即失败**。
 - 无内置 COW / 页缓存策略。
-- 跨 CPU 共享同一 slice 只靠一把粗锁，上层宜自己串行化。
+- 跨 CPU 共享同一 slice 只靠一把粗锁，上层需自行串行化。
 
 ---
 
 ## 11. 变更记录
 
+- 2026-11-15：Maintainer 复审前可读性通读：§1 更正 Buddy 引用篇（09→`06-物理内存与Buddy分配器.md`）并按 `BUDDY_MAXORDER = 10` 把单块上限「约 2 MiB」改为 4 MiB；§4.1/§4.2 容量与覆盖数值精确化（128 槽、64 TiB、去「大约/≈」）；§5 删「以树内实际文件名为准」编者注；§7「纠正」→「注意」；§9 测例名具体化。除 §1 更正外技术内容未动。
 - 2026-10-25：全文语言整理：修掉上一轮机械替换造成的歧义（「空洞不实现」→「空洞仍是空洞」等），技术内容未动。
 - 2026-10-05（可读性二轮）：展开首次出现未解释的术语——Buddy（伙伴分配器）、KVA（内核虚拟地址）、tagged pointer（带 tag 的指针，补 bit 布局说明）、`tp_new_none()`（全 0 的空 tagged pointer 标记）；§4.1「壳页」补一句括注说明是树结构自己的索引页/叶页而非内容页；§7 表里「FAM append」改成「柔性数组尾」与 §4.1 一致。
 - 2026-10-05：补 §4.2 高度覆盖表（EMPTY=0/LEAF=1/INDEX1=2/INDEX2=3/INDEX3=4）与 `ps_entry_new(NULL,height,0)` 反例；补 §4.4 树的生长（`ps_raise_height` 包一层 index、`ps_descend_pgoff` 下降时 alloc + live_inc，含 ASCII 图示）；补 §4.5 树的收缩（`ps_remove_page_locked` 清叶 + `ps_cascade_up_empty_index` 自下而上释放空 index 页 + `ps_shrink` root 降层，含 cascade 与 shrink 图示，点出 grow/shrink 与 descend/cascade 的对偶性）。恢复 `struct page_slice` 定义。来源：`core/docs/old/page-slice.md` 迁移审核。

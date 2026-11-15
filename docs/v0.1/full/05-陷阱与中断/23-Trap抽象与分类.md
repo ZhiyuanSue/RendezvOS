@@ -25,7 +25,7 @@ IRQ 软件编号空间（`irq_space`：两套 id、占有/释放）与分发衔�
 
 汇编只建 `trap_frame*`；语义用 `trap_class`；分发见 `25`（`local_irq_vector[]` / space `priv[]`）。
 
-历史动机（仍成立）：先有 x86 固定 IDT 数组外形；迁 aarch64 时**不改「数组分发」**，把 EC 放入前 64 槽、IRQ 偏移 +64——**假统一、真映射**。本篇必须讲清这条链，不能只列 API。
+历史动机（仍成立）：先有 x86 固定 IDT 数组外形；迁 aarch64 时**不改「数组分发」**，把 EC 放入前 64 槽、IRQ 偏移 +64——**假统一、真映射**。本篇也按这条链组织：§4 立语义，§6 走硬件链，§7 给 API。
 
 手册对照（细节展开在 §6）：
 
@@ -143,6 +143,13 @@ Boot 汇编（`boot.S`）**不**提前装 IDT / VBAR。可捕窗口从 `arch_sta
 | 装表 | `init_interrupt` 内 `lidt` | `set_vbar_el1` |
 | 开 IRQ | **`init_syscall`（装 LSTAR）之后**才 `arch_irq_local_enable` | **`arch_init_interrupt` 内立刻 enable**（早于 GIC CPU interface 与 syscall 注册） |
 
+**实测调用序（`start_arch.c`，供对照上表）：**
+
+- x86 `arch_start_core`：`set_gdt` → `wrmsr(MSR_KERNEL_GS_BASE)` → `prepare_per_cpu_tss` → **`init_interrupt`**（装 IDT + `lidt`，不开中断）→ `init_irq`（IOAPIC space 注册）→ `smp_ipi_init` → `arch_smp_flush_tlb_init` → `init_syscall` → **`arch_irq_local_enable`** → 时间 / cache / FP / SIMD。
+- aarch64：GIC distributor 在更早的平台阶段 `arch_start_platform`（`gic_probe` → `init_distributor` → `irq_space_gic_spi_register`）就已 bring-up；每核 `arch_start_core` 则是 **`init_interrupt`（内已 `set_vbar_el1` + 开 IRQ）** → `gic.init_cpu_interface()` → `smp_ipi_init` → `rendezvos_time_init` → `init_syscall`。
+
+aarch64 这段窗口里 IRQ 已开、但 gicc 还没初始化——实践中此时还没有任何设备线被 `irq_enable` 使能，不会真有误触发；但**任何在此窗口注册 handler 的想法都不成立**（fixed 注册要到 initcall）。
+
 ### 6.2 x86：IDT 链（Intel SDM：IDT / interrupt gates / TSS）
 
 ```text
@@ -157,6 +164,8 @@ Boot 汇编（`boot.S`）**不**提前装 IDT / VBAR。可捕窗口从 `arch_sta
 ```
 
 映射要点：`#PF` 对应 `PAGE_FAULT`，`#UD` 对应 `ILLEGAL_INSTR`，`#GP` 对应 `GP_FAULT`，…；**`#NMI(2)` 归入 `TRAP_CLASS_IRQ`**（无独立 NMI class）；向量 ≥32 在 populate 时标 IRQ。
+
+error_code 的真实集合是封闭的：**只有向量 8/10/11/12/13/14/17**（#DF/#TS/#NP/#SS/#GP/#PF/#AC）由硬件压 error_code——`trap_vec.S` 里这几项生成时 `error_code_num==0`；其余 249 个向量 `error_code_num==1`，`trap_entry` 用 `sub $8` 补一个假槽，保证 `trap_frame` 各字段偏移全表统一。装表的三块数据都在 `trap_vec.S`：`.trap.vec` 段放 256 个 stub 代码，`.data.trap.vec` 段放 stub 指针数组 `trap_vec[]`，`.data.trap.trap_vec_table` 段的 `.zero 16*256` **就是 IDT 本体**——`arch_init_interrupt` 按 `trap_vec[]` 逐槽往这里填门描述符，再 `lidt` 指向它（没有另一块独立的静态 IDT 数组）。
 
 #### IDT 门描述符位布局（SDM：Task / Interrupt / Trap Gate）
 
@@ -194,7 +203,7 @@ SDM：特权级提升进入中断 / 异常时，若 IDT gate 的 **IST=0**，CPU
 本仓库：
 
 - `DEFINE_PER_CPU(struct TSS, cpu_tss)`；`prepare_per_cpu_tss` 把 RSP0 写成该核 `boot_stack_bottom`，再 **`ltr`** 装 TSS 选择子。
-- 之后线程切换时 `switch_to` **改写 TSS.RSP0** 为新线程 `kstack_bottom`（见任务篇 §6.6）——否则从用户进核会使用错误的栈。
+- 之后线程切换时 `switch_to` **改写 TSS.RSP0** 为新线程 `kstack_bottom`（见线程篇 §6.6）——否则从用户进核会使用错误的栈。
 - **IST1–7 未用**（见下）；双 fault 等也不走独立 IST 栈。
 
 没有正确的 per-CPU TSS + 切换时更新 RSP0，用户态 IRQ / #PF 会在错误栈上建 `trap_frame`。
@@ -248,6 +257,8 @@ syscall → LSTAR=arch_enter_kernel
 
 **没有**统一末尾 `schedule`（除非 `syscall()` 或别处自行调用）。与 aarch64 SVC **不对称**——同名 `TRAP_CLASS_SYSCALL`，生命周期不同。细节见系统调用入口篇。
 
+`kernel_entry.S` 里的入口细节：`swapgs` 后把用户 rsp 存进 `gs:__user_rsp_scratch_offset`，内核 rsp 从 `gs:__tss_rsp_offset` 读出（即 TSS.RSP0——与中断路径**同一**栈来源），再 `sub 22*8` 拼现场块；现场存完后 **`sti` 开中断**再 `call syscall`。注意这与中断路径语义不同：中断门进入时 IF=0 且整段 handler 默认关中断，而 syscall 在内核态执行期间是开中断的。返回时 `cli` → 恢复现场 → 切回用户段与用户 rsp → `swapgs` → `sysretq`。
+
 ### 6.4 aarch64：VBAR 链（ARM ARM：VBAR / ESR / eret）
 
 #### 同步异常 vs 异步中断（分类总图）
@@ -295,27 +306,39 @@ ARM 把进入 EL1 的两类来源严格分开——读 `ESR` / 改 `ELR` 时都�
  └──────────────┴──────────────┴────────────┘
 ```
 
-本仓库关心的 EC 值（trap_class 映射见 §6.4 末）：
+下表按 `arch/aarch64/trap/trap.c` 的 `aarch64_ec_to_trap_class` 逐 case 全量对照（「含义」列照抄代码注释）；**未列出的 EC 一律走 default → `UNKNOWN`**：
 
-| EC        | 含义 | 对应 trap_class |
-|-----------|------|-----------------|
-| `0b000000` | Unknown reason（未识别的 EC，ISS 不可信） | `UNKNOWN` |
-| `0b000001` | Trapped WF*（WFE/WFI 被陷） | （未用） |
-| `0b000111` | Trapped FP/AdvSIMD access（FP 访问陷阱） | `FP_FAULT` |
-| `0b010001` | AArch32 SVC | （Lower EL、AArch32 走 unexpected） |
-| `0b010101` | AArch64 SVC（EL0） | `SYSCALL` |
-| `0b010110/111` | AArch64 HVC / SMC（同 EL，防御） | `SYSCALL`（未用） |
-| `0b011000` | Trapped MSR/MRS system register access | `ILLEGAL_INSTR` |
-| `0b100000/001` | Instruction Abort（EL0/EL1） | `PAGE_FAULT` |
-| `0b100100/101` | Data Abort（EL0/EL1） | `PAGE_FAULT`（DFSC（Data Fault Status Code，ESR.ISS 的子字段）=`0x21` 时改标 `ALIGNMENT`） |
-| `0b001110` | Illegal Execution State | `ILLEGAL_INSTR` |
-| `0b001110`+ | 各种 Illegal Instr / SVE / PAC fail | `ILLEGAL_INSTR` |
-| `0b100010` | PC misaligned（同 EL） | `ALIGNMENT` |
-| `0b100110` | SP misaligned（同 EL） | `ALIGNMENT` / `STACK_FAULT` |
-| `0b001111` | SError from lower EL（异步） | `ASYNC_ABORT`（但 VBAR 当前 SError 槽接 `unexpected_trap`，会 panic） |
-| `0b101111` | SError interrupt（异步） | `ASYNC_ABORT`（同上，VBAR 未接真实处理） |
+| EC | 含义（按代码注释） | 对应 trap_class |
+|----|--------------------|-----------------|
+| `0x00` | Unknown reason | `UNKNOWN` |
+| `0x01` | Trapped WFI/WFE | `UNKNOWN` |
+| `0x02`–`0x06` | 保留/未定义指令；Trapped CP15 MRC/MCR、CP15 MRRC/MCRR、CP14 MRC/MCR、其它被陷指令 | `ILLEGAL_INSTR` |
+| `0x07` | FP access trap | `FP_FAULT` |
+| `0x08` | FP exception ⚠ | `FP_FAULT` |
+| `0x0d` | Alignment fault ⚠ | `ALIGNMENT` |
+| `0x0e` | Illegal execution state | `ILLEGAL_INSTR` |
+| `0x0f` | SError from lower EL（异步） | `ASYNC_ABORT`¹ |
+| `0x11` | Tag check fault (MTE) ⚠ | `SECURITY` |
+| `0x15` | SVC（EL0→EL1，AArch64） | `SYSCALL` |
+| `0x18` | Trapped MSR/MRS（系统寄存器访问） | `ILLEGAL_INSTR` |
+| `0x20`/`0x21` | Instruction Abort（lower EL / 同 EL） | `PAGE_FAULT` |
+| `0x22` | PC alignment fault | `ALIGNMENT` |
+| `0x24`/`0x25` | Data Abort（lower EL / 同 EL） | `PAGE_FAULT`（DFSC（Data Fault Status Code，ESR.ISS 的子字段）=`0x21` 时 populate 再改标 `ALIGNMENT`） |
+| `0x26` | SP alignment fault | `ALIGNMENT` |
+| `0x2c` | FP exception (AArch32) ⚠ | `FP_FAULT` |
+| `0x2f` | SError interrupt（异步） | `ASYNC_ABORT`¹ |
+| `0x30`/`0x31` | Software breakpoint（lower EL / 同 EL） | `BREAKPOINT` |
+| `0x32`–`0x35` | Software step / watchpoint / vector catch / 其它 debug | `DEBUG` |
+| `0x3c` | Software step（BKPT，AArch32）⚠ | `BREAKPOINT` |
+| 其余 | 含 `0x16` HVC、`0x17` SMC、`0x19` SVE、`0x1c` PAC 等，代码未逐条映射 | default → `UNKNOWN` |
 
-ISS 的子字段随 EC 变化（Data Abort 时 ISS = DFSC/ISS、WnR、S1PTW…；SVC 时 ISS = immediate）。本仓库 `arch_populate_trap_info` 只读 PF 相关位，其它位直接进 `arch_flags`。
+¹ EC 映射归 `ASYNC_ABORT`，但 VBAR 的 SError 槽全接 `unexpected_trap`，实际直接 panic——**EC 映射与 VBAR 路由是两层**，勿混为一谈。
+
+代码自身还写明两条排除规则：`0x09`–`0x0c` 是 DFSC/IFSC 故障码、**不是** EC 值（勿在 EC 表里找它们）；SVC 恒为 `0x15`，**不存在**「同 EL SVC」这一 EC。
+
+**关于上表的 ⚠ 行**：含义列个别条目与通行 ARM ARM / Linux `esr.h` 的解读有出入（如 `0x11` 通行解读为 AArch32 SVC——本文档早期版本也那样写；本仓库 EL0 仅 AArch64、AArch32 入口全接 `unexpected_trap`，故这类 EC 在当前配置下基本不可达）。**行为以代码为准**——这些 EC 进来就落入表中 class；注释命名留待复核。
+
+ISS 的子字段随 EC 变化（Data Abort 时 ISS = DFSC/WnR/S1PTW…；SVC 时 ISS = immediate）。本仓库 `arch_populate_trap_info` 只读 PF 相关位，其它位直接进 `arch_flags`。
 
 #### 异常入口硬件序列（同步 / IRQ 共性）
 
@@ -329,6 +352,8 @@ ISS 的子字段随 EC 变化（Data Abort 时 ISS = DFSC/ISS、WnR、S1PTW…�
 6. 跳到 **VBAR_EL1 + 槽偏移**。
 
 软件入口接着：存通用寄存器，用 `get_curr_el_trap_info` 填 `trap_info`，进入 `trap_handler`；若是用户来源则 `schedule`，最后 `eret`（用 SPSR/ELR 恢复）。
+
+栈上现场块共 **39×8** 字节（`el1_trap_entry` / `el0_trap_entry` 两个宏逐条同构，见 `kernel_entry.S`）：槽 0 = `trap_info`；槽 1–30 = x0–x29；槽 31–36 依次 = x30(LR)、SPSR_EL1、ELR_EL1、SP、ESR_EL1、FAR_EL1；槽 37–38 空置（凑对齐）。入口**先**存 x0–x29、**后**读系统寄存器（经 x19–x23 中转再落栈），避免 `mrs` 破坏尚未保存的通用寄存器。
 
 #### ELR 返回地址规则
 
@@ -362,8 +387,8 @@ VBAR_EL1 指向 2KB 对齐的表；每槽 0x80 字节。本仓库 `trap_vec.S` �
   → eret
 ```
 
-EC 映射：`0x20/21/24/25` 对应 `PAGE_FAULT`（DFSC `0x21` 在 populate 可再标 ALIGNMENT）；`0x15`（EL0 SVC）对应 `SYSCALL`；`0x18`（Trapped MSR/MRS）对应 `ILLEGAL_INSTR`；SError（`0x0f`/`0x2f`）对应 `ASYNC_ABORT`（EC 映射语义；但 VBAR 当前 SError 槽接 `unexpected_trap`，实际进 panic）。
-**FIQ：** 入口已接线，解码空则易因未注册而 panic。`unexpected_trap` 直接调 unknown **未建 frame**（参数无效）。
+EC→class 全表见上（含「未列出 EC → default `UNKNOWN`」规则）。EC 映射与 VBAR 路由是两层，SError 即例，见上脚注 ¹。
+**FIQ：** 入口已接线，但 `get_curr_el_trap_info` 对它空转不解码，永远对不上任何已注册槽——`trap_handler` 找不到 handler，落到 `arch_unknown_trap_handler` + panic。走 `unexpected_trap` 的槽更直接：**未建 frame** 就 `bl` 过去，`tf` 参数无效。
 
 ### 6.5 SVC vs x86 syscall（schedule）
 
@@ -391,7 +416,7 @@ EC 映射：`0x20/21/24/25` 对应 `PAGE_FAULT`（DFSC `0x21` 在 populate 可�
 
 ## 7. 公开 API
 
-本篇涉及的接口分布在：语义分类与 fixed 注册——`enum trap_class`、`TRAP_COMMON` / `*_trap_info`、`fixed_trap_handler_t`、`arch_register_fixed_trap`、`arch_populate_trap_info`、`arch_get_fault_addr`、`arch_int_from_kernel`。说明改写自 `trap_common.h` / `trap.h` / `arch/*/trap/trap.h` Doxygen（已与 `arch/*/trap/trap.c` 核对）。
+本篇涉及的接口都属于：语义分类与 fixed 注册——`enum trap_class`、`TRAP_COMMON` / `*_trap_info`、`fixed_trap_handler_t`、`arch_register_fixed_trap`、`arch_populate_trap_info`、`arch_get_fault_addr`、`arch_int_from_kernel`。说明改写自 `trap_common.h` / `trap.h` / `arch/*/trap/trap.h` Doxygen（已与 `arch/*/trap/trap.c` 核对）。
 
 **本篇不涉及：** `trap_handler` / `init_interrupt` / `register_irq_handler` / `irq_global_*` / `arch_local_eoi`（见 `25`）；syscall ABI / 弱符号 / LSTAR（见 `24`）。
 
@@ -401,7 +426,7 @@ EC 映射：`0x20/21/24/25` 对应 `PAGE_FAULT`（DFSC `0x21` 在 populate 可�
 
 | 场景 | 顺序 |
 |------|------|
-| 每核装表 | `arch_start_core` 先调 **`init_interrupt`**（须已 `irq_global_vector_alloc`；再 lidt/VBAR，见 `25`），……之后再 `arch_register_fixed_trap` |
+| 每核装表 | `arch_start_core` 先调 **`init_interrupt`**（`local_irq_vector[]` 是 per-CPU 静态数组，**无预分配步骤**；内部完成 lidt/VBAR，见 `25`），之后再 `arch_register_fixed_trap` |
 | 兼容层 fault | initcall 后：`arch_register_fixed_trap(PAGE_FAULT, handler, attr)`；handler 内用 **`arch_populate_trap_info(tf, &info)`** 读 TRAP_COMMON |
 | aarch64 syscall | `init_interrupt` 之后：`arch_register_fixed_trap(SYSCALL, arch_syscall_helper, …)`（见 `24`/`05`） |
 | 设备 IRQ | **勿** `arch_register_fixed_trap(IRQ)`；用 `irq_global_alloc` + `register_irq_handler(…, cpu_id, …)`（`25`） |
@@ -438,7 +463,7 @@ void arch_register_fixed_trap(enum trap_class trap_class,
 | 非法 class | `>= TRAP_CLASS_UNKNOWN` 则直接 return |
 | 表项 | 写入 per-arch `fixed_trap_handlers[class]` / `fixed_trap_attrs[class]` |
 | 反向扫描 | x86：`[0, TRAP_ARCH_USED)`；aarch64：EC `[0, 0x40)`；匹配则对各 `cpu_id` 调 `register_irq_handler(id, cpu_id, *_wrapper, attr)` |
-| wrapper | 先 `arch_populate_trap_info`，再调表项 handler |
+| wrapper | 先 `arch_populate_trap_info`，再调表项 handler；**表项为 NULL 时静默返回**——槽位已被 wrapper 占住，`trap_handler` 不会见空 handler 而 panic，忘注册 fixed handler 的表现是「trap 被悄悄吞掉」 |
 | 陷阱 | x86 上 `TRAP_CLASS_IRQ` 几乎只绑 **NMI(2)**，不绑 ≥32 设备向量 |
 | attrs | `fixed_trap_attrs[]` 今日只写不读（死存储）；attr 仍传给 `register_irq_handler` |
 
@@ -483,23 +508,27 @@ bool arch_int_from_kernel(struct trap_frame *tf);
 - `fixed_trap_attrs[]` 只写不读（死存储）。
 - FIQ / unexpected_trap 缺口。
 - IST 未用。
+- fixed wrapper 吞 trap：fixed 向量被 wrapper 占据，表项未注册时 trap 被静默丢弃（不 panic，见 §7.3）。
+- aarch64 EC 注释个别标注存疑（§6.4 ⚠ 行），分类行为以代码为准。
 
 ---
 
 ## 11. 变更记录
 
+- 2026-11-15：可读性通读。§1 删编者批注「必须讲清这条链」，改为结构导引；「任务篇 §6.6」改既定昵称「线程篇」；§6.4 SError「两层」正文与脚注 ¹ 重复，正文压为回链脚注；FIQ 句补全因果链（空解码 → 查无 handler → unknown + panic，`unexpected_trap` 裸 `bl` 不建 frame）；「⚠ 行提示」改「关于上表的 ⚠ 行」并对齐表头「含义」列名；§7 首句与 §7.1 表格残留「，……之后再」顺手修正。
+- 2026-11-14：对照代码复查。§6.4 EC 表按 `aarch64_ec_to_trap_class` 全量重写——补 `0x02`–`0x06`/`0x08`/`0x0d`/`0x11`/`0x22`/`0x26`/`0x2c`/`0x30`–`0x35`/`0x3c`，明确「未列出 EC → default `UNKNOWN`」；修正三处与代码不符：「HVC/SMC→`SYSCALL`」与「`0b001110`+ SVE/PAC→`ILLEGAL_INSTR`」（实际都走 default `UNKNOWN`）、`0x26` 仅 `ALIGNMENT`（无 `STACK_FAULT`）；补代码注释自带的「`0x09`–`0x0c` 是 DFSC/IFSC，非 EC」与个别注释存疑（⚠）标注，行为以代码为准。§7.1 删除不存在的 `irq_global_vector_alloc`（`local_irq_vector[]` 为静态数组，无预分配）。§6.1 补两 arch 实测调用序；§6.2 补硬件压 error_code 的真实向量集与「`.data.trap.trap_vec_table` 就是 IDT 本体」；§6.3 补 syscall 入口 `sti` / gs scratch 切栈；§6.4 补 aarch64 39×8 现场块槽位布局。§7.3/§10 补「fixed wrapper 静默吞 trap」。变更记录恢复新→旧排序。
 - 2026-11-13：对齐 irq_space——去掉 `global_irq_vector` 表述；EOI 可接 `space->eoi`。
 - 2026-11-13：正文 EOI 名与代码对齐为 `arch_local_eoi`。
+- 2026-10-22：与两 id 模型对齐——去掉「IRQ 池 / irq_vector」旧词；§4.3–4.4 改为 `local_irq` / `global_irq` 与带 `cpu_id` 的注册。
+- 2026-10-05：硬件事实核对（对照 Intel SDM Vol.3 / ARM ARM DDI0487 / Linux esr.h）——修正 aarch64 EC 表 6 处错误：`0b000000`=Unknown（非 IRQ）、`0b000001`=Trapped WF*（非 FIQ）、AArch32 SVC=`0b010001`（非 `0b010000`）、`0b011000`=Trapped MSR/MRS（非「同 EL SVC」）、PC misaligned=`0b100010`（非 `0b001010`）、SP misaligned=`0b100110`（非 `0b001100`）；补 SError EC=`0b000111`；修正分类图异步异常不靠 EC 区分（靠 VBAR 槽 offset）。
 - 2026-10-05：修正 §6.4 EC 表 SError 条目——`0b000111`（0x07）实为 FP/AdvSIMD 访问陷阱（→`FP_FAULT`），非 SError；SError 的 EC 是 `0b001111`（0x0f，from lower EL）与 `0b101111`（0x2f，interrupt），均映射 `ASYNC_ABORT`。原表两处 `0b000111 SError`（一写 `UNKNOWN/panic`、一写 `ASYNC_ABORT`）系 EC 值写错 + VBAR 路由（`unexpected_trap`→panic）与 EC 映射（`ASYNC_ABORT`）混列；现拆清：FP 访问陷阱单列，SError 两 EC 合并并注明 VBAR 当前接 `unexpected_trap`。速记同步。
+- 2026-10-05：任务 1/3/5 精读——「测例」改「测试用例」；口语词修正（裂一次→产生一次分裂、踩错栈→使用错误的栈、叠爆或踩坏→栈层叠爆掉或破坏、接着跑→继续执行、别人为+1→不要人为+1、对手册时再回→对照手册时再回到、自己调→自行调用、再才跑到→之后才进入、入口在→入口已接线、选对基准→选择正确的基准、当权威→作为权威依据）；补 DFSC 全称。
+- 2026-10-05：最终词句顺畅。
 - 2026-10-04：补 x86 IDT 门描述符位布局图（Task/Interrupt/Trap Gate、DPL、IST 字段）；补 aarch64 ESR_ELx 寄存器位布局与 EC 值对照表；补同步异常 vs 异步中断分类总图；「塞进/碰到/本篇拥有」改地道中文（放入/匹配到/本篇涉及的接口分布在）。
 - 2026-10-02：补 x86 Fault/Trap/Abort 返回 RIP；IST 用意与为何未用；aarch64 异常入口序列与 ELR（async/sync/SVC）规则；IRQ 路径注明 `TRAP_SET_CPU`；§6.6 双侧速查。
 - 2026-09-27：中文措辞整理——弱化「真源」等生硬堆砌用语；公开头路径与 TSS 锚点表述通顺化。
-- 2026-10-22：与两 id 模型对齐——去掉「IRQ 池 / irq_vector」旧词；§4.3–4.4 改为 `local_irq` / `global_irq` 与带 `cpu_id` 的注册。
 - 2026-09-26：§7 全文审阅——纠正 `arch_register_fixed_trap` 为 `void`；划清拥有（class/populate）vs `25`（trap_handler / 分配）；补 Doxygen（反向扫描、USED 前置、IRQ class 陷阱、CR2/FAR/SPSR）。
 - 2026-09-25：补遗漏模块——**TSS.RSP0 / `tss.c`**；VBAR 16 槽接线表；#PF error_code 位；划清 RTC 不属本篇；文首补 SDM / ARM ARM 对照入口。
 - 2026-09-12：删除对已清除的 `interrupt_init` 死声明 / E12 的叙述。
 - 2026-08-29：整篇重做——硬件深度（IDT / VBAR / CPL / EL）；双入口与 schedule 不对称；装表 / 开中断时序；NMI≡IRQ；EC 命名空间；纠正扁平 trap.h 路径与「x86 也 fixed SYSCALL」误写；IST=0。
 - 2026-08-27：初稿（偏 API 清单）。
-- 2026-10-05：任务 1/3/5 精读——「测例」改「测试用例」；口语词修正（裂一次→产生一次分裂、踩错栈→使用错误的栈、叠爆或踩坏→栈层叠爆掉或破坏、接着跑→继续执行、别人为+1→不要人为+1、对手册时再回→对照手册时再回到、自己调→自行调用、再才跑到→之后才进入、入口在→入口已接线、选对基准→选择正确的基准、当权威→作为权威依据）；补 DFSC 全称。
-- 2026-10-05：最终词句顺畅。
-- 2026-10-05：硬件事实核对（对照 Intel SDM Vol.3 / ARM ARM DDI0487 / Linux esr.h）——修正 aarch64 EC 表 6 处错误：`0b000000`=Unknown（非 IRQ）、`0b000001`=Trapped WF*（非 FIQ）、AArch32 SVC=`0b010001`（非 `0b010000`）、`0b011000`=Trapped MSR/MRS（非「同 EL SVC」）、PC misaligned=`0b100010`（非 `0b001010`）、SP misaligned=`0b100110`（非 `0b001100`）；补 SError EC=`0b000111`；修正分类图异步异常不靠 EC 区分（靠 VBAR 槽 offset）。

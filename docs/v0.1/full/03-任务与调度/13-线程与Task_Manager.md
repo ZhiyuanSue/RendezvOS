@@ -10,7 +10,7 @@ v0.1 · 2026-09-26
 
 ## 1. 概述
 
-core 的调度对象是 **线程 + 地址空间**，没有一等公民「进程」。要 pid / wait / fd 这些「个性」的一方，自己挂状态，通常放进 `append_thread_info[]`。
+core 的调度对象是 **线程 + 地址空间**，没有一等公民「进程」。需要 pid / wait / fd 这些「个性」的一方，自己挂状态，通常放进 `append_thread_info[]`。
 
 每个可调度实体是 `Thread_Base`，挂在本 CPU 的 **`Task_Manager`（per-CPU）** 环形就绪链表上。`schedule()` 持 `sched_lock` 选出下一个 `thread_status_ready`，再在锁外 `switch_to`。默认策略是环形 next-ready（`round_robin_schedule`）：没有时间片字段、没有优先级——这里的「RR」就是绕环找 ready。
 
@@ -174,7 +174,7 @@ enum thread_status_base {
 
 `THREAD_FLAG_EXIT_REQUESTED` = 意图；`zombie` = owner CPU「已切走」证明。IPC 改 status **擦不掉** flag。
 
-默认 `flags = THREAD_FLAG_NONE` 就是内核线程；用户线程要显式给 `THREAD_FLAG_USER`。`USER` **不能**配 `&root_vspace`（`schedule` 会按配错处理）。
+默认 `flags = THREAD_FLAG_NONE` 就是内核线程；用户线程**不**是自己显式给 `THREAD_FLAG_USER`，而是走 `thread_enable_user` / `thread_disable_user`（§7.4）：前者先 `fp_alloc` 分配浮点区，成功才 OR 上 `USER`——失败时 flags 原样不动并返回错误码，不会出现「标了用户却没有 FP 区」的半吊子状态。`USER` **不能**配 `&root_vspace`（`schedule` 会按配错处理）。
 
 ### 4.3 Task_Manager
 
@@ -262,6 +262,8 @@ MCS 节点是 `DEFINE_PER_CPU(..., id_spin_lock)`（`id.c`）。`init_core_id_sy
 | `task_manager.c` | `schedule`、RR、`new_task_manager` |
 | `id.c` | tid |
 | `arch/*/task/arch_thread.c`、`arch_switch.S`、`arch_run_thread.S` | `switch_to`、首次 ctx、`run_thread` |
+| `fp.c`（`task/fp.h`） | FP 区跨架构生命周期：`fp_alloc` / `fp_free`、`fp_state_save` / `fp_state_restore`、fork 拷贝 `fp_copy_ctx` |
+| `arch/x86_64/task/arch_fp.c`；aarch64 `arch_switch.S` 的 FP 段 | `arch_fp_save_to` / `arch_fp_load_from` / `arch_fp_init_area`（`fxsave64`·`fxrstor64` / `stp·ldp q`） |
 
 ---
 
@@ -333,7 +335,22 @@ boot **没有** `arch_set_new_thread_ctx`；首次保存靠这次 `switch_to`。
 
 通用寄存器（x86 的 `rax`…、aarch64 的 `x0`…）由 ABI 分「调用者保存 / 被调用者保存」；内核 `context_switch` 只存 callee-saved 那一组就够，因为内核 C 遵守同一套调用约定。
 
-浮点 / 向量寄存器**不属于**那套 callee-saved 约定在内核里的用法：用户态可以随便用它们算 `float`/`double`、或跑 SIMD；内核又用编译选项禁止自己碰它们。于是「上一线程留下的值」不会被内核自然冲掉，也**不会**被 `context_switch` 自动换掉——必须在线程边界显式存取，否则切回来数就乱了。
+浮点 / 向量寄存器**不属于**那套 callee-saved 约定在内核里的用法：用户态可以随便用它们算 `float`/`double`、或跑 SIMD；内核又用编译选项禁止自己碰它们。于是「上一线程留下的值」不会被内核自然冲掉，也**不会**被 `context_switch` 自动换掉——必须在线程边界显式存取，否则线程切回来时，浮点寄存器里是别的线程留下的值，算出来的数就错了。
+
+##### 跨架构共享层：`fp.h` / `fp.c`
+
+`ctx->fp` 的申请与存取**没有**两套 arch 实现：`include/rendezvos/task/fp.h` + `kernel/task/fp.c` 是唯一的生命周期，也是「硬件 ↔ 快照」的唯一通路。arch 只需提供三个函数（`arch_fp_save_to` / `arch_fp_load_from` / `arch_fp_init_area`）和三个宏（`ARCH_FP_SIZE`、`ARCH_FP_ALIGN`、`ARCH_FP_BUF_SIZE` = SIZE+ALIGN），其余两边共用。
+
+| 接口 | 语义 |
+|------|------|
+| `fp_area(buf)` | `ROUND_UP(buf, ARCH_FP_ALIGN)`——从堆上拿 `ARCH_FP_BUF_SIZE` 后取其中的对齐窗口；arch 层只见窗口头，永远碰不到 malloc 裸返回 |
+| `fp_alloc(ctx)` | **幂等**：`ctx->fp` 非空直接返回成功；否则从本核 `percpu(kallocator)` `m_alloc(ARCH_FP_BUF_SIZE)`（分配器清零），随后 `arch_fp_init_area` 写入新用户线程的初始值 |
+| `fp_free(ctx)` | NULL 安全；`m_free` 后置 `ctx->fp = NULL` |
+| `fp_state_save` / `fp_state_restore` | 薄封装：`fp_area(buf)` 后转 `arch_fp_save_to` / `arch_fp_load_from`；调用者是 `switch_to` 与 `arch_ctx_refresh` |
+| `fp_copy_ctx(dst, src)` | 按窗口大小拷 `ARCH_FP_SIZE`，**不分配**；两边**都有** fp 才动，否则空操作——fork 路径的 `arch_ctx_merge_from_src` 靠它 |
+| `fp_state_size()` | 返回 `ARCH_FP_BUF_SIZE`；当前无调用者，预留给以后信号帧 / ptrace 问「要多少空间」 |
+
+初始值由 `arch_fp_init_area` 决定，这也是共享层「统一表象」下唯一的实质不对称：x86 往窗口偏移 0 写 `FCW_DEFAULT`、偏移 24 写 `MXCSR_DEFAULT`——两类控制字都把六种浮点异常全部 mask（默认不因此触发 #MF/#XM）、舍入取就近，两个偏移正是 FXSAVE 帧里 FCW / MXCSR 的位置；aarch64 目前是 **no-op**——分配器已清零，FPCR/FPSR 全零即可用。
 
 ##### x86：三代叠三代（x87 → SSE/XMM → AVX → AVX-512）
 
@@ -426,7 +443,9 @@ ARM 没有「x87 / SSE / AVX」这种叠名史；EL0/EL1 上的标量浮点与 *
 | 明确不做 | AVX / AVX-512、XSAVE 可变长 | SVE |
 | 内核编译 | `-mno-sse` 等 | `-mgeneral-regs-only` |
 
-线程栈布局（用户线程；内核线程只有 kstack，无 ustack）：
+#### 线程栈布局
+
+用户线程有 kstack + ustack，内核线程只有 kstack：
 
 ```text
    高地址
@@ -565,6 +584,9 @@ Thread_Base *get_cpu_current_thread(void);
 void set_cpu_current_thread(Thread_Base *);
 void thread_set_flags(Thread_Base *, u64);
 void thread_or_flags(Thread_Base *, u64);
+void thread_clear_flags(Thread_Base *, u64);
+error_t thread_enable_user(Thread_Base *);
+error_t thread_disable_user(Thread_Base *);
 u64 thread_get_status(Thread_Base *);
 u64 thread_set_status(Thread_Base *, u64);
 bool thread_set_status_with_expect(Thread_Base *, u64 expect, u64 target);
@@ -578,7 +600,9 @@ cpu_id_t thread_owner_cpu(const Thread_Base *);
 | 接口 | 说明 |
 |------|------|
 | `get/set_cpu_current_thread` | 读 / 写 `percpu(core_tm)->current_thread`；尚无 TM 时分别返回 NULL / 空操作。 |
-| `thread_set_flags` / `thread_or_flags` | 整字赋值 / 按位 OR；表达退出意图只用 `THREAD_FLAG_EXIT_REQUESTED`。 |
+| `thread_set_flags` / `thread_or_flags` | 整字赋值 / 按位 OR（`thread_or_flags` 现走 `set_mask_u64`，语义不变）；表达退出意图只用 `THREAD_FLAG_EXIT_REQUESTED`。 |
+| `thread_clear_flags` | 按位清零（`clear_mask_u64`），NULL 安全。 |
+| `thread_enable_user` / `thread_disable_user` | 用户线程启用 / 收拆：启用 = 先 `fp_alloc`，成功才 OR `THREAD_FLAG_USER`（失败 flags 不动，返回 `-E_IN_PARAM` / `-E_REND_NO_MEM`）；收拆 = 先清 `USER` flag 再 `fp_free`。启用入口是 `copy_thread`（fork）与 `gen_thread_from_elf`，收拆入口是 `thread_release_owned_resources`。 |
 | `thread_get/set_status*` | 原子读 / 交换 / CAS；IPC 与 `schedule` 共用同一套状态位。 |
 | `thread_lookup_port` | 查本线程 LRU 缓存；返回的 port **必须**再 `ref_put`。 |
 | `thread_set_name_with_copy` | 堆上 `strncpy` 拷贝名字；失败则保留旧名。 |
@@ -626,7 +650,7 @@ extern void run_thread(Thread_Init_Para *para); /* asm；见 thread.h */
 
 - `smp_test` — 多核调度 / IPC
 - `thread_affinity_test`（`smp_test[]`）— 创建时绑核
-- 大量测试用例用 `gen_thread_from_func` 造内核线程；`RENDEZVOS_TEST` 下 boot 进了 `kernel_handle_msg` 之后会卡在 `recv_msg` 上，RR 不会再选中它
+- 多数测例经 `gen_thread_from_func` 造内核线程；`RENDEZVOS_TEST` 下 boot 进了 `kernel_handle_msg` 之后会卡在 `recv_msg` 上，RR 不会再选中它
 
 ```bash
 cd core && make ARCH=x86_64 config && make all && make run
@@ -649,7 +673,8 @@ cd core && make ARCH=x86_64 config && make all && make run
 
 ## 11. 变更记录
 
-- 2026-11-14：命名与分层对齐代码——`fp_area` / `fp_state_*` / `fp_alloc`；BUF=`SIZE+ALIGN`；去掉旧 `arch_fp_area` / scratch 表述。
+- 2026-11-15：Maintainer 复审前可读性通读：「线程栈布局」图从「浮点与向量 → 两边对照」小节下独立为 `#### 线程栈布局` 节；§1 / §6.6 / §9 三处词句理顺（「要…的一方」补谓语、「切回来数就乱了」改明指、`大量测试用例`→`多数测例`）。裸反引号篇号（`14` / `16` / `31` 等）与全仓惯例一致，未动；技术内容未动。
+- 2026-11-15：FP（E13）跟进复核——§4.2 用户线程约定从「显式给 `USER`」更新为 `thread_enable_user` / `thread_disable_user` 契约（FP 区先、flag 后；失败不动）；§6.6 新增「跨架构共享层」小节（`fp.h` / `fp.c` 接口表、`fp_alloc` 幂等、x86 `arch_fp_init_area` 写 FCW/MXCSR 默认值 vs aarch64 no-op、`fp_state_size` 暂无调用者）；§7.4 补 `thread_clear_flags` 与 enable / disable 两接口及调用入口；§5 代码对应补 `fp.c` 与 `arch_fp.c`；删除变更记录末尾错位的重复行「2026-10-05：最终词句顺畅」。
 - 2026-11-13：§6.6 FXSAVE 布局表——澄清 XMM0–15 共 16×16B=256B；ST0–7 在偏移 32 的 8×16B 槽；512B 含头+ST+XMM+保留。
 - 2026-11-13：§6.6 新增「浮点与向量」专节——x87 / XMM / AVX / AVX-512、FXSAVE vs XSAVE、aarch64 Q+FPCR/FPSR 与 SVE、本仓库 eager 边界；`switch_to` 步骤与时序图补上 FP。
 - 2026-10-25：全文语言整理：回退上一轮的书面化替换，顺掉「在这里首先是」一类直译句和生硬量词，技术内容未动。
@@ -662,4 +687,3 @@ cd core && make ARCH=x86_64 config && make all && make run
 - 2026-09-25：语言整理；§6.6 扩写 x86 TSS/GS/FS 与 aarch64 SP_EL0/TPIDR/DAIF 对照实现；日期对齐本轮。
 - 2026-08-29：整篇重做——薄调度叙述；status / flag / zombie / exit 三分；内核切入不换根；tid 真锁；append 调用点；`init_proc` 切 idle；RR 死循环与排水副作用；纠正旧稿 `tid_spin_lock`。
 - 2026-08-27：初稿；08-29 曾定点补丁「薄 RR」。
-- 2026-10-05：最终词句顺畅。

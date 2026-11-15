@@ -234,7 +234,7 @@ aarch64 没有 GS。本仓库把 EL1 的 **`TPIDR_EL1`** 当成 per-CPU 区基�
 
 #### 浮点与向量指令：为什么启动要管
 
-ARM 复位之后，**默认不允许**在 EL1 执行浮点或向量指令。第一次去算 `float`、或用一条指令处理一排数，硬件会立刻陷入，等操作系统先声明「我接得住这套状态」。管这扇门的是 **`CPACR_EL1`** 里的 **FPEN** 位。`boot.S` 里的 `enable_fp` 把这扇门打开，EL0 和 EL1 才允许访问。
+ARM 复位之后，**默认不允许**在 EL1 执行浮点或向量指令。第一次去算 `float`、或用一条指令处理一排数，硬件会立刻陷入，等操作系统先声明「我接得住这套状态」。管这扇门的是 **`CPACR_EL1`** 里的 **FPEN** 位。`boot.S` 里的 `enable_fp` 把这扇门打开——`orr` 一次置起 FPEN 两位（0b11，EL0 与 EL1 都不再陷入），BSP 和 AP 的启动链上各调一次，每个核自己开自己。
 
 aarch64 上标量浮点与 AdvSIMD（NEON）共用 **`V0`–`V31`**（汇编里常按宽度写成 `S`/`D`/`Q`）；另有 **`FPCR`/`FPSR`**。没有 x86 那种「x87 / SSE / AVX」叠代命名，但还有可选的 **SVE**（可变长度向量，本仓库不启用）。名词与切换约定见线程篇 **§6.6「浮点与向量」**。
 
@@ -281,7 +281,7 @@ GAS 的 `.align n`：在 **aarch64 上按 2ⁿ 对齐**（`.align 4` 是 16 字�
 
 ### 6.3 AP 入口（本篇只到 `ap_entry`）
 
-`ap_entry` 不是上面那条链：它把固件传入的 x0 存进 `setup_info.cpu_id`，自己降 EL、开 MMU（**不再**跑 `boot_map_pg_table`，页表已由 BSP 建好），栈先用 `ap_boot_stack_ptr` 减去高半偏移得到物理地址，开 MMU 后再改成虚地址，然后进入 `start_secondary_cpu`。谁写入栈顶和软件编号、谁调 PSCI，见 SMP 篇。
+`ap_entry` 不是上面那条链：它把固件传入的 x0 存进 `setup_info.cpu_id`，自己降 EL、开 MMU（**不再**跑 `boot_map_pg_table`，页表已由 BSP 建好），栈先用 `ap_boot_stack_ptr` 减去高半偏移得到物理地址，开 MMU 后再改成虚地址，并同样 `enable_fp`（§4.6），然后进入 `start_secondary_cpu`。谁写入栈顶和软件编号、谁调 PSCI，见 SMP 篇。
 
 ### 6.4 进 C 之后、全机只做一次的架构函数
 
@@ -301,7 +301,7 @@ BSP 走到这里时由 `cmain` 调用，AP 则由 `start_secondary_cpu` 调用�
 
 再挂上系统调用那条固定 trap。低特权（EL0）的 `svc` 会进内核；助手按陷入时保存的状态决定要不要继承「当时是否允许 IRQ」，再调用可移植的 `syscall()`，返回前恢复。同特权级自己 `svc` 不改内核的 IRQ 策略。和 x86「进 syscall 时关掉可屏蔽中断」是同一类意图，机制见系统调用入口篇。
 
-浮点/向量硬件已在进 `cmain` 之前由 `enable_fp` 打开（给用户留的，不是给内核 C 用的），本函数不再重复。本函数没有失败返回路径。
+浮点/向量硬件已在进 C 之前由 `enable_fp` 打开——BSP 在进 `cmain` 前、AP 在进 `start_secondary_cpu` 前各开一次（给用户留的，不是给内核 C 用的），本函数不再重复。本函数没有失败返回路径。
 
 ---
 
@@ -376,6 +376,7 @@ make ARCH=aarch64 config && make run
 
 ## 11. 变更记录
 
+- 2026-11-15：FP（E13）跟进——§4.6/§6.3/§6.5 写明 `enable_fp` BSP 与 AP 启动链各调一次（`orr` 置 FPEN=0b11）；您的 §4.6 重写（V/Q、FPCR/FPSR、SVE 边界、eager FPSIMD）已对 boot.S / arch_switch.S 逐条核实，无误。
 - 2026-11-13：§4.6 浮点节点明 V/Q、FPCR/FPSR、SVE 边界，并回链线程篇 §6.6；切换已改为 eager FPSIMD。
 - 2026-10-05：§5 补 GAS `.align`：本架构按 2ⁿ；x86 按字节，勿跨 ISA 照抄。
 - 2026-10-05：§4.6 浮点改为「为何要开门、内核编译限制、用户可能用、切换还不保存」连贯叙述；去掉未解释的缩写。

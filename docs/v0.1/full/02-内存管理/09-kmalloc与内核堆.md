@@ -4,7 +4,7 @@ v0.1 · 2026-09-25
 
 本篇覆盖：`kernel/mm/kmalloc.c`、`kernel/mm/string.c`、`include/rendezvos/mm/kmalloc.h`、`include/rendezvos/mm/allocator.h`。
 
-整章内存栈总图见 `06-物理内存与Buddy分配器.md` 开篇（底层即本篇 `kallocator`，横向箭头即跨核归还）。物理页分配见 `06`；在 `root_vspace` 上挂整页时用的 radix / `map` 见 Radix 篇与页表篇；跨核 free 用的 MSQ 机制见 `04-IPC/18`。
+整章内存栈总图见 `06-物理内存与Buddy分配器.md` 开篇（底层即本篇 `kallocator`，横向箭头即跨核归还）。物理页分配见 `06`；在 `root_vspace` 上挂整页时用的 radix / `map` 见 `08-Radix树与用户映射.md` 与页表篇；跨核 free 用的 MSQ 机制见 `04-IPC/18-支持IPC的无锁MSQ队列实现.md`。
 
 ---
 
@@ -16,7 +16,7 @@ v0.1 · 2026-09-25
 
 无锁 IPC 的常态是：对象在 A 核分配，消息到 B 核的 server，再在 B 上释放。若堆仍是全局一把锁，业务锁和 IPC 锁迁走之后，瓶颈只是换个形式重新出现。
 
-所以做成每核本地堆：同核 alloc / free 不与他人竞争。异核释放时，**不要直接改其他核的 chunk 链表**，而是把对象（或整页回收请求）投递到**归属核**的无锁队列，让归属核自己 drain。这一设计承认「所有权在分配核」，借用的正是 IPC 那套 MSQ 哲学来归还对象。
+所以做成每核本地堆：同核 alloc / free 不与他人竞争。异核释放时，**不要直接改其他核的 chunk 链表**，而是把对象（或整页回收请求）投递到**归属核**的无锁队列，让归属核自己 drain。这一设计承认「所有权在分配核」，归还借用的正是 IPC 那套 MSQ 机制。
 
 ### 1.2 两条跨核队列
 
@@ -50,7 +50,7 @@ drain 顺序：先清 `kfree_page_msq`，再清 `buffer_msq`。触发点有两�
 ### 4.1 尺寸
 
 - 合法请求：`1 ≤ Bytes ≤ MIDDLE_PAGE_SIZE`（2 MiB）。
-- 小对象档：`slot_size[]` 约为 `8…2048` 共 12 档（`MAX_GROUP_SLOTS`）；**大于 2048** 走整页路径。
+- 小对象档：`slot_size[]` 为 `{8, 16, 24, …, 2048}` 共 12 档（`MAX_GROUP_SLOTS`）；**大于 2048** 走整页路径。
 
 ```c
 #define MAX_GROUP_SLOTS 12
@@ -60,7 +60,7 @@ drain 顺序：先清 `kfree_page_msq`，再清 `buffer_msq`。触发点有两�
 ### 4.2 chunk / group
 
 - `PAGE_PER_CHUNK == 4`：chunk 起始页对齐，但 **object 载荷刻意不按 4 KiB 对齐**，以便 free 时用对齐性区分「页还是小对象」。
-- 每个 group 两套链表：`full_list` 与 `empty_list`（有空位的 chunk 也归入 empty 侧的计数/复用体系，不是三套 partial/full/empty 命名）。
+- 每个 group 两套链表：`full_list` 与 `empty_list`（有空位的 chunk 仍计入 empty 侧的计数 / 复用体系，并没有 partial / full / empty 三类链表）。
 - chunk 元数据**只允许 owner CPU 修改**；跟踪整页的 `page_chunk_root` 红黑树用 `cas_lock`。
 
 ```c
@@ -96,7 +96,7 @@ struct mem_group {
 
 ### 4.3 整页与 `root_vspace`
 
-路径大致是：`pmm_alloc` 后在 root 上 radix `insert_range`（owner tag = 本 CPU），再 `map`、`leaf_bind`，可选 zero。跟踪节点 `page_chunk_node` 本身也来自小对象分配。释放时先 unbind，再 unmap，经 DELETE 清叶后 `pmm_free`。
+路径是：`pmm_alloc` 后在 root 上 radix `insert_range`（owner tag = 本 CPU），再逐页 `map`（4 KiB 叶子）、`leaf_bind_range`；成功路径上的清零由 `m_alloc` 统一 memset 完成（见 §6.1）。跟踪节点 `page_chunk_node` 本身也来自小对象分配。释放时先 unbind，再 unmap，经 DELETE 清叶后 `pmm_free`。
 
 ```c
 #define MM_COMMON                                                       \
@@ -227,12 +227,11 @@ void kalloc_process_cross_cpu_frees(void);
 
 ## 9. 测试
 
-kmalloc / SMP 相关测试用例。在 `core/` 内：
+以 `modules/test/` 现有 `single_kmalloc_test` / `smp_kmalloc_test` 为准。在 `core/` 内：
 
 ```bash
 make ARCH=x86_64 config && make all && make run
 ```
-
 
 ---
 
@@ -240,12 +239,13 @@ make ARCH=x86_64 config && make all && make run
 
 - owner 标错或对齐误判会进错队列或泄漏。
 - 引导期自举与正式实例切换需要注意：早期分配若落在 tmp，释放路径要能对应上。
-- 与 radix DELETE / owner 过滤的头文件叙述差异，以 `.c` 为准（见 Radix 篇）。
+- radix DELETE / owner 过滤的头文件注释若与实现不符，以 `.c` 为准（见 `08-Radix树与用户映射.md`）。
 
 ---
 
 ## 11. 变更记录
 
+- 2026-11-15：Maintainer 复审前可读性通读：开篇 `04-IPC/18` 与两处「Radix 篇」补全文件名（兄弟篇均写全名，「页表篇」绰号保留）；§1.1「MSQ 哲学」→「MSQ 机制」；§4.1 slot 档写实际取值（`kmalloc.c` 的 `slot_size[]`），去掉「约为」；§4.2 「三套…命名」→「三类链表」；§4.3 页路径去掉「大致 / 可选 zero」——经核对 `core_get_free_pages`，insert→逐页 map→leaf_bind_range 顺序确定，清零由 `m_alloc` memset 无条件完成；§9 测试名具体化（`single_kmalloc_test` / `smp_kmalloc_test`）并删代码块后多余空行；§10 头文件差异条目措辞理顺。技术内容未动。
 - 2026-10-25：全文语言整理：理顺个别直译句与过度书面化的替换（标正确→标对、映入→映射到），技术内容未动。
 - 2026-10-04：全文中文表述整理——「换了个马甲回来」→「换个形式重新出现」；「不抢别人」→「不与他人竞争」；「他核的」→「其他核的」；「丢进」→「投递到」；「把东西还回去」→「把对象归还」；「怎么找到主人」→「如何确定归属核」；「好让…把积压清掉」→「让…清理积压」；「低分配核」→「分配较少的核」；「一直涨」→「持续增长」；「标对」→「标正确」；「好让」→「以便」；「落在 empty 这一侧」→「归入 empty 侧」；「只许…改」→「只允许…修改」；「拿到」→「获取」；「偷」→「借用」；「再不行就」→「仍不够则」；「往对方的」→「向归属核的」；「空 chunk 多了可以还给系统」→「空 chunk 过多时可归还系统」；「本核回 chunk」→「本核归还 chunk」；「打日志」→「记录日志」；「再跑一轮」→「再执行一次」；「挂 RB」→「插入 RB」；「不要当正式堆长期使用」→「不要作为正式堆长期使用」；「要留心/落到/要对得上」→「需要注意/落在/要能对应上」；§7「本篇拥有」→「本篇涉及的接口分布在」。
 - 2026-10-04：§4 补 `mem_chunk` / `mem_group` / `mem_allocator` / `page_chunk_node` 结构体。

@@ -34,7 +34,7 @@ full 正文缺口：（当前无；新增篇目或整篇重写需求在此表格
 | E9 | 日志异步 / console-server | `08-日志与控制台/34-日志与UART控制台.md` | 热路径同步 UART；design 占位 `design/日志与console-server.md` |
 | E10 | riscv64 / loongarch 主线化 | `00-总览/00-架构与源码布局.md` | 启动与测例覆盖弱于 x86_64/aarch64 |
 | E11 | EBR / MSQ slot 扩展 | `03-任务与调度/17-EBR与线程资源回收.md` | 更大 retire 表或 generational 方案 |
-| E13 | ~~线程切换保存浮点 / 向量状态~~ | `03-任务与调度/13-线程与Task_Manager.md`、`01-启动与初始化/04-平台启动-x86_64.md`、`01-启动与初始化/05-平台启动-aarch64.md` | **已做（eager）**：x86 FXSAVE（x87+SSE/XMM；**不开** XCR0.AVX）；aarch64 Q0–Q31+FPCR/FPSR。**仅 user** 堆分配 `ctx->fp`（kernel `NULL`，切换跳过）。AVX/AVX-512 / XSAVE 可变长 / SVE 仍不做 |
+| E13 | ~~线程切换保存浮点 / 向量状态~~ | `03-任务与调度/13-线程与Task_Manager.md`、`01-启动与初始化/04-平台启动-x86_64.md`、`01-启动与初始化/05-平台启动-aarch64.md` | **已做（eager）**：x86 FXSAVE（x87+SSE/XMM；**不开** XCR0.AVX）；aarch64 Q0–Q31+FPCR/FPSR。**仅 user** 堆分配 `ctx->fp`（入口 `thread_enable_user` / `thread_disable_user`，先 `fp_alloc` 成功才置 USER flag；kernel `NULL`，切换跳过）。AVX/AVX-512 / XSAVE 可变长 / SVE 仍不做 |
 
 新增条目：在此表追加一行，并在对应 full 篇 §10 加一句回链本表 ID。
 
@@ -42,6 +42,7 @@ full 正文缺口：（当前无；新增篇目或整篇重写需求在此表格
 
 ## 变更记录
 
+- 2026-11-15：**E13** 文档同步收尾——E13 行补 enable / disable 入口名；线程篇 §6.6 增「跨架构共享层 `fp.h` / `fp.c`」小节；x86 启动篇补 `start_simd` 的 `set_mxcsr(MXCSR_DEFAULT)`；aarch64 启动篇补 `enable_fp` BSP / AP 各调一次；构建篇与本篇补记。实现本身见 11-13 条。
 - 2026-11-13：关闭 **E13**——eager FXSAVE（x86，无 AVX）/ FPSIMD（aarch64）挂入 `switch_to` + `arch_ctx_refresh` / fork merge；XCR0 仅 X87\|SSE。
 - 2026-10-05：新增 **E13**——线程切换保存浮点/向量（启动已开硬件，上下文未保存）。
 - 2026-09-12：关闭 **E12**——已从 `common.h` 删除死声明 `interrupt_init`；现行路径仅为 `init_interrupt`。

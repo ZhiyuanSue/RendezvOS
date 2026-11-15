@@ -113,7 +113,7 @@ cpu < RENDEZVOS_MAX_CPU_NUMBER
 | `task_manager_for_cpu` 空 | `-E_IN_PARAM` |
 | 否则 | `add_thread_to_manager` |
 
-注意：`add_thread_to_manager` **本身**对非 init 只 `pr_warn` 仍链接——严格 status 检查只在 `add_thread_to_cpu`。绑核路径请走后者。
+注意：`add_thread_to_manager` **本身**对非 init 只打印 `pr_warn`、仍照常挂环——严格的 status 检查只在 `add_thread_to_cpu`。绑核路径请走后者。
 
 ---
 
@@ -135,13 +135,13 @@ cpu < RENDEZVOS_MAX_CPU_NUMBER
 3. 若分步：`add_thread_to_cpu` 把 status 从 `init` 变成 `ready`，`tm` 指向目标
 4. 之后只在该核 `schedule` 上被调度器选中
 
-测试用例：CPU `i` 在 `(i+1)%NR_CPU` 创建 probe（arg=creator）；probe 写 `affinity_seen[ran_on]=creator`；check `affinity_seen[j]==(j+NR_CPU-1)%NR_CPU`。创建者 spin `schedule` 直至 seen 置位，再等到 zombie 后 `delete_thread`。
+测试用例：CPU `i` 在 `(i+1)%NR_CPU` 创建 probe（arg=creator）；probe 写 `affinity_seen[ran_on]=creator`；再核对 `affinity_seen[j]==(j+NR_CPU-1)%NR_CPU`。创建者反复 `schedule` 自旋，直至 seen 置位，再自旋等到 probe 成为 zombie 后 `delete_thread`。
 
 ---
 
 ## 7. 公开 API
 
-本篇涉及的接口分布在：创建时选核的四个 helper（`thread.h` / `thread.c`）。说明改写自头文件 Doxygen，并已与 `.c` 核对。调度环 / `add_thread_to_manager` 细节见 `13`；`gen_thread_from_*` 见 `14`；`NR_CPU` / 拓扑见 SMP 篇。
+本篇涉及的接口就是创建时选核的四个 helper，在 `thread.h` / `thread.c`。说明改写自头文件 Doxygen，并已与 `.c` 核对。调度环 / `add_thread_to_manager` 细节见 `13`；`gen_thread_from_*` 见 `14`；`NR_CPU` / 拓扑见 SMP 篇。
 
 **本篇不涉及：** 运行期迁核（无此 API）；IRQ / GIC / IOAPIC 中断亲和；ACPI「CPU online」语义。
 
@@ -178,7 +178,7 @@ error_t add_thread_to_cpu(Thread_Base *thread, cpu_id_t cpu);
 
 ## 8. 多架构
 
-与 ISA 无关；逻辑 `cpu_id` 与 arch affinity / MPIDR / APIC ID 对照见 SMP 拓扑篇，勿混入本篇。硬件中断路由（IOAPIC RTE、GICD ITARGETSR / affinity）改的是「中断送达哪颗核」，不会改 `thread->tm`。
+与 ISA 无关；逻辑 `cpu_id` 与 arch affinity / MPIDR / APIC ID 对照见 SMP 篇，勿混入本篇。硬件中断路由（IOAPIC RTE、GICD ITARGETSR / affinity）改的是「中断送达哪颗核」，不会改 `thread->tm`。
 
 ---
 
@@ -203,6 +203,8 @@ cd core && make ARCH=x86_64 config && make all && make run
 
 ## 11. 变更记录
 
+- 2026-11-15：Maintainer 复审前可读性通读：§11 一条 10-05 条目原漂在「08-27 初稿」之后，归位到列表顶部；§4.3「只 `pr_warn` 仍链接」改「只打印 `pr_warn`、仍照常挂环」（与 §7.2 用语统一）；§6 测试段 「check / spin」两处中英夹杂改写为中文并补全句子；§7「接口分布在：」句式修正；§8 自称「SMP 拓扑篇」统一为 repo 惯用的「SMP 篇」。门禁顺序、错误码、`owner_cpu` 赋值、测例名均对照 `thread.c` / `task_manager.c` / `thread_affinity_test.c` 核实无误；技术内容未动。
+- 2026-10-05：最终词句顺畅。
 - 2026-10-05：任务 1/3/5 精读——§3/§6「测例」→「测试用例」、「建 probe」→「创建 probe」；§3「混谈」→「混为一谈」；§2「改不了」→「无法修改」；§4.2「GIC: CPU interface 已起」→「已启用」、首次出现 MADT 补全称（ACPI 多 APIC 描述表）、SIPI 补说明（Startup IPI）；§7.2「只 warn」→「只打印 warn」；§8「勿混进」→「勿混入」。
 - 2026-10-04：补硬件/架构知识——§1 加 per-CPU TM 派发 ASCII 图，画清创建者 CPU 与目标 CPU 的就绪环互不可见；§4.2 加软件 online 与硬件 online（MADT / GIC CPU interface）对照图，写明前者以后者为前提但不等价。
 - 2026-10-04：§4 拆成 `owner_cpu`、软件 online、第一次入队检查三个小节。
@@ -211,4 +213,3 @@ cd core && make ARCH=x86_64 config && make all && make run
 - 2026-09-25：语言整理；厘清软件 online / 绑核与中断亲和（GIC / APIC）不是同一概念。
 - 2026-08-29：整篇重做——「亲和=首次入队」；online 完整条件；`add_thread_to_cpu` vs `add_thread_to_manager`；IRQ 不混；owner 非终身标签。
 - 2026-08-27：初稿。
-- 2026-10-05：最终词句顺畅。

@@ -46,7 +46,7 @@ TLB mask / shootdown 见 `11-TLB与缓存一致性.md`；调度时装根见 `03-
 
 全局位图，上界由 `arch_asid_supported_width()` 决定：`asid_max = (1u << width) - 1`（aarch64 为 8 位对应 255、或 16 位对应 65535；x86 为 12 位对应 4095，对齐 PCID 字段宽）。**0 永远保留**；分配失败返回 0，create 路径会把已经建好的结构体释放掉。锁是 MCS：`asid_lock` + 本核 `asid_mcs_node`。
 
-注意 x86 返回 **12** 只表示 PCID 的标识位宽；**当前没开 PCID**（装 CR3 仍然忽略 asid）——别写成「x86 已经启用 PCID」。
+注意 x86 返回 **12** 只表示 PCID 的标识位宽，**当前没开 PCID**（装 CR3 仍然忽略 asid），并不代表 x86 已经启用 PCID。
 
 分配器没有单独的公开结构体，状态在 `asid.c` 里：
 
@@ -90,7 +90,7 @@ static asid_bitmap_t asid_bitmap;
 
 ## 6. 流程
 
-### 6.1 背景：硬件怎样携带这个软件号（官方对照）
+### 6.1 背景：硬件怎样携带这个软件号（ARM ARM / SDM）
 
 **aarch64（ARM ARM，TTBR / TCR / TLBI）**
 
@@ -124,10 +124,7 @@ asid_init (BSP)
 
 ## 7. 公开 API
 
-本篇涉及的接口分布在：`include/rendezvos/mm/asid.h`（实现 `kernel/mm/asid.c`）与
-`include/arch/<isa>/mm/asid.h` 的 `arch_asid_supported_width`。装根时如何把
-ASID 写入硬件，见各 ISA 的 `arch/*/mm/vmm.h` 的
-`arch_set_current_user_vspace_root_asid`（调用方在 schedule / 15 篇）。
+本篇涉及的接口分布在：`include/rendezvos/mm/asid.h`（实现 `kernel/mm/asid.c`）与 `include/arch/<isa>/mm/asid.h` 的 `arch_asid_supported_width`。装根时如何把 ASID 写入硬件，见各 ISA 的 `arch/*/mm/vmm.h` 的 `arch_set_current_user_vspace_root_asid`（调用方在 schedule，见所有权篇）。
 `asid_t` = `u16`（`common/types.h`）。
 
 ### 7.1 编排顺序（与源码一致）
@@ -136,7 +133,7 @@ ASID 写入硬件，见各 ISA 的 `arch/*/mm/vmm.h` 的
 |------|------|
 | BSP | `virt_mm_init` 内 **`asid_init()`**，再 `init_root_vspace`（`root_vspace.asid = 0`） |
 | 用户 AS 创建 | `alloc_user_vs_structure` / create·clone 时 **`asid_alloc()`**，写入 `vs->asid`；返回 **0** 则失败回滚 |
-| 调度切入 | `vs_tlb_cpu_mask_set` 后 **`arch_set_current_user_vspace_root_asid(root, vs->asid)`**，其余见 11 / 15 |
+| 调度切入 | `vs_tlb_cpu_mask_set` 后 **`arch_set_current_user_vspace_root_asid(root, vs->asid)`**，其余见 TLB 篇 / 所有权篇 |
 | 销毁 | `tlb_cpu_mask` 已空后清用户映射，再 **`asid_free(vs->asid)`**（在 `del_vspace` 路径） |
 
 clone **不**继承父 ASID，各自 `asid_alloc`。无 generation：回收后再分配全靠 mask/刷序纪律。
@@ -192,12 +189,13 @@ void arch_set_current_user_vspace_root(paddr u_root); /* 兼容；无 ASID 标�
 
 - 无 generation：全靠 TLB 篇的 mask / 刷序纪律。
 - 号码用完就无法 create。
-- x86 PCID 是远期项；正文不要写成已支持。
+- x86 PCID 是远期项，当前未启用，仅预留取值范围。
 
 ---
 
 ## 11. 变更记录
 
+- 2026-11-15：Maintainer 复审前可读性通读：§4.1/§10 两处编者批注（「别写成…」「正文不要写成已支持」）改为面向读者的陈述；§7/§7.1 裸篇号「15 篇」「11 / 15」按全仓先例改「所有权篇」「TLB 篇 / 所有权篇」；§6.1 标题「官方对照」→「ARM ARM / SDM」；§7 首段硬换行拼回。本篇轻微口语为 2026-10-25 有意回退风格，未再改动；技术内容未动。
 - 2026-10-25：全文语言整理：回退上一轮的书面化替换（靶向失效→精确刷、当前并未启用→当前没开、仍依赖→还是靠、可以暂时保留→可以先留着、号码耗尽→号码用完、一旦被破坏→一破），并顺掉「在这里首先是」「可以选择不刷光」一类直译句，技术内容未动。
 - 2026-10-04：中文用语整理——分配给别人/持有/清除/覆盖/保留/有效/不更换、写入/置位/随 ASID 生效/依赖、本篇涉及的接口分布在、扫描空位、已启用、测试用例、属于远期；§1 概述补「分配的编号/识别/刷掉/写入/丢弃/分配给别人/持有/一旦被破坏」。
 - 2026-10-04：§4.1 补 `asid.c` 里的 bitmap / 锁。

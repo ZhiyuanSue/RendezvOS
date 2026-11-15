@@ -4,7 +4,7 @@ v0.1 · 2026-09-25
 
 本篇覆盖：`kernel/mm/vmm_radix_tree.c`、`kernel/mm/mm_user_utils.c`、`include/rendezvos/mm/vmm_radix_tree.h`、`include/rendezvos/mm/mm_user_utils.h`；与 clone / register 紧耦合处见 `kernel/mm/vmm.c`（完整 VSpace 生命周期仍以 `07-虚拟地址空间与页表.md` 为准）。
 
-整章内存栈总图见 `06-物理内存与Buddy分配器.md` 开篇。硬件 PTE 怎么改见同分区页表篇。page fault 填页 / 拆页的**策略**在兼容层；本篇只写 core 侧约定。`register_vspace` 按页表根地址挂红黑树（见 §4.7），与 IPC 子系统按字符串名注册 port 是两套不同机制——此处只是提醒别混淆，不展开 IPC。
+整章内存栈总图见 `06-物理内存与Buddy分配器.md` 开篇。硬件 PTE 怎么改见同分区页表篇。page fault 填页 / 拆页的**策略**在兼容层；本篇只写 core 侧约定。`register_vspace` 按页表根地址挂红黑树（见 §4.7），与 IPC 子系统按字符串名注册 port 是两套不同机制——此处只提醒不要混淆，不展开 IPC。
 
 ---
 
@@ -18,7 +18,7 @@ v0.1 · 2026-09-25
 
 若像经典宏内核那样维护独立 VMA 抽象 + 另一套页表 walker，会出现双账本漂移（SOSP 2025 的 CortenMM 一文讨论过「策略层与硬件层各记一套」的扩展性瓶颈）。本仓库选择：**策略意图存入 radix，落地翻译存入 PTE**，fault 时两面都读，但以 radix 判定「该不该填 / 该不该 COW」。
 
-这样做还避免「只看 PTE」分不清「已预约还没填页」和「根本没映射」；fork 做完 COW 准备之后，PTE 往往是只读的，但 radix 里仍记着「意图可写 + COW」——写故障时必须读 radix。
+这样做还避免「只看 PTE」分不清「已预约还没填页」和「根本没有映射」；fork 做完 COW 准备之后，PTE 往往是只读的，但 radix 里仍记着「意图可写 + COW」——写故障时必须读 radix。
 
 core 里的 `clone_vspace` 已经能做 `COW_PREP` / `COPY_PAGES`；真正在 fault 里填页或拆页，由兼容层调 utils 完成。
 
@@ -34,7 +34,7 @@ core 里的 `clone_vspace` 已经能做 `COW_PREP` / `COPY_PAGES`；真正在 fa
 
 1. **锁要分档，不能一把抓**。把锁拆成两层：L0 按 512 GiB 分桶（粗粒度，管「谁在驱动这段跨度」），L2 按 2 MiB 分带（细粒度，管「真正改这段 2 MiB」）。两个 CPU 落在不同 2 MiB 带里就互不干扰；只有落在同一带里才排队。这就是 §4.2 的 L0/L2 锁。
 
-2. **树要能按需长，长的时候不能挡别人**。radix 树一开始只有 L0 根页，下层 L1/L2/L3 表页是按需创建的。如果「创建下层表页」要持一把全局锁，那两个 CPU 同时在不同的 512 GiB 桶里第一次建 L1 时也会互相挡。于是有了 §4.3 的**五阶段 + 预约/发布**：每个 CPU 在自己要走的路径上，自上而下逐级「没有就建一页、CAS 发布给其他 CPU 看」，发布用的是每项自己的 bit-lock，不挡别的项。这就是「预约」（叶子级记 `LAZY`）和「发布」（表级原子写指针 + `VALID`）的来由——它们不是装饰，是并发建树的必要机制。
+2. **树要能按需生长，生长时不能阻塞别人**。radix 树一开始只有 L0 根页，下层 L1/L2/L3 表页是按需创建的。如果「创建下层表页」要持一把全局锁，那两个 CPU 同时在不同的 512 GiB 桶里第一次建 L1 时也会互相阻塞。于是有了 §4.3 的**五阶段 + 预约/发布**：每个 CPU 在自己要走的路径上，自上而下逐级「没有就建一页、CAS 发布给其他 CPU 看」，发布用的是每项自己的 bit-lock，不阻塞别的项。这就是「预约」（叶子级记 `LAZY`）和「发布」（表级原子写指针 + `VALID`）的来由——它们不是装饰，是并发建树的必要机制。
 
 3. **回滚要能精确到阶段**。五阶段里任何一步都可能失败（`pmm_alloc` 拿不到页、检测到 overlap、叶子仍 VALID 不能删）。如果失败要回滚，必须只回滚**已经改动过的部分**，不能把别的 CPU 已经发布的东西也撤掉。所以每个阶段都有自己的 `phase*_clean_*` 标签，按「后建的先撤」顺序释放，绝不碰别的 CPU 的发布结果。
 
@@ -53,7 +53,7 @@ core 里的 `clone_vspace` 已经能做 `COW_PREP` / `COPY_PAGES`；真正在 fa
 ## 3. 分层与调用方
 
 - **兼容层 / 加载器**：通常先 `vmm_radix_tree_lock_range_big`，再多次 `lock_range_small_with_big_locked` + utils；L0 可以跨多次调用一直持有。utils **不会**自己去获取 L0。
-- **kmalloc 等**：可用 `vmm_radix_tree_lock_range_big_and_small`（内部取到 L2 后**释放 L0**），避免嵌套在已持有的 L0 临界区里。堆整页在 `root_vspace` 上自管 insert/map/bind（见 `09`），**不**走本篇 utils。
+- **kmalloc 等**：可用 `vmm_radix_tree_lock_range_big_and_small`（内部取到 L2 后**释放 L0**），避免嵌套在已持有的 L0 临界区里。堆整页在 `root_vspace` 上自管 insert/map/bind（见 `09-kmalloc与内核堆.md`），**不**走本篇 utils。
 - **utils**：一律拒绝 `&root_vspace`（内核的全局根地址空间，所有 VSpace 共享它的内核高半；只服务用户地址空间，见 §4.6）。调用方已持有 L0 时，用 `lock_range_small_with_big_locked` 那条路径。
 - **内核恒等映射里不经 zone 分配器的 PA**（固件表、MMIO 等）：走 `mm_kernel_utils`（页表篇：`ensure_*` / `map_*_empty` / `unmap_*`），**无** radix / rmap——与本篇用户组合层同级、职责互斥。Zone 内 RAM（含将来非 buddy 的 zone）仍走分配器 + 本篇 bind 路径。
 
@@ -70,7 +70,7 @@ core 里的 `clone_vspace` 已经能做 `COW_PREP` / `COPY_PAGES`；真正在 fa
 #### 4.1.1 术语
 
 - **预约（reserve）**：在 radix 账本里**先记下意图**，但**不**触碰硬件 PTE、也**不**分配物理页。对应 `insert_range`：把叶子置成 `LAZY`、写上 `owner`，仅此而已。意思是「我打算把这段 VA 映射出来，但物理页还没准备好」。fault 时如果 PTE 无效而 radix 是 `LAZY`，就知道该填页（demand-page，按需填页）；如果 radix 里根本没有，就是未映射（SEGV）。
-- **发布（publish）**：在加锁路径里**让新建的中间表页对其他 CPU 可见**。具体做法是 `pmm_alloc`（物理内存管理器分配一页）、清零、再用 CAS（Compare-And-Swap，原子比较并交换）把「子页指针 + VALID 位」原子写进父项。CAS 之前别的 CPU 看到的是旧（invalid）状态，CAS 之后看到新表。这是「树锁在没有下层时如何创建新树」的核心动作，见 §4.3 Phase 1–3。
+- **发布（publish）**：在加锁路径里**让新建的中间表页对其他 CPU 可见**。具体做法是 `pmm_alloc`（物理内存管理器分配一页）、清零、再用 CAS（Compare-And-Swap，原子比较并交换）把「子页指针 + VALID 位」原子写进父项。CAS 之前别的 CPU 看到的是旧（invalid）状态，CAS 之后看到新表。这是「树锁在没有下层表页时如何创建新树」的核心动作，见 §4.3 Phase 1–3。
 
 两个词落在不同层面：**预约是叶子级的状态转换**（写 `LAZY`），**发布是表级的结构转换**（写 `VALID` + 指针）。不要混用。
 
@@ -173,19 +173,19 @@ L0 按大约 512 GiB（`HUGE_PAGE_SIZE`）一档，管的是「谁在驱动这
         叶子（Radix_node_t：flags + rmap + owner）
 ```
 
-两种常见入口（实现权衡：细锁都是 L2；差别只在「L2 到手后还要不要握着 L0」）：
+两种常见入口（实现权衡：细锁都是 L2；差别只在「拿到 L2 之后是否继续持有 L0」）：
 
-1. `lock_range_big` +（多次）`lock_range_small_with_big_locked` —— 加载器 / fault / mmap / `mm_user_utils` 路径。上层握着 L0，再在子区间上拿 L2 调 utils，可循环「发现 → 动手」。
+1. `lock_range_big` +（多次）`lock_range_small_with_big_locked` —— 加载器 / fault / mmap / `mm_user_utils` 路径。上层持有 L0，再在子区间上获取 L2 调 utils，可循环「发现 → 动手」。
 2. `lock_range_big_and_small` —— 内部拿到 L2 后**释放 L0**；clone 目标插入、kmalloc / `core_get_free_pages` 等会用。
 
 **为何用户路径要一直持有 L0，堆路径却可以提前释放：**
 
 - **堆**：VA 已知（分配页的恒等映射）、一段做完、不调用 `find_first_occupied_interval`。L0 只为进 L2 开路；map/bind 期间再持有 L0 只会拉长临界区，没有收益 → `big_and_small`。
-- **用户 + utils**：典型是 `lock L0` → `find_first_occupied_interval`（**要求已持 L0**；返回的叶在 L0 租约内才可继续用）→ util（L2）→ 可能再找下一段 → 再 util → … → `unlock L0`。若每次动手都改成 `big_and_small`，并在「发现」与「改叶」之间（或两次 utils 之间）释放 L0，别的核就能改掉 radix，前一次发现的结果与下一步要改的内容对不上（TOCTOU）。L0 =「谁在这段 512 GiB 分片上开扫/驱动」；L2 = 真正 mutate 的细锁。代价是同 L0 分片上其它要先抢 L0 的路径会等；换来的是多段发现+动手的一致视图。
+- **用户 + utils**：典型是 `lock L0` → `find_first_occupied_interval`（**要求已持 L0**；返回的叶在 L0 租约内才可继续用）→ util（L2）→ 可能再找下一段 → 再 util → … → `unlock L0`。若每次动手都改成 `big_and_small`，并在「发现」与「改叶」之间（或两次 utils 之间）释放 L0，别的核就能改掉 radix，前一次发现的结果与下一步要改的内容对不上（TOCTOU）。L0 =「谁在这段 512 GiB 分片上扫描 / 驱动」；L2 = 真正 mutate 的细锁。代价是同 L0 分片上其它要先抢 L0 的路径会等；换来的是多段发现+动手的一致视图。
 
 这不是「utils 不用细锁」——utils **会**拿 L2。只是 L0 的所有权留在上层，因为发现阶段与多段编排需要它。
 
-**Clone 窗口（源码强调）：** 在源上持有用户半的 L0，可以挡住**其他核再进入**该 radix，但**不表示**扫描区间时没有别的核持有 L2——他核可能已经走 `big_and_small` 释放了 L0、手里还持有 L2。查找代码扫占用区间时必须 **获取 L2 并等待**。不要理解成「持有 L0 就包办一切」。
+**Clone 窗口（源码强调）：** 在源上持有用户半的 L0，可以挡住**其他核再进入**该 radix，但**不表示**扫描区间时没有别的核持有 L2——他核可能已经走 `big_and_small` 释放了 L0、仍持有 L2。查找代码扫占用区间时必须 **获取 L2 并等待**。不要理解成「持有 L0 就包办一切」。
 
 `vmm_radix_tree_calculate_end_check(start, page_count, &end)`：公开 VA 区间的唯一准入（溢出 + 页对齐）。锁和变更 API **不再**重复这道检查；调用方必须在整个临界区内使用同一个 `vaddr_end`。
 
@@ -245,9 +245,9 @@ typedef enum {
 
 要点：
 
-- **「没有就创建」是 INSERT 的常态**。Phase 1/2/3 都按 `entry_valid` 判断：valid 已发布就只加锁，不重分配；invalid 则 pmm_alloc 一页、清零、CAS 发布指针 + 置 valid，再继续向下。这就是「树锁在没有的时候如何创建新树」。
+- **「没有就创建」是 INSERT 的常态**。Phase 1/2/3 都按 `entry_valid` 判断：valid 已发布就只加锁，不重分配；invalid 则 pmm_alloc 一页、清零、CAS 发布指针 + 置 valid，再继续向下。这就是「树锁在没有下层表页时如何创建新树」。
 - **L1 不长期持锁**。Phase 2 注释明说「we do not lock the L1 nodes」——L1 项只在发布 L2 指针那一瞬 CAS，之后立即放掉；区间锁的真正粒度落在 Phase 3 的 L2 bit-lock 上（2 MiB band）。
-- **Phase 4 才做语义校验**。前 3 阶段只搭骨架；到 L3 才看叶子是否冲突或可删。INSERT 失败回滚到 phase3_clean_all，DELETE 失败回滚到 phase3_clean_all。
+- **Phase 4 才做语义校验**。前 3 阶段只搭骨架；到 L3 才看叶子是否冲突或可删。INSERT 与 DELETE 在 Phase 4 的失败都回滚到 `phase3_clean_all`。
 - **Phase 5 不可失败**。计数回填在所有可能失败的步骤之后，因此可以放心复用 L0/L2 遍历迭代器（walk iter），不需要再保留回滚路径。
 - **QUERY_OR_CHANGE 走捷径**：Phase 4 不做 overlap / undeletable 校验，Phase 5 直接 `goto end`，只持锁、不改 valid/count——`leaf_bind` / `leaf_unbind` / `change_*` 都走这条。
 
@@ -280,7 +280,7 @@ typedef enum {
 
 ### 4.5 变更操作一览（持锁后做什么）
 
-§4.3 讲的是「锁 + 树生长」的前置阶段；真正改 radix 内容的是下面这些操作，它们都**只在 L3 叶子层**走 walk，不动 L0/L1/L2 结构（结构变更由 §4.3 的 Phase 1–3 负责）。状态转换总览见 §4.1.2。
+§4.3 讲的是「锁 + 树生长」的前置阶段；真正改 radix 内容的是下面这些操作，它们都**只在 L3 叶子层**遍历（walk），不改 L0/L1/L2 结构（结构变更由 §4.3 的 Phase 1–3 负责）。状态转换总览见 §4.1.2。
 
 #### 4.5.1 `insert_range`（INSERT，预约 LAZY）
 
@@ -302,7 +302,7 @@ typedef enum {
    失败 → rollback：反向 walk，unlink 已加的 rmap，恢复 LAZY
 ```
 
-`leaf_bind_range` 拒绝同时 VALID|LAZY——这是「先 insert 再 map 再 bind」顺序的硬保证。rmap 链表操作在 zone 锁下做（§4.4）。
+`leaf_bind_range` 对 VALID|LAZY 的互斥校验即 §4.1.2 的顺序保证。rmap 链表操作在 zone 锁下做（§4.4）。
 
 #### 4.5.3 `leaf_unbind_range`（QUERY_OR_CHANGE，从 VALID 到 LAZY）
 
@@ -389,7 +389,7 @@ DELETE 不是独立函数，而是 `RADIX_RL_DELETE` 锁路径上的内部行为
 
 ### 4.6 共享内核高半
 
-`create_vspace` / `init_root_vspace` 调 `vmm_radix_tree_install_shared_kernel_high_half`：L0\[256..\] 共享同一套 L1，不是整表 memcpy。用户清理只走 L0 的 0..255。INSERT 不在 ≥256 的用户路径上生长。
+`create_vspace` / `init_root_vspace` 调 `vmm_radix_tree_install_shared_kernel_high_half`：L0[256..] 共享同一套 L1，不是整表 memcpy。用户清理只走 L0 的 0..255；高半不属于用户地址空间，用户路径的 INSERT 不会在 L0[256..] 上生长。
 
 ```text
    L0 根表（512 项）
@@ -491,15 +491,13 @@ owner 写成 `vs->root_vs ? root_vs : vs`，并带当前 CPU tag。`set_range_fl
 3. 已映射且写故障、radix 要 WRITE、PTE 只读：做 COW split（`remap_page`），**不是** fill。
 4. radix 里没有：按未映射处理（例如 SEGV）。
 
-正文不要绑定某一具体兼容层目录名。
-
 ---
 
 ## 7. 公开 API
 
 本篇涉及的接口分布在：`include/rendezvos/mm/vmm_radix_tree.h`、`include/rendezvos/mm/mm_user_utils.h`。接口说明以头文件注释为准，并已与 `vmm_radix_tree.c` / `mm_user_utils.c` 核对。`clone_vspace` / `register_vspace` 的完整生命周期约定见 **07** §7（本篇只写与 radix 的耦合）。硬件 `map`/`unmap` 见 07。
 
-**纠正：** 不存在 `vmm_radix_tree_delete_range`；区间拆除是 `leaf_unbind*` + `RADIX_RL_DELETE` 锁路径上的内部 DELETE，整树拆除用 `clean_user` / `delete` / `destroy`。
+**注意：** 没有 `vmm_radix_tree_delete_range` 这个接口；区间拆除是 `leaf_unbind*` + `RADIX_RL_DELETE` 锁路径上的内部 DELETE，整树拆除用 `clean_user` / `delete` / `destroy`。
 
 ### 7.1 编排顺序（调用方必须遵守）
 
@@ -613,7 +611,6 @@ radix / utils 与 ISA 无关；PTE 标志的编解码在 arch `vmm.c`（见页�
 make ARCH=x86_64 config && make all && make run
 ```
 
-
 ---
 
 ## 10. 限制与后续
@@ -627,6 +624,7 @@ make ARCH=x86_64 config && make all && make run
 
 ## 11. 变更记录
 
+- 2026-11-15：Maintainer 复审前可读性通读：清理 2026-10-04 口语替换的漏网（「到手/握着/开扫/挡/手里」→「拿到/持有/扫描/阻塞」系）；§4.1.1/§4.3 统一「没有下层**表页**时创建新树」表述；§4.3 Phase 4 回滚一句去重复；§4.5.2 与 §4.1.2 的 VALID|LAZY 硬保证改回链；§4.6 修转义方括号并把「INSERT 不在 ≥256 的用户路径上生长」补全因果；§3 `09` 补全文件名；§7「纠正」→「注意」（历史纠错已由变更记录承载）；删 §6.3 末尾面向编者的批注（与 §10 条目重复）；§9 去多余空行。技术内容未动。
 - 2026-10-25：全文语言整理：理顺直译句（「对其他 CPU 变得可见」等）与机械替换遗留的不一致（握/持有、interval/区间），技术内容未动。
 - 2026-10-24：§4.2 写清用户路径握 L0 vs 堆 `big_and_small` 早放 L0 的权衡（interval 发现 / TOCTOU）；`mm_user_utils.h` 同步。
 - 2026-10-24：§3 交叉引用改为 ensure/empty/unmap 三件套命名。

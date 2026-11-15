@@ -51,7 +51,7 @@ Radix / `create` / `clone` 细节见页表与 Radix 篇；mask 跨核怎么刷�
 
 ## 4. 数据结构：所有权引用落在哪
 
-§1 已经说明：用户地址空间上要同时保住「逻辑持有者」「本核是否还可能用着翻译」「哪些核可能还缓存着 TLB」。完整 `VSpace` 定义见 `07`；下面只摘与这三件事相关的字段。
+§1 已经说明：用户地址空间上要同时保住「逻辑持有者」「本核是否还可能用着翻译」「哪些核可能还缓存着这份翻译」。完整 `VSpace` 定义见 `07`；下面只摘与这三件事相关的字段。
 
 ### 4.1 `VSpace`（本篇相关）
 
@@ -82,7 +82,7 @@ struct VSpace {
 | 字段 | 为什么要有 |
 |------|-----------|
 | `asid` | 硬件用的地址空间号；切换和刷 TLB 靠它区分（见 ASID 篇）。 |
-| `pmm` | 这个地址空间向哪套物理页分配器要页（现行多为普通区）。 |
+| `pmm` | 这个地址空间向哪套物理页分配器要页（现行实现两处 `create_vspace` 调用一律传 `root_vspace.pmm`）。 |
 | `refcount` | 还有没有逻辑持有者。最后一次放掉引用时，注销并删除对象。 |
 | `tlb_cpu_mask` + 锁 | 哪些 CPU **可能**还缓存着这份翻译。切入时置位、切走时本地失效并清位；改映射时只打扰 mask 里的核；删除前必须等 mask 全空。 |
 | `vspace_lock` | 保护页表结构修改；用可扩展自旋锁，等待节点必须是本核私有的。 |
@@ -197,7 +197,7 @@ if old != &root_vspace:
 
 - **先 get 再装表**：避免装上一个已在回收中的 AS。
 - **先 set 新 mask 再装硬件**：本核已在新 AS 上运行时，别人发 shootdown 不能漏掉本核（TLB 篇同理）。
-- **先刷旧再 clear 再 put**：mask 里已经没本核了，本地 TLB 却还脏着，会漏刷。
+- **先刷旧再 clear 再 put**：若先清位再刷，本核已不在 mask 里，别核此时发 shootdown 会跳过本核，本地脏的 TLB 项就再也刷不到。
 - **先装新再释放旧**：中途故障还能退回，不必先把自己变成「无根」。
 
 CR3 / TTBR0 切换时序（六步在 `schedule` 解锁后、`switch_to` 之前完成；`switch_to` 本身不碰页表根）：
@@ -252,9 +252,9 @@ CR3 / TTBR0 切换时序（六步在 `schedule` 解锁后、`switch_to` 之前�
   - 否则要求 mask **全零**
   - `allow_self_use=true` 但 `current_vspace != vs` 则 **退化成全零要求**
 
-in-place exec：远程须 quiesce；**本核位可留**；ASID **不换**。不是「exec 前 mask 必须全 0」。
+in-place exec：远端核的 mask 位须先清零；**本核位可留**；ASID **不换**。不是「exec 前 mask 必须全 0」。
 
-`del_vspace`：已 unregister 后 `clear(..., false)`（mask 全零），再拆结构，最后 **`asid_free`**（asid_free **不**再查 mask；门闩全在 clear）。无 generation：靠 mask 空 + 本地已刷。
+`del_vspace`：已 unregister 后 `clear(..., false)`（mask 全零），再拆结构，最后 **`asid_free`**（asid_free **不**再查 mask；门闩全在 clear）。ASID 没有 generation 编号，回收后复用的安全性全靠「mask 已空 + 本核已刷」这两条。
 
 **陷阱：** `free_vspace_ref` 先 unregister 再 del；若 del 因 mask 失败，会留下已注销、refcount 0 的半死对象。正常情况下靠不变量避免——**不是**可重试 API。失败码是 `-E_REND_RC_UNEQUAL`，不是旧稿里的 `-E_REND_AGAIN`。
 
@@ -277,7 +277,7 @@ in-place exec：远程须 quiesce；**本核位可留**；ASID **不换**。不�
 | 用户 AS 交给线程 | `create_vspace` / `clone_vspace` 后 **`register_vspace`**，再把 **活引用** 交给 `create_thread` / `copy_thread`（**无二次 get**） |
 | 调度切入另一用户 AS | 仅当 next 带 `THREAD_FLAG_USER` 且 `old≠new`：见 §7.3 六步 |
 | user → kernel / idle | **整段跳过**换根：硬件 / `current_vspace` / mask / CPU extra **滞后** |
-| 原地 exec clear | 远程 mask 先 quiesce，再 **`vspace_clear_user_mappings(vs, h, true)`**（本核位可留），然后 load；**不换 ASID** |
+| 原地 exec clear | 远程 mask 先清零，再 **`vspace_clear_user_mappings(vs, h, true)`**（本核位可留），然后 load；**不换 ASID** |
 | 末次 ownership put | **`free_vspace_ref`**：`unregister` 后 `del_vspace`（`clear(..., false)` 要求 mask **全零**），再 `asid_free` |
 
 ### 7.2 所有权转入（`thread.h`；细节 `13`/`14`）
@@ -357,6 +357,8 @@ extern VSpace *current_vspace; /* per-CPU；用 percpu() */
 
 ## 11. 变更记录
 
+- 2026-11-15：Maintainer 复审前可读性通读：§11 一条 10-05 条目原漂在「08-26 初稿」之后，归位到列表顶部；§4「缓存着 TLB」改为「缓存着这份翻译」；§4.1 `pmm` 「现行多为普通区」写实为「两处 `create_vspace` 调用一律传 `root_vspace.pmm`」；§6.3「先刷旧再 clear」一句补全因果；§6.4/§7.1 「quiesce」与「须清」统一为「清零」；§6.4「无 generation」展开为可读句。六步顺序、`allow_self_use` 门闩、`-E_REND_RC_UNEQUAL` 均对照 `task_manager.c` / `vmm.c` 核实无误；其余轻微电报体为有意风格，未再改动。
+- 2026-10-05：最终词句顺畅。
 - 2026-10-05：任务 1/3/5 精读——§9「测例」→「测试用例」；§1「放完就 del」→「释放完就 del」、「装着这份翻译」→「缓存着这份翻译」、「记着该核」→「记录该核」、「才敢…说」→「才能…断定」、「咬合」→「一致」、「乱迁会打穿」→「随意迁核会破坏」；§1 表首次出现 AS 补说明（= 地址空间，即 VSpace）；§3「未 quiesce」补说明（远端核尚未切走、mask 未清零）；§6.3「先装新再丢旧」→「先装新再释放旧」、`ref_put(old)` 补「放 CPU extra；不对 root put」注释；§6.4「拆用户映射」→「拆除用户映射」；§6.5「不碰低半」→「不访问低半」；§7.4「毁 radix / 放根页 / 放结构」→「销毁 radix / 释放根页 / 释放结构」、「清掉」→「清除」；§7.3 重复的六步代码块改为交叉引用 §6.3。
 - 2026-10-04：补硬件/架构知识——§6.3 加 CR3 / TTBR0 切换时序图与寄存器位域示意（Intel SDM Vol.3 §4.10、ARM ARM D8.2.3）；§4.3 加 VSpace refcount 生命周期图，演示 ownership / schedule extra / tlb_cpu_mask 三者咬合与「半死对象」陷阱。语言润色：不乱迁→不轻易迁核；引用持有表述统一。
 - 2026-09-27：中文表述润色（母语习惯）。
@@ -365,4 +367,3 @@ extern VSpace *current_vspace; /* per-CPU；用 percpu() */
 - 2026-09-25：语言整理；§6.3 补「为何」；§8 扩写 CR3 / TTBR0 装根与「内核可不换根」的硬件前提。
 - 2026-08-29：整篇重做——双引用叙述；六步顺序；user→kernel 滞后写死；`allow_self_use` 精确条件；失败码 `-E_REND_RC_UNEQUAL`；与 TLB / ASID / TM 分工。
 - 2026-08-26：初稿。
-- 2026-10-05：最终词句顺畅。

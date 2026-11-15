@@ -52,7 +52,7 @@ flowchart TB
 
 不在本篇做：运行期 hotplug、NUMA、aarch64 的 `spin-table`。GDT / 开 MMU / GIC `init_distributor` 与 `init_cpu_interface` 的分工，以平台启动篇为准。ICR 各位、PSCI function id，以 APIC 篇、PSCI 篇为准；本篇只留启核用到的那一层。
 
-失败时：x86_64 对某核约十秒仍非 `cpu_enable` 则打日志继续尝试下一个核心的启动；aarch64 `cpu_on` 失败也可能仍 `NR_CPU++`（这是一个已知缺口，当然，按照设计，我们不应该期望在这种情况下后面测试可以正常工作，如果发生这种情况，请务必进行调试更改启动多核心这部分内容）。AP 上 `virt_mm_init` / `arch_start_core` 失败则直接返回，**还没有**把自己标成 `cpu_enable`（BSP 会等到超时）。`init_proc` 排在标 `cpu_enable` **之后**：它失败时这颗核在 BSP 看来已经起来了，但本核不会再等 `all_enabled`，也不会跑 `do_init_call`。
+失败时：x86_64 对某核轮询约十秒仍非 `cpu_enable` 则打日志、放弃这颗核，继续尝试下一个。aarch64 没有这层超时：等单核就绪是**无超时的忙等**；且 `cpu_on` 失败时**必然** `NR_CPU++`，并且 `continue` 不会推进设备树遍历，会在**同一个节点**上无限重试（这是已知严重缺口，机制见 §6.5）。当然，按照设计，我们不应该期望在这种情况下后面测试可以正常工作，如果发生这种情况，请务必进行调试更改启动多核心这部分内容。AP 上 `virt_mm_init` / `arch_start_core` 失败则直接返回，**还没有**把自己标成 `cpu_enable`（x86_64 的 BSP 会等到超时后放弃；aarch64 的 BSP 会永远等下去）。`init_proc` 排在标 `cpu_enable` **之后**：它失败时这颗核在 BSP 看来已经起来了，但本核不会再等 `all_enabled`，也不会跑 `do_init_call`。
 
 ---
 
@@ -80,7 +80,7 @@ flowchart TB
 | 符号 | 含义 |
 |------|------|
 | `RENDEZVOS_MAX_CPU_NUMBER` | 编译时允许的 `cpu_id` 最大值加一（默认 128，或与 `NR_CPUS` 取较小者）。唤醒时从 0 扫到此上限减一 |
-| `NR_CPU` | 运行时认为有多少个核。初值 1。x86_64 在 `arch_parser_madt` 里改成合法 Local APIC 条目个数；aarch64 在 `arch_start_smp` 里先改回 1，再每处理完一颗加一（失败路径也可能加，见 §2、§6.5） |
+| `NR_CPU` | 运行时认为有多少个核。初值 1。x86_64 在 `arch_parser_madt` 里改成合法 Local APIC 条目个数——只计带 `Local_APIC_flags_enable` 且 APIC id 不越界的条目，且遇到第一个 disabled 条目即**停止**整个扫描（`break` 而非跳过）。aarch64 在 `arch_start_smp` 里先改回 1，再每处理完一颗加一（`cpu_on` 失败路径也必然加，且会卡在同一设备树节点反复重试，见 §2、§6.5） |
 | `NR_CPUS` | 构建宏，由构建系统注入，见`01-构建与链接.md`。仅为 1 时可以不启 AP |
 | `CPU_STATE` | 每个 `cpu_id` 一份：`no_cpu` / `cpu_disable` / `cpu_enable` |
 | `BSP_ID` | 软件侧认定的 BSP 编号。x86_64 由 `arch_cpu_info` 写成 APIC id；aarch64 固定 0 |
@@ -107,7 +107,7 @@ flowchart TB
 
 AP 把自己标成 `cpu_enable` 之后，空转等 `all_enabled`。BSP 必须在 `arch_start_smp` **整段返回后**才写成试完——不能边叫醒边宣布。
 
-各 ISA 在 `arch_start_smp` 内部怎么等单核就绪，属于实现细节（§6.4 / §6.5）：x86_64 在循环里等各目标核的 `CPU_STATE`；aarch64 每 `cpu_on` 一次，等 `CPU_STATE[当前 NR_CPU]` 再 `NR_CPU++`。
+各 ISA 在 `arch_start_smp` 内部怎么等单核就绪，属于实现细节（§6.4 / §6.5），而且**两边的耐心不同**：x86_64 在循环里轮询各目标核的 `CPU_STATE`，约十秒不到就放弃那颗核、继续下一个；aarch64 每 `cpu_on` 一次就忙等 `CPU_STATE[当前 NR_CPU]`，**没有超时**，等到 `enable` 才 `NR_CPU++`。
 
 ### 4.4 处理器拓扑（占位）
 
@@ -217,7 +217,9 @@ sequenceDiagram
 关于x86_64的`arch_start_smp`：
 1. BSP 自己的 `CPU_STATE = cpu_enable`。
 2. 若 `NR_CPU == 1`：不拷代码、不发 IPI，但仍调用 `clean_tmp_page_table`（拆启动早期低地址恒等映射；`bsp_entry` 进 `cmain` 时故意不拆，见 x86 平台篇）。
-3. 若 `NR_CPU > 1`：关本核可屏蔽中断，拷 `ap_start`，发 INIT（all-ex-self），等约 10 ms；再对每个 `CPU_STATE[i]==cpu_disable`：分配 16 页栈、写 `ap_boot_stack_ptr` 与 `cpu_id=i`、SIPI 两次（间隔约 200 µs）、轮询至 `cpu_enable` 或约十秒超时；然后开中断，清掉 `0x1000`，并 `clean_tmp_page_table`（拆启动早期低地址恒等映射）。
+3. 若 `NR_CPU > 1`：关本核可屏蔽中断，拷 `ap_start`，发 INIT（all-ex-self），等约 10 ms；再对每个 `CPU_STATE[i]==cpu_disable`：从 BSP 的 `kallocator` 分配 16 页栈（**分配失败则打日志、跳过这颗核**，继续下一个 i）、写 `ap_boot_stack_ptr` 与 `cpu_id=i`、SIPI 两次（间隔约 200 µs）、轮询至 `cpu_enable` 或约十秒超时（超时打日志 `cpu %d cannot enable after 10s` 后继续下一颗）；然后开中断，清掉 `0x1000`，并 `clean_tmp_page_table`（拆启动早期低地址恒等映射；`NR_CPU==1` 的早退路径同样会执行这一步）。
+
+另外注意 `CPU_STATE[i]` 在 x86_64 上**直接以 APIC id 为下标**：`arch_parser_madt` 就是按 `per_cpu(CPU_STATE, apic_id)=cpu_disable` 预置的，BSP 自己的条目则在循环前先被改写成 `cpu_enable`，所以不会给自己发 SIPI。
 
 ### 6.5 aarch64：`arch_start_smp` 怎么做
 
@@ -244,11 +246,13 @@ sequenceDiagram
   BSP->>BSP: NR_CPU++
 ```
 关于 aarch64 的 `arch_start_smp`：
-1.`NR_CPU = 1`，BSP `CPU_STATE = enable`；若 `NR_CPUS==1` 返回。否则关中断，按设备树 `type=cpu` 遍历：要有 `reg`，`enable-method` 必须是 `psci`，`reg==0` 当 BSP 跳过。其余核：分出 16 页作为栈、写 `ap_boot_stack_ptr`、`CPU_STATE[NR_CPU]=disable`，再
+1.`NR_CPU = 1`，BSP `CPU_STATE = enable`；若 `NR_CPUS==1` 返回。否则关中断，按设备树 `type=cpu` 遍历：要有 `reg`，`enable-method` 必须是 `psci`，`reg` 等于 `BSP_ID`（aarch64 上恒为 0）的当 BSP 跳过。其余核：分出 16 页作为栈、写 `ap_boot_stack_ptr`、`CPU_STATE[NR_CPU]=disable`，再
 
 2.`cpu_on(reg, PHY(ap_entry), context = 当前 NR_CPU)`。
 
-3.等到 `CPU_STATE[NR_CPU]==enable` 后 `NR_CPU++`。`cpu_on` 失败仍可能 `NR_CPU++`（缺口）。
+3. 成功则把该节点记入 `per_cpu(cpu_device_node, NR_CPU)`，再**无超时**忙等 `CPU_STATE[NR_CPU]==enable`，然后 `NR_CPU++`。
+
+⚠ 失败路径目前是一个已知严重缺口（本篇按代码现状如实记录，是否改动代码需另行评估）：`cpu_on` 返回失败时会 `pr_error`、**无条件** `NR_CPU++` 然后 `continue`；而这条 `continue` 并不会推进遍历用的 `cpu_node`（只有循环体末尾的 `next_cpu_node` 才推进）。于是这颗失败的核会被**无限重试**，`NR_CPU` 随之无界增长。缺 `reg`、`enable-method` 非 `psci` 时的 `continue` 同样不推进节点，是同一类问题。此外成功路径的等待本身也没有超时：`cpu_on` 成功但 AP 在写下 `cpu_enable` 之前挂死，BSP 就永远停在 `while` 里空转——这与 x86_64 的「十秒后放弃这颗核」不对称（§4.3、§6.4）。
 
 ### 6.6 AP：`start_secondary_cpu`
 
@@ -298,8 +302,8 @@ void arch_start_smp(struct setup_info *arch_setup_info);
 
 | 架构 | 做什么 |
 |------|--------|
-| x86_64 | `ap_start`@`0x1000`；发 INIT 后对每个 `cpu_disable` SIPI×2；清跳板；`clean_tmp_page_table`。 |
-| aarch64 | DTB `cpu` + `psci`；`cpu_on(reg, PHY(ap_entry), NR_CPU)`；失败仍可能 `NR_CPU++`。 |
+| x86_64 | `ap_start`@`0x1000`；发 INIT 后对每个 `cpu_disable` SIPI×2，单核轮询约十秒超时后放弃；清跳板；`clean_tmp_page_table`。 |
+| aarch64 | DTB `cpu` + `psci`；`cpu_on(reg, PHY(ap_entry), NR_CPU)`；等待无超时；`cpu_on` 失败**必** `NR_CPU++` 且在同一设备树节点上无限重试（§6.5）。 |
 
 ### 7.4 查询是否 online
 
@@ -313,8 +317,10 @@ enum cpu_status { no_cpu, cpu_disable, cpu_enable };
 
 | 接口 / 符号 | 说明 |
 |-------------|------|
-| `cpu_is_online` | 只看 `CPU_STATE == cpu_enable`。发 IPI 用这个。 |
-| `cpu_id_is_online` | **不归本篇**（`thread.h`）：还要求 `cpu < NR_CPU` 且已有 `core_tm`，假定编号连着排。APIC id 不连续时会误判；选核创建线程见 `16`。 |
+| `cpu_is_online` | 先查 `cpu_id < RENDEZVOS_MAX_CPU_NUMBER`（越界直接 false），再看 `CPU_STATE == cpu_enable`。发 IPI 用这个。 |
+| `cpu_id_is_online` | **不归本篇**（`thread.h`）：依次查越界、`NR_CPU <= 0 \|\| cpu >= NR_CPU`、`per_cpu(core_tm, cpu) != NULL`，假定编号连着排。APIC id 不连续时会误判；选核创建线程见 `16`。 |
+
+两个 online 判据之间还有个时序窗口：`CPU_STATE=cpu_enable` 在 `init_proc` **之前**写下，`core_tm` 在 `init_proc` **之后**才挂上（§6.6），所以 AP 启动过程中存在 `cpu_is_online` 已真、`cpu_id_is_online` 未真的短暂窗口。
 | `NR_CPU` / `BSP_ID` / `CPU_STATE` | 含义见 §4.1。 |
 
 ---
@@ -327,18 +333,21 @@ enum cpu_status { no_cpu, cpu_disable, cpu_enable };
 
 ## 9. 测试
 
-有`smp_test`，但是本篇主要是SMP启动部分，正常来说能看见每个核心的`[ CPUx ]RendezvOS`打印就代表AP启动成功，能看见`successfully start secondary cpu x`就是每个核心走到了AP的设置cpu enable步骤。
+本篇主要是 SMP 启动部分，先说启动本身的判据：无条件打印的是 `successfully start secondary cpu %d`（pr_info，位于本核写下 `CPU_STATE=cpu_enable` 前一步，见 §6.6），以及 AP 进消息循环前的 `[ CPU%d ] boot done, enter boot IPC loop`；而开头那行 `[ CPUx ]RendezvOS` 只在定义 `HELLO` 宏时才打印（`start_secondary_cpu` 起始处的 `print("[ CPU%d ]")` + `hello_world()`），无 `HELLO` 时不要拿它当 AP 启动判据。
+
+`smp_test`（`modules/test/smp_test.c`）是另一回事：它是 AP 全部起来之后、`RENDEZVOS_TEST` 宏下由各核测试线程（BSP 走 `BSP_test`、AP 走 `AP_test`，均汇入 `multi_cpu_test`）驱动的多核并发用例矩阵——锁、内存分配、ms queue、IPC、port 鲁棒性、线程亲和等，按 scalable / even-only / fixed-4 分档，BSP 汇总各核结果；它验证的是唤醒**之后**的并发行为，不验证唤醒过程本身。测试模式下 BSP 全部通过后还会 `rendezvos_request_poweroff()` 请求关机。
 
 ---
 
 ## 10. 限制与后续
 
-拓扑结构体仍是空占位。`cpu_is_online` 与 `cpu_id_is_online` 在 APIC id 不连续时不一致。MADT disabled 未过滤。aarch64 `cpu_on` 失败仍可能 `NR_CPU++`。x86_64 缺「APIC id 到数组下标」对照层。
+拓扑结构体仍是空占位。`cpu_is_online` 与 `cpu_id_is_online` 在 APIC id 不连续时不一致（§7.4）。x86_64 缺「APIC id 到数组下标」对照层。aarch64 的缺口比旧版所述更重：`cpu_on` 失败**必然** `NR_CPU++`，且失败后 `continue` 不推进 `cpu_node`，会在同一设备树节点上无限重试；等单核就绪也没有超时（§6.5，疑似代码缺陷，本篇仅如实记录、未改代码）。MADT 侧的 disabled 过滤**已经补上**：`arch_parser_madt` 检查 `Local_APIC_flags_enable`，disabled 条目打印后跳过；但注意其实现是 `break`——遇到第一个 disabled 条目即停止扫描后续所有条目，若固件把靠前的核标为 disabled 而后面还有 enabled 核，会一并漏掉。
 
 ---
 
 ## 11. 变更记录
 
+- 2026-11-14：对照代码逐节校正。x86_64：补单核约十秒超时后放弃、栈分配失败跳过该核、`CPU_STATE` 以 APIC id 为下标、`clean_tmp_page_table` 早退路径也执行（§2/§6.4/§7.3）。aarch64：等待**无超时**；`cpu_on` 失败**必然** `NR_CPU++` 且 `continue` 不推进 `cpu_node`，同一节点无限重试（原「仍可能」低估了严重性；疑似代码缺陷，仅记录不改码，§2/§4.1/§4.3/§6.5/§7.3/§10）。§10 撤销「MADT disabled 未过滤」——现由 `Local_APIC_flags_enable` 过滤，注意其 `break` 语义（§4.1）。§7.4 补 `cpu_is_online` 越界前置检查、`cpu_id_is_online` 完整判定链与 `cpu_enable`→`core_tm` 就绪窗口。§9 明确 `[ CPUx ]` 需 `HELLO` 宏、`smp_test` 为启动后的多核并发用例矩阵而非启动判据。
 - 2026-10-24：`NR_CPU` 来源改为 `arch_parser_madt`（原笼统「解析 MADT」）。
 - 2026-10-04：校正 §6.5 误写成「关于 x86_64」；`all_enabled` 统一为「该试的都试过」，不是「每颗都 enable」。
 - 2026-10-04：§6 时间线改为 6.3 `start_smp` → 6.4/6.5 叫醒 → 6.6 AP；`start_secondary_cpu` 不再重复总览的「少做什么」，只写 `CPU_STATE` / `all_enabled` / initcall 同步点。

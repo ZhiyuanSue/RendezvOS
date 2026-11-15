@@ -4,7 +4,7 @@ v0.1 · 2026-09-27
 
 本篇覆盖：`modules/elf/elf.c`、`elf_print.c`、`include/modules/elf/*.h`（`elf.h` / `elf_common.h` / `elf_32.h` / `elf_64.h` / `elf_print.h`）。
 
-**映射、栈、回用户、Path A/B、`gen_thread_from_elf` / `thread_loader`** 全在 `03-任务与调度/14-线程创建与ELF加载.md`。本篇只界定**格式库边界**，禁止再抄一套加载流程。
+**映射、栈、回用户、Path A/B、`gen_thread_from_elf` / `thread_loader`** 全在创建篇（`14`）。本篇只界定**格式库边界**，禁止再抄一套加载流程。
 
 **格式对照：** System V ABI / ELF —— `e_ident` magic `0x7F 'E' 'L' 'F'`、`EI_CLASS` / `EI_DATA` / `EI_VERSION`、Program Header（`PT_LOAD` 等）、`e_machine`（`EM_X86_64` / `EM_AARCH64` / …）。本仓库把结构体与常量落在头文件里，供 loader 消费。
 
@@ -34,7 +34,7 @@ ELF 模块做三件事：校验文件头、按 class 读字段、（可选）打
 
 | 调用方 | 用法 |
 |--------|------|
-| `kernel/task/thread_loader.c` | 先 `check_elf_header`，再 `get_elf_class`，然后 `for_each_program_header_64`；调试可调 `print_elf_ph64` |
+| `kernel/task/thread_loader.c` | 先 `check_elf_header`，再 `get_elf_class`（非 64 位拒绝），自己做 `e_phoff + e_phnum·e_phentsize ≤ slice_size` 越界检查，然后用 `for_each_program_header_64` **扫两轮**（第一轮 `PT_LOAD`，第二轮 `PT_DYNAMIC`）；两个 Phdr 处理函数入口都无条件调 `print_elf_ph64`（默认静默） |
 | 调试 | `print_elf_header` / `print_elf_*`（默认无输出，见下） |
 
 无独立 `single_elf_*` 测试用例。
@@ -45,8 +45,9 @@ ELF 模块做三件事：校验文件头、按 class 读字段、（可选）打
 
 - 类型与常量：`elf_common.h`（magic、`ET_*`、`EM_*`、`PT_*`、`SHT_*`…）；`Elf32_*` / `Elf64_*` 在分头。
 - `check_elf_header`：**只**查 `EI_MAG0..3` 与 `EI_VERSION`；不查 class、endian、machine、phentsize。
-- 遍历宏假定调用方已确认 class，且 ph/sh 表落在可读缓冲内（loader 另做 `e_phoff` 越界检查）。
+- 遍历宏假定调用方已确认 class，且 ph/sh 表落在可读缓冲内。宏的步进量是 `sizeof(Elf64_Phdr)`（56）/ `sizeof(Elf32_Phdr)`（32），**不是**文件自述的 `e_phentsize` / `e_shentsize`——loader 的越界检查用的却是文件自述值，二者只有镜像守规矩时才一致。
 - `elf64_hash`：SysV 哈希算法有实现，**头文件未导出、运行路径未用**——近似死代码。
+- `get_section_header_ptr_by_index_32/64` 宏展开引用 `ELF32_FIRST_SH_ADDR` / `ELF64_FIRST_SH_ADDR`，这两个宏**全仓库没有任何定义**——当前无人调用所以不炸，谁用谁编译报错（记档）。
 
 ### 4.1 ELF 文件头布局（Ehdr）
 
@@ -73,17 +74,17 @@ typedef struct {
 
 | 字段 | loader 为什么关心 |
 |------|------------------|
-| `e_ident` | magic / class(32|64) / 端序；`check_elf_header` 只严查 magic+version。 |
+| `e_ident` | magic / class（32 或 64）/ 端序；`check_elf_header` 只严查 magic+version。 |
 | `e_entry` | 入口虚址，最终交给 `14` 的 `elf_load_info`。 |
 | `e_phoff` / `e_phentsize` / `e_phnum` | 找到 Program Header 表并遍历 `PT_LOAD`。 |
 | 其余 | 格式完整字段；本薄库多为打印/遍历辅助，loader 不全用。 |
 
-ELF 文件最前面是固定格式的文件头。`e_ident` 占前 16 字节，其后字段在 ELF32 / ELF64 中长度不同（地址与偏移字段由 32 位扩为 64 位），因此 ELF64 Ehdr 比 ELF32 多 8 字节：
+文件头的前 16 字节是 `e_ident`，其后字段在 ELF32 / ELF64 中长度不同（地址与偏移字段由 32 位扩为 64 位），因此 ELF64 Ehdr 比 ELF32 多 8 字节：
 ```text
 偏移   ELF32 字段             ELF64 字段            说明
 0x00   e_ident[16]            e_ident[16]          magic + class + data + version + osabi
 0x10   e_type    (Half)       e_type    (Half)      ET_EXEC=2 ET_DYN=3 ...
-0x12   e_machine (Half)       e_machine (Half)      EM_X86_64=62 EM_AARCH64=183 EM_RISCV=243
+0x12   e_machine (Half)       e_machine (Half)      EM_X86_64=62 EM_AARCH64=183 EM_RISCV=243 EM_LOONGARCH=258
 0x14   e_version (Word)       e_version (Word)      EV_CURRENT=1
 0x18   e_entry   (Addr32)     e_entry   (Addr64)    入口虚拟地址
 0x1C   e_phoff   (Off32)      e_phoff   (Off64)    Program Header 表文件偏移
@@ -106,7 +107,7 @@ ELF 文件最前面是固定格式的文件头。`e_ident` 占前 16 字节，�
 4      EI_CLASS         1=ELFCLASS32  2=ELFCLASS64
 5      EI_DATA          1=ELFDATA2LSB(little-endian)  2=ELFDATA2MSB(big-endian)
 6      EI_VERSION       1=EV_CURRENT
-7      EI_OSABI         0=System V  3=Linux  97=ARM ...
+7      EI_OSABI         本仓库只定义 0=System V、1=HP-UX、255=Standalone（在 elf_64.h，注「only in elf64」）；3=Linux、97=ARM 是外部登记表惯例，仓库未定义
 8      EI_ABIVERSION    通常 0
 9..15  EI_PAD           保留填充
 ```
@@ -138,7 +139,7 @@ typedef struct {
 
 每个 `PT_LOAD` 描述一段「文件偏移到虚拟地址」的映射。ELF32 / ELF64 字段顺序不同，遍历宏各自按对应布局步进：
 ```text
-ELF64 Phdr（56 字节，p_offset 在 p_flags 前）：
+ELF64 Phdr（56 字节，p_flags 排第二、紧跟 p_type，与 32 位不同）：
   p_type    (Word)   PT_LOAD=1 PT_DYNAMIC=2 PT_INTERP=3 PT_NOTE=4 PT_GNU_STACK=0x6474e551 ...
   p_flags   (Word)   PF_X=1 PF_W=2 PF_R=4
   p_offset  (Off64)  文件内偏移
@@ -148,7 +149,7 @@ ELF64 Phdr（56 字节，p_offset 在 p_flags 前）：
   p_memsz   (Word64) 内存中长度（≥ filesz，差额为 .bss 零填充）
   p_align   (Word64) 对齐
 
-ELF32 Phdr（32 字节，p_flags 在最后）：
+ELF32 Phdr（32 字节，p_flags 排在 p_memsz 之后、p_align 之前）：
   p_type / p_offset / p_vaddr / p_paddr / p_filesz / p_memsz / p_flags / p_align
 ```
 
@@ -177,7 +178,6 @@ ELF32 Phdr（32 字节，p_flags 在最后）：
 
 `p_memsz > p_filesz` 的零填充由 14 篇 loader 用零页实现；本格式库只读字段，不分配页、不写映射。
 
-
 ---
 
 ## 5. 代码对应
@@ -194,13 +194,12 @@ ELF32 Phdr（32 字节，p_flags 在最后）：
 ## 6. 流程
 
 ```text
-loader:
-  check_elf_header(elf_start)     // magic + version
-  get_elf_class == ELFCLASS64     // 否则拒绝
-  （可选）边界检查 ph 表
-  for_each_program_header_64:
-    PT_LOAD  → map（14）
-    PT_DYNAMIC → stub / 忽略策略（14）
+loader（load_elf_to_vs）:
+  check_elf_header(elf_start)     // magic + version；失败打 [ERROR] bad elf file
+  get_elf_class == ELFCLASS64     // 否则拒绝，打 …not support elf32 file running
+  边界检查：e_phoff + e_phnum*e_phentsize ≤ slice_size
+  for_each_program_header_64     // 第一轮：PT_LOAD → 跟踪 max(p_vaddr+p_memsz)，map（14）
+  for_each_program_header_64     // 第二轮：PT_DYNAMIC → stub（只打印，返回成功）
   不调用 get_elf_machine 做 ISA 校验
 ```
 
@@ -222,7 +221,7 @@ loader:
 |------|-----|------|
 | 1 | **`check_elf_header`** | 仅 magic + `EI_VERSION` |
 | 2 | **`get_elf_class` == `ELFCLASS64`** | loader 拒绝 32-bit |
-| 3 | （可选）`e_phoff` 越界检查 | loader 侧，非本篇 |
+| 3 | `e_phoff` 越界检查 | 格式库不做，调用方必须自查——loader 在 `load_elf_to_vs` 里查 `e_phoff + e_phnum·e_phentsize ≤ slice_size`（映射语义在 `14`） |
 | 4 | **`for_each_program_header_64`** | 扫 `PT_LOAD` / `PT_DYNAMIC`（映射语义在 `14`） |
 
 本篇**不**校验 `e_machine` / endian 与宿主一致——错架构镜像可能直到 map 后才触发异常。
@@ -241,6 +240,8 @@ u16 get_elf_machine(vaddr);   /* 坏 class 时返回 ET_NONE（历史哨兵） *
 | `check_elf_header` | `EI_MAG0..3` + `EV_CURRENT`；不查 class/machine。 |
 | `get_elf_type` / `_machine` | 按 class 读 32 或 64 头。 |
 
+头文件没有单独的 `EM_NONE`，`get_elf_type` / `get_elf_machine` 在 class 非法时统一借 `ET_NONE`（值 0）当哨兵。消费者面收口：`get_elf_type` / `get_elf_machine` 只被 `print_elf_header` 调用；`get_elf_data_encode` / `get_elf_osabi` / `get_elf_abi_version` 目前全仓库零调用；真正进入加载路径的只有 `check_elf_header` / `get_elf_class` / `for_each_program_header_64` 加打印用的 `print_elf_ph64`。
+
 ### 7.3 遍历宏
 
 ```c
@@ -248,7 +249,7 @@ for_each_program_header_32/64(elf_header_ptr) { /* phdr_ptr */ }
 for_each_section_header_32/64(elf_header_ptr) { /* shdr_ptr */ }
 ```
 
-假定 class 已确认、表在可读缓冲内。正式加载路径只用 **64** 程序头宏。
+假定 class 已确认、表在可读缓冲内。正式加载路径只用 **64** 程序头宏；宏按 `sizeof(Elf64_Phdr)` / `sizeof(Elf32_Phdr)` 固定步进，不读 `e_phentsize` / `e_shentsize`。节头宏与 `get_section_header_ptr_by_index_32/64` 目前仓库内**零消费者**，且后者展开引用未定义的 `ELF32/64_FIRST_SH_ADDR`，一启用即编译报错（记档，见 §4）。
 
 ### 7.4 打印（`elf_print.h`）
 
@@ -258,7 +259,7 @@ void print_elf_ph32/64(...); void print_elf_sh32/64(...);
 void print_elf_machine(u16);
 ```
 
-默认 `DEBUG` 关闭，宏为 `pr_off`；调用无害。loader 调试可偶发 `print_elf_ph64`。
+默认 `DEBUG` 关闭（`elf_print.c` 顶部 `// #define DEBUG`），`debug` 宏即 `pr_off`，而 `pr_off` 直接丢弃变参——实参表达式根本不求值，调用完全无害。loader 在 `elf_Phdr_64_load_handle` / `elf_Phdr_64_dynamic_handle` 入口无条件调 `print_elf_ph64`，静默与否只取决于 DEBUG。两点注意：`print_elf_sh32/64` 是占位实现，只打印指针本身，不打印字段；`print_elf_header` 的代码注释要求调用方先过 `check_elf_header`，但该校验不看 `EI_CLASS` / `EI_DATA`，若开了 DEBUG 再喂一个 `EI_CLASS=0xFF` 的构造头，`elf_e_ident_class_str[]`（长 3）下标越界读——默认配置不会触发（记档）。`print_elf_header` 遇到 `EI_VERSION ≠ EV_CURRENT` 会打印错误行后提前返回，不再打印后续字段。
 
 ---
 
@@ -270,21 +271,24 @@ void print_elf_machine(u16);
 
 ## 9. 测试
 
-无独立测试用例；随用户 ELF / harness 加载路径间接覆盖。
+`modules/test` 里没有 ELF 测例，覆盖全靠真实用户 ELF 的加载路径：每张镜像都走 `check_elf_header`，坏文件打 `[ERROR] bad elf file`、32 位镜像打 `[Error] Rendezvos not support elf32 file running`（`thread_loader.c` 的两处 `pr_error`）；ph 表越界则静默返回 `-E_RENDEZVOS`，无打印。加载对不对，最终落在 `gen_thread_from_elf` 能否把用户程序拉起来。失败面基本碰不到、也无运行期消费者：`elf64_hash`、节头宏与 `get_section_header_ptr_by_index_*`（未定义宏，一启用即编译报错）、DEBUG 开启且喂构造 `EI_CLASS=0xFF` 时的字符串表越界（§7.4），都得自造镜像或改构建才可能触发。
 
 ---
 
 ## 10. 限制与后续
 
-- 打印默认关闭。
-- `elf64_hash` 近似死代码。
+- 打印默认关闭；`print_elf_sh32/64` 为占位实现；DEBUG 开启时 class/data 字符串表存在下标越界风险（见 §7.4）。
+- `elf64_hash` 近似死代码；`get_elf_data_encode` / `get_elf_osabi` / `get_elf_abi_version`、全部节头宏同样零消费者；`elf_64.h` 的 `extern Elf64_Dyn _DYNAMIC[]` 只声明未引用（该符号惯例上由链接器为动态可执行文件提供，内核并不定义它）。
+- `get_section_header_ptr_by_index_32/64` 展开引用未定义宏，不可用（见 §4，记档）。
 - 不校验 `e_machine` / endian 与宿主一致。
 - 加载语义始终回链 14，勿在本篇扩展。
 
 ---
 
 ## 11. 变更记录
+- 2026-11-15：全文可读性通读（篇章架构 / 篇章引用 / 词句）。架构与格式大体过关，格式两处：§4.3 末 `---` 前多一空行；§4.1 `e_ident` 图内 `only in elf64` 的 ASCII 直引号改用全篇统一的「」。引用一处：篇首全文件名缩为「创建篇（`14`）」，与 `13`/`15`/`16` 对 `14` 的既有称呼一致。词句一处：§4.1 第二段首句与第一段首句重复（「文件最前面是固定格式的文件头」），删去并直接衔接 `e_ident`。§6 流程块与 §9 按代码实况补齐：`check_elf_header` 失败打 `[ERROR] bad elf file`、32 位镜像打 `[Error] Rendezvos not support elf32 file running`（`thread_loader.c` 两处 `pr_error`），越界静默返回；§9 扩写（`modules/test` 确无 ELF 测例，原句属实但过简），并列无运行期消费者的失败面。事实复核全部成立：`ELF32/64_FIRST_SH_ADDR` 全仓未定义（仅 `elf.h` 两处引用）、`ELF_E_IDENT_CLASS_NUM=3`、遍历宏按 `sizeof(Elf64_Phdr)` 指针步进（不读 `e_phentsize`）、OSABI 仅 SYSV/HPUX/STANDALONE 三常量、`EM_LOONGARCH=258`、`_DYNAMIC` 只声明、`print_elf_sh32/64` 占位、`print_elf_header` 版本不符提前返回、OSABI/编码/ABI 版本取函数全仓无调用方、`get_elf_type`/`get_elf_machine` 仅被 `print_elf_header` 消费。无事实错误。余沿 11-14 精读，未变。
 
+- 2026-11-14：全文对照代码复核——修正 Phdr 字段顺序表述（ELF64 的 `p_flags` 排第二紧跟 `p_type`；ELF32 的 `p_flags` 在 `p_memsz` 后、`p_align` 前，均非旧稿写法）；§4.1 补 `EM_LOONGARCH=258`，OSABI 行改按仓库实有常量（`elf_64.h` 只定义 SYSV=0/HPUX=1/STANDALONE=255，3=Linux、97=ARM 系外部惯例）；§6 流程按 `load_elf_to_vs` 实况更新——边界检查必做且用 `e_phentsize`、Phdr 扫两轮（先 `PT_LOAD` 后 `PT_DYNAMIC`）；新增消费者面收口（§3、§7.2）——`print_elf_ph64` 在 loader 两个处理函数入口无条件调用，`get_elf_type/_machine` 仅 `print_elf_header` 用，OSABI 类 getter 零调用；记档——`get_section_header_ptr_by_index_*` 展开引用全仓未定义的 `ELF*_FIRST_SH_ADDR`、遍历宏按 `sizeof(结构体)` 步进与文件自述 `e_phentsize` 脱钩、`print_elf_sh32/64` 占位、DEBUG 开启时 class/data 字符串表下标可越界（`pr_off` 丢参故默认不触发）、`elf_64.h` 的 `_DYNAMIC` 只声明未引用；修复 §4.1 表格里 `class(32|64)` 未转义竖线破坏表格的问题。
 - 2026-10-05：最终词句顺畅。
 - 2026-10-05：任务 1/3/5 精读——「测例」→「测试用例」（§3、§9）；改翻译腔——「不碰 VSpace」→「不涉及 VSpace」、「错架构可走到/可能走到 map 后才触发异常」→「错架构镜像可能直到 map 后才触发异常」、「做 ISA 门闩」→「做 ISA 校验」、「只跑本机 ELF」→「只加载本机 ELF」、「半死代码/半死」→「近似死代码」、「永远回链 14，勿在本篇膨胀」→「始终回链 14，勿在本篇扩展」、「loader 在 14 篇映射」→「loader 在 14 篇处理映射」。
 - 2026-10-04：补硬件/格式知识——§4.1 ELF32/64 Ehdr 字段布局与 `e_ident` 字节图、§4.2 Phdr 结构（含 ELF32/64 字段顺序差异与常见 `p_type` 表）、§4.3 PT_LOAD 段到内存映射图；改翻译腔——「map 后再炸」→「map 后才触发异常」、「本篇拥有」→「本篇涉及的接口分布在」。
