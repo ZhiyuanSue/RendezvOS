@@ -5,6 +5,12 @@
 #include <common/align.h>
 #include <rendezvos/error.h>
 
+/*
+ * Common FP buffer helpers.
+ * Arch supplies: ARCH_FP_ALIGN, arch_fp_state_size, arch_fp_{cpu_init,payload_size,
+ * save_to,load_from,init_area}.
+ */
+
 static inline u8* fp_area(void* buf)
 {
         if (!buf)
@@ -18,13 +24,12 @@ static inline void fp_copy_ctx(Arch_Thread_Context* dst,
 {
         if (!dst || !src || !dst->fp || !src->fp)
                 return;
-        memcpy(fp_area(dst->fp), fp_area(src->fp), ARCH_FP_SIZE);
+        memcpy(fp_area(dst->fp), fp_area(src->fp), arch_fp_payload_size());
 }
 
 error_t fp_alloc(Arch_Thread_Context* ctx);
 void fp_free(Arch_Thread_Context* ctx);
 
-size_t fp_state_size(void);
 error_t fp_state_save(void* buf);
 error_t fp_state_restore(void* buf);
 

@@ -91,6 +91,7 @@ struct cpuinfo {
         u32 thermal_ebx;
         u32 thermal_ecx;
         u32 thermal_edx;
+#define X86_CPUID_XSAVE 0xD
 #define X86_CPUID_MODEL_NAME_1 0x80000002
 #define X86_CPUID_MODEL_NAME_2 0x80000003
 #define X86_CPUID_MODEL_NAME_3 0x80000004
@@ -107,14 +108,17 @@ struct cpuinfo {
         u8 VirtAddrBits;
         u8 PhyAddrBits;
 };
-static inline void cpuid(u32 op, u32 *eax, u32 *ebx, u32 *ecx, u32 *edx)
+static inline void cpuid(u32 op, u32 subleaf, u32 *eax, u32 *ebx, u32 *ecx,
+                         u32 *edx)
 {
         *eax = op;
-        *ecx = 0;
+        *ecx = subleaf;
         __asm__ __volatile__("cpuid"
                              : "=a"(*eax), "=b"(*ebx), "=c"(*ecx), "=d"(*edx)
                              : "0"(*eax), "2"(*ecx)
                              : "memory");
 }
+
+extern struct cpuinfo cpu_info;
 
 #endif
