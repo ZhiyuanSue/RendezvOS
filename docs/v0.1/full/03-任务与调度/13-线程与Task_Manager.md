@@ -327,7 +327,7 @@ boot **没有** `arch_set_new_thread_ctx`；首次保存靠这次 `switch_to`。
 
 #### 浮点与向量：硬件背景与本仓库约定
 
-下面补的是「这些寄存器从哪来、为什么切换要存、我们存到哪一层」——读实现（`thread_arch.h`、`arch_thread.c`、`arch_switch.S`、`start_simd` / `enable_fp`）之前建议先扫一遍。
+下面补的是「这些寄存器从哪来、为什么切换要存、我们存到哪一层」——读实现（`thread_arch.h`、`arch_fp.c`、`arch_thread.c`、`arch_switch.S`、`enable_fp`）之前建议先扫一遍。
 
 ##### 为什么和 GPR 分开谈
 
@@ -362,10 +362,34 @@ boot **没有** `arch_set_new_thread_ctx`；首次保存靠这次 `switch_to`。
 
 | 机制 | 覆盖什么 | 大小 / 对齐 | 本仓库 |
 |------|----------|-------------|--------|
-| **`FXSAVE` / `FXRSTOR`**（64 位形式 `fxsave64`） | x87 状态 + MXCSR + **XMM0–15** | **固定 512 字节**，16 字节对齐 | **v0.1 使用**；镜像在 `Arch_Thread_Context::fp` |
-| **`XSAVE` / `XRSTOR`** | 由 **`XCR0`** 位图选择组件（可含 x87、SSE、**AVX**、AVX-512、…） | 大小用 CPUID leaf `0xD` 查询，常见 **64 字节**对齐 | **未做**；上 AVX 时才需要 |
+| **`FXSAVE` / `FXRSTOR`**（64 位形式 `fxsave64`） | x87 状态 + MXCSR + **XMM0–15** | **固定 512 字节**，至少 16 字节对齐 | CPU **无** XSAVE 时的回退路径 |
+| **`XSAVE` / `XRSTOR`**（64 位形式 `xsave64` / `xrstor64`） | 由 **`XCR0`** + 指令 **RFBM** 选择组件（可含 x87、SSE、**AVX**、AVX-512、…） | 大小用 CPUID leaf `0xD`（在**当前 XCR0** 下）查询；对齐常见 **64 字节** | CPU 有 XSAVE 时使用；最多开到 **AVX**，**不开** AVX-512 |
 
-**512 字节不是「XMM 加起来」：** `XMM0`–`XMM15` 是 **16** 个寄存器（下标 0…15），每个 128 bit = 16 B，合计 **256 B**。FXSAVE 区里还有 x87 的 ST/MM 槽、MXCSR 和控制头，再留 reserved，凑成固定 **512 B**。内核把整块当黑盒，一般不解析字段；布局如下（Intel SDM Vol.1 / Vol.2 `FXSAVE`）：
+**`xsave64` 是什么（读 `arch_fp_save_to` 前先看这段）**
+
+`XSAVE` 是「按组件位图把扩展状态整包写入内存」的指令族；长模式下 GAS/内联汇编里常见助记符是 **`xsave64`**（操作数是 64 位地址形式）。配对恢复是 **`xrstor64`**。相对 `fxsave64` 的关键差别：
+
+1. **存哪些组件不写死在指令里**，而由两层掩码共同决定：
+   - **`XCR0`（XFEATURE 使能掩码）**：OS 在启动时写入，声明「本 OS 会管理哪些扩展状态」。用户态 / glibc 也靠读 XCR0 判断 OS 是否支持 AVX 等（IFUNC）。bit0=x87，bit1=SSE，bit2=AVX，bit5–7 等为 AVX-512 相关。
+   - **RFBM（Requested Feature Bit Map）**：每次执行 `xsave`/`xrstor` 时放在 **`EDX:EAX`**（高:低）里的位图，表示**这一次**要存/取哪些组件。有效参与集合是 **`RFBM ∩ XCR0`**（再叠加指令变体自己的规则；我们用的是基础 `XSAVE`，不用 `XSAVEOPT`/`XSAVES`）。位布局与 CPUID leaf `0xD` 输出的 **`EDX:EAX`（supported）** 相同，但是**另一场合**：前者是指令操作数，后者是能力查询。
+2. **CPUID leaf `0xD` subleaf 0**（在谈 size 时必读）：
+   - **`EDX:EAX`**：CPU 允许写入 XCR0 的组件位图（supported）
+   - **`EBX`**：**当前 XCR0 已启用** 组件所需的 XSAVE 区字节数
+   - **`ECX`**：若把所有 supported 位都打开，所需的最大字节数（本仓库未用）
+3. **内存布局**：前 **512 字节 legacy 区**与 FXSAVE **同布局**（FCW/MXCSR/ST/XMM…）；其后是 **XSAVE header**，再往后是各扩展组件（例如 AVX 的 YMM 高 128 位）。总长度随 XCR0 变化，故不能写死 512；**须先写好 XCR0，再读 EBX**。
+4. **对齐**：XSAVE 区通常要求 **64 字节**对齐（FXSAVE 只需 16）。本仓库 `ARCH_FP_ALIGN=64`，`fp_area()` 在堆缓冲里取对齐窗口。
+5. **使能顺序**：须先 `CR4.OSXSAVE=1`，再写 `XCR0`，再执行 `xsave64`；否则 `#UD`。
+
+本仓库用法（`arch/x86_64/task/arch_fp.c`，已审定）：
+
+- 静态 **`fp_cfg`**：`use_xsave` + `xcr0`；后者开机后不变，并**兼作**每次 save/restore 的 RFBM（简单策略：RFBM == 已启用的 XCR0 子集）。
+- **`ARCH_FP_XCR0_ALLOWED`** = `X87|SSE|AVX`；**`ARCH_FP_XCR0_DENIED`** = AVX-512 三件套（OPMASK / ZMM_HI256 / HI16_ZMM）。扩展点是改允许集，不是再开第三条启动路径。
+- **`arch_fp_cpu_init`**（每核，内联两段）：SSE 基线 CR → detect（CPUID ∩ ALLOWED → `fp_cfg`）→ enable（写 XCR0、读 EBX 定 `fp_payload_size`/`fp_buf_size`；FXSAVE 保持静态默认 512）→ 一行 `pr_info` 打印最终参数。
+- **`arch_fp_save_to` / `load_from`**：`xsave64`/`xrstor64`（`"a"`/`"d"` = RFBM 低/高 32 位）或回退 `fxsave64`/`fxrstor64`。
+
+Intel 手册：SDM Vol.2 `XSAVE` / `XRSTOR`；Vol.1 扩展状态管理与 XCR0。
+
+**512 字节不是「XMM 加起来」：** `XMM0`–`XMM15` 是 **16** 个寄存器（下标 0…15），每个 128 bit = 16 B，合计 **256 B**。FXSAVE（以及 XSAVE 的 legacy 区）里还有 x87 的 ST/MM 槽、MXCSR 和控制头，再留 reserved，凑成固定 **512 B**。内核把整块当黑盒，一般不解析字段；布局如下（Intel SDM Vol.1 / Vol.2 `FXSAVE`）：
 
 ```text
 偏移    大小     内容
@@ -384,17 +408,15 @@ boot **没有** `arch_set_new_thread_ctx`；首次保存靠这次 `switch_to`。
 416     96       保留（凑满 512）
 ```
 
-因此：`fxsave64` **已经把 ST0–ST7 写进偏移 32 起的那 128 字节**；不是「只存了 XMM、x87 丢了」。我们的 `ctx->fp[512]` 整包进出，ST 与 XMM 都在里面。
+因此：`fxsave64`（以及 `xsave64` 的 legacy 前半）**已经把 ST0–ST7 写进偏移 32 起的那 128 字节**；不是「只存了 XMM、x87 丢了」。整块状态区整包进出；有 AVX 时 XSAVE 在 512B 之后再跟 YMM 高半等扩展区。
 
 `CR4.OSFXSR`：允许用 FXSAVE/SSE。`CR4.OSXSAVE` + `XCR0`：允许 XSAVE，并声明「OS 会保存哪些扩展」。**只开硬件、不在切换里存对应组件 = 状态丢失。**
 
 **本仓库 x86 约定（E13 已关闭的那一档）：**
 
-1. `start_simd` 打开 OSFXSR 等；若有 XSAVE，则 `XCR0 = X87|SSE`，并 **清掉 AVX 位**。
-2. **仅 user 线程**拥有 FP：`ctx->fp` 是堆上 **`ARCH_FP_BUF_SIZE`**（`SIZE+ALIGN`；x86：512+64；`fp_area(ctx->fp)` 取 **64 对齐**窗口，兼顾 FXSAVE 与日后 XSAVE/AVX）。创建后用 `thread_enable_user`（→ `fp_alloc`）。kernel 线程 `fp == NULL`。fork：先 enable，再 merge **只拷贝**；teardown 走 `thread_disable_user`（→ `fp_free`）。
-3. **不**启用 AVX / AVX-512，**不**实现可变长 XSAVE 区。这样即使用户链了带 IFUNC 的 glibc，也只会落到 SSE 实现，与保存范围一致。
-
-以后若要支持 AVX：必须同时 (a) `XCR0` 置 AVX、(b) 改用 XSAVE 并按 CPUID 分配足够大的、对齐的缓冲区、(c) fork/信号等路径一并升级。指针模型本身便于换更大 image；缺任一环都会在「能执行 AVX 的用户态」上丢 YMM 高半。
+1. `arch_fp_cpu_init`（每核）：如上；有 XSAVE 则最多 **AVX**，**不开** AVX-512；否则 FXSAVE。`arch_fp_state_size()` / `arch_fp_payload_size()` 为运行时值（全局，各核写入同一结果）。
+2. **仅 user 线程**拥有 FP：`ctx->fp` 堆缓冲长度为 `arch_fp_state_size()`（payload+`ARCH_FP_ALIGN`，ALIGN=64）；`fp_area()` 取对齐窗口。创建用 `thread_enable_user`（→ `fp_alloc`）。kernel `fp == NULL`。fork：先 enable，再 merge **只拷贝**；teardown 走 `thread_disable_user`。
+3. **不做** AVX-512 / AMX；有 AVX 的 CPU 上 XCR0/保存范围与 glibc IFUNC 一致。
 
 ##### aarch64：一套 FPSIMD（相对整齐）
 
@@ -420,10 +442,10 @@ ARM 没有「x87 / SSE / AVX」这种叠名史；EL0/EL1 上的标量浮点与 *
 | | x86_64（当前） | aarch64（当前） |
 |--|----------------|-----------------|
 | 用户可见 FP/SIMD | x87 + XMM + MXCSR | Q0–31 + FPCR/FPSR |
-| 存盘 | `fxsave64` / `fxrstor64` | 汇编存 Q + FPCR/FPSR |
-| ctx 字段 | `ARCH_FP_*`（512 / ALIGN=64） | `ARCH_FP_*`（Q+FPSR / ALIGN=16） |
-| 启动开门 | `start_fp` / `start_simd` | `enable_fp`（FPEN） |
-| 明确不做 | AVX / AVX-512、XSAVE 可变长 | SVE |
+| 存盘 | FXSAVE 或 XSAVE（±AVX，`arch_fp_*`） | 汇编存 Q + FPCR/FPSR |
+| ctx / size | `arch_fp_state_size()` 运行时；ALIGN=64 | 固定 `ARCH_FP_*`；ALIGN=16 |
+| 启动时使能 | `arch_fp_cpu_init` | `enable_fp`（FPEN）；`arch_fp_cpu_init` 空 |
+| 明确不做 | AVX-512 | SVE |
 | 内核编译 | `-mno-sse` 等 | `-mgeneral-regs-only` |
 
 线程栈布局（用户线程；内核线程只有 kstack，无 ustack）：
@@ -452,9 +474,9 @@ ARM 没有「x87 / SSE / AVX」这种叠名史；EL0/EL1 上的标量浮点与 *
 `arch/x86_64/task/arch_thread.c` 的 `switch_to`：
 
 1. **TSS.RSP0**：x86_64 的 TSS（Task State Segment，见 Intel SDM Vol.3 §7.2）在 64 位模式下不再承担「硬件任务切换」，但仍是 ring 3→0 栈切换的来源——CPU 在 `SYSCALL` / 中断 / 异常从 CPL=3 进入 CPL=0 时，把 RSP 替换为 `TSS.RSP0`。本核每切一个线程，就把 `TSS.RSP0` 改成新线程的内核栈底，好让下一次 ring 3→0 落到正确的内核栈上。旧线程的 RSP0 则读进 `old_context->stack_bottom`，这样下次切回它时能还原。
-2. **`MSR_KERNEL_GS_BASE`（0xC0000102）与 `MSR_FS_BASE`（0xC0000100）**：x86_64 的 SWAPGS 约定下，内核入口 `SWAPGS` 把 `IA32_GS_BASE` 与 `IA32_KERNEL_GS_BASE` 互换，使内核侧 GS 指向 per-CPU 数据，而 `KERNEL_GS_BASE` 保存用户 GS 镜像；`FS_BASE` 在用户态作 TLS 段基址。切换线程时成对读写这两个 MSR，避免下一线程继承上一线程的 TLS / per-CPU GS。
+2. **`MSR_KERNEL_GS_BASE`（0xC0000102）与 `MSR_FS_BASE`（0xC0000100）**：x86_64 的 SWAPGS 约定下，内核入口 `SWAPGS` 把 `IA32_GS_BASE` 与 `IA32_KERNEL_GS_BASE` 互换，使内核侧 GS 指向 per-CPU 数据，而 `KERNEL_GS_BASE` 保存用户 GS 基址；`FS_BASE` 在用户态作 TLS 段基址。切换线程时成对读写这两个 MSR，避免下一线程继承上一线程的 TLS / per-CPU GS。
 3. **`user_rsp_scratch`（per-CPU）**：syscall 入口把用户 RSP 暂存在这里；切换时一并换掉，与 trap frame 里的用户返回现场对齐。
-4. **FXSAVE 镜像**：`fp_state_save(old->fp)` / `fp_state_restore(new->fp)`（内部 `fxsave64`/`fxrstor64` → `fp_area`）；覆盖 x87 + MXCSR + XMM，见上节「浮点与向量」。
+4. **FP 状态**：`fp_state_save(old->fp)` / `fp_state_restore(new->fp)`（内部 `arch_fp_save_to`/`load_from` → `fp_area`；x86 为 `xsave64`/`xrstor64` 或回退 `fxsave64`/`fxrstor64`）；见上节「浮点与向量」。
 5. 然后 `context_switch`（`arch_switch.S`）：`pushf` + 保存 `rsp/r15–r12/rbp/rbx`，加载新线程同组寄存器，`popf` 后 `ret`——返回地址在新栈上，等于跳进新线程上次离开的地方。
 
 首次进用户见创建篇的 Path A / B；本篇只负责「内核态线程之间」换栈、TLS 与 FP。
@@ -480,7 +502,7 @@ ARM 没有「x87 / SSE / AVX」这种叠名史；EL0/EL1 上的标量浮点与 *
                │ curr: running→ready │ TSS.RSP0 = new_kstack     │
                │ next = RR pick       │ KERNEL_GS_BASE / FS_BASE  │
                │ next→running         │ user_rsp_scratch = new    │
-               │ unlock               │ FXSAVE old; FXRSTOR new   │ pushf; push rsp
+               │ unlock               │ FP save/restore (xsave/fxsave) │ pushf; push rsp
                │                      │                           │ push r15..r12
                │                      │                           │ push rbp; push rbx
                │                      │                           │ load new ctx
@@ -609,7 +631,7 @@ extern void run_thread(Thread_Init_Para *para); /* asm；见 thread.h */
 |------|--------|---------|
 | `switch_to` | 先写 TSS.RSP0、KERNEL_GS、FS、`user_rsp_scratch`，再 `context_switch` | TPIDR_EL0 / SP_EL0；保存 DAIF，返回旧上下文后再恢复 DAIF+ISB |
 | `context_switch` | 保存被调用者负责的那组通用寄存器和 `rsp`（`arch_switch.S`） | 保存 `x19`–`x30`、`sp`、`SPSR`（`arch_switch.S`） |
-| FP / SIMD（在 `switch_to`） | `fp_state_save`/`restore` → `fxsave64`/`fxrstor64` | `fp_state_save`/`restore` → `arch_fp_save_to`/`load_from` |
+| FP / SIMD（在 `switch_to`） | `fp_state_save`/`restore` → `arch_fp_*`（`xsave64` 或 `fxsave64`） | `fp_state_save`/`restore` → `arch_fp_save_to`/`load_from` |
 | `run_thread` | SysV（System V ABI）：按 `int_para[]` 调 `thread_func_ptr` | AAPCS64（ARM 64 位过程调用标准）同理 |
 
 页表根**不**在 `switch_to` 里换。`copy_thread` / `run_copied_thread` 见 `14`。
@@ -643,12 +665,14 @@ cd core && make ARCH=x86_64 config && make all && make run
 - 环上无 ready 则 RR 死循环（靠 idle）。
 - `new_task_manager` 缺 alloc NULL 检查。
 - 远期：迁移 / 可插拔调度见 evolution E3、E4。
-- （已关闭）线程切换不保存浮点/向量——现已 eager 保存 SSE/FPSIMD；AVX/SVE 仍不支持。
+- （已关闭）线程切换不保存浮点/向量——现已 eager 保存 SSE/AVX（x86）与 FPSIMD（aarch64）；AVX-512/SVE 仍不支持。
 
 ---
 
 ## 11. 变更记录
 
+- 2026-11-15：§6.6 对齐审定后的 `arch_fp.c`——`fp_cfg`、ALLOWED/DENIED、`EDX:EAX`、leaf `0xD` 字段表；去掉独立 detect/enable 函数与旧 `start_*` 表述。
+- 2026-11-15：§6.6 补 **`xsave64` 说明**（XCR0 / RFBM / legacy 512B / leaf 0xD size）；更正表内「XSAVE 未做」。
 - 2026-11-14：命名与分层对齐代码——`fp_area` / `fp_state_*` / `fp_alloc`；BUF=`SIZE+ALIGN`；去掉旧 `arch_fp_area` / scratch 表述。
 - 2026-11-13：§6.6 FXSAVE 布局表——澄清 XMM0–15 共 16×16B=256B；ST0–7 在偏移 32 的 8×16B 槽；512B 含头+ST+XMM+保留。
 - 2026-11-13：§6.6 新增「浮点与向量」专节——x87 / XMM / AVX / AVX-512、FXSAVE vs XSAVE、aarch64 Q+FPCR/FPSR 与 SVE、本仓库 eager 边界；`switch_to` 步骤与时序图补上 FP。

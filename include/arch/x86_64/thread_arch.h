@@ -25,9 +25,7 @@ in rendezvos, we do not use xmm regs in kernel,but we list the number
 #define NR_ABI_PARAMETER_INT_REG   6
 #define NR_ABI_PARAMETER_FLOAT_REG 8
 
-#define ARCH_FP_SIZE     512
-#define ARCH_FP_ALIGN    64
-#define ARCH_FP_BUF_SIZE (ARCH_FP_SIZE + ARCH_FP_ALIGN)
+#define ARCH_FP_ALIGN 64
 
 #define ARCH_X86_FXSAVE_FCW_OFF   0
 #define ARCH_X86_FXSAVE_MXCSR_OFF 24
@@ -49,6 +47,10 @@ typedef struct {
         u8* fp;
 } Arch_Thread_Context;
 
+/** Per-CPU: CR0/CR4/XCR0 + choose FXSAVE vs XSAVE (+ optional AVX). */
+void arch_fp_cpu_init(void);
+size_t arch_fp_payload_size(void);
+size_t arch_fp_state_size(void);
 void arch_fp_save_to(void* buf);
 void arch_fp_load_from(const void* buf);
 void arch_fp_init_area(u8* area);

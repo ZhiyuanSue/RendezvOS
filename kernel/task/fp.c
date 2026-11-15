@@ -3,11 +3,6 @@
 #include <rendezvos/mm/allocator.h>
 #include <rendezvos/task/fp.h>
 
-/*
- * Shared FP buffer lifecycle + sole HW↔SIZE+ALIGN snapshot path.
- * Arch only supplies: arch_fp_save_to / load_from / init_area (+ SIZE/ALIGN).
- * Allocator zero-fills; fp_alloc only applies arch defaults via init_area.
- */
 
 error_t fp_alloc(Arch_Thread_Context* ctx)
 {
@@ -18,7 +13,7 @@ error_t fp_alloc(Arch_Thread_Context* ctx)
 
         struct allocator* cpu_kallocator = percpu(kallocator);
 
-        ctx->fp = (u8*)cpu_kallocator->m_alloc(cpu_kallocator, ARCH_FP_BUF_SIZE);
+        ctx->fp = (u8*)cpu_kallocator->m_alloc(cpu_kallocator, arch_fp_state_size());
         if (!ctx->fp)
                 return -E_REND_NO_MEM;
 
@@ -33,11 +28,6 @@ void fp_free(Arch_Thread_Context* ctx)
         struct allocator* cpu_kallocator = percpu(kallocator);
         cpu_kallocator->m_free(cpu_kallocator, ctx->fp);
         ctx->fp = NULL;
-}
-
-size_t fp_state_size(void)
-{
-        return ARCH_FP_BUF_SIZE;
 }
 
 error_t fp_state_save(void* buf)

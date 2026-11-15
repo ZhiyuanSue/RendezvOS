@@ -5,12 +5,11 @@
 #include <arch/x86_64/boot/multiboot2.h>
 #include <arch/x86_64/cpuinfo.h>
 #include <arch/x86_64/sys_ctrl.h>
-#include <arch/x86_64/sys_ctrl_def.h>
+#include <arch/x86_64/thread_arch.h>
 #include <arch/x86_64/time.h>
 #include <arch/x86_64/desc.h>
 #include <arch/x86_64/trap/tss.h>
 #include <arch/x86_64/msr.h>
-#include <common/bit.h>
 #include <modules/log/log.h>
 #include <modules/acpi/acpi.h>
 #include <modules/pci/pci_ops.h>
@@ -38,30 +37,30 @@ static void get_cpu_info(void)
         u32 ecx;
         u32 edx;
 
-        cpuid(X86_CPUID_VENDOR, &eax, &ebx, &ecx, &edx);
+        cpuid(X86_CPUID_VENDOR, 0, &eax, &ebx, &ecx, &edx);
         cpu_info.MaxBasicCPUID = eax;
         *(u32 *)(cpu_info.Vendor + 0) = ebx;
         *(u32 *)(cpu_info.Vendor + 4) = edx;
         *(u32 *)(cpu_info.Vendor + 8) = ecx;
 
-        cpuid(X86_CPUID_FAMILY_MODEL, &eax, &ebx, &ecx, &edx);
+        cpuid(X86_CPUID_FAMILY_MODEL, 0, &eax, &ebx, &ecx, &edx);
         cpu_info.APICID = (u8)(ebx >> 24);
         cpu_info.feature_1 = ecx;
         cpu_info.feature_2 = edx;
 
         if (cpu_info.MaxBasicCPUID >= X86_CPUID_THERMAL_AND_POWER) {
-                cpuid(X86_CPUID_THERMAL_AND_POWER, &eax, &ebx, &ecx, &edx);
+                cpuid(X86_CPUID_THERMAL_AND_POWER, 0, &eax, &ebx, &ecx, &edx);
                 cpu_info.thermal_eax = eax;
                 cpu_info.thermal_ebx = ebx;
                 cpu_info.thermal_ecx = ecx;
                 cpu_info.thermal_edx = edx;
         }
 
-        cpuid(X86_CPUID_EXT_MAX, &eax, &ebx, &ecx, &edx);
+        cpuid(X86_CPUID_EXT_MAX, 0, &eax, &ebx, &ecx, &edx);
         cpu_info.MaxExtCPUID = eax;
 
         if (cpu_info.MaxExtCPUID >= X86_CPUID_Invariant_TSC) {
-                cpuid(X86_CPUID_Invariant_TSC, &eax, &ebx, &ecx, &edx);
+                cpuid(X86_CPUID_Invariant_TSC, 0, &eax, &ebx, &ecx, &edx);
                 cpu_info.ext_pwr_eax = eax;
                 cpu_info.ext_pwr_ebx = ebx;
                 cpu_info.ext_pwr_ecx = ecx;
@@ -69,7 +68,7 @@ static void get_cpu_info(void)
         }
 
         if (cpu_info.MaxExtCPUID >= X86_CPUID_ADDR) {
-                cpuid(X86_CPUID_ADDR, &eax, &ebx, &ecx, &edx);
+                cpuid(X86_CPUID_ADDR, 0, &eax, &ebx, &ecx, &edx);
                 cpu_info.PhyAddrBits = (u8)(eax & 0xff);
                 cpu_info.VirtAddrBits = (u8)((eax >> 8) & 0xff);
         }
@@ -100,44 +99,6 @@ static void set_gdt(cpu_id_t cpu_id)
                                  cpu_id);
         /*user*/
         perpare_per_cpu_user_gdt(per_cpu_gdt);
-}
-static void start_fp(void)
-{
-        set_cr0_bit(CR0_MP);
-        set_cr0_bit(CR0_NE);
-}
-static void start_simd(void)
-{
-        u64 xcr_value;
-
-        /*use cpuinfo to check the simd support or not*/
-        if (((cpu_info.feature_2)
-             & (X86_CPUID_FEATURE_EDX_SSE | X86_CPUID_FEATURE_EDX_SSE2
-                | X86_CPUID_FEATURE_EDX_FXSR | X86_CPUID_FEATURE_EDX_CLFSH))
-            && ((cpu_info.feature_1)
-                & (X86_CPUID_FEATURE_ECX_SSE3 | X86_CPUID_FEATURE_ECX_SSSE3))) {
-                pr_info("have simd feature,starting...\n");
-                /*set osfxsr : cr4 bit 9*/
-                set_cr4_bit(CR4_OSFXSR);
-                /*set osxmmexcpt flag: cr4 bit 10*/
-                set_cr4_bit(CR4_OSXMMEXCPT);
-                /*set the mask bit and flags in mxcsr register*/
-                set_mxcsr(MXCSR_DEFAULT);
-                if ((cpu_info.feature_1) & X86_CPUID_FEATURE_ECX_XSAVE) {
-                        /*to enable the xcr0, must set the cr4 osxsave*/
-                        set_cr4_bit(CR4_OSXSAVE);
-                        xcr_value = get_xcr(0);
-                        xcr_value =
-                                set_mask_u64(xcr_value, XCR0_X87 | XCR0_SSE);
-                        xcr_value = clear_mask_u64(xcr_value, XCR0_AVX);
-                        set_xcr(0, xcr_value);
-                }
-        } else {
-                goto start_simd_fail;
-        }
-        return;
-start_simd_fail:
-        pr_error("start simd fail\n");
 }
 error_t prepare_arch(struct setup_info *arch_setup_info)
 {
@@ -258,7 +219,6 @@ error_t arch_start_core(cpu_id_t cpu_id)
         arch_irq_local_enable();
         rendezvos_time_init();
         enable_cache();
-        start_fp();
-        start_simd();
+        arch_fp_cpu_init();
         return (0);
 }

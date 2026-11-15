@@ -45,6 +45,18 @@ typedef struct {
         u8* fp;
 } Arch_Thread_Context;
 
+/** FPEN is opened in boot.S; nothing more per CPU. */
+static inline void arch_fp_cpu_init(void)
+{
+}
+static inline size_t arch_fp_payload_size(void)
+{
+        return ARCH_FP_SIZE;
+}
+static inline size_t arch_fp_state_size(void)
+{
+        return ARCH_FP_BUF_SIZE;
+}
 void arch_fp_save_to(void* buf);
 void arch_fp_load_from(const void* buf);
 static inline void arch_fp_init_area(u8* area)

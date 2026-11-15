@@ -14,7 +14,6 @@
 #include <rendezvos/mm/vmm.h>
 #include <rendezvos/smp/percpu.h>
 #include <rendezvos/time.h>
-extern struct cpuinfo cpu_info;
 inline bool xAPIC_support(void)
 {
         return (cpu_info.feature_2 & X86_CPUID_FEATURE_EDX_APIC);
