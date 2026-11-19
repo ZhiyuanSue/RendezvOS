@@ -22,7 +22,8 @@ enum Error_t {
         E_REND_NOFOUND, /*Lookup miss*/
         E_REND_OVERFLOW, /*Bounds exceeded*/
         E_REND_NO_MEM, /*Allocation failure*/
-        E_REND_PORT_CLOSED, /*Port closed / ops denied*/
+        E_REND_PORT_CLOSED, /* Port closed / life not OPEN */
+        E_REND_ACCESS, /* Policy deny */
 };
 
 #endif

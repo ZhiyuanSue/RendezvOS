@@ -30,22 +30,25 @@ static Named_Message_Port_t* receiver_port = NULL;
 static void* port_discovery_receiver_thread(void* arg)
 {
         (void)arg;
-        receiver_port = create_named_message_port(PORT_DISCOVERY_PORT_NAME, NULL);
+        receiver_port =
+                create_named_message_port(PORT_DISCOVERY_PORT_NAME, NULL);
         if (!receiver_port) {
                 pr_error("[port_test] receiver: create port failed\n");
                 port_discovery_receiver_done = 1;
                 return NULL;
         }
-        if (register_named_port(global_port_table, receiver_port) != REND_SUCCESS) {
+        if (register_named_port(global_port_table, receiver_port)
+            != REND_SUCCESS) {
                 pr_error("[port_test] receiver: register failed\n");
                 ref_put(&receiver_port->refcount, free_named_message_port_ref);
                 receiver_port = NULL;
                 port_discovery_receiver_done = 1;
                 return NULL;
         }
-        if (recv_msg(named_port_as_anon(receiver_port)) != REND_SUCCESS) {
-                pr_error("[port_test] receiver: recv_msg failed\n");
-                unregister_named_port(global_port_table, PORT_DISCOVERY_PORT_NAME);
+        if (named_port_recv_msg(receiver_port) != REND_SUCCESS) {
+                pr_error("[port_test] receiver: named_port_recv_msg failed\n");
+                unregister_named_port(global_port_table,
+                                      PORT_DISCOVERY_PORT_NAME);
                 ref_put(&receiver_port->refcount, free_named_message_port_ref);
                 receiver_port = NULL;
                 port_discovery_receiver_done = 1;
@@ -56,7 +59,8 @@ static void* port_discovery_receiver_thread(void* arg)
                 pr_error("[port_test] receiver: no message\n");
                 if (msg)
                         ref_put(&msg->ms_queue_node.refcount, free_message_ref);
-                unregister_named_port(global_port_table, PORT_DISCOVERY_PORT_NAME);
+                unregister_named_port(global_port_table,
+                                      PORT_DISCOVERY_PORT_NAME);
                 ref_put(&receiver_port->refcount, free_named_message_port_ref);
                 receiver_port = NULL;
                 port_discovery_receiver_done = 1;
@@ -87,7 +91,8 @@ static void* port_discovery_receiver_thread(void* arg)
 static void* port_discovery_sender_thread(void* arg)
 {
         (void)arg;
-        Named_Message_Port_t* port = thread_lookup_port(PORT_DISCOVERY_PORT_NAME);
+        Named_Message_Port_t* port =
+                thread_lookup_port(PORT_DISCOVERY_PORT_NAME);
         if (!port) {
                 pr_error("[port_test] sender: lookup failed\n");
                 port_discovery_sender_done = 1;
@@ -125,8 +130,8 @@ static void* port_discovery_sender_thread(void* arg)
                 return NULL;
         }
         msg = NULL;
-        if (send_msg(named_port_as_anon(port)) != REND_SUCCESS) {
-                pr_error("[port_test] sender: send_msg failed\n");
+        if (named_port_send_msg(port) != REND_SUCCESS) {
+                pr_error("[port_test] sender: named_port_send_msg failed\n");
                 ref_put(&port->refcount, free_named_message_port_ref);
                 port_discovery_sender_done = 1;
                 return NULL;
@@ -137,6 +142,8 @@ static void* port_discovery_sender_thread(void* arg)
 }
 
 #define PORT_HOOK_DENY_LOOKUP   "hook_deny_lookup"
+#define PORT_HOOK_DENY_SEND     "hook_deny_send"
+#define PORT_HOOK_DENY_RECV     "hook_deny_recv"
 #define PORT_HOOK_DENY_REGISTER "hook_deny_register"
 #define PORT_HOOK_TOKEN_LOOKUP  "hook_token_lookup"
 
@@ -154,19 +161,29 @@ static error_t port_hook_ops_allow(Named_Message_Port_t* port,
                              PORT_HOOK_DENY_LOOKUP,
                              PORT_NAME_LEN_MAX)
                     == 0)
-                        return -E_RENDEZVOS;
+                        return -E_REND_ACCESS;
                 if (strcmp_s(lookup_name,
                              PORT_HOOK_TOKEN_LOOKUP,
                              PORT_NAME_LEN_MAX)
                             == 0
                     && port_hook_token_lookup_deny)
-                        return -E_RENDEZVOS;
+                        return -E_REND_ACCESS;
                 return REND_SUCCESS;
         }
-        if (op_type == PORT_OPS_REGISTER && port
+        if (!port)
+                return REND_SUCCESS;
+        if (op_type == PORT_OPS_SEND
+            && strcmp_s(port->name, PORT_HOOK_DENY_SEND, PORT_NAME_LEN_MAX)
+                       == 0)
+                return -E_REND_ACCESS;
+        if (op_type == PORT_OPS_RECV
+            && strcmp_s(port->name, PORT_HOOK_DENY_RECV, PORT_NAME_LEN_MAX)
+                       == 0)
+                return -E_REND_ACCESS;
+        if (op_type == PORT_OPS_REGISTER
             && strcmp_s(port->name, PORT_HOOK_DENY_REGISTER, PORT_NAME_LEN_MAX)
                        == 0)
-                return -E_RENDEZVOS;
+                return -E_REND_ACCESS;
         return REND_SUCCESS;
 }
 
@@ -183,7 +200,7 @@ static int port_hook_gate_self_test(void)
                 return -E_REND_TEST;
 
         port = create_named_message_port(PORT_HOOK_DENY_LOOKUP,
-                                   &port_hook_test_hooks);
+                                         &port_hook_test_hooks);
         if (!port) {
                 pr_error("[port_hook_test] create deny_lookup port failed\n");
                 return -E_REND_TEST;
@@ -214,7 +231,7 @@ static int port_hook_gate_self_test(void)
 
         port_hook_token_lookup_deny = 0;
         port = create_named_message_port(PORT_HOOK_TOKEN_LOOKUP,
-                                   &port_hook_test_hooks);
+                                         &port_hook_test_hooks);
         if (!port) {
                 pr_error("[port_hook_test] create token_lookup port failed\n");
                 return -E_REND_TEST;
@@ -232,7 +249,8 @@ static int port_hook_gate_self_test(void)
         if (!port) {
                 pr_error(
                         "[port_hook_test] token_lookup warm cache should succeed\n");
-                unregister_named_port(global_port_table, PORT_HOOK_TOKEN_LOOKUP);
+                unregister_named_port(global_port_table,
+                                      PORT_HOOK_TOKEN_LOOKUP);
                 return -E_REND_TEST;
         }
         ref_put(&port->refcount, free_named_message_port_ref);
@@ -242,22 +260,97 @@ static int port_hook_gate_self_test(void)
                 pr_error(
                         "[port_hook_test] token_lookup cache resolve should deny\n");
                 port_hook_token_lookup_deny = 0;
-                unregister_named_port(global_port_table, PORT_HOOK_TOKEN_LOOKUP);
+                unregister_named_port(global_port_table,
+                                      PORT_HOOK_TOKEN_LOOKUP);
                 return -E_REND_TEST;
         }
         port_hook_token_lookup_deny = 0;
         unregister_named_port(global_port_table, PORT_HOOK_TOKEN_LOOKUP);
 
+        /*
+         * SEND/RECV deny: lookup may succeed; named_port_*_msg must return
+         * -E_REND_ACCESS (not -E_REND_PORT_CLOSED — deny ≠ close). Pre-split
+         * begin mapped allow-fail to closed; that was the wrong signal.
+         */
+        port = create_named_message_port(PORT_HOOK_DENY_SEND,
+                                         &port_hook_test_hooks);
+        if (!port) {
+                pr_error("[port_hook_test] create deny_send port failed\n");
+                return -E_REND_TEST;
+        }
+        e = register_named_port(global_port_table, port);
+        if (e != REND_SUCCESS) {
+                pr_error("[port_hook_test] register deny_send failed e=%d\n",
+                         (int)e);
+                ref_put(&port->refcount, free_named_message_port_ref);
+                return -E_REND_TEST;
+        }
+        ref_put(&port->refcount, free_named_message_port_ref);
+
+        port = thread_lookup_port(PORT_HOOK_DENY_SEND);
+        if (!port) {
+                pr_error("[port_hook_test] deny_send lookup should succeed\n");
+                unregister_named_port(global_port_table, PORT_HOOK_DENY_SEND);
+                return -E_REND_TEST;
+        }
+        e = named_port_send_msg(port);
+        ref_put(&port->refcount, free_named_message_port_ref);
+        if (e != -E_REND_ACCESS) {
+                pr_error(
+                        "[port_hook_test] deny_send named_port_send_msg e=%d expected access\n",
+                        (int)e);
+                unregister_named_port(global_port_table, PORT_HOOK_DENY_SEND);
+                return -E_REND_TEST;
+        }
+        unregister_named_port(global_port_table, PORT_HOOK_DENY_SEND);
+
+        port = create_named_message_port(PORT_HOOK_DENY_RECV,
+                                         &port_hook_test_hooks);
+        if (!port) {
+                pr_error("[port_hook_test] create deny_recv port failed\n");
+                return -E_REND_TEST;
+        }
+        e = register_named_port(global_port_table, port);
+        if (e != REND_SUCCESS) {
+                pr_error("[port_hook_test] register deny_recv failed e=%d\n",
+                         (int)e);
+                ref_put(&port->refcount, free_named_message_port_ref);
+                return -E_REND_TEST;
+        }
+        ref_put(&port->refcount, free_named_message_port_ref);
+
+        port = thread_lookup_port(PORT_HOOK_DENY_RECV);
+        if (!port) {
+                pr_error("[port_hook_test] deny_recv lookup should succeed\n");
+                unregister_named_port(global_port_table, PORT_HOOK_DENY_RECV);
+                return -E_REND_TEST;
+        }
+        e = named_port_recv_msg(port);
+        ref_put(&port->refcount, free_named_message_port_ref);
+        if (e != -E_REND_ACCESS) {
+                pr_error(
+                        "[port_hook_test] deny_recv named_port_recv_msg e=%d expected access\n",
+                        (int)e);
+                unregister_named_port(global_port_table, PORT_HOOK_DENY_RECV);
+                return -E_REND_TEST;
+        }
+        unregister_named_port(global_port_table, PORT_HOOK_DENY_RECV);
+
         port = create_named_message_port(PORT_HOOK_DENY_REGISTER,
-                                   &port_hook_test_hooks);
+                                         &port_hook_test_hooks);
         if (!port) {
                 pr_error("[port_hook_test] create deny_register port failed\n");
                 return -E_REND_TEST;
         }
         e = register_named_port(global_port_table, port);
-        if (e == REND_SUCCESS) {
-                pr_error("[port_hook_test] deny_register should fail\n");
-                unregister_named_port(global_port_table, PORT_HOOK_DENY_REGISTER);
+        if (e != -E_REND_ACCESS) {
+                pr_error(
+                        "[port_hook_test] deny_register e=%d expected access\n",
+                        (int)e);
+                if (e == REND_SUCCESS)
+                        unregister_named_port(global_port_table,
+                                              PORT_HOOK_DENY_REGISTER);
+                ref_put(&port->refcount, free_named_message_port_ref);
                 return -E_REND_TEST;
         }
         ref_put(&port->refcount, free_named_message_port_ref);

@@ -1,4 +1,5 @@
 #include <rendezvos/ipc/named_port.h>
+#include <rendezvos/ipc/ipc.h>
 #include <rendezvos/ipc/port.h>
 #include <rendezvos/mm/allocator.h>
 #include <rendezvos/smp/percpu.h>
@@ -7,6 +8,32 @@
 #include <modules/log/log.h>
 
 DEFINE_PER_CPU(struct spin_lock_t, port_table_spin_lock);
+
+static error_t named_port_ops_allow(Named_Message_Port_t* port,
+                                    enum port_ops_type op_type,
+                                    const char* lookup_name)
+{
+        if (!port)
+                return -E_IN_PARAM;
+
+        switch (op_type) {
+        case PORT_OPS_LOOKUP:
+                break;
+        case PORT_OPS_REGISTER:
+        case PORT_OPS_SEND:
+        case PORT_OPS_RECV:
+                if (lookup_name)
+                        return -E_IN_PARAM;
+                break;
+        default:
+                return -E_IN_PARAM;
+        }
+
+        if (port->append_hooks && port->append_hooks->ops_allow)
+                return port->append_hooks->ops_allow(
+                        port, op_type, lookup_name);
+        return REND_SUCCESS;
+}
 
 /*
  * name_index callbacks: @p value is the Named_Message_Port_t* stored in the
@@ -71,7 +98,8 @@ static u32 service_id_from_name(const char* name)
         if (!name || !name[0])
                 return 0;
         hash = 2166136261u;
-        for (name_idx = 0; name_idx < PORT_NAME_LEN_MAX && name[name_idx] != '\0';
+        for (name_idx = 0;
+             name_idx < PORT_NAME_LEN_MAX && name[name_idx] != '\0';
              name_idx++) {
                 hash ^= (u8)name[name_idx];
                 hash *= 16777619u;
@@ -172,10 +200,6 @@ error_t free_named_message_port_ref(ref_count_t* ref_count_ptr)
                         port_ops_life_get(anon));
                 return -E_RENDEZVOS;
         }
-
-        if (port_is_open(anon))
-                pr_error("[named_port] free_ref still open; closing\n");
-
         e = named_port_ensure_closed(anon);
         if (e != REND_SUCCESS)
                 return e;
@@ -201,9 +225,8 @@ bool port_table_port_is_live(struct Port_Table* table, const char* name,
 
         cpu_mcs_node = &percpu(port_table_spin_lock);
         lock_mcs(&table->by_name.lock, cpu_mcs_node);
-        found = (Named_Message_Port_t*)name_index_search(&table->by_name,
-                                                         name,
-                                                         NULL);
+        found = (Named_Message_Port_t*)name_index_search(
+                &table->by_name, name, NULL);
         is_live = (found && found == port && named_port_is_in_table(found));
         unlock_mcs(&table->by_name.lock, cpu_mcs_node);
         return is_live;
@@ -243,7 +266,8 @@ void delete_port_table_structure(struct Port_Table* table)
         table->by_name.alloc->m_free(table->by_name.alloc, table);
 }
 
-error_t register_named_port(struct Port_Table* table, Named_Message_Port_t* port)
+error_t register_named_port(struct Port_Table* table,
+                            Named_Message_Port_t* port)
 {
         struct spin_lock_t* cpu_mcs_node;
         Named_Message_Port_t* existing;
@@ -264,9 +288,8 @@ error_t register_named_port(struct Port_Table* table, Named_Message_Port_t* port
                 return -E_RENDEZVOS;
         }
 
-        existing = (Named_Message_Port_t*)name_index_search(&table->by_name,
-                                                            port->name,
-                                                            NULL);
+        existing = (Named_Message_Port_t*)name_index_search(
+                &table->by_name, port->name, NULL);
         if (existing) {
                 if (existing == port) {
                         unlock_mcs(&table->by_name.lock, cpu_mcs_node);
@@ -275,14 +298,11 @@ error_t register_named_port(struct Port_Table* table, Named_Message_Port_t* port
                 unlock_mcs(&table->by_name.lock, cpu_mcs_node);
                 return -E_RENDEZVOS;
         }
-        if (port->append_hooks && port->append_hooks->ops_allow) {
-                error_t e = port->append_hooks->ops_allow(
-                        port, PORT_OPS_REGISTER, NULL);
+        error_t e = named_port_ops_allow(port, PORT_OPS_REGISTER, NULL);
 
-                if (e != REND_SUCCESS) {
-                        unlock_mcs(&table->by_name.lock, cpu_mcs_node);
-                        return e;
-                }
+        if (e != REND_SUCCESS) {
+                unlock_mcs(&table->by_name.lock, cpu_mcs_node);
+                return e;
         }
 
         reg_row_idx = 0;
@@ -319,9 +339,8 @@ error_t unregister_named_port(struct Port_Table* table, const char* name)
         cpu_mcs_node = &percpu(port_table_spin_lock);
         lock_mcs(&table->by_name.lock, cpu_mcs_node);
         row_idx = 0;
-        port = (Named_Message_Port_t*)name_index_search(&table->by_name,
-                                                        name,
-                                                        &row_idx);
+        port = (Named_Message_Port_t*)name_index_search(
+                &table->by_name, name, &row_idx);
         if (!port || !named_port_is_in_table(port)) {
                 unlock_mcs(&table->by_name.lock, cpu_mcs_node);
                 return REND_SUCCESS;
@@ -334,10 +353,9 @@ error_t unregister_named_port(struct Port_Table* table, const char* name)
 
         e = named_port_ensure_closed(named_port_as_anon(port));
         if (e != REND_SUCCESS) {
-                pr_error(
-                        "[named_port] unregister close failed e=%d name=%s\n",
-                        (int)e,
-                        name);
+                pr_error("[named_port] unregister close failed e=%d name=%s\n",
+                         (int)e,
+                         name);
                 named_port_index_drop(port);
                 return e;
         }
@@ -345,12 +363,12 @@ error_t unregister_named_port(struct Port_Table* table, const char* name)
         lock_mcs(&table->by_name.lock, cpu_mcs_node);
         row_idx = 0;
         /* Re-search: a concurrent unregister may have left already. */
-        if ((Named_Message_Port_t*)name_index_search(&table->by_name, name,
-                                                     &row_idx)
+        if ((Named_Message_Port_t*)name_index_search(
+                    &table->by_name, name, &row_idx)
                     == port
             && named_port_is_in_table(port)) {
-                name_index_unregister(&table->by_name, (void*)port, row_idx,
-                                      name);
+                name_index_unregister(
+                        &table->by_name, (void*)port, row_idx, name);
                 unlock_mcs(&table->by_name.lock, cpu_mcs_node);
                 /* Table pin*/
                 named_port_index_drop(port);
@@ -361,19 +379,16 @@ error_t unregister_named_port(struct Port_Table* table, const char* name)
         return REND_SUCCESS;
 }
 
-static Named_Message_Port_t* port_lookup_finish(Named_Message_Port_t* named_port,
-                                                const char* lookup_name)
+static Named_Message_Port_t*
+port_lookup_finish(Named_Message_Port_t* named_port, const char* lookup_name)
 {
         if (!named_port)
                 return NULL;
 
-        if (named_port->append_hooks && named_port->append_hooks->ops_allow) {
-                if (named_port->append_hooks->ops_allow(
-                            named_port, PORT_OPS_LOOKUP, lookup_name)
-                    != REND_SUCCESS) {
-                        named_port_index_drop(named_port);
-                        return NULL;
-                }
+        if (named_port_ops_allow(named_port, PORT_OPS_LOOKUP, lookup_name)
+            != REND_SUCCESS) {
+                named_port_index_drop(named_port);
+                return NULL;
         }
         return named_port;
 }
@@ -385,9 +400,8 @@ Named_Message_Port_t* port_table_lookup(struct Port_Table* table,
 
         if (!table || !name)
                 return NULL;
-        named_port = (Named_Message_Port_t*)name_index_lookup(&table->by_name,
-                                                              name,
-                                                              NULL);
+        named_port = (Named_Message_Port_t*)name_index_lookup(
+                &table->by_name, name, NULL);
         return port_lookup_finish(named_port, name);
 }
 
@@ -432,4 +446,36 @@ error_t global_port_init(void)
                 return -E_RENDEZVOS;
         }
         return REND_SUCCESS;
+}
+
+error_t named_port_send_msg(Named_Message_Port_t* port)
+{
+        error_t e = named_port_ops_allow(port, PORT_OPS_SEND, NULL);
+        if (e != REND_SUCCESS)
+                return e;
+        return send_msg(named_port_as_anon(port));
+}
+
+error_t named_port_try_send_msg(Named_Message_Port_t* port)
+{
+        error_t e = named_port_ops_allow(port, PORT_OPS_SEND, NULL);
+        if (e != REND_SUCCESS)
+                return e;
+        return ipc_try_send_msg(named_port_as_anon(port));
+}
+
+error_t named_port_recv_msg(Named_Message_Port_t* port)
+{
+        error_t e = named_port_ops_allow(port, PORT_OPS_RECV, NULL);
+        if (e != REND_SUCCESS)
+                return e;
+        return recv_msg(named_port_as_anon(port));
+}
+
+error_t named_port_try_recv_msg(Named_Message_Port_t* port)
+{
+        error_t e = named_port_ops_allow(port, PORT_OPS_RECV, NULL);
+        if (e != REND_SUCCESS)
+                return e;
+        return ipc_try_recv_msg(named_port_as_anon(port));
 }

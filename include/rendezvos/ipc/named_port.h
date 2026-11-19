@@ -5,17 +5,39 @@
 #include <rendezvos/registry/name_index.h>
 
 /*
- * Named ports: directory / discovery shell over an embedded anonymous
- * rendezvous (@c PORT_COMMON first).
+ * Named port = directory / discovery shell over an embedded anonymous
+ * rendezvous (@c PORT_COMMON at offset 0, same prefix as @c Message_Port_t).
  *
- * Layering:
- *   - Anon life (@c PORT_OPS_LIFE_* OPEN/CLOSING/CLOSED) lives in COMMON;
- *     @c close_port drains waiters. Directory membership is @c port->table.
- *   - Callers hold @c Named_Message_Port_t*. Pass @c named_port_as_anon() only
- *     into send/recv/close. Drop refs with @c free_named_message_port_ref —
- *     never @c free_message_port_ref / @c delete_message_port_structure.
- *   - Publish: create → register (visible to lookup). Unpublish:
- *     close embedded anon → leave directory → drop the table's pin.
+ * Two axes (do not conflate):
+ *   1) Rendezvous life — @c PORT_OPS_LIFE_* on COMMON (OPEN / CLOSING /
+ * CLOSED).
+ *      @c port_ops_begin / @c send_msg / @c recv_msg only care about a OPEN
+ *      anonymous port. @c close_port drains waiters. Independent of whether the
+ *      name is in a table.
+ *   2) Directory membership — @c port->table / @c name[] /
+ *      name_index. create → not published; register → visible to lookup;
+ *      unregister → close embedded anon, then leave the table and drop the
+ *      table pin.
+ *
+ * Admission (@c ops_allow) is named port-only policy, not anon life:
+ *   - LOOKUP / REGISTER: port-table paths.
+ *   - SEND / RECV: only via @c named_port_send_msg / @c named_port_recv_msg /
+ *     @c named_port_try_* (allow, then anon ipc). Anon @c port_ops_begin should
+ *     **not** call @c ops_allow.
+ *   - @c lookup_name may be non-NULL only for LOOKUP; REGISTER/SEND/RECV pass
+ *     NULL (use @c port->name). Deny ≠ close / unregister; already-blocked
+ *     waiters are not re-checked on wake.
+ *
+ * Who calls what:
+ *   - Named business IPC → @c named_port_*_msg only. Do not @c as_anon +
+ *     @c send_msg / @c recv_msg (skips SEND/RECV allow).
+ *   - Pure anon ports (@c create_message_port) → @c send_msg / @c recv_msg;
+ *     holding the pointer is the allow.
+ *   - @c named_port_as_anon: for the named wrappers, @c close_port, and core
+ *     teardown — not a public IPC entry for named users.
+ *   - Refs: @c free_named_message_port_ref only — never
+ *     @c free_message_port_ref / @c delete_message_port_structure on a named
+ *     object (the embedded anon is not a standalone heap @c Message_Port_t).
  */
 
 /* Default initial slot capacity for a new port table name index. */
@@ -52,13 +74,18 @@ typedef void (*port_append_fini_t)(Named_Message_Port_t* port);
 /**
  * @brief Gate operation kinds for @c port_ops_allow_t.
  *
- * Discovery admission only — **not** used by @c port_ops_begin / send / recv
- * (those gate solely on anon @c PORT_OPS_LIFE_OPEN).
+ * Discovery: LOOKUP / REGISTER (port table paths).
+ * IPC: SEND / RECV via @c named_port_send_msg / @c named_port_recv_msg / @c
+ * named_port_try_* only — **not** via anon @c port_ops_begin (that gates solely
+ * on
+ * @c PORT_OPS_LIFE_OPEN).
  * Not to be confused with @c PORT_OPS_LIFE_* (anon rendezvous lifecycle).
  */
 enum port_ops_type {
         PORT_OPS_LOOKUP,
         PORT_OPS_REGISTER,
+        PORT_OPS_SEND,
+        PORT_OPS_RECV,
 };
 
 /**
@@ -70,18 +97,25 @@ enum port_ops_type {
  * namespace/capability tables; the name-index key is whatever string was
  * registered.
  *
- * @param port Target named port (looked up or being registered).
+ * @param port Target named port (looked up, registered, or IPC target).
  * @param op_type Which gate fired.
- * @param lookup_name Index key for @c PORT_OPS_LOOKUP only; **NULL** for
- *        @c PORT_OPS_REGISTER (REGISTER does not receive the name string;
- *        use @c port->name).
- * @return @c REND_SUCCESS to allow; any other @c error_t denies:
+ * @param lookup_name Index key; **non-NULL only legal for**
+ *        @c PORT_OPS_LOOKUP. REGISTER / SEND / RECV must pass @c NULL
+ *        (policy uses @c port->name). Core rejects mismatched pairs before
+ *        invoking this callback (same rule as pre-split @c port_ops_begin
+ *        for SEND/RECV, which always passed @c NULL).
+ * @return @c REND_SUCCESS to allow; any other @c error_t denies. Prefer
+ *         @c -E_REND_ACCESS for policy reject (not @c -E_REND_PORT_CLOSED):
  *         LOOKUP → drop hold + NULL (errno discarded);
- *         REGISTER → that @c error_t from @c register_named_port.
+ *         REGISTER → that @c error_t from @c register_named_port;
+ *         SEND/RECV → that @c error_t from @c named_port_*_msg (ipc not
+ * entered).
  *
  * @note @c PORT_OPS_REGISTER runs **under the port-table MCS lock** — must not
  *       re-enter @c register_named_port / @c port_table_lookup on the same
  *       table (deadlock). Keep the callback fast; do not @c schedule.
+ * @note SEND/RECV checks run outside the table lock (before anon ipc). Do not
+ *       @c schedule inside the callback.
  * @note Deny ≠ unregister: port stays in the table if already published;
  *       waiters already past @c port_ops_begin are not re-checked on wake.
  */
@@ -118,9 +152,12 @@ struct Named_Msg_Port {
 };
 
 /**
- * @brief View the embedded anon rendezvous for IPC / @c close_port.
- * @warning Do not @c free_message_port_ref or @c delete_message_port_structure
- *          this pointer — it is not a standalone heap @c Message_Port_t.
+ * @brief View the embedded anon rendezvous for close / named IPC wrappers.
+ * @warning Not a business IPC entry for named ports — use @c
+ * named_port_send_msg /
+ *          @c named_port_recv_msg / @c named_port_try_*. Do not
+ *          @c free_message_port_ref or @c delete_message_port_structure this
+ *          pointer — it is not a standalone heap @c Message_Port_t.
  */
 static inline Message_Port_t* named_port_as_anon(Named_Message_Port_t* named)
 {
@@ -309,5 +346,26 @@ extern struct Port_Table* global_port_table;
  *       @c register_named_port. Does not register any ports itself.
  */
 error_t global_port_init(void);
+
+/* ---- Named IPC (ops_allow then anon send/recv) ----
+ *
+ * Same enqueue / dequeue contract as @c send_msg / @c recv_msg /
+ * @c ipc_try_send_msg / @c ipc_try_recv_msg. Admission deny returns the
+ * @c ops_allow error without entering anon ipc (message stays enqueued on
+ * send paths). @c ops_allow NULL → allow. Allow is not a separate public
+ * entry — only these wrappers (and lookup/register) invoke it.
+ */
+
+/** Blocking send after @c PORT_OPS_SEND allow. */
+error_t named_port_send_msg(Named_Message_Port_t* port);
+
+/** Non-blocking send after @c PORT_OPS_SEND allow. */
+error_t named_port_try_send_msg(Named_Message_Port_t* port);
+
+/** Blocking recv after @c PORT_OPS_RECV allow. */
+error_t named_port_recv_msg(Named_Message_Port_t* port);
+
+/** Non-blocking recv after @c PORT_OPS_RECV allow. */
+error_t named_port_try_recv_msg(Named_Message_Port_t* port);
 
 #endif /* _RENDEZVOS_NAMED_PORT_H_ */
