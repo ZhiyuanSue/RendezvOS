@@ -4,33 +4,6 @@
 #include <rendezvos/smp/percpu.h>
 #include <modules/log/log.h>
 
-/*
- * Port close aborted a blocked send without transfer, and a payload may still
- * on send_pending_msg or in send_msg_queue(because before send ,a
- * enqueue_msg_for_send is called, and if the port closed, it only set the flag
- * and do not clean it). Drop the current message so the next send will not send
- * this msg.
- */
-static void ipc_drop_one_orphan_send_msg(Thread_Base* sender)
-{
-        Message_t* msg;
-        tagged_ptr_t dequeued_ptr;
-
-        if (!sender)
-                return;
-
-        msg = (Message_t*)atomic64_exchange(
-                (volatile u64*)&sender->send_pending_msg, (u64)NULL);
-        if (!msg) {
-                dequeued_ptr =
-                        msq_dequeue(&sender->send_msg_queue, free_message_ref);
-                if (tp_is_none(dequeued_ptr))
-                        return;
-                msg = container_of(
-                        tp_get_ptr(dequeued_ptr), Message_t, ms_queue_node);
-        }
-        ref_put(&msg->ms_queue_node.refcount, free_message_ref);
-}
 static error_t free_ipc_request_real(ref_count_t* refcount)
 {
         if (!refcount)
@@ -58,6 +31,7 @@ Ipc_Request_t* create_ipc_request(Thread_Base* thread)
         req->thread = thread;
         return req;
 }
+
 void delete_ipc_request(Ipc_Request_t* req)
 {
         if (!req)
@@ -68,6 +42,7 @@ void delete_ipc_request(Ipc_Request_t* req)
                 ref_put(&req->thread->refcount, free_thread_ref);
         cpu_kallocator->m_free(cpu_kallocator, req);
 }
+
 error_t free_ipc_request(ref_count_t* refcount)
 {
         if (!refcount)
@@ -77,6 +52,34 @@ error_t free_ipc_request(ref_count_t* refcount)
          * lock-free queue readers cannot race with immediate free.
          */
         return ebr_retire_ref(refcount, free_ipc_request_real);
+}
+
+/*
+ * Port close aborted a blocked send without transfer, and a payload may still
+ * on send_pending_msg or in send_msg_queue(because before send ,a
+ * enqueue_msg_for_send is called, and if the port closed, it only set the flag
+ * and do not clean it). Drop the current message so the next send will not send
+ * this msg.
+ */
+static void ipc_drop_one_orphan_send_msg(Thread_Base* sender)
+{
+        Message_t* msg;
+        tagged_ptr_t dequeued_ptr;
+
+        if (!sender)
+                return;
+
+        msg = (Message_t*)atomic64_exchange(
+                (volatile u64*)&sender->send_pending_msg, (u64)NULL);
+        if (!msg) {
+                dequeued_ptr =
+                        msq_dequeue(&sender->send_msg_queue, free_message_ref);
+                if (tp_is_none(dequeued_ptr))
+                        return;
+                msg = container_of(
+                        tp_get_ptr(dequeued_ptr), Message_t, ms_queue_node);
+        }
+        ref_put(&msg->ms_queue_node.refcount, free_message_ref);
 }
 
 /**
@@ -346,7 +349,7 @@ error_t send_msg(Message_Port_t* port)
         if (!sender) {
                 return -E_RENDEZVOS;
         }
-        if (!port_ops_begin(port, PORT_OPS_SEND)) {
+        if (!port_ops_begin(port)) {
                 /*before there's a enqueue_msg_for_send, so we must try clean
                  * it, the same as ipc_try_send_msg*/
                 ipc_drop_one_orphan_send_msg(sender);
@@ -465,7 +468,7 @@ error_t recv_msg(Message_Port_t* port)
         if (!receiver) {
                 return -E_RENDEZVOS;
         }
-        if (!port_ops_begin(port, PORT_OPS_RECV)) {
+        if (!port_ops_begin(port)) {
                 return -E_REND_PORT_CLOSED;
         }
 
@@ -567,7 +570,7 @@ error_t ipc_try_send_msg(Message_Port_t* port)
                 return -E_REND_AGAIN;
         }
         Ipc_Request_t* receiver_request = NULL;
-        if (!port_ops_begin(port, PORT_OPS_SEND)) {
+        if (!port_ops_begin(port)) {
                 ipc_drop_one_orphan_send_msg(sender);
                 return -E_REND_PORT_CLOSED;
         }
@@ -623,7 +626,7 @@ error_t ipc_try_recv_msg(Message_Port_t* port)
                 return -E_REND_AGAIN;
         }
         Ipc_Request_t* sender_request = NULL;
-        if (!port_ops_begin(port, PORT_OPS_RECV)) {
+        if (!port_ops_begin(port)) {
                 return -E_REND_PORT_CLOSED;
         }
 

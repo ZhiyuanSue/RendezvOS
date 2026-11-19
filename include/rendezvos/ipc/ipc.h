@@ -110,7 +110,7 @@ error_t ipc_try_send_msg(Message_Port_t* port);
  * @note Call @c port_ops_end before @c schedule (same as send). Close-wake is
  *       **not** symmetric with @c send_msg: senders always see the flag;
  *       receivers preferably get the system closed kmsg (see
- *       @c unregister_port).
+ *       @c unregister_named_port).
  */
 error_t recv_msg(Message_Port_t* port);
 

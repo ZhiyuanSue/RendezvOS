@@ -8,7 +8,7 @@
 #include <rendezvos/ipc/kmsg.h>
 #include <rendezvos/ipc/kmsg_system.h>
 #include <rendezvos/ipc/message.h>
-#include <rendezvos/ipc/port.h>
+#include <rendezvos/ipc/named_port.h>
 #include <rendezvos/mm/allocator.h>
 #include <rendezvos/smp/percpu.h>
 #include <rendezvos/task/thread.h>
@@ -26,30 +26,31 @@
  */
 static inline error_t rendezvos_request_poweroff(void)
 {
-        Message_Port_t* port = thread_lookup_port(RENDEZVOS_POWERD_PORT_NAME);
+        Named_Message_Port_t* port =
+                thread_lookup_port(RENDEZVOS_POWERD_PORT_NAME);
         if (!port)
                 return -E_RENDEZVOS;
 
         Msg_Data_t* d = kmsg_create(
                 port->service_id, KMSG_OP_SYSTEM_POWER_SHUTDOWN, "");
         if (!d) {
-                ref_put(&port->refcount, free_message_port_ref);
+                ref_put(&port->refcount, free_named_message_port_ref);
                 return -E_REND_NO_MEM;
         }
         Message_t* m = create_message_with_msg(d);
         ref_put(&d->refcount, free_msgdata_ref_default);
         if (!m) {
-                ref_put(&port->refcount, free_message_port_ref);
+                ref_put(&port->refcount, free_named_message_port_ref);
                 return -E_REND_NO_MEM;
         }
         error_t e = enqueue_msg_for_send(m);
         if (e != REND_SUCCESS) {
                 ref_put(&m->ms_queue_node.refcount, free_message_ref);
-                ref_put(&port->refcount, free_message_port_ref);
+                ref_put(&port->refcount, free_named_message_port_ref);
                 return e;
         }
-        e = send_msg(port);
-        ref_put(&port->refcount, free_message_port_ref);
+        e = send_msg(named_port_as_anon(port));
+        ref_put(&port->refcount, free_named_message_port_ref);
         return e;
 }
 

@@ -25,7 +25,7 @@
 
 /**
  * Port-close wake for blocked receivers only. Blocked senders are woken with
- * @c THREAD_FLAG_IPC_PORT_CLOSED instead — see @c unregister_port /
+ * @c THREAD_FLAG_IPC_PORT_CLOSED instead — see @c unregister_named_port /
  * @c THREAD_FLAG_IPC_PORT_CLOSED.
  */
 #define KMSG_OP_SYSTEM_PORT_CLOSED 5u

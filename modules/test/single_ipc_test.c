@@ -127,33 +127,35 @@ int ipc_test(void)
         single_ipc_receiver_done = 0;
         single_ipc_received_type = -1;
         is_print_sche_info = false;
-        port = create_message_port("test_port", NULL);
+        port = create_message_port(42);
         if (!port) {
                 pr_error("[single_ipc_test] create_message_port failed\n");
                 return -E_REND_TEST;
         }
-        /* Peer-held pointer path: skip name_index; ops gate needs REGISTERED.
-         */
-        (void)port_ops_set_life_with_expect(
-                port, PORT_OPS_LIFE_ACTIVE, PORT_OPS_LIFE_REGISTERED);
+        /* Peer-held pointer path: skip name_index; create leaves life OPEN. */
 
         e = gen_thread_from_func(
                 NULL, ipc_sender_thread, "ipc_sender", tm, port);
         if (e != REND_SUCCESS) {
-                delete_message_port_structure(port);
+                ref_put(&port->refcount, free_message_port_ref);
                 return -E_REND_TEST;
         }
         e = gen_thread_from_func(
                 NULL, ipc_receiver_thread, "ipc_receiver", tm, port);
         if (e != REND_SUCCESS) {
-                delete_message_port_structure(port);
+                ref_put(&port->refcount, free_message_port_ref);
                 return -E_REND_TEST;
         }
 
         while (!single_ipc_sender_done || !single_ipc_receiver_done)
                 schedule(tm);
 
-        delete_message_port_structure(port);
+        e = close_port(port);
+        if (e != REND_SUCCESS) {
+                pr_error("[single_ipc_test] close_port failed e=%d\n", (int)e);
+                return -E_REND_TEST;
+        }
+        ref_put(&port->refcount, free_message_port_ref);
 
         if (single_ipc_received_type != IPC_TEST_MSG_TYPE) {
                 pr_error(
@@ -342,15 +344,12 @@ int ipc_multi_round_test(void)
         pr_info("[single_ipc_multi_round_test] starting multi-round IPC test (%u rounds)\n",
                 IPC_MULTI_ROUND_COUNT);
         is_print_sche_info = false;
-        port = create_message_port("test_port", NULL);
+        port = create_message_port(42);
         if (!port) {
                 pr_error(
                         "[single_ipc_multi_round_test] create_message_port failed\n");
                 return -E_REND_TEST;
         }
-        (void)port_ops_set_life_with_expect(
-                port, PORT_OPS_LIFE_ACTIVE, PORT_OPS_LIFE_REGISTERED);
-
         e = gen_thread_from_func(NULL,
                                  ipc_multi_round_sender_thread,
                                  "ipc_multi_sender",
@@ -359,7 +358,7 @@ int ipc_multi_round_test(void)
         if (e != REND_SUCCESS) {
                 pr_error(
                         "[single_ipc_multi_round_test] failed to create sender thread\n");
-                delete_message_port_structure(port);
+                ref_put(&port->refcount, free_message_port_ref);
                 return -E_REND_TEST;
         }
 
@@ -371,14 +370,21 @@ int ipc_multi_round_test(void)
         if (e != REND_SUCCESS) {
                 pr_error(
                         "[single_ipc_multi_round_test] failed to create receiver thread\n");
-                delete_message_port_structure(port);
+                ref_put(&port->refcount, free_message_port_ref);
                 return -E_REND_TEST;
         }
 
         while (!multi_round_sender_done || !multi_round_receiver_done)
                 schedule(tm);
 
-        delete_message_port_structure(port);
+        e = close_port(port);
+        if (e != REND_SUCCESS) {
+                pr_error(
+                        "[single_ipc_multi_round_test] close_port failed e=%d\n",
+                        (int)e);
+                return -E_REND_TEST;
+        }
+        ref_put(&port->refcount, free_message_port_ref);
 
         pr_info("[single_ipc_multi_round_test] test completed: sent=%llu received=%llu\n",
                 (unsigned long long)multi_round_send_count,

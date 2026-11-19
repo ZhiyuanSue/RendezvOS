@@ -9,7 +9,7 @@
 #include <rendezvos/task/thread_loader.h>
 #include <rendezvos/sync/cas_lock.h>
 #include <rendezvos/ipc/message.h>
-#include <rendezvos/ipc/port.h>
+#include <rendezvos/ipc/named_port.h>
 
 u64 thread_kstack_page_num = 2;
 u64 thread_ustack_page_num = 8;
@@ -68,39 +68,39 @@ void kernel_set_ipc_handler(boot_thread_ipc_handler_fn handler)
 
 error_t kernel_port_register(void)
 {
-        Message_Port_t* port;
+        Named_Message_Port_t* port;
         error_t err;
 
         if (!global_port_table) {
                 return -E_RENDEZVOS;
         }
 
-        port = create_message_port(KERNEL_PORT_NAME, NULL);
+        port = create_named_message_port(KERNEL_PORT_NAME, NULL);
         if (!port) {
                 pr_error("[kernel_port] create_message_port '%s' failed\n",
                          KERNEL_PORT_NAME);
                 return -E_RENDEZVOS;
         }
 
-        err = register_port(global_port_table, port);
+        err = register_named_port(global_port_table, port);
         if (err != REND_SUCCESS) {
                 pr_error("[kernel_port] register_port '%s' failed e=%d\n",
                          KERNEL_PORT_NAME,
                          (int)err);
-                delete_message_port_structure(port);
+                ref_put(&port->refcount, free_named_message_port_ref);
                 return err;
         }
 
         pr_info("[kernel_port] registered '%s' service_id=%u\n",
                 KERNEL_PORT_NAME,
                 (unsigned)port->service_id);
-        ref_put(&port->refcount, free_message_port_ref);
+        ref_put(&port->refcount, free_named_message_port_ref);
         return REND_SUCCESS;
 }
 
 error_t kernel_handle_msg(void)
 {
-        Message_Port_t* port;
+        Named_Message_Port_t* port;
 
         port = thread_lookup_port(KERNEL_PORT_NAME);
         if (!port) {
@@ -110,7 +110,7 @@ error_t kernel_handle_msg(void)
         }
 
         for (;;) {
-                error_t e = recv_msg(port);
+                error_t e = recv_msg(named_port_as_anon(port));
 
                 if (e != REND_SUCCESS) {
                         pr_error("[boot_thread] recv_msg failed e=%d\n",

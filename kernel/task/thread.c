@@ -5,7 +5,7 @@
 #include <rendezvos/smp/percpu.h>
 #include <rendezvos/error.h>
 #include <rendezvos/mm/allocator.h>
-#include <rendezvos/ipc/port.h>
+#include <rendezvos/ipc/named_port.h>
 #include <rendezvos/sync/spin_lock.h>
 #include <rendezvos/limits.h>
 
@@ -388,8 +388,8 @@ static void thread_port_cache_touch_lru(struct thread_port_cache* c,
         c->entries[found_idx].lru_counter = (u16)c->lru_clock;
 }
 
-static Message_Port_t* thread_port_cache_lookup(Thread_Base* thread,
-                                                const char* name)
+static Named_Message_Port_t* thread_port_cache_lookup(Thread_Base* thread,
+                                                      const char* name)
 {
         struct thread_port_cache* c = &thread->port_cache;
         u64 target_hash = thread_port_name_hash(name);
@@ -403,7 +403,7 @@ static Message_Port_t* thread_port_cache_lookup(Thread_Base* thread,
                 name_index_token_t tok;
                 tok.row_index = c->entries[i].row_index;
                 tok.row_gen = c->entries[i].row_gen;
-                Message_Port_t* port =
+                Named_Message_Port_t* port =
                         port_table_resolve_token(global_port_table, &tok, name);
                 if (!port) {
                         /* Stale token (gen mismatch / unregistered) */
@@ -476,13 +476,13 @@ static void thread_port_cache_record(Thread_Base* thread, const char* name,
 }
 
 /*You have to use ref put after finish use of this function*/
-Message_Port_t* thread_lookup_port(const char* name)
+Named_Message_Port_t* thread_lookup_port(const char* name)
 {
         Thread_Base* self = get_cpu_current_thread();
         if (!self || !name || !global_port_table)
                 return NULL;
 
-        Message_Port_t* port = thread_port_cache_lookup(self, name);
+        Named_Message_Port_t* port = thread_port_cache_lookup(self, name);
         if (port) {
                 return port;
         }

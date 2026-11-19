@@ -4,7 +4,7 @@
 #include <rendezvos/ipc/kmsg.h>
 #include <rendezvos/ipc/kmsg_system.h>
 #include <rendezvos/ipc/message.h>
-#include <rendezvos/ipc/port.h>
+#include <rendezvos/ipc/named_port.h>
 #include <rendezvos/smp/percpu.h>
 #include <rendezvos/system/powerd.h>
 #include <rendezvos/task/initcall.h>
@@ -15,20 +15,20 @@
 static void* powerd_thread(void* arg)
 {
         (void)arg;
-        Message_Port_t* port =
-                create_message_port(RENDEZVOS_POWERD_PORT_NAME, NULL);
+        Named_Message_Port_t* port =
+                create_named_message_port(RENDEZVOS_POWERD_PORT_NAME, NULL);
         if (!port) {
                 pr_error("[powerd] create port failed\n");
                 return NULL;
         }
-        if (register_port(global_port_table, port) != REND_SUCCESS) {
+        if (register_named_port(global_port_table, port) != REND_SUCCESS) {
                 pr_error("[powerd] register port failed\n");
-                delete_message_port_structure(port);
+                ref_put(&port->refcount, free_named_message_port_ref);
                 return NULL;
         }
 
         while (1) {
-                if (recv_msg(port) != REND_SUCCESS) {
+                if (recv_msg(named_port_as_anon(port)) != REND_SUCCESS) {
                         pr_error("[powerd] recv_msg failed\n");
                         continue;
                 }

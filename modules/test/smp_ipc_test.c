@@ -195,14 +195,11 @@ int smp_ipc_test(void)
         if (cpu_id == BSP_ID) {
                 is_print_sche_info = false;
                 pr_info("BSP creating message port\n");
-                smp_ipc_port = create_message_port("smp_ipc_port", NULL);
+                smp_ipc_port = create_message_port(43);
                 if (!smp_ipc_port) {
                         pr_error("[smp_ipc_test] create_message_port failed\n");
                         return -E_REND_TEST;
                 }
-                (void)port_ops_set_life_with_expect(smp_ipc_port,
-                                                    PORT_OPS_LIFE_ACTIVE,
-                                                    PORT_OPS_LIFE_REGISTERED);
                 for (int i = 0; i < SMP_IPC_CPU_SLOTS; i++) {
                         smp_ipc_send_ok[i] = 0;
                         smp_ipc_recv_ok[i] = 0;
@@ -237,7 +234,7 @@ int smp_ipc_test(void)
         int active_cpus = smp_ipc_active_cpus;
         if (active_cpus < 2) {
                 if (cpu_id == BSP_ID) {
-                        delete_message_port_structure(smp_ipc_port);
+                        ref_put(&smp_ipc_port->refcount, free_message_port_ref);
                         smp_ipc_port_ready = false;
                         is_print_sche_info = false;
                 }
@@ -276,7 +273,11 @@ int smp_ipc_test(void)
                         arch_cpu_relax();
                 }
                 pr_info("BSP all_done, exiting wait\n");
-                delete_message_port_structure(smp_ipc_port);
+                if (close_port(smp_ipc_port) != REND_SUCCESS) {
+                        pr_error("[smp_ipc_test] close_port failed\n");
+                        return -E_REND_TEST;
+                }
+                ref_put(&smp_ipc_port->refcount, free_message_port_ref);
                 smp_ipc_port_ready = false;
 
                 u64 total_sent = 0;

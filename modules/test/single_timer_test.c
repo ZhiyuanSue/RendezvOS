@@ -12,7 +12,6 @@
 #include <rendezvos/ipc/kmsg.h>
 #include <rendezvos/ipc/ipc_serial.h>
 #include <rendezvos/ipc/message.h>
-#include <rendezvos/ipc/port.h>
 
 #define TIMER_TEST_EXPIRE_TOKEN 0x54494d4552455850ull /* "TIMEREXP" */
 #define TIMER_TEST_CANCEL_TOKEN 0x54494d4543414e43ull /* "TIMECANC" */
@@ -111,19 +110,16 @@ int single_timer_test(void)
         timer_waiter_failed = 0;
         is_print_sche_info = false;
 
-        port = create_message_port("single_timer_test_port", NULL);
+        port = create_message_port(44);
         if (!port) {
                 pr_error("[single_timer_test] create_message_port failed\n");
                 return -E_REND_TEST;
         }
-        (void)port_ops_set_life_with_expect(
-                port, PORT_OPS_LIFE_ACTIVE, PORT_OPS_LIFE_REGISTERED);
-
         err = gen_thread_from_func(
                 NULL, timer_waiter_thread, "timer_waiter", tm, port);
         if (err != REND_SUCCESS) {
                 pr_error("[single_timer_test] spawn waiter failed\n");
-                delete_message_port_structure(port);
+                ref_put(&port->refcount, free_message_port_ref);
                 return -E_REND_TEST;
         }
 
@@ -133,14 +129,14 @@ int single_timer_test(void)
         err = rendezvos_timer_event_init(&ev, 0, port, TIMER_TEST_EXPIRE_TOKEN);
         if (err != REND_SUCCESS) {
                 pr_error("[single_timer_test] init expire failed e=%d\n", err);
-                delete_message_port_structure(port);
+                ref_put(&port->refcount, free_message_port_ref);
                 return -E_REND_TEST;
         }
         err = rendezvos_timer_event_add(&ev, now + timer_test_short_delay());
         if (err != REND_SUCCESS) {
                 pr_error("[single_timer_test] add expire failed e=%d\n", err);
                 rendezvos_timer_event_fini(&ev);
-                delete_message_port_structure(port);
+                ref_put(&port->refcount, free_message_port_ref);
                 return -E_REND_TEST;
         }
 
@@ -149,7 +145,7 @@ int single_timer_test(void)
         if (timer_waiter_failed || !timer_waiter_phase1) {
                 pr_error("[single_timer_test] expire phase failed\n");
                 rendezvos_timer_event_fini(&ev);
-                delete_message_port_structure(port);
+                ref_put(&port->refcount, free_message_port_ref);
                 return -E_REND_TEST;
         }
 
@@ -157,7 +153,7 @@ int single_timer_test(void)
         err = rendezvos_timer_event_init(&ev, 0, port, TIMER_TEST_CANCEL_TOKEN);
         if (err != REND_SUCCESS) {
                 pr_error("[single_timer_test] init cancel failed e=%d\n", err);
-                delete_message_port_structure(port);
+                ref_put(&port->refcount, free_message_port_ref);
                 return -E_REND_TEST;
         }
         err = rendezvos_timer_event_add(&ev,
@@ -166,14 +162,14 @@ int single_timer_test(void)
                 pr_error("[single_timer_test] add cancel-arm failed e=%d\n",
                          err);
                 rendezvos_timer_event_fini(&ev);
-                delete_message_port_structure(port);
+                ref_put(&port->refcount, free_message_port_ref);
                 return -E_REND_TEST;
         }
         err = rendezvos_timer_event_cancel(&ev);
         if (err != REND_SUCCESS) {
                 pr_error("[single_timer_test] cancel failed e=%d\n", err);
                 rendezvos_timer_event_fini(&ev);
-                delete_message_port_structure(port);
+                ref_put(&port->refcount, free_message_port_ref);
                 return -E_REND_TEST;
         }
         rendezvos_timer_event_fini(&ev);
@@ -181,7 +177,12 @@ int single_timer_test(void)
         while (!timer_waiter_phase2 && !timer_waiter_failed)
                 schedule(tm);
 
-        delete_message_port_structure(port);
+        err = close_port(port);
+        if (err != REND_SUCCESS) {
+                pr_error("[single_timer_test] close_port failed e=%d\n", err);
+                return -E_REND_TEST;
+        }
+        ref_put(&port->refcount, free_message_port_ref);
 
         if (timer_waiter_failed || !timer_waiter_phase2) {
                 pr_error("[single_timer_test] cancel phase failed\n");

@@ -6,157 +6,49 @@
 #include <rendezvos/task/thread.h>
 #include <rendezvos/smp/percpu.h>
 #include <rendezvos/mm/allocator.h>
-#include <rendezvos/sync/spin_lock.h>
 #include <common/atomic.h>
 #include <common/string.h>
 #include <modules/log/log.h>
 
-DEFINE_PER_CPU(struct spin_lock_t, port_table_spin_lock);
-
-static const char* port_get_name(void* v)
+error_t message_port_init(Message_Port_t* port, u64 service_id)
 {
-        Message_Port_t* p = (Message_Port_t*)v;
-        return p ? p->name : NULL;
+        if (!port)
+                return -E_IN_PARAM;
+
+        msq_init(&port->thread_queue, &port->msq_dummy, IPC_PORT_APPEND_BITS);
+        ref_init(&port->refcount); /* creator holds one ref */
+        port->service_id = service_id;
+        port_ops_life_init(port);
+        port_ops_count_init(port);
+        return REND_SUCCESS;
 }
 
-static bool port_hold(void* v)
+Message_Port_t* create_message_port(u64 service_id)
 {
-        Message_Port_t* p = (Message_Port_t*)v;
-        if (!p)
-                return false;
-        return ref_get_not_zero(&p->refcount);
-}
-
-static void port_drop(void* v)
-{
-        Message_Port_t* p = (Message_Port_t*)v;
-        if (!p)
-                return;
-        ref_put(&p->refcount, free_message_port_ref);
-}
-
-static void port_on_register(void* v, void* owner_context)
-{
-        Message_Port_t* p = (Message_Port_t*)v;
-        struct Port_Table* table = (struct Port_Table*)owner_context;
-        if (!p)
-                return;
-        if (!port_ops_set_life_with_expect(
-                    p, PORT_OPS_LIFE_ACTIVE, PORT_OPS_LIFE_REGISTERED)) {
-                pr_error("[port] on_register life CAS ACTIVE→REGISTERED failed "
-                         "name=%s life=%ld\n",
-                         p->name,
-                         port_ops_life_get(p));
-        }
-        p->table = table;
-}
-
-static void port_on_unregister(void* v, void* owner_context)
-{
-        Message_Port_t* p = (Message_Port_t*)v;
-        (void)owner_context;
-        if (!p)
-                return;
-        p->table = NULL;
-        if (!port_ops_set_life_with_expect(
-                    p, PORT_OPS_LIFE_REGISTERED, PORT_OPS_LIFE_CLOSING)) {
-                pr_error("[port] on_unregister life CAS REGISTERED→CLOSING "
-                         "failed name=%s life=%ld\n",
-                         p->name,
-                         port_ops_life_get(p));
-        }
-}
-
-/*
- * Stable 16-bit service id derived from the port name.
- * This is used only for fast validation (kmsg_hdr.module); routing uses the
- * port name string.
- */
-static u16 service_id_from_name(const char* name)
-{
-        if (!name || !name[0])
-                return 0;
-        u32 h = 2166136261u;
-        for (u32 i = 0; i < PORT_NAME_LEN_MAX && name[i] != '\0'; i++) {
-                h ^= (u8)name[i];
-                h *= 16777619u;
-        }
-        u16 id = (u16)(h ^ (h >> 16));
-        if (id == 0)
-                id = 1;
-        return id;
-}
-
-Message_Port_t* create_message_port(const char* name,
-                                    const port_append_hooks_t* hooks)
-{
-        if (!name)
-                return NULL;
-        size_t name_len = strlen(name);
-        if (name_len == 0 || name_len >= PORT_NAME_LEN_MAX)
-                return NULL;
-
         struct allocator* cpu_kallocator = percpu(kallocator);
-        size_t port_bytes = message_port_total_size(hooks);
         Message_Port_t* mp = (Message_Port_t*)cpu_kallocator->m_alloc(
-                cpu_kallocator, port_bytes);
+                cpu_kallocator, sizeof(Message_Port_t));
         if (!mp)
                 return NULL;
 
-        Ipc_Request_t* dummy_request_node =
-                (Ipc_Request_t*)(cpu_kallocator->m_alloc(
-                        cpu_kallocator, sizeof(Ipc_Request_t)));
-        if (!dummy_request_node) {
-                cpu_kallocator->m_free(cpu_kallocator, mp);
-                return NULL;
-        }
-
-        memcpy(mp->name, name, name_len + 1);
-        msq_init(&mp->thread_queue,
-                 &dummy_request_node->ms_queue_node,
-                 IPC_PORT_APPEND_BITS);
-        ref_init(&mp->refcount); /* creator holds one ref */
-        mp->table = NULL;
-        mp->service_id = service_id_from_name(mp->name);
-        mp->append_hooks = hooks;
-        port_ops_life_init(mp);
-        port_ops_count_init(mp);
-
-        if (hooks && hooks->init) {
-                error_t init_e = hooks->init(mp);
-
-                if (init_e != REND_SUCCESS) {
-                        cpu_kallocator->m_free(cpu_kallocator,
-                                               dummy_request_node);
-                        cpu_kallocator->m_free(cpu_kallocator, mp);
-                        return NULL;
-                }
-        }
-
+        message_port_init(mp, service_id);
         return mp;
 }
 
 /*
- * It's one-shot REGISTERED→CLOSING→CLOSED
- * and in a port's life we only have one unregister
+ * It's one-shot OPEN→CLOSING→CLOSED
+ * and in a port's life we only have one closing
  * So we can use this try-redo begin function and needn't complex lock
  */
-bool port_ops_begin(Message_Port_t* port, enum port_ops_type op_type)
+bool port_ops_begin(Message_Port_t* port)
 {
         if (!port)
                 return false;
-        if (op_type != PORT_OPS_SEND && op_type != PORT_OPS_RECV)
+        if (!port_is_open(port))
                 return false;
-        if (!port_is_registered(port))
-                return false;
-        if (port->append_hooks && port->append_hooks->ops_allow
-            && port->append_hooks->ops_allow(port, op_type, NULL)
-                       != REND_SUCCESS) {
-                return false;
-        }
 
         port_ops_count_inc(port);
-        if (!port_is_registered(port)) {
+        if (!port_is_open(port)) {
                 port_ops_count_dec(port);
                 return false;
         }
@@ -171,7 +63,7 @@ void port_ops_end(Message_Port_t* port)
 }
 
 /*
- * clean port->thread_queue on unregister (also a defensive on final free).
+ * clean port->thread_queue on close (also a defensive on final free).
  *
  * send/recv notification differs:
  * the two waiters resume into different API shapes after schedule.
@@ -272,8 +164,6 @@ void delete_message_port_structure(Message_Port_t* port)
 {
         if (!port)
                 return;
-        if (port->append_hooks && port->append_hooks->fini)
-                port->append_hooks->fini(port);
         /*
          *         port_clean_thread_queue is just a defensive clean here.
          */
@@ -290,21 +180,6 @@ void delete_message_port_structure(Message_Port_t* port)
                 cpu_kallocator->m_free(cpu_kallocator, port);
 }
 
-bool port_table_port_is_live(struct Port_Table* table, const char* name,
-                             Message_Port_t* port)
-{
-        if (!table || !name || !port)
-                return false;
-
-        struct spin_lock_t* my_lock = &percpu(port_table_spin_lock);
-        lock_mcs(&table->by_name.lock, my_lock);
-        Message_Port_t* p =
-                (Message_Port_t*)name_index_search(&table->by_name, name, NULL);
-        bool ok = (p == port && port_is_registered(port));
-        unlock_mcs(&table->by_name.lock, my_lock);
-        return ok;
-}
-
 static void free_message_port_ref_real(ref_count_t* ref_count_ptr)
 {
         if (!ref_count_ptr)
@@ -312,17 +187,8 @@ static void free_message_port_ref_real(ref_count_t* ref_count_ptr)
         Message_Port_t* port =
                 container_of(ref_count_ptr, Message_Port_t, refcount);
 
-        /*
-         * Final free must not mutate the port table index.
-         * register/unregister is the only legal path to add/remove entries.
-         */
-        if (port_is_registered(port) || port->table) {
-                pr_error(
-                        "[port] free_ref still registered name=%s life=%lx table_hi=%lx table_lo=%lx\n",
-                        port->name,
-                        (u32)port_ops_life_get(port),
-                        (u32)(((u64)(uintptr_t)port->table >> 32) & 0xffffffff),
-                        (u32)((u64)(uintptr_t)port->table & 0xffffffff));
+        if (port_is_open(port)) {
+                pr_error("[port] free_ref still open");
         }
 
         delete_message_port_structure(port);
@@ -336,105 +202,19 @@ error_t free_message_port_ref(ref_count_t* ref_count_ptr)
         return REND_SUCCESS;
 }
 
-struct Port_Table* port_table_create(void)
+error_t close_port(Message_Port_t* port)
 {
-        struct allocator* cpu_kallocator = percpu(kallocator);
-        struct Port_Table* table = (struct Port_Table*)cpu_kallocator->m_alloc(
-                cpu_kallocator, sizeof(struct Port_Table));
-        if (table)
-                port_table_init(table);
-        return table;
-}
-
-void port_table_init(struct Port_Table* table)
-{
-        if (!table)
-                return;
-        name_index_init(&table->by_name,
-                        percpu(kallocator),
-                        PORT_NAME_LEN_MAX,
-                        table,
-                        port_get_name,
-                        port_hold,
-                        port_drop,
-                        port_on_register,
-                        port_on_unregister);
-}
-
-void delete_port_table_structure(struct Port_Table* table)
-{
-        if (!table)
-                return;
-        name_index_fini(&table->by_name);
-        table->by_name.alloc->m_free(table->by_name.alloc, table);
-}
-
-error_t register_port(struct Port_Table* table, Message_Port_t* port)
-{
-        if (!table || !port || !port->name[0])
+        if (!port)
                 return -E_IN_PARAM;
-
-        struct spin_lock_t* my_lock = &percpu(port_table_spin_lock);
-        lock_mcs(&table->by_name.lock, my_lock);
-        Message_Port_t* existing = (Message_Port_t*)name_index_search(
-                &table->by_name, port->name, NULL);
-        if (existing) {
-                if (existing == port) {
-                        unlock_mcs(&table->by_name.lock, my_lock);
-                        return REND_SUCCESS;
-                }
-                unlock_mcs(&table->by_name.lock, my_lock);
-                return -E_RENDEZVOS;
+        if (!port_ops_set_life_with_expect(
+                    port, PORT_OPS_LIFE_OPEN, PORT_OPS_LIFE_CLOSING)) {
+                pr_error("[port] close life CAS OPEN→CLOSING failed\n");
+                return -E_REND_PORT_CLOSED;
         }
-        if (port->append_hooks && port->append_hooks->ops_allow) {
-                error_t e;
-                if ((e = port->append_hooks->ops_allow(
-                             port, PORT_OPS_REGISTER, NULL))
-                    != REND_SUCCESS) {
-                        unlock_mcs(&table->by_name.lock, my_lock);
-                        return e;
-                }
-        }
-
-        u64 reg_row_idx = 0;
-        if (name_index_register(&table->by_name, (void*)port, &reg_row_idx)
-            != REND_SUCCESS) {
-                unlock_mcs(&table->by_name.lock, my_lock);
-                return -E_RENDEZVOS;
-        }
-        /* table holds one ref */
-        if (!ref_get_not_zero(&port->refcount)) {
-                name_index_register_abort(
-                        &table->by_name, reg_row_idx, (void*)port);
-                unlock_mcs(&table->by_name.lock, my_lock);
-                return -E_RENDEZVOS;
-        }
-        unlock_mcs(&table->by_name.lock, my_lock);
-        return REND_SUCCESS;
-}
-
-error_t unregister_port(struct Port_Table* table, const char* name)
-{
-        if (!table || !name)
-                return -E_IN_PARAM;
-
-        struct spin_lock_t* my_lock = &percpu(port_table_spin_lock);
-        lock_mcs(&table->by_name.lock, my_lock);
-        u64 row_idx = 0;
-        Message_Port_t* port = (Message_Port_t*)name_index_search(
-                &table->by_name, name, &row_idx);
-        if (!port || !port_is_registered(port)) {
-                unlock_mcs(&table->by_name.lock, my_lock);
-                return REND_SUCCESS;
-        }
-
-        name_index_unregister(&table->by_name, (void*)port, row_idx, name);
-        unlock_mcs(&table->by_name.lock, my_lock);
-
         /*
          * It's waiting for the old have beginned send/recv end.
          * and the new sender/receiver's ops_begin will fail, for the status is
-         * not REGISTERED any more.
+         * not OPEN any more.
          */
         while (port_ops_count_get(port) != 0) {
                 schedule(percpu(core_tm));
@@ -443,7 +223,7 @@ error_t unregister_port(struct Port_Table* table, const char* name)
          * The port_clean_thread_queue must be put here.
          * if this clean put at the ref count == 0 and clean time.
          * A case will happen:
-         * the port is unregistered but still some ref,
+         * the port is closed but still some ref,
          * and there's some thread still waiting for the message.
          * but some thread have still hold the ref count,
          * and all the thread are blocked.
@@ -451,79 +231,10 @@ error_t unregister_port(struct Port_Table* table, const char* name)
         port_clean_thread_queue(port);
         if (!port_ops_set_life_with_expect(
                     port, PORT_OPS_LIFE_CLOSING, PORT_OPS_LIFE_CLOSED)) {
-                pr_error("[port] unregister life CAS CLOSING→CLOSED failed "
-                         "name=%s life=%ld\n",
-                         name,
-                         port_ops_life_get(port));
-        }
-
-        ref_put(&port->refcount, free_message_port_ref);
-        return REND_SUCCESS;
-}
-
-static Message_Port_t* port_lookup_finish(Message_Port_t* port,
-                                          const char* lookup_name)
-{
-        if (!port)
-                return NULL;
-
-        if (port->append_hooks && port->append_hooks->ops_allow) {
-                if (port->append_hooks->ops_allow(
-                            port, PORT_OPS_LOOKUP, lookup_name)
-                    != REND_SUCCESS) {
-                        ref_put(&port->refcount, free_message_port_ref);
-                        return NULL;
-                }
-        }
-        return port;
-}
-Message_Port_t* port_table_lookup(struct Port_Table* table, const char* name)
-{
-        Message_Port_t* port;
-
-        if (!table || !name)
-                return NULL;
-        port = (Message_Port_t*)name_index_lookup(&table->by_name, name, NULL);
-        return port_lookup_finish(port, name);
-}
-
-Message_Port_t* port_table_lookup_with_token(struct Port_Table* table,
-                                             const char* name,
-                                             name_index_token_t* tok_out)
-{
-        Message_Port_t* port;
-
-        if (!table || !name)
-                return NULL;
-        port = (Message_Port_t*)name_index_lookup(
-                &table->by_name, name, tok_out);
-        return port_lookup_finish(port, name);
-}
-
-Message_Port_t* port_table_resolve_token(struct Port_Table* table,
-                                         const name_index_token_t* tok,
-                                         const char* name)
-{
-        Message_Port_t* port;
-
-        if (!table || !name)
-                return NULL;
-        if (!tok) {
-                port = (Message_Port_t*)name_index_lookup(
-                        &table->by_name, name, NULL);
-                return port_lookup_finish(port, name);
-        }
-        port = (Message_Port_t*)name_index_resolve(&table->by_name, tok, name);
-        return port_lookup_finish(port, name);
-}
-
-struct Port_Table* global_port_table;
-error_t global_port_init(void)
-{
-        global_port_table = port_table_create();
-        if (!global_port_table) {
-                pr_error("[ PORT ] Failed to create global port table\n");
+                pr_error("[port] close life CAS CLOSING→CLOSED failed\n");
                 return -E_RENDEZVOS;
         }
+
+        /* Does not ref_put — caller drops its own refs after close. */
         return REND_SUCCESS;
 }

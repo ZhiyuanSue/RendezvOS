@@ -24,7 +24,7 @@
 
 #include "id.h"
 #include <rendezvos/ipc/message.h>
-#include <rendezvos/ipc/port.h>
+#include <rendezvos/ipc/named_port.h>
 
 enum thread_status_base {
         thread_status_error = -1,
@@ -363,13 +363,13 @@ Thread_Base* create_thread(void* __func,
 error_t delete_thread(Thread_Base* thread);
 
 /**
- * @brief Look up a message port by name for the current thread (per-thread LRU
- * cache; caller must ref_put the returned port).
+ * @brief Look up a named port for the current thread (per-thread LRU cache).
+ * Caller must @c ref_put(..., free_named_message_port_ref). Use
+ * @c named_port_as_anon() for send/recv.
  * @param name Port name string.
- * @return Port with one extra ref for the caller, or NULL if not found or bad
- * context.
+ * @return Named port with one extra ref for the caller, or NULL.
  */
-Message_Port_t* thread_lookup_port(const char* name);
+Named_Message_Port_t* thread_lookup_port(const char* name);
 
 /**
  * @brief Current thread on this CPU's task manager.

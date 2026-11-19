@@ -12,7 +12,7 @@
 #include <rendezvos/task/thread.h>
 #include <rendezvos/ipc/ipc.h>
 #include <rendezvos/ipc/message.h>
-#include <rendezvos/ipc/port.h>
+#include <rendezvos/ipc/named_port.h>
 #include <rendezvos/smp/percpu.h>
 #include <rendezvos/mm/kmalloc.h>
 #include <common/string.h>
@@ -27,7 +27,7 @@ extern int NR_CPU;
 
 /* Per-CPU test state */
 struct smp_port_test_state {
-        Message_Port_t* ports[SMP_PORT_MAX_PORTS_PER_CPU];
+        Named_Message_Port_t* ports[SMP_PORT_MAX_PORTS_PER_CPU];
         char port_names[SMP_PORT_MAX_PORTS_PER_CPU][SMP_PORT_NAME_LEN]
                 __attribute__((aligned(16)));
         u32 port_count;
@@ -131,7 +131,7 @@ static int smp_port_table_test(cpu_id_t cpu_id)
                 char port_name[SMP_PORT_NAME_LEN] __attribute__((aligned(16)));
                 make_port_name(port_name, sizeof(port_name), cpu_id, round);
 
-                Message_Port_t* port = create_message_port(port_name, NULL);
+                Named_Message_Port_t* port = create_named_message_port(port_name, NULL);
                 if (!port) {
                         state->error_count++;
                         if (state->error_count <= 5) {
@@ -143,7 +143,7 @@ static int smp_port_table_test(cpu_id_t cpu_id)
                         continue;
                 }
 
-                error_t e = register_port(global_port_table, port);
+                error_t e = register_named_port(global_port_table, port);
                 if (e != REND_SUCCESS) {
                         state->error_count++;
                         if (state->error_count <= 5) {
@@ -153,13 +153,13 @@ static int smp_port_table_test(cpu_id_t cpu_id)
                                         round,
                                         e);
                         }
-                        delete_message_port_structure(port);
+                        ref_put(&port->refcount, free_named_message_port_ref);
                         continue;
                 }
                 state->register_count++;
 
                 /* Lookup the port */
-                Message_Port_t* found = thread_lookup_port(port_name);
+                Named_Message_Port_t* found = thread_lookup_port(port_name);
                 if (!found || found != port) {
                         state->error_count++;
                         if (state->error_count <= 5) {
@@ -170,14 +170,14 @@ static int smp_port_table_test(cpu_id_t cpu_id)
                                         (u32)(u64)found,
                                         (u32)(u64)port);
                         }
-                        unregister_port(global_port_table, port_name);
-                        ref_put(&port->refcount, free_message_port_ref);
+                        unregister_named_port(global_port_table, port_name);
+                        ref_put(&port->refcount, free_named_message_port_ref);
                         continue;
                 }
                 state->lookup_count++;
 
                 /* Unregister */
-                e = unregister_port(global_port_table, port_name);
+                e = unregister_named_port(global_port_table, port_name);
                 if (e != REND_SUCCESS) {
                         state->error_count++;
                         if (state->error_count <= 5) {
@@ -192,10 +192,10 @@ static int smp_port_table_test(cpu_id_t cpu_id)
                 }
 
                 /* Release reference from lookup */
-                ref_put(&found->refcount, free_message_port_ref);
+                ref_put(&found->refcount, free_named_message_port_ref);
 
                 /* Release reference from create */
-                ref_put(&port->refcount, free_message_port_ref);
+                ref_put(&port->refcount, free_named_message_port_ref);
 
                 /* Verify port is no longer findable */
                 found = thread_lookup_port(port_name);
@@ -207,7 +207,7 @@ static int smp_port_table_test(cpu_id_t cpu_id)
                                         cpu_id,
                                         round);
                         }
-                        ref_put(&found->refcount, free_message_port_ref);
+                        ref_put(&found->refcount, free_named_message_port_ref);
                 }
 
                 if (round % (SMP_PORT_TEST_ROUNDS / 10) == 0
@@ -250,8 +250,8 @@ static int smp_port_cache_test(u32 cpu_id)
                                cpu_id + 1000,
                                i); /* Use different base to avoid conflicts */
 
-                Message_Port_t* port =
-                        create_message_port(state->port_names[i], NULL);
+                Named_Message_Port_t* port =
+                        create_named_message_port(state->port_names[i], NULL);
                 if (!port) {
                         state->error_count++;
                         if (state->error_count <= 5) {
@@ -263,7 +263,7 @@ static int smp_port_cache_test(u32 cpu_id)
                         continue;
                 }
 
-                error_t e = register_port(global_port_table, port);
+                error_t e = register_named_port(global_port_table, port);
                 if (e != REND_SUCCESS) {
                         state->error_count++;
                         if (state->error_count <= 5) {
@@ -272,12 +272,12 @@ static int smp_port_cache_test(u32 cpu_id)
                                         cpu_id,
                                         i);
                         }
-                        delete_message_port_structure(port);
+                        ref_put(&port->refcount, free_named_message_port_ref);
                         continue;
                 }
 
                 /* Lookup to populate cache */
-                Message_Port_t* found =
+                Named_Message_Port_t* found =
                         thread_lookup_port(state->port_names[i]);
                 if (!found) {
                         state->error_count++;
@@ -287,9 +287,9 @@ static int smp_port_cache_test(u32 cpu_id)
                                         cpu_id,
                                         i);
                         }
-                        unregister_port(global_port_table,
+                        unregister_named_port(global_port_table,
                                         state->port_names[i]);
-                        ref_put(&port->refcount, free_message_port_ref);
+                        ref_put(&port->refcount, free_named_message_port_ref);
                         continue;
                 }
 
@@ -304,7 +304,7 @@ static int smp_port_cache_test(u32 cpu_id)
                 if (state->port_count == 0)
                         break;
                 u32 idx = round % state->port_count;
-                Message_Port_t* found =
+                Named_Message_Port_t* found =
                         thread_lookup_port(state->port_names[idx]);
                 if (!found || found != state->ports[idx]) {
                         state->error_count++;
@@ -318,12 +318,12 @@ static int smp_port_cache_test(u32 cpu_id)
                         continue;
                 }
                 state->lookup_count++;
-                ref_put(&found->refcount, free_message_port_ref);
+                ref_put(&found->refcount, free_named_message_port_ref);
         }
 
         /* Phase 3: Unregister ports (should invalidate cache entries) */
         for (u32 i = 0; i < state->port_count; i++) {
-                error_t e = unregister_port(global_port_table,
+                error_t e = unregister_named_port(global_port_table,
                                             state->port_names[i]);
                 if (e != REND_SUCCESS) {
                         state->error_count++;
@@ -338,7 +338,7 @@ static int smp_port_cache_test(u32 cpu_id)
                 }
 
                 /* Verify cache invalidation */
-                Message_Port_t* found =
+                Named_Message_Port_t* found =
                         thread_lookup_port(state->port_names[i]);
                 if (found != NULL) {
                         state->error_count++;
@@ -348,10 +348,10 @@ static int smp_port_cache_test(u32 cpu_id)
                                         cpu_id,
                                         i);
                         }
-                        ref_put(&found->refcount, free_message_port_ref);
+                        ref_put(&found->refcount, free_named_message_port_ref);
                 }
 
-                ref_put(&state->ports[i]->refcount, free_message_port_ref);
+                ref_put(&state->ports[i]->refcount, free_named_message_port_ref);
         }
 
         if (cpu_id == BSP_ID) {
@@ -390,8 +390,8 @@ static int smp_port_mixed_test(u32 cpu_id)
                                        cpu_id + 2000,
                                        round);
 
-                        Message_Port_t* port =
-                                create_message_port(port_name, NULL);
+                        Named_Message_Port_t* port =
+                                create_named_message_port(port_name, NULL);
                         if (!port) {
                                 state->error_count++;
                                 if (state->error_count <= 5) {
@@ -403,7 +403,7 @@ static int smp_port_mixed_test(u32 cpu_id)
                                 break;
                         }
 
-                        error_t e = register_port(global_port_table, port);
+                        error_t e = register_named_port(global_port_table, port);
                         if (e != REND_SUCCESS) {
                                 state->error_count++;
                                 if (state->error_count <= 5) {
@@ -412,7 +412,7 @@ static int smp_port_mixed_test(u32 cpu_id)
                                                 cpu_id,
                                                 round);
                                 }
-                                delete_message_port_structure(port);
+                                ref_put(&port->refcount, free_named_message_port_ref);
                                 break;
                         }
                         state->register_count++;
@@ -428,10 +428,10 @@ static int smp_port_mixed_test(u32 cpu_id)
                                 state->port_count++;
                         } else {
                                 /* Evict oldest */
-                                unregister_port(global_port_table,
+                                unregister_named_port(global_port_table,
                                                 state->port_names[0]);
                                 ref_put(&state->ports[0]->refcount,
-                                        free_message_port_ref);
+                                        free_named_message_port_ref);
                                 /* Shift array */
                                 for (u32 j = 0; j < state->port_count - 1;
                                      j++) {
@@ -458,7 +458,7 @@ static int smp_port_mixed_test(u32 cpu_id)
                                 break;
 
                         u32 idx = round % state->port_count;
-                        Message_Port_t* found =
+                        Named_Message_Port_t* found =
                                 thread_lookup_port(state->port_names[idx]);
                         if (!found) {
                                 state->error_count++;
@@ -472,7 +472,7 @@ static int smp_port_mixed_test(u32 cpu_id)
                                 break;
                         }
                         state->lookup_count++;
-                        ref_put(&found->refcount, free_message_port_ref);
+                        ref_put(&found->refcount, free_named_message_port_ref);
                         break;
                 }
 
@@ -481,7 +481,7 @@ static int smp_port_mixed_test(u32 cpu_id)
                                 break;
 
                         u32 idx = round % state->port_count;
-                        error_t e = unregister_port(global_port_table,
+                        error_t e = unregister_named_port(global_port_table,
                                                     state->port_names[idx]);
                         if (e != REND_SUCCESS) {
                                 state->error_count++;
@@ -496,7 +496,7 @@ static int smp_port_mixed_test(u32 cpu_id)
                         }
                         state->unregister_count++;
                         ref_put(&state->ports[idx]->refcount,
-                                free_message_port_ref);
+                                free_named_message_port_ref);
 
                         /* Remove from array */
                         for (u32 j = idx; j < state->port_count - 1; j++) {
@@ -523,8 +523,8 @@ static int smp_port_mixed_test(u32 cpu_id)
 
         /* Cleanup remaining ports */
         for (u32 i = 0; i < state->port_count; i++) {
-                unregister_port(global_port_table, state->port_names[i]);
-                ref_put(&state->ports[i]->refcount, free_message_port_ref);
+                unregister_named_port(global_port_table, state->port_names[i]);
+                ref_put(&state->ports[i]->refcount, free_named_message_port_ref);
         }
 
         if (cpu_id == BSP_ID) {
@@ -546,7 +546,7 @@ static int smp_port_ht_shrink_test(u32 cpu_id)
                 return REND_SUCCESS;
 
         /* Expand ht capacity by registering many ports at once. */
-        Message_Port_t* ports[SMP_PORT_HT_SHRINK_EXPAND_PORTS];
+        Named_Message_Port_t* ports[SMP_PORT_HT_SHRINK_EXPAND_PORTS];
         char port_names[SMP_PORT_HT_SHRINK_EXPAND_PORTS][SMP_PORT_NAME_LEN]
                 __attribute__((aligned(16)));
         memset(ports, 0, sizeof(ports));
@@ -557,15 +557,15 @@ static int smp_port_ht_shrink_test(u32 cpu_id)
                 make_port_name(
                         port_names[i], SMP_PORT_NAME_LEN, cpu_id + 3000, i);
 
-                ports[i] = create_message_port(port_names[i], NULL);
+                ports[i] = create_named_message_port(port_names[i], NULL);
                 if (!ports[i]) {
                         error_count++;
                         continue;
                 }
-                error_t e = register_port(global_port_table, ports[i]);
+                error_t e = register_named_port(global_port_table, ports[i]);
                 if (e != REND_SUCCESS) {
                         error_count++;
-                        delete_message_port_structure(ports[i]);
+                        ref_put(&ports[i]->refcount, free_named_message_port_ref);
                         ports[i] = NULL;
                         continue;
                 }
@@ -573,38 +573,38 @@ static int smp_port_ht_shrink_test(u32 cpu_id)
 
         /* Touch a few names to exercise lookup+cache resolve. */
         for (u32 i = 0; i < 10 && i < SMP_PORT_HT_SHRINK_EXPAND_PORTS; i++) {
-                Message_Port_t* found = thread_lookup_port(port_names[i]);
+                Named_Message_Port_t* found = thread_lookup_port(port_names[i]);
                 if (!found || found != ports[i]) {
                         error_count++;
                         if (found)
                                 ref_put(&found->refcount,
-                                        free_message_port_ref);
+                                        free_named_message_port_ref);
                         continue;
                 }
-                ref_put(&found->refcount, free_message_port_ref);
+                ref_put(&found->refcount, free_named_message_port_ref);
         }
 
         /* Unregister most ports to accumulate tombs and lower live load. */
         u32 cut = SMP_PORT_HT_SHRINK_EXPAND_PORTS
                   - SMP_PORT_HT_SHRINK_REMAIN_PORTS;
         for (u32 i = 0; i < cut; i++) {
-                error_t e = unregister_port(global_port_table, port_names[i]);
+                error_t e = unregister_named_port(global_port_table, port_names[i]);
                 if (e != REND_SUCCESS) {
                         error_count++;
                         continue;
                 }
                 if (ports[i]) {
-                        ref_put(&ports[i]->refcount, free_message_port_ref);
+                        ref_put(&ports[i]->refcount, free_named_message_port_ref);
                         ports[i] = NULL;
                 }
         }
 
         /* Removed ports should no longer be findable. */
         for (u32 i = 0; i < cut; i += 7) {
-                Message_Port_t* found = thread_lookup_port(port_names[i]);
+                Named_Message_Port_t* found = thread_lookup_port(port_names[i]);
                 if (found != NULL) {
                         error_count++;
-                        ref_put(&found->refcount, free_message_port_ref);
+                        ref_put(&found->refcount, free_named_message_port_ref);
                 }
         }
 
@@ -612,23 +612,23 @@ static int smp_port_ht_shrink_test(u32 cpu_id)
         for (u32 i = cut; i < SMP_PORT_HT_SHRINK_EXPAND_PORTS; i++) {
                 if (!ports[i])
                         continue;
-                Message_Port_t* found = thread_lookup_port(port_names[i]);
+                Named_Message_Port_t* found = thread_lookup_port(port_names[i]);
                 if (!found || found != ports[i]) {
                         error_count++;
                         if (found)
                                 ref_put(&found->refcount,
-                                        free_message_port_ref);
+                                        free_named_message_port_ref);
                         continue;
                 }
-                ref_put(&found->refcount, free_message_port_ref);
+                ref_put(&found->refcount, free_named_message_port_ref);
         }
 
         /* Cleanup remaining ports to keep global state stable. */
         for (u32 i = cut; i < SMP_PORT_HT_SHRINK_EXPAND_PORTS; i++) {
                 if (!ports[i])
                         continue;
-                unregister_port(global_port_table, port_names[i]);
-                ref_put(&ports[i]->refcount, free_message_port_ref);
+                unregister_named_port(global_port_table, port_names[i]);
+                ref_put(&ports[i]->refcount, free_named_message_port_ref);
                 ports[i] = NULL;
         }
 
