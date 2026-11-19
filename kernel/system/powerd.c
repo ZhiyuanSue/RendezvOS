@@ -28,8 +28,8 @@ static void* powerd_thread(void* arg)
         }
 
         while (1) {
-                if (recv_msg(named_port_as_anon(port)) != REND_SUCCESS) {
-                        pr_error("[powerd] recv_msg failed\n");
+                if (named_port_recv_msg(port) != REND_SUCCESS) {
+                        pr_error("[powerd] named_port_recv_msg failed\n");
                         continue;
                 }
                 Message_t* m = dequeue_recv_msg();

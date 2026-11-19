@@ -21,7 +21,7 @@
  * Prefer this over @c kernel_panic for orderly teardown when powerd is
  * registered.
  *
- * @return @c send_msg result, or @c -E_RENDEZVOS if the port is missing or
+ * @return @c named_port_send_msg result, or @c -E_RENDEZVOS if the port is missing or
  *         message construction / enqueue fails.
  */
 static inline error_t rendezvos_request_poweroff(void)
@@ -49,7 +49,7 @@ static inline error_t rendezvos_request_poweroff(void)
                 ref_put(&port->refcount, free_named_message_port_ref);
                 return e;
         }
-        e = send_msg(named_port_as_anon(port));
+        e = named_port_send_msg(port);
         ref_put(&port->refcount, free_named_message_port_ref);
         return e;
 }

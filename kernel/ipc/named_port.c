@@ -130,7 +130,7 @@ create_named_message_port(const char* name, const port_append_hooks_t* hooks)
         if (!named_port)
                 return NULL;
 
-        if (message_port_init(named_port_as_anon(named_port),
+        if (message_port_init((Message_Port_t*)named_port,
                               service_id_from_name(name))
             != REND_SUCCESS) {
                 cpu_kallocator->m_free(cpu_kallocator, named_port);
@@ -191,7 +191,7 @@ error_t free_named_message_port_ref(ref_count_t* ref_count_ptr)
                 return -E_IN_PARAM;
         named_port =
                 container_of(ref_count_ptr, Named_Message_Port_t, refcount);
-        anon = named_port_as_anon(named_port);
+        anon = (Message_Port_t*)named_port;
 
         if (named_port_is_in_table(named_port)) {
                 pr_error(
@@ -279,7 +279,7 @@ error_t register_named_port(struct Port_Table* table,
         cpu_mcs_node = &percpu(port_table_spin_lock);
         lock_mcs(&table->by_name.lock, cpu_mcs_node);
 
-        if (!port_is_open(named_port_as_anon(port))) {
+        if (!port_is_open((Message_Port_t*)port)) {
                 unlock_mcs(&table->by_name.lock, cpu_mcs_node);
                 return -E_REND_PORT_CLOSED;
         }
@@ -351,7 +351,7 @@ error_t unregister_named_port(struct Port_Table* table, const char* name)
         }
         unlock_mcs(&table->by_name.lock, cpu_mcs_node);
 
-        e = named_port_ensure_closed(named_port_as_anon(port));
+        e = named_port_ensure_closed((Message_Port_t*)port);
         if (e != REND_SUCCESS) {
                 pr_error("[named_port] unregister close failed e=%d name=%s\n",
                          (int)e,
@@ -453,7 +453,7 @@ error_t named_port_send_msg(Named_Message_Port_t* port)
         error_t e = named_port_ops_allow(port, PORT_OPS_SEND, NULL);
         if (e != REND_SUCCESS)
                 return e;
-        return send_msg(named_port_as_anon(port));
+        return send_msg((Message_Port_t*)port);
 }
 
 error_t named_port_try_send_msg(Named_Message_Port_t* port)
@@ -461,7 +461,7 @@ error_t named_port_try_send_msg(Named_Message_Port_t* port)
         error_t e = named_port_ops_allow(port, PORT_OPS_SEND, NULL);
         if (e != REND_SUCCESS)
                 return e;
-        return ipc_try_send_msg(named_port_as_anon(port));
+        return ipc_try_send_msg((Message_Port_t*)port);
 }
 
 error_t named_port_recv_msg(Named_Message_Port_t* port)
@@ -469,7 +469,7 @@ error_t named_port_recv_msg(Named_Message_Port_t* port)
         error_t e = named_port_ops_allow(port, PORT_OPS_RECV, NULL);
         if (e != REND_SUCCESS)
                 return e;
-        return recv_msg(named_port_as_anon(port));
+        return recv_msg((Message_Port_t*)port);
 }
 
 error_t named_port_try_recv_msg(Named_Message_Port_t* port)
@@ -477,5 +477,5 @@ error_t named_port_try_recv_msg(Named_Message_Port_t* port)
         error_t e = named_port_ops_allow(port, PORT_OPS_RECV, NULL);
         if (e != REND_SUCCESS)
                 return e;
-        return ipc_try_recv_msg(named_port_as_anon(port));
+        return ipc_try_recv_msg((Message_Port_t*)port);
 }

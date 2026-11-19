@@ -110,10 +110,10 @@ error_t kernel_handle_msg(void)
         }
 
         for (;;) {
-                error_t e = recv_msg(named_port_as_anon(port));
+                error_t e = named_port_recv_msg(port);
 
                 if (e != REND_SUCCESS) {
-                        pr_error("[boot_thread] recv_msg failed e=%d\n",
+                        pr_error("[boot_thread] named_port_recv_msg failed e=%d\n",
                                  (int)e);
                         continue;
                 }

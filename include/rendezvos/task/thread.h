@@ -365,7 +365,7 @@ error_t delete_thread(Thread_Base* thread);
 /**
  * @brief Look up a named port for the current thread (per-thread LRU cache).
  * Caller must @c ref_put(..., free_named_message_port_ref). Use
- * @c named_port_as_anon() for send/recv.
+ * Use @c named_port_send_msg / @c named_port_recv_msg for IPC.
  * @param name Port name string.
  * @return Named port with one extra ref for the caller, or NULL.
  */

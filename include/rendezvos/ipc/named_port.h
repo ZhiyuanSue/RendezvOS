@@ -29,12 +29,11 @@
  *     waiters are not re-checked on wake.
  *
  * Who calls what:
- *   - Named business IPC → @c named_port_*_msg only. Do not @c as_anon +
- *     @c send_msg / @c recv_msg (skips SEND/RECV allow).
- *   - Pure anon ports (@c create_message_port) → @c send_msg / @c recv_msg;
- *     holding the pointer is the allow.
- *   - @c named_port_as_anon: for the named wrappers, @c close_port, and core
- *     teardown — not a public IPC entry for named users.
+ *   - Named business IPC → @c named_port_send_msg / @c named_port_recv_msg /
+ *     @c named_port_try_* only. Never cast to @c Message_Port_t* for send/recv
+ *     (skips SEND/RECV allow).
+ *   - Pure anon ports (@c create_message_port) → @c send_msg / @c recv_msg /
+ *     @c close_port; holding the pointer is the allow.
  *   - Refs: @c free_named_message_port_ref only — never
  *     @c free_message_port_ref / @c delete_message_port_structure on a named
  *     object (the embedded anon is not a standalone heap @c Message_Port_t).
@@ -151,19 +150,6 @@ struct Named_Msg_Port {
         char append_info[]; /* FAM; length @c append_hooks->append_info_len. */
 };
 
-/**
- * @brief View the embedded anon rendezvous for close / named IPC wrappers.
- * @warning Not a business IPC entry for named ports — use @c
- * named_port_send_msg /
- *          @c named_port_recv_msg / @c named_port_try_*. Do not
- *          @c free_message_port_ref or @c delete_message_port_structure this
- *          pointer — it is not a standalone heap @c Message_Port_t.
- */
-static inline Message_Port_t* named_port_as_anon(Named_Message_Port_t* named)
-{
-        return (Message_Port_t*)named;
-}
-
 /** True if @p port is currently linked into a @c Port_Table. */
 static inline bool named_port_is_in_table(const Named_Message_Port_t* port)
 {
@@ -218,7 +204,7 @@ create_named_message_port(const char* name, const port_append_hooks_t* hooks);
  * already CLOSED ok; CLOSING or close failure → error, no @c m_free).
  * Then runs append @c fini and @c m_free s the Named object.
  *
- * Prefer already-CLOSED via @c unregister_named_port / explicit @c close_port.
+ * Prefer already-CLOSED via @c unregister_named_port.
  * Do not use @c free_message_port_ref / @c delete_message_port_structure.
  */
 error_t free_named_message_port_ref(ref_count_t* ref_count_ptr);
