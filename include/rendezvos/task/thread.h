@@ -181,7 +181,7 @@ extern volatile bool is_print_sche_info;
  */
 #define KERNEL_PORT_NAME "kernel_port"
 
-typedef void (*boot_thread_ipc_handler_fn)(Message_t* msg, u16 service_id);
+typedef void (*boot_thread_ipc_handler_fn)(Message_t* msg, u32 service_id);
 
 void kernel_set_ipc_handler(boot_thread_ipc_handler_fn handler);
 

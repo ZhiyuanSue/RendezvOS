@@ -59,15 +59,14 @@ static void named_port_index_on_unregister(void* value, void* owner_context)
 }
 
 /*
- * Stable 16-bit service id derived from the port name.
+ * Stable 32-bit service id derived from the port name (FNV-1a).
  * Used only for fast validation (kmsg_hdr.module); routing/discovery use the
  * port name string. Never returns 0.
  */
-static u16 service_id_from_name(const char* name)
+static u32 service_id_from_name(const char* name)
 {
         u32 hash;
         u32 name_idx;
-        u16 service_id;
 
         if (!name || !name[0])
                 return 0;
@@ -77,10 +76,9 @@ static u16 service_id_from_name(const char* name)
                 hash ^= (u8)name[name_idx];
                 hash *= 16777619u;
         }
-        service_id = (u16)(hash ^ (hash >> 16));
-        if (service_id == 0)
-                service_id = 1;
-        return service_id;
+        if (hash == 0)
+                hash = 1;
+        return hash;
 }
 
 Named_Message_Port_t*

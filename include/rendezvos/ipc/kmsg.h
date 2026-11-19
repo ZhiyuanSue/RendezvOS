@@ -32,8 +32,8 @@
  */
 typedef struct {
         u32 magic; /* Must be @c KMSG_MAGIC.*/
-        u16 module; /* Destination port @c service_id (fast-check).*/
-        u16 opcode; /* Operation code for the receiver. */
+        u32 module; /* Destination port @c service_id (fast-check).*/
+        u32 opcode; /* Operation code for the receiver. */
         u32 payload_len; /**< Bytes of trailing TLV (@c ipc_serial).*/
 } kmsg_hdr_t;
 
@@ -61,7 +61,7 @@ typedef struct {
  * @note Does not look up ports or fill reply fields. Routing remains by port
  *       name; @p module is a fast-check hint only.
  */
-Msg_Data_t* kmsg_create(u16 module, u16 opcode, const char* fmt, ...);
+Msg_Data_t* kmsg_create(u32 module, u32 opcode, const char* fmt, ...);
 
 /**
  * @brief Extract a validated kmsg view from a Message_t carrier.

@@ -6,7 +6,7 @@
 #include <rendezvos/mm/allocator.h>
 #include <rendezvos/smp/percpu.h>
 
-Msg_Data_t* kmsg_create(u16 module, u16 opcode, const char* fmt, ...)
+Msg_Data_t* kmsg_create(u32 module, u32 opcode, const char* fmt, ...)
 {
         va_list ap;
         va_start(ap, fmt);

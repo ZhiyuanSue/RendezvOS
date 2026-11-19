@@ -57,7 +57,7 @@ typedef struct Msg_Port Message_Port_t;
         ms_queue_t thread_queue; /* Blocked senders or receivers. */        \
         ms_queue_node_t msq_dummy; /* Initial MSQ dummy; not heap-freed. */ \
         ref_count_t refcount; /* Port refcount */                           \
-        u64 service_id; /* Kmsg / service id for this port. */              \
+        u32 service_id; /* Kmsg / service id for this port. */              \
         atomic64_t ops_life; /* @c PORT_OPS_LIFE_* status */                \
         /* In-flight send/recv (@c port_ops_begin/@c port_ops_end). Gates   \
          * close drain only — does not serialize concurrent send/send. */ \
@@ -184,14 +184,14 @@ static inline u16 ipc_get_queue_state(Message_Port_t* port)
  *       typically @c close_port then @c ref_put(..., free_message_port_ref) to
  *       @c m_free.
  */
-error_t message_port_init(Message_Port_t* port, u64 service_id);
+error_t message_port_init(Message_Port_t* port, u32 service_id);
 
 /**
  * @brief Heap-allocate and @c message_port_init an anonymous port.
  * @param service_id Kmsg / service id for this port.
  * @return New port with refcount 1 and life @c OPEN, or NULL on alloc failure.
  */
-Message_Port_t* create_message_port(u64 service_id);
+Message_Port_t* create_message_port(u32 service_id);
 
 /**
  * @brief Free a **standalone heap** @c Message_Port_t (defensive queue clean +

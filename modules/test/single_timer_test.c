@@ -22,8 +22,8 @@ static volatile int timer_waiter_phase1;
 static volatile int timer_waiter_phase2;
 static volatile int timer_waiter_failed;
 
-static bool timer_test_parse_kmsg(const Message_t* msg, u16 expect_module,
-                                  u16 expect_opcode, u64 expect_token)
+static bool timer_test_parse_kmsg(const Message_t* msg, u32 expect_module,
+                                  u32 expect_opcode, u64 expect_token)
 {
         const kmsg_t* km;
         i64 token;

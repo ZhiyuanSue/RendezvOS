@@ -47,7 +47,7 @@ static void* powerd_thread(void* arg)
                         ref_put(&m->ms_queue_node.refcount, free_message_ref);
                         continue;
                 }
-                u16 op = km->hdr.opcode;
+                u32 op = km->hdr.opcode;
                 ref_put(&m->ms_queue_node.refcount, free_message_ref);
 
                 if (op == KMSG_OP_SYSTEM_POWER_SHUTDOWN) {

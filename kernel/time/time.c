@@ -102,7 +102,7 @@ static rendezvos_timer_event *timer_event_rb_tree_first(struct rb_root *root)
         return container_of(node, rendezvos_timer_event, node);
 }
 
-static error_t timer_event_deliver_kmsg(Message_Port_t *port, u16 opcode,
+static error_t timer_event_deliver_kmsg(Message_Port_t *port, u32 opcode,
                                         u64 delivery_token,
                                         bool use_system_proxy)
 {

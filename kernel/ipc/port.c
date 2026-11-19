@@ -10,7 +10,7 @@
 #include <common/string.h>
 #include <modules/log/log.h>
 
-error_t message_port_init(Message_Port_t* port, u64 service_id)
+error_t message_port_init(Message_Port_t* port, u32 service_id)
 {
         if (!port)
                 return -E_IN_PARAM;
@@ -23,7 +23,7 @@ error_t message_port_init(Message_Port_t* port, u64 service_id)
         return REND_SUCCESS;
 }
 
-Message_Port_t* create_message_port(u64 service_id)
+Message_Port_t* create_message_port(u32 service_id)
 {
         struct allocator* cpu_kallocator = percpu(kallocator);
         Message_Port_t* mp = (Message_Port_t*)cpu_kallocator->m_alloc(

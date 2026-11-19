@@ -121,7 +121,7 @@ error_t kernel_handle_msg(void)
                 Message_t* msg;
 
                 while ((msg = dequeue_recv_msg()) != NULL) {
-                        u16 service_id = port->service_id;
+                        u32 service_id = port->service_id;
 
                         if (boot_thread_ipc_handler) {
                                 boot_thread_ipc_handler(msg, service_id);
