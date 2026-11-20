@@ -4,7 +4,7 @@ v0.1 · 2026-09-27
 
 本篇覆盖：`kernel/smp/percpu.c`、`include/rendezvos/smp/percpu.h`、`arch/{x86_64,aarch64}/percpu.c`（`arch_enable_percpu` / `get_per_cpu_base`）。
 
-SMP 身份 / BSP_ID（BSP = Bootstrap Processor，引导核；AP = Application Processor，非引导核）时序见 SMP 篇（`28`）；各变量「为何 per-CPU」见子系统篇（TM、kmalloc、EBR、IRQ…）。MCS（Mellor-Crummey & Scott 队列锁）的 `me` 参数事故亦见 `doc/ai/INVARIANTS.md`。
+SMP 身份 / BSP_ID（BSP = Bootstrap Processor，引导核；AP = Application Processor，非引导核）时序见 SMP 篇（`28-SMP启动与处理器拓扑.md`）；各变量「为何 per-CPU」见子系统篇（TM、kmalloc、EBR、IRQ…）。MCS（Mellor-Crummey & Scott 队列锁）的 `me` 参数事故亦见 `doc/ai/INVARIANTS.md`。
 
 **官方手册：** Intel SDM — `IA32_GS_BASE`（及与 SWAPGS / `KERNEL_GS_BASE` 的分工）；ARM ARM — `TPIDR_EL1`（EL1 软件线程 ID，本仓库用作 per-CPU 基址）。
 
@@ -69,7 +69,7 @@ EL1 代码读 `mrs x0, TPIDR_EL1` 取得基址，再加偏移即得本核副本�
 
 ## 3. 分层与调用方
 
-典型住户按用途分组：调度与线程 `core_tm`、`boot_thread_ptr`、`idle_thread_ptr`；内存 `kallocator`、`current_vspace`、`Map_Handler`、`boot_stack_bottom`、`pmm_spin_lock[ZONE_NR_MAX]`、`asid_mcs_node`；陷阱 `local_irq_vector[]`（x86 另有 `local_irq_map[]`）、`irq_space_mcs_node`；EBR 一组 `ebr_*`；时间 `tick_cnt`、`boot_base_time`、`heartbeat_event`、`event_tree_root`（x86 另有 APIC 定时基准 `apic_timer_base` / `apic_timer_gap`）；SMP `cpu_number`、`CPU_STATE`、`smp_ipi_pending`；各类锁 `log_spin_lock`、`id_spin_lock`、`port_table_spin_lock`、`name_index_spin_lock`。架构私有槽：x86_64 的 `gdt[]` / `gdt_desc`、`cpu_tss`、`user_rsp_scratch`、`smp_tlb_flush_message`（aarch64 **无** TLB msg 槽）；aarch64 的 `cpu_device_node`（本核对应设备树节点指针，启动时查 `reg` / `enable-method` 用，见 `28`）。
+典型住户按用途分组：调度与线程 `core_tm`、`boot_thread_ptr`、`idle_thread_ptr`；内存 `kallocator`、`current_vspace`、`Map_Handler`、`boot_stack_bottom`、`pmm_spin_lock[ZONE_NR_MAX]`、`asid_mcs_node`；陷阱 `local_irq_vector[]`（x86 另有 `local_irq_map[]`）、`irq_space_mcs_node`；EBR 一组 `ebr_*`；时间 `tick_cnt`、`boot_base_time`、`heartbeat_event`、`event_tree_root`（x86 另有 APIC 定时基准 `apic_timer_base` / `apic_timer_gap`）；SMP `cpu_number`、`CPU_STATE`、`smp_ipi_pending`；各类锁 `log_spin_lock`、`id_spin_lock`、`port_table_spin_lock`、`name_index_spin_lock`。架构私有槽：x86_64 的 `gdt[]` / `gdt_desc`、`cpu_tss`、`user_rsp_scratch`、`smp_tlb_flush_message`（aarch64 **无** TLB msg 槽）；aarch64 的 `cpu_device_node`（本核对应设备树节点指针，启动时查 `reg` / `enable-method` 用，见 `28-SMP启动与处理器拓扑.md`）。
 
 跨核读取其他核的 per-CPU：仅约定路径（TLB msg、EBR scan、调试）；并发修改须持锁或发 IPI。
 
@@ -158,7 +158,7 @@ EL1 代码读 `mrs x0, TPIDR_EL1` 取得基址，再加偏移即得本核副本�
 
 接口分布在：per-CPU 布局与访问——`DEFINE_PER_CPU` / `percpu` / `per_cpu`、`arch_enable_percpu` / `get_per_cpu_base`、`__per_cpu_offset` / `cpu_number`、以及 boot 侧 `reserve_per_cpu_region` / `clean_per_cpu_region` / `calculate_per_cpu_offset`。说明改写自 `percpu.h` Doxygen（已与 `percpu.c`、`arch/*/percpu.c` 核对）。
 
-**本篇不涉及：** 各住户变量语义（`core_tm`、`local_irq_vector`、MCS node…，见各子系统篇）；BSP_ID / 上线时序（见 `28`）；MCS 锁原语本身（见 `31`）。
+**本篇不涉及：** 各住户变量语义（`core_tm`、`local_irq_vector`、MCS node…，见各子系统篇）；BSP_ID / 上线时序（见 `28-SMP启动与处理器拓扑.md`）；MCS 锁原语本身（见 `31-锁与内存屏障.md`）。
 
 ### 7.1 编排顺序（调用方须遵守）
 
@@ -262,7 +262,7 @@ void clean_per_cpu_region(paddr per_cpu_phy_addr);
 
 ## 9. 测试
 
-无 per-CPU 专项测试用例，间接覆盖：布局或基址启用时序若有错，多核启动后第一次 `percpu()` 访问就会崩，活不到后面（启动判据见 `28` §9）；`smp_test` 的并发矩阵则从多核同时反复打 per-CPU 住户——`spmalloc` 打各核 `kallocator`，`smp_lock` 打 MCS `me` 槽，`thread_affinity` 打各核 `core_tm`。
+无 per-CPU 专项测试用例，间接覆盖：布局或基址启用时序若有错，多核启动后第一次 `percpu()` 访问就会崩，活不到后面（启动判据见 `28-SMP启动与处理器拓扑.md` §9）；`smp_test` 的并发矩阵则从多核同时反复打 per-CPU 住户——`spmalloc` 打各核 `kallocator`，`smp_lock` 打 MCS `me` 槽，`thread_affinity` 打各核 `core_tm`。
 
 ---
 
@@ -271,7 +271,7 @@ void clean_per_cpu_region(paddr per_cpu_phy_addr);
 - AP 零页 vs CPU0 初值：初值只服务 CPU0，且初值里不要嵌 per-CPU 槽相关的指针（`gdt_desc.base_addr` 写死 CPU0 `gdt` 虚址的教训，§1）。
 - 槽位总量固定死：`RENDEZVOS_MAX_CPU_NUMBER × per_cpu_size`，链接期定段、boot 期预留，无 Linux 式动态 percpu allocator，运行时不能新增槽位。
 - **内核映像与 percpu 额外区必须落在同一个 1G 内**：`phy_mm_init` 用 `ROUND_DOWN(…, GIGAN_PAGE_SIZE)` 硬检查，不等即终止启动（与启动期直映射按 1G 粒度建立有关，也顺带约束了 per-CPU 区总大小）。
-- x86_64 的 `cpu_id` 是 APIC id，可非零、可稀疏（`BSP_ID` 取引导核 APIC id，SMP 篇（`28`）；`__per_cpu_offset[]` 按该 id 下标，越界防护见 `RENDEZVOS_MAX_CPU_NUMBER` 检查。aarch64 的 `BSP_ID` 恒为 0。
+- x86_64 的 `cpu_id` 是 APIC id，可非零、可稀疏（`BSP_ID` 取引导核 APIC id，SMP 篇（`28-SMP启动与处理器拓扑.md`）；`__per_cpu_offset[]` 按该 id 下标，越界防护见 `RENDEZVOS_MAX_CPU_NUMBER` 检查。aarch64 的 `BSP_ID` 恒为 0。
 - 稀疏拓扑下勿用 `NR_CPU` 当合法下标上界遍历全表。
 
 ---
@@ -279,14 +279,14 @@ void clean_per_cpu_region(paddr per_cpu_phy_addr);
 ## 11. 变更记录
 
 - 2026-11-19：底子首评批次——§7 opener；§9「测例」→「测试用例」。事实沿用 11-14/15。
-- 2026-11-15：Maintainer 复审前可读性通读。跨篇引用统一既定昵称：两处「任务篇」→「线程篇」（与 README、`23` 等篇既定称呼一致）、两处「拓扑篇」→「SMP 篇（`28`）」（沿 `16` 篇先例）；§8 前双空行归一。`cpu_number` 写入点（两架构 `arch_start_core` 首句 `per_cpu(cpu_number, cpu_id) = cpu_id`）与 `set_gdt` / `wrmsr(MSR_KERNEL_GS_BASE, 0)` / `prepare_per_cpu_tss` 序列对照 `arch/{x86_64,aarch64}/boot/start_arch.c` 复核；事实层沿用 11-14 核验，未再改动。
+- 2026-11-15：Maintainer 复审前可读性通读。跨篇引用统一既定昵称：两处「任务篇」→「线程篇」（与 README、`23-Trap抽象与分类.md` 等篇既定称呼一致）、两处「拓扑篇」→「SMP 篇（`28-SMP启动与处理器拓扑.md`）」（沿 `16-CPU亲和性-创建时绑核.md` 篇先例）；§8 前双空行归一。`cpu_number` 写入点（两架构 `arch_start_core` 首句 `per_cpu(cpu_number, cpu_id) = cpu_id`）与 `set_gdt` / `wrmsr(MSR_KERNEL_GS_BASE, 0)` / `prepare_per_cpu_tss` 序列对照 `arch/{x86_64,aarch64}/boot/start_arch.c` 复核；事实层沿用 11-14 核验，未再改动。
 - 2026-11-14：全文对照代码与链接脚本精读——§1 补链接段布局（`.percpu..data` 收进输出段 `.percpu`、`_per_cpu_start` 4K 对齐、`_per_cpu_end` `ALIGN(64)`）与 GDT 例证（AP 靠 `set_gdt`/`prepare_per_cpu_tss` 重建；`gdt_desc.base_addr` 初值写死 CPU0 虚址 → 初值勿嵌 per-CPU 指针）；§1.1.1 修正「SWAPGS 是特权指令」（Intel SDM：不做特权检查，任意 CPL 可执行，entry/exit 须严格配对）、澄清 64 位下描述符 base 字段被忽略、`GS_BASE` 直接持有绝对虚址，并补链接期常量 `__tss_rsp_offset = cpu_tss + 4 - _per_cpu_start` / `__user_rsp_scratch_offset` 在 `kernel_entry.S` 的 `%gs:` 直接寻址；§1.1.2 `TPIDRRO_EL0`「Linux 用作 CPU 编号」改标 ⚠待复核；§4.1 明确 `__per_cpu_offset[]` 表值为**绝对虚拟基址**、槽 64B 缓存行对齐、`calculate` 填至 `MAX-1`；§6/§7.1 补全 `phy_mm_init` 真实顺序（m_regions 合并预留 → **同 1G 硬检查** → `arch_map_percpu_data_space` → memset）；§3 住户清单按用途分组补全（`gdt[]`、`cpu_device_node`（aarch64 私有）、`apic_timer_*`、`boot_thread_ptr`/`idle_thread_ptr` 等）；§5 补链接脚本与 `kernel_entry.S` 两行；§7.4 `cpu_number` 写明写入式 `per_cpu(cpu_number, cpu_id) = cpu_id`；§9 展开间接覆盖链条（`smp_test` 并发矩阵）；§10 撤销含糊「GS 窗」表述，改为同 1G 硬检查、x86 APIC id 索引空间、初值勿嵌 per-CPU 指针；变更记录两条 2026-10-05 归位（原沉底于 2026-08-27 之后）。
 - 2026-10-05：任务 1/3/5 精读——补全 BSP/AP/MCS 缩写首现释义；「踩错槽/拿基址/装 per-CPU 基址/他核 slot/已装好/扫全表」等口语改正式动词；修正 §7.3.1 编号错位为 §7.2.1。
 - 2026-10-05：最终词句顺畅。
 - 2026-10-04：§1.1.1/1.1.2 补 x86 GS 段机制（GS_BASE / KERNEL_GS_BASE / SWAPGS / FS_BASE 分工）与 aarch64 TPIDR_EL1/EL0/RO_EL0 线程 ID 寄存器说明；§4.1.1 加 per-CPU 布局示意（链接段模板 + AP 清零预留区）；§7.3.1 加 percpu() 访问路径图（MSR/系统寄存器读 + 偏移）。
 - 2026-10-03：§4.3 / §7.1 BSP enable 时点改为 `arch_cpu_info` 之后。
 - 2026-09-27：中文措辞整理——弱化「真源」等生硬堆砌用语。
-- 2026-09-26：§7 全文审阅——`percpu.h` 全套 Doxygen；写清「清零预留≠memcpy」「先 enable 再 percpu」与 MCS `me`；划清 vs `28`/`31`。
+- 2026-09-26：§7 全文审阅——`percpu.h` 全套 Doxygen；写清「清零预留≠memcpy」「先 enable 再 percpu」与 MCS `me`；划清 vs `28-SMP启动与处理器拓扑.md`/`31-锁与内存屏障.md`。
 - 2026-09-25：语言整理；§1.1 补 GS_BASE / TPIDR_EL1 硬件动机与用户 TLS 分界。
 - 2026-08-29：整篇重做——纠正「复制」→清零预留；MCS me；GS/TPIDR；住户表；与拓扑篇时序交叉。
 - 2026-08-27：初稿。

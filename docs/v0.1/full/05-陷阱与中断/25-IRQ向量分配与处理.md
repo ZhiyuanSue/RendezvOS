@@ -8,9 +8,9 @@ v0.1 · 2026-10-23
 |------|--------|----------|----------|
 | **编号空间（irq_space）** | 两套软件编号、本核表 / space `priv[]`、占有与释放、**线控 ops**（enable/disable/eoi） | `kernel/trap/irq_space.*`、`irq_space_common.h`、`arch/*/trap/irq_space*.c` | **主体** |
 | **分发** | 按编号找到 handler、要不要 EOI、要不要 `schedule` | `kernel/trap/trap.c`、`trap.h` | 衔接说明 |
-| **硬件控制器** | MMIO / 寄存器位域（RTE、GICD…） | APIC / PIC、GIC 等 | **寄存器细节**见 `26` / `27`；线控由 space ops 调用 |
+| **硬件控制器** | MMIO / 寄存器位域（RTE、GICD…） | APIC / PIC、GIC 等 | **寄存器细节**见 `26-平台中断-x86_64-APIC与PIC.md` / `27-平台中断-aarch64-GIC.md`；线控由 space ops 调用 |
 
-Trap 分类与装表见 `23`；系统调用旁路见 `24`；timer / 软 IPI 见时间子系统篇（`33`）与软 IPI 篇（`30`）。
+Trap 分类与装表见 `23-Trap抽象与分类.md`；系统调用旁路见 `24-系统调用入口.md`；timer / 软 IPI 见时间子系统篇（`33-时间与定时器子系统.md`）与软 IPI 篇（`30-软IPI机制.md`）。
 
 官方手册（本篇只用来对照「硬件交出来的号」长什么样）：
 
@@ -44,7 +44,7 @@ Trap 分类与装表见 `23`；系统调用旁路见 `24`；timer / 软 IPI 见�
 3. **`trap_handler`（分发）**看这个号：小于 `NR_ARCH_LOCAL_IRQ`（即 `ARCH_IRQ_ID_ALLOC_LO`，下文 **LO**）时，查**本核** `local_irq_vector[]`；大于等于 LO 时，本核表里没有这一格——经 `irq_global_find` → `arch_irq_entry_from_local` 找到所属 space 的 `priv[]` 表项，再调 handler；
 4. 若属性要求，再做 **EOI**：先 `arch_local_eoi`（CPU 侧），再可选 `space->eoi`（如 x86 IOAPIC 定向 EOI）。
 
-**irq_space 管编号 + 线控入口**：谁占了哪个 `global_irq_id`、映到哪个 `local_irq_id`、绑在哪颗核上；`irq_enable` / `irq_disable` 经 `space->enable` / `disable` 下发。MMIO 位域仍在 `26` / `27`；分发在 `trap.c`。
+**irq_space 管编号 + 线控入口**：谁占了哪个 `global_irq_id`、映到哪个 `local_irq_id`、绑在哪颗核上；`irq_enable` / `irq_disable` 经 `space->enable` / `disable` 下发。MMIO 位域仍在 `26-平台中断-x86_64-APIC与PIC.md` / `27-平台中断-aarch64-GIC.md`；分发在 `trap.c`。
 
 两套软件编号：
 
@@ -180,8 +180,8 @@ CPU1  local_irq_vector[]（本核私有，有格子） +-----+-------+-----+
 
 `irq_global_alloc` / `register_irq_handler` **只**改软件表。外设线还要经 trap 的 **`irq_enable(local, cpu, …)`**（按亲和 pair 找 entry → `space->enable`）写控制器并 unmask（反操作为属主上的 `irq_disable(local)`）：
 
-- aarch64 SPI：`irq_enable` → SPI space ops → `gic.enable_spi`（触发 + 按 `cpu_id` 路由 + unmask；见 `27`）；
-- x86 外设：`irq_enable` → IOAPIC `space->enable`（内部写 RTE + unmask；见 `26`）。ISO / MSI / 具体设备接线仍可能未齐。
+- aarch64 SPI：`irq_enable` → SPI space ops → `gic.enable_spi`（触发 + 按 `cpu_id` 路由 + unmask；见 `27-平台中断-aarch64-GIC.md`）；
+- x86 外设：`irq_enable` → IOAPIC `space->enable`（内部写 RTE + unmask；见 `26-平台中断-x86_64-APIC与PIC.md`）。ISO / MSI / 具体设备接线仍可能未齐。
 
 本核本地中断（异常、IPI、timer 的 LVT / PPI 等）一般在每核启动时已经使能，不走「先占全局表再 `irq_enable`」这条路径。
 
@@ -229,7 +229,7 @@ Trap **不**吃 `global_irq_id` 做 enable/disable；`global_irq_id` 留在 irq_
 
 先看竞态。设一开始 CPU A 是中断 I 的属主。
 
-接着 I 来了，A 已经进了 handler。若此时 **CPU B** 去改 I 的映射 / 亲和，把它改成打到 B，就会变成：handler 还在 A 上跑，软件里记的亲和却已经是 B。这不安全。举例：handler 末尾做 EOI 时，可能因为 `irq_global_find`（按 local）失败而找不到对应的 `struct arch_global_irq`（映射已经对不上「本核 + 旧 local」），EOI 也就做不全——x86 上定向 `ioapic_eoi` 尤其依赖这次反查（见 `26`）。
+接着 I 来了，A 已经进了 handler。若此时 **CPU B** 去改 I 的映射 / 亲和，把它改成打到 B，就会变成：handler 还在 A 上跑，软件里记的亲和却已经是 B。这不安全。举例：handler 末尾做 EOI 时，可能因为 `irq_global_find`（按 local）失败而找不到对应的 `struct arch_global_irq`（映射已经对不上「本核 + 旧 local」），EOI 也就做不全——x86 上定向 `ioapic_eoi` 尤其依赖这次反查（见 `26-平台中断-x86_64-APIC与PIC.md`）。
 
 所以要把换核整段都放在旧属主上，针对的就是「非属主改亲和」这类问题。对本线 **mask 掉、并把本核 local 接口上可能还要进 handler 的 pending 排空之后**，亲和变更与这条 I 的处理都在同一颗属主核上推进：本线被 `space->disable` 挡住以后，新的 I 不会再投递出来，属主再改亲和是安全的——它会给 B 选出并绑上新的 `local_irq_id`，再 unmask；改 B 侧 map 时，同样处在「本线已 mask、本核侧已排空」的前提下，也是安全的。
 
@@ -238,13 +238,13 @@ Trap **不**吃 `global_irq_id` 做 enable/disable；`global_irq_id` 留在 irq_
 上层怎么用？
 
 - 调用方**已经在属主核**上：直接按口令做 `irq_disable` → `free` → `alloc`（给另一核的 local 号并 map）→ `enable`。替新核 `alloc` 时，靠条目上 CAS `USED`，以及给目标核绑 map（`irq_global_alloc` 本就支持为别的核选 local 号）。
-- 调用方**不在属主核**上：按 IPC 侧约定，发给「系统 / 内核」的消息应由该核的 **boot 线程**代收（boot 与 `kernel_handle_msg` 见线程篇 `13`）。把换核请求发到**属主核的 boot 线程**，由它在本核跑完整段口令。这条执行流须**开着中断**：`irq_disable` 在 mask 之后靠本核还能进 handler，才能把 local 接口上已 latched 的那次 I 处理完；关着中断空转 `arch_irq_local_pending` 没有意义。
+- 调用方**不在属主核**上：按 IPC 侧约定，发给「系统 / 内核」的消息应由该核的 **boot 线程**代收（boot 与 `kernel_handle_msg` 见线程篇 `13-线程与Task_Manager.md`）。把换核请求发到**属主核的 boot 线程**，由它在本核跑完整段口令。这条执行流须**开着中断**：`irq_disable` 在 mask 之后靠本核还能进 handler，才能把 local 接口上已 latched 的那次 I 处理完；关着中断空转 `arch_irq_local_pending` 没有意义。
 
 #### 1.7.2 为什么 `irq_disable` 在 mask 之后还要等？
 
 原则（对所有 space，含未来 MSI）：`space->disable` 必须挡住**再新发出的** I；已经落在**核本地中断接口**上的那一个 pending 中断，mask 挡不住，之后仍可能进本核 handler。因此 `irq_disable` 在属主上校验软表后：先 mask，再 **`while (arch_irq_local_pending(local_irq_id))`**（**须开着本核中断**），确认本核上这条 local 号不会再在未 unmask 的情况下跑 handler，然后才返回给上层去做 `free`。
 
-**今天的管脚后端举例**（IOAPIC RTE / GIC SPI，见 `26` / `27`）：
+**今天的管脚后端举例**（IOAPIC RTE / GIC SPI，见 `26-平台中断-x86_64-APIC与PIC.md` / `27-平台中断-aarch64-GIC.md`）：
 
 设备 → 管脚 → 全局分发（IOAPIC、GIC GICD 等）→ 核本地中断接口（LAPIC、GICC 等）→ 核
 
@@ -252,8 +252,8 @@ Trap **不**吃 `global_irq_id` 做 enable/disable；`global_irq_id` 留在 irq_
 
 `arch_irq_local_pending` 是硬件查询，不是软件计数：
 
-- x86：本核 LAPIC 上该向量的 **IRR ∪ ISR**（见 `26` §5.6）；
-- aarch64：GIC 上该 INTID 的 **Active**；若仍 enable 则也看 Pending。mask 之后单独亮着的 distributor Pending **不**用来空转（电平线否则可能永远等不完，见 `27`）。开着中断 wait 时，已打到 GICC、尚未 IAR 的中断会先被 handler 吃掉（IAR 置 Active），再回到 while 看到 false——属有意设计，不是漏查 IRR 式 latched 位。
+- x86：本核 LAPIC 上该向量的 **IRR ∪ ISR**（见 `26-平台中断-x86_64-APIC与PIC.md` §5.6）；
+- aarch64：GIC 上该 INTID 的 **Active**；若仍 enable 则也看 Pending。mask 之后单独亮着的 distributor Pending **不**用来空转（电平线否则可能永远等不完，见 `27-平台中断-aarch64-GIC.md`）。开着中断 wait 时，已打到 GICC、尚未 IAR 的中断会先被 handler 吃掉（IAR 置 Active），再回到 while 看到 false——属有意设计，不是漏查 IRR 式 latched 位。
 
 当前按芯片模型假定：管脚路径上「mask 之后还可能再进 handler」的状态可被上述查询 + 开中断 wait 覆盖；GIC 对同一 INTID 是状态位而非无限长队列。riscv64 irqchip 未接前无此 hook。对外暂不提供「只 mask、不等待」的 API；若以后有调用方需要再拆。
 
@@ -383,7 +383,7 @@ MSI-X 把「一对 address/data」扩成 BAR 里的**表**（Table Offset/BIR，
 | `global_irq_id` | = GSI，base 0 | 机器内唯一的 MSI 句柄；range 必须避开 `[0, nr_gsi)`（§1.8 的重叠检查会兜住），如 base 从 `ioapic_nr_gsi()` 往上取 |
 | `priv` / `lookup_global_irq_id` | dense `entries[]`，GSI = `entry - priv + base` | 同样 dense；entry 追加 devfn + 表项号（类比今天缓存的 `ioapic *`，§1.8 dense 坐标） |
 | `choose_local` / `bind_local` | 共享实现 `arch_irq_space_choose_local/bind_local`：扫本核 `[ALLOC_LO, ALLOC_HI]` + map CAS | **直接复用**——头文件明言这两个 helper 服务「IOAPIC / MSI / …」全部 space。`[0x40, 0xEF]` 窗口是每核 map 的软件资源、与 space 无关：IOAPIC 与 MSI 从同一口井里取号，互不冲突 |
-| `enable(entry, trigger, polarity)` | `ioapic_configure_rte` + unmask | 写 Message Address/Data（`cpu_id`→Destination、`local_irq_id`→向量），**最后**清设备侧 mask；trigger 恒 edge、polarity 忽略——与 GIC 忽略 polarity 是同一先例（`27`），`irq_enable` 的参数校验照旧 |
+| `enable(entry, trigger, polarity)` | `ioapic_configure_rte` + unmask | 写 Message Address/Data（`cpu_id`→Destination、`local_irq_id`→向量），**最后**清设备侧 mask；trigger 恒 edge、polarity 忽略——与 GIC 忽略 polarity 是同一先例（`27-平台中断-aarch64-GIC.md`），`irq_enable` 的参数校验照旧 |
 | `disable(entry)` | RTE Mask | 置设备侧 mask；`irq_disable` 的本核排空不变（§1.7.2） |
 | `eoi` | `ioapic_eoi`（清 Remote IRR） | **留空**——没有源侧要补刀的对象 |
 | `destroy_priv` | 释放 `entries` | 释放 `entries`（向量靠 map 槽记账，无独立的向量池要归还） |
@@ -392,7 +392,7 @@ migrate 口令（§1.7）完全不用改：仍是旧属主 `irq_disable` → `ir
 
 #### 1.9.4 aarch64 对照：GICv2 没有 MSI，GICv3 走 ITS
 
-GICv2 时代 ARM 没有 MSI 概念，SPI 是唯一的外设形——aarch64 树内今天没有 MSI 后端，不是欠账，而是硬件就没有。GICv3 才有：设备仍发 MSI 写，但落点是 **ITS**；ITS 用（DeviceID, EventID）→ LPI（INTID ≥ 8192）的映射表翻译后投给 Redistributor。差异：LPI 不经 Distributor、pending 记在 Redistributor、路由由 ITS 的 collection→target 决定。将来 ITS space 的 `enable/disable` 会是 ITS 命令（MAPD/MAPTI、INV）而非寄存器位。当前 `gic_probe` 匹配到 GICv3 会明确失败（见 `27`），此段纯属远期；记在这里，是让「irq_space 通用于各 space」这句话有一个具体的对照物。
+GICv2 时代 ARM 没有 MSI 概念，SPI 是唯一的外设形——aarch64 树内今天没有 MSI 后端，不是欠账，而是硬件就没有。GICv3 才有：设备仍发 MSI 写，但落点是 **ITS**；ITS 用（DeviceID, EventID）→ LPI（INTID ≥ 8192）的映射表翻译后投给 Redistributor。差异：LPI 不经 Distributor、pending 记在 Redistributor、路由由 ITS 的 collection→target 决定。将来 ITS space 的 `enable/disable` 会是 ITS 命令（MAPD/MAPTI、INV）而非寄存器位。当前 `gic_probe` 匹配到 GICv3 会明确失败（见 `27-平台中断-aarch64-GIC.md`），此段纯属远期；记在这里，是让「irq_space 通用于各 space」这句话有一个具体的对照物。
 
 #### 1.9.5 一条安全边界
 
@@ -406,9 +406,9 @@ GICv2 时代 ARM 没有 MSI 概念，SPI 是唯一的外设形——aarch64 树�
 
 **明确不做（留给别的篇或调用约定）：**
 
-- APIC / GIC **寄存器位域手册**与探测细节（`26` / `27`）；线控由本篇 space ops 调用那些原语；
+- APIC / GIC **寄存器位域手册**与探测细节（`26-平台中断-x86_64-APIC与PIC.md` / `27-平台中断-aarch64-GIC.md`）；线控由本篇 space ops 调用那些原语；
 - MSI / MSI-X **后端与 PCI 接线**（未接线；migrate 口令见 §1.7，硬件形态与 ops 落位见 §1.9；本篇仍不写 PCI 配置空间接线）；Linux 式 `request_irq` 框架；
-- 把异常 EC / 缺页当成「设备 IRQ」来讲（`23`）；
+- 把异常 EC / 缺页当成「设备 IRQ」来讲（`23-Trap抽象与分类.md`）；
 - 同核上「正在处理时拆表」的同步——调用方先停投递；
 - 运行期热拆 space（`unregister` 与热路径 find 无共同 pin）——见 §1.8。
 
@@ -569,7 +569,7 @@ aarch64 local_irq_id 布局示意：
 | `kernel/trap/trap.c`、`trap.h` | **分发 / 线控** | `register_irq_handler`、`irq_enable`/`disable`、`trap_handler` |
 | `arch/*/trap/trap.c` | **装表 + CPU EOI** | fixed 注册、`arch_local_eoi`、IDT / VBAR、`arch_irq_local_pending` |
 | `ioapic_init` / `arch_start_platform` | 启动 | 注册 IOAPIC / SPI space |
-| 平台 APIC / GIC | **硬件 MMIO** | 寄存器细节（见 `26` / `27`） |
+| 平台 APIC / GIC | **硬件 MMIO** | 寄存器细节（见 `26-平台中断-x86_64-APIC与PIC.md` / `27-平台中断-aarch64-GIC.md`） |
 
 ---
 
@@ -654,7 +654,7 @@ x86 上多个设备可共享同一 IDT 向量（典型 PCI legacy 共享线）�
 
 1. `irq_global_alloc(global_irq_id, cpu_id, &local_irq_id);` — **勿**手写 timer / IPI / EC 当设备号。内部由 `space->choose_local` 选号（见 §4.3 ②、§7.3）。可在别的核上替目标 `cpu_id` 调用。此时写入表项的 `local_irq_id` / `cpu_id` 并置 `USED`。
 2. 在**属主核**上 `register_irq_handler(local_irq_id, cpu_id, isr, IRQ_NEED_EOI);` — 挂 ISR。
-3. `irq_enable(local_irq_id, cpu_id, trigger, polarity);` — 按亲和 pair 找 entry，经 `space->enable` 写控制器并 unmask（见 `26` / `27`）。
+3. `irq_enable(local_irq_id, cpu_id, trigger, polarity);` — 按亲和 pair 找 entry，经 `space->enable` 写控制器并 unmask（见 `26-平台中断-x86_64-APIC与PIC.md` / `27-平台中断-aarch64-GIC.md`）。
 4. 未占号就挂函数、或非属主核去挂全局号：打错误日志后返回。
 5. 处理函数返回后由 `trap_handler` 做 EOI——函数里面**不要**自己写 EOI，除非故意不设「需要 EOI」。
 
@@ -668,7 +668,7 @@ x86 上多个设备可共享同一 IDT 向量（典型 PCI legacy 共享线）�
 
 接口分布在：两套 id（`irq_space.h` / `irq_space.c`）与分发（`trap.h` / `trap.c`）——`struct local_irq` / `struct arch_global_irq` / `struct irq_space`、`irq_space_register` / `irq_global_*`、`register_irq_handler`、`irq_enable` / `irq_disable`、`arch_irq_local_pending`、`trap_handler`、`init_interrupt`、space `choose_local` / `bind_local`（x86 共享 `arch_irq_space_*`；aarch64 在 `irq_space_gic_spi.c`）/ `arch_init_interrupt`、`arch_local_eoi`、`arch_unknown_trap_handler`。说明改写自 `irq_space.h` / `trap.h` / `arch/*/trap/irq_space.h` Doxygen。
 
-**本篇不涉及：** `arch_register_fixed_trap` / `trap_class`（见 `23`）；weak `syscall`（见 `24`）；irqchip 寄存器细节（见 `26` / `27`）；timer / IPI 业务语义（见时间子系统篇 / `30`）。
+**本篇不涉及：** `arch_register_fixed_trap` / `trap_class`（见 `23-Trap抽象与分类.md`）；weak `syscall`（见 `24-系统调用入口.md`）；irqchip 寄存器细节（见 `26-平台中断-x86_64-APIC与PIC.md` / `27-平台中断-aarch64-GIC.md`）；timer / IPI 业务语义（见时间子系统篇 / `30-软IPI机制.md`）。
 
 ### 7.1 编排顺序（调用方须遵守）
 
@@ -737,7 +737,7 @@ void arch_unknown_trap_handler(struct trap_frame *tf);
 | `init_interrupt` | 直接 `arch_init_interrupt`（不检查全局数组）。 |
 | `register_irq_handler` | 本核表内：写该 `cpu_id` 槽（不要求 caller 即该核）。全局：须已 alloc、亲和匹配，且 **caller 必须是属主**；`handler==NULL` 可摘 ISR。 |
 | `trap_handler` | 按 `TRAP_ID` 查本核表或 `irq_global_find`（按 local）；无则 unknown+panic；若 NEED_EOI 则 EOI；用户来源且 `core_tm` 就绪则 `schedule`。 |
-| `arch_local_eoi` | 平台 ACK（细节见 `26`/`27`）。 |
+| `arch_local_eoi` | 平台 ACK（细节见 `26-平台中断-x86_64-APIC与PIC.md`/`27-平台中断-aarch64-GIC.md`）。 |
 | `arch_unknown_trap_handler` | 打印帧；随后 `trap_handler` panic。 |
 
 驱动 checklist 见 §6.3。x86 `syscall` **不**经本路径。
@@ -769,11 +769,11 @@ void arch_unknown_trap_handler(struct trap_frame *tf);
 **平台与功能缺口：**
 
 - `irq_global_alloc`：USED/bind 失败 → `-E_REND_AGAIN`；表外窗口用尽 → `-E_REND_OVERFLOW`；参数非法 → `-E_IN_PARAM`。
-- x86：`irq_enable` 可写 RTE/mask；**ISO / MSI / 具体 PCI 设备接线**仍未做时，许多外设仍接不上（见 `26` §9.6.8）。
+- x86：`irq_enable` 可写 RTE/mask；**ISO / MSI / 具体 PCI 设备接线**仍未做时，许多外设仍接不上（见 `26-平台中断-x86_64-APIC与PIC.md` §9.6.8）。
 - 伪中断（spurious）无专用 handler。
 - 没有「同一编号挂多设备」的共享链（后写覆盖）；电平共享见 §6.2。
 - 没有「同一全局中断每核不同 handler」。
-- 没有可移植的 `irq_set_affinity` API；绑核靠 alloc 时的 `cpu_id` + `irq_enable` 下发；换核编排见 **§1.7**（见 `26` / `27`）。
+- 没有可移植的 `irq_set_affinity` API；绑核靠 alloc 时的 `cpu_id` + `irq_enable` 下发；换核编排见 **§1.7**（见 `26-平台中断-x86_64-APIC与PIC.md` / `27-平台中断-aarch64-GIC.md`）。
 - MSI / MSI-X **space 与 PCI 接线未接**；§1.7 软件口令已按「通用于各 space」书写，管脚链仅为现行后端举例；MSI 后端的硬件形态与逐 ops 落位见 §1.9。接 MSI 必须与中断重映射（IR）同设计——无 IR 时 MSI 是裸 DMA 写，可向任意核伪造向量（§1.9.5）。对外无 disable-nosync。
 - riscv64：`arch_irq_local_pending` 随 irqchip 再补。
 
@@ -785,7 +785,7 @@ void arch_unknown_trap_handler(struct trap_frame *tf);
 - 热 find **不** pin space：勿在仍可能投递的 CPU 上热 `unregister`（`gic_spi_space` / map 旁路与 teardown 无共同同步）。
 - 释放留下旧 handler：卸模块前必须自己摘掉。
 - IOAPIC / GICD 多线共享同一 MMIO 字时，并发 enable 尚无芯片级锁（后续项）。
-- aarch64：`arch_irq_local_pending` 在 mask 后不空转裸 Pending（有意）；排空依赖开中断 wait + Active，见 §1.7.2 / `27`。
+- aarch64：`arch_irq_local_pending` 在 mask 后不空转裸 Pending（有意）；排空依赖开中断 wait + Active，见 §1.7.2 / `27-平台中断-aarch64-GIC.md`。
 
 ---
 
@@ -793,7 +793,7 @@ void arch_unknown_trap_handler(struct trap_frame *tf);
 
 - 2026-11-20：结构收尾——§1 开头补 §1.1–§1.9 导读索引表；小节内容未删改。
 - 2026-11-20：按需补图——§1.4 占有窗口时间轴；§1.7 migrate 口令（旧属主 disable→free→alloc→enable）时序图；§1.8 `life` 状态机 + refcount 转让示意。正文事实未改。
-- 2026-11-19：底子首评批次——`33`/`30` 补号；§7 opener。事实沿用 11-14/11-15 核验。
+- 2026-11-19：底子首评批次——`33-时间与定时器子系统.md`/`30-软IPI机制.md` 补号；§7 opener。事实沿用 11-14/11-15 核验。
 - 2026-11-15：可读性通读。§7.1 换核行断裂句补全（「详述与 IPC/boot；」改「详述（含经属主 boot 线程 IPC 代做）见 §1.7」），并将「（mask + pending）」写全为「mask + 排空 pending」；`space methods` 齐平为 space ops；「那一个pending中断」补空格；「时间篇」统一为「时间子系统篇」；删 §1 内误置的 `---` 与 §11 孤立空行。§7.3 错误码、`ALLOC_HI`=0xEF、timer=0x20 对照代码复核无误，事实未动。
 - 2026-11-14：新增 §1.9「展望后端：MSI / MSI-X」——pin 与 MSI 投递链对照、x86 Message Address/Data 与 MSI-X 表、逐 ops 落位（`choose/bind` 直接复用共享实现、`eoi` 留空、global range 避让 GSI）、GICv3 ITS 对照、无 IR 时的安全边界；§1.7.2 / §2 / §8 / §10 加指针；文末误挂的两条 2026-10-05 条目归位到时间序。
 - 2026-11-14：§1.7 / `trap.h` `@note` §2——soft migrate 口令明确通用于各 irq_space（含未来 MSI）；管脚投递链改为现行后端举例；MSI mask 点不同但 disable→drain 原则相同。§2/§7.1/§10 同步；aarch64 pending 排空改为有意设计表述。
@@ -805,7 +805,7 @@ void arch_unknown_trap_handler(struct trap_frame *tf);
 - 2026-11-01：`enum irq_trigger` / `enum irq_polarity` 下沉到 `trap_common.h`；`GLOBAL_IRQ_COMMON` / `IRQ_*` 归属改为 `irq_space_common.h`。
 - 2026-11-01：文档对齐——去掉 Job (A)/(B) 说法；§1.6/§6.3/§8/§10 改为 alloc→register→`irq_global_enable`（§8 表不再写「RTE 未做 / gic.unmask」）；`free` 不 reset arch 拓扑；`vector_alloc(0)` 合法。
 - 2026-10-31：`irq_global_enable`/`irq_global_disable`；free 保留 arch 拓扑；checklist 改为 alloc→register→enable。
-- 2026-10-29：对齐 IOAPIC bring-up——GSI 全局表已由 `ioapic_init` 申请；缺口改为「RTE/ISO/mask/设备路由未齐」而非「IOAPIC 空壳」；§1.6 / §4 / §6.3 / §8 / §10 与 `26` 同步。
+- 2026-10-29：对齐 IOAPIC bring-up——GSI 全局表已由 `ioapic_init` 申请；缺口改为「RTE/ISO/mask/设备路由未齐」而非「IOAPIC 空壳」；§1.6 / §4 / §6.3 / §8 / §10 与 `26-平台中断-x86_64-APIC与PIC.md` 同步。
 - 2026-10-23：理顺 §1 结构（去掉重复的 1.3 编号）；开篇用表格划清「编号空间 / 分发 / 硬件」；§5 / §10 同步。中文表述按阅读习惯整理。
 - 2026-10-23：`IRQ_COMMON` 改为 `GLOBAL_IRQ_COMMON`（handler + atomic attr + local/cpu 亲和）；`local_irq` 直接写字段，不再共用该宏。
 - 2026-10-23：占有模型落地——全局 `register` 亦要求属主核；`free` 改为 `try_set_unused` 且保留 handler（换核不必再 register；卸模块须自行摘 handler）。新增占有规则小节，并改 §4.4 / §6.3 / §7。
@@ -826,7 +826,7 @@ void arch_unknown_trap_handler(struct trap_frame *tf);
 - 2026-10-01：§4.3 按中文阅读习惯重写（保留布局示意）；同步扩写代码侧 Doxygen / 注释。
 - 2026-10-01：§4.3 扩写——`arch_init_irq_vector_state` 的每核 reserve / 全局 pool / 空洞三类槽位与布局示意；澄清为何不用 boot 期 `reserve_for_all_cpus`。
 - 2026-09-27：中文措辞整理——弱化「真源」等生硬堆砌用语；补 `software_enable_APIC` 的「软件使能」对照。
-- 2026-09-26：§7 全文审阅——补 `trap_handler` 声明与 Doxygen；强化 alloc/free/register 全 CPU 语义与「先软件后路由」编排序；划清 vs `23`/`24`/`26`/`27`。
+- 2026-09-26：§7 全文审阅——补 `trap_handler` 声明与 Doxygen；强化 alloc/free/register 全 CPU 语义与「先软件后路由」编排序；划清 vs `23-Trap抽象与分类.md`/`24-系统调用入口.md`/`26-平台中断-x86_64-APIC与PIC.md`/`27-平台中断-aarch64-GIC.md`。
 - 2026-09-25：扩写硬件「号」与软件 trap id 贴合；per-CPU 表为何、EOI 硬件含义；驱动 checklist 强调先软件后路由；手册入口。
 - 2026-08-29：整篇重做——各 ISA reserve 实表；NR_IRQ / EC+offset；free / USED 陷阱。
 - 2026-08-27：初稿。

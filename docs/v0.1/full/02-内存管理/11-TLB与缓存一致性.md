@@ -2,11 +2,11 @@
 
 v0.1 · 2026-09-25
 
-本篇覆盖：`include/rendezvos/mm/tlb_cpu_mask.h`、`include/arch/x86_64/sync/tlb.h`、`include/arch/aarch64/sync/tlb.h`、`arch/x86_64/mm/arch_smp_tlb_flush.c`；以及 `schedule` / `map_handler` 里和它们的交界。软 IPI 的握手细节见软 IPI 篇（`30`）与 TLB shootdown 篇（`32`）——本篇不把那一套再抄一遍。
+本篇覆盖：`include/rendezvos/mm/tlb_cpu_mask.h`、`include/arch/x86_64/sync/tlb.h`、`include/arch/aarch64/sync/tlb.h`、`arch/x86_64/mm/arch_smp_tlb_flush.c`；以及 `schedule` / `map_handler` 里和它们的交界。软 IPI 的握手细节见软 IPI 篇（`30-软IPI机制.md`）与 TLB shootdown 篇（`32-TLB_shootdown与跨核一致性.md`）——本篇不把那一套再抄一遍。
 
 关于标题里的「缓存」：aarch64 的 `sync/cache.h` 目前是空的，树里也没有对称的 x86 `cache.h`。本篇**没有**通用 dcache/icache 维护 API；设备 / DMA 路径另写一篇。这里说的「一致性」，主要指 **CPU 侧页表翻译（TLB）** 在改完 PTE、换了地址空间之后还对不对得上。
 
-何时在 `map` / `unmap` 里调哪一类 invalidate，页表篇（`07`）§6.2 已经锁定过；本篇讲清楚 mask 是什么意思、跨核怎么发出去、和调度怎么衔接，以及各 ISA 的硬件指令分别对应什么。
+何时在 `map` / `unmap` 里调哪一类 invalidate，页表篇（`07-虚拟地址空间与页表.md`）§6.2 已经锁定过；本篇讲清楚 mask 是什么意思、跨核怎么发出去、和调度怎么衔接，以及各 ISA 的硬件指令分别对应什么。
 
 ---
 
@@ -19,7 +19,7 @@ core 的答案分两层：
 1. **`VSpace::tlb_cpu_mask`**：哪些 CPU **可能**还缓存着这个用户地址空间的翻译。
 2. **arch 的 invalidate API**：本地刷，或者跨核。x86 走 **按 mask 的软 IPI + `invlpg`**；aarch64 在用户 / 跨核路径上多用 **`tlbi …is` 广播**（常常把 mask 参数**直接丢掉**），但 mask 仍然卡着拆除能不能放行。
 
-mask 回答「该通知谁、能不能拆」，具体怎么刷是架构的事。少了任一层，要么漏刷，要么 ASID 不敢回收（见 ASID 篇（`12`））。
+mask 回答「该通知谁、能不能拆」，具体怎么刷是架构的事。少了任一层，要么漏刷，要么 ASID 不敢回收（见 ASID 篇（`12-ASID与地址空间标识.md`））。
 
 ---
 
@@ -79,7 +79,7 @@ cas_lock_t tlb_cpu_mask_lock;
 
 ### 4.3 内核页为何不发 IPI
 
-需要注意：IPI 本身也是中断，一定受关中断影响。而页表篇（`07`）的设计里，内核部分同样是按需映射的，这就带来一个严重问题。设两个核心 A 和 B 都使用 Root vspace 修改内核页映射：A 试图取消某个页面的映射并向 B 发 IPI，但 B 正关着中断并使用该页——TLB flush 被推迟，B 可能继续使用旧映射；若该页又被重新分配出去，B 就会读写到内容已被改写的页面，却难以定位原因。
+需要注意：IPI 本身也是中断，一定受关中断影响。而页表篇（`07-虚拟地址空间与页表.md`）的设计里，内核部分同样是按需映射的，这就带来一个严重问题。设两个核心 A 和 B 都使用 Root vspace 修改内核页映射：A 试图取消某个页面的映射并向 B 发 IPI，但 B 正关着中断并使用该页——TLB flush 被推迟，B 可能继续使用旧映射；若该页又被重新分配出去，B 就会读写到内容已被改写的页面，却难以定位原因。
 
 这在内核侧非常危险：若依赖跨核 IPI 刷内核 TLB，`cli` 关中断会让 IPI 被推迟。因此内核路径选择不发 IPI、只刷本地——`include/arch/x86_64/sync/tlb.h` 里的 `arch_tlb_invalidate_kernel_page_all_core` 实际只清理本核 TLB，其安全性转而建立在页面分配模型之上。多核需要清理 TLB 时，涉及的页面分为以下几类：
 
@@ -171,7 +171,7 @@ AArch64 用 **`TLBI`** 系列指令做 TLB 维护，参数里常带 ASID 与页�
 
 正常运行两位置零即可——单页粒度的非 cache 由 PCD/PWT/PAT 决定，不需要动 CR0。
 
-**PAT（Page Attribute Table）**（SDM 卷三 §11.12）：8 项寄存器，把 PTE 的 `PAT|PCD|PWT` 三位（共 8 种组合）映射到上表的具体内存类型。v0.1 **未编程 PAT**——上电默认布局足以让 `PCD|PWT=11` 解析为 UC、`00` 解析为 WB，覆盖 MMIO 与普通 RAM 两类需求；后续若要在大块 RAM 上开 WC（例如图形缓冲、大 DMA 描述符），再写 IA32_PAT 并同步到所有核。本仓库页表篇 §4.5 已写明粗粒度策略。
+**PAT（Page Attribute Table）**（SDM 卷三 §11.12）：8 项寄存器，把 PTE 的 `PAT|PCD|PWT` 三位（共 8 种组合）映射到上表的具体内存类型。v0.1 **未编程 PAT**——上电默认布局足以让 `PCD|PWT=11` 解析为 UC、`00-架构与源码布局.md` 解析为 WB，覆盖 MMIO 与普通 RAM 两类需求；后续若要在大块 RAM 上开 WC（例如图形缓冲、大 DMA 描述符），再写 IA32_PAT 并同步到所有核。本仓库页表篇 §4.5 已写明粗粒度策略。
 
 **缓存拓扑发现：CPUID.02H**（SDM 卷二 CPUID）：EAX=2 一次性枚举 cache / TLB 描述符，调用方按 Intel 公布的查找表解码一字节（例如 `0x0E` = 24 KiB L1 数据 cache、6-way、行 64 B）。core 目前不依赖这些信息——buddy / map_handler 不做 cache-aware 着色；记在这里，供以后做 cache 优化或自修改代码路径时参考。
 
@@ -262,7 +262,7 @@ ARM 屏障按 **共享域** × **访问类型** 两维取参数。共享域四�
 
 ## 7. 公开 API
 
-接口分布在：`include/rendezvos/mm/tlb_cpu_mask.h`，以及可移植名字下的 arch 实现 `include/arch/{x86_64,aarch64}/sync/tlb.h`（x86 另有 `arch_smp_flush_*` / `arch_smp_flush_tlb_init` 在 `arch/x86_64/mm/arch_smp_tlb_flush.c`）。`vs_tlb_cpu_mask_*` inline 在 `vmm.h`（与 `VSpace` 生命周期相关，语义见本篇）。IPI 握手细节见 `30` 与 `32`。无通用 dcache/icache API。
+接口分布在：`include/rendezvos/mm/tlb_cpu_mask.h`，以及可移植名字下的 arch 实现 `include/arch/{x86_64,aarch64}/sync/tlb.h`（x86 另有 `arch_smp_flush_*` / `arch_smp_flush_tlb_init` 在 `arch/x86_64/mm/arch_smp_tlb_flush.c`）。`vs_tlb_cpu_mask_*` inline 在 `vmm.h`（与 `VSpace` 生命周期相关，语义见本篇）。IPI 握手细节见 `30-软IPI机制.md` 与 `32-TLB_shootdown与跨核一致性.md`。无通用 dcache/icache API。
 
 ### 7.1 编排顺序（与调用方约定）
 
@@ -347,7 +347,7 @@ void arch_smp_flush_tlb_init(void);
 
 ## 11. 变更记录
 
-- 2026-11-19：底子重评批次——篇首/`30`/`32` 引用缩号；§4.3 标题改为「内核页为何不发 IPI」；§7 opener 拼回；AS→地址空间；online→在线。
+- 2026-11-19：底子重评批次——篇首/`30-软IPI机制.md`/`32-TLB_shootdown与跨核一致性.md` 引用缩号；§4.3 标题改为「内核页为何不发 IPI」；§7 opener 拼回；AS→地址空间；online→在线。
 - 2026-11-15：Maintainer 复审前可读性通读：§4.3 整节重写——去掉「巨大的bug / 神秘学的bug / 无所谓啊 / 也没啥问题」等口语残留，`percpu`→per-CPU、`map handler`→`map_handler`，并核对 `arch_tlb_invalidate_kernel_page_all_core` 确为本核 `invlpg`；§4.2 标题「新 vs 改」→「首次映射与改 / 拆」；§4.1/§8/§10 裸篇号引用（07、下篇、30 / 32）补全篇名。技术内容未动。
 - 2026-10-31：§6.1 用户页：槽位路径 + `have_mapped(pin)` / `pmm_free` unpin；去掉「待查 ref」TODO。
 - 2026-10-25：全文语言整理：回退 2026-10-04 机械替换造成的生硬（抄录→抄、如何发送→怎么发出去、约束拆除→卡着拆除、位于→在、执行到→走到、失效旧项→把旧项作废、随意添加的装饰→随手加的装饰等），并补顺几处省略过紧的句子，技术内容未动。

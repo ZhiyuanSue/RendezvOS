@@ -4,7 +4,7 @@ v0.1 · 2026-09-27
 
 本篇覆盖：`arch/x86_64/PIC/PIC.c`、`LocalAPIC.c`、`IOAPIC.c`、`PIT.c`、`IRQ.c`、`include/arch/x86_64/PIC/*.h`，以及与 `arch_start_core` / timer / IPI 的衔接。
 
-软件 id / `register_irq_handler` 见 IRQ 篇（`25`）；IDT / `trap_handler` 见 Trap 篇（`23`）；软 IPI 协议见软 IPI 篇（`30`）；MADT 枚举见 ACPI 篇（`35`）；timer 校准语义见时间子系统篇（`33`）。
+软件 id / `register_irq_handler` 见 IRQ 篇（`25-IRQ向量分配与处理.md`）；IDT / `trap_handler` 见 Trap 篇（`23-Trap抽象与分类.md`）；软 IPI 协议见软 IPI 篇（`30-软IPI机制.md`）；MADT 枚举见 ACPI 篇（`35-ACPI与MADT-x86_64.md`）；timer 校准语义见时间子系统篇（`33-时间与定时器子系统.md`）。
 
 **官方手册：** Intel SDM Vol.3 — *Interrupt and Exception Handling*、*Advanced Programmable Interrupt Controller (APIC)*、*8259A* 兼容说明；PC 平台惯例见 ACPI MADT。本篇用手册概念对照本仓库**实际访问**的寄存器与时序。
 
@@ -47,7 +47,7 @@ PC 上外设不会直接进入内核入口。CPU 侧永远是：
 ### 1.3 OS 对硬件的硬依赖（读代码前先对齐）
 
 1. **IDT 必须先装好**（`lidt`），向量 gate 指向 `trap_N`；否则开中断即崩溃。
-2. **写进 LVT / SVR / ICR / PIC ICW2 的向量号**，必须已在软件侧挂好 handler（timer / IPI：`register_irq_handler(id, this_cpu, …)`，见 `25`），或可进 unknown。
+2. **写进 LVT / SVR / ICR / PIC ICW2 的向量号**，必须已在软件侧挂好 handler（timer / IPI：`register_irq_handler(id, this_cpu, …)`，见 `25-IRQ向量分配与处理.md`），或可进 unknown。
 3. **处理完设备 / timer / IPI 类中断后要 EOI**（带 `IRQ_NEED_EOI` 时 `APIC_EOI` 写 0，或 `PIC_EOI`）；漏 EOI 会卡住同级 / level 线。
 4. **用 APIC 就必须 mask 掉 8259**，否则双路径乱投递。
 5. **xAPIC 须把 `0xFEE00000` 映成 UNCACHED**（`map_LAPIC`）；缓存一致性错误会读到脏寄存器镜像。
@@ -206,7 +206,7 @@ MSR **`IA32_APIC_BASE`**（SDM 10.4.3）：
 | bit 11 | APIC 全局使能 |
 | bit 12–MAXPHYADDR | MMIO 基址（xAPIC） |
 
-组合：`11`=x2APIC，`10`=仅 xAPIC，`00`=关掉，`01` 非法。探测：CPUID.01H EDX bit 9 = 有 Local APIC；ECX bit 21 = 有 x2APIC。
+组合：`11-TLB与缓存一致性.md`=x2APIC，`10-page_slice稀疏页索引.md`=仅 xAPIC，`00-架构与源码布局.md`=关掉，`01-构建与链接.md` 非法。探测：CPUID.01H EDX bit 9 = 有 Local APIC；ECX bit 21 = 有 x2APIC。
 
 | 模式 | 怎么访问 | 基址 |
 |------|----------|------|
@@ -284,7 +284,7 @@ x2APIC 把 xAPIC 的 4 KiB MMIO 窗口整体搬到 MSR 空间，索引 = `0x800 
 | **[14] Remote IRR** | 电平 + Fixed 时用；表示远端还认为这条线 active。 |
 | **[15] Trigger** | LINT：0 边沿 / 1 电平（仅 Fixed）。NMI/SMI/INIT 一律当边沿；ExtINT 一律当电平；**Timer / Error 恒为边沿**。 |
 | **[16] Mask** | 1 = 不接收。复位默认 1；PERF 溢出处理完硬件常会**自动再 mask**，要继续听得软件清。 |
-| **[18:17] Timer Mode** | 仅 LVT Timer：`00` one-shot，`01` periodic，`10` TSC-deadline，`11` 保留。 |
+| **[18:17] Timer Mode** | 仅 LVT Timer：`00-架构与源码布局.md` one-shot，`01-构建与链接.md` periodic，`10-page_slice稀疏页索引.md` TSC-deadline，`11-TLB与缓存一致性.md` 保留。 |
 
 **OS 依赖：** 改 LVT 向量前，软件 `register_irq_handler` 必须已挂好；否则第一次 tick 就 panic。向量不要写进 0–15。
 
@@ -298,7 +298,7 @@ x2APIC 把 xAPIC 的 4 KiB MMIO 窗口整体搬到 MSR 空间，索引 = `0x800 
 
 时钟源：APIC timer 的计数时钟来自 **CPU bus / APIC timer clock**（具体倍频因平台而异），**不是** TSC。所以换机器必须校准。`APIC_timer_calibration` 用 **8254 PIT** 作时间基准（`PIT_mdelay`），测「APIC 计数走过多少 ≈ 真实多少时间」；TSC-deadline 路径另用 `TSC_timer_calibration`。HPET 未接入。
 
-**ARAT（Always Running APIC Timer，CPUID.06H:EAX bit 2）：** 部分 CPU 在深 C-state 时仍让 APIC timer 运行；无 ARAT 时 bus-clock timer 可能随核睡眠停止，唤醒后校准值不可靠。代码有 `ARAT_support()` 探测，**当前校准 / 选型路径未据此分支**——文档记能力位；真正选型仍看 TSC-Deadline / ONE_SHOT（见 `33`）。
+**ARAT（Always Running APIC Timer，CPUID.06H:EAX bit 2）：** 部分 CPU 在深 C-state 时仍让 APIC timer 运行；无 ARAT 时 bus-clock timer 可能随核睡眠停止，唤醒后校准值不可靠。代码有 `ARAT_support()` 探测，**当前校准 / 选型路径未据此分支**——文档记能力位；真正选型仍看 TSC-Deadline / ONE_SHOT（见 `33-时间与定时器子系统.md`）。
 
 TSC-deadline 模式：计数走 CPU 时钟而不是 APIC bus，一般更稳。步骤是：确认 CPUID.01H ECX.TSC_Deadline 后，把 LVT Timer 选成 TSC 模式，再写 MSR **`IA32_TSC_DEADLINE`（`6E0H`）**；到期仍经 LVT Timer 向量进 IDT，下次再写 deadline。不走 INIT_CNT / CURR_CNT。写 deadline 之前若模式还没切到 TSC，行为未定义——代码路径里要先改 LVT 再写 MSR。
 
@@ -319,7 +319,7 @@ TSC-deadline 模式：计数走 CPU 时钟而不是 APIC bus，一般更稳。�
     重装值（写 0x40/41/42）
 ```
 
-`PIT_mdelay(ms)` 用 **mode 0**（`init_8254_one_shot`）忙等：写入 `ms` 对应的 tick 数后，发锁存命令字（`init_8254_read`：选中 counter 0 + RW=`00` 即 latch），读回计数值并按**有符号 16 位**解释判停——8254 在 mode 0 到 0 之后仍会继续往下倒数（回卷到 `0xFFFF` 区），读回值落进 i16 负区间即表示到点。计数值只有 16 位、初始值又必须落在正半区（<32768，约 27 ms），所以单次调用实际封顶 **~25 ms**（代码注释亦注明），更长的延时由调用方多次累加。mode 2（rate generator）的编程只在 `init_8254_cyclical` 里出现，**不在** `PIT_mdelay` / 校准路径上。校准逻辑：在 `PIT_mdelay(已知 ms)` 期间读 APIC CURR_CNT 前后差值，反推 APIC timer 实际频率。
+`PIT_mdelay(ms)` 用 **mode 0**（`init_8254_one_shot`）忙等：写入 `ms` 对应的 tick 数后，发锁存命令字（`init_8254_read`：选中 counter 0 + RW=`00-架构与源码布局.md` 即 latch），读回计数值并按**有符号 16 位**解释判停——8254 在 mode 0 到 0 之后仍会继续往下倒数（回卷到 `0xFFFF` 区），读回值落进 i16 负区间即表示到点。计数值只有 16 位、初始值又必须落在正半区（<32768，约 27 ms），所以单次调用实际封顶 **~25 ms**（代码注释亦注明），更长的延时由调用方多次累加。mode 2（rate generator）的编程只在 `init_8254_cyclical` 里出现，**不在** `PIT_mdelay` / 校准路径上。校准逻辑：在 `PIT_mdelay(已知 ms)` 期间读 APIC CURR_CNT 前后差值，反推 APIC timer 实际频率。
 
 #### HPET 定时原理（未接入，仅背景）
 
@@ -374,7 +374,7 @@ IRR 和 ISR 都是 **256 位**，向量 0–15 保留（CPU 异常，不是 APIC
 
 本仓库：`APIC_EOI()` 即 `APIC_WR_REG(EOI, …, 0)`；由 `arch_local_eoi` 在 `IRQ_NEED_EOI` 时调用。**不要**在 ISR 里提前 EOI 再做长任务（除非明确理解电平触发会立刻重入）。
 
-换核 / 拆线时，`irq_disable` 在 IOAPIC mask 之后用 `arch_irq_local_pending` 读本核该向量的 **IRR|ISR**（经 `lapic_get_vec`），确认不会再进 handler 才返回（见 `25` §1.7）。
+换核 / 拆线时，`irq_disable` 在 IOAPIC mask 之后用 `arch_irq_local_pending` 读本核该向量的 **IRR|ISR**（经 `lapic_get_vec`），确认不会再进 handler 才返回（见 `25-IRQ向量分配与处理.md` §1.7）。
 
 ### 5.7 ICR — 核间中断（SDM：Interrupt Command Register）
 
@@ -396,7 +396,7 @@ IPI / AP 启动（INIT-SIPI）都走 ICR：
 
 **x2APIC：** 单次 `wrmsr` 64-bit ICR；无 Delivery Status 轮询。注释提醒：部分路径 `edx` 强制 0 时定向目的地可疑——已知缺口。
 
-**OS 依赖：** `0x30` 必须已 register；软 IPI 协议（generation / pending）见软 IPI 篇（`30`）——本篇只提供「将向量发送到目标核」的门铃。
+**OS 依赖：** `0x30` 必须已 register；软 IPI 协议（generation / pending）见软 IPI 篇（`30-软IPI机制.md`）——本篇只提供「将向量发送到目标核」的门铃。
 
 除 ICR 外，逻辑目的地还看 **LDR（Local Destination）** 和 **DFR（Destination Format）**（仅 xAPIC 有完整可编程语义）：
 
@@ -406,13 +406,13 @@ IPI / AP 启动（INIT-SIPI）都走 ICR：
 
 写 ICR **低 32 位**的那一下，IPI 才上系统总线。SIPI（Delivery Mode `0b110`）失败**不会**自动重发，其它消息会。
 
-**启核（INIT–SIPI）和运行时软 IPI 不是同一回事：** AP 起来时通常先发 INIT（让目标进 wait-for-SIPI），再发一两次 STARTUP/SIPI（向量字段里带的是启动页框号，不是普通 IDT 向量）。运行期门铃则是 Delivery=Fixed、向量=`0x30`。两者都走 ICR，但字段组合完全不同——SMP 启核细节见 SMP 篇（`28`），本篇不展开时序。
+**启核（INIT–SIPI）和运行时软 IPI 不是同一回事：** AP 起来时通常先发 INIT（让目标进 wait-for-SIPI），再发一两次 STARTUP/SIPI（向量字段里带的是启动页框号，不是普通 IDT 向量）。运行期门铃则是 Delivery=Fixed、向量=`0x30`。两者都走 ICR，但字段组合完全不同——SMP 启核细节见 SMP 篇（`28-SMP启动与处理器拓扑.md`），本篇不展开时序。
 
 ### 5.8 DFR / LDR 与 x2APIC 的差异
 
 `reset_xAPIC_LDR`：DFR=全 1（flat），LDR 低位置 bit0。x2APIC：**没有 DFR**（`80EH` 不存在）；ICR 合成一个 64 位 MSR，**去掉 Delivery Status**（手册说从此不必再读 ICR 等发送完成）；另有 **Self IPI**（只写向量，等价于 ICR「打给自己」）。LDR 扩成 32 位（高 16 cluster、低 16 logical ID）。必须先进入 x2APIC 模式才能用 MSR 访问这组寄存器，否则会出错。
 
-**MSI（Message Signaled Interrupt）** 不走引脚：软件把一对「message address / message data」写进设备配置空间的 MSI capability，设备要发中断时直接**向那个地址发起一次内存写**——落在总线上的就是一发 APIC 写，相当于「设备自己组装并投递一条 LAPIC 中断消息」，向量、目标、触发方式都编码在这两个 32 位字里（xAPIC 形态下 message address 形如 `0xFEExxxxx`，与 LAPIC 所在区间同段）。软件侧的 irq_space 模型与扩展点预留见 `25` §1.9；PCI 配置空间编程属于 PCI，不在本篇，本仓库也尚未接入这条路径。
+**MSI（Message Signaled Interrupt）** 不走引脚：软件把一对「message address / message data」写进设备配置空间的 MSI capability，设备要发中断时直接**向那个地址发起一次内存写**——落在总线上的就是一发 APIC 写，相当于「设备自己组装并投递一条 LAPIC 中断消息」，向量、目标、触发方式都编码在这两个 32 位字里（xAPIC 形态下 message address 形如 `0xFEExxxxx`，与 LAPIC 所在区间同段）。软件侧的 irq_space 模型与扩展点预留见 `25-IRQ向量分配与处理.md` §1.9；PCI 配置空间编程属于 PCI，不在本篇，本仓库也尚未接入这条路径。
 
 ---
 
@@ -492,9 +492,9 @@ EOI 分支差异（实现细节）：PIC 路径 `PIC_EOI(向量号)` 区分主/�
 
 接口分布在：x86_64 中断控制器原语——`init_irq` / `arch_irq_type`、8259（`PIC.h`）、Local APIC（`LocalAPIC.h`：SVR / EOI / ICR / LVT timer 后端）、I/O APIC 发现（`IOAPIC.h`）、8254 PIT（`PIT.h`）。说明改写自上述头文件 Doxygen（已与 `.c` 核对）。
 
-**本篇不涉及：** `irq_global_*` / `register_irq_handler` / `trap_handler`（见 `25`）；`arch_local_eoi` 声明与分发约定（见 `25`；实现调本篇 `PIC_EOI` / `APIC_EOI`）；可移植 `rendezvos_time_*`（见 `33`）；软 IPI 协议（见 `30`）；MADT 枚举（见 `35`）。
+**本篇不涉及：** `irq_global_*` / `register_irq_handler` / `trap_handler`（见 `25-IRQ向量分配与处理.md`）；`arch_local_eoi` 声明与分发约定（见 `25-IRQ向量分配与处理.md`；实现调本篇 `PIC_EOI` / `APIC_EOI`）；可移植 `rendezvos_time_*`（见 `33-时间与定时器子系统.md`）；软 IPI 协议（见 `30-软IPI机制.md`）；MADT 枚举（见 `35-ACPI与MADT-x86_64.md`）。
 
-上层设备应走 `25` 的 alloc+register，**勿**假定 IOAPIC 路由。
+上层设备应走 `25-IRQ向量分配与处理.md` 的 alloc+register，**勿**假定 IOAPIC 路由。
 
 ### 9.1 编排顺序（调用方须遵守）
 
@@ -503,7 +503,7 @@ EOI 分支差异（实现细节）：PIC 路径 `PIC_EOI(向量号)` 区分主/�
 | 每核 | `init_interrupt`（装 IDT）之后 **`init_irq`**，再 `smp_ipi_init`，……然后 `sti`，APIC 路径上再经 **`rendezvos_time_init` 调到 `software_enable_APIC`** |
 | APIC 选型 | 见 `init_irq`：x2APIC / xAPIC（基址须 `== 0xFEE00000`）/ PIC |
 | Timer ISR 就绪 | 先 `register_irq_handler(ARCH_IRQ_ID_TIMER, this_cpu, …)`，再写 LVT Timer / 开 SVR |
-| IPI | 先 register `0x30`，再 `APIC_send_IPI`（协议见 `30`） |
+| IPI | 先 register `0x30`，再 `APIC_send_IPI`（协议见 `30-软IPI机制.md`） |
 | EOI | 由 `trap_handler` 经 `arch_local_eoi` 调本篇；ISR 内勿自写 |
 
 ### 9.2 选型
@@ -556,7 +556,7 @@ void APIC_send_IPI(u8 dest, u32 dest_sh, u32 trig, u32 level,
 | `APIC_EOI` | EOI 寄存器写 0（不带向量）。 |
 | `APIC_send_IPI` | xAPIC：**先 HIGH 后 LOW**；x2APIC：一次 MSR。软 IPI 向量=`0x30`。`dest` 参数为 **u8**（ICR[63:56]）；x2APIC 32-bit dest 的 [55:32] 保持 0。 |
 
-Timer 后端（`APIC_timer_calibration` / `init` / `read` / `reset` / `hz`、`TSC_timer_calibration`）：供 `arch_init_timer` 使用；可移植语义见 `33`。校准用 `PIT_mdelay`。
+Timer 后端（`APIC_timer_calibration` / `init` / `read` / `reset` / `hz`、`TSC_timer_calibration`）：供 `arch_init_timer` 使用；可移植语义见 `33-时间与定时器子系统.md`。校准用 `PIT_mdelay`。
 
 ### 9.5 8254 PIT
 
@@ -685,12 +685,12 @@ LAPIC 的 **TMR** 会记住该向量当时是边沿还是电平；电平向量�
 3. **组消息** — Vector、Delivery/Destination Mode、Destination、Trigger、Polarity。
 4. **APIC 总线发出** — 只有匹配的 Local APIC 接受。
 5. **LAPIC** — 入 IRR，按向量优先级与 ISR 比较，决定是否打断 CPU（§5）。
-6. **CPU** — 查 IDT → `trap_handler`（Trap 篇 / `25`）。
+6. **CPU** — 查 IDT → `trap_handler`（Trap 篇 / `25-IRQ向量分配与处理.md`）。
 7. **EOI** — 边沿：对 LAPIC EOI 即可。电平：CPU→LAPIC EOI →（常）广播到 IOAPIC → 清 Remote IRR → 再采样；线仍有效则可能再次投递（共享 IRQ 场景）。
 
 #### 9.6.6 OS 如何发现 IOAPIC：MADT Type=1
 
-ACPI **MADT** 中 Type=1 描述一颗 IOAPIC（字段见 `35` §4.2 表；本仓库 **已消费**）：
+ACPI **MADT** 中 Type=1 描述一颗 IOAPIC（字段见 `35-ACPI与MADT-x86_64.md` §4.2 表；本仓库 **已消费**）：
 
 | 字段 | 说明 |
 |------|------|
@@ -751,16 +751,16 @@ Linux 在 `arch/x86/kernel/apic/io_apic.c` 用 `ioapics[]` 记每颗实例的引
 
 ## 13. 变更记录
 
-- 2026-11-19：底子首评跟进——§3「每核」回指由误写的 §6.1（向量表）改为 §8.1（每核时序）。同日首评：篇首缩号；§5.7 软 IPI 误指「SMP 篇」改为软 IPI 篇（`30`）；§9 opener。
-- 2026-11-15：可读性通读。§5.1 VERSION 残字 `0xH`→`0FH`（82489DX 版本号）；§5.7 启核时序指向由误写的「启动 / PSCI 对照的 x86 篇」改正为 SMP 篇（`28`）；§8.3 末段与 `---` 间补空行（避免整段被渲染成标题）；§9.6「无 IOAPIC 合法」补顺为「无 IOAPIC 也合法」。事实层沿用 11-14 核验，未再改动。
-- 2026-11-14：全文对照代码精读（`PIC.c` / `LocalAPIC.c` / `IOAPIC.c` / `IRQ.c` / `PIT.c` / `trap.c` / `start_arch.c` / `time.c`）——§1.4、§4、§5.2、§5.6、§5.7、§8.2、§9.6.8 与实现核对一致；§5.4 修正 `PIT_mdelay` 模式与判停方式（mode 0 单次，到 0 后回卷继续倒数，以读回计数值的 i16 负值判停，单次 ≤ ~25 ms；mode 2 仅存在于 `init_8254_cyclical`）；§9.6.3 补 `ioapic_configure_rte` 拒绝 vector <16、先高半后低半写序、写后保持 Mask=1；§9.6.8 补 MADT 无 Type=1 时静默成功、Version 门槛失败经 `arch_start_platform` 上抛为启动失败（无 PIC 回退）；§5.8 MSI 段扩写为「设备发起内存写」模型并指向 `25` §1.9；§5.5 / §12 补 `lapic_set_vec` / `lapic_clear_vec` 仅允许 0–127 位；§8.1 补 `arch_smp_flush_tlb_init` 位置；本节重新按日期严格倒序排列。
+- 2026-11-19：底子首评跟进——§3「每核」回指由误写的 §6.1（向量表）改为 §8.1（每核时序）。同日首评：篇首缩号；§5.7 软 IPI 误指「SMP 篇」改为软 IPI 篇（`30-软IPI机制.md`）；§9 opener。
+- 2026-11-15：可读性通读。§5.1 VERSION 残字 `0xH`→`0FH`（82489DX 版本号）；§5.7 启核时序指向由误写的「启动 / PSCI 对照的 x86 篇」改正为 SMP 篇（`28-SMP启动与处理器拓扑.md`）；§8.3 末段与 `---` 间补空行（避免整段被渲染成标题）；§9.6「无 IOAPIC 合法」补顺为「无 IOAPIC 也合法」。事实层沿用 11-14 核验，未再改动。
+- 2026-11-14：全文对照代码精读（`PIC.c` / `LocalAPIC.c` / `IOAPIC.c` / `IRQ.c` / `PIT.c` / `trap.c` / `start_arch.c` / `time.c`）——§1.4、§4、§5.2、§5.6、§5.7、§8.2、§9.6.8 与实现核对一致；§5.4 修正 `PIT_mdelay` 模式与判停方式（mode 0 单次，到 0 后回卷继续倒数，以读回计数值的 i16 负值判停，单次 ≤ ~25 ms；mode 2 仅存在于 `init_8254_cyclical`）；§9.6.3 补 `ioapic_configure_rte` 拒绝 vector <16、先高半后低半写序、写后保持 Mask=1；§9.6.8 补 MADT 无 Type=1 时静默成功、Version 门槛失败经 `arch_start_platform` 上抛为启动失败（无 PIC 回退）；§5.8 MSI 段扩写为「设备发起内存写」模型并指向 `25-IRQ向量分配与处理.md` §1.9；§5.5 / §12 补 `lapic_set_vec` / `lapic_clear_vec` 仅允许 0–127 位；§8.1 补 `arch_smp_flush_tlb_init` 位置；本节重新按日期严格倒序排列。
 - 2026-11-13：正文 `entries[]` → `priv[]`；其余见同日条目。
 - 2026-11-13：删 `PIC/gsi.h`，`gsi_id_t` 并入 `IOAPIC.h`；`arch_global_irq` 去掉 `pin`（GSI=dense 下标反推；保留 `ioapic *` 供 EOI）；§7 / §9.6 与 `irq_space_ioapic_register` 对齐；正文 `arch_eoi_irq` → `arch_local_eoi`。
-- 2026-11-07：§5.6 补 `arch_irq_local_pending`（IRR|ISR）与 `irq_disable` 排空的关系（见 `25` §1.7）。
+- 2026-11-07：§5.6 补 `arch_irq_local_pending`（IRR|ISR）与 `irq_disable` 排空的关系（见 `25-IRQ向量分配与处理.md` §1.7）。
 - 2026-11-01：`ioapic_eoi(ioapic, vector)` 定点写；`arch_global_irq` 存 `ioapic *`（非 id），`arch_eoi_irq` 经 irq_space 直接 EOI（无按 id 扫描）。正文去掉 Job (B) 措辞。
 - 2026-10-31：§9.6.4.1 记录电平误投递/IRR 粘住 quirk 与 Linux `ack_ioapic_quirk_irq`（本仓库不实现）；`ioapic_init` **拒绝** Version `< 0x20`；补 MMIO `+0x40` EOI 与版本表。
 - 2026-10-31：RTE/`ioapic_configure`·mask·unmask·EOI；trap `irq_enable`/`disable`；`arch_eoi_irq` 定向 EOI；init mask 全脚；`irq_global_free` 保留 pin 拓扑。缺口收窄为 ISO/MSI/设备接线。
-- 2026-10-29：对齐 bring-up——MMIO 恒等 ensure、GSI 表、`irq_global_vector_alloc`；明确缺口仍是 RTE/ISO/mask/设备路由；修正「解析为空操作 / 空壳」表述；交叉引用 ppn0/`ensure`（`06`/`07`）。
+- 2026-10-29：对齐 bring-up——MMIO 恒等 ensure、GSI 表、`irq_global_vector_alloc`；明确缺口仍是 RTE/ISO/mask/设备路由；修正「解析为空操作 / 空壳」表述；交叉引用 ppn0/`ensure`（`06-物理内存与Buddy分配器.md`/`07-虚拟地址空间与页表.md`）。
 - 2026-10-28：允许无 IOAPIC（MADT / `ioapic_init` / `init_interrupt` / `alloc(0)`）。
 - 2026-10-27：`gsi_id_t`（`PIC/gsi.h`）；irq_space 侧 `local_irq_id_t` / `global_irq_id_t`。收敛层级——平台只调 `ioapic_init`。
 - 2026-10-26：IOAPIC 启动接入——MADT 两轮 + `ioapic_probe_all` / `ioapic_nr_gsi` / `ioapic_setup_global_irq`；§9.6.8 改为 ensure + 已实现步骤。
@@ -778,7 +778,7 @@ Linux 在 `arch/x86/kernel/apic/io_apic.c` 用 `ioapics[]` 记每颗实例的引
 - 2026-10-01：对照 `docs/old/interrupt.md` 扩写 Local APIC 寄存器组——APIC ID / VERSION、TPR·PPR 与接收门槛、IRR/ISR 双缓冲与嵌套、TMR 与 EOI 广播、SVR spurious 成因、ICR 逻辑目的地 / SIPI、x2APIC 与 xAPIC 的寄存器差异；补边沿/电平与 PIC/APIC 的衔接。
 - 2026-09-27：中文措辞整理——「软件使能 (soft-enable)」对照；bring-up→启核；弱化「真源 / 契约」等生硬堆砌用语；IOAPIC 空操作标 (no-op)。
 - 2026-09-26：对照 `IRQ.h` / `IRQ.c`——写清 xAPIC MADT/map 失败时 **type 已是 xAPIC、PIC 已 disable、无回退**；从片 `enable_PIC_IRQ` 不补 unmask 主 IRQ2。
-- 2026-09-26：§9 全文审阅——补 IRQ/PIC/LocalAPIC/PIT Doxygen；写清 init_irq→SVR 时序、ICR 先高后低、从片 EOI 缺口；划清 vs `25`/`30`/`33`；IOAPIC 明确无 API。
+- 2026-09-26：§9 全文审阅——补 IRQ/PIC/LocalAPIC/PIT Doxygen；写清 init_irq→SVR 时序、ICR 先高后低、从片 EOI 缺口；划清 vs `25-IRQ向量分配与处理.md`/`30-软IPI机制.md`/`33-时间与定时器子系统.md`；IOAPIC 明确无 API。
 - 2026-09-25：对照源码补遗漏——`APIC.h` 伞头、`rtc.c` 非 IRQ、`arch_eoi_irq` PIC/APIC 差异；大幅扩写 8259/LAPIC 硬件与 OS 依赖。
 - 2026-08-29：整篇重做——三选一；init 时序；IOAPIC 空壳；缺口表。
 - 2026-08-27：初稿（偏浅）。

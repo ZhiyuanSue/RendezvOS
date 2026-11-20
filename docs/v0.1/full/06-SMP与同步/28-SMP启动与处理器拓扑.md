@@ -4,7 +4,7 @@ v0.1 · 2026-10-04
 
 本篇对应的源码是：`kernel/smp/smp.c`、`include/rendezvos/smp/smp.h`、`include/rendezvos/smp/cpu_id.h`、`include/rendezvos/cpu_topology.h`，以及 `arch/x86_64/boot/smp.c`、`arch/aarch64/boot/smp.c`。
 
-启动总览里，最先起来的核叫 **BSP**，其余后来被叫醒的核叫 **AP**。总览写过：BSP 在 `cmain` 末尾才调 `start_smp`；AP 从汇编入口进 `start_secondary_cpu`。`ap_start` / `ap_entry` 本身怎样从实模式或关着 MMU 走到能跑 C，见平台启动篇（`04`/`05`）。本篇接着讲：**怎样把其它核叫醒，叫醒之后 BSP 与 AP 各自还要补什么，以及 `cpu_id` 在 x86_64 / aarch64 上怎么编号。**
+启动总览里，最先起来的核叫 **BSP**，其余后来被叫醒的核叫 **AP**。总览写过：BSP 在 `cmain` 末尾才调 `start_smp`；AP 从汇编入口进 `start_secondary_cpu`。`ap_start` / `ap_entry` 本身怎样从实模式或关着 MMU 走到能跑 C，见平台启动篇（`04-平台启动-x86_64.md`/`05-平台启动-aarch64.md`）。本篇接着讲：**怎样把其它核叫醒，叫醒之后 BSP 与 AP 各自还要补什么，以及 `cpu_id` 在 x86_64 / aarch64 上怎么编号。**
 
 建议读法：§1 看目的；§4 看本篇管哪些状态与不变量；§6 先硬件背景，再 `start_smp`、叫醒、最后 AP 进 C；§7 查接口。
 
@@ -58,7 +58,7 @@ flowchart TB
 
 ## 3. 分层与调用方
 
-整条 `cmain` 顺序、BSP/AP 谁做「全机一次 / 每核一次」、initcall 早晚差与 `DEFINE_INIT` 里按 `cpu_number` 分支——这些在启动总览（`02`）和模块初始化篇（`03`）已经讲过，本篇不重复。
+整条 `cmain` 顺序、BSP/AP 谁做「全机一次 / 每核一次」、initcall 早晚差与 `DEFINE_INIT` 里按 `cpu_number` 分支——这些在启动总览（`02-启动流程总览.md`）和模块初始化篇（`03-模块初始化与内核入口.md`）已经讲过，本篇不重复。
 
 本篇只切出多核唤醒这一段里的两层：
 
@@ -198,7 +198,7 @@ BSP 上已在 boot 线程跑，`do_init_call` 和 `"kernel_port"` 已做过。�
 
 ### 6.4 x86_64：`arch_start_smp` 怎么做
 
-背景见 §6.1；ICR 字段见 `26` §5.7。`ap_start` 为何必须在低 1 MiB，见 x86 平台篇。本实现将AP启动代码拷到物理 **`0x1000`**。
+背景见 §6.1；ICR 字段见 `26-平台中断-x86_64-APIC与PIC.md` §5.7。`ap_start` 为何必须在低 1 MiB，见 x86 平台篇。本实现将AP启动代码拷到物理 **`0x1000`**。
 
 SIPI 只告诉AP「从哪一页开始取指」（`0x1000`），无法告知AP它使用的栈顶和软件编号。这两项放在和 BSP 启动时同一块 `setup_info` 里：每叫醒一颗核之前，BSP 先改写，AP 的 `ap_start` 进 C 之前使用分配给自己的栈，`start_secondary_cpu` 再读 `cpu_id`。同一时刻只有一颗 AP 视这两字段有效，所以必须一颗一颗来。
 
@@ -223,7 +223,7 @@ sequenceDiagram
 
 ### 6.5 aarch64：`arch_start_smp` 怎么做
 
-背景见 §6.2；function id / SMC·HVC 见 `39`。`ap_entry` 的汇编启动到`start_secondary_cpu`之前的内容，见 aarch64 平台篇。
+背景见 §6.2；function id / SMC·HVC 见 `39-PSCI与处理器电源-aarch64.md`。`ap_entry` 的汇编启动到`start_secondary_cpu`之前的内容，见 aarch64 平台篇。
 
 `setup_info` 同样是 BSP 和 AP 共用的那一块。栈顶仍由 BSP 在 `cpu_on` 之前写入 `ap_boot_stack_ptr`。软件 `cpu_id` 不走结构体由 BSP 直写，而是 `cpu_on` 的第三个参数（当时的 `NR_CPU`），`ap_entry` 把入口寄存器 `x0` 存进 `setup_info.cpu_id`。这也必须一颗一颗来。这和 Linux arm64「AP 入口 `x0–x3` 为 0」不同。
 
@@ -264,7 +264,7 @@ sequenceDiagram
 
 成功路径上，`init_proc` 之后空转等 `all_enabled`。BSP 还在串行 SIPI / `cpu_on`，不能在这里先跑 AP 的 `do_init_call`。
 
-BSP 把 `all_enabled` 写成试完之后，AP 才 `do_init_call`（意图见 `03`：BSP 那一次一定早于 AP 的那一次），可选 `RENDEZVOS_TEST`，再进 `kernel_handle_msg`。可选 `HELLO` 在函数最前面，与总览一致。
+BSP 把 `all_enabled` 写成试完之后，AP 才 `do_init_call`（意图见 `03-模块初始化与内核入口.md`：BSP 那一次一定早于 AP 的那一次），可选 `RENDEZVOS_TEST`，再进 `kernel_handle_msg`。可选 `HELLO` 在函数最前面，与总览一致。
 
 ---
 
@@ -272,7 +272,7 @@ BSP 把 `all_enabled` 写成试完之后，AP 才 `do_init_call`（意图见 `03
 
 接口分布在：`smp.h` / `cpu_id.h` 里的编排与 online 查询，以及各架构 `smp.h` 的 `arch_start_smp`。`start_secondary_cpu` 由汇编跳入，定义在 `smp.c`，目前无 `smp.h` 声明。
 
-不归本篇：`cpu_id_is_online` / `task_manager_for_cpu`（见 `16`）；`percpu()`（见 `29`）；软 IPI（见 `30`）；ICR（见 `26`）；PSCI（见 `39`）；`arch_start_core`（见平台启动篇）。
+不归本篇：`cpu_id_is_online` / `task_manager_for_cpu`（见 `16-CPU亲和性-创建时绑核.md`）；`percpu()`（见 `29-per-CPU数据与访问约定.md`）；软 IPI（见 `30-软IPI机制.md`）；ICR（见 `26-平台中断-x86_64-APIC与PIC.md`）；PSCI（见 `39-PSCI与处理器电源-aarch64.md`）；`arch_start_core`（见平台启动篇）。
 
 ### 7.1 编排顺序（与源码一致）
 
@@ -318,7 +318,7 @@ enum cpu_status { no_cpu, cpu_disable, cpu_enable };
 | 接口 / 符号 | 说明 |
 |-------------|------|
 | `cpu_is_online` | 先查 `cpu_id < RENDEZVOS_MAX_CPU_NUMBER`（越界直接 false），再看 `CPU_STATE == cpu_enable`。发 IPI 用这个。 |
-| `cpu_id_is_online` | **不归本篇**（`thread.h`）：依次查越界、`NR_CPU <= 0 \|\| cpu >= NR_CPU`、`per_cpu(core_tm, cpu) != NULL`，假定编号连着排。APIC id 不连续时会误判；选核创建线程见 `16`。 |
+| `cpu_id_is_online` | **不归本篇**（`thread.h`）：依次查越界、`NR_CPU <= 0 \|\| cpu >= NR_CPU`、`per_cpu(core_tm, cpu) != NULL`，假定编号连着排。APIC id 不连续时会误判；选核创建线程见 `16-CPU亲和性-创建时绑核.md`。 |
 
 两个 online 判据之间还有个时序窗口：`CPU_STATE=cpu_enable` 在 `init_proc` **之前**写下，`core_tm` 在 `init_proc` **之后**才挂上（§6.6），所以 AP 启动过程中存在 `cpu_is_online` 已真、`cpu_id_is_online` 未真的短暂窗口。
 | `NR_CPU` / `BSP_ID` / `CPU_STATE` | 含义见 §4.1。 |
@@ -355,8 +355,8 @@ enum cpu_status { no_cpu, cpu_disable, cpu_enable };
 - 2026-10-04：`setup_info` 从 §6.2 背景图挪到叫醒实现节；§6.1 / §6.2 只留 INIT–SIPI 与 PSCI `CPU_ON` 硬件。
 - 2026-10-04：按系列模板重排 §4 起：§4 只留状态与不变量；APIC/PSCI 背景移入 §6；接口集中到 §7；去掉以函数名/文件名当小节标题的写法。
 - 2026-10-04：校正标题与内容：§4 改为「核编号、同步与启核背景」；§4.1 改为「核计数、`CPU_STATE` 与两套编号规矩」；§6.5 / §7.2 同步改题并拆分 online 符号；修正指向不存在的 §6.6 的交叉引用。
-- 2026-10-04：§3 去掉与 `02` / `03` 重复的 `cmain` / initcall 叙述，改成「可移植编排 vs 架构叫醒」两层表，细节回指总览与模块初始化篇。
-- 2026-10-04：§1 收成目的级概述；APIC INIT–SIPI / PSCI `cpu_on` 基础知识移入 §4.5 / §4.6（含 sequence 图），并引用 `26` / `39` 与 Intel SDM、ARM DEN0022；§6 只留本实现步骤，去掉与概述重复的编号长段。
+- 2026-10-04：§3 去掉与 `02-启动流程总览.md` / `03-模块初始化与内核入口.md` 重复的 `cmain` / initcall 叙述，改成「可移植编排 vs 架构叫醒」两层表，细节回指总览与模块初始化篇。
+- 2026-10-04：§1 收成目的级概述；APIC INIT–SIPI / PSCI `cpu_on` 基础知识移入 §4.5 / §4.6（含 sequence 图），并引用 `26-平台中断-x86_64-APIC与PIC.md` / `39-PSCI与处理器电源-aarch64.md` 与 Intel SDM、ARM DEN0022；§6 只留本实现步骤，去掉与概述重复的编号长段。
 - 2026-10-04：改回源码符号（`cpu_socket` 等）；交叉引用写文档文件名。
 - 2026-10-03：自查通篇代指；按中文阅读习惯与平台篇分工改写。
 - 2026-10-03：纠正 `ap_entry`「升 EL1」；`clean_tmp_page_table` 在 `arch_start_smp` 末尾。

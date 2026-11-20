@@ -4,7 +4,7 @@ v0.1 · 2026-09-26
 
 本篇覆盖：`kernel/task/ebr.c`、`include/rendezvos/task/ebr.h`、`delete_thread` / `free_thread_ref` / `del_thread_structure` / `thread_release_owned_resources`（`thread.c`），以及与 `schedule` 钩子的交汇。
 
-MSQ 算法与队列内 `ebr_enter` / `exit` 见 `18`；消息 / request 何时 put 见 Port 篇（`19`）；zombie / `EXIT_REQUESTED` 见线程篇（`13`）；`vs` 只 put 不卸硬件见所有权篇（`15`）；跨核 kfree 排水见 kmalloc 篇（`09`）（**不是** EBR）。
+MSQ 算法与队列内 `ebr_enter` / `exit` 见 `18-支持IPC的无锁MSQ队列实现.md`；消息 / request 何时 put 见 Port 篇（`19-Port与消息模型.md`）；zombie / `EXIT_REQUESTED` 见线程篇（`13-线程与Task_Manager.md`）；`vs` 只 put 不卸硬件见所有权篇（`15-VSpace所有权与调度切换.md`）；跨核 kfree 排水见 kmalloc 篇（`09-kmalloc与内核堆.md`）（**不是** EBR）。
 
 ---
 
@@ -73,7 +73,7 @@ name / kstack：**直接** `m_free`，不走 EBR。
 2. 拆线程时清空收发箱，消息节点仍然走 EBR。
 3. 等待请求握着线程引用时，EBR 推迟拆请求，也可能间接推迟线程对象真正释放。
 
-队列路径上谁进出读临界区、谁登记释放函数，咬合摘要见 `18`；**世代与安全条件以本篇为准**。
+队列路径上谁进出读临界区、谁登记释放函数，咬合摘要见 `18-支持IPC的无锁MSQ队列实现.md`；**世代与安全条件以本篇为准**。
 
 ### 4.1 每核状态与待回收槽：字段干什么
 
@@ -246,9 +246,9 @@ ref_put → free_thread_ref → del_thread_structure:
 
 ## 7. 公开 API
 
-接口分布在：`ebr.h` 全套；线程回收路径上的 `delete_thread` / `free_thread_ref` / `del_thread_structure`（`thread.h`；与 `13` 交叉，本篇写清回收顺序）。说明改写自头文件 Doxygen，并已与 `.c` 核对。
+接口分布在：`ebr.h` 全套；线程回收路径上的 `delete_thread` / `free_thread_ref` / `del_thread_structure`（`thread.h`；与 `13-线程与Task_Manager.md` 交叉，本篇写清回收顺序）。说明改写自头文件 Doxygen，并已与 `.c` 核对。
 
-**本篇不涉及：** MSQ inline 算法见 `18`；`kalloc_process_cross_cpu_frees` 见 kmalloc 篇（与 `ebr_try_reclaim` **并列**于 `schedule`，不是同一种排水）；zombie / `EXIT_REQUESTED` 语义见 `13`。
+**本篇不涉及：** MSQ inline 算法见 `18-支持IPC的无锁MSQ队列实现.md`；`kalloc_process_cross_cpu_frees` 见 kmalloc 篇（与 `ebr_try_reclaim` **并列**于 `schedule`，不是同一种排水）；zombie / `EXIT_REQUESTED` 语义见 `13-线程与Task_Manager.md`。
 
 `thread_release_owned_resources`：**内部 static**；勿在末次 ref 前手调。
 
@@ -327,7 +327,7 @@ void del_thread_structure(Thread_Base *thread);
 - 2026-11-20：结构收尾——§4.2 第三张图（quiet/propagate/reclaim 三阶段框图）与泳道图信息重叠，并为一段文字；独有信息（`ebr_exit` 深度回 0 即 `global++`、enter 重新快照成环）全部保留。事实未改。
 - 2026-11-19：底子重评批次——篇首引用缩号与 TM/VSpace 昵称归一；「甜区」改写；§7 opener；§9 测试句理顺。
 - 2026-11-15：Maintainer 复审前可读性通读：§4.2 伪代码「online-ish cpu」改为按代码实际的「0..NR_CPU 全扫、只以 active 为闸」，同节示例行明确 safe=E 与可回收集合 retire ≤ E-1 的区分；§6.2 回收流水补 `thread_disable_user`（释放 FP 缓冲，E13 后续，对照 `thread.c` 现行顺序）；§10 回链明确为 evolution TODO E11；§4.1 `ebr_inited` 三态句、UAF 简称首次出现位置（§4.3）补释并收敛 §7.2 括注；§11 一条 10-05 条目原漂在「08-27 初稿」之后，归位。安全条件 `<`、overflow leak 仍返 SUCCESS、512 槽、`ebr_exit` 深度回 0 时 global++ 再 reclaim、schedule 先排 kfree 再 reclaim、request 持 thread 引用（`ref_get_not_zero`/`ref_put` 配对）均对照 `ebr.c` / `ebr.h` / `thread.c` / `task_manager.c` / `ipc.c` 核实无误；技术结论未动。
-- 2026-10-11：§4 对齐 18 审阅结论——延期的是 `*_real`/`free_func`（非直接 `m_free`）；迁入世代泳道图与读图说明；明确机制权威在本篇、MSQ 咬合见 `18` §4.4。
+- 2026-10-11：§4 对齐 18 审阅结论——延期的是 `*_real`/`free_func`（非直接 `m_free`）；迁入世代泳道图与读图说明；明确机制权威在本篇、MSQ 咬合见 `18-支持IPC的无锁MSQ队列实现.md` §4.4。
 - 2026-10-07：§1 概述瘦身——对象分类表与交汇点迁入 §4 开头并与不变量合并。
 - 2026-10-05：最终词句顺畅。
 - 2026-10-05：任务 1/3/5 精读——§1 首次出现 EBR 补全称（Epoch-Based Reclamation，基于世代的回收）、MSQ 补说明（Message Queue，无锁消息队列）、TCB 补全称（Thread Control Block）；§4.2/§4.5/§8 残留的「靠」→「依赖」（前轮漏改的三处）；§7.2 首次出现 UAF 补说明（use-after-free）。

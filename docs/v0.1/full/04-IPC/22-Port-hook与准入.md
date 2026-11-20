@@ -4,7 +4,7 @@ v0.1 · 2026-09-27（2026-11-19：匿名 / 具名拆分定稿）
 
 本篇覆盖：上层如何通过 **`port_append_hooks_t`** 注入 `init` / `fini` / `ops_allow`。这些回调**只挂在具名 port 上**。测试用例见 `modules/test/single_port_test.c`。
 
-**本篇不重复：** 匿名 Port 与 `ops_life` / `ops_count` 见 `19` §4.1；具名 port 与名表见 `19` §4.1.1 / §4.4；send / recv 会合见 `20`；MSQ 见 `18`；kmsg 见 `21`；名称索引见 `41`。
+**本篇不重复：** 匿名 Port 与 `ops_life` / `ops_count` 见 `19-Port与消息模型.md` §4.1；具名 port 与名表见 `19-Port与消息模型.md` §4.1.1 / §4.4；send / recv 会合见 `20-阻塞与非阻塞收发.md`；MSQ 见 `18-支持IPC的无锁MSQ队列实现.md`；kmsg 见 `21-kmsg与TLV序列化.md`；名称索引见 `41-名称索引注册表.md`。
 
 ---
 
@@ -12,7 +12,7 @@ v0.1 · 2026-09-27（2026-11-19：匿名 / 具名拆分定稿）
 
 有两道检查，不要混在一起：
 
-1. **生命周期**（匿名侧的 `ops_life` 与 `ops_count`）——`close_port` 和正在进行的 send / recv 互斥。见 `19` §4.1。
+1. **生命周期**（匿名侧的 `ops_life` 与 `ops_count`）——`close_port` 和正在进行的 send / recv 互斥。见 `19-Port与消息模型.md` §4.1。
 2. **准入策略**（可选的 `ops_allow`，只在具名侧）——谁可以注册进名表、谁可以按名看见、谁可以经具名封装收发。
 
 匿名侧的 `port_ops_begin` **只**看当前是不是 OPEN，**不会**调用 `ops_allow`。纯匿名 port（`create_message_port`）根本没有 hooks；调用方手里握着指针，就视为允许收发。
@@ -54,7 +54,7 @@ core 不内置 capability 之类的安全模型；策略放在外面，默认全
 
 ## 4. 数据结构（本篇焦点：hooks）
 
-匿名 Port 与 `ops_life` / `ops_count` 见 `19` §4.1。本篇只写 **具名对象上与 hook 相关的成员**，以及上层怎么注入。
+匿名 Port 与 `ops_life` / `ops_count` 见 `19-Port与消息模型.md` §4.1。本篇只写 **具名对象上与 hook 相关的成员**，以及上层怎么注入。
 
 ### 4.1 具名对象上挂 hook 的字段
 
@@ -127,7 +127,7 @@ typedef struct port_append_hooks {
 
 ### 4.3 与 `port_ops_begin` / `end`（匿名）
 
-`port_ops_begin` / `end` 是 ipc 内部步骤，只管生命周期和 `ops_count`，**没有** `ops_allow`。顺序见 `19` §4.1：先确认是 OPEN，再增加 `ops_count`，然后再确认一次仍是 OPEN。阻塞路径必须先 `end` 再 `schedule`（见 `20`）。hooks 表只交给 **`create_named_message_port`**，不会交给匿名的 `create_message_port`。
+`port_ops_begin` / `end` 是 ipc 内部步骤，只管生命周期和 `ops_count`，**没有** `ops_allow`。顺序见 `19-Port与消息模型.md` §4.1：先确认是 OPEN，再增加 `ops_count`，然后再确认一次仍是 OPEN。阻塞路径必须先 `end` 再 `schedule`（见 `20-阻塞与非阻塞收发.md`）。hooks 表只交给 **`create_named_message_port`**，不会交给匿名的 `create_message_port`。
 
 ---
 
@@ -155,7 +155,7 @@ typedef struct port_append_hooks {
 | | `ops_allow` 拒绝 | `unregister_named_port` 真正关闭 |
 |--|------------------|-----------------------------------|
 | port 还在名表里吗？ | **是**（是否还能被查到，取决于 LOOKUP 策略） | 否（先关掉内部匿名会合，再从名表摘掉） |
-| 会给等待者打 `PORT_CLOSED` 消息或 flag 吗？ | **否** | 会（见 `19` §3；醒后返回值见 `20`） |
+| 会给等待者打 `PORT_CLOSED` 消息或 flag 吗？ | **否** | 会（见 `19-Port与消息模型.md` §3；醒后返回值见 `20-阻塞与非阻塞收发.md`） |
 | 调用方看到什么 | 宜为 `-E_REND_ACCESS`（好和关闭区分开） | `-E_REND_PORT_CLOSED`，或接收成功后再 dequeue 到 closed 消息 |
 
 因此：LOOKUP 拒绝只是「这次拿不到指针」；发送 / 接收拒绝只是「这次不进入会合」，port **并没有**被关掉。已经睡在 port 上的等待者醒过来之后，**不会**再跑一遍 `ops_allow`——要把他们叫醒并收尾，只能调用 `unregister_named_port`。
@@ -208,13 +208,13 @@ cd core && make ARCH=x86_64 config && make run
 
 ## 11. 变更记录
 
-- 2026-11-19：底子重评批次——核对：关闭通知锚点已随匿名/具名定稿改指 `19` §3/§4.1；本批无新增事实硬伤，评语覆盖。
+- 2026-11-19：底子重评批次——核对：关闭通知锚点已随匿名/具名定稿改指 `19-Port与消息模型.md` §3/§4.1；本批无新增事实硬伤，评语覆盖。
 - 2026-11-19：匿名 / 具名定稿——hooks 只挂具名；发送 / 接收经 `named_port_*_msg`；拒绝用 `-E_REND_ACCESS`；去掉「在 begin 里问 allow」的过渡说法；结构体与 API 对齐 `named_port.h`。同日按审阅意见润色用语。
 - 2026-10-17：Maintainer 审定闭环；§4.3 补回 begin 内部顺序一句（供 §3 回指）。
-- 2026-10-17：§6 收成「拒绝 ≠ 真关闭」+ 哪些 ipc 路径会跑发送 / 接收准入；不再以 begin 为叙事中心，关闭通知细节指回 `19` / `20`。
+- 2026-10-17：§6 收成「拒绝 ≠ 真关闭」+ 哪些 ipc 路径会跑发送 / 接收准入；不再以 begin 为叙事中心，关闭通知细节指回 `19-Port与消息模型.md` / `20-阻塞与非阻塞收发.md`。
 - 2026-10-17：§4 补 append 字段；§7 改为上层注入面；§3 再收；用语统一；纠正尾部追加区归属。
 - 2026-10-04：补 hooks / 尾部追加区布局图与准入调用链。
 - 2026-09-27：中文表述润色。
-- 2026-09-26：写清拒绝 ≠ 关闭，以及 `deliver_to` 旁路；链到 `19` / `20`。
+- 2026-09-26：写清拒绝 ≠ 关闭，以及 `deliver_to` 旁路；链到 `19-Port与消息模型.md` / `20-阻塞与非阻塞收发.md`。
 - 2026-08-29：整篇重做——外置叙述；纠正 REGISTER / `lookup_name`；生产零 hooks 诚实。
 - 2026-08-27：初稿。

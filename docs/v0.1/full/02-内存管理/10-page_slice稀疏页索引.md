@@ -4,13 +4,13 @@ v0.1 · 2026-09-25
 
 本篇覆盖：`kernel/mm/page_slice.c`、`kernel/mm/page_slice_copy.c`、`include/rendezvos/mm/page_slice.h`、`include/rendezvos/mm/page_slice_copy.h`。
 
-内核堆见 `09`；用户 VA 以 radix 篇（`08`）为准。**page_slice 只服务内核侧逻辑缓冲，不替代用户 radix**——两者不要混用。Buddy 细节见物理内存篇（`06`）。
+内核堆见 `09-kmalloc与内核堆.md`；用户 VA 以 radix 篇（`08-Radix树与用户映射.md`）为准。**page_slice 只服务内核侧逻辑缓冲，不替代用户 radix**——两者不要混用。Buddy 细节见物理内存篇（`06-物理内存与Buddy分配器.md`）。
 
 ---
 
 ## 1. 概述
 
-Buddy（伙伴分配器，按 2 的幂次合并/拆分物理页，见 `06`）单块上限为 **4 MiB**（`BUDDY_MAXORDER = 10`，即 1024 张连续 4 KiB 页）。内核有时还想按「文件偏移 / 大数组下标」这种**逻辑连续**的方式取一块远超此上限的缓冲，但物理上、甚至 KVA 上并不要求连成一片。
+Buddy（伙伴分配器，按 2 的幂次合并/拆分物理页，见 `06-物理内存与Buddy分配器.md`）单块上限为 **4 MiB**（`BUDDY_MAXORDER = 10`，即 1024 张连续 4 KiB 页）。内核有时还想按「文件偏移 / 大数组下标」这种**逻辑连续**的方式取一块远超此上限的缓冲，但物理上、甚至 KVA 上并不要求连成一片。
 
 **page_slice** 做的就是这件事：在一个 slice 里用稀疏多级索引，把 **pgoff（页号偏移）** 绑定到调用方已经准备好的 **离散内核虚拟地址（KVA，Kernel Virtual Address）**。连续性只在偏移算术上成立。
 
@@ -224,7 +224,7 @@ struct page_slice {
 
 ## 7. 公开 API
 
-接口分布在：`include/rendezvos/mm/page_slice.h`、`include/rendezvos/mm/page_slice_copy.h`。说明以头文件注释为准，并已与实现核对。内容页须调用方先 `m_alloc` 再 `insert`；slice 只维护 index/leaf 壳。不替代用户 radix（见 `08`）。
+接口分布在：`include/rendezvos/mm/page_slice.h`、`include/rendezvos/mm/page_slice_copy.h`。说明以头文件注释为准，并已与实现核对。内容页须调用方先 `m_alloc` 再 `insert`；slice 只维护 index/leaf 壳。不替代用户 radix（见 `08-Radix树与用户映射.md`）。
 
 **注意：** `page_slice_lookup` 返回 `struct page_slice_entry *`（不是 `error_t`）；`create` 参数类型为 `size_t`。
 

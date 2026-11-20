@@ -4,7 +4,7 @@ v0.1 · 2026-09-27
 
 本篇覆盖：`arch/x86_64/mm/arch_smp_tlb_flush.c`、x86 / aarch64 `include/arch/*/sync/tlb.h` 中 all_core 路径与软 IPI 的衔接。
 
-**与 TLB 篇（`11`）分工：**
+**与 TLB 篇（`11-TLB与缓存一致性.md`）分工：**
 
 | | TLB 篇（策略 / mask） | **本篇** |
 |--|------------------|----------------|
@@ -12,9 +12,9 @@ v0.1 · 2026-09-27
 | new_map 本地 vs remap/unmap all_core | 主责 | 引用 |
 | x86：按 mask 软 IPI + invlpg | 策略层 | **gen/busy/done 握手** |
 | aarch64：`tlbi *is`，**常忽略 mask** | 已写 | **禁止再写「via IPI」** |
-| 门铃 / pending | 见软 IPI 篇（`30`） | 只写 TLB 消息槽如何用 IPI |
+| 门铃 / pending | 见软 IPI 篇（`30-软IPI机制.md`） | 只写 TLB 消息槽如何用 IPI |
 
-软 IPI：唯一 in-tree 默认 registrant 是 **x86 TLB**。VSpace teardown 门闩见所有权篇（`15`）。
+软 IPI：唯一 in-tree 默认 registrant 是 **x86 TLB**。VSpace teardown 门闩见所有权篇（`15-VSpace所有权与调度切换.md`）。
 
 **官方手册：** Intel SDM — `invlpg`、换 CR3 对 TLB 的影响（无 PCID（Process Context ID，进程上下文标识）时）；ARM ARM — `TLBI …IS`、`DSB`/`ISB`。
 
@@ -75,14 +75,14 @@ aarch64 因此**不需要** IPI 来跨核刷 TLB——一条 `tlbi …is` 就是
 
 **提供：** x86 shootdown 握手细节；与 soft IPI / mask 的衔接；aarch64「不走 IPI」的边界句。
 
-**不做：** mask 维护全文（见 `11`）；门铃位图协议全文（见 `30`）；cache API（`11` 已声明空）；batching 框架。
+**不做：** mask 维护全文（见 `11-TLB与缓存一致性.md`）；门铃位图协议全文（见 `30-软IPI机制.md`）；cache API（`11-TLB与缓存一致性.md` 已声明空）；batching 框架。
 
 ---
 
 ## 3. 分层与调用方
 
 **MM** — remap / unmap 后 `arch_tlb_invalidate_*_all_core(..., &vs->tlb_cpu_mask)`。
-**schedule** — 本地刷旧 AS + set / clear mask（`11` / 所有权篇）。
+**schedule** — 本地刷旧 AS + set / clear mask（`11-TLB与缓存一致性.md` / 所有权篇）。
 **规则：** 改 PTE 持适当锁；IPI handler **只刷**，不锁、不 sleep。
 
 ---
@@ -113,7 +113,7 @@ struct smp_tlb_flush_msg {
 
 ### 4.2 mask 与并发
 
-map/unmap 读 mask 发 IPI 时只持 `vs->vspace_lock`（MCS），**不**持 `tlb_cpu_mask_lock`（`map_handler.c` 的 `unmap()` 在 `unlock_mcs` 之前调 `arch_tlb_invalidate_*_all_core(..., &vs->tlb_cpu_mask)`）。正确性靠 `11` 已述的 mask 纪律，其代码锚点在 `task_manager.c` 的 `schedule()`：**进 AS 前先 set**——`vs_tlb_cpu_mask_set(new_vs, ...)` 在 `arch_set_current_user_vspace_root_asid()` 装根页表**之前**、于 `tlb_cpu_mask_lock` 下完成；**切走后先刷再 clear**——先 `arch_tlb_invalidate_vspace_page(old_vs->asid, 0)` 本地刷掉旧 AS，再在锁下 `vs_tlb_cpu_mask_clear()`。由此可得 shootdown 需要的归纳不变量：mask 说「核 X 可能脏」时，X 要么已在该 AS 内跑（收得到并会执行 IPI 刷新），要么尚未进入（其下次取翻译必然重新 walk 页表，不会用陈旧项）。
+map/unmap 读 mask 发 IPI 时只持 `vs->vspace_lock`（MCS），**不**持 `tlb_cpu_mask_lock`（`map_handler.c` 的 `unmap()` 在 `unlock_mcs` 之前调 `arch_tlb_invalidate_*_all_core(..., &vs->tlb_cpu_mask)`）。正确性靠 `11-TLB与缓存一致性.md` 已述的 mask 纪律，其代码锚点在 `task_manager.c` 的 `schedule()`：**进 AS 前先 set**——`vs_tlb_cpu_mask_set(new_vs, ...)` 在 `arch_set_current_user_vspace_root_asid()` 装根页表**之前**、于 `tlb_cpu_mask_lock` 下完成；**切走后先刷再 clear**——先 `arch_tlb_invalidate_vspace_page(old_vs->asid, 0)` 本地刷掉旧 AS，再在锁下 `vs_tlb_cpu_mask_clear()`。由此可得 shootdown 需要的归纳不变量：mask 说「核 X 可能脏」时，X 要么已在该 AS 内跑（收得到并会执行 IPI 刷新），要么尚未进入（其下次取翻译必然重新 walk 页表，不会用陈旧项）。
 
 teardown 仍在 CAS 下查 mask：`vmm.c` 的 `vspace_clear_check_tlb()` 持 `tlb_cpu_mask_lock` 要求 mask **全零**才放行（`del_vspace` 传 `allow_self_use=false`；仅当发起核自己仍在使用该 AS 时允许传 `true` 并容忍 self 位），否则返回 `-E_REND_RC_UNEQUAL` 拒绝拆解——页表页在「任何核不再可能脏」之前不得释放。
 
@@ -130,7 +130,7 @@ teardown 仍在 CAS 下查 mask：`vmm.c` 的 `vspace_clear_check_tlb()` 持 `tl
 | `arch_smp_tlb_flush.c` | x86 握手、init、register |
 | `arch/*/sync/tlb.h` | invalidate API |
 | `kernel/smp/ipi.c` | 门铃 |
-| `map_handler` / schedule | 调用点（`11`） |
+| `map_handler` / schedule | 调用点（`11-TLB与缓存一致性.md`） |
 
 ---
 
@@ -185,7 +185,7 @@ x86 的 `arch_tlb_invalidate_kernel_page_all_core` 名为 all_core，实现是**
 1. **为什么不敢依赖 IPI**：x86 shootdown 靠软 IPI，而 IPI 会被 `cli` 屏蔽。若核 A unmap 时核 B 恰在 `cli` 区间内，B 收不到门铃，A 也就等不到它的 done；随后该物理页若被重新分配并改作他用，B 仍可能经由旧翻译访问，造成跨核静默破坏。
 2. **为什么仅本地也够**：靠的是 kmalloc 的 **percpu 生命周期纪律**，而非硬件。需要被 unmap 的内核页只来自 percpu kmalloc——对象由哪个核分配，释放（进而 unmap）就只能由该核执行，且必须确认无其他核仍持有；释放后经 **MSQ**（`ms_queue_t`，`kmalloc.c` 的每核回收队列，`kfree` 把对象 `msq_enqueue` 回 **owner** 分配器的队列）回到分配核手里。于是「A 执行 unmap 的那一刻」可归纳出：没有任何核还持有该内核对象——**访问**并不受限（指针可经 IPC 传给 B 用），受约束的是**生命周期**（谁 alloc 谁 free）。B 既然不持有，就不会再触碰那条翻译；A 自己的旧项已被本地 `invlpg` 刷掉。
 
-源码注释里那句 "this percpu is used just for emmmm, lifecycle" 就是这个意思：percpu 属性不是用来限制访问的，是用来锚定释放权的。另注：aarch64 的同名函数是**真广播**（`tlbi vaale1is`）——两 arch 对同一可移植名给出不同强度，是 per-arch 实现选择，勿当矛盾读（对照表见 §7.4；调用侧的适用语境见 `11`）。
+源码注释里那句 "this percpu is used just for emmmm, lifecycle" 就是这个意思：percpu 属性不是用来限制访问的，是用来锚定释放权的。另注：aarch64 的同名函数是**真广播**（`tlbi vaale1is`）——两 arch 对同一可移植名给出不同强度，是 per-arch 实现选择，勿当矛盾读（对照表见 §7.4；调用侧的适用语境见 `11-TLB与缓存一致性.md`）。
 
 ---
 
@@ -193,9 +193,9 @@ x86 的 `arch_tlb_invalidate_kernel_page_all_core` 名为 all_core，实现是**
 
 接口分布在：x86 **shootdown 握手**——`arch_smp_flush_tlb_init` / `arch_smp_flush_page_tlb` / `arch_smp_flush_all_tlb`，以及 per-CPU `smp_tlb_flush_msg`（gen/busy/done）字段约定。说明改写自 `arch/x86_64/sync/tlb.h` Doxygen + `arch_smp_tlb_flush.c`（已核对）。
 
-**本篇不涉及：** `tlb_cpu_mask` 维护 / schedule 的 set、刷、clear（见 `11`）；可移植 `arch_tlb_invalidate_*` 命名与 aarch64 `tlbi *is` 细节（见 `11`）；软 IPI pending 位图（见 `30`）。
+**本篇不涉及：** `tlb_cpu_mask` 维护 / schedule 的 set、刷、clear（见 `11-TLB与缓存一致性.md`）；可移植 `arch_tlb_invalidate_*` 命名与 aarch64 `tlbi *is` 细节（见 `11-TLB与缓存一致性.md`）；软 IPI pending 位图（见 `30-软IPI机制.md`）。
 
-aarch64：**无**本篇专属 shootdown API——`*_all_core` 即硬件广播（见 `11`）。
+aarch64：**无**本篇专属 shootdown API——`*_all_core` 即硬件广播（见 `11-TLB与缓存一致性.md`）。
 
 ### 7.1 编排顺序（调用方须遵守）
 
@@ -244,9 +244,9 @@ DEFINE_PER_CPU(..., smp_tlb_flush_message);
 | send 失败 | 发送方清除 `busy` 并 return——**不保证**远端已刷（`request_gen` 已递增，无对应 done）。 |
 | 无 PCID | 页级=`invlpg`；全刷为 reload CR3；`asid` 在可移植包装里被忽略。 |
 
-### 7.4 与 `11` 的对照（勿重复维护）
+### 7.4 与 `11-TLB与缓存一致性.md` 的对照（勿重复维护）
 
-| 可移植名（`11`） | x86 落到 | aarch64 |
+| 可移植名（`11-TLB与缓存一致性.md`） | x86 落到 | aarch64 |
 |------------------|----------|---------|
 | `…_page_all_core` | `arch_smp_flush_page_tlb` | `tlbi vae1is`（忽略 mask） |
 | `…_vspace_page_all_core` | `arch_smp_flush_all_tlb` | `tlbi aside1is` |
@@ -296,7 +296,7 @@ DEFINE_PER_CPU(..., smp_tlb_flush_message);
 
 ## 11. 变更记录
 - 2026-11-19：底子首评批次——§7 opener；§9 测例口径。事实沿用 11-15。
-- 2026-11-15：Maintainer 复审前可读性通读——修旧目录编号残留：分工表列头与 §2/§3/§5 各处裸「02」「06」实为旧目录号（`02-内存管理/`、`06-SMP与同步/`），易与篇 `02`（启动流程总览）混淆，统一改 `11` / `30` 显式编号；篇名引用长文件名缩为「TLB 篇（`11`）」；「VSpace 所有权篇」按全仓先例归一为「所有权篇（`15`）」；§9 按测例树实况扩写（无直接测例，链路由用户 map/unmap 间接覆盖）。技术内容未动（busy/gen/done 所有权、teardown 门闩、`asid >= 2^16` 静默 return 均按当前代码复验）。
+- 2026-11-15：Maintainer 复审前可读性通读——修旧目录编号残留：分工表列头与 §2/§3/§5 各处裸「02」「06」实为旧目录号（`02-内存管理/`、`06-SMP与同步/`），易与篇 `02-启动流程总览.md`（启动流程总览）混淆，统一改 `11-TLB与缓存一致性.md` / `30-软IPI机制.md` 显式编号；篇名引用长文件名缩为「TLB 篇（`11-TLB与缓存一致性.md`）」；「VSpace 所有权篇」按全仓先例归一为「所有权篇（`15-VSpace所有权与调度切换.md`）」；§9 按测例树实况扩写（无直接测例，链路由用户 map/unmap 间接覆盖）。技术内容未动（busy/gen/done 所有权、teardown 门闩、`asid >= 2^16` 静默 return 均按当前代码复验）。
 
 - 2026-11-14：全文对照代码复核与扩写——§1.1.2 屏障序列按 `tlb.h` 实况修正（`dsb ishst`→`tlbi`→`dsb ish`→`isb`，ISH 域与 `…is` 广播对齐；原文误作 `dsb sy`），并补本地/广播助记符配对；§1.1.1 CR3 失效为「读回写回」惯用法；§4.2 补代码锚点（unmap 持 `vspace_lock` 而非 `tlb_cpu_mask_lock`、`schedule()` 先 set 后装根/先刷后 clear 的顺序、`vspace_clear_check_tlb` 的 mask 全零门闩与 `-E_REND_RC_UNEQUAL`）；§4.3 补 `asid >= 2^16` 静默 no-op；§6.1 补 init 边界（每核槽重初始化无并发窗口的论证）；§6.2 更正 teardown 函数名；§6.3 依源码注释扩写 x86 内核页「仅本地刷」理由（`cli` 可屏蔽 IPI + percpu kmalloc 生命周期纪律 + MSQ 回投分配核）；新增 §7.5（本地 API 一览与 `range`——两 arch 已定义、全树无调用者）；§10 补两条限制。
 - 2026-10-05：任务 1/3/5 精读——补全 shootdown/PTE/AS/ASID/PCID/PE/VA 缩写首现释义；「改了/敲门刷/IPI 过去让对方自己执行/拿锁/刷到/清 busy/叙事/诚实/内调/claim/双边写/≈」等口语与符号改正式中文。
@@ -304,7 +304,7 @@ DEFINE_PER_CPU(..., smp_tlb_flush_message);
 - 2026-10-04：§1.1.1/1.1.2 补 x86 TLB 失效指令（invlpg、invlpga、CR3 重载、invpcid、global 页）与 aarch64 TLBI 指令族（nsh/is/os 广播范围、vae1is/aside1is/alle1is/vmalle1is 粒度、dsb+isb 配套）；§6.1.1 加跨核 shootdown 时序图（A 串行处理 mask 内每核、B handler 只刷不锁、门铃失败不保证远端刷到）。
 - 2026-09-27：中文措辞整理——「写死 / 契约 / 真源」改为分工表与「约定」；保留字段所有权语义。
 - 2026-09-26：对照 `tlb.h` Doxygen / `arch_smp_tlb_flush.c`——补 **字段所有权**（busy/request_gen/done_gen/flush_* 谁写谁读）；send 失败时 `request_gen` 已递增无 done。
-- 2026-09-26：§7 全文审阅——强化 `arch_smp_flush_*` Doxygen（gen/busy/done）；划清拥有（握手）vs `11`（mask / 可移植名）vs `30`（门铃）。
+- 2026-09-26：§7 全文审阅——强化 `arch_smp_flush_*` Doxygen（gen/busy/done）；划清拥有（握手）vs `11-TLB与缓存一致性.md`（mask / 可移植名）vs `30-软IPI机制.md`（门铃）。
 - 2026-09-25：语言整理；§1.1 补「为何 x86 必须 IPI、aarch64 用 tlbi is」。
 - 2026-08-29：整篇重做——删「aarch64 via IPI」；x86 gen/busy/done；与 02 / 软 IPI 边界；send 失败与单槽限制。
 - 2026-08-27：初稿（误写 aarch64 IPI）。

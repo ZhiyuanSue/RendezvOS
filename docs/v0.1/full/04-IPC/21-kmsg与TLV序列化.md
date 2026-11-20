@@ -4,7 +4,7 @@ v0.1 · 2026-09-27（2026-11-19：`kmsg_hdr` 四个字段均为 `u32`）
 
 本篇覆盖：`kernel/ipc/kmsg.c`、`kernel/ipc/ipc_serial.c`、`include/rendezvos/ipc/kmsg.h`、`include/rendezvos/ipc/kmsg_system.h`、`include/rendezvos/ipc/ipc_serial.h`。
 
-`Msg_Data` / Port 会合见 `19`；send / recv 与 system 投递见 `20`；动机与 MSQ / EBR 见 `18`（建议先读 §1；Msg 壳与 `Msg_Data` 拆开见 `18` §1.5）。
+`Msg_Data` / Port 会合见 `19-Port与消息模型.md`；send / recv 与 system 投递见 `20-阻塞与非阻塞收发.md`；动机与 MSQ / EBR 见 `18-支持IPC的无锁MSQ队列实现.md`（建议先读 §1；Msg 壳与 `Msg_Data` 拆开见 `18-支持IPC的无锁MSQ队列实现.md` §1.5）。
 
 ---
 
@@ -28,7 +28,7 @@ kmsg = 固定头 `kmsg_hdr_t` + **`ipc_serial` TLV**（Type-Length-Value，类�
 
 ## 3. 分层与调用方
 
-kmsg 只负责「把参数编成可投递的 `Msg_Data`」以及「从收到的消息里认出数据格式」。TLV 由接收方按 `opcode` 自行 `ipc_serial_decode` 解码。消息会合仍走收发篇（`20`）那一套：先 enqueue 消息，再 `send_msg`；或者先 `recv_msg`，再从接收队列获取消息。
+kmsg 只负责「把参数编成可投递的 `Msg_Data`」以及「从收到的消息里认出数据格式」。TLV 由接收方按 `opcode` 自行 `ipc_serial_decode` 解码。消息会合仍走收发篇（`20-阻塞与非阻塞收发.md`）那一套：先 enqueue 消息，再 `send_msg`；或者先 `recv_msg`，再从接收队列获取消息。
 
 在 core 里真正使用 kmsg 的地方很少：`port.c`（`PORT_CLOSED`）、`time.c`（timer）、`powerd`（shutdown）。大量调用方主要在兼容层设计的 servers 里面。
 
@@ -154,10 +154,10 @@ kmsg 在 `Msg_Data_t` 的 data 指针指向的 buffer 中的字节布局：
 | `KMSG_OP_SYSTEM_POWER_REBOOT` | 2 | `""` | 已经登记；实现尚未接齐 |
 | `KMSG_OP_SYSTEM_TIMER_EXPIRE` | 3 | `"q"` | timer |
 | `KMSG_OP_SYSTEM_TIMER_CANCEL` | 4 | `"q"` | timer |
-| `KMSG_OP_SYSTEM_PORT_CLOSED` | 5 | `"q"`（恒传 0，**没有业务载荷**） | unregister 清理队列时 `port_clean_thread_queue` **只**投给当时 `block_on_receive` 的等待者（send 侧在 port 关闭后，`send_msg` 靠 flag 标明因 port 关闭而唤醒，见 `19` §3） |
+| `KMSG_OP_SYSTEM_PORT_CLOSED` | 5 | `"q"`（恒传 0，**没有业务载荷**） | unregister 清理队列时 `port_clean_thread_queue` **只**投给当时 `block_on_receive` 的等待者（send 侧在 port 关闭后，`send_msg` 靠 flag 标明因 port 关闭而唤醒，见 `19-Port与消息模型.md` §3） |
 | `KMSG_OP_SYSTEM_END` | 6 | — | 建议兼容层的 opcode 从 SYSTEM_END+1 起编（后续可能继续补充system的opcode，所以建议兼容层都用宏表示自己的起始opcode）；这是用于划分界限的宏，不是一条会发出去的消息 |
 
-不同兼容层协议可以各自从 `SYSTEM_END+1` 起号——靠 **不同 port / `service_id`** 隔开，**不是**全机一份全局唯一的 opcode 空间。怎么投递见收发篇（`20`）。
+不同兼容层协议可以各自从 `SYSTEM_END+1` 起号——靠 **不同 port / `service_id`** 隔开，**不是**全机一份全局唯一的 opcode 空间。怎么投递见收发篇（`20-阻塞与非阻塞收发.md`）。
 
 ---
 
@@ -195,13 +195,13 @@ kmsg 在 `Msg_Data_t` 的 data 指针指向的 buffer 中的字节布局：
 
 本篇涉及的接口分布在：`kmsg.h` / `kmsg_system.h` / `ipc_serial.h`。
 
-**本篇不涉及：** `Msg_Data` / Port 见 `19`；send/recv 见 `20`。
+**本篇不涉及：** `Msg_Data` / Port 见 `19-Port与消息模型.md`；send/recv 见 `20-阻塞与非阻塞收发.md`。
 
 ### 7.1 编排顺序（调用方须遵守）
 
 | 场景 | 顺序 |
 |------|------|
-| 发送 kmsg | **`kmsg_create(module, op, fmt, …)`**，再 `create_message_with_msg`，放下多余的 data 引用后 `enqueue`，最后按场景调用 `named_port_send_msg` 或 `send_msg`（见 `20`） |
+| 发送 kmsg | **`kmsg_create(module, op, fmt, …)`**，再 `create_message_with_msg`，放下多余的 data 引用后 `enqueue`，最后按场景调用 `named_port_send_msg` 或 `send_msg`（见 `20-阻塞与非阻塞收发.md`） |
 | 接收 | 先接收，再 `dequeue`，接着 **`kmsg_from_msg`**，比对 opcode 后 **`ipc_serial_decode(payload, payload_len, fmt, …)`** |
 | 热路径自编码 | （少见）先 `measure_va`，再自备缓冲，最后 `encode_into_va`；`kmsg_create` 已内嵌此序 |
 
@@ -242,7 +242,7 @@ fmt 字符：`p/q/i/u/s/t`；`'t'` 与 `'s'` 虽然实质上都是字符串但 *
 
 ### 7.4 System opcode（`kmsg_system.h`）
 
-宏名、值、fmt 与谁发出统一见 §4.6 的表（全篇唯一 system opcode 表）；`PORT_CLOSED` 的注入语义与 send 侧 flag 的对照见该表及 `19` §3。
+宏名、值、fmt 与谁发出统一见 §4.6 的表（全篇唯一 system opcode 表）；`PORT_CLOSED` 的注入语义与 send 侧 flag 的对照见该表及 `19-Port与消息模型.md` §3。
 
 ---
 
@@ -273,7 +273,7 @@ core 里面缺少相关测试用例，但是可以使用 timer 等发送 system 
 ## 11. 变更记录
 
 - 2026-11-20：结构债清理——§4.6 与 §7.4 的 system opcode 表近重复：§4.6 收为全篇唯一表（并入 §7.4 的 `KMSG_OP_SYSTEM_*` 宏名与 unregister 注入语境），§7.4 改为指向 §4.6 的指引。
-- 2026-11-19：底子重评批次——§3 引号未闭合；收发篇补号；PORT_CLOSED 锚点改 `19` §3；测例口径与翻译腔清理。
+- 2026-11-19：底子重评批次——§3 引号未闭合；收发篇补号；PORT_CLOSED 锚点改 `19-Port与消息模型.md` §3；测例口径与翻译腔清理。
 - 2026-11-19：`kmsg_hdr_t` 改为四个 `u32` 字段（共 16 字节）；`module` / `opcode` 与 port 的 `service_id` 同宽；§4.2 布局图、`kmsg_from_msg` 校验与 `kmsg_create` 签名同步。同日润色用语，并区分具名 / 匿名收发入口。
 - 2026-10-07：对照源码终审——修正 `kmsg.h` 中 `MSG_DATA_TAG_KMSG`「routing uses module/opcode」错注；§3/§4.3/§8 与 `ipc_serial`/`kmsg_from_msg` 对齐（NUL、`NULL` 串、空白 fmt、本机 endian）。§10 只保留 fmt/`va_list` 尖角；§1 概述瘦身；去掉 magic 代际说法。
 - 2026-10-05：§6.1 / §7.3 同步代码修复——`ipc_serial_measure_va` / `encode_into_va` / `decode` 三个入口加 `!fmt` 检查（返回 `-E_IN_PARAM`）；§6.1 移除「`fmt==NULL` 无防护（会崩溃）」，§7.3 「`fmt` 须非 NULL」改为「各入口显式拒绝」。
@@ -282,7 +282,7 @@ core 里面缺少相关测试用例，但是可以使用 timer 等发送 system 
 - 2026-10-05：补「与 Linux 类似机制对照」小节；最终词句顺畅。
 - 2026-10-04：§4.3 / §4.5 改题为概念名（去掉函数名 / 文件名当小节标题）。
 - 2026-09-27：中文表述润色（母语习惯）；「真源」改为「以…为准」。
-- 2026-09-26：PORT_CLOSED 生产点改写——kmsg **只**面向阻塞 recv；纠正旧稿「仅唤醒 recv」易读成「send 不醒」；与 `19` §6.2 / `kmsg_system.h` 对齐。
+- 2026-09-26：PORT_CLOSED 生产点改写——kmsg **只**面向阻塞 recv；纠正旧稿「仅唤醒 recv」易读成「send 不醒」；与 `19-Port与消息模型.md` §6.2 / `kmsg_system.h` 对齐。
 - 2026-09-26：§7 全文审阅——`ipc_serial.h` / `kmsg_create` 编排序 Doxygen；写清空 fmt=4 字节、decode 无残留、`encode_alloc` 近死、system opcode 表。
 - 2026-09-25：语言整理；§8 补指针宽说明。
 - 2026-08-29：整篇重做——信封叙述；MAGIC=`LMSG`；`s` 含 NUL；空 fmt 仍有 4 字节；`t` / `s` 不可混解；system 表；encode_alloc 近死；测例与 RPC 边界。

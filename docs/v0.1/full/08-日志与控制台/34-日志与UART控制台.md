@@ -4,7 +4,7 @@ v0.1 · 2026-09-27
 
 本篇覆盖：`modules/log/log.c`、`include/modules/log/log.h`、`modules/driver/uart/uart.c`、`uart_16550A.c`、`uart_pl011.c`、各 ISA 的 UART 头（`uart_16550A.h` / `uart_pl011.h` 等）、`modules/driver/x86_char_console/char_console.c`。
 
-SMP 下 MCS 见锁篇（`31`）；`cmain` 里先 `uart_open` 再 `log_init` 的时序见启动总览（`02`）；aarch64 PL011 early map / `boot_uart_base_addr` 见平台启动篇（`05`）与 DTB 篇（`36`）。
+SMP 下 MCS 见锁篇（`31-锁与内存屏障.md`）；`cmain` 里先 `uart_open` 再 `log_init` 的时序见启动总览（`02-启动流程总览.md`）；aarch64 PL011 early map / `boot_uart_base_addr` 见平台启动篇（`05-平台启动-aarch64.md`）与 DTB 篇（`36-DTB与设备树-aarch64.md`）。
 
 **硬件对照：** 16550A / 8250 兼容 UART（COM1 I/O）；PrimeCell PL011（MMIO）；x86 VGA 文本模式帧缓冲 `0xB8000`。手册名点到为止，寄存器以本仓库读写为准。
 
@@ -82,7 +82,7 @@ SMP：`COLOR_SET` / `COLOR_CLR`（包住 `pr_*`）与 `log_put_locked` 用同一
 
 `COLOR_SET(dis_mod, forward_color, backword_color)` 调 `uart_set_color(dis_mod, forward_color)`——把 **显示模式** 和 **前景色** 传入 UART ANSI 的「前景 / 背景」两个形参，**第三参背景色不传入 ANSI**。VGA 侧 `map_color(forward, back)` 用的是后两个参数，顺序正确。
 
-`uart_set_color(f, b)` 输出 `ESC [ <f> ; <b> m`，但两个 switch 各自只认一部分色号，不认识的**静默不输出**（`default: break`）：前景位认 `{0, 30–34}`，背景位额外认 `40`。于是各 `pr_*` 实际打出的序列是：
+`uart_set_color(f, b)` 输出 `ESC [ <f> ; <b> m`，但两个 switch 各自只认一部分色号，不认识的**静默不输出**（`default: break`）：前景位认 `{0, 30–34}`，背景位额外认 `40-错误码与panic.md`。于是各 `pr_*` 实际打出的序列是：
 
 | 宏 | `COLOR_SET(0, fg, bg)` | 串口实际序列 | 终端效果 |
 |------|------|------|------|
@@ -93,7 +93,7 @@ SMP：`COLOR_SET` / `COLOR_CLR`（包住 `pr_*`）与 `log_put_locked` 用同一
 | `pr_crit` / `pr_alert` / `pr_emer` | `(0, 35, 40)` | `\33[0;m` | 35 不在 switch 内，背景位输出空——退化为 reset，**不是洋红** |
 | `COLOR_CLR` | — | `\33[0;0m` | 复位 |
 
-注意巧合之处：`pr_info` 的 `32` 是作为 ANSI 的**背景位**打出去、却渲染成绿字，正是「错位传参」的产物——多数级别恰好落在 30–34 区间所以肉眼正常。VGA 侧 `COLOR_SET(0, 32, 40)` 按绿字黑底映射。能用，但命名与 `uart_set_color(forword, backword)` 不对齐——改宏时不要「想当然改动」而不测试。
+注意巧合之处：`pr_info` 的 `32-TLB_shootdown与跨核一致性.md` 是作为 ANSI 的**背景位**打出去、却渲染成绿字，正是「错位传参」的产物——多数级别恰好落在 30–34 区间所以肉眼正常。VGA 侧 `COLOR_SET(0, 32, 40)` 按绿字黑底映射。能用，但命名与 `uart_set_color(forword, backword)` 不对齐——改宏时不要「想当然改动」而不测试。
 
 ---
 
@@ -260,7 +260,7 @@ PrimeCell PL011，MMIO。`uart_open` 传入的虚址即 early 页表已映射的
 
 接口分布在：同步调试输出——`modules/log/log.h`（`printk` / `pr_*` / `log_put_*` / `COLOR_SET`）、可移植 UART 分发（`uart.h`）、16550 / PL011 后端、x86 VGA 文本（`char_console.h`）。以头文件注释为准（见上列头文件；已与 `.c` 核对）。
 
-**本篇不涉及：** MCS 原语本身（见 `31`）；`cmain` 里 `uart_open` / `log_init` 时序（见 `02`）；aarch64 early map / `boot_uart_base_addr`（见 `05`/`36`）；GIC SPI mask（见 `27`）。
+**本篇不涉及：** MCS 原语本身（见 `31-锁与内存屏障.md`）；`cmain` 里 `uart_open` / `log_init` 时序（见 `02-启动流程总览.md`）；aarch64 early map / `boot_uart_base_addr`（见 `05-平台启动-aarch64.md`/`36-DTB与设备树-aarch64.md`）；GIC SPI mask（见 `27-平台中断-aarch64-GIC.md`）。
 
 ### 7.1 编排顺序（调用方须遵守）
 
@@ -338,7 +338,7 @@ u8 map_color(u64 forward, u64 back);
 
 ## 9. 测试
 
-无带断言的单测，只有一枚冒烟测试用例 `smp_log_test`（`modules/test/smp_log_test.c`）：smp 表每核都跑，每核连打 `SMP_LOG_TEST_ROUND=10000` 轮 `pr_info`，试 `pr_*` 的 MCS 串行有没有交错——`smp_log_check` 恒 `true`，乱不乱靠人眼看串口输出，因此该用例在 `smp_test.c` 表里长期注释掉（见 `43`）。常规覆盖仍是间接的：全程启动日志 + 各测试用例的 `pr_*` 输出；`log_put_locked` 整段路径由链接方 `sys_write` 场景带到（§3）。
+无带断言的单测，只有一枚冒烟测试用例 `smp_log_test`（`modules/test/smp_log_test.c`）：smp 表每核都跑，每核连打 `SMP_LOG_TEST_ROUND=10000` 轮 `pr_info`，试 `pr_*` 的 MCS 串行有没有交错——`smp_log_check` 恒 `true`，乱不乱靠人眼看串口输出，因此该用例在 `smp_test.c` 表里长期注释掉（见 `43-内核测试框架与测试用例索引.md`）。常规覆盖仍是间接的：全程启动日志 + 各测试用例的 `pr_*` 输出；`log_put_locked` 整段路径由链接方 `sys_write` 场景带到（§3）。
 
 ---
 
@@ -355,7 +355,7 @@ u8 map_color(u64 forward, u64 back);
 
 ## 11. 变更记录
 - 2026-11-19：底子重评批次——§7 opener；§9 测例口径。事实沿用 11-15。
-- 2026-11-15：全文可读性通读（篇章架构 / 篇章引用 / 词句）。篇章架构与格式扫描通过。篇首「平台启动与 DTB 篇」系无先例的复合生造名，改为「平台启动篇（`05`）与 DTB 篇（`36`）」，并给「锁篇 / 启动总览」补号（`31` / `02`），与 §7 的裸号对齐。§9 原称「无独立 log 单元测试」不实：`modules/test/smp_log_test.c` 存在（每核 10000 轮 `pr_info` 冒烟、`smp_log_check` 恒 `true`、在 `smp_test.c` 表中常注释，`43` 有索引），按实况改写。词句两处：§7.2 `log_init` 行「写 `\\n`」系多余转义反斜杠，实为 `uart_putc('\n')`（`log.c`）；§6.5 「能换行、Tab、卷屏」→「支持换行、Tab 对齐与卷屏」。颜色表、`LCR=0`、`IMSC=1<<4`、`rep_print` 仅 DTB 用等技术事实沿 11-14 精读核对，未变。
+- 2026-11-15：全文可读性通读（篇章架构 / 篇章引用 / 词句）。篇章架构与格式扫描通过。篇首「平台启动与 DTB 篇」系无先例的复合生造名，改为「平台启动篇（`05-平台启动-aarch64.md`）与 DTB 篇（`36-DTB与设备树-aarch64.md`）」，并给「锁篇 / 启动总览」补号（`31-锁与内存屏障.md` / `02-启动流程总览.md`），与 §7 的裸号对齐。§9 原称「无独立 log 单元测试」不实：`modules/test/smp_log_test.c` 存在（每核 10000 轮 `pr_info` 冒烟、`smp_log_check` 恒 `true`、在 `smp_test.c` 表中常注释，`43-内核测试框架与测试用例索引.md` 有索引），按实况改写。词句两处：§7.2 `log_init` 行「写 `\\n`」系多余转义反斜杠，实为 `uart_putc('\n')`（`log.c`）；§6.5 「能换行、Tab、卷屏」→「支持换行、Tab 对齐与卷屏」。颜色表、`LCR=0`、`IMSC=1<<4`、`rep_print` 仅 DTB 用等技术事实沿 11-14 精读核对，未变。
 
 - 2026-11-14：全文对照 log.h/log.c、uart.c、uart_16550A.c、uart_pl011.c、两 UART 头、char_console、main.c、boot_map.c 精读。**修正**：PL011 的 RXIM 在 `uart_pl011_open` 已打开（`IMSC=1<<4`），§2/§6.4 原「可启用」改为「已启用、但 GIC 不 unmask 则 CPU 无 IRQ」；16550 open 第三步是**显式写 `LCR=0`**（原误作「清零、未显式写」；且按手册 WLS=00 为 5 位字长、严格非 8N1，QEMU 不暴露、真机隐患记档）；PL011 寄存器表 `RSR/EIR` 更正为 `RSR/ECR`，补 ILPR/DMACR 行；CR 行注明 FEN 未置、FIFO 关。**扩写**：§4.4 各级别 `pr_*` 颜色表与精确 ANSI 序列（switch 只认 `{0,30–34}`+bg 认 40、其余静默丢——`pr_crit` 系 35 退化为 `\33[0;m`，`pr_info` 恰出 `\33[0;32m`）；§4.3 printf 细节（`%%`、`%s` NULL→`(null)`、`%p` 恒 `0x` 前缀、flags/长度全表、宽度仅十进制）；§6.3 头文件字段 `ISR`/`SPR` 与手册 IIR/SCR 出入、`offsetof` 取址；§6.5 前景矩阵只实现 30–34（洋红打到屏上变黑字）、背景矩阵全零未实现、`COLOR_CLR` 的 `map_color(30,30)` 越界读 `[-10]` 缺陷（记档不改）、TAB_SIZE=4 与逐行 memcpy 卷屏；§5/§7.3 `uart.c` 无 `#else` 兜底（无宏时 putc 吞字符、getc 无返回值 UB）与调用者现状（`uart_open` 唯一调用点在 cmain；`uart_getc` 无调用者；`log_put_locked` 已被 `linux_layer/io/sys_write.c` 使用）；§7.2 补 `pr_off`/`rep_print`（后者仅 DTB 缩进用）；§4.1 x86 `Makefile.env` 注入 `_LOG_DEBUG_`；§6.1 aarch64 PL011 窗口先低半恒等映射、经 L0 镜像入高半；§8 riscv `sbi_console_putchar` 死代码；§10 增真机潜在问题两条。删除变更记录中多余空行。
 - 2026-10-05：最终词句顺畅。
@@ -363,7 +363,7 @@ u8 map_color(u64 forward, u64 back);
 - 2026-10-04：补硬件/架构知识——§6.3 加 16550A 寄存器布局表（THR/RBR/IER/LSR/FCR/LCR 等）与波特率分频计算；§6.4 加 PL011 寄存器布局表（DR/FR/IBRD/FBRD/LCR_H/CR/IMSC/ICR 等）与波特率分频公式；§6.5 加 VGA 文本模式显存布局图（25×80、属性字节位域）；§2 加轮询 vs 中断收发对比表。语言润色——「塞进」→「放进」、「拢在一起」→「汇集在一起」、「想当然修一刀」→「想当然改动」、「本篇拥有」→「本篇涉及的接口分布在」、「靠 MCS」→「依赖 MCS」、修正「为为主」笔误。
 - 2026-09-27：语言润色——「真源 = … Doxygen」改为「以头文件注释为准」；one-shot→单次、bring-up→拉起、非热路径契约→非常用路径，约定从略；符号与技术事实未改。
 - 2026-09-26：核对——`uart_pl011_open` = cast 已映 VA、不再 map；与 `boot_uart_base_addr` / `cmain` 传参对齐；`COLOR_SET` UART 仅 `(d,fg)`。
-- 2026-09-26：§7 全文审阅——log/uart/char_console Doxygen；划清 vs `31`/`02`/`05`；强调 `log_put_byte` 不写 VGA。
+- 2026-09-26：§7 全文审阅——log/uart/char_console Doxygen；划清 vs `31-锁与内存屏障.md`/`02-启动流程总览.md`/`05-平台启动-aarch64.md`；强调 `log_put_byte` 不写 VGA。
 - 2026-09-25：语言轮——补 16550/PL011/VGA `0xB8000` 寄存器链；COLOR_SET 参数错位；确认 `log_put_byte` 不写 VGA 字符；RX 轮询与 GIC mask。
 - 2026-09-12：删除空壳 `rendezvos/stdio.h` / `stdlib.h`；入口只认 `log.h`。
 - 2026-08-29：整篇重做——直写叙述；VGA 只改色；锁在 `pr_*`；PL011 无有效 IRQ。

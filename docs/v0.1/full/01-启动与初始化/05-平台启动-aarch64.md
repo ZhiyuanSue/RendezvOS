@@ -4,7 +4,7 @@ v0.1 · 2026-10-03
 
 本篇对应的源码是：`arch/aarch64/boot/boot.S`、`boot_map.c`、`start_arch.c`、`boot/smp.c`（只含按设备树调用 `cpu_on` 的架构侧），以及 `arch/aarch64/psci/psci.c`、`include/arch/aarch64/boot/arch_setup.h`。
 
-下文把最先起来的核叫 **BSP**，其余核叫 **AP**。整机何时调用 `prepare_arch` 等四个架构函数，见启动总览（`02`）；链接脚本见构建篇（`01`）。设备树整棵树怎么解析，见 DTB 篇（`36`）。运行期中断见 GIC 篇（`27`）。谁调用 `cpu_on`、第三个参数传什么，见 SMP 篇（`28`）和 PSCI 篇（`39`）——本篇只解释入口寄存器和页表由 BSP 先建成什么样。
+下文把最先起来的核叫 **BSP**，其余核叫 **AP**。整机何时调用 `prepare_arch` 等四个架构函数，见启动总览（`02-启动流程总览.md`）；链接脚本见构建篇（`01-构建与链接.md`）。设备树整棵树怎么解析，见 DTB 篇（`36-DTB与设备树-aarch64.md`）。运行期中断见 GIC 篇（`27-平台中断-aarch64-GIC.md`）。谁调用 `cpu_on`、第三个参数传什么，见 SMP 篇（`28-SMP启动与处理器拓扑.md`）和 PSCI 篇（`39-PSCI与处理器电源-aarch64.md`）——本篇只解释入口寄存器和页表由 BSP 先建成什么样。
 
 建议的读法：若对「异常级、TTBR0/TTBR1、设备树、PSCI」不熟，先看 §4.6，再回头看布局和流程；§6 按时间往下走，不必在流程里回头翻手册。
 
@@ -210,9 +210,9 @@ ARM 把模式、页表、cache 配在一堆名为 `*_EL1` 的**系统寄存器**
 
 #### 设备树（DTB）
 
-固件用一块扁平**设备树**（FDT/DTB）描述内存、UART、CPU、中断控制器等。入口 **x0 = DTB 物理地址**（Linux arm64 约定；x1–x3 保留）。本篇早期只做三件事：找到 PL011、把 DTB 拷到内核后面一块 2 MiB 对齐的物理位置、再在 `prepare_arch` 给它一张可 cache 的高半大页。整棵树的解析要等堆起来，见 DTB 篇（`36`）。
+固件用一块扁平**设备树**（FDT/DTB）描述内存、UART、CPU、中断控制器等。入口 **x0 = DTB 物理地址**（Linux arm64 约定；x1–x3 保留）。本篇早期只做三件事：找到 PL011、把 DTB 拷到内核后面一块 2 MiB 对齐的物理位置、再在 `prepare_arch` 给它一张可 cache 的高半大页。整棵树的解析要等堆起来，见 DTB 篇（`36-DTB与设备树-aarch64.md`）。
 
-协议本身要求 DTB **8 字节对齐**，并落在约定的低端 RAM 窗口内（详见 `36` §4.1.4）；**没有**「整棵树不得超过 2 MiB」这一条。本仓库 early 路径用 2 MiB 大页做拷贝与映射，所以实现上 blob 应小于 2 MiB 才能被一个 block 盖住——那是实现约束，不要写成协议上限。（`start_arch.c` 注释里的 “less then 2m” 是过时说法，以 `36` 与本节为准。）
+协议本身要求 DTB **8 字节对齐**，并落在约定的低端 RAM 窗口内（详见 `36-DTB与设备树-aarch64.md` §4.1.4）；**没有**「整棵树不得超过 2 MiB」这一条。本仓库 early 路径用 2 MiB 大页做拷贝与映射，所以实现上 blob 应小于 2 MiB 才能被一个 block 盖住——那是实现约束，不要写成协议上限。（`start_arch.c` 注释里的 “less then 2m” 是过时说法，以 `36-DTB与设备树-aarch64.md` 与本节为准。）
 
 #### GIC：一份分发器，每核一个 CPU 接口
 
@@ -242,7 +242,7 @@ aarch64 上标量浮点与 AdvSIMD（NEON）共用 **`V0`–`V31`**（汇编里�
 
 为什么还要写进启动文档，而不是留给以后的用户态？因为两头都可能碰到：
 
-1. **内核自己。** 开了优化，编译器可能把普通 C 编成浮点/向量指令。aarch64 用 `config_aarch64.json` 的 **`-mgeneral-regs-only`**，限制内核 `.o` 只用通用寄存器（x0–x30 那一套），这和 x86 的 `-mno-sse` 是同一意图，见 `04` §4.6。没有这道编译限制，内核会在尚未使能 FP、或还不会保存这套寄存器时，就去执行这些指令而出错。
+1. **内核自己。** 开了优化，编译器可能把普通 C 编成浮点/向量指令。aarch64 用 `config_aarch64.json` 的 **`-mgeneral-regs-only`**，限制内核 `.o` 只用通用寄存器（x0–x30 那一套），这和 x86 的 `-mno-sse` 是同一意图，见 `04-平台启动-x86_64.md` §4.6。没有这道编译限制，内核会在尚未使能 FP、或还不会保存这套寄存器时，就去执行这些指令而出错。
 2. **用户程序。** 我们不能假定用户不用 `float`、不用向量。所以启动时仍然 `enable_fp`：硬件先允许访问，用户执行时才不会因为「OS 未使能 FP」立刻异常。
 
 打开硬件之后，`switch_to` 对 FPSIMD（Q0–Q31、FPCR、FPSR）做 eager 存取（汇编 `arch_fp_save_to` / `load_from`，缓冲在 `Arch_Thread_Context::fp`）；SVE 仍不启用。内核必须继续用 `-mgeneral-regs-only`，免得内核 C 踩用户浮点状态。
@@ -263,7 +263,7 @@ aarch64 上标量浮点与 AdvSIMD（NEON）共用 **`V0`–`V31`**（汇编里�
 | `boot/smp.c` | 遍历 DTB `cpu` 节点并 `cpu_on`；编排见 SMP 篇 |
 | `psci.c` | `psci_init` 填的方法表；细节见 PSCI 篇 |
 
-GAS 的 `.align n`：在 **aarch64 上按 2ⁿ 对齐**（`.align 4` 是 16 字节）。x86 上同一写法按 **n 字节**。把 x86 的 `.align 16` 抄过来，这里会对齐到 64 KiB。跨架构请用 `.balign`（按字节）或 `.p2align`（按 2 的幂）。x86 侧见 `04` §5。
+GAS 的 `.align n`：在 **aarch64 上按 2ⁿ 对齐**（`.align 4` 是 16 字节）。x86 上同一写法按 **n 字节**。把 x86 的 `.align 16` 抄过来，这里会对齐到 64 KiB。跨架构请用 `.balign`（按字节）或 `.p2align`（按 2 的幂）。x86 侧见 `04-平台启动-x86_64.md` §5。
 
 ---
 
@@ -378,7 +378,7 @@ make ARCH=aarch64 config && make run
 
 ## 11. 变更记录
 
-- 2026-11-19：底子重评批次——纠正 §4.6「协议要求 DTB ≤ 2 MiB」：协议无此上限，2 MiB 为本仓库 early 拷贝/映射约束（对齐 `36`）；`cpu_number` 笔误改为 `cpu_id`；篇首引用补号。
+- 2026-11-19：底子重评批次——纠正 §4.6「协议要求 DTB ≤ 2 MiB」：协议无此上限，2 MiB 为本仓库 early 拷贝/映射约束（对齐 `36-DTB与设备树-aarch64.md`）；`cpu_number` 笔误改为 `cpu_id`；篇首引用补号。
 - 2026-11-15：FP（E13）跟进——§4.6/§6.3/§6.5 写明 `enable_fp` BSP 与 AP 启动链各调一次（`orr` 置 FPEN=0b11）；您的 §4.6 重写（V/Q、FPCR/FPSR、SVE 边界、eager FPSIMD）已对 boot.S / arch_switch.S 逐条核实，无误。
 - 2026-11-13：§4.6 浮点节点明 V/Q、FPCR/FPSR、SVE 边界，并回链线程篇 §6.6；切换已改为 eager FPSIMD。
 - 2026-10-05：§5 补 GAS `.align`：本架构按 2ⁿ；x86 按字节，勿跨 ISA 照抄。

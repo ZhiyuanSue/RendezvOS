@@ -4,7 +4,7 @@ v0.1 · 2026-09-27
 
 本篇覆盖：`kernel/smp/ipi.c`、`include/rendezvos/smp/ipi.h`、`arch/{x86_64,aarch64}/smp/arch_smp_ipi.c`。
 
-IPI 所用 `local_irq_id` 与 `register_irq_handler` 见 IRQ 篇（`25`）；门铃硬件（ICR / SGI）见 APIC / GIC 篇（`26` / `27`）；**x86 TLB shootdown 握手**见 `32`，策略与 mask 见 TLB 篇（`11`）。本篇不把 aarch64 TLB 写成「也走 IPI」。
+IPI 所用 `local_irq_id` 与 `register_irq_handler` 见 IRQ 篇（`25-IRQ向量分配与处理.md`）；门铃硬件（ICR / SGI）见 APIC / GIC 篇（`26-平台中断-x86_64-APIC与PIC.md` / `27-平台中断-aarch64-GIC.md`）；**x86 TLB shootdown 握手**见 `32-TLB_shootdown与跨核一致性.md`，策略与 mask 见 TLB 篇（`11-TLB与缓存一致性.md`）。本篇不把 aarch64 TLB 写成「也走 IPI」。
 
 **官方手册：** Intel SDM — ICR（Interrupt Command Register，中断命令寄存器）FIXED 投递、向量进 IDT（Interrupt Descriptor Table，中断描述符表）；ARM GICv2 IHI0048 — `GICD_SGIR`、SGI（Software Generated Interrupt，软件生成中断）INTID 0–15。
 
@@ -19,7 +19,7 @@ IPI 所用 `local_irq_id` 与 `register_irq_handler` 见 IRQ 篇（`25`）；门
 | 门铃 | LAPIC（Local APIC）ICR **FIXED**，向量 **`0x30`** | GICD **SGI 0**，对应 `local_irq_id` **64** |
 | 注册 | `register_irq_handler(ARCH_IRQ_ID_IPI, this_cpu, …, NEED_EOI)` | 同左（aarch64 上该宏 = INTID + 64） |
 
-AP 启动拉核用的 INIT / SIPI **不是** soft IPI（delivery mode 不同，只是共用 `APIC_send_IPI` 一类原语）——见 SMP 篇（`28`）。
+AP 启动拉核用的 INIT / SIPI **不是** soft IPI（delivery mode 不同，只是共用 `APIC_send_IPI` 一类原语）——见 SMP 篇（`28-SMP启动与处理器拓扑.md`）。
 
 **唯一 in-tree 默认消费者：x86 TLB shootdown。** aarch64 TLB 用 `tlbi *is`，**不**注册 TLB IPI，也 **无** `arch_smp_flush_tlb_init`。现行主线各 ISA 仍都会 `smp_ipi_init`——机制保留，aarch64 几乎无第二消费者。
 
@@ -27,7 +27,7 @@ AP 启动拉核用的 INIT / SIPI **不是** soft IPI（delivery mode 不同，�
 
 硬件一次中断只有一个向量 / INTID（Interrupt ID），无法承载「刷哪一页、哪个 ASID」这类参数。协议是：
 
-1. 发送方先把参数写进 **目标核的 per-CPU 消息槽**（`32`）；
+1. 发送方先把参数写进 **目标核的 per-CPU 消息槽**（`32-TLB_shootdown与跨核一致性.md`）；
 2. 再在目标核 `smp_ipi_pending` 上 OR 对应 slot bit；
 3. 触发门铃（ICR / SGIR）；
 4. 目标核 IRQ handler **exchange** 清 pending，按 bit 调已注册的 `fn()`（无参——上下文在消息槽里）。
@@ -49,7 +49,7 @@ x86 的 IPI 通过 Local APIC 的 **ICR（Interrupt Command Register）**发出�
 aarch64 的 IPI 走 GIC Distributor 的 **SGI（Software Generated Interrupt）**：
 
 - **`GICD_SGIR`（偏移 `0xF00`，GICv2，只写）**：32 位寄存器，`[3:0]` 是 SGI INTID（0–15），`[23:16]` 是 CPU target list（每位对应一个 CPU interface），`[25:24]` 是 target filter。写即触发。
-- **target filter 编码**（`gic_v2.h` 的 `GIC_V2_GICD_SGIR_TARGET_*`）：`00` = **TARGET_SPECIFIED**（按 target list 逐位投递）、`01` = **TARGET_OTHER**（除写者外所有核，本仓库未用）、`10` = **TARGET_SELF**（只发自己，忽略 target list）。代码里 `arch_smp_ipi_send` **给自己发时走 TARGET_SELF**，给别人发时 `target_list = (1 << cpu_id) << 16` 配 TARGET_SPECIFIED。
+- **target filter 编码**（`gic_v2.h` 的 `GIC_V2_GICD_SGIR_TARGET_*`）：`00-架构与源码布局.md` = **TARGET_SPECIFIED**（按 target list 逐位投递）、`01-构建与链接.md` = **TARGET_OTHER**（除写者外所有核，本仓库未用）、`10-page_slice稀疏页索引.md` = **TARGET_SELF**（只发自己，忽略 target list）。代码里 `arch_smp_ipi_send` **给自己发时走 TARGET_SELF**，给别人发时 `target_list = (1 << cpu_id) << 16` 配 TARGET_SPECIFIED。
 - **SGI INTID**：0–15，本仓库用 **0**（`GIC_SGI_START`）；软件侧 `local_irq_id` = INTID + 64（`AARCH64_IRQ_OFFSET`），故 SGI0 → **64**，落在 IRQ 篇 `[64,79]` 的 SGI 段。
 - **CPU interface 编号**：GICv2 上限 **8** 个 CPU interface（`GIC_V2_NR_CPU_MAX`），故 `cpu < 8` 才能发，否则 `-E_IN_PARAM`。本仓库假设 GIC CPU interface 编号 == 软件 `cpu_id`（MPIDR Aff0 连续编号时成立）。
 - **前置检查**：发送还要 `gic.send_sgi` 已绑定（GIC 驱动 ops，签名 `void (*)(u32 irq_num, u32 target_mode, u32 target_list_bit)`），未绑定返回 `-E_RENDEZVOS`。
@@ -154,7 +154,7 @@ smp_ipi_send(cpu, id)       // pending OR + 门铃触发
 
 接口分布在：软 IPI 协议——`smp_ipi_init` / `register` / `send`、`smp_ipi_fn_t` / `ipi_id_t`，以及 arch 门铃 `arch_smp_ipi_init` / `arch_smp_ipi_send`。说明改写自 `ipi.h` + `arch/*/smp.h` Doxygen（已与 `ipi.c`、`arch_smp_ipi.c` 核对）。
 
-**本篇不涉及：** IRQ 两 id / `trap_handler`（见 `25`）；ICR / SGIR 字段细节（见 `26`/`27`）；x86 TLB 消息槽与握手（见 `32`）；`cpu_is_online`（见 `28`）。
+**本篇不涉及：** IRQ 两 id / `trap_handler`（见 `25-IRQ向量分配与处理.md`）；ICR / SGIR 字段细节（见 `26-平台中断-x86_64-APIC与PIC.md`/`27-平台中断-aarch64-GIC.md`）；x86 TLB 消息槽与握手（见 `32-TLB_shootdown与跨核一致性.md`）；`cpu_is_online`（见 `28-SMP启动与处理器拓扑.md`）。
 
 AP 启动拉核用的 INIT/SIPI **不是** soft IPI（共用发送原语而已）。
 
@@ -162,7 +162,7 @@ AP 启动拉核用的 INIT/SIPI **不是** soft IPI（共用发送原语而已�
 
 | 场景 | 顺序 |
 |------|------|
-| 每核装门铃 | `init_interrupt` 与平台 IRQ iface 之后 **`smp_ipi_init`**（内部 `arch_smp_ipi_init`，再 `register_irq_handler(ARCH_IRQ_ID_IPI, percpu(cpu_number), dispatch, IRQ_NEED_EOI)`）。两架构都在 `arch_start_core` 内调用：x86 在 `init_interrupt`/`init_irq` 之后，aarch64 在 `gic.init_cpu_interface()` 之后。注册用的本核号取自 per-CPU `cpu_number`，故其必须先于本步写入（`arch_start_core` 开头即 `per_cpu(cpu_number, cpu_id) = cpu_id`，见 `29` §7.4） |
+| 每核装门铃 | `init_interrupt` 与平台 IRQ iface 之后 **`smp_ipi_init`**（内部 `arch_smp_ipi_init`，再 `register_irq_handler(ARCH_IRQ_ID_IPI, percpu(cpu_number), dispatch, IRQ_NEED_EOI)`）。两架构都在 `arch_start_core` 内调用：x86 在 `init_interrupt`/`init_irq` 之后，aarch64 在 `gic.init_cpu_interface()` 之后。注册用的本核号取自 per-CPU `cpu_number`，故其必须先于本步写入（`arch_start_core` 开头即 `per_cpu(cpu_number, cpu_id) = cpu_id`，见 `29-per-CPU数据与访问约定.md` §7.4） |
 | 注册消费者 | 通常全局一次：`smp_ipi_register(&id, fn)`（x86 TLB 在 `arch_smp_flush_tlb_init`） |
 | 发送 | 填好目标核 per-CPU 消息（若需要）后调 **`smp_ipi_send(cpu, id)`** |
 | 接收 | IRQ 进 dispatch：`exchange(pending,0)` 循环调 `fn()`，最后 EOI |
@@ -194,7 +194,7 @@ Dispatch：`atomic64_exchange(pending, 0)` 循环，避免 handler 中途再 OR 
   发送方 CPU A                          目标核 CPU B
   ─────────────                         ─────────────
   ① 写 B 的 per-CPU 消息槽
-     （`32`：flush_va / flush_all）
+     （`32-TLB_shootdown与跨核一致性.md`：flush_va / flush_all）
   ② CAS OR B 的 smp_ipi_pending[bit]
   ③ arch_smp_ipi_send(B)
      │
@@ -212,7 +212,7 @@ Dispatch：`atomic64_exchange(pending, 0)` 循环，避免 handler 中途再 OR 
      B 的 done_gen >= expect
 ```
 
-要点：①②③ 在 A 上并非「天然」有序——跨核可见的顺序靠 **pending bit 原子操作的屏障语义**保证：x86 的 `lock cmpxchg` 与 aarch64 的 `ldaxr/stlxr + dmb(ISH)` 都是全屏障（§4.1 表），① 的参数写不会重排到 ② 的置位之后；B 侧 exchange 取到 bit 后（同为全屏障）再读消息槽，必看到 ① 的结果。门铃本身只是「通知有事件」，不携带参数，其硬件投递本身也不保证先于数据到达——协议里数据的「到达」始终以 bit 可见为准。若第 ③ 步失败，A 回滚 ② 的 bit；对 TLB 这类自带握手的消费者，发送失败即放弃本轮、由发起方处理（`32` 篇）。
+要点：①②③ 在 A 上并非「天然」有序——跨核可见的顺序靠 **pending bit 原子操作的屏障语义**保证：x86 的 `lock cmpxchg` 与 aarch64 的 `ldaxr/stlxr + dmb(ISH)` 都是全屏障（§4.1 表），① 的参数写不会重排到 ② 的置位之后；B 侧 exchange 取到 bit 后（同为全屏障）再读消息槽，必看到 ① 的结果。门铃本身只是「通知有事件」，不携带参数，其硬件投递本身也不保证先于数据到达——协议里数据的「到达」始终以 bit 可见为准。若第 ③ 步失败，A 回滚 ② 的 bit；对 TLB 这类自带握手的消费者，发送失败即放弃本轮、由发起方处理（`32-TLB_shootdown与跨核一致性.md` 篇）。
 
 ### 7.3 arch 门铃
 
@@ -229,7 +229,7 @@ error_t arch_smp_ipi_send(cpu_id_t cpu);
 
 ### 7.4 与 TLB 的分工
 
-唯一 in-tree 默认注册者：**x86** `arch_smp_flush_tlb_init`（见 `32`）。aarch64 TLB 走 `tlbi *is`，不注册 TLB IPI；各 ISA 仍 `smp_ipi_init`（机制保留，几乎无第二消费者）。
+唯一 in-tree 默认注册者：**x86** `arch_smp_flush_tlb_init`（见 `32-TLB_shootdown与跨核一致性.md`）。aarch64 TLB 走 `tlbi *is`，不注册 TLB IPI；各 ISA 仍 `smp_ipi_init`（机制保留，几乎无第二消费者）。
 
 ---
 
@@ -241,7 +241,7 @@ error_t arch_smp_ipi_send(cpu_id_t cpu);
 
 ## 9. 测试
 
-间接：x86 SMP + 用户 map / unmap 走 TLB shootdown（`32` 篇），顺带压满「写槽 → OR bit → 门铃 → dispatch」全链。全仓（core 与 `linux_layer`/`servers`/`tests`）grep `smp_ipi_register`/`smp_ipi_send`，消费者仅此一处，故 soft IPI 机制的正确性目前完全由该路径背书。aarch64 无 in-tree 消费者，IPI 路径只有「每核注册成功、启动不 panic」这一层间接覆盖；若兼容层将来引入第二消费者（如跨核事件通知），应补多核并发注册与发送的专项测例（另见 §4.1 无锁注册的约定）。
+间接：x86 SMP + 用户 map / unmap 走 TLB shootdown（`32-TLB_shootdown与跨核一致性.md` 篇），顺带压满「写槽 → OR bit → 门铃 → dispatch」全链。全仓（core 与 `linux_layer`/`servers`/`tests`）grep `smp_ipi_register`/`smp_ipi_send`，消费者仅此一处，故 soft IPI 机制的正确性目前完全由该路径背书。aarch64 无 in-tree 消费者，IPI 路径只有「每核注册成功、启动不 panic」这一层间接覆盖；若兼容层将来引入第二消费者（如跨核事件通知），应补多核并发注册与发送的专项测例（另见 §4.1 无锁注册的约定）。
 
 ---
 
@@ -251,16 +251,16 @@ error_t arch_smp_ipi_send(cpu_id_t cpu);
 - aarch64 ≤8 核 target 假设（GICv2 CPU interface 上限）。
 - `smp_ipi_register` 无锁、失败回滚可能抹他人 bit——两条边界条件与「现网为何无害」见 §4.1，新增消费者时须复核。
 - handler 须简短；可能触发 schedule。
-- 分工：本篇门铃；shootdown 握手在 `32`，mask / `*is` 在 TLB 篇（`11`）。
+- 分工：本篇门铃；shootdown 握手在 `32-TLB_shootdown与跨核一致性.md`，mask / `*is` 在 TLB 篇（`11-TLB与缓存一致性.md`）。
 
 ---
 
 ## 11. 变更记录
 - 2026-11-19：底子首评批次——§7 opener。事实沿用 11-14/15。
-- 2026-11-15：Maintainer 复审前可读性通读。跨篇引用统一既定昵称与裸编号：门铃硬件句补 `26`/`27`，`32-TLB_shootdown与跨核一致性.md` 全称→`32`，「MM 的 TLB 策略篇」→「TLB 篇（`11`）」；「拓扑篇」→「SMP 篇（`28`）」（沿 `16`/`29` 先例）；篇内三处裸用「TLB 篇」原实指 `32`，与全仓既定昵称（`11`）撞名，改为显式 `32` / `11` 并按实际归属拆开分工句；§9 消费者句语病修正（「grep…仅此一处消费者」→「grep…，消费者仅此一处」）。`RENDEZVOS_SMP_IPI_MAX`=16u（`include/rendezvos/limits.h`）、`IPI_ID_INVALID` 无 .c 使用者、唯一消费者 `arch_smp_tlb_flush.c` 复核属实；事实层沿用 11-14 核验，未再改动。
+- 2026-11-15：Maintainer 复审前可读性通读。跨篇引用统一既定昵称与裸编号：门铃硬件句补 `26-平台中断-x86_64-APIC与PIC.md`/`27-平台中断-aarch64-GIC.md`，`32-TLB_shootdown与跨核一致性.md` 全称→`32-TLB_shootdown与跨核一致性.md`，「MM 的 TLB 策略篇」→「TLB 篇（`11-TLB与缓存一致性.md`）」；「拓扑篇」→「SMP 篇（`28-SMP启动与处理器拓扑.md`）」（沿 `16-CPU亲和性-创建时绑核.md`/`29-per-CPU数据与访问约定.md` 先例）；篇内三处裸用「TLB 篇」原实指 `32-TLB_shootdown与跨核一致性.md`，与全仓既定昵称（`11-TLB与缓存一致性.md`）撞名，改为显式 `32-TLB_shootdown与跨核一致性.md` / `11-TLB与缓存一致性.md` 并按实际归属拆开分工句；§9 消费者句语病修正（「grep…仅此一处消费者」→「grep…，消费者仅此一处」）。`RENDEZVOS_SMP_IPI_MAX`=16u（`include/rendezvos/limits.h`）、`IPI_ID_INVALID` 无 .c 使用者、唯一消费者 `arch_smp_tlb_flush.c` 复核属实；事实层沿用 11-14 核验，未再改动。
 
 - 2026-11-14：全文对照 `ipi.c`/`ipi.h`/两 arch `arch_smp_ipi.c`/`LocalAPIC.c`/`gic_v2.h`/两 arch `atomic.c` 精读——§1.1.1 补 `APIC_send_IPI` 真实路径（目的号 `[63:56]` 拼装、xAPIC 等 Delivery Status bit12 清零、**先写 ICR1 高半再写 ICR0 低半触发**、x2APIC MSR=`0x800+索引`→`0x830` 免回读、`SELF_IPI` 定义未用、SH_NO/EDGE/ASSERT/PHYSICAL 实参）；§1.1.2 补 SGIR target filter 三值编码（SELF/SPECIFIED/OTHER）、发己走 TARGET_SELF、`gic.send_sgi` ops 签名与未绑定 `-E_RENDEZVOS`；§4.1 新增原子原语底层表（`lock xchgq/cmpxchg` vs `ldaxr/stlxr+dmb(ISH)`，非 LSE）作为跨核可见性依据，并记录两条并发边界条件（register 无锁靠 bring-up 约定；回滚可能抹他人 bit，现网不可达）；§6.1 补两 arch 检查顺序与双重保险；§7.1 明确门铃注册取号依赖 `cpu_number` 先写入；§7.2 补 `ipi_id_t`/`IPI_ID_INVALID` 与错误码顺序；§9 记录全仓消费者核实；§10 增补约定条目；变更记录 2026-10-05 两条归位。
-- 2026-10-22：与两 id 模型对齐——「向量 reserve / trap id」改为 `local_irq_id` 与 `25` 交叉引用。
+- 2026-10-22：与两 id 模型对齐——「向量 reserve / trap id」改为 `local_irq_id` 与 `25-IRQ向量分配与处理.md` 交叉引用。
 - 2026-10-05：任务 1/3/5 精读——补全 ICR/IDT/SGI/INTID/LAPIC/EOI 缩写首现释义；「打一扇门铃/敲门/清回/装不下/打到错误的核/registrant/handler 短」等口语与英文混用改正式中文；修正 §7.4.1 编号错位为 §7.2.1。
 - 2026-10-05：最终词句顺畅。
 - 2026-10-04：§1.1.1/1.1.2 补 x86 LAPIC ICR（xAPIC ICR0/ICR1、x2APIC IA32_X2APIC_ICR、Delivery Mode、vector 0x30）与 aarch64 GIC SGI（GICD_SGIR 字段、INTID 0–15、GICv2 ≤8、GICv3 ICC_SGI1R_EL1）硬件说明；§7.4.1 加 IPI 收发时序图（写消息槽→OR pending→敲门→handler exchange→EOI）。

@@ -4,7 +4,7 @@ v0.1 · 2026-09-26
 
 本篇覆盖：`schedule()` 的用户 AS 块（`kernel/task/task_manager.c`）、`thread->vs` 转入 / 放出（`thread.c` / `thread.h`）、`vspace_clear_user_mappings` / `del_vspace` 与 mask 门闩（`vmm.c` / `vmm.h`）、`percpu(current_vspace)`。
 
-Radix / `create` / `clone` 细节见页表篇（`07`）与 radix 篇（`08`）；mask 跨核怎么刷见 TLB 篇（`11`）；ASID 号码见 ASID 篇（`12`）；调度器 / zombie 见线程篇（`13`）；ELF / Path A·B 见创建篇（`14`）。
+Radix / `create` / `clone` 细节见页表篇（`07-虚拟地址空间与页表.md`）与 radix 篇（`08-Radix树与用户映射.md`）；mask 跨核怎么刷见 TLB 篇（`11-TLB与缓存一致性.md`）；ASID 号码见 ASID 篇（`12-ASID与地址空间标识.md`）；调度器 / zombie 见线程篇（`13-线程与Task_Manager.md`）；ELF / Path A·B 见创建篇（`14-线程创建与ELF加载.md`）。
 
 ---
 
@@ -31,7 +31,7 @@ Radix / `create` / `clone` 细节见页表篇（`07`）与 radix 篇（`08`）�
 
 **提供：** 所有权转入规则；`schedule` 何时装用户根、六步顺序；user→kernel 滞后语义；`allow_self_use` / `del` 与 mask 门闩；boot / `root` 特例。
 
-**不做：** 展开 IPI / `tlbi`（TLB 篇（`11`））；ASID bitmap（ASID 篇（`12`））；调度策略 / zombie（线程篇（`13`））；fork 标志解释（兼容层）；强制进内核时换回 root。
+**不做：** 展开 IPI / `tlbi`（TLB 篇（`11-TLB与缓存一致性.md`））；ASID bitmap（ASID 篇（`12-ASID与地址空间标识.md`））；调度策略 / zombie（线程篇（`13-线程与Task_Manager.md`））；fork 标志解释（兼容层）；强制进内核时换回 root。
 
 ---
 
@@ -51,7 +51,7 @@ Radix / `create` / `clone` 细节见页表篇（`07`）与 radix 篇（`08`）�
 
 ## 4. 数据结构：所有权引用落在哪
 
-§1 已经说明：用户地址空间上要同时保住「逻辑持有者」「本核是否还可能用着翻译」「哪些核可能还缓存着这份翻译」。完整 `VSpace` 定义见 `07`；下面只摘与这三件事相关的字段。
+§1 已经说明：用户地址空间上要同时保住「逻辑持有者」「本核是否还可能用着翻译」「哪些核可能还缓存着这份翻译」。完整 `VSpace` 定义见 `07-虚拟地址空间与页表.md`；下面只摘与这三件事相关的字段。
 
 ### 4.1 `VSpace`（本篇相关）
 
@@ -81,7 +81,7 @@ struct VSpace {
 
 | 字段 | 为什么要有 |
 |------|-----------|
-| `asid` | 硬件用的地址空间号；切换和刷 TLB 靠它区分（见 ASID 篇（`12`））。 |
+| `asid` | 硬件用的地址空间号；切换和刷 TLB 靠它区分（见 ASID 篇（`12-ASID与地址空间标识.md`））。 |
 | `pmm` | 这个地址空间向哪套物理页分配器要页（现行实现两处 `create_vspace` 调用一律传 `root_vspace.pmm`）。 |
 | `refcount` | 还有没有逻辑持有者。最后一次放掉引用时，注销并删除对象。 |
 | `tlb_cpu_mask` + 锁 | 哪些 CPU **可能**还缓存着这份翻译。切入时置位、切走时本地失效并清位；改映射时只打扰 mask 里的核；删除前必须等 mask 全空。 |
@@ -107,7 +107,7 @@ struct VSpace {
 
 还必须守住：
 
-- create / copy 成功 ⇒ caller 不得再持传入 vs（copy **失败也会** put，见创建篇（`14`））
+- create / copy 成功 ⇒ caller 不得再持传入 vs（copy **失败也会** put，见创建篇（`14-线程创建与ELF加载.md`））
 - USER ⇒ `vs` 非 NULL 且 ≠ `&root_vspace`
 - `current_vspace == user_vs` ⇒ 本核通常已持 schedule extra，且 mask 本地位已 set（同 vs 再入不重复 get）
 - `del` / `clear(..., false)` ⇒ mask 全零（`allow_self_use` 例外见下）
@@ -196,7 +196,7 @@ if old != &root_vspace:
 为何这样排：
 
 - **先 get 再装表**：避免装上一个已在回收中的 AS。
-- **先 set 新 mask 再装硬件**：本核已在新 AS 上运行时，别人发 shootdown 不能漏掉本核（TLB 篇（`11`）同理）。
+- **先 set 新 mask 再装硬件**：本核已在新 AS 上运行时，别人发 shootdown 不能漏掉本核（TLB 篇（`11-TLB与缓存一致性.md`）同理）。
 - **先刷旧再 clear 再 put**：若先清位再刷，本核已不在 mask 里，别核此时发 shootdown 会跳过本核，本地脏的 TLB 项就再也刷不到。
 - **先装新再释放旧**：中途故障还能退回，不必先把自己变成「无根」。
 
@@ -268,7 +268,7 @@ in-place exec：远端核的 mask 位须先清零；**本核位可留**；ASID *
 
 ## 7. 公开 API
 
-本篇**不**单独导出新符号；写清的是「所有权转入 / `schedule` 换根六步 / clear·del 门闩」这套调用约定。符号说明以 `vmm.h` / `thread.h` 的 Doxygen 为准（已按 `.c` 补强本篇关心的部分）。生命周期工厂签名见 `07`；`schedule` 全貌见 `13`；create/copy 转入见 `14`。
+本篇**不**单独导出新符号；写清的是「所有权转入 / `schedule` 换根六步 / clear·del 门闩」这套调用约定。符号说明以 `vmm.h` / `thread.h` 的 Doxygen 为准（已按 `.c` 补强本篇关心的部分）。生命周期工厂签名见 `07-虚拟地址空间与页表.md`；`schedule` 全貌见 `13-线程与Task_Manager.md`；create/copy 转入见 `14-线程创建与ELF加载.md`。
 
 ### 7.1 编排顺序（调用方必须遵守）
 
@@ -280,17 +280,17 @@ in-place exec：远端核的 mask 位须先清零；**本核位可留**；ASID *
 | 原地 exec clear | 远程 mask 先清零，再 **`vspace_clear_user_mappings(vs, h, true)`**（本核位可留），然后 load；**不换 ASID** |
 | 末次 ownership put | **`free_vspace_ref`**：`unregister` 后 `del_vspace`（`clear(..., false)` 要求 mask **全零**），再 `asid_free` |
 
-### 7.2 所有权转入（`thread.h`；细节 `13`/`14`）
+### 7.2 所有权转入（`thread.h`；细节 `13-线程与Task_Manager.md`/`14-线程创建与ELF加载.md`）
 
 所有权转入 / 转出的规则与各工厂失败路径见 §6.1 对照表（含 `copy_thread` 任意失败必 put、`gen_thread_from_elf` 的 USER 在 create 之后才设、回收只 put 不卸硬件、boot NULL），本小节不再重复。
 
-### 7.3 `schedule` 用户 AS 块（`task_manager.c`；API 见 `13`）
+### 7.3 `schedule` 用户 AS 块（`task_manager.c`；API 见 `13-线程与Task_Manager.md`）
 
 判定条件（仅当 next 带 `THREAD_FLAG_USER`）、各转移行为（root→user、user→kernel 滞后、kernel→另一 user 按 user→user）与 `old != new` 时的六步顺序见 §6.2 / §6.3，本小节不再重复。
 
-装根硬件见 §8；IPI/`tlbi` 见 `11`；ASID 号码见 `12`。
+装根硬件见 §8；IPI/`tlbi` 见 `11-TLB与缓存一致性.md`；ASID 号码见 `12-ASID与地址空间标识.md`。
 
-### 7.4 clear / del / ref（`vmm.h`；工厂见 `07`）
+### 7.4 clear / del / ref（`vmm.h`；工厂见 `07-虚拟地址空间与页表.md`）
 
 ```c
 error_t vspace_clear_user_mappings(VSpace *vs, struct map_handler *h,
@@ -308,7 +308,7 @@ extern VSpace *current_vspace; /* per-CPU；用 percpu() */
 | `free_vspace_ref` | **先 unregister 再 del**；del 因 mask 失败时的半死对象陷阱见 §6.4（无公开重试 / 修复接口）。 |
 | `percpu(current_vspace)` | 逻辑上的当前 AS；user→kernel **不会**清除（见 §6.2 转移表）。 |
 
-`create` / `clone` / `register` 签名与一般说明见 `07` §7.4；本篇只写清「何时 register、何时转入、何时敢 clear/del」。
+`create` / `clone` / `register` 签名与一般说明见 `07-虚拟地址空间与页表.md` §7.4；本篇只写清「何时 register、何时转入、何时敢 clear/del」。
 
 ---
 
@@ -316,8 +316,8 @@ extern VSpace *current_vspace; /* per-CPU；用 percpu() */
 
 `arch_set_current_user_vspace_root_asid(root, asid)` 是六步里唯一写页表根寄存器的地方；`switch_to` **不**碰它。
 
-- **x86_64（Intel SDM：CR3、TLB）：** 把用户页表物理根写入 **CR3**。当前未开 PCID 时，换 CR3 会冲掉本核与该地址空间相关的用户 TLB 项；`asid` 参数可被忽略（软件 ASID 仍在 `VSpace` 里记账，见 ASID 篇（`12`））。本地再刷旧 AS 时走 `arch_tlb_invalidate_vspace_page` 一类路径。
-- **aarch64（ARM ARM：TTBR0_EL1、TCR.AS）：** 把根与 **ASID** 一并打进 **TTBR0_EL1**（具体位域见 ASID 篇（`12`））；随后对本核旧 ASID 做本地 invalidate。跨核广播仍归 TLB 篇（`11`）的 `tlbi …is`。
+- **x86_64（Intel SDM：CR3、TLB）：** 把用户页表物理根写入 **CR3**。当前未开 PCID 时，换 CR3 会冲掉本核与该地址空间相关的用户 TLB 项；`asid` 参数可被忽略（软件 ASID 仍在 `VSpace` 里记账，见 ASID 篇（`12-ASID与地址空间标识.md`））。本地再刷旧 AS 时走 `arch_tlb_invalidate_vspace_page` 一类路径。
+- **aarch64（ARM ARM：TTBR0_EL1、TCR.AS）：** 把根与 **ASID** 一并打进 **TTBR0_EL1**（具体位域见 ASID 篇（`12-ASID与地址空间标识.md`））；随后对本核旧 ASID 做本地 invalidate。跨核广播仍归 TLB 篇（`11-TLB与缓存一致性.md`）的 `tlbi …is`。
 
 内核高半区共享：换用户根只影响低半翻译；这是「切到内核可不换回 root」能站得住的硬件前提。
 

@@ -4,7 +4,7 @@ v0.1 · 2026-09-27
 
 本篇覆盖：`modules/elf/elf.c`、`elf_print.c`、`include/modules/elf/*.h`（`elf.h` / `elf_common.h` / `elf_32.h` / `elf_64.h` / `elf_print.h`）。
 
-**映射、栈、回用户、Path A/B、`gen_thread_from_elf` / `thread_loader`** 全在创建篇（`14`）。本篇只界定**格式库边界**，禁止再抄一套加载流程。
+**映射、栈、回用户、Path A/B、`gen_thread_from_elf` / `thread_loader`** 全在创建篇（`14-线程创建与ELF加载.md`）。本篇只界定**格式库边界**，禁止再抄一套加载流程。
 
 **格式对照：** System V ABI / ELF —— `e_ident` magic `0x7F 'E' 'L' 'F'`、`EI_CLASS` / `EI_DATA` / `EI_VERSION`、Program Header（`PT_LOAD` 等）、`e_machine`（`EM_X86_64` / `EM_AARCH64` / …）。本仓库把结构体与常量落在头文件里，供 loader 消费。
 
@@ -75,7 +75,7 @@ typedef struct {
 | 字段 | loader 为什么关心 |
 |------|------------------|
 | `e_ident` | magic / class（32 或 64）/ 端序；`check_elf_header` 只严查 magic+version。 |
-| `e_entry` | 入口虚址，最终交给 `14` 的 `elf_load_info`。 |
+| `e_entry` | 入口虚址，最终交给 `14-线程创建与ELF加载.md` 的 `elf_load_info`。 |
 | `e_phoff` / `e_phentsize` / `e_phnum` | 找到 Program Header 表并遍历 `PT_LOAD`。 |
 | 其余 | 格式完整字段；本薄库多为打印/遍历辅助，loader 不全用。 |
 
@@ -211,7 +211,7 @@ loader（load_elf_to_vs）:
 
 接口分布在：ELF **格式库**——`check_elf_header` / `get_elf_*`、32/64 Phdr·Shdr 遍历宏（`elf.h`）、调试打印（`elf_print.h`）、常量与结构体（`elf_common.h` / `elf_32.h` / `elf_64.h`）。以头文件注释为准（`elf.h` / `elf_print.h`；已与 `.c` 核对）。
 
-**本篇不涉及：** `load_elf_to_vs` / `gen_thread_from_elf` / `run_elf_program` / 栈 / Path A·B（见 `14`）；`page_slice` 拷贝（见 `10`）；VSpace map（见 `07`/`08`）。
+**本篇不涉及：** `load_elf_to_vs` / `gen_thread_from_elf` / `run_elf_program` / 栈 / Path A·B（见 `14-线程创建与ELF加载.md`）；`page_slice` 拷贝（见 `10-page_slice稀疏页索引.md`）；VSpace map（见 `07-虚拟地址空间与页表.md`/`08-Radix树与用户映射.md`）。
 
 **不存在于公开面：** `elf64_hash`（`.c` 内实现，未导出、无调用方）。
 
@@ -221,8 +221,8 @@ loader（load_elf_to_vs）:
 |------|-----|------|
 | 1 | **`check_elf_header`** | 仅 magic + `EI_VERSION` |
 | 2 | **`get_elf_class` == `ELFCLASS64`** | loader 拒绝 32-bit |
-| 3 | `e_phoff` 越界检查 | 格式库不做，调用方必须自查——loader 在 `load_elf_to_vs` 里查 `e_phoff + e_phnum·e_phentsize ≤ slice_size`（映射语义在 `14`） |
-| 4 | **`for_each_program_header_64`** | 扫 `PT_LOAD` / `PT_DYNAMIC`（映射语义在 `14`） |
+| 3 | `e_phoff` 越界检查 | 格式库不做，调用方必须自查——loader 在 `load_elf_to_vs` 里查 `e_phoff + e_phnum·e_phentsize ≤ slice_size`（映射语义在 `14-线程创建与ELF加载.md`） |
+| 4 | **`for_each_program_header_64`** | 扫 `PT_LOAD` / `PT_DYNAMIC`（映射语义在 `14-线程创建与ELF加载.md`） |
 
 本篇**不**校验 `e_machine` / endian 与宿主一致——错架构镜像可能直到 map 后才触发异常。
 
@@ -287,14 +287,14 @@ void print_elf_machine(u16);
 
 ## 11. 变更记录
 - 2026-11-19：底子重评批次——§7 opener。事实沿用 11-15。
-- 2026-11-15：全文可读性通读（篇章架构 / 篇章引用 / 词句）。架构与格式大体过关，格式两处：§4.3 末 `---` 前多一空行；§4.1 `e_ident` 图内 `only in elf64` 的 ASCII 直引号改用全篇统一的「」。引用一处：篇首全文件名缩为「创建篇（`14`）」，与 `13`/`15`/`16` 对 `14` 的既有称呼一致。词句一处：§4.1 第二段首句与第一段首句重复（「文件最前面是固定格式的文件头」），删去并直接衔接 `e_ident`。§6 流程块与 §9 按代码实况补齐：`check_elf_header` 失败打 `[ERROR] bad elf file`、32 位镜像打 `[Error] Rendezvos not support elf32 file running`（`thread_loader.c` 两处 `pr_error`），越界静默返回；§9 扩写（`modules/test` 确无 ELF 测例，原句属实但过简），并列无运行期消费者的失败面。事实复核全部成立：`ELF32/64_FIRST_SH_ADDR` 全仓未定义（仅 `elf.h` 两处引用）、`ELF_E_IDENT_CLASS_NUM=3`、遍历宏按 `sizeof(Elf64_Phdr)` 指针步进（不读 `e_phentsize`）、OSABI 仅 SYSV/HPUX/STANDALONE 三常量、`EM_LOONGARCH=258`、`_DYNAMIC` 只声明、`print_elf_sh32/64` 占位、`print_elf_header` 版本不符提前返回、OSABI/编码/ABI 版本取函数全仓无调用方、`get_elf_type`/`get_elf_machine` 仅被 `print_elf_header` 消费。无事实错误。余沿 11-14 精读，未变。
+- 2026-11-15：全文可读性通读（篇章架构 / 篇章引用 / 词句）。架构与格式大体过关，格式两处：§4.3 末 `---` 前多一空行；§4.1 `e_ident` 图内 `only in elf64` 的 ASCII 直引号改用全篇统一的「」。引用一处：篇首全文件名缩为「创建篇（`14-线程创建与ELF加载.md`）」，与 `13-线程与Task_Manager.md`/`15-VSpace所有权与调度切换.md`/`16-CPU亲和性-创建时绑核.md` 对 `14-线程创建与ELF加载.md` 的既有称呼一致。词句一处：§4.1 第二段首句与第一段首句重复（「文件最前面是固定格式的文件头」），删去并直接衔接 `e_ident`。§6 流程块与 §9 按代码实况补齐：`check_elf_header` 失败打 `[ERROR] bad elf file`、32 位镜像打 `[Error] Rendezvos not support elf32 file running`（`thread_loader.c` 两处 `pr_error`），越界静默返回；§9 扩写（`modules/test` 确无 ELF 测例，原句属实但过简），并列无运行期消费者的失败面。事实复核全部成立：`ELF32/64_FIRST_SH_ADDR` 全仓未定义（仅 `elf.h` 两处引用）、`ELF_E_IDENT_CLASS_NUM=3`、遍历宏按 `sizeof(Elf64_Phdr)` 指针步进（不读 `e_phentsize`）、OSABI 仅 SYSV/HPUX/STANDALONE 三常量、`EM_LOONGARCH=258`、`_DYNAMIC` 只声明、`print_elf_sh32/64` 占位、`print_elf_header` 版本不符提前返回、OSABI/编码/ABI 版本取函数全仓无调用方、`get_elf_type`/`get_elf_machine` 仅被 `print_elf_header` 消费。无事实错误。余沿 11-14 精读，未变。
 
 - 2026-11-14：全文对照代码复核——修正 Phdr 字段顺序表述（ELF64 的 `p_flags` 排第二紧跟 `p_type`；ELF32 的 `p_flags` 在 `p_memsz` 后、`p_align` 前，均非旧稿写法）；§4.1 补 `EM_LOONGARCH=258`，OSABI 行改按仓库实有常量（`elf_64.h` 只定义 SYSV=0/HPUX=1/STANDALONE=255，3=Linux、97=ARM 系外部惯例）；§6 流程按 `load_elf_to_vs` 实况更新——边界检查必做且用 `e_phentsize`、Phdr 扫两轮（先 `PT_LOAD` 后 `PT_DYNAMIC`）；新增消费者面收口（§3、§7.2）——`print_elf_ph64` 在 loader 两个处理函数入口无条件调用，`get_elf_type/_machine` 仅 `print_elf_header` 用，OSABI 类 getter 零调用；记档——`get_section_header_ptr_by_index_*` 展开引用全仓未定义的 `ELF*_FIRST_SH_ADDR`、遍历宏按 `sizeof(结构体)` 步进与文件自述 `e_phentsize` 脱钩、`print_elf_sh32/64` 占位、DEBUG 开启时 class/data 字符串表下标可越界（`pr_off` 丢参故默认不触发）、`elf_64.h` 的 `_DYNAMIC` 只声明未引用；修复 §4.1 表格里 `class(32|64)` 未转义竖线破坏表格的问题。
 - 2026-10-05：最终词句顺畅。
 - 2026-10-05：任务 1/3/5 精读——「测例」→「测试用例」（§3、§9）；改翻译腔——「不碰 VSpace」→「不涉及 VSpace」、「错架构可走到/可能走到 map 后才触发异常」→「错架构镜像可能直到 map 后才触发异常」、「做 ISA 门闩」→「做 ISA 校验」、「只跑本机 ELF」→「只加载本机 ELF」、「半死代码/半死」→「近似死代码」、「永远回链 14，勿在本篇膨胀」→「始终回链 14，勿在本篇扩展」、「loader 在 14 篇映射」→「loader 在 14 篇处理映射」。
 - 2026-10-04：补硬件/格式知识——§4.1 ELF32/64 Ehdr 字段布局与 `e_ident` 字节图、§4.2 Phdr 结构（含 ELF32/64 字段顺序差异与常见 `p_type` 表）、§4.3 PT_LOAD 段到内存映射图；改翻译腔——「map 后再炸」→「map 后才触发异常」、「本篇拥有」→「本篇涉及的接口分布在」。
 - 2026-09-27：语言润色——「真源 = … Doxygen」改为「以头文件注释为准」；one-shot→单次、bring-up→拉起、非热路径契约→非常用路径，约定从略；符号与技术事实未改。
-- 2026-09-26：§7 全文审阅——`elf.h`/`elf_print.h` Doxygen；与 `14` 硬分工；标明 `elf64_hash` 未导出。
+- 2026-09-26：§7 全文审阅——`elf.h`/`elf_print.h` Doxygen；与 `14-线程创建与ELF加载.md` 硬分工；标明 `elf64_hash` 未导出。
 - 2026-09-25：语言轮——ELF 格式字段与 loader 消费边界；明确不校验 machine；打印默认 `pr_off`。
 - 2026-08-29：整篇重做——薄边界；与 03/14 硬分工。
 - 2026-08-27：初稿。

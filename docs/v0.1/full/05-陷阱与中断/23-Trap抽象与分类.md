@@ -4,9 +4,9 @@ v0.1 · 2026-10-02
 
 本篇覆盖：`kernel/trap/trap.c`、`include/rendezvos/trap/trap.h`、`include/rendezvos/trap/trap_common.h`、`arch/{x86_64,aarch64}/trap/trap.c`、`trap_vec.S`、`kernel_entry.S`（x86 syscall 旁路）、**`arch/x86_64/trap/tss.c`（TSS.RSP0）**、`arch/*/boot/start_arch.c` 里的装表时机。
 
-IRQ 软件编号空间（`irq_space`：两套 id、占有/释放）与分发衔接见 IRQ 篇（`25`）；弱符号 `syscall` / ABI 见 `24`；APIC / PIC、GIC **寄存器与路由**见平台中断篇（`26`/`27`）——和 `25` 里的软件表不是同一层。**不存在**扁平路径 `include/rendezvos/trap.h`——公开头是 `include/rendezvos/trap/trap.h`。
+IRQ 软件编号空间（`irq_space`：两套 id、占有/释放）与分发衔接见 IRQ 篇（`25-IRQ向量分配与处理.md`）；弱符号 `syscall` / ABI 见 `24-系统调用入口.md`；APIC / PIC、GIC **寄存器与路由**见平台中断篇（`26-平台中断-x86_64-APIC与PIC.md`/`27-平台中断-aarch64-GIC.md`）——和 `25-IRQ向量分配与处理.md` 里的软件表不是同一层。**不存在**扁平路径 `include/rendezvos/trap.h`——公开头是 `include/rendezvos/trap/trap.h`。
 
-**不在本篇：** CMOS RTC 读墙钟（`arch/x86_64/time/rtc.c`）——不是中断控制器路径，见时间子系统篇（`33`）。
+**不在本篇：** CMOS RTC 读墙钟（`arch/x86_64/time/rtc.c`）——不是中断控制器路径，见时间子系统篇（`33-时间与定时器子系统.md`）。
 
 ---
 
@@ -23,11 +23,11 @@ IRQ 软件编号空间（`irq_space`：两套 id、占有/释放）与分发衔�
 
 若上层硬编码「向量 14 / EC 0x24」，每加一架构就要产生一次分裂。
 
-汇编只建 `trap_frame*`；语义用 `trap_class`；分发见 `25`（`local_irq_vector[]` / space `priv[]`）。
+汇编只建 `trap_frame*`；语义用 `trap_class`；分发见 `25-IRQ向量分配与处理.md`（`local_irq_vector[]` / space `priv[]`）。
 
 历史动机（仍成立）：先有 x86 固定 IDT 数组外形；迁 aarch64 时**不改「数组分发」**，把 EC 放入前 64 槽、IRQ 偏移 +64——**假统一、真映射**。本篇也按这条链组织：§4 立语义，§6 走硬件链，§7 给 API。
 
-#### 入口分派总图（本篇与 `24` / `25` 的接缝）
+#### 入口分派总图（本篇与 `24-系统调用入口.md` / `25-IRQ向量分配与处理.md` 的接缝）
 
 ```text
                     用户 / 内核事件
@@ -38,20 +38,20 @@ IRQ 软件编号空间（`irq_space`：两套 id、占有/释放）与分发衔�
     （装进 trap_frame）                 （LSTAR 旁路）
            │                               │
            ▼                               ▼
-    trap_handler（本篇 §4.5 / §6）     arch_enter_kernel（`24`）
+    trap_handler（本篇 §4.5 / §6）     arch_enter_kernel（`24-系统调用入口.md`）
            │                               │
            ├─ local_irq_id < LO            └─ call weak/强 `syscall(tf)`
            │    → 本核 local_irq_vector[]       （无统一末尾 schedule）
            │
            └─ local_irq_id ≥ LO
-                → irq_global_find（`25`：map / 公式 → space priv[]）
+                → irq_global_find（`25-IRQ向量分配与处理.md`：map / 公式 → space priv[]）
            │
            ├─ 有 handler → 调用
            ├─ NEED_EOI → arch_local_eoi [→ space->eoi]
            └─ 用户来源 && core_tm → schedule
 ```
 
-读图要点：aarch64 的 EL0 `SVC` **走左边**（经 `TRAP_CLASS_SYSCALL` fixed wrapper）；x86 的 `syscall` **走右边**。编号怎么占、怎么 enable，见 `25`；控制器寄存器见 `26` / `27`。
+读图要点：aarch64 的 EL0 `SVC` **走左边**（经 `TRAP_CLASS_SYSCALL` fixed wrapper）；x86 的 `syscall` **走右边**。编号怎么占、怎么 enable，见 `25-IRQ向量分配与处理.md`；控制器寄存器见 `26-平台中断-x86_64-APIC与PIC.md` / `27-平台中断-aarch64-GIC.md`。
 
 手册对照（细节展开在 §6）：
 
@@ -64,7 +64,7 @@ IRQ 软件编号空间（`irq_space`：两套 id、占有/释放）与分发衔�
 
 **提供：** 统一 `trap_handler`；`trap_class` + `TRAP_COMMON`；fixed / direct 两级注册；从装表、经入口到返回的公共硬件语境；用户来源经 `trap_handler` 后的 `schedule` 钩子。
 
-**不做：** POSIX signal / ptrace / Linux `do_page_fault`；APIC / GIC 寄存器细节；syscall 参数宏与弱符号实现；IRQ 两 id 分配策略全文（见 `25`）。
+**不做：** POSIX signal / ptrace / Linux `do_page_fault`；APIC / GIC 寄存器细节；syscall 参数宏与弱符号实现；IRQ 两 id 分配策略全文（见 `25-IRQ向量分配与处理.md`）。
 
 ---
 
@@ -92,7 +92,7 @@ IRQ 软件编号空间（`irq_space`：两套 id、占有/释放）与分发衔�
 
 ### 4.3 `local_irq` / `global_irq`（分发槽）
 
-细节与两 id 模型见 `25`。本篇只强调：fixed trap 最终仍落到 `register_irq_handler`。
+细节与两 id 模型见 `25-IRQ向量分配与处理.md`。本篇只强调：fixed trap 最终仍落到 `register_irq_handler`。
 
 ```c
 struct local_irq { /* per-CPU；local_irq_id < NR_ARCH_LOCAL_IRQ */
@@ -113,12 +113,12 @@ struct local_irq { /* per-CPU；local_irq_id < NR_ARCH_LOCAL_IRQ */
 | direct | `register_irq_handler(local_irq_id, cpu_id, …)` | 本地：写该 CPU 槽；全局：须已 `irq_global_alloc` |
 
 推荐：fault / syscall class 用 fixed；设备用 `irq_global_alloc` + direct。
-**陷阱：** `arch_register_fixed_trap(TRAP_CLASS_IRQ)` 在 x86 反向扫描几乎只匹配到 **NMI(2)**，**不会**绑设备用的表外窗口（从 `ARCH_IRQ_ID_ALLOC_LO` 起，见 `25`）。
+**陷阱：** `arch_register_fixed_trap(TRAP_CLASS_IRQ)` 在 x86 反向扫描几乎只匹配到 **NMI(2)**，**不会**绑设备用的表外窗口（从 `ARCH_IRQ_ID_ALLOC_LO` 起，见 `25-IRQ向量分配与处理.md`）。
 
 ### 4.5 `trap_handler` 不变量
 
 ```text
-查 local / global（`TRAP_ID` → `local_irq_id`，见 `25`）
+查 local / global（`TRAP_ID` → `local_irq_id`，见 `25-IRQ向量分配与处理.md`）
   有 handler → 调用
   无 → arch_unknown_trap_handler + kernel_panic
 若 NEED_EOI → arch_local_eoi(...) [→ space->eoi]
@@ -229,7 +229,7 @@ SDM：特权级提升进入中断 / 异常时，若 IDT gate 的 **IST=0**，CPU
 本仓库：
 
 - `DEFINE_PER_CPU(struct TSS, cpu_tss)`；`prepare_per_cpu_tss` 把 RSP0 写成该核 `boot_stack_bottom`，再 **`ltr`** 装 TSS 选择子。
-- 之后线程切换时 `switch_to` **改写 TSS.RSP0** 为新线程 `kstack_bottom`（见线程篇（`13`）§6.6）——否则从用户进核会使用错误的栈。
+- 之后线程切换时 `switch_to` **改写 TSS.RSP0** 为新线程 `kstack_bottom`（见线程篇（`13-线程与Task_Manager.md`）§6.6）——否则从用户进核会使用错误的栈。
 - **IST1–7 未用**（见下）；双 fault 等也不走独立 IST 栈。
 
 没有正确的 per-CPU TSS + 切换时更新 RSP0，用户态 IRQ / #PF 会在错误栈上建 `trap_frame`。
@@ -444,7 +444,7 @@ EC→class 全表见上（含「未列出 EC → default `UNKNOWN`」规则）�
 
 接口都属于：语义分类与 fixed 注册——`enum trap_class`、`TRAP_COMMON` / `*_trap_info`、`fixed_trap_handler_t`、`arch_register_fixed_trap`、`arch_populate_trap_info`、`arch_get_fault_addr`、`arch_int_from_kernel`。说明改写自 `trap_common.h` / `trap.h` / `arch/*/trap/trap.h` Doxygen（已与 `arch/*/trap/trap.c` 核对）。
 
-**本篇不涉及：** `trap_handler` / `init_interrupt` / `register_irq_handler` / `irq_global_*` / `arch_local_eoi`（见 `25`）；syscall ABI / 弱符号 / LSTAR（见 `24`）。
+**本篇不涉及：** `trap_handler` / `init_interrupt` / `register_irq_handler` / `irq_global_*` / `arch_local_eoi`（见 `25-IRQ向量分配与处理.md`）；syscall ABI / 弱符号 / LSTAR（见 `24-系统调用入口.md`）。
 
 签名注意：`arch_register_fixed_trap` 返回 **`void`**（非法 class 静默 return），不是 `error_t`。
 
@@ -452,10 +452,10 @@ EC→class 全表见上（含「未列出 EC → default `UNKNOWN`」规则）�
 
 | 场景 | 顺序 |
 |------|------|
-| 每核装表 | `arch_start_core` 先调 **`init_interrupt`**（`local_irq_vector[]` 是 per-CPU 静态数组，**无预分配步骤**；内部完成 lidt/VBAR，见 `25`），之后再 `arch_register_fixed_trap` |
+| 每核装表 | `arch_start_core` 先调 **`init_interrupt`**（`local_irq_vector[]` 是 per-CPU 静态数组，**无预分配步骤**；内部完成 lidt/VBAR，见 `25-IRQ向量分配与处理.md`），之后再 `arch_register_fixed_trap` |
 | 兼容层 fault | initcall 后：`arch_register_fixed_trap(PAGE_FAULT, handler, attr)`；handler 内用 **`arch_populate_trap_info(tf, &info)`** 读 TRAP_COMMON |
-| aarch64 syscall | `init_interrupt` 之后：`arch_register_fixed_trap(SYSCALL, arch_syscall_helper, …)`（见 `24`/`05`） |
-| 设备 IRQ | **勿** `arch_register_fixed_trap(IRQ)`；用 `irq_global_alloc` + `register_irq_handler(…, cpu_id, …)`（`25`） |
+| aarch64 syscall | `init_interrupt` 之后：`arch_register_fixed_trap(SYSCALL, arch_syscall_helper, …)`（见 `24-系统调用入口.md`/`05-平台启动-aarch64.md`） |
+| 设备 IRQ | **勿** `arch_register_fixed_trap(IRQ)`；用 `irq_global_alloc` + `register_irq_handler(…, cpu_id, …)`（`25-IRQ向量分配与处理.md`） |
 
 同一 `local_irq_id` 上 fixed 与 direct **后写覆盖**；勿混绑。
 
@@ -541,8 +541,8 @@ bool arch_int_from_kernel(struct trap_frame *tf);
 
 ## 11. 变更记录
 
-- 2026-11-20：§1 补「入口分派总图」——异常/IRQ/`SVC` 经 `trap_handler` vs x86 `syscall` LSTAR 旁路；并标出与 `24`/`25` 的接缝（local 表 / `irq_global_find` / EOI / schedule）。
-- 2026-11-19：底子首评跟进——§6.1 纠正：`init_irq` 不做 IOAPIC space 注册（那是 `arch_start_platform` → `ioapic_init`）；`init_irq` 只做 PIC/xAPIC/x2APIC 三选一。同日首评：篇首引用缩号；线程篇/`33` 补号；§7 opener。
+- 2026-11-20：§1 补「入口分派总图」——异常/IRQ/`SVC` 经 `trap_handler` vs x86 `syscall` LSTAR 旁路；并标出与 `24-系统调用入口.md`/`25-IRQ向量分配与处理.md` 的接缝（local 表 / `irq_global_find` / EOI / schedule）。
+- 2026-11-19：底子首评跟进——§6.1 纠正：`init_irq` 不做 IOAPIC space 注册（那是 `arch_start_platform` → `ioapic_init`）；`init_irq` 只做 PIC/xAPIC/x2APIC 三选一。同日首评：篇首引用缩号；线程篇/`33-时间与定时器子系统.md` 补号；§7 opener。
 - 2026-11-15：可读性通读。§1 删编者批注「必须讲清这条链」，改为结构导引；「任务篇 §6.6」改既定昵称「线程篇」；§6.4 SError「两层」正文与脚注 ¹ 重复，正文压为回链脚注；FIQ 句补全因果链（空解码 → 查无 handler → unknown + panic，`unexpected_trap` 裸 `bl` 不建 frame）；「⚠ 行提示」改「关于上表的 ⚠ 行」并对齐表头「含义」列名；§7 首句与 §7.1 表格残留「，……之后再」顺手修正。
 - 2026-11-14：对照代码复查。§6.4 EC 表按 `aarch64_ec_to_trap_class` 全量重写——补 `0x02`–`0x06`/`0x08`/`0x0d`/`0x11`/`0x22`/`0x26`/`0x2c`/`0x30`–`0x35`/`0x3c`，明确「未列出 EC → default `UNKNOWN`」；修正三处与代码不符：「HVC/SMC→`SYSCALL`」与「`0b001110`+ SVE/PAC→`ILLEGAL_INSTR`」（实际都走 default `UNKNOWN`）、`0x26` 仅 `ALIGNMENT`（无 `STACK_FAULT`）；补代码注释自带的「`0x09`–`0x0c` 是 DFSC/IFSC，非 EC」与个别注释存疑（⚠）标注，行为以代码为准。§7.1 删除不存在的 `irq_global_vector_alloc`（`local_irq_vector[]` 为静态数组，无预分配）。§6.1 补两 arch 实测调用序；§6.2 补硬件压 error_code 的真实向量集与「`.data.trap.trap_vec_table` 就是 IDT 本体」；§6.3 补 syscall 入口 `sti` / gs scratch 切栈；§6.4 补 aarch64 39×8 现场块槽位布局。§7.3/§10 补「fixed wrapper 静默吞 trap」。变更记录恢复新→旧排序。
 - 2026-11-13：对齐 irq_space——去掉 `global_irq_vector` 表述；EOI 可接 `space->eoi`。
@@ -555,7 +555,7 @@ bool arch_int_from_kernel(struct trap_frame *tf);
 - 2026-10-04：补 x86 IDT 门描述符位布局图（Task/Interrupt/Trap Gate、DPL、IST 字段）；补 aarch64 ESR_ELx 寄存器位布局与 EC 值对照表；补同步异常 vs 异步中断分类总图；「塞进/碰到/本篇拥有」改地道中文（放入/匹配到/本篇涉及的接口分布在）。
 - 2026-10-02：补 x86 Fault/Trap/Abort 返回 RIP；IST 用意与为何未用；aarch64 异常入口序列与 ELR（async/sync/SVC）规则；IRQ 路径注明 `TRAP_SET_CPU`；§6.6 双侧速查。
 - 2026-09-27：中文措辞整理——弱化「真源」等生硬堆砌用语；公开头路径与 TSS 锚点表述通顺化。
-- 2026-09-26：§7 全文审阅——纠正 `arch_register_fixed_trap` 为 `void`；划清拥有（class/populate）vs `25`（trap_handler / 分配）；补 Doxygen（反向扫描、USED 前置、IRQ class 陷阱、CR2/FAR/SPSR）。
+- 2026-09-26：§7 全文审阅——纠正 `arch_register_fixed_trap` 为 `void`；划清拥有（class/populate）vs `25-IRQ向量分配与处理.md`（trap_handler / 分配）；补 Doxygen（反向扫描、USED 前置、IRQ class 陷阱、CR2/FAR/SPSR）。
 - 2026-09-25：补遗漏模块——**TSS.RSP0 / `tss.c`**；VBAR 16 槽接线表；#PF error_code 位；划清 RTC 不属本篇；文首补 SDM / ARM ARM 对照入口。
 - 2026-09-12：删除对已清除的 `interrupt_init` 死声明 / E12 的叙述。
 - 2026-08-29：整篇重做——硬件深度（IDT / VBAR / CPL / EL）；双入口与 schedule 不对称；装表 / 开中断时序；NMI≡IRQ；EC 命名空间；纠正扁平 trap.h 路径与「x86 也 fixed SYSCALL」误写；IST=0。

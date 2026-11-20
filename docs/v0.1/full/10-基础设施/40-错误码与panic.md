@@ -4,7 +4,7 @@ v0.1 · 2026-09-27
 
 本篇覆盖：`include/rendezvos/error.h`、`kernel/system/panic.c`、`include/rendezvos/system/panic.h`、`kernel/system/powerd.c`、`include/rendezvos/system/powerd.h`、各 ISA 的 `include/arch/*/power_ctrl.h`。
 
-PSCI（Power State Coordination Interface，电源状态协调接口）`system_off` 终点见 PSCI 篇（`39`）；关机 kmsg opcode 见 kmsg 篇（`21`）；IPC 错误语义见 `04` 各篇。`common.h` / `limits.h` 非本篇主体。
+PSCI（Power State Coordination Interface，电源状态协调接口）`system_off` 终点见 PSCI 篇（`39-PSCI与处理器电源-aarch64.md`）；关机 kmsg opcode 见 kmsg 篇（`21-kmsg与TLV序列化.md`）；IPC 错误语义见 `04-IPC/` 目录各篇。`common.h` / `limits.h` 非本篇主体。
 
 **硬件对照：** x86 QEMU/SeaBIOS 常见关机口 `0x604` 写 `0x2000`（ACPI PM1a 风格，源码宏 `_X86_POWER_SHUTDOWN_`）；复位口 `0x92` bit0（宏 `_X86_INIT_REGISTER_`，`arch_reset`，powerd reboot **未接入**）。aarch64 走 PSCI SYSTEM_OFF（SMCCC，SMC Calling Convention）。riscv64：`panic.c` 里 `#elif defined _RISCV64_` 分支**存在但是空的**，且头树里根本没有 `power_ctrl.h`（`arch_cpu_relax` 宏也没有）——riscv64 目标下 `panic.c` 直接编不过；loongarch 目录存在，但 `panic.c` 连分支都没有。
 
@@ -98,7 +98,7 @@ POSIX errno 与 Linux 内核的 `error_t` 取向相反：POSIX errno 是正数�
 | Arch | 行为 |
 |------|------|
 | x86_64 | `outw(_X86_POWER_SHUTDOWN_, 0x2000)` 即 `outw(0x604, 0x2000)`——QEMU 上能关机；源码注释自己写明「which is just QEMU/SeaBIOS… on a real machine 应走 ACPI 表」，且带一句玩笑注释 `have no idea,maybe it works`；**不是** isa-debug-exit（`0x501` 那一类） |
-| aarch64 | `psci_func.system_off()`——`static inline` **不检查** `psci_init` 是否成功、指针是否为 NULL（`39` 缺口一） |
+| aarch64 | `psci_func.system_off()`——`static inline` **不检查** `psci_init` 是否成功、指针是否为 NULL（`39-PSCI与处理器电源-aarch64.md` 缺口一） |
 | riscv64 | 无 `power_ctrl.h`：`panic.c` 的 `_RISCV64_` 分支为空，`arch_shutdown` 与 `arch_cpu_relax` 均无定义——riscv64 目标编译 `panic.c` 直接失败；loongarch 连分支都没有 |
 
 `arch_reset`：x86 `outb(0x92, 1)` 置 bit0（注释「Soft reset via port 0x92 bit0. **unused now**」）；aarch64 是空函数（注释原文「no reboot here, we don't realise it now」，sic）；powerd 收到 **REBOOT 也不会调它**。签名见 §7。
@@ -164,7 +164,7 @@ powerd 的失效面：`powerd_init` 里 `core_tm` 未就绪或 `gen_thread_from_
 
 接口分布在四处：可返回错误约定（`error.h`）、不可恢复出口（`panic.h`，实现 `panic.c`）、优雅关机客户端与 BSP `powerd` 服务（`powerd.h` / `powerd.c`）、x86 电源钩子 `arch_shutdown` / `arch_reset`（`include/arch/x86_64/power_ctrl.h`）。以头文件注释为准（均已与 `.c` 核对）。
 
-**本篇不涉及：** aarch64 `arch_shutdown` 到 PSCI SYSTEM_OFF 的细节（见 `39`）；关机 kmsg opcode 常量正文（见 `21`）；IPC send/recv 语义（见 `20`）。
+**本篇不涉及：** aarch64 `arch_shutdown` 到 PSCI SYSTEM_OFF 的细节（见 `39-PSCI与处理器电源-aarch64.md`）；关机 kmsg opcode 常量正文（见 `21-kmsg与TLV序列化.md`）；IPC send/recv 语义（见 `20-阻塞与非阻塞收发.md`）。
 
 ### 7.1 编排顺序（调用方须遵守）
 
@@ -227,7 +227,7 @@ error_t rendezvos_request_poweroff(void);  /* inline in powerd.h */
 | Arch | `arch_shutdown` | `arch_reset` |
 |------|-----------------|--------------|
 | x86 | `outw(0x604, 0x2000)`（本篇） | `outb(0x92, 1)`；reboot 未接入 |
-| aarch64 | `psci_func.system_off()`，**不查** `psci_init` 成败（细节与缺口见 `39`） | 空 |
+| aarch64 | `psci_func.system_off()`，**不查** `psci_init` 成败（细节与缺口见 `39-PSCI与处理器电源-aarch64.md`） | 空 |
 | riscv64 | **缺失**（`panic.c` 因此编不过） | — |
 | loongarch | 头树有目录、`panic.c` 无分支——同缺 | — |
 
@@ -241,7 +241,7 @@ error_t rendezvos_request_poweroff(void);  /* inline in powerd.h */
 
 ## 9. 测试
 
-没有针对错误码/panic 的专门测例，但有一贯穿始终的间接验证链：`modules/test/test.c` 收尾调用 `rendezvos_request_poweroff()`（见 `43`）——QEMU 里测例跑完进程能正常退出，即证明 `request_poweroff → powerd 收包校验 → kernel_halt → arch_shutdown` 全链工作正常（aarch64 上还顺带覆盖 PSCI SYSTEM_OFF）。测例内部判失败统一用 `-E_REND_TEST`，这是该码计数高达 83 的全部来源。反过来的失效形态也可辨识：若测例跑完 QEMU 不退出、串口刷 `unknown opcode` 或 `recv_msg failed`，问题在 powerd 收包侧；若 `-E_RENDEZVOS` 后静默挂死，多半 `"powerd"` 端口没起来（§6）。
+没有针对错误码/panic 的专门测例，但有一贯穿始终的间接验证链：`modules/test/test.c` 收尾调用 `rendezvos_request_poweroff()`（见 `43-内核测试框架与测试用例索引.md`）——QEMU 里测例跑完进程能正常退出，即证明 `request_poweroff → powerd 收包校验 → kernel_halt → arch_shutdown` 全链工作正常（aarch64 上还顺带覆盖 PSCI SYSTEM_OFF）。测例内部判失败统一用 `-E_REND_TEST`，这是该码计数高达 83 的全部来源。反过来的失效形态也可辨识：若测例跑完 QEMU 不退出、串口刷 `unknown opcode` 或 `recv_msg failed`，问题在 powerd 收包侧；若 `-E_RENDEZVOS` 后静默挂死，多半 `"powerd"` 端口没起来（§6）。
 
 ---
 
@@ -256,14 +256,14 @@ error_t rendezvos_request_poweroff(void);  /* inline in powerd.h */
 
 ## 11. 变更记录
 - 2026-11-19：底子重评批次——§4.1 复测 `return -E_*`（`.c`）：`E_IN_PARAM` 216→223、`E_REND_TEST` 83→87、`E_REND_PORT_CLOSED` 7→9；注明 `powerd.h` 另有 2 处 `NO_MEM` 不计表；§7 opener。
-- 2026-11-15：Maintainer 复审前可读性通读（篇章架构 / 篇章引用 / 词句）。事实修正三处：① §4.1 计数复测——`return -E_IN_PARAM` 实为 **216**（原 213）、`return -E_REND_NO_MEM` 实为 **10**（原 9），差值恰与新增的 `kernel/task/fp.c`（3 处 `E_IN_PARAM`、1 处 `E_REND_NO_MEM`）吻合；② 同表 `E_REND_NO_MEM` 使用域「buddy / page_slice」不实——实测十处分布在 page_slice(_copy) / ipc / time / fp，buddy 路径并不返回该码；③ `kernel_panic` 调用点「约 15 处」落实为恰 15 处（cmain 九、`trap.c` 一、`time.c` 二、`generic_time.c` 一、`mm_user_utils.c` 二）。词句四处：§1 优雅关机段「原样返回 `-E_RENDEZVOS`」不准——`powerd.h` 实为三类返回（端口缺席 `-E_RENDEZVOS`、构造失败 `-E_REND_NO_MEM`、入队失败原样转发），改为分列；§1「若竟返回」改「若竟然返回」；§7 首电报体改为按四处文件列举；§4.2 x86 玩笑注释按源码原文改 `have no idea,maybe it works`（原多一空格）。引用四处：篇首全文件名缩为 PSCI 篇（`39`）、kmsg 篇补号（`21`）、「见 04 各篇」补反引号、§9「见 43」补反引号。核实属实项：`arch_cpu_relax` 定义于各 ISA `sync/barrier.h`（x86 `pause`、aarch64 `yield`）、`0x604`/`0x92` 宏值与 ACPI 注释、`Soft reset via port 0x92 bit0. unused now`、kmsg opcode `1u`/`2u`、aarch64 `arch_reset` 注释原文、panic/halt 打印序列逐字（含 `(unknown)` NULL 安全）、powerd BSP 运行时判断 / `core_tm` 守卫 / 注册失败先 `delete_message_port_structure` / module 不匹配静默丢弃 / `ref_put` 先于分发 / `unknown opcode %u` / `reboot not implemented`、`E_REND_IPC` 与 `E_REND_ABANDON` 全仓零引用（1027、1029）、枚举 1024–1035 共 12 项、`error_t = int`（`include/common/types.h:43`）、`-E_REND_TEST` 83 处全部在 `modules/test`、riscv64 空分支且无 `power_ctrl.h`、loongarch 无分支。格式扫描（setext / 标题空行 / 分隔线 / 实体 / 引号）无命中。余沿 11-15 精读条目，未变。
+- 2026-11-15：Maintainer 复审前可读性通读（篇章架构 / 篇章引用 / 词句）。事实修正三处：① §4.1 计数复测——`return -E_IN_PARAM` 实为 **216**（原 213）、`return -E_REND_NO_MEM` 实为 **10**（原 9），差值恰与新增的 `kernel/task/fp.c`（3 处 `E_IN_PARAM`、1 处 `E_REND_NO_MEM`）吻合；② 同表 `E_REND_NO_MEM` 使用域「buddy / page_slice」不实——实测十处分布在 page_slice(_copy) / ipc / time / fp，buddy 路径并不返回该码；③ `kernel_panic` 调用点「约 15 处」落实为恰 15 处（cmain 九、`trap.c` 一、`time.c` 二、`generic_time.c` 一、`mm_user_utils.c` 二）。词句四处：§1 优雅关机段「原样返回 `-E_RENDEZVOS`」不准——`powerd.h` 实为三类返回（端口缺席 `-E_RENDEZVOS`、构造失败 `-E_REND_NO_MEM`、入队失败原样转发），改为分列；§1「若竟返回」改「若竟然返回」；§7 首电报体改为按四处文件列举；§4.2 x86 玩笑注释按源码原文改 `have no idea,maybe it works`（原多一空格）。引用四处：篇首全文件名缩为 PSCI 篇（`39-PSCI与处理器电源-aarch64.md`）、kmsg 篇补号（`21-kmsg与TLV序列化.md`）、「见 `04-IPC/` 目录各篇」补反引号、§9「见 43」补反引号。核实属实项：`arch_cpu_relax` 定义于各 ISA `sync/barrier.h`（x86 `pause`、aarch64 `yield`）、`0x604`/`0x92` 宏值与 ACPI 注释、`Soft reset via port 0x92 bit0. unused now`、kmsg opcode `1u`/`2u`、aarch64 `arch_reset` 注释原文、panic/halt 打印序列逐字（含 `(unknown)` NULL 安全）、powerd BSP 运行时判断 / `core_tm` 守卫 / 注册失败先 `delete_message_port_structure` / module 不匹配静默丢弃 / `ref_put` 先于分发 / `unknown opcode %u` / `reboot not implemented`、`E_REND_IPC` 与 `E_REND_ABANDON` 全仓零引用（1027、1029）、枚举 1024–1035 共 12 项、`error_t = int`（`include/common/types.h:43`）、`-E_REND_TEST` 83 处全部在 `modules/test`、riscv64 空分支且无 `power_ctrl.h`、loongarch 无分支。格式扫描（setext / 标题空行 / 分隔线 / 实体 / 引号）无命中。余沿 11-15 精读条目，未变。
 
 - 2026-11-15：全文对照 error.h/types.h/panic.c/panic.h/powerd.c/powerd.h/kmsg_system.h/两 ISA power_ctrl.h/io_port.h/两 pmm.c 精读——**删去「panic 关中断」的不实表述**（代码无任何 `local_irq_*`，§6 流程图按 `kernel_panic`/`kernel_halt` 实际打印序列重写，补「unreachable」兜底日志、`msg` NULL 安全、relax 指令 x86 `pause`/aarch64 `yield`）；`E_REND_IPC` 定案为**全仓库零引用死码**（旧表「IPC 协议失败」使用域作废），§4.1 按 `return -E_*` 实测计数重排（IN_PARAM 213/RENDEZVOS 95/TEST 83/…）；§7.2 枚举按源码真实顺序与数值全列（ABANDON 实际在 1029 非末尾）；powerd 补 BSP 运行时判断、`core_tm` 守卫、注册失败先 `delete_message_port_structure`、module 校验**静默丢弃**、`ref_put` 先于分发、未知 opcode 打印；`kernel_panic` 调用面落到实处（cmain 九处/trap.c unknown IRQ/time.c/generic_time/mm_user_utils 约 15 处；`kernel_halt` 三处，pmm.c 两处为**启动期内存解析失败**而非运行期 OOM）；riscv64 表述精确化（空分支+无 `power_ctrl.h`+无 `arch_cpu_relax` → 编不过；loongarch 无分支）；x86 端口宏名、kmsg opcode 数值 1/2、`include/arch/` 路径修正；§9 重写为真实验证链与失效形态辨识。
 - 2026-10-04：补 `error_t` 编码布局 ASCII 图（值轴、正负约定、1024 起跳缘由）；扩写 panic 流程（关中断、UART 输出、arch_shutdown 各 ISA 分支、无栈回溯/不广播停他核说明）；补 powerd↔PSCI 关系图（aarch64 SMC/HVC、x86 走 0x604 不经 PSCI）；改「甩给调用方」为「传给调用方」。
 - 2026-10-04：§4.2 改题为「各 ISA 怎么真正关机」，不再以函数名起题。
 - 2026-10-01：删除重复码 `E_REND_RETRY`；buddy reclaim 耗尽并入 `-E_REND_AGAIN`（§4.1）。
 - 2026-09-27：语言润色——「真源 = … Doxygen」改为「以头文件注释为准」；one-shot→单次、bring-up→拉起、非热路径契约→非常用路径，约定从略；符号与技术事实未改。
-- 2026-09-26：§7 全文审阅——error/panic/powerd/x86 power_ctrl Doxygen；负返回惯例；vs `39`/`21`。
+- 2026-09-26：§7 全文审阅——error/panic/powerd/x86 power_ctrl Doxygen；负返回惯例；vs `39-PSCI与处理器电源-aarch64.md`/`21-kmsg与TLV序列化.md`。
 - 2026-09-26：语言轮——负返回惯例；码表；x86 `0x604`/`0x92`；powerd vs 直接 panic；riscv 缺口。
 - 2026-08-29：整篇重做。
 - 2026-08-27：初稿。

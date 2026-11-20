@@ -2,9 +2,9 @@
 
 v0.1 · 2026-09-25
 
-本篇覆盖：`kernel/mm/asid.c`、`include/rendezvos/mm/asid.h`、`include/arch/x86_64/mm/asid.h`、`include/arch/aarch64/mm/asid.h`，以及 aarch64 boot 里与 `TCR_EL1.AS`（Address Space ID 位宽选择）相关的探针（见平台启动篇（`05`））。
+本篇覆盖：`kernel/mm/asid.c`、`include/rendezvos/mm/asid.h`、`include/arch/x86_64/mm/asid.h`、`include/arch/aarch64/mm/asid.h`，以及 aarch64 boot 里与 `TCR_EL1.AS`（Address Space ID 位宽选择）相关的探针（见平台启动篇（`05-平台启动-aarch64.md`））。
 
-TLB mask / shootdown 见 TLB 篇（`11`）；调度时装根见所有权篇（`15`）；`create_vspace` 见页表篇（`07`）。
+TLB mask / shootdown 见 TLB 篇（`11-TLB与缓存一致性.md`）；调度时装根见所有权篇（`15-VSpace所有权与调度切换.md`）；`create_vspace` 见页表篇（`07-虚拟地址空间与页表.md`）。
 
 ---
 
@@ -14,7 +14,7 @@ TLB mask / shootdown 见 TLB 篇（`11`）；调度时装根见所有权篇（`1
 
 但软件号 **不等于** 硬件一定在用：
 
-- **aarch64：** 装用户根时把 ASID 写进 **TTBR0_EL1** 的高位；`tlbi` 也能按 ASID 精确刷。boot 如果从 `ID_AA64MMFR0_EL1` 读到 16-bit ASID，还会把 `TCR_EL1.AS` 置上（平台启动篇（`05`）§4.6 提过）。
+- **aarch64：** 装用户根时把 ASID 写进 **TTBR0_EL1** 的高位；`tlbi` 也能按 ASID 精确刷。boot 如果从 `ID_AA64MMFR0_EL1` 读到 16-bit ASID，还会把 `TCR_EL1.AS` 置上（平台启动篇（`05-平台启动-aarch64.md`）§4.6 提过）。
 - **x86：** `vs->asid` 按 **12-bit PCID** 上界分配，但 `arch_set_current_user_vspace_root_asid` **丢弃** asid 参数，只写 **CR3**；invalidate 路径里也对 asid 做 `(void)asid`。头文件里虽有 `CR3_PCID` / `CR4_PCIDE` 一类宏，**当前没开 PCID**。留这个号是为了 API 对称，也给以后开 PCID 留出同一个取值范围。
 
 没有 **generation / epoch**：同一个号回收后再发给别人，全靠「mask 已经清空、相关核本地也刷过了」来保证没有谁还拿着旧翻译。这条纪律一破就是静默错译——这是刻意不做 generation 要付的代价。
@@ -33,7 +33,7 @@ TLB mask / shootdown 见 TLB 篇（`11`）；调度时装根见所有权篇（`1
 
 - `asid_init`：**仅 BSP** 在 `virt_mm_init` 里、`init_root_vspace` 之前调用。
 - `asid_alloc`：由 `alloc_user_vs_structure` 调用（`create_vspace` / `clone_vspace` 都走这里）。
-- 装 TTBR0|ASID 或 CR3：在 `schedule` 里，配合 TLB 篇（`11`）的 mask 顺序。
+- 装 TTBR0|ASID 或 CR3：在 `schedule` 里，配合 TLB 篇（`11-TLB与缓存一致性.md`）的 mask 顺序。
 - `asid_free`：在 `del_vspace` 里，等用户映射拆干净、mask 空了之后。
 
 `root_vspace.asid = 0`（保留号，不是普通用户 AS）。clone **不会**继承父 ASID，父子地址空间各自分配新号。
@@ -103,13 +103,13 @@ static asid_bitmap_t asid_bitmap;
 
   也就是把软件 ASID 写入 TTBR0 的高 16 位字段（与常见 AArch64 ASID 打包方式一致；具体位宽还受 `TCR_EL1.AS` 约束）。
 - `TCR_EL1.AS`：`ID_AA64MMFR0_EL1.ASIDBits` 为 16-bit 时，`boot.S` 的 `init_mmu` **会**置位；否则按 8-bit。`arch_asid_supported_width()` 读同一字段，把 8/16 告诉分配器。
-- 页表叶上的 **nG（非全局）** 位：非全局项才随 ASID 生效；全局项换了 ASID 也不一定被清掉。这与页表篇（`07`）里 `PAGE_ENTRY_GLOBAL` 对应到清/置 `nG` 的编解码一致。
-- 失效：`tlbi vae1` / `aside1` 等把 ASID 编进操作数（TLB 篇（`11`）§6.1）。
+- 页表叶上的 **nG（非全局）** 位：非全局项才随 ASID 生效；全局项换了 ASID 也不一定被清掉。这与页表篇（`07-虚拟地址空间与页表.md`）里 `PAGE_ENTRY_GLOBAL` 对应到清/置 `nG` 的编解码一致。
+- 失效：`tlbi vae1` / `aside1` 等把 ASID 编进操作数（TLB 篇（`11-TLB与缓存一致性.md`）§6.1）。
 
 **x86_64（Intel SDM，PCID / CR3）**
 
 - 启用 **PCID** 时，CR3 低 **12** 位可以携带 process-context identifier，换地址空间时就不用把 TLB 全刷掉。本实现：**不写 PCID，不置位 `CR4.PCIDE`**；`arch_set_current_user_vspace_root_asid` 直接忽略 asid，只把根物理地址写进 CR3。
-- 软件还是按 12-bit 上界分配 `vs->asid`，给以后开 PCID 留出同一个取值范围；跨核还是靠 mask + IPI `invlpg` / 全清（TLB 篇（`11`））。
+- 软件还是按 12-bit 上界分配 `vs->asid`，给以后开 PCID 留出同一个取值范围；跨核还是靠 mask + IPI `invlpg` / 全清（TLB 篇（`11-TLB与缓存一致性.md`））。
 
 ### 6.2 生命周期时间线
 
@@ -124,7 +124,7 @@ asid_init (BSP)
 
 ## 7. 公开 API
 
-接口分布在：`include/rendezvos/mm/asid.h`（实现 `kernel/mm/asid.c`）与 `include/arch/<isa>/mm/asid.h` 的 `arch_asid_supported_width`。装根时如何把 ASID 写入硬件，见各 ISA `vmm.h` 的 `arch_set_current_user_vspace_root_asid`（调用方在 schedule，见所有权篇（`15`））。
+接口分布在：`include/rendezvos/mm/asid.h`（实现 `kernel/mm/asid.c`）与 `include/arch/<isa>/mm/asid.h` 的 `arch_asid_supported_width`。装根时如何把 ASID 写入硬件，见各 ISA `vmm.h` 的 `arch_set_current_user_vspace_root_asid`（调用方在 schedule，见所有权篇（`15-VSpace所有权与调度切换.md`））。
 `asid_t` = `u16`（`common/types.h`）。
 
 ### 7.1 编排顺序（与源码一致）
@@ -133,7 +133,7 @@ asid_init (BSP)
 |------|------|
 | BSP | `virt_mm_init` 内 **`asid_init()`**，再 `init_root_vspace`（`root_vspace.asid = 0`） |
 | 用户 AS 创建 | `alloc_user_vs_structure` / create·clone 时 **`asid_alloc()`**，写入 `vs->asid`；返回 **0** 则失败回滚 |
-| 调度切入 | `vs_tlb_cpu_mask_set` 后 **`arch_set_current_user_vspace_root_asid(root, vs->asid)`**，其余见 TLB 篇（`11`）/ 所有权篇（`15`） |
+| 调度切入 | `vs_tlb_cpu_mask_set` 后 **`arch_set_current_user_vspace_root_asid(root, vs->asid)`**，其余见 TLB 篇（`11-TLB与缓存一致性.md`）/ 所有权篇（`15-VSpace所有权与调度切换.md`） |
 | 销毁 | `tlb_cpu_mask` 已空后清用户映射，再 **`asid_free(vs->asid)`**（在 `del_vspace` 路径） |
 
 clone **不**继承父 ASID，各自 `asid_alloc`。无 generation：回收后再分配全靠 mask/刷序纪律。
@@ -169,7 +169,7 @@ void arch_set_current_user_vspace_root(paddr u_root); /* 兼容；无 ASID 标�
 | `…_root_asid` | `TTBR0 = u_root \| (asid<<48)` + ISB | **忽略 asid**，只写 CR3 |
 | `…_root` | 只写 TTBR0 低半根 | 写 CR3 |
 
-`TCR_EL1.AS` 在 boot 探测后可能置位（平台启动篇（`05`））；本篇不重复寄存器步骤。
+`TCR_EL1.AS` 在 boot 探测后可能置位（平台启动篇（`05-平台启动-aarch64.md`））；本篇不重复寄存器步骤。
 
 ---
 
@@ -187,7 +187,7 @@ aarch64 / x86_64 差异见 §1 与 §6.1。riscv / loongarch 不是 v0.1 主线�
 
 ## 10. 限制与后续
 
-- 无 generation：全靠 TLB 篇（`11`）的 mask / 刷序纪律。
+- 无 generation：全靠 TLB 篇（`11-TLB与缓存一致性.md`）的 mask / 刷序纪律。
 - 号码用完就无法 create。
 - x86 PCID 是远期项，当前未启用，仅预留取值范围。
 

@@ -6,19 +6,19 @@
 ![内存管理栈](figures/memory_system.png)
 
 1. **顶层「物理页面管理器」全局一份**（默认使用`ZONE_NORMAL`的 buddy分配器，实际上也有多zone支持）——本篇主体。
-2. **中间两行**：`Map_Handler` 是**每核**改页表的映射助手（见 `07`）；Radix 是**每个 `VSpace`** 的虚拟地址管理（见 `08`）。图里画在 Map handler 下方，表示「基于映射助手，实现对虚拟地址映射的管理」，**不是**「一个 Map handler 独享一棵 radix」。
-3. **最底下是 percpu 内核对象分配器**即 `kallocator`（见 `09`）；横向箭头是：在 B 核释放 A 核分配的对象时，**无锁送回 A 核分配器**（实现上借 MSQ，机制见 `04-IPC/18`）。
+2. **中间两行**：`Map_Handler` 是**每核**改页表的映射助手（见 `07-虚拟地址空间与页表.md`）；Radix 是**每个 `VSpace`** 的虚拟地址管理（见 `08-Radix树与用户映射.md`）。图里画在 Map handler 下方，表示「基于映射助手，实现对虚拟地址映射的管理」，**不是**「一个 Map handler 独享一棵 radix」。
+3. **最底下是 percpu 内核对象分配器**即 `kallocator`（见 `09-kmalloc与内核堆.md`）；横向箭头是：在 B 核释放 A 核分配的对象时，**无锁送回 A 核分配器**（实现上借 MSQ，机制见 `18-支持IPC的无锁MSQ队列实现.md`）。
 4. 用户态的对象分配器由用户态的库进行管理，core不管这些。
 
 建议阅读顺序：
 
 | 图中层级 | 本分区权威篇 |
 |----------|--------------|
-| 物理页面管理器 | 本篇 `06` |
-| Map handler / 页表工具 | `07` |
-| Radix 虚拟页面记账 | `08` |
-| percpu 对象分配 + 跨核归还 | `09` |
-| （图未单独画出）稀疏页索引 / TLB / ASID | `10` / `11` / `12` |
+| 物理页面管理器 | 本篇 `06-物理内存与Buddy分配器.md` |
+| Map handler / 页表工具 | `07-虚拟地址空间与页表.md` |
+| Radix 虚拟页面记账 | `08-Radix树与用户映射.md` |
+| percpu 对象分配 + 跨核归还 | `09-kmalloc与内核堆.md` |
+| （图未单独画出）稀疏页索引 / TLB / ASID | `10-page_slice稀疏页索引.md` / `11-TLB与缓存一致性.md` / `12-ASID与地址空间标识.md` |
 
 # 物理内存与Buddy分配器
 
@@ -26,7 +26,7 @@ v0.1 · 2026-10-02
 
 本篇覆盖：`kernel/mm/pmm.c`、`kernel/mm/buddy_pmm.c`、`include/rendezvos/mm/pmm.h`、`include/rendezvos/mm/buddy_pmm.h`、`arch/x86_64/mm/pmm.c`、`arch/aarch64/mm/pmm.c` 及对应 `include/arch/*/mm/pmm.h`。
 
-调用时机见启动总览（`02`）：`phy_mm_init` 在 `virt_mm_init` 之前。页表 / Map_Handler 见页表篇（`07`）；内核堆见 `09`。x86 上：RSDP **探测**在启动篇 `prepare_arch`，表 walk 见 ACPI 篇（`35`）。aarch64 的 DTB memory 节点细节链到 DTB 篇（`36`），本篇写它们如何进入 `m_regions`。
+调用时机见启动总览（`02-启动流程总览.md`）：`phy_mm_init` 在 `virt_mm_init` 之前。页表 / Map_Handler 见页表篇（`07-虚拟地址空间与页表.md`）；内核堆见 `09-kmalloc与内核堆.md`。x86 上：RSDP **探测**在启动篇 `prepare_arch`，表 walk 见 ACPI 篇（`35-ACPI与MADT-x86_64.md`）。aarch64 的 DTB memory 节点细节链到 DTB 篇（`36-DTB与设备树-aarch64.md`），本篇写它们如何进入 `m_regions`。
 
 ---
 
@@ -61,7 +61,7 @@ OOM 时换出哪个页面、杀掉哪个进程试图回收页面、回收哪些�
 
 跨架构的 `phy_mm_init` 只负责按既定前提扣除保留区间、按策略划分 zone、生成各 zone 共用的 `MemSection` / `Page[]`，再把每个 zone 的 pmm 私有管理区切出来交给 `pmm_init`。默认挂 buddy 时，这块私有区就是 `buddy_page[]`。
 
-本篇内容的调用方通常是 core 封装好的虚拟页面分配方案，或内核对象分配器。它们持有 `struct pmm *`（一般是 `mem_zones[ZONE_NORMAL].pmm`），调用其中通用的方法即可。分配失败时要不要腾页、怎么腾，不走这些内部调用方，而由兼容层经 `pmm_set_reclaim_hook` 注入（即`00`里 §3 说的第三条路用hook的方式）。
+本篇内容的调用方通常是 core 封装好的虚拟页面分配方案，或内核对象分配器。它们持有 `struct pmm *`（一般是 `mem_zones[ZONE_NORMAL].pmm`），调用其中通用的方法即可。分配失败时要不要腾页、怎么腾，不走这些内部调用方，而由兼容层经 `pmm_set_reclaim_hook` 注入（即`00-架构与源码布局.md`里 §3 说的第三条路用hook的方式）。
 
 与启动篇的衔接：`prepare_arch` 保证「能读到平台描述」（x86 认出 Multiboot；aarch64 映射好 DTB 头）。真正把可用内存整理成区域表是 `arch_init_pmm` 的工作。`phy_mm_init` 成功之后，`virt_mm_init` 和 `arch_start_platform` 才能去分配物理页。
 
@@ -217,7 +217,7 @@ struct buddy {
         └─ … 其余交给各 zone 的 pmm（默认 buddy） …
 ```
 
-此时完整 `map` 还不能用，访问元数据只能靠 boot 那套早期页表（见平台启动篇（`04`/`05`）：镜像里一张 L2，用 2 MiB 大页盖当前这一个 1 GiB）。percpu 之后若还有空洞，`arch_map_pmm_data_space` **先往这张已有 L2 里补 2 MiB 项**。元数据一旦跨进下一个 1 GiB，原 L2 管不到，就要用本节开头那些扩展 L2 用于映射实现：每张挂到 boot `L1_table` 的下一项，再在新 L2 里填 2 MiB 项。否则 `KERNEL_PHY_TO_VIRT` 读越界的 `Page[]` 或 pmm 私有管理区会缺页。步骤见 §6.2，挂表细节以 `arch_map_pmm_data_space` 为准。
+此时完整 `map` 还不能用，访问元数据只能靠 boot 那套早期页表（见平台启动篇（`04-平台启动-x86_64.md`/`05-平台启动-aarch64.md`）：镜像里一张 L2，用 2 MiB 大页盖当前这一个 1 GiB）。percpu 之后若还有空洞，`arch_map_pmm_data_space` **先往这张已有 L2 里补 2 MiB 项**。元数据一旦跨进下一个 1 GiB，原 L2 管不到，就要用本节开头那些扩展 L2 用于映射实现：每张挂到 boot `L1_table` 的下一项，再在新 L2 里填 2 MiB 项。否则 `KERNEL_PHY_TO_VIRT` 读越界的 `Page[]` 或 pmm 私有管理区会缺页。步骤见 §6.2，挂表细节以 `arch_map_pmm_data_space` 为准。
 
 切完之后，还会把 `[pmm_end, ROUND_UP(pmm_end, 2 MiB))` 这段尾页也 reserve 掉。若不扣除，后面的 pmm 可能把它们分出去，而这些页仍落在「按 2 MiB 映射的 PMM 窗口」里，之后用 4 KiB 重新映射同一窗口就会冲突（页表项已经标明这是最下一级，无法再往下分 4 KiB 了）。
 
@@ -336,7 +336,7 @@ struct buddy_bucket {
 
 `pmm_alloc` 当时拿不到块时，可以请**兼容层**把一些页还回来再试。空闲页总数不够，或 `pmm_alloc_zone` 因找不到够大的块返回 `-E_REND_NO_MEM`，都会走这条路。请求已经超过 `2^BUDDY_MAXORDER` 且当时空闲总数够，或 buddy 账本对不上（已分配块又被摘下、按 ppn 找 `Page` 失败等），直接 `-E_RENDEZVOS`，**不** reclaim。
 
-这是故意留给兼容层的 hook（见`00`概述：机制在 core，策略在兼容层）。core **不会**实现「内存不够时换出哪一页、杀哪个进程」——没有这套策略，也不该写进 core。没注册 hook 时，分配失败就失败；兼容层若要在 OOM 时腾页，需要在 initcall 时用 `pmm_set_reclaim_hook` 注册 hook。hook 把页 `pmm_free` 回来后，buddy 再试，直到次数用尽。
+这是故意留给兼容层的 hook（见`00-架构与源码布局.md`概述：机制在 core，策略在兼容层）。core **不会**实现「内存不够时换出哪一页、杀哪个进程」——没有这套策略，也不该写进 core。没注册 hook 时，分配失败就失败；兼容层若要在 OOM 时腾页，需要在 initcall 时用 `pmm_set_reclaim_hook` 注册 hook。hook 把页 `pmm_free` 回来后，buddy 再试，直到次数用尽。
 
 ```c
 typedef bool (*pmm_reclaim_fn_t)(struct pmm *pmm, size_t need_pages,
@@ -379,7 +379,7 @@ riscv / loongarch 的 `pmm.h` 为空桩，无实现。
 
 #### aarch64：设备树 `/memory`
 
-平台约定见 Device Tree 惯例与 Linux 的 arm64 引导说明（DTB 由固件经 x0 传入，见平台启动篇（`05`）§4.6）。描述「系统 RAM」的常见写法是：存在一个或多个节点，带 **`device_type = "memory"`**，并用 **`reg`** 给出一个或多个 `(基址, 长度)` 对。`#address-cells` / `#size-cells` 决定每对里各几个 cell；在 QEMU virt 一类 64 位板上，常见的是各 2 个 cell，于是 `reg` 里每 16 字节是一组 `u64 基址 + u64 长度`（FDT 里为大端，读取时要字节交换）。
+平台约定见 Device Tree 惯例与 Linux 的 arm64 引导说明（DTB 由固件经 x0 传入，见平台启动篇（`05-平台启动-aarch64.md`）§4.6）。描述「系统 RAM」的常见写法是：存在一个或多个节点，带 **`device_type = "memory"`**，并用 **`reg`** 给出一个或多个 `(基址, 长度)` 对。`#address-cells` / `#size-cells` 决定每对里各几个 cell；在 QEMU virt 一类 64 位板上，常见的是各 2 个 cell，于是 `reg` 里每 16 字节是一组 `u64 基址 + u64 长度`（FDT 里为大端，读取时要字节交换）。
 
 代码路径（`arch/aarch64/mm/pmm.c`）：
 
@@ -416,7 +416,7 @@ free：降低引用计数；减到 0 再合并回桶。**不**进入 reclaim。�
 
 后续的`virt_mm_init` / Map_Handler / kmalloc 都假定本阶段之后已经能分配物理页；平台 ACPI / PCI 映射也走 NORMAL pmm。
 
-DTB 属性解码的更细约定见 DTB 篇（`36`）；ACPI / RSDP 见 ACPI 篇（`35`）。
+DTB 属性解码的更细约定见 DTB 篇（`36-DTB与设备树-aarch64.md`）；ACPI / RSDP 见 ACPI 篇（`35-ACPI与MADT-x86_64.md`）。
 
 ---
 
@@ -474,7 +474,7 @@ error_t pmm_change_pages_ref(struct pmm *, ppn_t start, size_t n, bool inc);
 | `pmm_set_reclaim_hook` | 兼容层安装/清空 reclaim 回调。core 不注册。回调只在 `pmm_alloc` 当时拿不到页时调用，且 **锁已放**。hook 可对本 `pmm` `pmm_free`，**禁止** `pmm_alloc`。最多 64 次。 |
 | `pmm_lock` / `pmm_unlock` | MCS；`me` 必须是**当前核**的 `pmm_spin_lock[zone_id]`。 |
 | `pmm_change_pages_ref` | 对连续页增减 `Page` 引用计数；失败回滚本次已改部分。 |
-| `BUDDY_MAXORDER` | `10`（最大 **4 MiB** / 次 = `2^10`×4 KiB；9 阶盖 2 MiB）。全局默认实例 `buddy_pmm`。 |
+| `BUDDY_MAXORDER` | `10-page_slice稀疏页索引.md`（最大 **4 MiB** / 次 = `2^10`×4 KiB；9 阶盖 2 MiB）。全局默认实例 `buddy_pmm`。 |
 
 ### 7.4 辅助约定
 
@@ -487,7 +487,7 @@ error_t pmm_change_pages_ref(struct pmm *, ppn_t start, size_t n, bool inc);
 
 本篇里与架构相关的，主要是「如何获得可用物理内存区间」；buddy 算法本体与 ISA 无关，细节见 §6.1，此处不重复。
 
-官方协议入口：Multiboot Spec 的 mmap 一节；Device Tree / [arm64 booting](https://docs.kernel.org/arch/arm64/booting.html) 对 DTB 传递与对齐的约束见平台启动篇（`05`）与 DTB 篇（`36`）——协议无「整树 ≤ 2 MiB」上限，2 MiB 是本仓库 early 映射粒度。
+官方协议入口：Multiboot Spec 的 mmap 一节；Device Tree / [arm64 booting](https://docs.kernel.org/arch/arm64/booting.html) 对 DTB 传递与对齐的约束见平台启动篇（`05-平台启动-aarch64.md`）与 DTB 篇（`36-DTB与设备树-aarch64.md`）——协议无「整树 ≤ 2 MiB」上限，2 MiB 是本仓库 early 映射粒度。
 
 ---
 
@@ -516,9 +516,9 @@ make ARCH=x86_64 config && make run
 ## 11. 变更记录
 
 - 2026-11-19：底子重评批次——篇首/§6 引用缩号；§4.3 排密说明移出代码块；合成动机与跨洞合并句理顺；`aval_pages` 注释去编者注；§8 多架构句改写。
-- 2026-11-19：§8 与平台启动篇联动——澄清 arm64 DTB 协议无「整树 ≤ 2 MiB」上限（随 `05` 口径修正）。
+- 2026-11-19：§8 与平台启动篇联动——澄清 arm64 DTB 协议无「整树 ≤ 2 MiB」上限（随 `05-平台启动-aarch64.md` 口径修正）。
 - 2026-10-31：`Page.ref` 拆 claim/get；与 rmap 解耦写清；alloc 用 claim，COW/pin 用 get（禁 0→1 复活）。
-- 2026-10-24：去掉 `reserve_arch_region`（不再按 RSDT 扣 2 MiB 窗）。§1 / §4 / §5 / §6.1 / §7：ACPI 表区只靠 mmap 非 `AVAILABLE` 不插入；探测属 `04`，walk 属 `35`。
+- 2026-10-24：去掉 `reserve_arch_region`（不再按 RSDT 扣 2 MiB 窗）。§1 / §4 / §5 / §6.1 / §7：ACPI 表区只靠 mmap 非 `AVAILABLE` 不插入；探测属 `04-平台启动-x86_64.md`，walk 属 `35-ACPI与MADT-x86_64.md`。
 - 2026-10-29：`pmm_alloc(page_number==0)` 改为 `-E_IN_PARAM`；成功 `0` 仅表示真实 ppn0，不再用 `*alloced_page_number` 区分空请求。
 - 2026-10-24：RSDP 探测已迁到 `acpi_init()`；曾写 `reserve_arch_region` / `setup_info.rsdp_addr`（已废止，见上条）。
 - 2026-10-07：开篇挂 `figures/memory_system.png` 作为 **02-内存管理整章栈总图**（未另开总览篇）；§1 起仍只覆盖物理页与 buddy。

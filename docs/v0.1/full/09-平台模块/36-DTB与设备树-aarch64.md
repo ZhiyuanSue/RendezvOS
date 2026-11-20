@@ -4,7 +4,7 @@ v0.1 · 2026-09-27
 
 本篇覆盖：`modules/dtb/*`（裁剪 libfdt、`dev_tree`、`property`、`print_property`、`of`）、以及 **`build_device_tree` 的真实落点** `arch/aarch64/boot/start_arch.c`；early raw 消费点在 `arch/aarch64/boot/boot_map.c` 与 aarch64 `pmm`，树路径消费点还在 `smp.c`、`psci.c`、`gic.c`、`time/generic_time.c`。
 
-Early map / DTB（Device Tree Blob，设备树二进制块）拷贝时序见平台启动篇（`05`）；memmap 的 `memory`+`reg` 见物理内存篇（`06`）；GIC（Generic Interrupt Controller，通用中断控制器）/ PSCI（Power State Coordination Interface，电源状态协调接口）/ UART / SMP 消费者见对应专篇。本篇**不**假设 aarch64 有 PCI ECAM（Enhanced Configuration Access Mechanism，增强型配置访问机制）扫描器。
+Early map / DTB（Device Tree Blob，设备树二进制块）拷贝时序见平台启动篇（`05-平台启动-aarch64.md`）；memmap 的 `memory`+`reg` 见物理内存篇（`06-物理内存与Buddy分配器.md`）；GIC（Generic Interrupt Controller，通用中断控制器）/ PSCI（Power State Coordination Interface，电源状态协调接口）/ UART / SMP 消费者见对应专篇。本篇**不**假设 aarch64 有 PCI ECAM（Enhanced Configuration Access Mechanism，增强型配置访问机制）扫描器。
 
 **规范对照：** Devicetree Specification（FDT 二进制：magic `0xd00dfeed`、struct/strings、大端属性）；[arm64 booting](https://docs.kernel.org/arch/arm64/booting.html)（DTB 对齐与传递约定）。节点 binding（`arm,pl011`、`arm,psci*`、GIC、`cpu`）以 DT 源与本仓库查找字符串为准。
 
@@ -43,7 +43,7 @@ aarch64 **不用** ACPI 枚举板级资源；**Flattened Device Tree（FDT）** 
 | early UART | raw compatible | `arm,pl011`（ARM PrimeCell PL011 UART），读其 `reg`（按 2+2 cell 拆两对 u32 拼 64-bit）；raw 路径只比对属性值的**第一条**串（见 §4.3） |
 | pmm | raw `device_type` | `device_type=memory` 节点的 `reg`；MUL 模式，每条 `reg` 回调 `get_mem_prop_and_insert_region` 插入 `m_regions` |
 | PSCI | 树 + compatible | `arm,psci`（list 常另含 `arm,psci-0.2`；查找为逐条全等）；`method` 用 `strcmp` 全等定 SMC/HVC，再按 `migrate` / `cpu_on` / `cpu_off` / `cpu_suspend` 属性名决定装哪些函数指针——缺功能 ID 属性只打印并提前 `return`，`enable` 此前已置 true（记档） |
-| GIC | 树 + compatible | `gic_probe` 自带 `gic_dt_drivers[]` 表，**逐项调 `dev_node_find_by_compatible`，未用 `of_find_matching_node`**：`arm,cortex-a15/a7/a9-gic`、`arm,gic-400`、`arm,arm11mp-gic`；`arm,gic-v3` 匹配但 v0.1 的 bind 失败（见 `27`） |
+| GIC | 树 + compatible | `gic_probe` 自带 `gic_dt_drivers[]` 表，**逐项调 `dev_node_find_by_compatible`，未用 `of_find_matching_node`**：`arm,cortex-a15/a7/a9-gic`、`arm,gic-400`、`arm,arm11mp-gic`；`arm,gic-v3` 匹配但 v0.1 的 bind 失败（见 `27-平台中断-aarch64-GIC.md`） |
 | arch_timer | 树 + `of_find_matching_node` | `arm,armv8-timer`；读 `interrupts` 属性第 **4** 个 tuple（非安全物理中断 CNTP，偏移 3×3 cell），要求 type=PPI；BSP 解析一次缓存进 `timer_irq_num`，解析失败或非 BSP 无缓存 → `kernel_panic` |
 | SMP | 树 + type | `device_type=cpu` + `reg` + `enable-method`（`strcmp_s(…, "psci", 5)`，只接受 psci，否则打印跳过该 CPU） |
 | cmdline | 树 + name | `dev_node_find_by_name` 找 `chosen` 后**手写遍历属性链表**找 `bootargs`（未走 `dev_node_find_property`） |
@@ -145,7 +145,7 @@ structure block 是一串 32 位大端 token，token 取值：
 
 本仓库的早期入口从 `x0` 取出该物理地址，写入 `setup_info`，后续 `boot_map` / `prepare_arch` 据此 map 与校验。QEMU `-machine virt` 默认遵守此约定。
 
-协议本身**无** DTB 大小上限——见上，只约束对齐与「位于低 128 MiB RAM 内」。本仓库 early 路径用 2 MiB block 映射（aarch64 L2 block on 4K granule = 2 MiB），故 DTB 实际应 < 2 MiB 才能被一个 block 整个覆盖；细节见平台启动篇（`05`）。
+协议本身**无** DTB 大小上限——见上，只约束对齐与「位于低 128 MiB RAM 内」。本仓库 early 路径用 2 MiB block 映射（aarch64 L2 block on 4K granule = 2 MiB），故 DTB 实际应 < 2 MiB 才能被一个 block 整个覆盖；细节见平台启动篇（`05-平台启动-aarch64.md`）。
 
 ### 4.2 软件树：为什么要再解析成 C 对象
 
@@ -213,7 +213,7 @@ DT 允许节点用 `phandle`（property handle，属性句柄；或别名 `linux
 
 ### 4.3 compatible 匹配：raw 与树两条路径语义不同
 
-**树路径**（`_dev_node_find_by_compatible`）：在 NUL 分隔的 compatible string list 上，对**每条**串做字符全等——仅当搜索串与当前条目同时走到 `\0` 才命中。因此查找 `arm,psci` **不会**命中单条的 `arm,psci-0.2`；常见 DT 会在 list 里同时列出 `arm,psci-0.2` 与 `arm,psci`，从而仍可命中。GIC 由 `gic_probe` 依次尝试多条 compatible（含 `arm,gic-400`），见 `27` §6.3。
+**树路径**（`_dev_node_find_by_compatible`）：在 NUL 分隔的 compatible string list 上，对**每条**串做字符全等——仅当搜索串与当前条目同时走到 `\0` 才命中。因此查找 `arm,psci` **不会**命中单条的 `arm,psci-0.2`；常见 DT 会在 list 里同时列出 `arm,psci-0.2` 与 `arm,psci`，从而仍可命中。GIC 由 `gic_probe` 依次尝试多条 compatible（含 `arm,gic-400`），见 `27-平台中断-aarch64-GIC.md` §6.3。
 
 **raw 路径**（`raw_get_prop_from_dtb`）：对属性值整体做 `strcmp_s(data, cmp_str, strlen(cmp_str))`——只与列表的**第一条**串全等，第一条不匹配就放弃，**不会**像树路径那样走到 `\0` 继续扫第二条。也就是说：`arm,pl011` 必须恰好是 compatible 列表的第一项，early UART 才能找到；pmm 的 `device_type` 值通常是单串，不受影响。QEMU virt 的 DT 恰好满足「第一项即规范名」，换厂商 DT 时值得先检查列表次序（限制记入 §10）。
 
@@ -276,7 +276,7 @@ arch_start_smp（稍后）:
 
 ### 6.4 与硬件中断 / 电源的接点
 
-- **GIC：** `gic_probe` 按表匹配多 compatible；从节点 `reg` 取 GICD/GICC 基址（细节见 `27`）。
+- **GIC：** `gic_probe` 按表匹配多 compatible；从节点 `reg` 取 GICD/GICC 基址（细节见 `27-平台中断-aarch64-GIC.md`）。
 - **PSCI：** 从 DT 读 method（SMC/HVC）与功能 ID（PSCI 篇）。
 - **UART：** 运行期 `uart_open` 用 early 映好的高半窗；不再二次查找 DT。
 
@@ -286,7 +286,7 @@ arch_start_smp（稍后）:
 
 接口分布在：FDT / 设备树软件面——裁剪 `fdt_*` / `raw_get_prop_from_dtb`（`dtb.h`）、`build_device_tree` + `device_root` + `dev_node_find_*` / `property_read_*`（`dev_tree.h`；建树实现在 `start_arch.c`）。以头文件注释为准（见上列头文件；已与 `.c` 核对）。
 
-**本篇不涉及：** `map_dtb` / `prepare_arch` / `arch_start_platform` 编排（见 `05`）；early UART map（见 `05`/`34`）；memmap `memory` 消费（见 `06`）；GIC / PSCI / SMP 对查找结果的使用（见 `27`/`39`/`28`）。
+**本篇不涉及：** `map_dtb` / `prepare_arch` / `arch_start_platform` 编排（见 `05-平台启动-aarch64.md`）；early UART map（见 `05-平台启动-aarch64.md`/`34-日志与UART控制台.md`）；memmap `memory` 消费（见 `06-物理内存与Buddy分配器.md`）；GIC / PSCI / SMP 对查找结果的使用（见 `27-平台中断-aarch64-GIC.md`/`39-PSCI与处理器电源-aarch64.md`/`28-SMP启动与处理器拓扑.md`）。
 
 ### 7.1 编排顺序（调用方须遵守）
 
@@ -349,7 +349,7 @@ of_find_matching_node(struct device_node *from,
 |------|------|
 | `build_device_tree` | 实现在 **`start_arch.c`**；名字/属性数据仍指向 FDT blob。 |
 | `dev_node_find_by_compatible` | 对 list 中每条 NUL 串**全等**匹配（非前缀）；`arm,psci` 命中靠 list 含该条目（常与 `arm,psci-0.2` 并存）。 |
-| GIC 消费者 | `gic_probe` 多 compatible（见 `27` §6.3）；不再写死单一串。 |
+| GIC 消费者 | `gic_probe` 多 compatible（见 `27-平台中断-aarch64-GIC.md` §6.3）；不再写死单一串。 |
 
 调试：`print_device_tree` / `parse_print_dtb`（非常用路径，约定从略）。
 
@@ -357,7 +357,7 @@ of_find_matching_node(struct device_node *from,
 
 ## 8. 多架构
 
-仅 aarch64 主线消费。x86 用 ACPI / MADT 枚举板级资源，见 ACPI 篇（`35`）。riscv 若将来接 FDT，可复用 `modules/dtb`，但当前无对等平台编排。
+仅 aarch64 主线消费。x86 用 ACPI / MADT 枚举板级资源，见 ACPI 篇（`35-ACPI与MADT-x86_64.md`）。riscv 若将来接 FDT，可复用 `modules/dtb`，但当前无对等平台编排。
 
 ---
 
@@ -370,7 +370,7 @@ of_find_matching_node(struct device_node *from,
 ## 10. 限制与后续
 
 - compatible 匹配两条路径语义不同：**树路径**对 string list **逐条全等**（非前缀），过短搜索串不会「吃掉」长串；**raw 路径**只与列表**第一条**串全等（§4.3），`arm,pl011` 必须排第一。
-- GIC：由 `gic_probe` 表匹配（v2 多串；v3 匹配后失败）；细节见 `27`。
+- GIC：由 `gic_probe` 表匹配（v2 多串；v3 匹配后失败）；细节见 `27-平台中断-aarch64-GIC.md`。
 - PCI host 节点未接入。
 - early raw 与 `device_root` 两阶段指针域不同，勿混。
 - early UART 假定 `#address-cells/#size-cells` 布局；换板可能要改解析。
@@ -387,18 +387,18 @@ of_find_matching_node(struct device_node *from,
 ---
 
 ## 11. 变更记录
-- 2026-11-19：底子重评批次——§7 opener。DTB 协议无 ≤2 MiB 上限口径与 `05` 一致。
-- 2026-11-15：全文可读性通读（篇章架构 / 篇章引用 / 词句）。篇章引用三处：篇首全文件名 `05-平台启动-aarch64.md` 缩为「平台启动篇（`05`）」、物理内存篇补号（`06`）；§8「（上一篇）」改「见 ACPI 篇（`35`）」，与 `35` 篇回指「DTB 篇（`36`）」对仗；§4.1.4 尾「平台启动篇」补号。格式三处：§1.1 段末 `---` 前缺空行（setext 陷阱，会把上段渲染成二级标题）；§4.1.1 / §4.2.1 两个四级标题前缺空行；§4.1.4 的 `&lt;` HTML 实体还原为 `<`。词句两处：§4.1.4 末段开头「arm64 booting：DTB 8 字节对齐…」电报体且与上方 bullet 重复，改写为以「协议本身无上限」领起；§10「不会“吃掉”长串」的弯引号改用全篇统一的「」。§9 按实况扩写：`modules/test` 确无 DTB 测例（原句属实但过简），补齐 QEMU virt 启动实际可经眼的打印行——`check fdt header fail`、`cmdline:%s` / `no input cmdline`、`[ PSCI ] use smc call`、`[ SMP ] we only support psci smp setup method now`、arch_timer 失败 `kernel_panic`（均已对 `start_arch.c` / `psci.c` / `smp.c` / `generic_time.c` 核对）。另核 SMP 侧 `strcmp_s(method_str, "psci", 5)`、`reg` 配 4 / `enable-method` 配 14（`strlen+1`）、cmdline 手写遍历不走 `dev_node_find_property`、`psci_func.enable = true` 先于功能 ID 检查（`psci.c` L77），均与文一致。余沿 11-14 精读，未变。
+- 2026-11-19：底子重评批次——§7 opener。DTB 协议无 ≤2 MiB 上限口径与 `05-平台启动-aarch64.md` 一致。
+- 2026-11-15：全文可读性通读（篇章架构 / 篇章引用 / 词句）。篇章引用三处：篇首全文件名 `05-平台启动-aarch64.md` 缩为「平台启动篇（`05-平台启动-aarch64.md`）」、物理内存篇补号（`06-物理内存与Buddy分配器.md`）；§8「（上一篇）」改「见 ACPI 篇（`35-ACPI与MADT-x86_64.md`）」，与 `35-ACPI与MADT-x86_64.md` 篇回指「DTB 篇（`36-DTB与设备树-aarch64.md`）」对仗；§4.1.4 尾「平台启动篇」补号。格式三处：§1.1 段末 `---` 前缺空行（setext 陷阱，会把上段渲染成二级标题）；§4.1.1 / §4.2.1 两个四级标题前缺空行；§4.1.4 的 `&lt;` HTML 实体还原为 `<`。词句两处：§4.1.4 末段开头「arm64 booting：DTB 8 字节对齐…」电报体且与上方 bullet 重复，改写为以「协议本身无上限」领起；§10「不会“吃掉”长串」的弯引号改用全篇统一的「」。§9 按实况扩写：`modules/test` 确无 DTB 测例（原句属实但过简），补齐 QEMU virt 启动实际可经眼的打印行——`check fdt header fail`、`cmdline:%s` / `no input cmdline`、`[ PSCI ] use smc call`、`[ SMP ] we only support psci smp setup method now`、arch_timer 失败 `kernel_panic`（均已对 `start_arch.c` / `psci.c` / `smp.c` / `generic_time.c` 核对）。另核 SMP 侧 `strcmp_s(method_str, "psci", 5)`、`reg` 配 4 / `enable-method` 配 14（`strlen+1`）、cmdline 手写遍历不走 `dev_node_find_property`、`psci_func.enable = true` 先于功能 ID 检查（`psci.c` L77），均与文一致。余沿 11-14 精读，未变。
 
 - 2026-11-14：全文对照代码复核——§3 补齐 arch_timer/SMP/cmdline 消费者与读法，注明 `dev_node_find_property` 的 `n` 为 `strcmp_s` 比对上限（惯例 `strlen+1`）；§4.1.1 补 `fdt_check_header` 完整校验顺序、版本区间 v2–v17、u-boot 移植来源与 `no-jump-tables` 注记；§4.2 澄清 `property_read_*` 不查类型表、`struct property` 无类型字段、未识别属性按 OTHER 保留；§4.3 区分 raw（只比 compatible 第一条串）与树（逐条全等）两种匹配语义；§6.1 重写启动/平台时序（DTB 固定 2 MiB 拷贝与重叠方向、手写 bootargs 遍历、SPI 注册收尾）；§6.2 记档 `uart_len` 上限检查先于解析恒过、`reg` 多对取最后一对；§6.3 记档建树节点分配不判空；§7.2 给全 `raw_get_prop_from_dtb` 签名（定位标识节点、返回的永远是 `reg`，SINGLE=1/MUL=0 反向）；§7.3 补 `of_find_matching_node`/`struct of_device_id` 与消费者实况；§10 归并 8 条限制/记档；变更记录排序修正（三条 2026-10-05 条目原误排在初稿之后）。
-- 2026-11-01：GIC 消费者改为 `gic_probe` 多 compatible（不再写死 `arm,cortex-a15-gic`）；交叉引用 `27`。
+- 2026-11-01：GIC 消费者改为 `gic_probe` 多 compatible（不再写死 `arm,cortex-a15-gic`）；交叉引用 `27-平台中断-aarch64-GIC.md`。
 - 2026-10-05：修正 §4.1.4 两个 "2 MiB" 的混淆——arm64 booting 协议**无** "DTB < 2 MiB" 要求（协议只要求 DTB 位于低 128 MiB RAM 内、8 字节对齐）；"2 MiB" 实为 early map 的 block 粒度（aarch64 L2 block on 4K granule = 2 MiB），DTB 应 < 2 MiB 是该实现的一次覆盖约束，非协议上限。原 "通常 < 2 MiB" 改为 "位于低 128 MiB RAM 内"，并补两者关系说明。
 - 2026-10-05：最终词句顺畅。
 - 2026-10-05：硬件事实核对（对照 Devicetree Spec v0.4 / arm64 booting）——修正 structure block 示例根节点缺 END_NODE；修正 arm64 booting「D-cache 关闭」为「镜像范围 clean 到 PoC」（与现行 kernel docs 一致）；补 #address-cells/#size-cells 不继承与缺省值（2/1）、device_type 已 deprecated、/aliases 与 /reserved-memory 标准节点。
 - 2026-10-05：任务 1/3/5 精读——§9「测例」→「测试用例」；§1「救急/给驱动 probe」→「应急/供驱动 probe」；§2「假问题」→「并不存在的问题」；§4.1.1「dood feed」→「d00d feed / dude feed」（修正 magic 读法）；§4.1.2「属已知简化」→「属于已知简化」；§4.2「未知名属性」→「未识别名称的属性」；§4.2.2 phandle 补全称「property handle，属性句柄」、「interrupts-parent」→规范名「interrupt-parent」、「跨树边引用」→「跨节点引用」；§4.3「搜」→「查找」、「写死过长串时」→「写死的串过长时」；§6.2「的坑」→「的问题」；§6.3「建出完整树」→「构建出完整树」；§6.4「搜 DT」→「查找 DT」；任务 1 补首次出现的缩写全称——DTB、GIC、PSCI、ECAM（篇首）、PL011（§3）、phandle（§4.2.2）。
 - 2026-10-04：补硬件知识——§4.1 加 FDT 整体布局 ASCII 图（header/reservation/struct/strings 四块）、structure block token 表与节点序列化示例、memory reservation block 说明、aarch64 启动时 `x0` 传 DTB 指针约定；§4.2 加 `device_node` 树结构图（孩子/兄弟二叉链表）与 phandle 引用说明。结构无大改。语言润色——「假装」→「假设」、「长出 C 树」→「构建 C 树」、「扫」→「遍历」、「搜 compatible」→「按 compatible 查找」；§10 补 memory reservation block 与 phandle 两条限制交叉引用。
 - 2026-09-27：语言润色——「真源 = … Doxygen」改为「以头文件注释为准」；one-shot→单次、bring-up→拉起、非热路径契约→非常用路径，约定从略；符号与技术事实未改。
-- 2026-09-26：§7 全文审阅——`dtb.h`/`dev_tree.h` Doxygen；`build_device_tree` 声明进 `dev_tree.h`；划清 vs `05`/`27`/`39`。
+- 2026-09-26：§7 全文审阅——`dtb.h`/`dev_tree.h` Doxygen；`build_device_tree` 声明进 `dev_tree.h`；划清 vs `05-平台启动-aarch64.md`/`27-平台中断-aarch64-GIC.md`/`39-PSCI与处理器电源-aarch64.md`。
 - 2026-09-26：核对——changelog 误写「compatible 前缀」改为与正文/Doxygen 一致的**逐条全等**。
 - 2026-09-25：语言轮——FDT 规范 / arm64 booting；raw vs 树因果；compatible **逐条全等**（非前缀）；GIC 写死串；明确无 ACPI、无 PCI 消费。
 - 2026-08-29：整篇重做——`build_device_tree` 真位置；删 PCI 双源恐吓；消费者表。
