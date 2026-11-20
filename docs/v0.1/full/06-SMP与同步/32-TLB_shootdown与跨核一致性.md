@@ -191,7 +191,7 @@ x86 的 `arch_tlb_invalidate_kernel_page_all_core` 名为 all_core，实现是**
 
 ## 7. 公开 API
 
-本篇涉及的接口分布在：x86 **shootdown 握手**——`arch_smp_flush_tlb_init` / `arch_smp_flush_page_tlb` / `arch_smp_flush_all_tlb`，以及 per-CPU `smp_tlb_flush_msg`（gen/busy/done）字段约定。说明改写自 `arch/x86_64/sync/tlb.h` Doxygen + `arch_smp_tlb_flush.c`（已核对）。
+接口分布在：x86 **shootdown 握手**——`arch_smp_flush_tlb_init` / `arch_smp_flush_page_tlb` / `arch_smp_flush_all_tlb`，以及 per-CPU `smp_tlb_flush_msg`（gen/busy/done）字段约定。说明改写自 `arch/x86_64/sync/tlb.h` Doxygen + `arch_smp_tlb_flush.c`（已核对）。
 
 **本篇不涉及：** `tlb_cpu_mask` 维护 / schedule 的 set、刷、clear（见 `11`）；可移植 `arch_tlb_invalidate_*` 命名与 aarch64 `tlbi *is` 细节（见 `11`）；软 IPI pending 位图（见 `30`）。
 
@@ -279,7 +279,7 @@ DEFINE_PER_CPU(..., smp_tlb_flush_message);
 
 ## 9. 测试
 
-无专用测例（`modules/test` 无对 `smp_tlb_flush_*` / `*_all_core` 的直接调用）。间接覆盖：x86 SMP 下用户 map / unmap 会走一遍 §6.1 全链路（抢 busy → 写参 → 门铃 → 等 done）。send 失败的 busy 自清、done 自旋、teardown 全零门闩无定向测量。
+无专用测试用例（`modules/test` 无对 `smp_tlb_flush_*` / `*_all_core` 的直接调用）。间接覆盖：x86 SMP 下用户 map / unmap 会走一遍 §6.1 全链路（抢 busy → 写参 → 门铃 → 等 done）。send 失败的 busy 自清、done 自旋、teardown 全零门闩无定向测量。
 
 ---
 
@@ -295,6 +295,7 @@ DEFINE_PER_CPU(..., smp_tlb_flush_message);
 ---
 
 ## 11. 变更记录
+- 2026-11-19：底子首评批次——§7 opener；§9 测例口径。事实沿用 11-15。
 - 2026-11-15：Maintainer 复审前可读性通读——修旧目录编号残留：分工表列头与 §2/§3/§5 各处裸「02」「06」实为旧目录号（`02-内存管理/`、`06-SMP与同步/`），易与篇 `02`（启动流程总览）混淆，统一改 `11` / `30` 显式编号；篇名引用长文件名缩为「TLB 篇（`11`）」；「VSpace 所有权篇」按全仓先例归一为「所有权篇（`15`）」；§9 按测例树实况扩写（无直接测例，链路由用户 map/unmap 间接覆盖）。技术内容未动（busy/gen/done 所有权、teardown 门闩、`asid >= 2^16` 静默 return 均按当前代码复验）。
 
 - 2026-11-14：全文对照代码复核与扩写——§1.1.2 屏障序列按 `tlb.h` 实况修正（`dsb ishst`→`tlbi`→`dsb ish`→`isb`，ISH 域与 `…is` 广播对齐；原文误作 `dsb sy`），并补本地/广播助记符配对；§1.1.1 CR3 失效为「读回写回」惯用法；§4.2 补代码锚点（unmap 持 `vspace_lock` 而非 `tlb_cpu_mask_lock`、`schedule()` 先 set 后装根/先刷后 clear 的顺序、`vspace_clear_check_tlb` 的 mask 全零门闩与 `-E_REND_RC_UNEQUAL`）；§4.3 补 `asid >= 2^16` 静默 no-op；§6.1 补 init 边界（每核槽重初始化无并发窗口的论证）；§6.2 更正 teardown 函数名；§6.3 依源码注释扩写 x86 内核页「仅本地刷」理由（`cli` 可屏蔽 IPI + percpu kmalloc 生命周期纪律 + MSQ 回投分配核）；新增 §7.5（本地 API 一览与 `range`——两 arch 已定义、全树无调用者）；§10 补两条限制。

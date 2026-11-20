@@ -1,6 +1,6 @@
 # kmsg 与 TLV 序列化
 
-v0.1 · 2026-09-27
+v0.1 · 2026-09-27（2026-11-19：`kmsg_hdr` 四个字段均为 `u32`）
 
 本篇覆盖：`kernel/ipc/kmsg.c`、`kernel/ipc/ipc_serial.c`、`include/rendezvos/ipc/kmsg.h`、`include/rendezvos/ipc/kmsg_system.h`、`include/rendezvos/ipc/ipc_serial.h`。
 
@@ -28,11 +28,11 @@ kmsg = 固定头 `kmsg_hdr_t` + **`ipc_serial` TLV**（Type-Length-Value，类�
 
 ## 3. 分层与调用方
 
-kmsg 只负责「把参数编成可投递的 `Msg_Data`」以及「从收到的消息里认出数据格式。TLV 由接收方按 `opcode` 自行 `ipc_serial_decode`进行解码。消息会合仍走收发篇那一套：先 enqueue消息，再`send_msg` ；或者先 `recv_msg` ，再从收队列获取消息。
+kmsg 只负责「把参数编成可投递的 `Msg_Data`」以及「从收到的消息里认出数据格式」。TLV 由接收方按 `opcode` 自行 `ipc_serial_decode` 解码。消息会合仍走收发篇（`20`）那一套：先 enqueue 消息，再 `send_msg`；或者先 `recv_msg`，再从接收队列获取消息。
 
 在 core 里真正使用 kmsg 的地方很少：`port.c`（`PORT_CLOSED`）、`time.c`（timer）、`powerd`（shutdown）。大量调用方主要在兼容层设计的 servers 里面。
 
-另外，在测例中，`single_ipc_test`、port / smp IPC 等测例多半用裸 `create_message_data`，而不是封装好的kmsg格式，因此，不能认为「凡 IPC 消息都走 kmsg」。
+另外，在测试用例中，`single_ipc_test`、port / smp IPC 等多半用裸 `create_message_data`，而不是封装好的 kmsg 格式，因此不能认为「凡 IPC 消息都走 kmsg」。
 
 在生命周期上，`ipc_serial_decode` 解码得出的 `s` / `t` 指针落在**当前消息缓冲内**；若要把相关数据留到消息释放之后继续使用，须先拷贝。
 
@@ -59,10 +59,10 @@ kmsg 只负责「把参数编成可投递的 `Msg_Data`」以及「从收到的�
 
 typedef struct {
         u32 magic;
-        u16 module;
-        u16 opcode;
+        u32 module;
+        u32 opcode;
         u32 payload_len;
-} kmsg_hdr_t;          /* 12 字节，无尾填充 */
+} kmsg_hdr_t;          /* 16 字节；magic / module / opcode / payload_len 均为 u32 */
 
 typedef struct {
         kmsg_hdr_t hdr;
@@ -73,20 +73,20 @@ typedef struct {
 | 字段 | 含义 |
 |------|------|
 | `magic` | `KMSG_MAGIC`（小端字节 `'L','M','S','G'`）；缓冲合法性校验，`kmsg_from_msg` 比对；不表示布局代际 |
-| `module` | 惯例 = 目标 port 的 `service_id`（快检「是不是给我的」）；路由仍靠 port 名 |
-| `opcode` | 该 port 上的具体操作；system 操作码在 `kmsg_system.h`，兼容层自编号时建议不要与 system 段重叠 |
-| `payload_len` | 跟在后面的 TLV 字节数；须与 `Msg_Data.data_len - 12`（即 `offsetof(kmsg_t, payload)`）一致 |
+| `module` | 惯例写成目标 port 的 `service_id`（同为 `u32`），用来快速核对「是不是给我的」；真正路由仍靠 port 名 |
+| `opcode` | 该 port 上的具体操作（同为 `u32`）；system 操作码在 `kmsg_system.h`，兼容层自编号时建议不要与 system 段重叠 |
+| `payload_len` | 跟在后面的 TLV 字节数；须与 `Msg_Data.data_len - 16`（即 `offsetof(kmsg_t, payload)`）一致 |
 | `payload` | 该操作的 TLV 参数；编解码双方对 `(opcode 语境下的) fmt` 必须一致 |
 
 
 kmsg 在 `Msg_Data_t` 的 data 指针指向的 buffer 中的字节布局：
 
 ```text
-   ┌──────────────── Msg_Data_t buffer (data_len = 12 + payload_len) ────────────────┐
-   │  offset 0              4        6        8        12                              │
+   ┌──────────────── Msg_Data_t buffer (data_len = 16 + payload_len) ────────────────┐
+   │  offset 0              4         8        12       16                             │
    │  ┌─────────┬─────────┬─────────┬─────────┬──────────────────────────────────┐  │
    │  │  magic  │ module  │ opcode  │  pl_len │   payload[...] (TLV, ≤ PAGE_SIZE) │  │
-   │  │  4 byte │ 2 byte  │ 2 byte  │ 4 byte  │                                  │  │
+   │  │  4 byte │ 4 byte  │ 4 byte  │ 4 byte  │                                  │  │
    │  └─────────┴─────────┴─────────┴─────────┴──────────────────────────────────┘  │
    └────────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -99,7 +99,7 @@ kmsg 在 `Msg_Data_t` 的 data 指针指向的 buffer 中的字节布局：
    随后跟着 param_count 个参数块:  u8 type_tag | u32 value_len | u8 value[value_len]
 ```
 
-举个例子字节布局示例（fmt="qi"，2 个参数：一个 i64、一个 i32，fmt见后续）：
+字节布局示例（`fmt="qi"`，2 个参数：一个 i64、一个 i32；fmt 见后续）：
 
 这里有两个参数，所以最开始的param_count的u32的值为2，占用4byte，
 
@@ -132,9 +132,9 @@ kmsg 在 `Msg_Data_t` 的 data 指针指向的 buffer 中的字节布局：
 校验内容与 §4.2 字段表一致：
 1. `kmsg_from_msg` 检查消息非空
 2. `msg_type == MSG_DATA_TAG_KMSG`
-3. 缓冲至少能放下头
+3. 缓冲至少能放下头（16 字节）
 4. `magic == KMSG_MAGIC`
-5. `payload_len == data_len - 12`。
+5. `payload_len == data_len - 16`。
 
 **不**检查 module / opcode / TLV 是否合法——那是接收方自己比对、自己 decode 的事。
 
@@ -146,16 +146,18 @@ kmsg 在 `Msg_Data_t` 的 data 指针指向的 buffer 中的字节布局：
 
 ### 4.6 System opcode 约定
 
-| opcode | 值 | fmt | 谁发出 |
-|--------|----|-----|--------|
-| POWER_SHUTDOWN | 1 | `""` | powerd 路径 |
-| POWER_REBOOT | 2 | `""` | 已经登记；实现尚未接齐 |
-| TIMER_EXPIRE | 3 | `"q"` | timer |
-| TIMER_CANCEL | 4 | `"q"` | timer |
-| PORT_CLOSED | 5 | `"q"`（恒传 0，**没有业务载荷**） | `port_clean_thread_queue` **只**投给当时 `block_on_receive` 的等待者（send 一侧port关闭之后的`send_msg` 返回直接用 flag 标记线程被唤醒来自于port被关闭，见 `19` §6.2） |
-| SYSTEM_END | 6 | — | 建议兼容层的 opcode 从 SYSTEM_END+1 起编（后续可能继续补充system的opcode，所以建议兼容层都用宏表示自己的起始opcode）；这是用于划分界限的宏，不是一条会发出去的消息 |
+（`kmsg_system.h`；下表为全篇唯一的 system opcode 表，§7.4 只留指引。）
 
-不同兼容层协议可以各自从 `SYSTEM_END+1` 起号——靠 **不同 port / `service_id`** 隔开，**不是**全机一份全局唯一的 opcode 空间。怎么投递见收发篇。
+| opcode（`kmsg_system.h` 宏） | 值 | fmt | 谁发出 |
+|--------|----|-----|--------|
+| `KMSG_OP_SYSTEM_POWER_SHUTDOWN` | 1 | `""` | powerd 路径 |
+| `KMSG_OP_SYSTEM_POWER_REBOOT` | 2 | `""` | 已经登记；实现尚未接齐 |
+| `KMSG_OP_SYSTEM_TIMER_EXPIRE` | 3 | `"q"` | timer |
+| `KMSG_OP_SYSTEM_TIMER_CANCEL` | 4 | `"q"` | timer |
+| `KMSG_OP_SYSTEM_PORT_CLOSED` | 5 | `"q"`（恒传 0，**没有业务载荷**） | unregister 清理队列时 `port_clean_thread_queue` **只**投给当时 `block_on_receive` 的等待者（send 侧在 port 关闭后，`send_msg` 靠 flag 标明因 port 关闭而唤醒，见 `19` §3） |
+| `KMSG_OP_SYSTEM_END` | 6 | — | 建议兼容层的 opcode 从 SYSTEM_END+1 起编（后续可能继续补充system的opcode，所以建议兼容层都用宏表示自己的起始opcode）；这是用于划分界限的宏，不是一条会发出去的消息 |
+
+不同兼容层协议可以各自从 `SYSTEM_END+1` 起号——靠 **不同 port / `service_id`** 隔开，**不是**全机一份全局唯一的 opcode 空间。怎么投递见收发篇（`20`）。
 
 ---
 
@@ -175,17 +177,17 @@ kmsg 在 `Msg_Data_t` 的 data 指针指向的 buffer 中的字节布局：
 ## 6. 流程
 
 典型发送调用顺序：
-1. `kmsg_create(module, opcode, fmt, …)` 得到带 `MSG_DATA_TAG_KMSG` 的 `Msg_Data`
-2. `create_message_with_msg` 将`Msg_Data`包成 `Message_t`，若不再单独持有 data 指针则 `ref_put` 一次
+1. `kmsg_create(module, opcode, fmt, …)` 得到带 `MSG_DATA_TAG_KMSG` 的 `Msg_Data`（`module` 与 `opcode` 都是 `u32`）
+2. `create_message_with_msg` 把 `Msg_Data` 包成 `Message_t`；若不再单独持有 data 指针，再 `ref_put` 一次
 3. `enqueue_msg_for_send`
-4. `send_msg` 发送消息。
+4. 按名对外时用 `named_port_send_msg`；手里直接握着匿名 port 时用 `send_msg`。
 
 典型接收调用顺序：
-1. `recv_msg`接收消息
-2. `dequeue_recv_msg`从接收队列获取消息
+1. 按名用 `named_port_recv_msg`，匿名用 `recv_msg`
+2. `dequeue_recv_msg` 从接收队列取出消息
 3. `kmsg_from_msg` 校验信封
-4. 调用者按 `opcode` 确定是哪个消息。
-5. `ipc_serial_decode` 解码 payload。
+4. 调用者按 `opcode` 判断是哪一类消息
+5. `ipc_serial_decode` 解码 payload
 
 ---
 
@@ -199,8 +201,8 @@ kmsg 在 `Msg_Data_t` 的 data 指针指向的 buffer 中的字节布局：
 
 | 场景 | 顺序 |
 |------|------|
-| 发送 kmsg | **`kmsg_create(module, op, fmt, …)`**，再 `create_message_with_msg`，put 多余 data 引用后 `enqueue`，最后 `send_msg`（`20`） |
-| 接收 | `recv`，再 `dequeue`，接着 **`kmsg_from_msg`**，比对 opcode 后 **`ipc_serial_decode(payload, payload_len, fmt, …)`** |
+| 发送 kmsg | **`kmsg_create(module, op, fmt, …)`**，再 `create_message_with_msg`，放下多余的 data 引用后 `enqueue`，最后按场景调用 `named_port_send_msg` 或 `send_msg`（见 `20`） |
+| 接收 | 先接收，再 `dequeue`，接着 **`kmsg_from_msg`**，比对 opcode 后 **`ipc_serial_decode(payload, payload_len, fmt, …)`** |
 | 热路径自编码 | （少见）先 `measure_va`，再自备缓冲，最后 `encode_into_va`；`kmsg_create` 已内嵌此序 |
 
 空 `fmt=""` 仍产生 **4 字节** `param_count=0` 的 payload（不是「无缓冲」）。
@@ -208,7 +210,7 @@ kmsg 在 `Msg_Data_t` 的 data 指针指向的 buffer 中的字节布局：
 ### 7.2 kmsg 封装（`kmsg.h`）
 
 ```c
-Msg_Data_t *kmsg_create(u16 module, u16 opcode, const char *fmt, ...);
+Msg_Data_t *kmsg_create(u32 module, u32 opcode, const char *fmt, ...);
 const kmsg_t *kmsg_from_msg(const Message_t *msg);
 ```
 
@@ -240,13 +242,7 @@ fmt 字符：`p/q/i/u/s/t`；`'t'` 与 `'s'` 虽然实质上都是字符串但 *
 
 ### 7.4 System opcode（`kmsg_system.h`）
 
-| 宏 | 值 | fmt | 用途 |
-|----|----|-----|------|
-| `KMSG_OP_SYSTEM_POWER_SHUTDOWN` | 1 | `""` | powerd |
-| `KMSG_OP_SYSTEM_POWER_REBOOT` | 2 | `""` | 登记 |
-| `KMSG_OP_SYSTEM_TIMER_EXPIRE` / `_CANCEL` | 3 / 4 | `"q"` | timer |
-| `KMSG_OP_SYSTEM_PORT_CLOSED` | 5 | `"q"`（恒 0） | unregister 清理队列时 **仅**注入给阻塞 recv；send 侧用 `THREAD_FLAG_IPC_PORT_CLOSED`（`19` §6.2） |
-| `KMSG_OP_SYSTEM_END` | 6 | — | 上层 opcode 起点（不要重叠） |
+宏名、值、fmt 与谁发出统一见 §4.6 的表（全篇唯一 system opcode 表）；`PORT_CLOSED` 的注入语义与 send 侧 flag 的对照见该表及 `19` §3。
 
 ---
 
@@ -258,7 +254,7 @@ fmt 字符：`p/q/i/u/s/t`；`'t'` 与 `'s'` 虽然实质上都是字符串但 *
 
 ## 9. 测试
 
-core里面缺少相关测例，但是可以使用 timer 等发送 system kmsg 实现定时器（能正常定时就可以）；裸 Msg_Data IPC 测试用例不覆盖本篇。
+core 里面缺少相关测试用例，但是可以使用 timer 等发送 system kmsg 实现定时器（能正常定时就可以）；裸 `Msg_Data` IPC 测试用例不覆盖本篇。
 
 ---
 
@@ -276,6 +272,9 @@ core里面缺少相关测例，但是可以使用 timer 等发送 system kmsg �
 
 ## 11. 变更记录
 
+- 2026-11-20：结构债清理——§4.6 与 §7.4 的 system opcode 表近重复：§4.6 收为全篇唯一表（并入 §7.4 的 `KMSG_OP_SYSTEM_*` 宏名与 unregister 注入语境），§7.4 改为指向 §4.6 的指引。
+- 2026-11-19：底子重评批次——§3 引号未闭合；收发篇补号；PORT_CLOSED 锚点改 `19` §3；测例口径与翻译腔清理。
+- 2026-11-19：`kmsg_hdr_t` 改为四个 `u32` 字段（共 16 字节）；`module` / `opcode` 与 port 的 `service_id` 同宽；§4.2 布局图、`kmsg_from_msg` 校验与 `kmsg_create` 签名同步。同日润色用语，并区分具名 / 匿名收发入口。
 - 2026-10-07：对照源码终审——修正 `kmsg.h` 中 `MSG_DATA_TAG_KMSG`「routing uses module/opcode」错注；§3/§4.3/§8 与 `ipc_serial`/`kmsg_from_msg` 对齐（NUL、`NULL` 串、空白 fmt、本机 endian）。§10 只保留 fmt/`va_list` 尖角；§1 概述瘦身；去掉 magic 代际说法。
 - 2026-10-05：§6.1 / §7.3 同步代码修复——`ipc_serial_measure_va` / `encode_into_va` / `decode` 三个入口加 `!fmt` 检查（返回 `-E_IN_PARAM`）；§6.1 移除「`fmt==NULL` 无防护（会崩溃）」，§7.3 「`fmt` 须非 NULL」改为「各入口显式拒绝」。
 - 2026-10-04：补 kmsg 在 `Msg_Data_t` 缓冲中的字节布局图（§4.1）与 TLV wire 字节布局示例图（§4.2，含空 fmt 仍占 4 字节说明）。

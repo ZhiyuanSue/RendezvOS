@@ -4,7 +4,7 @@ v0.1 · 2026-09-27
 
 本篇覆盖：`arch/x86_64/PIC/PIC.c`、`LocalAPIC.c`、`IOAPIC.c`、`PIT.c`、`IRQ.c`、`include/arch/x86_64/PIC/*.h`，以及与 `arch_start_core` / timer / IPI 的衔接。
 
-软件 id / `register_irq_handler` 见 `25-IRQ向量分配与处理.md`；IDT / `trap_handler` 见 Trap 篇；软 IPI 协议见 `06-SMP与同步/30-软IPI机制.md`；MADT 枚举见 `09-平台模块/35-ACPI与MADT-x86_64.md`；timer 校准语义见时间子系统篇。
+软件 id / `register_irq_handler` 见 IRQ 篇（`25`）；IDT / `trap_handler` 见 Trap 篇（`23`）；软 IPI 协议见软 IPI 篇（`30`）；MADT 枚举见 ACPI 篇（`35`）；timer 校准语义见时间子系统篇（`33`）。
 
 **官方手册：** Intel SDM Vol.3 — *Interrupt and Exception Handling*、*Advanced Programmable Interrupt Controller (APIC)*、*8259A* 兼容说明；PC 平台惯例见 ACPI MADT。本篇用手册概念对照本仓库**实际访问**的寄存器与时序。
 
@@ -75,7 +75,7 @@ PC 上外设不会直接进入内核入口。CPU 侧永远是：
 
 **BSP 平台一次** — ACPI 经 `arch_parser_madt()` 枚举 MADT 里的 Local APIC 并填 `NR_CPU`；**不**在此 `init_irq`。
 
-**每核** — 见 §6.1。Timer / IPI 注册在 IRQ 篇与软 IPI 篇；本篇提供 LVT / ICR / SVR 原语。
+**每核** — 时序见 §8.1（向量绑定表见 §6.1）。Timer / IPI 注册在 IRQ 篇与软 IPI 篇；本篇提供 LVT / ICR / SVR 原语。
 
 **设备** — v0.1 勿假定 IOAPIC 自动路由。
 
@@ -396,7 +396,7 @@ IPI / AP 启动（INIT-SIPI）都走 ICR：
 
 **x2APIC：** 单次 `wrmsr` 64-bit ICR；无 Delivery Status 轮询。注释提醒：部分路径 `edx` 强制 0 时定向目的地可疑——已知缺口。
 
-**OS 依赖：** `0x30` 必须已 register；软 IPI 协议（generation / pending）见 SMP 篇——本篇只提供「将向量发送到目标核」的门铃。
+**OS 依赖：** `0x30` 必须已 register；软 IPI 协议（generation / pending）见软 IPI 篇（`30`）——本篇只提供「将向量发送到目标核」的门铃。
 
 除 ICR 外，逻辑目的地还看 **LDR（Local Destination）** 和 **DFR（Destination Format）**（仅 xAPIC 有完整可编程语义）：
 
@@ -490,7 +490,7 @@ EOI 分支差异（实现细节）：PIC 路径 `PIC_EOI(向量号)` 区分主/�
 
 ## 9. 公开 API
 
-本篇涉及的接口分布在：x86_64 中断控制器原语——`init_irq` / `arch_irq_type`、8259（`PIC.h`）、Local APIC（`LocalAPIC.h`：SVR / EOI / ICR / LVT timer 后端）、I/O APIC 发现（`IOAPIC.h`）、8254 PIT（`PIT.h`）。说明改写自上述头文件 Doxygen（已与 `.c` 核对）。
+接口分布在：x86_64 中断控制器原语——`init_irq` / `arch_irq_type`、8259（`PIC.h`）、Local APIC（`LocalAPIC.h`：SVR / EOI / ICR / LVT timer 后端）、I/O APIC 发现（`IOAPIC.h`）、8254 PIT（`PIT.h`）。说明改写自上述头文件 Doxygen（已与 `.c` 核对）。
 
 **本篇不涉及：** `irq_global_*` / `register_irq_handler` / `trap_handler`（见 `25`）；`arch_local_eoi` 声明与分发约定（见 `25`；实现调本篇 `PIC_EOI` / `APIC_EOI`）；可移植 `rendezvos_time_*`（见 `33`）；软 IPI 协议（见 `30`）；MADT 枚举（见 `35`）。
 
@@ -751,6 +751,7 @@ Linux 在 `arch/x86/kernel/apic/io_apic.c` 用 `ioapics[]` 记每颗实例的引
 
 ## 13. 变更记录
 
+- 2026-11-19：底子首评跟进——§3「每核」回指由误写的 §6.1（向量表）改为 §8.1（每核时序）。同日首评：篇首缩号；§5.7 软 IPI 误指「SMP 篇」改为软 IPI 篇（`30`）；§9 opener。
 - 2026-11-15：可读性通读。§5.1 VERSION 残字 `0xH`→`0FH`（82489DX 版本号）；§5.7 启核时序指向由误写的「启动 / PSCI 对照的 x86 篇」改正为 SMP 篇（`28`）；§8.3 末段与 `---` 间补空行（避免整段被渲染成标题）；§9.6「无 IOAPIC 合法」补顺为「无 IOAPIC 也合法」。事实层沿用 11-14 核验，未再改动。
 - 2026-11-14：全文对照代码精读（`PIC.c` / `LocalAPIC.c` / `IOAPIC.c` / `IRQ.c` / `PIT.c` / `trap.c` / `start_arch.c` / `time.c`）——§1.4、§4、§5.2、§5.6、§5.7、§8.2、§9.6.8 与实现核对一致；§5.4 修正 `PIT_mdelay` 模式与判停方式（mode 0 单次，到 0 后回卷继续倒数，以读回计数值的 i16 负值判停，单次 ≤ ~25 ms；mode 2 仅存在于 `init_8254_cyclical`）；§9.6.3 补 `ioapic_configure_rte` 拒绝 vector <16、先高半后低半写序、写后保持 Mask=1；§9.6.8 补 MADT 无 Type=1 时静默成功、Version 门槛失败经 `arch_start_platform` 上抛为启动失败（无 PIC 回退）；§5.8 MSI 段扩写为「设备发起内存写」模型并指向 `25` §1.9；§5.5 / §12 补 `lapic_set_vec` / `lapic_clear_vec` 仅允许 0–127 位；§8.1 补 `arch_smp_flush_tlb_init` 位置；本节重新按日期严格倒序排列。
 - 2026-11-13：正文 `entries[]` → `priv[]`；其余见同日条目。

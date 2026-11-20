@@ -284,7 +284,7 @@ arch_start_smp（稍后）:
 
 ## 7. 公开 API
 
-本篇涉及的接口分布在：FDT / 设备树软件面——裁剪 `fdt_*` / `raw_get_prop_from_dtb`（`dtb.h`）、`build_device_tree` + `device_root` + `dev_node_find_*` / `property_read_*`（`dev_tree.h`；建树实现在 `start_arch.c`）。以头文件注释为准（见上列头文件；已与 `.c` 核对）。
+接口分布在：FDT / 设备树软件面——裁剪 `fdt_*` / `raw_get_prop_from_dtb`（`dtb.h`）、`build_device_tree` + `device_root` + `dev_node_find_*` / `property_read_*`（`dev_tree.h`；建树实现在 `start_arch.c`）。以头文件注释为准（见上列头文件；已与 `.c` 核对）。
 
 **本篇不涉及：** `map_dtb` / `prepare_arch` / `arch_start_platform` 编排（见 `05`）；early UART map（见 `05`/`34`）；memmap `memory` 消费（见 `06`）；GIC / PSCI / SMP 对查找结果的使用（见 `27`/`39`/`28`）。
 
@@ -387,6 +387,7 @@ of_find_matching_node(struct device_node *from,
 ---
 
 ## 11. 变更记录
+- 2026-11-19：底子重评批次——§7 opener。DTB 协议无 ≤2 MiB 上限口径与 `05` 一致。
 - 2026-11-15：全文可读性通读（篇章架构 / 篇章引用 / 词句）。篇章引用三处：篇首全文件名 `05-平台启动-aarch64.md` 缩为「平台启动篇（`05`）」、物理内存篇补号（`06`）；§8「（上一篇）」改「见 ACPI 篇（`35`）」，与 `35` 篇回指「DTB 篇（`36`）」对仗；§4.1.4 尾「平台启动篇」补号。格式三处：§1.1 段末 `---` 前缺空行（setext 陷阱，会把上段渲染成二级标题）；§4.1.1 / §4.2.1 两个四级标题前缺空行；§4.1.4 的 `&lt;` HTML 实体还原为 `<`。词句两处：§4.1.4 末段开头「arm64 booting：DTB 8 字节对齐…」电报体且与上方 bullet 重复，改写为以「协议本身无上限」领起；§10「不会“吃掉”长串」的弯引号改用全篇统一的「」。§9 按实况扩写：`modules/test` 确无 DTB 测例（原句属实但过简），补齐 QEMU virt 启动实际可经眼的打印行——`check fdt header fail`、`cmdline:%s` / `no input cmdline`、`[ PSCI ] use smc call`、`[ SMP ] we only support psci smp setup method now`、arch_timer 失败 `kernel_panic`（均已对 `start_arch.c` / `psci.c` / `smp.c` / `generic_time.c` 核对）。另核 SMP 侧 `strcmp_s(method_str, "psci", 5)`、`reg` 配 4 / `enable-method` 配 14（`strlen+1`）、cmdline 手写遍历不走 `dev_node_find_property`、`psci_func.enable = true` 先于功能 ID 检查（`psci.c` L77），均与文一致。余沿 11-14 精读，未变。
 
 - 2026-11-14：全文对照代码复核——§3 补齐 arch_timer/SMP/cmdline 消费者与读法，注明 `dev_node_find_property` 的 `n` 为 `strcmp_s` 比对上限（惯例 `strlen+1`）；§4.1.1 补 `fdt_check_header` 完整校验顺序、版本区间 v2–v17、u-boot 移植来源与 `no-jump-tables` 注记；§4.2 澄清 `property_read_*` 不查类型表、`struct property` 无类型字段、未识别属性按 OTHER 保留；§4.3 区分 raw（只比 compatible 第一条串）与树（逐条全等）两种匹配语义；§6.1 重写启动/平台时序（DTB 固定 2 MiB 拷贝与重叠方向、手写 bootargs 遍历、SPI 注册收尾）；§6.2 记档 `uart_len` 上限检查先于解析恒过、`reg` 多对取最后一对；§6.3 记档建树节点分配不判空；§7.2 给全 `raw_get_prop_from_dtb` 签名（定位标识节点、返回的永远是 `reg`，SINGLE=1/MUL=0 反向）；§7.3 补 `of_find_matching_node`/`struct of_device_id` 与消费者实况；§10 归并 8 条限制/记档；变更记录排序修正（三条 2026-10-05 条目原误排在初稿之后）。

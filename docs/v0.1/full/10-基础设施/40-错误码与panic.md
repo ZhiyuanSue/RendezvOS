@@ -76,14 +76,14 @@ POSIX errno 与 Linux 内核的 `error_t` 取向相反：POSIX errno 是正数�
 | 返回惯例 | 枚举 | 次数 | 域 / 备注 |
 |----------|------|------|-----------|
 | `0` | `REND_SUCCESS` | — | 成功 |
-| `-E_IN_PARAM` | `E_IN_PARAM` | 216 | 几乎全核；最常用 |
+| `-E_IN_PARAM` | `E_IN_PARAM` | 223 | 几乎全核；最常用 |
 | `-E_RENDEZVOS` | `E_RENDEZVOS` | 95 | 通用失败兜底 |
-| `-E_REND_TEST` | `E_REND_TEST` | 83 | 计数第三，但域几乎仅 `modules/test` 测例判失败 |
+| `-E_REND_TEST` | `E_REND_TEST` | 87 | 计数第三，但域几乎仅 `modules/test` 测例判失败 |
 | `-E_REND_AGAIN` | `E_REND_AGAIN` | 15 | 可重试：无 waiter、`send_pending` 槽忙、buddy reclaim 等（**不是** OOM 同义词） |
 | `-E_REND_NOFOUND` | `E_REND_NOFOUND` | 12 | page_slice / radix / unmap / timer |
-| `-E_REND_NO_MEM` | `E_REND_NO_MEM` | 10 | 分配失败：page_slice(_copy) / ipc / time / fp |
+| `-E_REND_NO_MEM` | `E_REND_NO_MEM` | 10 | 分配失败：page_slice(_copy) / ipc / time / fp（`.c` 计数；`powerd.h` inline 另有 2 处不计入本表） |
 | `-E_REND_RC_UNEQUAL` | `E_REND_RC_UNEQUAL` | 7 | refcount / ownership：VSpace mask / teardown；msg 坏 ref |
-| `-E_REND_PORT_CLOSED` | `E_REND_PORT_CLOSED` | 7 | send / recv |
+| `-E_REND_PORT_CLOSED` | `E_REND_PORT_CLOSED` | 9 | send / recv |
 | `-E_REND_OVERFLOW` | `E_REND_OVERFLOW` | 5 | IPI / page_slice / radix（**不仅** IPI） |
 | `-E_REND_NO_MSG` | `E_REND_NO_MSG` | 3 | 空队列 |
 | （无调用） | `E_REND_IPC` | 0 | **仅枚举，全仓库零引用**——头文件注释写「IPC protocol failure」，但 IPC 各失败路径实际返回的是更具体的码；死码，勿编造语义 |
@@ -162,7 +162,7 @@ powerd 的失效面：`powerd_init` 里 `core_tm` 未就绪或 `gen_thread_from_
 
 ## 7. 公开 API
 
-本篇涉及的接口分布在四处：可返回错误约定（`error.h`）、不可恢复出口（`panic.h`，实现 `panic.c`）、优雅关机客户端与 BSP `powerd` 服务（`powerd.h` / `powerd.c`）、x86 电源钩子 `arch_shutdown` / `arch_reset`（`include/arch/x86_64/power_ctrl.h`）。以头文件注释为准（均已与 `.c` 核对）。
+接口分布在四处：可返回错误约定（`error.h`）、不可恢复出口（`panic.h`，实现 `panic.c`）、优雅关机客户端与 BSP `powerd` 服务（`powerd.h` / `powerd.c`）、x86 电源钩子 `arch_shutdown` / `arch_reset`（`include/arch/x86_64/power_ctrl.h`）。以头文件注释为准（均已与 `.c` 核对）。
 
 **本篇不涉及：** aarch64 `arch_shutdown` 到 PSCI SYSTEM_OFF 的细节（见 `39`）；关机 kmsg opcode 常量正文（见 `21`）；IPC send/recv 语义（见 `20`）。
 
@@ -255,6 +255,7 @@ error_t rendezvos_request_poweroff(void);  /* inline in powerd.h */
 ---
 
 ## 11. 变更记录
+- 2026-11-19：底子重评批次——§4.1 复测 `return -E_*`（`.c`）：`E_IN_PARAM` 216→223、`E_REND_TEST` 83→87、`E_REND_PORT_CLOSED` 7→9；注明 `powerd.h` 另有 2 处 `NO_MEM` 不计表；§7 opener。
 - 2026-11-15：Maintainer 复审前可读性通读（篇章架构 / 篇章引用 / 词句）。事实修正三处：① §4.1 计数复测——`return -E_IN_PARAM` 实为 **216**（原 213）、`return -E_REND_NO_MEM` 实为 **10**（原 9），差值恰与新增的 `kernel/task/fp.c`（3 处 `E_IN_PARAM`、1 处 `E_REND_NO_MEM`）吻合；② 同表 `E_REND_NO_MEM` 使用域「buddy / page_slice」不实——实测十处分布在 page_slice(_copy) / ipc / time / fp，buddy 路径并不返回该码；③ `kernel_panic` 调用点「约 15 处」落实为恰 15 处（cmain 九、`trap.c` 一、`time.c` 二、`generic_time.c` 一、`mm_user_utils.c` 二）。词句四处：§1 优雅关机段「原样返回 `-E_RENDEZVOS`」不准——`powerd.h` 实为三类返回（端口缺席 `-E_RENDEZVOS`、构造失败 `-E_REND_NO_MEM`、入队失败原样转发），改为分列；§1「若竟返回」改「若竟然返回」；§7 首电报体改为按四处文件列举；§4.2 x86 玩笑注释按源码原文改 `have no idea,maybe it works`（原多一空格）。引用四处：篇首全文件名缩为 PSCI 篇（`39`）、kmsg 篇补号（`21`）、「见 04 各篇」补反引号、§9「见 43」补反引号。核实属实项：`arch_cpu_relax` 定义于各 ISA `sync/barrier.h`（x86 `pause`、aarch64 `yield`）、`0x604`/`0x92` 宏值与 ACPI 注释、`Soft reset via port 0x92 bit0. unused now`、kmsg opcode `1u`/`2u`、aarch64 `arch_reset` 注释原文、panic/halt 打印序列逐字（含 `(unknown)` NULL 安全）、powerd BSP 运行时判断 / `core_tm` 守卫 / 注册失败先 `delete_message_port_structure` / module 不匹配静默丢弃 / `ref_put` 先于分发 / `unknown opcode %u` / `reboot not implemented`、`E_REND_IPC` 与 `E_REND_ABANDON` 全仓零引用（1027、1029）、枚举 1024–1035 共 12 项、`error_t = int`（`include/common/types.h:43`）、`-E_REND_TEST` 83 处全部在 `modules/test`、riscv64 空分支且无 `power_ctrl.h`、loongarch 无分支。格式扫描（setext / 标题空行 / 分隔线 / 实体 / 引号）无命中。余沿 11-15 精读条目，未变。
 
 - 2026-11-15：全文对照 error.h/types.h/panic.c/panic.h/powerd.c/powerd.h/kmsg_system.h/两 ISA power_ctrl.h/io_port.h/两 pmm.c 精读——**删去「panic 关中断」的不实表述**（代码无任何 `local_irq_*`，§6 流程图按 `kernel_panic`/`kernel_halt` 实际打印序列重写，补「unreachable」兜底日志、`msg` NULL 安全、relax 指令 x86 `pause`/aarch64 `yield`）；`E_REND_IPC` 定案为**全仓库零引用死码**（旧表「IPC 协议失败」使用域作废），§4.1 按 `return -E_*` 实测计数重排（IN_PARAM 213/RENDEZVOS 95/TEST 83/…）；§7.2 枚举按源码真实顺序与数值全列（ABANDON 实际在 1029 非末尾）；powerd 补 BSP 运行时判断、`core_tm` 守卫、注册失败先 `delete_message_port_structure`、module 校验**静默丢弃**、`ref_put` 先于分发、未知 opcode 打印；`kernel_panic` 调用面落到实处（cmain 九处/trap.c unknown IRQ/time.c/generic_time/mm_user_utils 约 15 处；`kernel_halt` 三处，pmm.c 两处为**启动期内存解析失败**而非运行期 OOM）；riscv64 表述精确化（空分支+无 `power_ctrl.h`+无 `arch_cpu_relax` → 编不过；loongarch 无分支）；x86 端口宏名、kmsg opcode 数值 1/2、`include/arch/` 路径修正；§9 重写为真实验证链与失效形态辨识。

@@ -4,7 +4,7 @@ v0.1 · 2026-09-26
 
 本篇覆盖：`kernel/task/thread.c`、`kernel/task/task_manager.c`、`kernel/task/thread_boot.c`（入队 / `init_proc`）、`kernel/task/id.c`、`include/rendezvos/task/thread.h`、`include/rendezvos/task/id.h`；以及 arch 侧 `switch_to` / `context_switch` / `run_thread` 边界。
 
-`init_proc`、boot / idle 与 `cmain` 编排见 `01-启动与初始化/03-模块初始化与内核入口.md`。用户地址空间在调度里怎么换，见 `15-VSpace所有权与调度切换.md`。ELF / `gen_thread_from_*` / `copy_thread` 见 `14-线程创建与ELF加载.md`。创建时绑核见 `16-CPU亲和性-创建时绑核.md`。EBR 与 `del_thread_structure` 见 `17-EBR与线程资源回收.md`。IPC 阻塞见 `04-IPC/20-阻塞与非阻塞收发.md`。
+`init_proc`、boot / idle 与 `cmain` 编排见模块入口篇（`03`）。用户地址空间在调度里怎么换，见所有权篇（`15`）。ELF / `gen_thread_from_*` / `copy_thread` 见创建篇（`14`）。创建时绑核见 `16`。EBR 与 `del_thread_structure` 见 `17`。IPC 阻塞见 `20`。
 
 ---
 
@@ -38,9 +38,9 @@ core 的调度对象是 **线程 + 地址空间**，没有一等公民「进程�
 
 **内核 / server 线程** — `gen_thread_from_func(..., tm, arg)`，或 `create_thread` 再 `add_thread_to_manager` / `add_thread_to_cpu`。线程体经 `thread_entry` 进入 `run_thread`；返回后 OR `EXIT_REQUESTED` 再 `schedule`。
 
-**用户线程** — `gen_thread_from_elf` / `copy_thread`：须 `THREAD_FLAG_USER` + 独立用户 `VSpace`（见创建篇）。返回用户时会盖掉内核栈上的 `thread_entry` 帧，所以正常情况下回不到入口尾部那套清理。
+**用户线程** — `gen_thread_from_elf` / `copy_thread`：须 `THREAD_FLAG_USER` + 独立用户 `VSpace`（见创建篇（`14`））。返回用户时会盖掉内核栈上的 `thread_entry` 帧，所以正常情况下回不到入口尾部那套清理。
 
-**boot** — 不走 `create_thread`：`new_thread_structure` 认领当前执行流；`vs == NULL`；栈 = per-CPU boot 栈。之后 BSP 上跑 `kernel_handle_msg`（模块入口篇）。
+**boot** — 不走 `create_thread`：`new_thread_structure` 认领当前执行流；`vs == NULL`；栈 = per-CPU boot 栈。之后 BSP 上跑 `kernel_handle_msg`（模块入口篇（`03`））。
 
 **idle** — `gen_thread_from_func(idle_thread, …)`，死循环 `schedule`；给 RR 兜底，并顺带在「很少 malloc」的核上排水（见 §6.2）。
 
@@ -290,14 +290,14 @@ lock sched_lock
   curr: running → ready（已是 block_* 则 CAS 失败，保持阻塞）
   next = scheduler(tm)             ← RR
   若 next 空或 == curr → 恢复 running，解锁，不 switch
-  若 next 带 USER → 可能换用户 AS（细节见 VSpace 篇）
+  若 next 带 USER → 可能换用户 AS（细节见所有权篇（`15`））
   若 curr 有 EXIT_REQUESTED 且仍 ready → zombie
   next → running
 unlock
 switch_to(curr → next)
 ```
 
-本篇只划清边界：仅当**切入**线程带 `THREAD_FLAG_USER` 才尝试换用户 AS；切入内核 / idle **不**强制回 `root_vspace`，所以可能继续跑在上一个用户的页表上（mask / extra ref 的滞后清理，VSpace 篇负责）。
+本篇只划清边界：仅当**切入**线程带 `THREAD_FLAG_USER` 才尝试换用户 AS；切入内核 / idle **不**强制回 `root_vspace`，所以可能继续跑在上一个用户的页表上（mask / extra ref 的滞后清理，所有权篇（`15`）负责）。
 
 谁调 `schedule`：idle 循环；IPC 阻塞之后；`delete_thread` 重试；从用户态进来的 trap / IRQ 收尾（内核态的 trap **不**自动让出）。
 
@@ -321,7 +321,7 @@ boot **没有** `arch_set_new_thread_ctx`；首次保存靠这次 `switch_to`。
 
 ### 6.6 arch 切换：软件边界与硬件寄存器
 
-`schedule` 解锁之后才调 `switch_to`。C 层先换段表、GS、用户栈指针这类「这颗核现在代表哪个线程」的状态，再进汇编 `context_switch`，保存/恢复一组通用寄存器和内核栈指针。页表根（CR3 / TTBR0）**不在**这里换——那是上面 USER 分支里 `arch_set_current_user_vspace_root_asid` 的事（见 VSpace / ASID 篇）。
+`schedule` 解锁之后才调 `switch_to`。C 层先换段表、GS、用户栈指针这类「这颗核现在代表哪个线程」的状态，再进汇编 `context_switch`，保存/恢复一组通用寄存器和内核栈指针。页表根（CR3 / TTBR0）**不在**这里换——那是上面 USER 分支里 `arch_set_current_user_vspace_root_asid` 的事（见所有权篇（`15`）/ ASID 篇（`12`））。
 
 **这次切换存什么、不存什么。** 调用约定里，有些通用寄存器由「被调用的函数」负责保存。`context_switch` 只存这一组，外加内核栈指针：x86 是 `r15`–`r12`、`rbp`、`rbx` 和 `rsp`；aarch64 是 `x19`–`x30`、`sp` 和 `SPSR`。
 
@@ -498,7 +498,7 @@ ARM 没有「x87 / SSE / AVX」这种叠名史；EL0/EL1 上的标量浮点与 *
 4. **FP 状态**：`fp_state_save(old->fp)` / `fp_state_restore(new->fp)`（内部 `arch_fp_save_to`/`load_from` → `fp_area`；x86 为 `xsave64`/`xrstor64` 或回退 `fxsave64`/`fxrstor64`）；见上节「浮点与向量」。
 5. 然后 `context_switch`（`arch_switch.S`）：`pushf` + 保存 `rsp/r15–r12/rbp/rbx`，加载新线程同组寄存器，`popf` 后 `ret`——返回地址在新栈上，等于跳进新线程上次离开的地方。
 
-首次进用户见创建篇的 Path A / B；本篇只负责「内核态线程之间」换栈、TLS 与 FP。
+首次进用户见创建篇（`14`）的 Path A / B；本篇只负责「内核态线程之间」换栈、TLS 与 FP。
 
 #### aarch64（ARM ARM：SP_EL0、TPIDR_EL0、DAIF、SPSR_EL1）
 
@@ -537,7 +537,7 @@ ARM 没有「x87 / SSE / AVX」这种叠名史；EL0/EL1 上的标量浮点与 *
 
 ## 7. 公开 API
 
-本篇涉及的接口分布在：`thread.h` / `id.h` 上的调度与 TCB / 入队 / tid，以及 arch `thread_arch.h` 的 `switch_to` / `context_switch`。说明改写自头文件 Doxygen，并已与 `.c` / `.S` 核对。
+接口分布在：`thread.h` / `id.h` 上的调度与 TCB / 入队 / tid，以及 arch `thread_arch.h` 的 `switch_to` / `context_switch`。说明改写自头文件 Doxygen，并已与 `.c` / `.S` 核对。
 
 **本篇不涉及（只链过去）：** `gen_thread_from_*` / ELF 加载见 `14`；`kernel_port_*` 见 `03`；亲和性深挖见 `16`；EBR 槽与 `ebr_*` 见 `17`（`delete_thread` / `del_thread_structure` 的生命周期侧仍在本篇列出）。
 
@@ -670,9 +670,8 @@ extern void run_thread(Thread_Init_Para *para); /* asm；见 thread.h */
 
 ## 9. 测试
 
-- `smp_test` — 多核调度 / IPC
-- `thread_affinity_test`（`smp_test[]`）— 创建时绑核
-- 多数测例经 `gen_thread_from_func` 造内核线程；`RENDEZVOS_TEST` 下 boot 进了 `kernel_handle_msg` 之后会卡在 `recv_msg` 上，RR 不会再选中它
+- `smp_test[]` 表内多项（多核调度 / IPC）；其中 `thread_affinity_test` 覆盖创建时绑核
+- 多数测试用例经 `gen_thread_from_func` 造内核线程；`RENDEZVOS_TEST` 下 boot 进了 `kernel_handle_msg` 之后会卡在 `recv_msg` 上，RR 不会再选中它
 
 ```bash
 cd core && make ARCH=x86_64 config && make all && make run
@@ -695,6 +694,7 @@ cd core && make ARCH=x86_64 config && make all && make run
 
 ## 11. 变更记录
 
+- 2026-11-19：底子重评批次——篇首引用缩号；VSpace/创建/模块入口裸昵称补号；§7 opener；§9「测例」→「测试用例」、厘清 `smp_test[]`。
 - 2026-11-15：§6.6 对齐审定后的 `arch_fp.c`——`fp_cfg`、ALLOWED/DENIED、`EDX:EAX`、leaf `0xD` 字段表；去掉独立 detect/enable 函数与旧 `start_*` 表述。
 - 2026-11-15：§6.6 补 **`xsave64` 说明**（XCR0 / RFBM / legacy 512B / leaf 0xD size）；更正表内「XSAVE 未做」。
 - 2026-11-14：命名与分层对齐代码——`fp_area` / `fp_state_*` / `fp_alloc`；BUF=`SIZE+ALIGN`；去掉旧 `arch_fp_area` / scratch 表述。

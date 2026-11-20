@@ -4,7 +4,7 @@ v0.1 · 2026-10-02
 
 本篇覆盖：`include/arch/aarch64/gic/gic.h`、`gic.c`（`struct gic_chip` / `gic_probe`）、`gic_v2.*`（绑定实现）、`gic_v3.*`（匹配后失败）、以及与 `arch_start_platform` / `arch_start_core`、timer、IPI 的衔接。
 
-DTB 节点见 `09-平台模块/36-DTB与设备树-aarch64.md`；`local_irq_id = intid + 64` 与两套 id 分配见 `25-IRQ向量分配与处理.md`；VBAR / `get_curr_el_trap_info` 见 Trap 篇；软 IPI 见软 IPI 篇（`30`）；PSCI 启动核见 `39-PSCI与处理器电源-aarch64.md`（本篇不展开）。
+DTB 节点见 DTB 篇（`36`）；`local_irq_id = intid + 64` 与两套 id 分配见 IRQ 篇（`25`）；VBAR / `get_curr_el_trap_info` 见 Trap 篇（`23`）；软 IPI 见软 IPI 篇（`30`）；PSCI 启动核见 PSCI 篇（`39`）（本篇不展开）。
 
 **官方手册：**
 
@@ -451,7 +451,7 @@ Generic timer 在 EL1 编程 **CNTP_***（non-secure physical）；到期拉高 
 
 ## 9. 公开 API
 
-本篇涉及的接口分布在：`gic.h` 的 `struct gic_chip gic` + `gic_probe`；GICv2 经 `gic_v2_bind` 绑定。trap 不 include `gic_v2.h`。`gic_v3` 仅 DT 识别 + 失败。
+接口分布在：`gic.h` 的 `struct gic_chip gic` + `gic_probe`；GICv2 经 `gic_v2_bind` 绑定。trap 不 include `gic_v2.h`。`gic_v3` 仅 DT 识别 + 失败。
 
 **本篇不涉及：** `irq_global_*` / `register_irq_handler` / `trap_handler`（见 `25`）；`arch_local_eoi` / `get_curr_el_trap_info` 约定（见 `25`/`23`）；软 IPI 协议（见 `30`）；DTB 解析（见 `36`）；可移植 timer（见 `33`）。
 
@@ -522,9 +522,12 @@ bool gic.intid_is_pending(u32 intid);
 2. `register_irq_handler(local_irq_id, cpu_id, isr, IRQ_NEED_EOI)`。
 3. `irq_enable(...)` → `gic.enable_spi`。
 4. EOI 交给 `trap_handler`；勿在 ISR 内自行 `gic.eoi`，除非明确绕过 `IRQ_NEED_EOI`。
-\1\n## 10. 多架构
 
-仅 aarch64。x86 见 APIC / PIC 篇。
+---
+
+## 10. 多架构
+
+仅 aarch64。x86 见 APIC / PIC 篇（`26`）。
 
 ---
 
@@ -551,6 +554,7 @@ bool gic.intid_is_pending(u32 intid);
 
 ## 13. 变更记录
 
+- 2026-11-19：底子首评批次——篇首缩号；§9 opener；修复 §9.4/§10 之间损坏的 `\1\n## 10` 行。事实沿用 11-14/11-15 核验（`intid+64` / SGI0 对照 `AARCH64_IRQ_OFFSET`）。
 - 2026-11-15：Maintainer 复审前可读性通读。引言「软 IPI 见 SMP 篇」改正为软 IPI 篇（`30`）（与本篇 §4.3/§9 一致）；§5.1 「TPR 类似门槛全开」电报体易误读成往 TPR 写值，改写为「PMR=`0xff`（即 x86 TPR 在 GIC 上的对应寄存器）全开」；§6 前补 `---` 分隔、§9/§10 间双空行归一。事实层沿用 11-14 核验（PMR/BPR/nr_spi=988/`cpu_id`≥8 拒绝均对照 `gic_v2.c` 复核），未再改动。
 - 2026-11-14：对照代码逐条修正与补充——§4.1 / §9.3 / §12 `set_priority` 澄清为无锁读-改-写（旧「`|=`、写 0 no-op」说法已过时）；§1 / §6.1 补本地槽布局（[0,64) EC、[64,96) SGI/PPI、`NR_ARCH_LOCAL_IRQ`=96，IPI/timer 走本地分发、无需 alloc）；§5.2 / §12 IAR=1023 后果精确化（进全局查找 → `arch_irq_entry_from_local` NULL → `Unhandled trap` panic）；§9.3 / §12 补 `nr_spi` 固定 988 与 TYPER 不符、EOImode 依赖复位默认、unmask 无 isb / mask 有 isb；§8.2 补启动窗口无害论证；§4.3 补自目标（SGI）发送与 SGI pending 互引（修正失效的 §1.2 引用）；§13 变更记录归位。
 - 2026-11-13：对齐 irq_space——`arch_local_eoi`；线控经 SPI space ops；`intid_is_pending`；SPI entry 不缓存 intid；`gic_spi_space` 为投递旁路非 ref（见 `25` §1.8）。

@@ -227,7 +227,7 @@ scan_device:
 
 ## 7. 公开 API
 
-本篇涉及的接口分布在三个头文件：Mechanism #1 配置读写（`pci.h`）、`pci_scan_*` / `pci_enable_device`（`pci_ops.h`）、`pci_node` 树与查找（`pci_dev_tree.h`）。以头文件注释为准（三者均已与 `.c` 核对）。
+接口分布在三个头文件：Mechanism #1 配置读写（`pci.h`）、`pci_scan_*` / `pci_enable_device`（`pci_ops.h`）、`pci_node` 树与查找（`pci_dev_tree.h`）。以头文件注释为准（三者均已与 `.c` 核对）。
 
 **本篇不涉及：** `arch_start_platform` 编排（见 `04`）；ACPI/MCFG（见 `35`，**不读**）；中断路由 / IOAPIC（见 `26`）；aarch64 ECAM / DTB pci-host（**不存在**）。
 
@@ -309,6 +309,7 @@ error_t pci_enable_device(struct pci_node *);  /* IRQ stub → 失败回滚 comm
 ---
 
 ## 11. 变更记录
+- 2026-11-19：底子重评批次——§7 opener。事实沿用 11-15。
 - 2026-11-15：全文可读性通读（篇章架构 / 篇章引用 / 词句）。架构大体过关，格式一处：§4.2 末 `---` 前一空行多余，并一。引用一处：篇首「见 DTB 篇」补号（`36`）。事实修正两处：① `pci.h` 的 MMIO 配置通路注释实为 `MMIO way — not implemented`，原 §4.2「注释为空」与 §6.1「仅有 `/*MMIO way*/` 空注释」不实，按原文改写；② 测试路径判空写反——`simple_print_callback` 的节点分配与 `test_pci_scan` 的 root **都**判空（失败 `pr_error` 后返回 NULL / `-E_REND_TEST`），原 §6.4「两个 callback 的节点分配同样没有判空」与 §9「同样不判空」不实，改为「分配有判空、插树无判空：callback 返回的 NULL 仍崩在 `pci_scan_bus`」；§3 同步限定「平台路径」。词句五处：§1「能看见设备…」残句补主语「现有代码」；§7 首「分布在：x86 PCI 发现——…」电报体改为按三个头文件列举；§7「仅 `#ifdef PCI`（…）构建有意义」残句补全；§6.1 / §7.2「是 `u8` 再与 `0xFC`」改「进宏后再 `& 0xFC`」（「与」易读成连词；掩码实际发生在 `SET_PCI_ADDR_REG_VAL`，`PCI_ADDR_REG_OFF_MASK`=0xFC）；§3「直接拒」补「绝」。§6.4 其余缺口逐条复核属实：读头 func 硬编码 0（`pci_config_read_IO_dword(bus, device, 0, …)`）、`pci_scan_bar` 判头不掩 bit7、插树不判空（`pci_ops.c:92`）、`is_pci_bridge` 与 `usable_resource_number` 全仓零引用、`pci_assign_irq` 恒 -1、`pci_assign_bar_resource` 恒 0 且两处调用点被恒 true 守卫挡住、command 写回把 status 写 0（无害）、DFS 先匹配自身、`pci_put_device` 钳 0、`test_pci_scan` 注册在 `single_test.c` 用例表、`-D PCI` 确为 `configure.py` 拼出的带空格形式（`' -D ' + feature`），均与文一致。余沿 11-14 精读，未变。
 
 - 2026-11-14：全文对照代码复核（pci.h/pci_ops.c/pci_dev_tree.c/single_pci_test.c/start_arch.c/config_x86_64.json/configure.py）。修正 `usable_resource_number` 旧表述「能用的 BAR 个数」——全仓无人读写，纯占位；补 §6.4 六条新缺口：`pci_scan_bar` 判头不掩 `header_type` bit7（0x80/0x81 两头落空，把 0x00 vendor dword 当 BAR0）、`pci_scan_bus` 插树不判空与 `pci_root`/callback 分配不判空链、`is_pci_bridge` 死代码、`pci_assign_bar_resource` 调用点恒不可达、若干符号 non-static 却不头文件声明、command dword 写回把 status 写 0（无害）。§3/§7.1 补 `arch_start_platform` 真实链路与 `ref_count>1` 门槛；§4.2 补 64-bit BAR 高 dword 合并；§6.1 补 `u8` offset 只够 256 字节头；§6.2 重写扫描流程（深度上限 16、subordinate 先 0xFF 后回填、桥分支先 callback 后配总线号）；§7.4 补 DFS 先匹配自身、put 钳 0、打印格式；§9 补 `#ifdef PCI` 生效机制与 AMD 特判；篇首补 `-D PCI` 构建来源与 x86-only 头依赖。

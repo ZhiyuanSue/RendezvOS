@@ -26,7 +26,7 @@ v0.1 · 2026-10-02
 
 本篇覆盖：`kernel/mm/pmm.c`、`kernel/mm/buddy_pmm.c`、`include/rendezvos/mm/pmm.h`、`include/rendezvos/mm/buddy_pmm.h`、`arch/x86_64/mm/pmm.c`、`arch/aarch64/mm/pmm.c` 及对应 `include/arch/*/mm/pmm.h`。
 
-调用时机见 `01-启动与初始化/02-启动流程总览.md`：`phy_mm_init` 在 `virt_mm_init` 之前。页表 / Map_Handler 见同分区虚拟地址篇；内核堆见 `09-kmalloc与内核堆.md`。x86 上：RSDP **探测**在启动篇 `prepare_arch`，表 walk 见 ACPI 篇。aarch64 的 DTB memory 节点细节链到 DTB 篇，本篇写它们如何进入 `m_regions`。
+调用时机见启动总览（`02`）：`phy_mm_init` 在 `virt_mm_init` 之前。页表 / Map_Handler 见页表篇（`07`）；内核堆见 `09`。x86 上：RSDP **探测**在启动篇 `prepare_arch`，表 walk 见 ACPI 篇（`35`）。aarch64 的 DTB memory 节点细节链到 DTB 篇（`36`），本篇写它们如何进入 `m_regions`。
 
 ---
 
@@ -217,9 +217,9 @@ struct buddy {
         └─ … 其余交给各 zone 的 pmm（默认 buddy） …
 ```
 
-此时完整 `map` 还不能用，访问元数据只能靠 boot 那套早期页表（见平台启动篇：镜像里一张 L2，用 2 MiB 大页盖当前这一个 1 GiB）。percpu 之后若还有空洞，`arch_map_pmm_data_space` **先往这张已有 L2 里补 2 MiB 项**。元数据一旦跨进下一个 1 GiB，原 L2 管不到，就要用本节开头那些扩展 L2 用于映射实现：每张挂到 boot `L1_table` 的下一项，再在新 L2 里填 2 MiB 项。否则 `KERNEL_PHY_TO_VIRT` 读越界的 `Page[]` 或 pmm 私有管理区会缺页。步骤见 §6.2，挂表细节以 `arch_map_pmm_data_space` 为准。
+此时完整 `map` 还不能用，访问元数据只能靠 boot 那套早期页表（见平台启动篇（`04`/`05`）：镜像里一张 L2，用 2 MiB 大页盖当前这一个 1 GiB）。percpu 之后若还有空洞，`arch_map_pmm_data_space` **先往这张已有 L2 里补 2 MiB 项**。元数据一旦跨进下一个 1 GiB，原 L2 管不到，就要用本节开头那些扩展 L2 用于映射实现：每张挂到 boot `L1_table` 的下一项，再在新 L2 里填 2 MiB 项。否则 `KERNEL_PHY_TO_VIRT` 读越界的 `Page[]` 或 pmm 私有管理区会缺页。步骤见 §6.2，挂表细节以 `arch_map_pmm_data_space` 为准。
 
-切完之后，还会把 `[pmm_end, ROUND_UP(pmm_end, 2 MiB))` 这段尾页也 reserve 掉。若不扣除，后面的 pmm 可能把它们分出去，而这些页仍落在「按 2 MiB 映射的 PMM 窗口」里，之后用 4 KiB 重新映射同一窗口就会冲突（页表项已经标明这是最下一级，无法再往下分4K了）。
+切完之后，还会把 `[pmm_end, ROUND_UP(pmm_end, 2 MiB))` 这段尾页也 reserve 掉。若不扣除，后面的 pmm 可能把它们分出去，而这些页仍落在「按 2 MiB 映射的 PMM 窗口」里，之后用 4 KiB 重新映射同一窗口就会冲突（页表项已经标明这是最下一级，无法再往下分 4 KiB 了）。
 
 ### 4.3 Buddy：把二叉树写进数组
 
@@ -252,13 +252,12 @@ zone 里的物理页往往不从 0 号帧连续到末尾，中间有洞（见 §
   下标  10  11  12 …… 19  20  21
         页  页  （空格子）    页  页     ← 至少要开到 22 格
 
-排密：只有 4 张可用页，数组就 4 项。`generate_zone_data` 用 `list_add_head` 挂 section，再按链表填 `buddy_page[]`，所以后挂上的段在数组前面。先生成 10–11 再生成 20–21 时：
-
+排密（只有 4 张可用页 → 数组 4 项；先挂 10–11 再挂 20–21）：
   下标     0     1     2     3
   ppn     20    21    10    11
 ```
 
-这只是「两段、按发现顺序 insert」的示意。`m_regions` 从中间切开时前半段会追加到数组尾，section 链表**不保证**按地址递增。不变量只有： section 内 ppn 连续；跨 section 合并必须 ppn 差正好是 `2^k`。不要假定下标越大 ppn 越大。
+`generate_zone_data` 用 `list_add_head` 挂 section，再按链表填 `buddy_page[]`，所以后挂上的段在数组前面。这只是「两段、按发现顺序 insert」的示意。`m_regions` 从中间切开时前半段会追加到数组尾，section 链表**不保证**按地址递增。不变量只有： section 内 ppn 连续；跨 section 合并必须 ppn 差正好是 `2^k`。不要假定下标越大 ppn 越大。
 
 教科书里的 buddy 常常是每阶一条空闲链表，链上的节点另外分配。Linux 一类实现则按页帧号铺一张很大的 `struct page[]`，对帧号做异或找伙伴。本仓库也走「每页一条记录」：空闲链挂在 `buddy_page.page_list` 上，不再另开节点。下标相邻不能直接当作物理相邻，合并前必须看 ppn 之差是否正好是 `2^k`，理由如前所述，可能有洞。
 
@@ -288,7 +287,7 @@ zone 里的物理页往往不从 0 号帧连续到末尾，中间有洞（见 §
 
 上面那块 8 页大小的记录并不是一开始就有的。先把每一页当成 0 阶，挂进 0 阶空闲链。然后从低阶往高阶扫：若块首的 ppn 按 `2^k` 对齐，并且 `pages[i + 2^(k-1)]` 的 ppn 恰好是下一块物理页，就把两个半块从低阶链上摘掉，块首升一阶。对不齐、或中间有洞的，停在已经合到的那一阶。
 
-之所以这么实现，是因为我们无法保证边缘一定是 2 MiB 对齐的，而不对齐如果浪费掉这部分内存也太可惜太奢侈，如果要直接计算，情况过多过于复杂，不如直接用这种方式构建。
+之所以这么实现：边缘未必 2 MiB 对齐；若直接丢掉不对齐尾部太浪费，而按对齐边界手算所有情况又过于复杂，不如从 0 阶逐级合成。
 
 #### 空闲链：按阶把块首串起来
 
@@ -297,7 +296,7 @@ zone 里的物理页往往不从 0 号帧连续到末尾，中间有洞（见 §
 ```c
 struct buddy_bucket {
         u64 order;                       /* 这一阶的阶数 */
-        u64 aval_pages;                   /* 这一阶当前空闲块的个数（不是页数；字段名易误导） */
+        u64 aval_pages;                   /* 这一阶当前空闲块的个数（不是页数） */
         struct list_entry avaliable_frame_list; /* 空闲块首链 */
 };
 ```
@@ -326,7 +325,7 @@ struct buddy_bucket {
 
 从 0 阶往上试：刚还的是下标 0，伙伴是 `0 xor 1 = 1`。若 `pages[1]` 也是空闲的 0 阶，且两个 ppn 相差 1，就合成下标 0 起的 1 阶。再问 1 阶的伙伴 `0 xor 2 = 2`……伙伴越界、阶对不上、或 ppn 差不是 `2^k`，就停，把当前块首挂进这一阶的桶里。
 
-洞的情况需要忽略掉。例如，还是上面那四页：下标 0、1 是 ppn 20、21，下标 2、3 是 10、11。0 和 1 能合（差 1）。1 阶去异或会对到下标 2，但 ppn 21 和 10 差 11，不是 `2^k`，合不上。洞的两边拼不成一块，所以需要忽略掉。
+跨洞不能合并。例如上面那四页：下标 0、1 是 ppn 20、21，下标 2、3 是 10、11。0 和 1 能合（差 1）；升到 1 阶后再异或会落到下标 2，但 ppn 21 与 10 之差不是 `2^k`，合不上——下标相邻不等于物理相邻，ppn 对不上就停。
 
 #### 锁
 
@@ -337,7 +336,7 @@ struct buddy_bucket {
 
 `pmm_alloc` 当时拿不到块时，可以请**兼容层**把一些页还回来再试。空闲页总数不够，或 `pmm_alloc_zone` 因找不到够大的块返回 `-E_REND_NO_MEM`，都会走这条路。请求已经超过 `2^BUDDY_MAXORDER` 且当时空闲总数够，或 buddy 账本对不上（已分配块又被摘下、按 ppn 找 `Page` 失败等），直接 `-E_RENDEZVOS`，**不** reclaim。
 
-这是故意留给兼容层的 hook（见`00`概述：机制在 core，策略在兼容层）。core **不会**实现「内存不够时换出哪一页、杀哪个进程」——没有这套策略，也不该写进 core。没注册 hook 时，分配失败就失败；兼容层若要在 OOM 时腾页，需要在initcall的时候 `pmm_set_reclaim_hook` 注册hook。hook 把页 `pmm_free` 回来后，buddy 再试，直到次数用尽。
+这是故意留给兼容层的 hook（见`00`概述：机制在 core，策略在兼容层）。core **不会**实现「内存不够时换出哪一页、杀哪个进程」——没有这套策略，也不该写进 core。没注册 hook 时，分配失败就失败；兼容层若要在 OOM 时腾页，需要在 initcall 时用 `pmm_set_reclaim_hook` 注册 hook。hook 把页 `pmm_free` 回来后，buddy 再试，直到次数用尽。
 
 ```c
 typedef bool (*pmm_reclaim_fn_t)(struct pmm *pmm, size_t need_pages,
@@ -380,7 +379,7 @@ riscv / loongarch 的 `pmm.h` 为空桩，无实现。
 
 #### aarch64：设备树 `/memory`
 
-平台约定见 Device Tree 惯例与 Linux 的 arm64 引导说明（DTB 由固件经 x0 传入，见平台启动篇 §4.6）。描述「系统 RAM」的常见写法是：存在一个或多个节点，带 **`device_type = "memory"`**，并用 **`reg`** 给出一个或多个 `(基址, 长度)` 对。`#address-cells` / `#size-cells` 决定每对里各几个 cell；在 QEMU virt 一类 64 位板上，常见的是各 2 个 cell，于是 `reg` 里每 16 字节是一组 `u64 基址 + u64 长度`（FDT 里为大端，读取时要字节交换）。
+平台约定见 Device Tree 惯例与 Linux 的 arm64 引导说明（DTB 由固件经 x0 传入，见平台启动篇（`05`）§4.6）。描述「系统 RAM」的常见写法是：存在一个或多个节点，带 **`device_type = "memory"`**，并用 **`reg`** 给出一个或多个 `(基址, 长度)` 对。`#address-cells` / `#size-cells` 决定每对里各几个 cell；在 QEMU virt 一类 64 位板上，常见的是各 2 个 cell，于是 `reg` 里每 16 字节是一组 `u64 基址 + u64 长度`（FDT 里为大端，读取时要字节交换）。
 
 代码路径（`arch/aarch64/mm/pmm.c`）：
 
@@ -417,7 +416,7 @@ free：降低引用计数；减到 0 再合并回桶。**不**进入 reclaim。�
 
 后续的`virt_mm_init` / Map_Handler / kmalloc 都假定本阶段之后已经能分配物理页；平台 ACPI / PCI 映射也走 NORMAL pmm。
 
-DTB 属性解码的更细约定见 `09-平台模块/36-DTB与设备树-aarch64.md`；ACPI / RSDP 见 `35-ACPI与MADT-x86_64.md`。
+DTB 属性解码的更细约定见 DTB 篇（`36`）；ACPI / RSDP 见 ACPI 篇（`35`）。
 
 ---
 
@@ -486,9 +485,9 @@ error_t pmm_change_pages_ref(struct pmm *, ppn_t start, size_t n, bool inc);
 
 ## 8. 多架构（对照小结）
 
-在本篇，多架构相关的就只有获得可用的物理内存区间部分，buddy 算法本体与 ISA 无关，相关内容已经在 §6.1 介绍过，在此不再赘述。
+本篇里与架构相关的，主要是「如何获得可用物理内存区间」；buddy 算法本体与 ISA 无关，细节见 §6.1，此处不重复。
 
-官方协议入口：Multiboot Spec 的 mmap 一节；Device Tree / [arm64 booting](https://docs.kernel.org/arch/arm64/booting.html) 对 DTB 传递与尺寸的约束见平台启动篇。
+官方协议入口：Multiboot Spec 的 mmap 一节；Device Tree / [arm64 booting](https://docs.kernel.org/arch/arm64/booting.html) 对 DTB 传递与对齐的约束见平台启动篇（`05`）与 DTB 篇（`36`）——协议无「整树 ≤ 2 MiB」上限，2 MiB 是本仓库 early 映射粒度。
 
 ---
 
@@ -516,6 +515,8 @@ make ARCH=x86_64 config && make run
 
 ## 11. 变更记录
 
+- 2026-11-19：底子重评批次——篇首/§6 引用缩号；§4.3 排密说明移出代码块；合成动机与跨洞合并句理顺；`aval_pages` 注释去编者注；§8 多架构句改写。
+- 2026-11-19：§8 与平台启动篇联动——澄清 arm64 DTB 协议无「整树 ≤ 2 MiB」上限（随 `05` 口径修正）。
 - 2026-10-31：`Page.ref` 拆 claim/get；与 rmap 解耦写清；alloc 用 claim，COW/pin 用 get（禁 0→1 复活）。
 - 2026-10-24：去掉 `reserve_arch_region`（不再按 RSDT 扣 2 MiB 窗）。§1 / §4 / §5 / §6.1 / §7：ACPI 表区只靠 mmap 非 `AVAILABLE` 不插入；探测属 `04`，walk 属 `35`。
 - 2026-10-29：`pmm_alloc(page_number==0)` 改为 `-E_IN_PARAM`；成功 `0` 仅表示真实 ppn0，不再用 `*alloced_page_number` 区分空请求。

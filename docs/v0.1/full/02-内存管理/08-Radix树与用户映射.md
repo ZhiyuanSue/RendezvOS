@@ -2,9 +2,9 @@
 
 v0.1 · 2026-09-25
 
-本篇覆盖：`kernel/mm/vmm_radix_tree.c`、`kernel/mm/mm_user_utils.c`、`include/rendezvos/mm/vmm_radix_tree.h`、`include/rendezvos/mm/mm_user_utils.h`；与 clone / register 紧耦合处见 `kernel/mm/vmm.c`（完整 VSpace 生命周期仍以 `07-虚拟地址空间与页表.md` 为准）。
+本篇覆盖：`kernel/mm/vmm_radix_tree.c`、`kernel/mm/mm_user_utils.c`、`include/rendezvos/mm/vmm_radix_tree.h`、`include/rendezvos/mm/mm_user_utils.h`；与 clone / register 紧耦合处见 `kernel/mm/vmm.c`（完整 VSpace 生命周期仍以页表篇（`07`）为准）。
 
-整章内存栈总图见 `06-物理内存与Buddy分配器.md` 开篇。硬件 PTE 怎么改见同分区页表篇。page fault 填页 / 拆页的**策略**在兼容层；本篇只写 core 侧约定。`register_vspace` 按页表根地址挂红黑树（见 §4.7），与 IPC 子系统按字符串名注册 port 是两套不同机制——此处只提醒不要混淆，不展开 IPC。
+整章内存栈总图见物理内存篇（`06`）开篇。硬件 PTE 怎么改见页表篇（`07`）。page fault 填页 / 拆页的**策略**在兼容层；本篇只写 core 侧约定。`register_vspace` 按页表根地址挂红黑树（见 §4.7），与 IPC 子系统按字符串名注册 port 是两套不同机制——此处只提醒不要混淆，不展开 IPC。
 
 ---
 
@@ -53,7 +53,7 @@ core 里的 `clone_vspace` 已经能做 `COW_PREP` / `COPY_PAGES`；真正在 fa
 ## 3. 分层与调用方
 
 - **兼容层 / 加载器**：通常先 `vmm_radix_tree_lock_range_big`，再多次 `lock_range_small_with_big_locked` + utils；L0 可以跨多次调用一直持有。utils **不会**自己去获取 L0。
-- **kmalloc 等**：可用 `vmm_radix_tree_lock_range_big_and_small`（内部取到 L2 后**释放 L0**），避免嵌套在已持有的 L0 临界区里。堆整页在 `root_vspace` 上自管 insert/map/bind（见 `09-kmalloc与内核堆.md`），**不**走本篇 utils。
+- **kmalloc 等**：可用 `vmm_radix_tree_lock_range_big_and_small`（内部取到 L2 后**释放 L0**），避免嵌套在已持有的 L0 临界区里。堆整页在 `root_vspace` 上自管 insert/map/bind（见 `09`），**不**走本篇 utils。
 - **utils**：一律拒绝 `&root_vspace`（内核的全局根地址空间，所有 VSpace 共享它的内核高半；只服务用户地址空间，见 §4.6）。调用方已持有 L0 时，用 `lock_range_small_with_big_locked` 那条路径。
 - **内核恒等映射里不经 zone 分配器的 PA**（固件表、MMIO 等）：走 `mm_kernel_utils`（页表篇：`ensure_*` / `map_*_empty` / `unmap_*`），**无** radix / rmap——与本篇用户组合层同级、职责互斥。Zone 内 RAM（含将来非 buddy 的 zone）仍走分配器 + 本篇 bind 路径。
 
@@ -267,7 +267,7 @@ typedef enum {
                           升序加锁，降序释放
 ```
 
-`PMM zone lock` 是 per-zone 的 MCS 锁（MCS = Mellor-Crummey-Scott，一种自旋锁族，每 CPU 在自己的本地变量上自旋以减少总线争用；详见 `31-锁与内存屏障.md`）。它由 `pmm->spin_ptr` + `percpu(pmm_spin_lock[zone_id])` 组成。buddy 的 `pmm_alloc` / `pmm_free` **内部自锁**——调用方不需要、也不应当在外面包 zone 锁再调 alloc/free。zone 锁只用于一个场景：**持锁改 `Page` 元数据（rmap 链表）**。
+`PMM zone lock` 是 per-zone 的 MCS 锁（MCS = Mellor-Crummey-Scott，一种自旋锁族，每 CPU 在自己的本地变量上自旋以减少总线争用；详见锁篇（`31`））。它由 `pmm->spin_ptr` + `percpu(pmm_spin_lock[zone_id])` 组成。buddy 的 `pmm_alloc` / `pmm_free` **内部自锁**——调用方不需要、也不应当在外面包 zone 锁再调 alloc/free。zone 锁只用于一个场景：**持锁改 `Page` 元数据（rmap 链表）**。
 
 | 持 zone 锁时 | 是否允许 |
 |----|----|
@@ -581,12 +581,14 @@ error_t mm_user_utils_set_range_flags(VSpace *, vaddr start, u64 length_bytes,
         mm_user_range_flags_mode_t mode, ENTRY_FLAGS_t set_mask, ENTRY_FLAGS_t clear_mask);
 ```
 
+下表只写调用方需要的返回值 / 幂等 / 失败语义；每条 util 内部的编排步骤与回滚详见 §6.1 表（逐操作内部状态见 §4.5）。
+
 | 接口 | 说明 |
 |------|------|
-| `set_range_and_fill` | L2 INSERT 下 insert，再 map 循环与 bind，释放 L2 后 `map_handler_zero_page`。成功返回 `start`，失败 **0**（回滚前缀）。区间内已有可 INSERT 重叠则整次失败。 |
+| `set_range_and_fill` | 编排步骤与回滚见 §6.1 表。成功返回 `start`，失败 **0**（回滚前缀）；区间内已有可 INSERT 重叠则整次失败。 |
 | `fill_page_with_exist_range` | 单页：叶已 **VALID** 则成功空操作（幂等）；否则须已存在且 **LAZY**；其它情况失败（不隐式生长）。 |
-| `clean_range_and_unfill` | unbind 后释放 L2，再 unmap + `pmm_free`，最后 `RADIX_RL_DELETE`。失败路径须仍 `unlock_range_big`。 |
-| `remap_page` | 先 `change_leaf_ppn` 再 `map(..., PAGE_ENTRY_REMAP)`（**不是** unmap+map）。 |
+| `clean_range_and_unfill` | 编排步骤见 §6.1 表。失败路径须仍 `unlock_range_big`。 |
+| `remap_page` | 先改 radix 再 `map(REMAP)`（**不是** unmap+map）；单页原子性见 §4.5.4。 |
 | `set_range_flags` | 区间内每页须已 VALID+`have_mapped`，且 radix/PTE flags 一致；模式见 `MM_USER_RANGE_FLAGS_*`。 |
 
 handler 一律 `&percpu(Map_Handler)`。VA 稀疏、带空洞时，由编排方多次调用 utils 分段处理，单次调用不跨越空洞。
@@ -605,7 +607,7 @@ radix / utils 与 ISA 无关；PTE 标志的编解码在 arch `vmm.c`（见页�
 
 ## 9. 测试
 
-以 `modules/test/` 现有 `*vmm*` / mm 相关测试用例为准。在 `core/` 内：
+radix / utils 主要由 `arch_vmm_test` 间接覆盖（map / unmap / clone 路径会走到记账）；专用 radix 单测尚未单独成文件。在 `core/` 内：
 
 ```bash
 make ARCH=x86_64 config && make all && make run
@@ -624,6 +626,8 @@ make ARCH=x86_64 config && make all && make run
 
 ## 11. 变更记录
 
+- 2026-11-20：结构收尾——§7.4 utils 表与 §6.1 编排表重叠的步骤描述收为「见 §6.1 表」，保留返回值 / 幂等 / 失败语义等独有信息，并在表前加一句分工说明。事实未改。
+- 2026-11-19：底子重评批次——篇首/`09`/`31` 引用缩号；§9 写明由 `arch_vmm_test` 间接覆盖。
 - 2026-11-15：Maintainer 复审前可读性通读：清理 2026-10-04 口语替换的漏网（「到手/握着/开扫/挡/手里」→「拿到/持有/扫描/阻塞」系）；§4.1.1/§4.3 统一「没有下层**表页**时创建新树」表述；§4.3 Phase 4 回滚一句去重复；§4.5.2 与 §4.1.2 的 VALID|LAZY 硬保证改回链；§4.6 修转义方括号并把「INSERT 不在 ≥256 的用户路径上生长」补全因果；§3 `09` 补全文件名；§7「纠正」→「注意」（历史纠错已由变更记录承载）；删 §6.3 末尾面向编者的批注（与 §10 条目重复）；§9 去多余空行。技术内容未动。
 - 2026-10-25：全文语言整理：理顺直译句（「对其他 CPU 变得可见」等）与机械替换遗留的不一致（握/持有、interval/区间），技术内容未动。
 - 2026-10-24：§4.2 写清用户路径握 L0 vs 堆 `big_and_small` 早放 L0 的权衡（interval 发现 / TOCTOU）；`mm_user_utils.h` 同步。

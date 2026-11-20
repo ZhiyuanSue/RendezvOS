@@ -4,13 +4,13 @@ v0.1 · 2026-09-25
 
 本篇覆盖：`kernel/mm/page_slice.c`、`kernel/mm/page_slice_copy.c`、`include/rendezvos/mm/page_slice.h`、`include/rendezvos/mm/page_slice_copy.h`。
 
-内核堆见 `09-kmalloc与内核堆.md`；用户 VA 以 `08-Radix树与用户映射.md` 为准。**page_slice 只服务内核侧逻辑缓冲，不替代用户 radix**——两者不要混用。
+内核堆见 `09`；用户 VA 以 radix 篇（`08`）为准。**page_slice 只服务内核侧逻辑缓冲，不替代用户 radix**——两者不要混用。Buddy 细节见物理内存篇（`06`）。
 
 ---
 
 ## 1. 概述
 
-Buddy（伙伴分配器，按 2 的幂次合并/拆分物理页，见 `06-物理内存与Buddy分配器.md`）单块上限为 **4 MiB**（`BUDDY_MAXORDER = 10`，即 1024 张连续 4 KiB 页）。内核有时还想按「文件偏移 / 大数组下标」这种**逻辑连续**的方式取一块远超此上限的缓冲，但物理上、甚至 KVA 上并不要求连成一片。
+Buddy（伙伴分配器，按 2 的幂次合并/拆分物理页，见 `06`）单块上限为 **4 MiB**（`BUDDY_MAXORDER = 10`，即 1024 张连续 4 KiB 页）。内核有时还想按「文件偏移 / 大数组下标」这种**逻辑连续**的方式取一块远超此上限的缓冲，但物理上、甚至 KVA 上并不要求连成一片。
 
 **page_slice** 做的就是这件事：在一个 slice 里用稀疏多级索引，把 **pgoff（页号偏移）** 绑定到调用方已经准备好的 **离散内核虚拟地址（KVA，Kernel Virtual Address）**。连续性只在偏移算术上成立。
 
@@ -26,7 +26,7 @@ Buddy（伙伴分配器，按 2 的幂次合并/拆分物理页，见 `06-物理
 
 不做：文件系统页缓存策略；用户 `mmap`；硬件 MMU pin——`PAGE_SLICE_FLAG_PIN` 只表示 destroy / remove 时**不要**对内容 kva 调 `m_free`，不是页表 pin。
 
-也**不是 COW**：`page_slice_clone` 是对新页做 **memcpy 深拷贝**，只深拷已 VALID 的 pgoff；没有「共享再 fault」。
+也**不是 COW**：`page_slice_clone` 是对新页做 **memcpy 深拷贝**，只深拷贝已 VALID 的 pgoff；没有「共享再 fault」。
 
 ---
 
@@ -100,7 +100,7 @@ struct page_slice {
 | 2（`slice->root` 为 index 页） | index 页内非空子 slot 数 | 512 |
 | 3–4（指向 index 的项） | 子 index 页内非空 slot 数 | 512 |
 
-`slice->mapped_entries` 仅上层统计（带 `PAGE_SLICE_FLAG_VALID` 的 pgoff 数）；grow / shrink **不**读它，回收由 `live` 计数驱动。
+`slice->mapped_entries` 仅供上层统计（带 `PAGE_SLICE_FLAG_VALID` 的 pgoff 数）；grow / shrink **不**读它，回收由 `live` 计数驱动。
 
 ### 4.3 PIN
 
@@ -128,7 +128,7 @@ struct page_slice {
    空槽一律 tp_new_none()，绝不 ps_entry_new(NULL, h, 0)
 ```
 
-**`ps_descend_pgoff`**：按 pgoff 算出每层 slot 索引，从 root 向下走；遇到空 slot 且 `create=true` 就 alloc 一页、发布到父 slot、`ps_entry_live_inc` 父项；走到最底层拿到 leaf 槽。同时把走过的 structural path（root / index1 / index2）记下来，remove 时做 cascade 就用它。
+**`ps_descend_pgoff`**：按 pgoff 算出每层 slot 索引，从 root 向下走；遇到空 slot 且 `create=true` 就 alloc 一页、发布到父 slot、`ps_entry_live_inc` 父项；走到最底层拿到 leaf 槽。同时把走过的结构路径（root / index1 / index2）记下来，remove 时自下而上回收空 index 页就用它。
 
 ```text
    descend_pgoff(pgoff=P, create=true)：
@@ -148,9 +148,9 @@ struct page_slice {
 
 ### 4.5 树的收缩：`ps_remove_page_locked` + `ps_cascade_up_empty_index` + `ps_shrink`
 
-整棵树**只在 `remove` / `set_size` 路径上回收**，分三层：先清叶、再自下而上 cascade 释放空 index 页、最后 `ps_shrink` 把 root 一层层 unwrap 到合适高度。
+整棵树**只在 `remove` / `set_size` 路径上回收**，分三层：先清叶、再自下而上回收空 index 页、最后 `ps_shrink` 把 root 一层层剥到合适高度。
 
-**`ps_remove_page_locked`**：先 `ps_descend_pgoff(create=false)` 拿到 leaf entry 与 structural path；清叶（非 PIN 则 `m_free` kva）、`mapped_entries--`；然后 `ps_entry_live_dec(leaf_index)`——若 leaf 页 live 归零，释放 leaf 页、父项 `live_dec`，再调 `ps_cascade_up_empty_index`。
+**`ps_remove_page_locked`**：先 `ps_descend_pgoff(create=false)` 拿到 leaf entry 与结构路径；清叶（非 PIN 则 `m_free` kva）、`mapped_entries--`；然后 `ps_entry_live_dec(leaf_index)`——若 leaf 页 live 归零，释放 leaf 页、父项 `live_dec`，再调 `ps_cascade_up_empty_index`。
 
 **`ps_cascade_up_empty_index`**：从 path 末端（最深层）向上走，遇到 `live == 0` 的 index 项就 `m_free` 子页、把该项置回 `tp_new_none()`、父项 `live_dec`；遇到 `live != 0` 就 break——上面还有别的子树，不能再释放。
 
@@ -214,10 +214,7 @@ struct page_slice {
 
 ### 6.2 copy / clone
 
-- `page_slice_copy_to_buffer`：区间必须**全部已映射**，否则失败（**不**跳过空洞、不零填）。
-- `page_slice_copy_to_slice`：目标 pgoff 须**已绑定**；拒绝危险自重叠。
-- `page_slice_copy_to_user`：同样要求已映射，再经 `map_handler_user_kernel_copy`。
-- `page_slice_clone`：新建同 `size` 的 slice；只深拷贝 VALID；清除 PIN；空洞仍是空洞。
+四个拷贝 / clone helper 的行为约定（区间须全映射、遇空洞即失败、目标 pgoff 须已绑定、拒绝自重叠、clone 深拷贝非 COW 等）统一见 §7.3 接口表，此处不再重复。
 
 ### 6.3 shrink
 
@@ -227,7 +224,7 @@ struct page_slice {
 
 ## 7. 公开 API
 
-本篇涉及的接口分布在：`include/rendezvos/mm/page_slice.h`、`include/rendezvos/mm/page_slice_copy.h`。接口说明以头文件注释为准，并已与实现核对。内容页须调用方先 `m_alloc` 再 `insert`；slice 只维护 index/leaf 壳。不替代用户 radix（见 `08-Radix树与用户映射.md`）。
+接口分布在：`include/rendezvos/mm/page_slice.h`、`include/rendezvos/mm/page_slice_copy.h`。说明以头文件注释为准，并已与实现核对。内容页须调用方先 `m_alloc` 再 `insert`；slice 只维护 index/leaf 壳。不替代用户 radix（见 `08`）。
 
 **注意：** `page_slice_lookup` 返回 `struct page_slice_entry *`（不是 `error_t`）；`create` 参数类型为 `size_t`。
 
@@ -238,8 +235,8 @@ struct page_slice {
 | 建空 slice | **`page_slice_create(append_sz, logical_size)`**（`logical_size > 0`） |
 | 绑内容页 | 调用方先 `m_alloc`，再 **`page_slice_insert_page(slice, pgoff, kva, flags)`** |
 | 读 | **`page_slice_lookup`**（返回前已放锁）或 **`copy_to_*`** |
-| 伸缩逻辑长度 | **`page_slice_set_size(&slice, new_size)`**（`0` ≡ destroy） |
-| 副本 | **`page_slice_clone(&dst, src)`**（深拷 VALID；不拷贝柔性数组尾） |
+| 伸缩逻辑长度 | **`page_slice_set_size(&slice, new_size)`**（`0` 等价 destroy） |
+| 副本 | **`page_slice_clone(&dst, src)`**（深拷贝 VALID；不拷贝柔性数组尾） |
 | 卸一页 / 整体销毁 | **`remove_page`** / **`destroy(&slice)`** |
 
 每 slice 一把 `cas_lock`，上述 API 内部加锁。lookup/copy **不**保证返回指针在 unlock 后仍有效。
@@ -317,6 +314,8 @@ make ARCH=x86_64 config && make all && make run
 
 ## 11. 变更记录
 
+- 2026-11-20：结构债清理——§6.2 copy / clone 条目与 §7.3 接口表重复（§7.3 为超集，含错误码与 clone 不拷柔性数组尾等细节），§6.2 改为交叉引用。技术内容未动。
+- 2026-11-19：底子重评批次——篇首引用缩号；structural path/cascade/unwrap 等改中文；§7 opener 与 ≡ 电报体清理。
 - 2026-11-15：Maintainer 复审前可读性通读：§1 更正 Buddy 引用篇（09→`06-物理内存与Buddy分配器.md`）并按 `BUDDY_MAXORDER = 10` 把单块上限「约 2 MiB」改为 4 MiB；§4.1/§4.2 容量与覆盖数值精确化（128 槽、64 TiB、去「大约/≈」）；§5 删「以树内实际文件名为准」编者注；§7「纠正」→「注意」；§9 测例名具体化。除 §1 更正外技术内容未动。
 - 2026-10-25：全文语言整理：修掉上一轮机械替换造成的歧义（「空洞不实现」→「空洞仍是空洞」等），技术内容未动。
 - 2026-10-05（可读性二轮）：展开首次出现未解释的术语——Buddy（伙伴分配器）、KVA（内核虚拟地址）、tagged pointer（带 tag 的指针，补 bit 布局说明）、`tp_new_none()`（全 0 的空 tagged pointer 标记）；§4.1「壳页」补一句括注说明是树结构自己的索引页/叶页而非内容页；§7 表里「FAM append」改成「柔性数组尾」与 §4.1 一致。

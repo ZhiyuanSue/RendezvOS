@@ -2,9 +2,9 @@
 
 v0.1 · 2026-10-02
 
-本篇覆盖：`include/common/dsa/ms_queue.h`、`include/common/taggedptr.h`；以及 IPC / message 路径上 **如何使用** EBR（`kernel/task/ebr.c`）。`ipc.c` / `message.c` 的对象与收发契约分别以 Port 篇、收发篇为准——本篇只写「在队列算法约束下对他们的影响」。
+本篇覆盖：`include/common/dsa/ms_queue.h`、`include/common/taggedptr.h`；以及 IPC / message 路径上 **如何使用** EBR（`kernel/task/ebr.c`）。`ipc.c` / `message.c` 的对象与收发契约分别以 Port 篇、收发篇为准——本篇只写「在队列算法约束下对它们的影响」。
 
-EBR 机制与「谁推进 reclaim」见 `03-任务与调度/17-EBR与线程资源回收.md`：`schedule()` 每次切线程会调 `ebr_try_reclaim()`；线程 teardown 同步释放 `Thread_Base` 本身，但排空其 send/recv 队列时会对 `Message_t` / `Ipc_Request` 走 `ebr_retire_ref`。Port 对象相关见 `19`；会合收发见 `20`；tagged pointer 位布局见本篇 §4.2（源码 `taggedptr.h`）。
+EBR 机制与「谁推进 reclaim」见 EBR 篇（`17`）：`schedule()` 每次切线程会调 `ebr_try_reclaim()`；线程 teardown 同步释放 `Thread_Base` 本身，但排空其 send/recv 队列时会对 `Message_t` / `Ipc_Request` 走 `ebr_retire_ref`。Port 对象相关见 `19`；会合收发见 `20`；tagged pointer 位布局见本篇 §4.2（源码 `taggedptr.h`）。
 
 ### 在 04-IPC 章里怎么读
 
@@ -225,7 +225,7 @@ CAS 只看「字是否仍等于期望值」。典型 ABA：
 
 | 调用方 | 碰哪条队列 | 节点从哪来 | 释放怎么接 |
 |--------|------------|------------|------------|
-| 接收方和发送方回合，在`ipc.c`中，见 `20` | port 的 `thread_queue` | 外部分配 `Ipc_Request_t`，再 `msq_enqueue_check_tail` / `msq_dequeue_check_head` | 使用带EBR的`free_ipc_request` |
+| 接收方和发送方会合，在 `ipc.c` 中，见 `20` | port 的 `thread_queue` | 外部分配 `Ipc_Request_t`，再 `msq_enqueue_check_tail` / `msq_dequeue_check_head` | 使用带 EBR 的 `free_ipc_request` |
 | 消息在发送方的发送队列和接收方的接收队列之间的传递，在`message.c`中，见 `19` | 每线程 `send_msg_queue` / `recv_msg_queue` | 外部分配 `Message_t`，再普通 `msq_enqueue` 进发送队列，发送后，接收方从接收队列 `msq_dequeue` | 使用带EBR的`free_message_ref` |
 | kmalloc 跨核 free 对象 | 每核跨核回收 MSQ | 对应分配核心上的kmalloc分配器分配的 | 按分配核心的堆释放约定进行 free（**不是** IPC 的节点释放） |
 
@@ -709,6 +709,7 @@ cd core && make ARCH=x86_64 config && make run
 
 ## 11. 变更记录
 
+- 2026-11-19：底子重评批次——「他们」→「它们」；篇首缩号；§3.1「回合」→「会合」。Maintainer §1 第一人称语体未改。
 - 2026-10-11：收尾校对——§3.1 括号笔误；reclamation 拼写；§3.3 EBR 交叉引用；§6.3「任意 n」改为 0…15。
 - 2026-10-11：重写 §6。§6.2 按 EBR / refcount / tag 三问白话作答（普通路径 tag 为 `+1`）。§6.3 按「单状态」五问作答并对照 `ms_queue.h`；问 3 标明 `append_info==0` 目前靠约定。§1.7 同步 0=空中转。
 - 2026-10-11：§4.4 收成咬合摘要；世代图 / safe / 读图说明迁回权威篇 `17` §4.2，避免 18 比 17 更详。

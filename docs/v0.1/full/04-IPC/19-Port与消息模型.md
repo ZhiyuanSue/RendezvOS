@@ -1,10 +1,10 @@
 # Port 与消息模型
 
-v0.1 · 2026-10-02
+v0.1 · 2026-10-02（2026-11-19：匿名 / 具名拆分定稿）
 
-本篇覆盖：`kernel/ipc/port.c`、`kernel/ipc/message.c`、`include/rendezvos/ipc/port.h`、`include/rendezvos/ipc/message.h`、`kernel/registry/name_index.c`（经 `Port_Table` 使用的部分）。
+本篇覆盖两块：一是匿名会合（`port.h` / `port.c`、`message.h` / `message.c`），二是按名发现用的具名 port（`named_port.h` / `named_port.c`，含名表与 hooks）。收发状态机见 `20`；准入细节见 `22`；kmsg 见 `21`。
 
-**建议先读** `18-支持IPC的无锁MSQ队列实现.md` **§1**（整个无锁 IPC 的动机 §1.1–1.2；驱动 MSQ 改成现状的约束在 §1.3–1.8），再读本篇。收发状态机与 push/pull 见 `20`；kmsg 见 `21`；hook 见 `22`；MSQ/EBR 算法见 `18` §2 起的章节；`name_index` 通用约定见 `10-基础设施/41-名称索引注册表.md`。
+**建议先读** `18` **§1**（整个无锁 IPC 的动机 §1.1–1.2；驱动 MSQ 改成现状的约束在 §1.3–1.8），再读本篇。MSQ/EBR 算法见 `18` §2 起；`name_index` 通用约定见名称索引篇（`41`）。
 
 ---
 
@@ -49,7 +49,7 @@ core 对应两层：
   └────────────────────────────────┘
 ```
 
-因此**没有**「`send_msg(port, msg)` 一步完成」模式的接口：调用方需要先 `enqueue_msg_for_send` 把 `Message_t` 表示的消息放进本线程 `send_msg_queue`，再对 port 做 `send_msg` 去配对。一次发送的时序见 `20` §1.1。接收也是如此，需要先 `recv_msg` 接收消息，接收到消息就表示，在他的`recv_msg_queue`里面存在一条消息（否则就是被阻塞住的），然后`dequeue_recv_msg`从接收队列中弹出一条消息。
+因此**没有**「`send_msg(port, msg)` 一步完成」模式的接口：调用方需要先 `enqueue_msg_for_send` 把 `Message_t` 表示的消息放进本线程 `send_msg_queue`，再对 port 做 `send_msg` 去配对。一次发送的时序见 `20` §1.1。接收也是如此，需要先 `recv_msg` 接收消息，接收到消息就表示，在它的 `recv_msg_queue` 里面存在一条消息（否则就是被阻塞住的），然后 `dequeue_recv_msg` 从接收队列中弹出一条消息。
 
 ### 1.2 为什么会合层用「单状态」一条队列
 
@@ -74,28 +74,26 @@ MSQ 假出队的细节见 `18` §1.4–1.5。要点是：逻辑上「弹出」�
 
 ## 2. 目标与边界
 
-**提供：** Port 的创建 / 注册 / 按名查找 / 关闭；会合队列与消息对象（`Message_t` / `Msg_Data_t`）的分工；引用计数及与延迟回收（EBR，见 `17`）的衔接。
+**提供：** 匿名 Port 的创建 / 关闭与会合；具名 Port 的创建 / 注册 / 按名查找 / 注销；消息对象（`Message_t` / `Msg_Data_t`）的分工；引用计数及与延迟回收（EBR，见 `17`）的衔接。
 
-**不描述：** 收发状态机与系统异步投递（`20`）；MSQ 算法本身（`18`）；具体 RPC / 服务协议（上层）；port 注册表空间与可用 hook 扩展（见 `22`）。
+**不描述：** 收发状态机与系统异步投递（`20`）；MSQ 算法本身（`18`）；具体 RPC / 服务协议（上层）；`ops_allow` 细则（`22`）。
 
 ---
 
 ## 3. 分层与调用方（先看用法，细节在后文）
 
-兼容层典型 **server**：
+读后面章节前，先分清两件互不替代的事：
 
-1. 先 `create_message_port`，再 `register_port`（别人才能按名找到）；
-2. 循环 `recv_msg`：有人给他发消息则成功，否则阻塞；
-3. `dequeue_recv_msg` 从 `recv_msg_queue` 取出 `Message_t`，用完后 `ref_put`。
+1. **会合能不能用**——记在匿名 port 的 `ops_life` 上（OPEN / CLOSING / CLOSED）。`close_port` 管的是这个。
+2. **别人能不能按名找到**——记在具名 port 是否挂进了 `Port_Table`（`table` 是否非空）。`register_named_port` / `unregister_named_port` 管的是这个。
 
-兼容层典型 **client**：
+未进名表也可以对已经握在手里的匿名 port 收发；进了名表也不会自动改 `ops_life`。
 
-1. `thread_lookup_port` 按名拿到 port（带引用计数）；
-2. `enqueue_msg_for_send` 把 `Message_t` 放进本线程 `send_msg_queue`；
-3. `send_msg`：有接收方则投递，否则阻塞；
-4. 用完 port 后 `ref_put`释放引用计数。
+兼容层典型编排（**具名 server / 具名 client** 的逐步用法、注销时序、失败时该认哪些返回值）集中在 §6.1 / §6.2，此处不再复列步骤。
 
-关闭 port 时，仍堵在 `thread_queue` 上的等待者必须被叫醒，否则会永远阻塞。发送侧与接收侧**通知方式不同**（因为醒回来时看到的 API 成功形态不同）。兼容层该怎么编排、失败时该认哪些返回值，见 §6；这里只记结论：
+**纯匿名**（调用方直接传指针，例如 wait / sleep 一类）：先 `create_message_port(service_id)`，再用 `send_msg` / `recv_msg`，结束时 `close_port`，最后 `ref_put(..., free_message_port_ref)`。没有 hooks，也不进名表。
+
+关闭 port 时，仍堵在 `thread_queue` 上的等待者必须被叫醒，否则会永远阻塞。发送侧与接收侧**通知方式不同**（因为醒回来时看到的 API 成功形态不同）。这里只记结论：
 
 | 谁在等 | 关闭时怎么通知 | 阻塞 API 醒后大致结果 |
 |--------|----------------|----------------------|
@@ -108,52 +106,58 @@ MSQ 假出队的细节见 `18` §1.4–1.5。要点是：逻辑上「弹出」�
 
 定义以头文件为准（`port.h` / `message.h` / `ipc.h` / `thread.h`）。
 
-阅读顺序建议：先看 §4.0 角色图，再按 Port / 消息 / 等待请求 / port 注册表 / 线程字段往下读。每个小节都是「先讲为什么有这个对象，再贴结构体与字段表」。公开 API 如何创建、查找、销毁它们，见 §7。
+阅读顺序建议：先看 §4.0 角色图，再按匿名 Port、具名 Port、消息、等待请求、名表、线程字段往下读。每个小节都是「先讲为什么有这个对象，再贴结构体与字段表」。公开 API 见 §7。
 
 ### 4.0 对象总览（先看角色）
 
-§1.1 的两层，落到代码上就是下面几类对象：
+§1.1 的两层，落到代码上就是下面几类对象。按名查找时，先经过名表找到具名 port；真正配对仍发生在它内部嵌着的那份匿名会合上：
 
 ```text
   Port_Table（global_port_table）
-  │  组织起来所有的Port
+  │  按名字索引具名 port，别人才能发现
   ▼
-  Message_Port_t
-  │  包含了thread_queue，其中排队着Ipc_Request_t，指向Thread_Base
-  │  如果配对成功，获取到对端的Thread_Base
+  Named_Message_Port_t（具名 port）
+  │  开头是 PORT_COMMON：嵌着一份与 Message_Port_t 同布局的匿名会合
+  ▼
+  Message_Port_t（匿名会合）
+  │  thread_queue 上挂着 Ipc_Request_t，每个 request 指向一个 Thread_Base
+  │  配对成功后取得对端 Thread_Base
   ▼
   Thread A（sender）
-  │  send_msg_queue / send_pending_msg，塞入Message_t
+  │  send_msg_queue / send_pending_msg 里放 Message_t
   │  ipc_transfer_message
   ▼
   Thread B（receiver）
-  │  recv_msg_queue：收到复制后的新的 Message_t
-  │  其中Message_t.data和sender指向同一份Msg_Data_t
+  │  recv_msg_queue：收到复制出来的新 Message_t
+  │  两边的 Message_t.data 指向同一份 Msg_Data_t
   ▼
-  Msg_Data_t（包括了payload + refcount）
+  Msg_Data_t（载荷 + refcount）
 ```
 
 | 对象 | 一句话职责 |
 |------|-----------|
-| `Message_Port_t` | 带名称的发送接收方会合端点；其中`thread_queue` 上挂发送/接收等待者 |
+| `Message_Port_t` | 匿名会合端点；`thread_queue` 上挂发送/接收等待者；本身没有名字 |
+| `Named_Message_Port_t` | 具名 port：里面嵌着匿名会合，外面带 `name`、`table` 和可选 hooks；见 §4.1.1 / `22` |
 | `Ipc_Request_t` | 挂进 `thread_queue` 的等待节点，指向某个 `Thread_Base` |
-| `Message_t` | 挂进线程 `send_msg_queue` / `recv_msg_queue` 的 MSQ 节点，`data` 指向具体的消息载体 `Msg_Data_t` |
-| `Msg_Data_t` | 载荷本体（指向具体数据块的指针、长度、`free_data`析构函数指针、refcount） |
-| `Port_Table` | 全局 port 注册表（内部用 `name_index_t` 做按名索引） |
+| `Message_t` | 挂进线程 `send_msg_queue` / `recv_msg_queue` 的 MSQ 节点，`data` 指向 `Msg_Data_t` |
+| `Msg_Data_t` | 载荷本体（指针、长度、`free_data`、refcount） |
+| `Port_Table` | 全局具名 port 注册表（内部用 `name_index_t`） |
 | 线程 IPC 字段 | `send_msg_queue` / `recv_msg_queue` / `send_pending_msg` / `port_ptr` / `port_cache` 等 |
 
 ---
 
-### 4.1 `Message_Port_t`：为什么要有 Port
+### 4.1 `Message_Port_t`：匿名会合点
 
-Port 回答了 §1.1 的问题：没有它，发送方不知道该把消息交给哪个线程的 `recv_msg_queue`；有了它，双方在**同一个名字**上会合。
+Port 回答了 §1.1 的问题：没有它，发送方不知道该把消息交给哪个线程的 `recv_msg_queue`；有了它，双方在**同一个 port 对象**上会合——要么手里直接握着匿名 port 指针，要么先按名查到具名 port，再在它嵌着的那份匿名会合上配对。
+
+**匿名 port 是完整对象**：`message_port_init` / `create_message_port` 之后就可以 `send` / `recv`，**不**要求先注册。按名发现、hooks、名表属于具名 port（§4.1.1 / `22`），不要塞进 `ops_life` 里混谈。
 
 Port 上有两套容易混的「状态」，先分开：
 
-1. **会合队列状态**（EMPTY / SEND / RECV）——记在队列尾指针的低几位tag里（tagged prt 见 `18`），表示「现在队里全是谁在等」。
-2. **生命周期 `ops_life`**（ACTIVE / REGISTERED / CLOSING / CLOSED）——port 还能不能被查找、能不能进入收发临界区；和上面的 SEND/RECV不是同一套。
+1. **会合队列状态**（EMPTY / SEND / RECV）——记在队列尾指针的低几位 tag 里（tagged ptr 见 `18`），表示「现在队里全是谁在等」。
+2. **生命周期 `ops_life`**（OPEN / CLOSING / CLOSED）——能不能进入收发临界区；**与是否在名表无关**。
 
-相关常量：
+相关常量（`port.h`）：
 ```c
 /* thread_queue 的 tagged 指针低位：当前队列里全是谁在等 */
 #define IPC_PORT_APPEND_BITS 2
@@ -161,33 +165,22 @@ Port 上有两套容易混的「状态」，先分开：
 #define IPC_PORT_STATE_SEND  1   /* 全是发送等待者 */
 #define IPC_PORT_STATE_RECV  2   /* 全是接收等待者 */
 
-/* ops_life：port 还能不能被 send/recv 进入 */
-#define PORT_OPS_LIFE_CLOSED     0
-#define PORT_OPS_LIFE_ACTIVE     1  /* 已 create，尚未 register */
-#define PORT_OPS_LIFE_REGISTERED 2  /* 已在 port 注册表里，可 begin */
-#define PORT_OPS_LIFE_CLOSING    3  /* 正在 unregister */
+/* ops_life：能不能 port_ops_begin */
+#define PORT_OPS_LIFE_CLOSED  0
+#define PORT_OPS_LIFE_OPEN    1  /* init/create 后；可 begin */
+#define PORT_OPS_LIFE_CLOSING 2  /* close_port 进行中 */
 ```
 
-结构体（`port.h`）：
+结构体（匿名，`port.h`）：
 
 ```c
-typedef struct port_append_hooks {
-        size_t append_info_len;      /* 紧跟结构体后的额外字节；0 = 无 */
-        port_append_init_t init;     /* create 时对append info的可选初始化 append 区 */
-        port_append_fini_t fini;     /* 真正释放前对append info的可选清理 */
-        port_ops_allow_t ops_allow;  /* 可选准入：LOOKUP/SEND/RECV/REGISTER，如果存在，还需要进行ops_allow的判定 */
-} port_append_hooks_t;
-
 struct Msg_Port {
         ms_queue_t thread_queue;
+        ms_queue_node_t msq_dummy; /* 初始 MSQ sentinel，随 port 体，不单独 m_free */
         ref_count_t refcount;
-        struct Port_Table *table;
-        char name[PORT_NAME_LEN_MAX];
-        u16 service_id;
+        u32 service_id;
         atomic64_t ops_life;
         atomic64_t ops_count;
-        const struct port_append_hooks *append_hooks;
-        char append_port_info[]; /* flexible array：长度 = append_info_len */
 };
 typedef struct Msg_Port Message_Port_t;
 ```
@@ -196,68 +189,61 @@ typedef struct Msg_Port Message_Port_t;
 
 | 字段 | 解决什么问题 |
 |------|-------------|
-| `thread_queue` | §1.2 的单状态会合队列。只挂等待请求，不挂消息。当前是 SEND 还是 RECV，见上面的队列状态标记。 |
-| `refcount` | port 注册表和各次 lookup 都可能同时握着 port 的引用计数；最后一次 `ref_put` 才释放Port的内存。 |
-| `table` | 已注册时指向所属 port 注册表；未注册为 NULL。作用是关闭 / 销毁时知道自己挂在哪。 |
-| `name` | 全局发现用的字符串键（含结尾 `\0`，最长见 `PORT_NAME_LEN_MAX`）。查找与路由都以名为准。 |
-| `service_id` | 从端口名算出的 16 位短整数（非 0）。**不用于找 port**。系统投递的消息头可带上它，方便接收方快速判断「是不是给我的」（见 `21`）。 |
-| `ops_life` | 上面说的生命周期。如果未注册或正在关闭时（即不在可允许的Port生命周期时），进入收发临界区的 `port_ops_begin` 必须失败。 |
-| `ops_count` | 当前有多少调用方已经 `begin` 尚未 `end`。关闭 port 时必须等它归零再清会合队列，否则会出bug。它不禁止两个 send 同时进行（send_msg本身也是无锁的，所以允许多个线程正在操作）。 |
-| `append_hooks` | 暴露给兼容层的可选hook：挂 `init`/`fini`/`ops_allow`，并声明 `append_info_len`。`NULL` = 无 append 区、准入一律放行。见 `22`。 |
-| `append_port_info[]` | C flexible array：分配大小 = `sizeof(Msg_Port) + append_info_len`。core 不解释这段内容，兼容层自行管理。 |
+| `thread_queue` | §1.2 的单状态会合队列。只挂等待请求，不挂消息。 |
+| `msq_dummy` | `msq_init` 的初始 dummy；假出队后新 dummy 可能是堆上 `Ipc_Request` 节点。 |
+| `refcount` | 谁还握着这个 port；堆上创建的对象，末次 `ref_put` 会走到 `free_message_port_ref`，再 `m_free`。 |
+| `service_id` | 给 kmsg 的 `module` 一类标签用（例如 `PORT_CLOSED`）；与 `hdr.module` 同为 `u32`；**不是**注册表里的名字。 |
+| `ops_life` | 只有 OPEN 才允许 `port_ops_begin`；关闭时先进入 CLOSING，再落到 CLOSED。 |
+| `ops_count` | 已 begin 尚未 end 的人数；`close_port` 要等它归零，再清会合队列。 |
+
+API 要点：`message_port_init`（可嵌在别的结构里）或 `create_message_port`（堆上分配并 init）之后，`ops_life` 就是 OPEN。`close_port` 把状态从 OPEN 改成 CLOSING，等 `ops_count` 归零、清完队列，再改成 CLOSED；**不会**顺手 `ref_put`。调用方随后自己按需放下引用：堆上 create 出来的，通常再 `ref_put(..., free_message_port_ref)` 才会真正释放；嵌在别的结构里的，只 close，由外层宿主拆掉。
 
 **`ops_life` 怎么走：**
 
 ```text
-  create_message_port
+  message_port_init / create_message_port
         │
         ▼
-     ACTIVE
-        │  register_port
-        ▼
-     REGISTERED
-        │  unregister
+      OPEN
+        │  close_port
         ▼
      CLOSING
         │  等 ops_count == 0
         │  清 thread_queue
         ▼
      CLOSED
-        │  放下 ref
+        │  调用方 ref_put（堆 create：可能释放对象）
         ▼
      （refcount 归零后释放）
 ```
 
-- `ACTIVE`：已创建，但还没进 port 注册表，别人按名查找是找不到的；更不能收发。
-- `REGISTERED`：已在 port 注册表里，可以查找和收发。
-- `CLOSING`：已从 port 注册表摘掉，新的收发进不去；等正在进行的临界区结束后再清等待者。
-- `CLOSED`：会合队列已清空；之后只靠引用计数把对象收回。
+- `OPEN`：可以收发；不要求已经挂进名表。
+- `CLOSING`：新的 `port_ops_begin` 会失败；等正在进行的收发结束后，再清等待者。
+- `CLOSED`：会合队列已经处理完；对象还在不在，交给 refcount（由调用方 `ref_put`）。
 
-**为什么要有 `ops_life` / `ops_count`（生命周期门），而不是只靠引用计数？**
+**为什么要有 `ops_life` / `ops_count`，而不是只靠引用计数？**
 
-会合层本身是无锁的：多个线程可以同时 `send_msg` / `recv_msg`。与此同时，线程侧还有 `port_cache`（§4.5）用于加速按名查找——cache **不**长期锁住 port，但 lookup 成功后调用方会握着一份引用，并可能马上进入收发。于是会出现这种交叉：
+会合是无锁的：多方可以同时 `send_msg` / `recv_msg`，同时另一方又要 `close_port` 清 `thread_queue`。只靠「refcount 不为 0 就不释放内存」，挡不住「半截临界区」和「清队列」撞在一起。所以另外维护一套与 MSQ **分开** 的生命周期计数：
 
-1. 管理者已经 `unregister_port`：名字从表里摘掉，准备清 `thread_queue`、释放对象；
-2. 另一侧仍握着旧指针（或刚用 cache / token resolve 拿到的 port），继续 `send_msg` / `recv_msg`。
+- 只有 `OPEN` 时 `port_ops_begin` 才放行；
+- `close_port` 先把状态改成 CLOSING，等 `ops_count` 归零，再清队列，再改成 CLOSED；它自己不放下引用，由调用方随后 `ref_put`。
 
-若只靠「refcount 还没归零就不释放」，确实避免了内存立刻被拆掉的风险，但「还能不能进会合、关闭方能不能安全清理队列」仍没说清楚：关闭方不知道还有没有半截临界区，发送方可能永远无法发出然后堵在这里，或者因为没有捋清楚清理队列的并发问题导致直接挂。
+谁可以按名看见、谁可以经具名接口收发，由具名侧的 `ops_allow` / hooks 负责，**不会**走进匿名的 `port_ops_begin`；见 `22`。
 
-把这两件事再揉进 MSQ 的 CAS / 状态 tag，会把无锁算法和「关闭协议」缠在一起，复杂度和出错的可能性都上去一大截。
+---
 
-但是其实一把大锁保平安等方案也是可以的，不过，如果是这样，那我为什么还要一个无锁的消息发送机制呢？所以，一方面要解决问题，另一方面也要尽量减少锁等情况的开销。
+### 4.1.1 `Named_Message_Port_t`：具名 port（简述）
 
-因此另开一条与会合无锁**基本正交**的生命周期状态机：
+具名 port 里面嵌着一份匿名会合（结构体开头是 `PORT_COMMON`，布局与 `Message_Port_t` 相同），外面再带名字、名表指针，以及可选的 hooks 和尾部追加区。准入细节见 `22`；本篇只记和匿名侧怎么分工：
 
-- 只有 `REGISTERED` 时 `port_ops_begin` 才放行进入 send/recv 临界区；
-- `ops_count` 统计已 begin 尚未 end 的人数；unregister 先进入 `CLOSING`（新 begin 失败），等 count 归零再清理队列，最后 `CLOSED`。
+| | 匿名 `Message_Port_t` | 具名 `Named_Message_Port_t` |
+|--|----------------------|------------------------------|
+| 创建 | `create_message_port(service_id)` / `message_port_init` | `create_named_message_port(name, hooks)`（`service_id` 由名字算出，不会是 0） |
+| 收发 | `send_msg` / `recv_msg` 及其 try 变体 | 用 `named_port_send_msg` / `named_port_recv_msg` 等：先问 `ops_allow`，通过后再进内部那份匿名会合 |
+| 关闭会合 | `close_port` | 通常调用 `unregister_named_port`：先关掉内部的匿名会合，再从名表摘掉；若漏了 unregister，末次 `free_named_message_port_ref` 也会尽量保证已经 CLOSED |
+| 释放 | `free_message_port_ref` | **只能**用 `free_named_message_port_ref`；不要拿着内部匿名部分的指针去调 `free_message_port_ref` |
 
-这样关闭与热路径会合可以分开推理：MSQ 继续管配对，life/count 只管「现在还许不允许进场 / 关闭方何时可以清空等待者」。
-
-那么我们基于这个，同样整合了可选的策略回调 `ops_allow`（谁可以 LOOKUP/SEND/…），让他们挂在同一条 begin / lookup 路径上，默认全放行。
-
-其目的也很简单，类似的微内核都有capability控制能否发送消息，以及基于这种机制实现的namespace（MettEagle: Costs and Benefits of Implementing Containers on Microkernels，OSDI 25‘），在我们这个设计里面，这部分的策略，本应当在兼容层实现，因此必须实现相应的hook。
-
-当然hook，并不是这里需要描述的，细节与hook形态见 `22`。本小节要交代的是：**生命周期门为什么必须存在**；不包括兼容层怎么用 `ops_allow`。
+业务代码也不要把具名 port 强转成 `Message_Port_t*` 再直接 `send_msg` / `recv_msg`，那样会跳过准入检查。
 
 ---
 
@@ -325,7 +311,7 @@ typedef struct {
 
 ### 4.4 `Port_Table`：为什么要有全局 port 注册表
 
-若没有 port 注册表，客户端只能直接握着 port 指针，跨模块、跨线程很难发现对端。`Port_Table`（通常即 `global_port_table`）就是全局 port 注册表：开机 `global_port_init` 建好空表，server `register_port`，client 按名查找。
+若没有 port 注册表，客户端只能直接握着指针，跨模块很难发现对端。`Port_Table`（通常就是 `global_port_table`）专门给**具名** port 用：开机时 `global_port_init` 建一张空表，server 调用 `register_named_port`，client 再按名查找。纯匿名 port **不会**进这张表。
 
 ```c
 struct Port_Table {
@@ -335,19 +321,22 @@ struct Port_Table {
 extern struct Port_Table *global_port_table;
 ```
 
-表结构本身很薄：rows、哈希桶、可缓存的 `name_index_token_t`（row_index + row_gen）都在通用的 `name_index_t` 里（详见 `41`）。Port 挂上的回调（`get_name` / `hold` / `drop` / `on_register` / `on_unregister`）让 register 时自动把 `ops_life` 打成 `REGISTERED`、并让表多持一份 ref；unregister 则取消掉端口的注册并关闭（兼容层约定见 §6.1、§6.4；API 对照见 §7.2）。
+表结构本身很薄：行、哈希桶、可缓存的 `name_index_token_t`（行下标加代际）都在 `name_index_t` 里（见 `41`）。名表只回答「能不能按这个名字找到」；内部那份匿名会合的 `ops_life`（OPEN / CLOSING / CLOSED）仍由 `close_port` 管。**注册进表不会**改写 `ops_life`。
 
 ```text
-  port 注册表操作：
-    register_port
-        ACTIVE → REGISTERED（注册表多持一份 ref）
-    unregister_port
-        从 port 注册表摘下 → life 改为 CLOSING → 等 ops_count 清零 → 清理队列 → life 改为 CLOSED → 放下注册表持有的那份 ref
-    port_table_lookup
-        命中 → 获取调用方 ref → 可选 ops_allow(LOOKUP)
+  具名侧常见步骤（和 ops_life 分开看）：
+    create_named_message_port
+        堆上对象；内部会合已是 OPEN；table 仍为空，别人按名找不到
+    register_named_port
+        挂进名表；表多持一份引用；写上 port->table
+    unregister_named_port
+        先关掉内部的匿名会合（清会合队列），再从名表摘掉，最后放下表持有的那份引用
+    port_table_lookup*
+        命中后给调用方一份引用，再跑可选的 ops_allow(LOOKUP)；
+        若拒绝，则放下这份引用并返回 NULL
 ```
 
-线程侧还有 `port_cache`（§4.5），减少反复查全局 port 注册表；但**每次真正拿到可用指针时，仍要过 `ops_allow(LOOKUP)`**（见 `22`），cache 不能绕过准入。
+线程侧还有 `port_cache`（§4.5），用来少查几次全局表；但**每次真正把可用指针交到调用方手里时，仍要过一遍 `ops_allow(LOOKUP)`**（见 `22`），缓存不能绕过准入。
 
 ---
 
@@ -372,7 +361,7 @@ struct thread_port_cache port_cache; /* thread_lookup_port 的本地 cache（条
 | `recv_msg_queue` | 存放 `recv_msg` 接收成功的消息队列，调用方必须 `dequeue_recv_msg()` 取出所有权。 |
 | `send_pending_msg` | 单槽。普通路径主要走 `send_msg_queue`；`ipc_system_*` 以及 transfer 中途「receiver 正在退出」等情形会把 `Message_t` 临时存放在这里，避免弄丢，细节见 `20`。 |
 | `recv_pending_cnt` | 有消息到达时增加，`dequeue_recv_msg` 成功时减一。 |
-| `port_ptr` | 线程在 port 上阻塞时，时记下它阻塞在的 port。清理时 CAS 清掉，避免醒过来还以为挂在一个已经关掉的 port 上。 |
+| `port_ptr` | 线程在 port 上阻塞时记下它阻塞在的 port。清理时 CAS 清掉，避免醒过来还以为挂在一个已经关掉的 port 上。 |
 | `port_cache` | `thread_lookup_port(name)` 的本地加速：缓存 `(row_index, row_gen)` token。命中则 `resolve_token`，未命中再走全局 lookup。cache **不** pin port（不额外长期 `ref_get`）；unregister 后 gen 对不上即失效。最多 `THREAD_MAX_KNOWN_PORTS`（16）个，采用 LRU 淘汰。 |
 
 和 Port 字段的边界再强调一次：
@@ -391,11 +380,12 @@ struct thread_port_cache port_cache; /* thread_lookup_port 的本地 cache（条
 
 | 文件 | 职责 |
 |------|------|
-| `port.h` / `port.c` | Port 注册表和 Port 生命周期管理 |
-| `message.h` / `message.c` | Msg_Data_t / Message_t 及基本消息管理和生命周期 |
-| `name_index.c` | 通用名称索引原语（port 注册表的 `by_name` 用它实现） |
-| `ipc.h` / `ipc.c` | send/recv/transfer等原语（行为细节见 `20`） |
-| `thread.h` / `thread.c` | 线程侧收发相关数据字段及`thread_lookup_port`等缓存操作。 |
+| `port.h` / `port.c` | 匿名会合：创建、关闭、`port_ops_begin` |
+| `named_port.h` / `named_port.c` | 具名 port：名表、hooks、按名收发封装、注册与注销 |
+| `message.h` / `message.c` | `Msg_Data_t` / `Message_t` 及生命周期 |
+| `name_index.c` | 通用名称索引（`Port_Table.by_name` 用它实现） |
+| `ipc.h` / `ipc.c` | 匿名侧的 send / recv / transfer（行为细节见 `20`） |
+| `thread.h` / `thread.c` | 线程侧收发字段，以及 `thread_lookup_port`、`port_cache` |
 
 ---
 
@@ -412,33 +402,34 @@ struct thread_port_cache port_cache; /* thread_lookup_port 的本地 cache（条
 
 ### 6.1 Server：注册 Port、收消息循环、注销
 
-兼容层里一个「对外服务」的线程对 Port 的使用，典型长这样：
+兼容层里一个「对外服务」的线程，典型长这样：
 
-1. `create_message_port(name, hooks)` —— 得到 port，`ops_life` 还是 ACTIVE，**别人按名找不到**。
-2. `register_port(global_port_table, port)` —— 进入 port 注册表；重名且不是同一对象会失败，要处理错误。成功后别人才能按名找得到。
-3. 循环：`recv_msg(port)`；成功则 `dequeue_recv_msg()`，按 opcode / 载荷办事，再用 `ref_put(msg)`。
-4. 不再服务：先 `unregister_port(global_port_table, name)`，再对 create 拿到的那份引用 `ref_put(port)`。
+1. `create_named_message_port(name, hooks)` —— 得到具名 port；内部会合已经是 OPEN，但还没进名表，**别人按名找不到**。
+2. `register_named_port(global_port_table, port)` —— 挂进名表；若同名已被别的对象占用会失败。成功后别人才能按名找。
+3. 循环调用 `named_port_recv_msg(port)`；成功则 `dequeue_recv_msg()`，按 opcode / 载荷办事，再用 `ref_put(msg)`。
+4. 不再服务：先 `unregister_named_port(global_port_table, name)`，再对 create 时拿到的那份引用 `ref_put(..., free_named_message_port_ref)`。
 
 接口使用者还要记住：
 
-- **注销必须主动做，而且要在还想叫醒等待者的时候做。** 不能只 `ref_put`、指望结构释放时自然清理队列——唤醒等在这发生在 `unregister_port`，不发生在 last-ref 析构。拖到结构没了再清，还堵在 `thread_queue` 上的人会永远阻塞。
-- 关 port 之后，若本线程还卡在 `recv_msg` 上，醒来时可能是：dequeue 到 `KMSG_OP_SYSTEM_PORT_CLOSED`（`recv_msg` 返回成功），或直接 `-E_REND_PORT_CLOSED`（只有 flag、没有消息）。server 循环对**两种收尾形态**都要能处理。对照表见 §3；kmsg 字节布局见 `21`。
+- **注销必须主动做，而且要在还想叫醒等待者的时候做。** 不能只 `ref_put`、指望结构释放时自然清理队列——叫醒等待者发生在 `unregister_named_port` 里调用的 `close_port`，而不是「只从表里摘掉名字」。末次 `free_named_message_port_ref` 也会尽量把内部会合关到 CLOSED，但那只是兜底；业务上仍应先 unregister。
+- 关 port 之后，若本线程还卡在接收上，醒来时可能是：dequeue 到 `KMSG_OP_SYSTEM_PORT_CLOSED`（接收接口返回成功），或直接得到 `-E_REND_PORT_CLOSED`（只有 flag、没有消息）。server 循环对**两种收尾形态**都要能处理。对照表见 §3；kmsg 字节布局见 `21`。
 - `hooks` / `ops_allow` 不是把基本路径跑通的前提；需要准入策略时再读 `22`。
 
 ### 6.2 Client：查找 Port、发一条、放下引用
 
-server 端已经 `register_port` 之后，客户端：
+server 已经 `register_named_port` 之后，客户端：
 
-1. `thread_lookup_port(name)` —— 返回的 `Message_Port_t*` **自带一份引用**（内部可能命中本线程 `port_cache`，调用方当普通查找用即可）。
+1. `thread_lookup_port(name)` —— 返回的 `Named_Message_Port_t*` **自带一份引用**（内部可能命中本线程的 `port_cache`）。
 2. 准备待发消息（顺序见 §6.3）：依次 `create_message_data`、`create_message_with_msg`、`enqueue_msg_for_send`。
-3. `send_msg(port)` —— 有接收方则完成投递；否则在 port 上阻塞等待。
-4. 用完 port：`ref_put(port, free_message_port_ref)`。
+3. `named_port_send_msg(port)` —— 有接收方则完成投递；否则在 port 上阻塞等待。
+4. 用完：`ref_put(port, free_named_message_port_ref)`。
 
 调用侧常见坑：
 
-- lookup 得到 NULL意味着名字从未注册、已被 unregister，或 LOOKUP hook 拒绝（拒绝时 errno 可能被丢掉，见 `22`）。此时不要解引用。
-- 发送过程中 port 被关掉：`send_msg` 返回 `-E_REND_PORT_CLOSED`，并且会 **丢掉未发出的孤儿消息**。不要假设「失败了消息还躺在 `send_msg_queue` 里等重试」。
-- 在仍可能阻塞的 `send_msg` 返回之前，不要把 lookup/create 的那份 port 引用 put 光；用指针就要配着持有引用。
+- 查找得到 `NULL`：名字从未注册、已被注销，或 LOOKUP 的 hook 拒绝了这次查找（拒绝时具体错误码可能被丢掉，见 `22`）。此时不要解引用。
+- 发送过程中 port 被关掉：`named_port_send_msg` 最终会走到匿名侧的 `send_msg`，返回 `-E_REND_PORT_CLOSED`，并且会 **丢掉未发出的孤儿消息**。不要假设「失败了消息还躺在 `send_msg_queue` 里等重试」。
+- 发送或接收被 `ops_allow` 拒绝：通常返回 `-E_REND_ACCESS`（或 hook 给出的其它错误码），**不会**进入会合；待发消息仍留在本线程的发送队列里。这和「port 已关闭」不是一回事（见 `22` §6）。
+- 在仍可能阻塞的发送返回之前，不要把 lookup / create 拿到的那份 port 引用 put 光。
 
 ### 6.3 消息：谁创建、谁取出、谁释放
 
@@ -449,8 +440,8 @@ server 端已经 `register_port` 之后，客户端：
 | `create_message_data` | 得到 `Msg_Data_t`（载荷 + `free_data` 析构函数），自带引用。 |
 | `create_message_with_msg` | 得到 `Message_t` 节点，`data` 字段指向上述载荷。 |
 | `enqueue_msg_for_send` | `Message_t` 节点进入**本线程** `send_msg_queue`；此后按 API 约定处理 create 侧多余引用，不要再当「独占节点」乱 put。 |
-| `send_msg` 成功 | 给对端 `recv_msg_queue` 放上**新的**一条 `Message_t`，`data` 指向同一份 `Msg_Data_t`（并用 `ref_get` 增加这份 `Msg_Data_t` 的引用计数）。发送侧那条 `Message_t` 在 transfer 成功后被 `ref_put`，不再和接收侧长期各握一条指向同一个 `Msg_Data_t` 的不同 `Message_t` 。 |
-| 接收侧 | `recv_msg` 成功后**必须** `dequeue_recv_msg()` 取得所有权，用完再 `ref_put` 这条 `Message_t`。 |
+| 发送成功（具名走 `named_port_send_msg`，匿名走 `send_msg`） | 给对端 `recv_msg_queue` 放上**新的**一条 `Message_t`，`data` 指向同一份 `Msg_Data_t`（并用 `ref_get` 增加这份 `Msg_Data_t` 的引用计数）。发送侧那条 `Message_t` 在 transfer 成功后被 `ref_put`，不再和接收侧长期各握一条指向同一个 `Msg_Data_t` 的不同 `Message_t`。 |
+| 接收侧 | 接收成功后**必须** `dequeue_recv_msg()` 取得所有权，用完再 `ref_put` 这条 `Message_t`。 |
 | 关闭的时候存在的未发出消息 | 走 send 的 orphan drop；当作发送失败，不要二次释放同一节点。 |
 
 谁在配对成功后真正跑 `ipc_transfer_message`（推还是拉）、try 路径与 IRQ 投递，一律见 `20`。本篇只保证：兼容层按上表 create / enqueue / dequeue / put，就不会把 `Msg_Data_t` 和 `Message_t` 的寿命弄反。
@@ -459,62 +450,78 @@ server 端已经 `register_port` 之后，客户端：
 
 写调用方代码时可用下面几条自检：
 
-1. **每一份 create / lookup 拿到的 port，都要配对 `ref_put`。** REGISTERED 期间注册表另持一份；那份由 `unregister_port` 放下，不是客户端多 put 一次能代替的。
-2. **先 `unregister_port`，再 put 自己的 port 引用。** 唤醒等待者发生在 unregister（见 §6.1）。
+1. **每一份 create / lookup 拿到的具名 port，都要配对 `ref_put(..., free_named_message_port_ref)`。** 挂在名表期间，表自己另持一份；那份由 `unregister_named_port` 放下，不是客户端多 put 一次能代替的。
+2. **先 `unregister_named_port`，再 put 自己的引用。** 叫醒等待者发生在 unregister 内部的 `close_port`（见 §6.1）。
 3. **关 port 后的两种收尾形态都要处理**（§3 表；server 见 §6.1，client 见 §6.2）。
-4. **`port_cache` 不延长 port 寿命。** token 失效会回查 port 注册表；逻辑上仍以「持有的 ref」为准。
+4. **`port_cache` 不延长 port 寿命。** token 失效会回查名表；逻辑上仍以「手里握着的引用」为准。
 5. **线程退出与 port 上残留的 `Ipc_Request`：** request 握着 thread 的引用，避免野指针。会合时若线程已不是对应的 `block_on_*`，或 `port_ptr` 对不上，这条 request 会被丢掉（见 `20`）。不要假设「线程一 exit，队上 request 立刻消失」，也不要为此再发明通用 `cancel_ipc`。
+6. **具名对象不要对内部那份匿名会合调用 `free_message_port_ref`。** 释放只能走 `free_named_message_port_ref`。
 
 ---
 
 ## 7. 公开 API：如何操作这些结构
 
-本篇 API 主要在 `port.h` / `message.h`；`send_msg` / `recv_msg` / `ipc_transfer_message` 的状态机见 `20`，这里只说明它们**碰到哪些字段**。说明以头文件 Doxygen 为准。
+本篇 API 分两块：匿名会合在 `port.h` / `message.h`；具名名表与 `named_port_send_msg` 一类封装在 `named_port.h`。`send_msg` / `recv_msg` / `ipc_transfer_message` 的状态机见 `20`，这里只说明它们**碰到哪些字段**。说明以头文件 Doxygen 为准。
 
-**本篇不涉及：** 收发状态机细节见 `20`；kmsg 载荷格式见 `21`；`ops_allow` 准入见 `22`；MSQ/EBR 算法见 `18` / `17`；`name_index` 通用约定见 `41`。
+**本篇不涉及：** 收发状态机细节见 `20`；kmsg 载荷格式见 `21`；`ops_allow` 细则见 `22`；MSQ/EBR 见 `18` / `17`；`name_index` 见 `41`。
 
 ### 7.1 典型编排（从空系统到收完一条消息）
 
 | 场景 | 顺序 | 主要动到的结构 |
 |------|------|----------------|
-| 初始化建表 | `global_port_init` | 分配 `global_port_table`，`by_name` 空索引 |
-| Server 公布 port | 先 `create_message_port`，再 `register_port` | 新 `Message_Port_t`（从 ACTIVE 到 REGISTERED）；表多持 1 份 ref；此时 `name` 可被查找 |
-| Client 找到 port | `thread_lookup_port` | 可能写 `port_cache`；返回持 ref 的 port |
-| 创建消息并发送 | 依次 `create_message_data`、`create_message_with_msg`、`enqueue_msg_for_send`、`send_msg` | 新 `Msg_Data_t` + `Message_t`；进 `send_msg_queue`；port 上配对或挂 `Ipc_Request` |
-| 接收消息并释放 | 先 `recv_msg`，再 `dequeue_recv_msg`，用完 `ref_put(msg)` | 从 `recv_msg_queue` 取出 `Message_t`；EBR 推迟回收节点；末次 put 释放 `Msg_Data_t` |
-| 关闭 | `unregister_port`，各方再 `ref_put(port)` | 从注册表中摘下、清 `thread_queue`、port 转为 CLOSED；refs 归零后释放 port |
+| 初始化建表 | `global_port_init` | 分配 `global_port_table`，`by_name` 为空索引 |
+| Server 公布具名 port | 先 `create_named_message_port`，再 `register_named_port` | 新的 `Named_Message_Port_t`（内部会合已是 OPEN）；表多持 1 份引用；名字可被查找 |
+| Client 找到 port | `thread_lookup_port` | 可能写入 `port_cache`；返回带引用的 `Named_Message_Port_t*` |
+| 创建消息并发送 | 依次 `create_message_data`、`create_message_with_msg`、`enqueue_msg_for_send`、`named_port_send_msg` | 新的 `Msg_Data_t` 与 `Message_t`；进入 `send_msg_queue`；在内部匿名会合上配对，或挂上 `Ipc_Request` |
+| 接收消息并释放 | 先 `named_port_recv_msg`，再 `dequeue_recv_msg`，用完 `ref_put(msg)` | 从 `recv_msg_queue` 取出 `Message_t`；节点回收经 EBR 推迟 |
+| 关闭 | `unregister_named_port`，各方再 `ref_put(..., free_named_message_port_ref)` | 先关掉内部匿名会合并清 `thread_queue`，再从名表摘掉；引用归零后释放具名对象 |
+| 纯匿名（无名字） | 先 `create_message_port(service_id)`，再用 `send_msg` / `recv_msg`，结束时 `close_port`，最后 `free_message_port_ref` | 不经名表，也没有 hooks |
 
-### 7.2 Port 与表（`port.h`）
+### 7.2 匿名 Port（`port.h`）与具名 Port（`named_port.h`）
+
+**匿名：**
+
+```c
+error_t message_port_init(Message_Port_t *port, u32 service_id);
+Message_Port_t *create_message_port(u32 service_id);
+error_t close_port(Message_Port_t *port);
+error_t free_message_port_ref(ref_count_t *);
+bool port_ops_begin(Message_Port_t *port); /* ipc 内部：只看是否 OPEN */
+void port_ops_end(Message_Port_t *port);
+```
+
+**具名：**
 
 ```c
 error_t global_port_init(void);
-Message_Port_t *create_message_port(const char *name,
-                                    const port_append_hooks_t *hooks);
-error_t register_port(struct Port_Table *table, Message_Port_t *port);
-error_t unregister_port(struct Port_Table *table, const char *name);
-Message_Port_t *port_table_lookup(struct Port_Table *, const char *name);
-Message_Port_t *port_table_lookup_with_token(...);
-Message_Port_t *port_table_resolve_token(...);
+Named_Message_Port_t *create_named_message_port(const char *name,
+                                                const port_append_hooks_t *hooks);
+error_t register_named_port(struct Port_Table *table, Named_Message_Port_t *port);
+error_t unregister_named_port(struct Port_Table *table, const char *name);
+Named_Message_Port_t *port_table_lookup(struct Port_Table *, const char *name);
+Named_Message_Port_t *port_table_lookup_with_token(...);
+Named_Message_Port_t *port_table_resolve_token(...);
 bool port_table_port_is_live(...);
-error_t free_message_port_ref(ref_count_t *);
-void delete_message_port_structure(Message_Port_t *);
-struct Port_Table *port_table_create(void);
-void port_table_init(struct Port_Table *);
-void delete_port_table_structure(struct Port_Table *);
-bool port_ops_begin(Message_Port_t *port, enum port_ops_type op_type);
-void port_ops_end(Message_Port_t *port);
+error_t free_named_message_port_ref(ref_count_t *);
+error_t named_port_send_msg(Named_Message_Port_t *port);
+error_t named_port_recv_msg(Named_Message_Port_t *port);
+error_t named_port_try_send_msg(Named_Message_Port_t *port);
+error_t named_port_try_recv_msg(Named_Message_Port_t *port);
 ```
 
 | 接口 | 对数据结构做了什么 |
 |------|-------------------|
-| `global_port_init` | 调用 `port_table_create()`，并写入 `global_port_table`。生成一个空表，不预注册任何port。失败则返回 `-E_RENDEZVOS`。 |
-| `create_message_port` | 分配一个 `Message_Port_t`数据结构（含可选的兼容层添加的 `append_port_info`相关字段）；初始化相关字段。此时还不在 port 注册表里。如果兼容层注入的初始化 `hooks->init` 失败则回滚。 |
-| `register_port` | 在持有表的锁的情况下执行：这里提供了一个可选的 `ops_allow(REGISTER)` 来让兼容层注入相关操作决定是否可以允许注入的hook，再把 port 按 `name` 插入，修改 `ops_life` 从 ACTIVE 变为 REGISTERED，写上 `table` 指针，表对 port `ref_get` 一次以获取引用计数。重名且不是同一对象则注册失败。 |
-| `unregister_port` | 按名从 `by_name` 摘掉， `ops_life`  进入 CLOSING 状态，等到 `ops_count==0`之后，清理 `thread_queue`（实现见 `port_clean_thread_queue`），进入 CLOSED 状态，再对表进行 `ref_put` 释放引用。名字不在表中 / 已非 REGISTERED 也返回成功。兼容层需要主动在解除注册时调用这个函数。 |
-| `port_table_lookup*` | 在 `by_name` 里按名找到 port，获取一个引用计数；再跑 `ops_allow(LOOKUP)` 执行兼容层是否允许查找到这个port的准入测试，如果拒绝则 put 掉并返回 NULL。带 token 的变体把（行下标，代际）写给线程缓存用。 |
-| `port_table_resolve_token` | 用缓存 token + 名字在锁下验证是否可以正常用cache；如果成功同样增加ref得到这个port。 |
-| `port_ops_begin` / `end` | begin：要求 `ops_life==REGISTERED` 且（可选）`ops_allow` 通过，然后 `ops_count++`。end：`ops_count--`。阻塞等待前必须先 end，否则 unregister 永远等不到清理队列。详见 `22`，主要目的就是port准入，以及兼容层注入port准入标准。 |
-| `free_message_port_ref` | 引用归零后调用 `delete_message_port_structure`（先 `hooks->fini`，再释放内存）。调用方 lookup/create 拿到的每一 ref 都要配对 put。 |
+| `global_port_init` | 调用 `port_table_create()`，结果写入 `global_port_table`。得到一张空表，不预注册任何 port。失败则返回 `-E_RENDEZVOS`。 |
+| `create_message_port` | 堆上分配匿名 `Message_Port_t` 并 init，`ops_life` 为 OPEN。没有名字，也没有 hooks。 |
+| `create_named_message_port` | 堆上分配 `Named_Message_Port_t`（可带尾部 `append_info`）；内部匿名会合为 OPEN；`service_id` 由名字算出（不会是 0）；**此时还不在名表里**。若 `hooks->init` 失败则回滚。 |
+| `register_named_port` | 持表锁：可选地跑 `ops_allow(REGISTER)`，再按 `name` 插入，写上 `table`，表对 port `ref_get` 一次。内部会合必须仍是 OPEN。重名且不是同一对象则失败。 |
+| `unregister_named_port` | 先对内部匿名会合调用 `close_port`（OPEN 经 CLOSING 清队列后到 CLOSED），再从名表摘掉，放下表持有的那份引用。名字本来就不在表中时也返回成功。 |
+| `port_table_lookup*` | 在名表里按名找到 port，给调用方一份引用，再跑 `ops_allow(LOOKUP)`；若拒绝则放下引用并返回 `NULL`。带 token 的变体把（行下标，代际）交给线程缓存用。 |
+| `port_table_resolve_token` | 在锁下用缓存 token 加名字校验；成功同样取得引用；**每次**仍要过 LOOKUP。 |
+| `named_port_send_msg` 等 | 先跑 `ops_allow`（发送或接收），通过后再进入内部匿名会合的 `send_msg` / `recv_msg` 或其 try 变体。拒绝则不进入会合。 |
+| `port_ops_begin` / `end` | **匿名会合内部用**：要求当前为 OPEN，然后增加 `ops_count`；**不会**调用 `ops_allow`。阻塞等待前必须先 end。见 `20` / `22`。 |
+| `free_message_port_ref` | 只用于匿名堆对象；引用归零后调用 `delete_message_port_structure`。 |
+| `free_named_message_port_ref` | 具名对象的析构：先尽量保证内部会合已 CLOSED，再跑 `hooks->fini`，最后 `m_free`。不要对内部匿名部分调用 `free_message_port_ref`。 |
 
 ### 7.3 消息：`Msg_Data_t` / `Message_t`（`message.h`）
 
@@ -548,18 +555,22 @@ Port 的对象模型与 ISA 无关；原子操作相关实现随 arch，语义�
 
 ## 9. 测试
 
-`modules/test/` 下 port/ipc 相关；`make ARCH=x86_64 config && make run`。其中有port表的查找，以及根据port数据结构进行通信的两收两发等测例。
+`modules/test/` 下 port/ipc 相关；`make ARCH=x86_64 config && make run`。其中有 port 表查找，以及按 port 数据结构两收两发等测试用例。
 
 ---
 
 ## 10. 限制与后续
 
-- 我们预留了Hook来做基于Port的准入。
+- 具名侧可以用 `port_append_hooks_t` / `ops_allow` 做准入（见 `22`）；生产环境也可以一个 hook 都不挂。
+- 按名对外服务的业务，收发请走 `named_port_send_msg` / `named_port_recv_msg` 一类封装，不要把具名 port 强转成匿名指针再直接调用 `send_msg` / `recv_msg`。
 
 ---
 
 ## 11. 变更记录
 
+- 2026-11-20：结构债清理——§3 具名 server / client 步骤清单与 §6.1 / §6.2 近重复，§3 收为交叉引用；§3 关闭通知结论表保留原位（他篇「`19` §3」锚点不变）。
+- 2026-11-19：底子重评批次——篇首缩号；「在他的」→「它的」；`port_ptr` 衍字；§9 测例口径。
+- 2026-11-19：匿名 / 具名定稿对齐——§3 / §4.0 / §4.1.1 / §4.4 / §5 / §6 / §7 改用具名创建、注册与 `named_port_*_msg`；`service_id` 为 `u32`；去掉 ACTIVE / REGISTERED 与旧 `register_port` 叙事；释放路径分清匿名与具名。同日按审阅意见润色：少用箭头串写步骤，少夹半截英文词。
 - 2026-10-17：§1.2 / §4.3 写清 `Ipc_Request` 对 TCB 的 get/put 与节点自身 refcount；逐步时序指 `20` §4.1。
 - 2026-10-17：§4.1 补「为何需要 ops_life/ops_count」（Maintainer 修订稿收录）：与 port_cache、unregister 清理队列交叉，与会合无锁正交；并点出 `ops_allow` / capability·namespace 动机，细节仍指 `22`。
 - 2026-10-16：对照源码修正三处：配对后的 `Ipc_Request` 仍可能当 dummy；`unregister_port` 放下的是注册表那份 ref；transfer 成功后发送侧 `Message_t` 被 put。§6.4 陈旧 request 改为按 status / `port_ptr` 丢掉。

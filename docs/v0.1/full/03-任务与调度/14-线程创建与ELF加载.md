@@ -4,7 +4,7 @@ v0.1 · 2026-09-26
 
 本篇覆盖：`kernel/task/thread_loader.c`、`include/rendezvos/task/thread_loader.h`、`kernel/task/thread.c`（`create_thread` / `copy_thread` / `run_copied_thread`）、`include/arch/*/thread_arch.h` 与各 arch `arch_thread.c` / `arch_user_switch.S` / `arch_run_thread.S`。
 
-loader **消费** `modules/elf` 格式库（`check_elf_header` / `for_each_program_header_64` / `print_elf_*`），但**不拥有**该模块——边界见 `09-平台模块/37-ELF加载辅助模块.md`。通用调度与 `thread_entry` 见 `13-线程与Task_Manager.md`。VSpace 所有权 / clear / schedule 换根见 `15-VSpace所有权与调度切换.md`。`page_slice` 见 `10-page_slice稀疏页索引.md`。
+loader **消费** `modules/elf` 格式库（`check_elf_header` / `for_each_program_header_64` / `print_elf_*`），但**不拥有**该模块——边界见 ELF 篇（`37`）。通用调度与 `thread_entry` 见线程篇（`13`）。VSpace 所有权 / clear / schedule 换根见所有权篇（`15`）。`page_slice` 见 `10`。
 
 ---
 
@@ -260,7 +260,7 @@ Path A 不调 `arch_return_to_user`：正在处理的 syscall 返回时自然走
 
 ## 7. 公开 API
 
-本篇涉及的接口分布在：`thread_loader.h` 全套；`thread.h` 的 `create_thread` / `copy_thread` / `run_copied_thread`（创建路径以本篇为主；调度侧摘要见 `13`）；arch `thread_arch.h` 上 Path A/B 回用户与首次 ctx 钩子。说明改写自头文件 Doxygen，并已与 `.c` / `.S` 核对。
+接口分布在：`thread_loader.h` 全套；`thread.h` 的 `create_thread` / `copy_thread` / `run_copied_thread`（创建路径以本篇为主；调度侧摘要见 `13`）；arch `thread_arch.h` 上 Path A/B 回用户与首次 ctx 钩子。说明改写自头文件 Doxygen，并已与 `.c` / `.S` 核对。
 
 **本篇不涉及：** `check_elf_header` / `print_elf_*` 见 `37`；`schedule` / 入队原语细节见 `13`/`16`；VSpace create/register 见 `15`/`07`。
 
@@ -310,8 +310,8 @@ error_t run_elf_program(struct page_slice *slice);
 | 接口 | 说明 |
 |------|------|
 | `load_elf_to_vs` | 只接受 ELF64；`check_elf_header` 后扫 `PT_LOAD`（radix big-lock + fill + `page_slice_copy_to_user`），再走 `PT_DYNAMIC` stub。可选输出页对齐的 `max_load_end`。 |
-| `generate_user_stack` | 从 `USER_SPACE_TOP` 向下映射 `thread_ustack_page_num` 页；返回高地址再 **− 8**；失败返回 0。 |
-| `run_elf_program` | 在当前线程 vs 上 load，再写 null word（再 −8）；可选 init（失败仍继续 drop），最后 Path B。成功路径**不会**返回 `REND_SUCCESS`。 |
+| `generate_user_stack` | 从 `USER_SPACE_TOP` 向下映射 `thread_ustack_page_num` 页；返回栈顶初值（−8 约定见 §6.5）；失败返回 0。 |
+| `run_elf_program` | 在当前线程 vs 上 load，再写 null word（哨兵位，见 §6.5）；可选 init（失败仍继续 drop），最后 Path B。成功路径**不会**返回 `REND_SUCCESS`。 |
 
 `elf_load_info_t`：传给 hooks.init 的元数据（slice / entry / max_load_end / user_sp / phnum / phentsize）。
 
@@ -348,23 +348,13 @@ extern void run_thread(Thread_Init_Para *); /* asm；见 thread.h */
 
 ## 8. 多架构
 
-| 符号 | 职责 |
-|------|------|
-| `arch_set_new_thread_ctx` | 首次内核入口 + 可选预留 trap slot |
-| `arch_set/get_thread_user_sp` | 用户 SP（+ x86 scratch） |
-| `arch_empty_drop_trap_frame` | 无父帧首次进用户 |
-| `arch_syscall_set_user_return` | A / B 共用：提交 user PC / SP |
-| `arch_return_to_user` | Path B / copy 实际 drop |
-| `arch_ctx_refresh` / `merge_from_src` | copy 同步 live SP / TLS |
-| `run_thread` | 按 ABI 调 `thread_func_ptr` |
-
-硬件出口见 §6.8。aarch64 预留 trap frame 后强制 16B 对齐。riscv / loongarch 非 v0.1 主线。
+arch 符号与职责对照即 §7.4 的原语表，此处不再重复。硬件出口（`sysretq` / `eret`）见 §6.8；aarch64 预留 trap frame 后强制 16B 对齐（见 §7.4）。riscv / loongarch 非 v0.1 主线。
 
 ---
 
 ## 9. 测试
 
-多数测例经 `gen_thread_from_func` 创建；`gen_thread_from_elf` 目前没有 C 侧调用方。ELF 加载时可能调用 `print_elf_ph64` 打印程序头。
+多数测试用例经 `gen_thread_from_func` 创建；`gen_thread_from_elf` 目前没有 C 侧调用方。ELF 加载时可能调用 `print_elf_ph64` 打印程序头。
 
 ```bash
 cd core && make ARCH=x86_64 config && make all && make run
@@ -384,6 +374,8 @@ cd core && make ARCH=x86_64 config && make all && make run
 
 ## 11. 变更记录
 
+- 2026-11-20：结构债清理——§8 多架构职责表与 §7.4 原语表重复，删去 §8 表、改为交叉引用 §7.4；§7.3 表内 `generate_user_stack` / `run_elf_program` 两处「−8」并入 §6.5（双重 −8 的唯一解释点），改为交叉引用。技术内容未动。
+- 2026-11-19：底子重评批次——篇首引用缩号；§7 opener；§9「测例」→「测试用例」。
 - 2026-11-15：Maintainer 复审前通读 + E13 跟进：§5/§6.5/§9 三处仍写 `thread_set_flags(USER)`（**整字赋值**）——E13 后代码已改为 `thread_enable_user`（先 `fp_alloc` 再 OR 置 USER），已更新；`copy_thread` 段补上 `thread_enable_user` 步骤并把「处理 flags」写实为「整字拷 `src->flags`」；§1「写文档时」编者视角改读者视角；§5 `**37**` 改反引号 `` `37` ``；§9「大量用」→「多数测例经」、「可能 `print_elf_ph64`」补谓语。其余轻微口语为 2026-10-25 有意风格，未再改动。
 - 2026-10-25：全文语言整理：「现网」→「现在/目前」、「体跑」→「线程体跑」、「回环 3」→「ring 3」，顺掉「名字堆拷贝」「失败已赋值」「不要求物理连续可 deref」一类生硬短句；§6.2 与 §6.3 之间补空行。另按 `kernel_entry.S` / `arch_thread.c` 纠正两处表述：x86 用户 RSP 是内核入口用 `%gs` 存进 per-CPU `user_rsp_scratch`（与 MSR_LSTAR 无关）；aarch64 陷入后 `SP_EL0` 原样保留用户栈指针，不存在硬件自动保存。技术内容未动。
 - 2026-10-05：最终词句顺畅；任务 1/3/5 精读——§1/§9「测例」→「测试用例」；§1「揉成一团」→「混在一起」、「两条回用户原语」→「两条原语」、「一次造用户线程」→「一次创建用户线程」、「怎么回用户」→「怎么回到用户态」；§1 表「syscall 返回路径带走」→「由 syscall 返回路径承担」；§6.6「落到 return」→「走到 return」；§6.8 标题「回用户」→「回到用户态」、「落到不同的」→「对应到不同的」；§7.2「装好」→「设置好」。

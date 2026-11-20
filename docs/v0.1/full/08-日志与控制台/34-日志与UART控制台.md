@@ -258,7 +258,7 @@ PrimeCell PL011，MMIO。`uart_open` 传入的虚址即 early 页表已映射的
 
 ## 7. 公开 API
 
-本篇涉及的接口分布在：同步调试输出——`modules/log/log.h`（`printk` / `pr_*` / `log_put_*` / `COLOR_SET`）、可移植 UART 分发（`uart.h`）、16550 / PL011 后端、x86 VGA 文本（`char_console.h`）。以头文件注释为准（见上列头文件；已与 `.c` 核对）。
+接口分布在：同步调试输出——`modules/log/log.h`（`printk` / `pr_*` / `log_put_*` / `COLOR_SET`）、可移植 UART 分发（`uart.h`）、16550 / PL011 后端、x86 VGA 文本（`char_console.h`）。以头文件注释为准（见上列头文件；已与 `.c` 核对）。
 
 **本篇不涉及：** MCS 原语本身（见 `31`）；`cmain` 里 `uart_open` / `log_init` 时序（见 `02`）；aarch64 early map / `boot_uart_base_addr`（见 `05`/`36`）；GIC SPI mask（见 `27`）。
 
@@ -338,7 +338,7 @@ u8 map_color(u64 forward, u64 back);
 
 ## 9. 测试
 
-无带断言的单测，只有一枚冒烟测例 `smp_log_test`（`modules/test/smp_log_test.c`）：smp 表测例每核都跑，每核连打 `SMP_LOG_TEST_ROUND=10000` 轮 `pr_info`，试 `pr_*` 的 MCS 串行有没有交错——`smp_log_check` 恒 `true`，乱不乱靠人眼看串口输出，因此该测例在 `smp_test.c` 表里长期注释掉（见 `43`）。常规覆盖仍是间接的：全程启动日志 + 各测例的 `pr_*` 输出；`log_put_locked` 整段路径由链接方 `sys_write` 场景带到（§3）。
+无带断言的单测，只有一枚冒烟测试用例 `smp_log_test`（`modules/test/smp_log_test.c`）：smp 表每核都跑，每核连打 `SMP_LOG_TEST_ROUND=10000` 轮 `pr_info`，试 `pr_*` 的 MCS 串行有没有交错——`smp_log_check` 恒 `true`，乱不乱靠人眼看串口输出，因此该用例在 `smp_test.c` 表里长期注释掉（见 `43`）。常规覆盖仍是间接的：全程启动日志 + 各测试用例的 `pr_*` 输出；`log_put_locked` 整段路径由链接方 `sys_write` 场景带到（§3）。
 
 ---
 
@@ -354,6 +354,7 @@ u8 map_color(u64 forward, u64 back);
 ---
 
 ## 11. 变更记录
+- 2026-11-19：底子重评批次——§7 opener；§9 测例口径。事实沿用 11-15。
 - 2026-11-15：全文可读性通读（篇章架构 / 篇章引用 / 词句）。篇章架构与格式扫描通过。篇首「平台启动与 DTB 篇」系无先例的复合生造名，改为「平台启动篇（`05`）与 DTB 篇（`36`）」，并给「锁篇 / 启动总览」补号（`31` / `02`），与 §7 的裸号对齐。§9 原称「无独立 log 单元测试」不实：`modules/test/smp_log_test.c` 存在（每核 10000 轮 `pr_info` 冒烟、`smp_log_check` 恒 `true`、在 `smp_test.c` 表中常注释，`43` 有索引），按实况改写。词句两处：§7.2 `log_init` 行「写 `\\n`」系多余转义反斜杠，实为 `uart_putc('\n')`（`log.c`）；§6.5 「能换行、Tab、卷屏」→「支持换行、Tab 对齐与卷屏」。颜色表、`LCR=0`、`IMSC=1<<4`、`rep_print` 仅 DTB 用等技术事实沿 11-14 精读核对，未变。
 
 - 2026-11-14：全文对照 log.h/log.c、uart.c、uart_16550A.c、uart_pl011.c、两 UART 头、char_console、main.c、boot_map.c 精读。**修正**：PL011 的 RXIM 在 `uart_pl011_open` 已打开（`IMSC=1<<4`），§2/§6.4 原「可启用」改为「已启用、但 GIC 不 unmask 则 CPU 无 IRQ」；16550 open 第三步是**显式写 `LCR=0`**（原误作「清零、未显式写」；且按手册 WLS=00 为 5 位字长、严格非 8N1，QEMU 不暴露、真机隐患记档）；PL011 寄存器表 `RSR/EIR` 更正为 `RSR/ECR`，补 ILPR/DMACR 行；CR 行注明 FEN 未置、FIFO 关。**扩写**：§4.4 各级别 `pr_*` 颜色表与精确 ANSI 序列（switch 只认 `{0,30–34}`+bg 认 40、其余静默丢——`pr_crit` 系 35 退化为 `\33[0;m`，`pr_info` 恰出 `\33[0;32m`）；§4.3 printf 细节（`%%`、`%s` NULL→`(null)`、`%p` 恒 `0x` 前缀、flags/长度全表、宽度仅十进制）；§6.3 头文件字段 `ISR`/`SPR` 与手册 IIR/SCR 出入、`offsetof` 取址；§6.5 前景矩阵只实现 30–34（洋红打到屏上变黑字）、背景矩阵全零未实现、`COLOR_CLR` 的 `map_color(30,30)` 越界读 `[-10]` 缺陷（记档不改）、TAB_SIZE=4 与逐行 memcpy 卷屏；§5/§7.3 `uart.c` 无 `#else` 兜底（无宏时 putc 吞字符、getc 无返回值 UB）与调用者现状（`uart_open` 唯一调用点在 cmain；`uart_getc` 无调用者；`log_put_locked` 已被 `linux_layer/io/sys_write.c` 使用）；§7.2 补 `pr_off`/`rep_print`（后者仅 DTB 缩进用）；§4.1 x86 `Makefile.env` 注入 `_LOG_DEBUG_`；§6.1 aarch64 PL011 窗口先低半恒等映射、经 L0 镜像入高半；§8 riscv `sbi_console_putchar` 死代码；§10 增真机潜在问题两条。删除变更记录中多余空行。

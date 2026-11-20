@@ -152,7 +152,7 @@ smp_ipi_send(cpu, id)       // pending OR + 门铃触发
 
 ## 7. 公开 API
 
-本篇涉及的接口分布在：软 IPI 协议——`smp_ipi_init` / `register` / `send`、`smp_ipi_fn_t` / `ipi_id_t`，以及 arch 门铃 `arch_smp_ipi_init` / `arch_smp_ipi_send`。说明改写自 `ipi.h` + `arch/*/smp.h` Doxygen（已与 `ipi.c`、`arch_smp_ipi.c` 核对）。
+接口分布在：软 IPI 协议——`smp_ipi_init` / `register` / `send`、`smp_ipi_fn_t` / `ipi_id_t`，以及 arch 门铃 `arch_smp_ipi_init` / `arch_smp_ipi_send`。说明改写自 `ipi.h` + `arch/*/smp.h` Doxygen（已与 `ipi.c`、`arch_smp_ipi.c` 核对）。
 
 **本篇不涉及：** IRQ 两 id / `trap_handler`（见 `25`）；ICR / SGIR 字段细节（见 `26`/`27`）；x86 TLB 消息槽与握手（见 `32`）；`cpu_is_online`（见 `28`）。
 
@@ -256,6 +256,7 @@ error_t arch_smp_ipi_send(cpu_id_t cpu);
 ---
 
 ## 11. 变更记录
+- 2026-11-19：底子首评批次——§7 opener。事实沿用 11-14/15。
 - 2026-11-15：Maintainer 复审前可读性通读。跨篇引用统一既定昵称与裸编号：门铃硬件句补 `26`/`27`，`32-TLB_shootdown与跨核一致性.md` 全称→`32`，「MM 的 TLB 策略篇」→「TLB 篇（`11`）」；「拓扑篇」→「SMP 篇（`28`）」（沿 `16`/`29` 先例）；篇内三处裸用「TLB 篇」原实指 `32`，与全仓既定昵称（`11`）撞名，改为显式 `32` / `11` 并按实际归属拆开分工句；§9 消费者句语病修正（「grep…仅此一处消费者」→「grep…，消费者仅此一处」）。`RENDEZVOS_SMP_IPI_MAX`=16u（`include/rendezvos/limits.h`）、`IPI_ID_INVALID` 无 .c 使用者、唯一消费者 `arch_smp_tlb_flush.c` 复核属实；事实层沿用 11-14 核验，未再改动。
 
 - 2026-11-14：全文对照 `ipi.c`/`ipi.h`/两 arch `arch_smp_ipi.c`/`LocalAPIC.c`/`gic_v2.h`/两 arch `atomic.c` 精读——§1.1.1 补 `APIC_send_IPI` 真实路径（目的号 `[63:56]` 拼装、xAPIC 等 Delivery Status bit12 清零、**先写 ICR1 高半再写 ICR0 低半触发**、x2APIC MSR=`0x800+索引`→`0x830` 免回读、`SELF_IPI` 定义未用、SH_NO/EDGE/ASSERT/PHYSICAL 实参）；§1.1.2 补 SGIR target filter 三值编码（SELF/SPECIFIED/OTHER）、发己走 TARGET_SELF、`gic.send_sgi` ops 签名与未绑定 `-E_RENDEZVOS`；§4.1 新增原子原语底层表（`lock xchgq/cmpxchg` vs `ldaxr/stlxr+dmb(ISH)`，非 LSE）作为跨核可见性依据，并记录两条并发边界条件（register 无锁靠 bring-up 约定；回滚可能抹他人 bit，现网不可达）；§6.1 补两 arch 检查顺序与双重保险；§7.1 明确门铃注册取号依赖 `cpu_number` 先写入；§7.2 补 `ipi_id_t`/`IPI_ID_INVALID` 与错误码顺序；§9 记录全仓消费者核实；§10 增补约定条目；变更记录 2026-10-05 两条归位。

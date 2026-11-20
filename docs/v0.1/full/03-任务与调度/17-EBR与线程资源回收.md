@@ -4,7 +4,7 @@ v0.1 · 2026-09-26
 
 本篇覆盖：`kernel/task/ebr.c`、`include/rendezvos/task/ebr.h`、`delete_thread` / `free_thread_ref` / `del_thread_structure` / `thread_release_owned_resources`（`thread.c`），以及与 `schedule` 钩子的交汇。
 
-MSQ 算法与队列内 `ebr_enter` / `exit` 见 `04-IPC/18-支持IPC的无锁MSQ队列实现.md`；消息 / request 何时 put 见 Port 篇；zombie / `EXIT_REQUESTED` 见 TM 篇；`vs` 只 put 不卸硬件见 VSpace 篇；跨核 kfree 排水见 kmalloc 篇（**不是** EBR）。
+MSQ 算法与队列内 `ebr_enter` / `exit` 见 `18`；消息 / request 何时 put 见 Port 篇（`19`）；zombie / `EXIT_REQUESTED` 见线程篇（`13`）；`vs` 只 put 不卸硬件见所有权篇（`15`）；跨核 kfree 排水见 kmalloc 篇（`09`）（**不是** EBR）。
 
 ---
 
@@ -159,20 +159,7 @@ reclaim iff rec.retire_epoch < safe     // 是 < 不是 ≤
 
 **读图说明：** 某核上的 `====` 表示它正处在 `ebr_enter`…`ebr_exit`（active），`local_epoch` 为 enter 时快照的 global。某一刻 safe 直觉上是「当前还在读的那些核」的 `local_epoch` 最小值——inactive 核不拉低 safe。节点在世代 G 被 `ebr_retire_ref` 记入本核表（●）后不能马上析构：必须等到 `retire_epoch < safe`（严格小于），`ebr_try_reclaim` 才调用登记的 `free_func`。上图 retire@G0 要到 safe 至少为 G1 之后才允许回收；retire@G1 再往后一格。
 
-机制上还可看成 quiet、再 propagate、最后 reclaim：
-
-```text
-   ┌───────────────┐   ┌───────────────┐   ┌───────────────┐
-   │  Quiet        │──►│  Propagate    │──►│  Reclaim       │
-   │  (各核退出)   │   │  (global++    │   │  (本核扫槽:    │
-   │  active→0    │   │   传播到所有  │   │   retire<safe  │
-   │  local 快照  │   │   active 核)  │   │   → free_func) │
-   └───────────────┘   └───────────────┘   └───────────────┘
-        ▲                                          │
-        └────────── 下次 ebr_enter 重新快照 ◄──────┘
-```
-
-`ebr_exit` 在深度从 1 回到 0 时 `global_epoch++`，把「已退出」传播给下一次 enter 的快照——即 propagate。只要还有一颗核停在旧 epoch，`retire_epoch ≥ safe` 的记录就不能回收。每颗核必须自己 schedule / exit / retire 推进**本核**槽上的回收。
+机制上还可看成 quiet、再 propagate、最后 reclaim 的循环：**quiet**（各核退出读临界区，active→0，local 停在最后一次 enter 的快照）→ **propagate**（`ebr_exit` 在深度从 1 回到 0 时 `global_epoch++`，把「已退出」传播给下一次 enter 的快照）→ **reclaim**（本核扫槽，`retire_epoch < safe` 才调 `free_func`）；下一次 `ebr_enter` 重新快照，循环往复。只要还有一颗核停在旧 epoch，`retire_epoch ≥ safe` 的记录就不能回收。每颗核必须自己 schedule / exit / retire 推进**本核**槽上的回收。
 
 ### 4.3 Overflow
 
@@ -201,7 +188,7 @@ EBR 与 hazard pointer（HP）都是无锁回收方案，但代价分布不同�
    本项目选择         MSQ 节点 (churn 大、可批量)        (未用)
 ```
 
-EBR 的优势在读侧几乎零开销（只读写本核 active/epoch），代价是回收延迟到下一个 quiet + propagate 周期。MSQ 节点 churn 大、可批量回收，正合 EBR 的甜区。HP 在「单节点要尽快回收」更合适，但读侧要 publish/unpublish 两次全局数组访问，热路径更重——本项目未采用。
+EBR 的优势在读侧几乎零开销（只读写本核 active/epoch），代价是回收延迟到下一个 quiet + propagate 周期。MSQ 节点 churn 大、可批量回收，正合 EBR 的适用场景。HP 在「单节点要尽快回收」更合适，但读侧要 publish/unpublish 两次全局数组访问，热路径更重——本项目未采用。
 
 ---
 
@@ -259,7 +246,7 @@ ref_put → free_thread_ref → del_thread_structure:
 
 ## 7. 公开 API
 
-本篇涉及的接口分布在：`ebr.h` 全套；线程回收路径上的 `delete_thread` / `free_thread_ref` / `del_thread_structure`（`thread.h`；与 `13` 交叉，本篇写清回收顺序）。说明改写自头文件 Doxygen，并已与 `.c` 核对。
+接口分布在：`ebr.h` 全套；线程回收路径上的 `delete_thread` / `free_thread_ref` / `del_thread_structure`（`thread.h`；与 `13` 交叉，本篇写清回收顺序）。说明改写自头文件 Doxygen，并已与 `.c` 核对。
 
 **本篇不涉及：** MSQ inline 算法见 `18`；`kalloc_process_cross_cpu_frees` 见 kmalloc 篇（与 `ebr_try_reclaim` **并列**于 `schedule`，不是同一种排水）；zombie / `EXIT_REQUESTED` 语义见 `13`。
 
@@ -321,7 +308,7 @@ void del_thread_structure(Thread_Base *thread);
 
 ## 9. 测试
 
-间接：高 churn IPC / `smp_test`；`ebr_dump_stats` 看 overflow。
+间接覆盖：高 churn IPC 与 `smp_test[]` 表内用例；可用 `ebr_dump_stats` 观察 overflow。
 
 ---
 
@@ -337,6 +324,8 @@ void del_thread_structure(Thread_Base *thread);
 
 ## 11. 变更记录
 
+- 2026-11-20：结构收尾——§4.2 第三张图（quiet/propagate/reclaim 三阶段框图）与泳道图信息重叠，并为一段文字；独有信息（`ebr_exit` 深度回 0 即 `global++`、enter 重新快照成环）全部保留。事实未改。
+- 2026-11-19：底子重评批次——篇首引用缩号与 TM/VSpace 昵称归一；「甜区」改写；§7 opener；§9 测试句理顺。
 - 2026-11-15：Maintainer 复审前可读性通读：§4.2 伪代码「online-ish cpu」改为按代码实际的「0..NR_CPU 全扫、只以 active 为闸」，同节示例行明确 safe=E 与可回收集合 retire ≤ E-1 的区分；§6.2 回收流水补 `thread_disable_user`（释放 FP 缓冲，E13 后续，对照 `thread.c` 现行顺序）；§10 回链明确为 evolution TODO E11；§4.1 `ebr_inited` 三态句、UAF 简称首次出现位置（§4.3）补释并收敛 §7.2 括注；§11 一条 10-05 条目原漂在「08-27 初稿」之后，归位。安全条件 `<`、overflow leak 仍返 SUCCESS、512 槽、`ebr_exit` 深度回 0 时 global++ 再 reclaim、schedule 先排 kfree 再 reclaim、request 持 thread 引用（`ref_get_not_zero`/`ref_put` 配对）均对照 `ebr.c` / `ebr.h` / `thread.c` / `task_manager.c` / `ipc.c` 核实无误；技术结论未动。
 - 2026-10-11：§4 对齐 18 审阅结论——延期的是 `*_real`/`free_func`（非直接 `m_free`）；迁入世代泳道图与读图说明；明确机制权威在本篇、MSQ 咬合见 `18` §4.4。
 - 2026-10-07：§1 概述瘦身——对象分类表与交汇点迁入 §4 开头并与不变量合并。

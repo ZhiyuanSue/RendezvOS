@@ -156,7 +156,7 @@ EL1 代码读 `mrs x0, TPIDR_EL1` 取得基址，再加偏移即得本核副本�
 
 ## 7. 公开 API
 
-本篇涉及的接口分布在：per-CPU 布局与访问——`DEFINE_PER_CPU` / `percpu` / `per_cpu`、`arch_enable_percpu` / `get_per_cpu_base`、`__per_cpu_offset` / `cpu_number`、以及 boot 侧 `reserve_per_cpu_region` / `clean_per_cpu_region` / `calculate_per_cpu_offset`。说明改写自 `percpu.h` Doxygen（已与 `percpu.c`、`arch/*/percpu.c` 核对）。
+接口分布在：per-CPU 布局与访问——`DEFINE_PER_CPU` / `percpu` / `per_cpu`、`arch_enable_percpu` / `get_per_cpu_base`、`__per_cpu_offset` / `cpu_number`、以及 boot 侧 `reserve_per_cpu_region` / `clean_per_cpu_region` / `calculate_per_cpu_offset`。说明改写自 `percpu.h` Doxygen（已与 `percpu.c`、`arch/*/percpu.c` 核对）。
 
 **本篇不涉及：** 各住户变量语义（`core_tm`、`local_irq_vector`、MCS node…，见各子系统篇）；BSP_ID / 上线时序（见 `28`）；MCS 锁原语本身（见 `31`）。
 
@@ -262,7 +262,7 @@ void clean_per_cpu_region(paddr per_cpu_phy_addr);
 
 ## 9. 测试
 
-无 per-CPU 专项测例，间接覆盖：布局或基址启用时序若有错，多核启动后第一次 `percpu()` 访问就会崩，活不到后面（启动判据见 `28` §9）；`smp_test` 的并发矩阵则从多核同时反复打 per-CPU 住户——`spmalloc` 打各核 `kallocator`，`smp_lock` 打 MCS `me` 槽，`thread_affinity` 打各核 `core_tm`。
+无 per-CPU 专项测试用例，间接覆盖：布局或基址启用时序若有错，多核启动后第一次 `percpu()` 访问就会崩，活不到后面（启动判据见 `28` §9）；`smp_test` 的并发矩阵则从多核同时反复打 per-CPU 住户——`spmalloc` 打各核 `kallocator`，`smp_lock` 打 MCS `me` 槽，`thread_affinity` 打各核 `core_tm`。
 
 ---
 
@@ -278,6 +278,7 @@ void clean_per_cpu_region(paddr per_cpu_phy_addr);
 
 ## 11. 变更记录
 
+- 2026-11-19：底子首评批次——§7 opener；§9「测例」→「测试用例」。事实沿用 11-14/15。
 - 2026-11-15：Maintainer 复审前可读性通读。跨篇引用统一既定昵称：两处「任务篇」→「线程篇」（与 README、`23` 等篇既定称呼一致）、两处「拓扑篇」→「SMP 篇（`28`）」（沿 `16` 篇先例）；§8 前双空行归一。`cpu_number` 写入点（两架构 `arch_start_core` 首句 `per_cpu(cpu_number, cpu_id) = cpu_id`）与 `set_gdt` / `wrmsr(MSR_KERNEL_GS_BASE, 0)` / `prepare_per_cpu_tss` 序列对照 `arch/{x86_64,aarch64}/boot/start_arch.c` 复核；事实层沿用 11-14 核验，未再改动。
 - 2026-11-14：全文对照代码与链接脚本精读——§1 补链接段布局（`.percpu..data` 收进输出段 `.percpu`、`_per_cpu_start` 4K 对齐、`_per_cpu_end` `ALIGN(64)`）与 GDT 例证（AP 靠 `set_gdt`/`prepare_per_cpu_tss` 重建；`gdt_desc.base_addr` 初值写死 CPU0 虚址 → 初值勿嵌 per-CPU 指针）；§1.1.1 修正「SWAPGS 是特权指令」（Intel SDM：不做特权检查，任意 CPL 可执行，entry/exit 须严格配对）、澄清 64 位下描述符 base 字段被忽略、`GS_BASE` 直接持有绝对虚址，并补链接期常量 `__tss_rsp_offset = cpu_tss + 4 - _per_cpu_start` / `__user_rsp_scratch_offset` 在 `kernel_entry.S` 的 `%gs:` 直接寻址；§1.1.2 `TPIDRRO_EL0`「Linux 用作 CPU 编号」改标 ⚠待复核；§4.1 明确 `__per_cpu_offset[]` 表值为**绝对虚拟基址**、槽 64B 缓存行对齐、`calculate` 填至 `MAX-1`；§6/§7.1 补全 `phy_mm_init` 真实顺序（m_regions 合并预留 → **同 1G 硬检查** → `arch_map_percpu_data_space` → memset）；§3 住户清单按用途分组补全（`gdt[]`、`cpu_device_node`（aarch64 私有）、`apic_timer_*`、`boot_thread_ptr`/`idle_thread_ptr` 等）；§5 补链接脚本与 `kernel_entry.S` 两行；§7.4 `cpu_number` 写明写入式 `per_cpu(cpu_number, cpu_id) = cpu_id`；§9 展开间接覆盖链条（`smp_test` 并发矩阵）；§10 撤销含糊「GS 窗」表述，改为同 1G 硬检查、x86 APIC id 索引空间、初值勿嵌 per-CPU 指针；变更记录两条 2026-10-05 归位（原沉底于 2026-08-27 之后）。
 - 2026-10-05：任务 1/3/5 精读——补全 BSP/AP/MCS 缩写首现释义；「踩错槽/拿基址/装 per-CPU 基址/他核 slot/已装好/扫全表」等口语改正式动词；修正 §7.3.1 编号错位为 §7.2.1。

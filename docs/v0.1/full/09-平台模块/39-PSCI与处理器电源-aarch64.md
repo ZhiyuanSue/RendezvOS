@@ -192,7 +192,7 @@ arch_shutdown（static inline）→ psci_func.system_off()
 
 ## 7. 公开 API
 
-本篇涉及的接口分布在四处：`psci.h`（`psci_init`、`psci_func` 表、`psci_*` 包装与 FID 常量）、`psci_call.S`（`psci_smc` / `psci_hvc` 桩）、`psci_error.h`（错误码枚举），以及本 arch 的电源终点——`arch_shutdown` 落到 SYSTEM_OFF（`power_ctrl.h`）。以头文件注释为准（均已与 `.c` / `.S` 核对）。
+接口分布在四处：`psci.h`（`psci_init`、`psci_func` 表、`psci_*` 包装与 FID 常量）、`psci_call.S`（`psci_smc` / `psci_hvc` 桩）、`psci_error.h`（错误码枚举），以及本 arch 的电源终点——`arch_shutdown` 落到 SYSTEM_OFF（`power_ctrl.h`）。以头文件注释为准（均已与 `.c` / `.S` 核对）。
 
 **本篇不涉及：** `arch_start_smp` 串行启核编排（见 `28`）；DTB 查找原语（见 `36`）；powerd / `request_poweroff` / `kernel_panic`（见 `40`）；x86 `power_ctrl`（非 PSCI）。
 
@@ -271,6 +271,7 @@ static inline void arch_reset(void);     /* 空；reboot 未接入 */
 ---
 
 ## 11. 变更记录
+- 2026-11-19：底子重评批次——§7 opener。事实沿用 11-15（含 SYSTEM_OFF_2 常量不符记档）。
 - 2026-11-15：Maintainer 复审前可读性通读（篇章架构 / 篇章引用 / 词句）。事实修正三处：① §7.4 错误码枚举实为 **0..9** 共 10 项（`psci_succ` 至 `psci_invalid_address`），原「取值 0..8」不实；② §3 缺口一「启动 / 拓扑篇已警告」归属不实——平台启动篇（`05`）未涉及此缺口，SMP 篇 §6.5 警告的对象是失败路径（缺口二），改为径指缺口二与 `28` §6.5；③ §6.2 补注 `psci_32_system_off_2_func_id` 仓库值 `0x84000015` 与规范表 `0x84000017` 不符。引用四处：篇首三个全文件名缩为 DTB 篇（`36`）/ SMP 篇（`28`）/ kmsg 篇（`21`）与 `40`；「拓扑篇」×3 统一为 SMP 篇（`28`）；§5 表「细节见 40」补反引号；§6.3 图内「缺口①／②」与 §3「缺口一／二／三」编号冲突，两处同属缺口二，按 §3 口径统一。词句六处：§1.1「子节点不能比父节点「更浅」地单独深睡」改写为「父节点要进入深睡，子节点必须先至少睡到同一深度」；§2 「不做」清单补「把」字免读成断言；§6.4 「、以及」顺接；§7 首电报体改为按四处文件列举；§7.3 / §10「约 13 个 `*_32`」改为准确值 13（实数恰 13）；§10 末条「回链」改为正式引用并加粗引导语。核实属实项：门闩顺序 migrate→cpu_on→cpu_off→cpu_suspend 与长度 8/7/8/12（含结尾 0）、22 指针仅绑 7、版本字母映射（1.0–1.3→C/D/E/F，0.2→B）、`psci_call_type` 只写不读、`psci_internel_failure` 拼写、`psci_call.S` 无栈帧、`property_read_string` 的 NULL 语义、poweroff 调用方四处（main/smp/mm_user_utils/test）、`arch_reset` 注释原文、`reboot not implemented` 打印、`CPU_OFF` 无 64-bit FID、缺门闩属性时 return 不清 `enable`。格式扫描（setext / 标题空行 / 分隔线 / 实体 / 引号）无命中。余沿 11-15 复核条目，未变。
 
 - 2026-11-15：全文对照代码复核——**修正 CPU_OFF 64-bit FID**（表中原有并不存在的 `0xC4000002`；PSCI 规范与 `psci.h` 均只定义 32-bit `0x84000002`）；**重写启核失败路径**——三条错误 `continue` 均不推进设备树节点，同一节点无限重试且 `NR_CPU` 无界增长（与 `28` §6.5 对齐，修正原「跳到下一节点留空洞」的旧表述）；§3 补 `arch_shutdown` 同样裸调、`method_str` 未初始化即入 `strcmp_s` 两个缺口；§4/§7.2 补门闩顺序 migrate→cpu_on→cpu_off→cpu_suspend、提前 return 不清 `enable`、22 指针仅绑 7、版本打印仅全通路径执行；§6.2 补版本字母映射（1.0–1.3→C/D/E/F，0.2→B）；§6.4 补 powerd 线程来历、halt 后 `while(1)` 兜底、`reboot not implemented` 打印、`request_poweroff` 调用方清单；§7.3 补 `*_32` 原型无实现、`psci_call_type` 死变量、包装至多 3 参；§7.4 新增错误码枚举与 `psci_internel_failure` 拼写提醒、桩无栈帧；§9 重写为真实验证链（`test.c` 收尾调 `rendezvos_request_poweroff`）；§10 改分组条目；AP 栈分配判空齐全记为正面例子。

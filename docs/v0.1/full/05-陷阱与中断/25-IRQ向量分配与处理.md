@@ -10,7 +10,7 @@ v0.1 · 2026-10-23
 | **分发** | 按编号找到 handler、要不要 EOI、要不要 `schedule` | `kernel/trap/trap.c`、`trap.h` | 衔接说明 |
 | **硬件控制器** | MMIO / 寄存器位域（RTE、GICD…） | APIC / PIC、GIC 等 | **寄存器细节**见 `26` / `27`；线控由 space ops 调用 |
 
-Trap 分类与装表见 `23`；系统调用旁路见 `24`；timer / 软 IPI 见时间子系统篇与 `30`。
+Trap 分类与装表见 `23`；系统调用旁路见 `24`；timer / 软 IPI 见时间子系统篇（`33`）与软 IPI 篇（`30`）。
 
 官方手册（本篇只用来对照「硬件交出来的号」长什么样）：
 
@@ -20,6 +20,20 @@ Trap 分类与装表见 `23`；系统调用旁路见 `24`；timer / 软 IPI 见�
 ---
 
 ## 1. 概述
+
+本节共九个小节，先给一张导读索引（各小节互不重复，按需取阅）：
+
+| 小节 | 讲什么 |
+|------|--------|
+| §1.1 | 一条中断从硬件走到软件表的整条链；两套软件编号 |
+| §1.2 | 硬件交付的号（IDT 向量 / GIC INTID）与软件 id 怎么对上 |
+| §1.3 | 本核表为何每核一份；两套数组的关系图 |
+| §1.4 | 谁可以动全局项：占有规则与时间轴窗口 |
+| §1.5 | EOI 与调度——分发层职责，不是 irq_space |
+| §1.6 | 占了软件表 ≠ 硬件已开线：`irq_enable` 才写控制器 |
+| §1.7 | 换核（migrate）口令、时序图与为什么由旧属主做 |
+| §1.8 | irq_space 寿命状态机、`refcount` / `nr_used` 与热路径约定 |
+| §1.9 | 展望后端 MSI / MSI-X（未接线）：硬件形态与逐 ops 落位 |
 
 ### 1.1 一条中断从硬件走到软件表
 
@@ -135,6 +149,19 @@ CPU1  local_irq_vector[]（本核私有，有格子） +-----+-------+-----+
 
 换核（migrate）整段应在**旧属主**上做：`irq_disable`（内含 mask 与排空本核 local pending）→ `free` → `alloc` → `irq_enable`。道理与步骤见 **§1.7**；英文动机见 `trap.h` 文件头 `@note_start` … `@note_end`（请勿改动该段注释）。
 
+占有窗口（时间轴）：
+
+```text
+  未占用          claim（USED）        enable 之后 … free 结束
+  ─────────────┬────────────────────┬─────────────────────────
+               │                    │
+  任意核可       │  线仍 masked；      │  仅属主可 disable /
+  irq_global_    │  允许多核改软状态   │  free / 改全局 handler
+  alloc(…,目标cpu)│  （migrate：旧属主  │
+               │   可替新核 alloc）   │  投递打到亲和核 →
+               │                    │  该核 trap_handler
+```
+
 **什么时候才要改 handler？**
 
 典型不是换核，而是驱动生命周期：卸掉模块再装一个新的，入口函数变了。那时在**当时的属主核**上再调 `register_irq_handler`（可以先传空指针摘掉，再释放 / 卸模块；或直接挂上新函数）。`register` 不禁止空指针，就是覆盖写。
@@ -169,6 +196,32 @@ Trap **不**吃 `global_irq_id` 做 enable/disable；`global_irq_id` 留在 irq_
 口令（在**旧属主**上）：
 
 `irq_disable(old_local)` → `irq_global_free` → `irq_global_alloc`（把条目记到新属主，得到 `new_local`）→ `irq_enable(new_local, new_cpu, …)`（仍由**旧属主**去写芯片并 unmask；**不必**再发 IPI 让新属主去做 enable）。
+
+```text
+  旧属主 CPU A                         新属主 CPU B
+  ─────────────────                    ─────────────────
+  irq_disable(old_local)
+    ├─ space->disable（mask 管脚/线）
+    └─ while local_pending：开中断排空
+           │
+           ▼
+  irq_global_free
+    ├─ unbind map（x86）/ 清亲和
+    └─ 清 USED；**保留** handler
+           │
+           ▼
+  irq_global_alloc(…, cpu=B, &new_local)
+    ├─ choose_local(B)
+    ├─ CAS USED；写亲和 → B
+    └─ bind_local(B, new_local) ──────────► B 侧 map 指向同 entry
+           │
+           ▼
+  irq_enable(new_local, B, …)   ← 仍在 A 上调用
+    └─ space->enable：改路由到 B + unmask
+           │
+           ▼
+  之后投递打到 B → B 上 trap_handler
+```
 
 其中 **`irq_disable` 已包含**「space mask + 排空本核 local pending」；上层**不必**再单独调一步 wait，也**没有**对外的 nosync / 软件计数式接口。处理函数不变时，**不要**为换核再 `register` 一遍（free 会留下 handler，见 §1.4）。
 
@@ -216,6 +269,34 @@ Trap **不**吃 `global_irq_id` 做 enable/disable；`global_irq_id` 留在 irq_
 | `REGISTERED` | 已在全局 list 上；那 **1** 已**转让**给 list（register **不再**额外 get） |
 | `CLOSING` | unregister 已下手，仍挂在 list 上；新 `ops_begin` / 新 alloc 应失败 |
 | `CLOSED` | 已 unlink；unregister 方持有那 1，随后 `ref_put` → `free_irq_space_ref` |
+
+```text
+  create / common_init
+        │  refcount = 1（创建方）
+        ▼
+     ACTIVE ──────────────────────┐
+        │ irq_space_register      │ 失败则仍由创建方负责放下
+        │  CAS ACTIVE→REGISTERED  │
+        │  list_add；1 转让给 list│
+        ▼                         │
+   REGISTERED ◄──┐                │
+        │        │ busy：          │
+        │        │  ref≠1 或       │
+        │        │  nr_used≠0     │
+        │        │  → 恢复        │
+        │ irq_space_unregister    │
+        │  CAS → CLOSING          │
+        ▼                         │
+     CLOSING ─────┘               │
+        │ idle：unlink            │
+        │  life = CLOSED          │
+        │  ref_put → freer        │
+        ▼                         │
+      CLOSED                      │
+        │ destroy_priv；m_free    │
+        ▼                         │
+      （对象消失）                 ┘
+```
 
 `irq_space_register(struct irq_space *space)`：校验必填 ops（lookup / choose / bind / enable / disable；`eoi` / `destroy_priv` 可空）、range 不重叠、life==ACTIVE → CAS 到 REGISTERED → `list_add`。成功后调用方**不得**再 `ref_put`/free 该 space。
 
@@ -585,7 +666,7 @@ x86 上多个设备可共享同一 IDT 向量（典型 PCI legacy 共享线）�
 
 ## 7. 公开 API
 
-本篇涉及的接口分布在：两套 id（`irq_space.h` / `irq_space.c`）与分发（`trap.h` / `trap.c`）——`struct local_irq` / `struct arch_global_irq` / `struct irq_space`、`irq_space_register` / `irq_global_*`、`register_irq_handler`、`irq_enable` / `irq_disable`、`arch_irq_local_pending`、`trap_handler`、`init_interrupt`、space `choose_local` / `bind_local`（x86 共享 `arch_irq_space_*`；aarch64 在 `irq_space_gic_spi.c`）/ `arch_init_interrupt`、`arch_local_eoi`、`arch_unknown_trap_handler`。说明改写自 `irq_space.h` / `trap.h` / `arch/*/trap/irq_space.h` Doxygen。
+接口分布在：两套 id（`irq_space.h` / `irq_space.c`）与分发（`trap.h` / `trap.c`）——`struct local_irq` / `struct arch_global_irq` / `struct irq_space`、`irq_space_register` / `irq_global_*`、`register_irq_handler`、`irq_enable` / `irq_disable`、`arch_irq_local_pending`、`trap_handler`、`init_interrupt`、space `choose_local` / `bind_local`（x86 共享 `arch_irq_space_*`；aarch64 在 `irq_space_gic_spi.c`）/ `arch_init_interrupt`、`arch_local_eoi`、`arch_unknown_trap_handler`。说明改写自 `irq_space.h` / `trap.h` / `arch/*/trap/irq_space.h` Doxygen。
 
 **本篇不涉及：** `arch_register_fixed_trap` / `trap_class`（见 `23`）；weak `syscall`（见 `24`）；irqchip 寄存器细节（见 `26` / `27`）；timer / IPI 业务语义（见时间子系统篇 / `30`）。
 
@@ -710,6 +791,9 @@ void arch_unknown_trap_handler(struct trap_frame *tf);
 
 ## 11. 变更记录
 
+- 2026-11-20：结构收尾——§1 开头补 §1.1–§1.9 导读索引表；小节内容未删改。
+- 2026-11-20：按需补图——§1.4 占有窗口时间轴；§1.7 migrate 口令（旧属主 disable→free→alloc→enable）时序图；§1.8 `life` 状态机 + refcount 转让示意。正文事实未改。
+- 2026-11-19：底子首评批次——`33`/`30` 补号；§7 opener。事实沿用 11-14/11-15 核验。
 - 2026-11-15：可读性通读。§7.1 换核行断裂句补全（「详述与 IPC/boot；」改「详述（含经属主 boot 线程 IPC 代做）见 §1.7」），并将「（mask + pending）」写全为「mask + 排空 pending」；`space methods` 齐平为 space ops；「那一个pending中断」补空格；「时间篇」统一为「时间子系统篇」；删 §1 内误置的 `---` 与 §11 孤立空行。§7.3 错误码、`ALLOC_HI`=0xEF、timer=0x20 对照代码复核无误，事实未动。
 - 2026-11-14：新增 §1.9「展望后端：MSI / MSI-X」——pin 与 MSI 投递链对照、x86 Message Address/Data 与 MSI-X 表、逐 ops 落位（`choose/bind` 直接复用共享实现、`eoi` 留空、global range 避让 GSI）、GICv3 ITS 对照、无 IR 时的安全边界；§1.7.2 / §2 / §8 / §10 加指针；文末误挂的两条 2026-10-05 条目归位到时间序。
 - 2026-11-14：§1.7 / `trap.h` `@note` §2——soft migrate 口令明确通用于各 irq_space（含未来 MSI）；管脚投递链改为现行后端举例；MSI mask 点不同但 disable→drain 原则相同。§2/§7.1/§10 同步；aarch64 pending 排空改为有意设计表述。

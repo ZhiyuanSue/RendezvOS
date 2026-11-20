@@ -399,6 +399,7 @@ bool final_madt_int_ctrl_head(madt, curr);
 ---
 
 ## 11. 变更记录
+- 2026-11-19：底子重评批次——§7 opener。事实沿用 11-15（含 `RENDEZVOS_MAX_CPU_NUMBER`=min(SMP,128)）。
 - 2026-11-15：全文可读性通读（篇章架构 / 篇章引用 / 词句）。篇章架构与格式扫描通过。引用两处：§3「见 PCI 篇」全仓无先例，改裸号 `38`；§8 全文件名 `36-DTB与设备树-aarch64.md` 缩为「DTB 篇（`36`）」。事实修正一处（两点位）：§4.2 / §7.4 均写 `RENDEZVOS_MAX_CPU_NUMBER`「当前 128」不实——`limits.h` 分两支，仅当未定义 `NR_CPUS` 才取 128，而构建期 Makefile 恒传 `-DNR_CPUS=$(SMP)`（默认 `SMP=4`），内核实际取 `min(SMP, 128)`。§9 按 `modules/test` 实况扩写：确无 ACPI/MADT 测例（原句属实但过简），补齐间接覆盖实际经眼的打印行（`Local APIC id is %d`、`disabled in MADT, skip`、`[ MADT ] no IOAPIC entries` 等，均已对 `arch_madt.c` 核对）与未覆盖的失败路径清单。另核 34 签名注册表（enum 除 `ACPI_NR_TABLES` 哨兵恰 34 项）、`get_acpi_table_type_from_sig` 返回 `-E_RENDEZVOS`、游标 `==` 终止、`xapic_check_base_addr` 判空缺失，均与文一致。余沿 11-14 精读，未变。
 
 - 2026-11-14：逐项对照代码修正——§4.2.1 修正 MADT type 3/4/5 三行错位（规范 3=NMI Source、4=Local APIC NMI、5=Local APIC Address Override；原「IOAPIC Source Override」并非规范类型，删），字段名对齐 `acpi_madt.h`；§6.3 区分「未注册签名跳过」与「已注册未实现签名导致 `acpi_init` 整体失败」，SSDT 风险待实测记档；§6.4 补 IOAPIC 两轮、`ioapics_sort_by_gsi_base` 排序、kallocator 失败路径与 Enabled 门槛；§4.1.2 去掉「QEMU virt 机器」误称（`virt` 是 aarch64 机器名），改 SeaBIOS/OVMF 表述；§3/§7.1 补 `acpi_init` → `ioapic_init` → PCI 扫描次序与 `ioapics[]` 依赖；§4.2.2 记游标 `==` 终止的死循环风险；§5 补 `include/modules/acpi/` 头文件行、`for_each_madt_ctrl_head` 归位到头文件；§4.1 补 `packed` 属性说明；§4.1.4 补 34 签名注册表说明；§7.4 补 `RENDEZVOS_MAX_CPU_NUMBER`=128 与 `ioapics[]` 有序不变量；变更记录归位（两条 2026-10-05 曾排在初稿之后）。

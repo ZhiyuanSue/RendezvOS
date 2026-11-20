@@ -4,7 +4,7 @@ v0.1 · 2026-10-04
 
 本篇对应的源码是：`kernel/smp/smp.c`、`include/rendezvos/smp/smp.h`、`include/rendezvos/smp/cpu_id.h`、`include/rendezvos/cpu_topology.h`，以及 `arch/x86_64/boot/smp.c`、`arch/aarch64/boot/smp.c`。
 
-启动总览里，最先起来的核叫 **BSP**，其余后来被叫醒的核叫 **AP**。总览写过：BSP 在 `cmain` 末尾才调 `start_smp`；AP 从汇编入口进 `start_secondary_cpu`。`ap_start` / `ap_entry` 本身怎样从实模式或关着 MMU 走到能跑 C，见平台启动篇。本篇接着讲：**怎样把其它核叫醒，叫醒之后 BSP 与 AP 各自还要补什么，以及 `cpu_id` 在 x86_64 / aarch64 上怎么编号。**
+启动总览里，最先起来的核叫 **BSP**，其余后来被叫醒的核叫 **AP**。总览写过：BSP 在 `cmain` 末尾才调 `start_smp`；AP 从汇编入口进 `start_secondary_cpu`。`ap_start` / `ap_entry` 本身怎样从实模式或关着 MMU 走到能跑 C，见平台启动篇（`04`/`05`）。本篇接着讲：**怎样把其它核叫醒，叫醒之后 BSP 与 AP 各自还要补什么，以及 `cpu_id` 在 x86_64 / aarch64 上怎么编号。**
 
 建议读法：§1 看目的；§4 看本篇管哪些状态与不变量；§6 先硬件背景，再 `start_smp`、叫醒、最后 AP 进 C；§7 查接口。
 
@@ -270,7 +270,7 @@ BSP 把 `all_enabled` 写成试完之后，AP 才 `do_init_call`（意图见 `03
 
 ## 7. 公开 API
 
-本篇涉及的接口分布在：`smp.h` / `cpu_id.h` 里的编排与 online 查询，以及各架构 `smp.h` 的 `arch_start_smp`。`start_secondary_cpu` 由汇编跳入，定义在 `smp.c`，目前无 `smp.h` 声明。
+接口分布在：`smp.h` / `cpu_id.h` 里的编排与 online 查询，以及各架构 `smp.h` 的 `arch_start_smp`。`start_secondary_cpu` 由汇编跳入，定义在 `smp.c`，目前无 `smp.h` 声明。
 
 不归本篇：`cpu_id_is_online` / `task_manager_for_cpu`（见 `16`）；`percpu()`（见 `29`）；软 IPI（见 `30`）；ICR（见 `26`）；PSCI（见 `39`）；`arch_start_core`（见平台启动篇）。
 
@@ -347,6 +347,7 @@ enum cpu_status { no_cpu, cpu_disable, cpu_enable };
 
 ## 11. 变更记录
 
+- 2026-11-19：底子首评批次——平台启动篇补号；§7 opener。事实沿用 11-14 核验。
 - 2026-11-14：对照代码逐节校正。x86_64：补单核约十秒超时后放弃、栈分配失败跳过该核、`CPU_STATE` 以 APIC id 为下标、`clean_tmp_page_table` 早退路径也执行（§2/§6.4/§7.3）。aarch64：等待**无超时**；`cpu_on` 失败**必然** `NR_CPU++` 且 `continue` 不推进 `cpu_node`，同一节点无限重试（原「仍可能」低估了严重性；疑似代码缺陷，仅记录不改码，§2/§4.1/§4.3/§6.5/§7.3/§10）。§10 撤销「MADT disabled 未过滤」——现由 `Local_APIC_flags_enable` 过滤，注意其 `break` 语义（§4.1）。§7.4 补 `cpu_is_online` 越界前置检查、`cpu_id_is_online` 完整判定链与 `cpu_enable`→`core_tm` 就绪窗口。§9 明确 `[ CPUx ]` 需 `HELLO` 宏、`smp_test` 为启动后的多核并发用例矩阵而非启动判据。
 - 2026-10-24：`NR_CPU` 来源改为 `arch_parser_madt`（原笼统「解析 MADT」）。
 - 2026-10-04：校正 §6.5 误写成「关于 x86_64」；`all_enabled` 统一为「该试的都试过」，不是「每颗都 enable」。

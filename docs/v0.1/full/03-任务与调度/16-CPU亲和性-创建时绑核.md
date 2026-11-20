@@ -4,7 +4,7 @@ v0.1 · 2026-09-26
 
 本篇覆盖：`add_thread_to_cpu` / `cpu_id_is_online` / `task_manager_for_cpu` / `thread_owner_cpu`（`thread.c` / `thread.h`）、`modules/test/thread_affinity_test.c`。
 
-调度环见 `13-线程与Task_Manager.md`；`create_thread` / `gen_thread_from_*` 见创建篇；`NR_CPU` / SMP 拓扑见 `06-SMP与同步/`。IRQ / GIC / IOAPIC 的中断亲和 **不是**本篇——那是「中断送到哪颗核」，和「线程挂在哪条就绪环」是两套东西。
+调度环见线程篇（`13`）；`create_thread` / `gen_thread_from_*` 见创建篇（`14`）；`NR_CPU` / SMP 拓扑见 SMP 篇（`28`）。IRQ / GIC / IOAPIC 的中断亲和 **不是**本篇（见平台中断篇 `26`/`27`）——那是「中断送到哪颗核」，和「线程挂在哪条就绪环」是两套东西。
 
 ---
 
@@ -84,7 +84,7 @@ cpu < RENDEZVOS_MAX_CPU_NUMBER
 && per_cpu(core_tm, cpu) != NULL
 ```
 
-这只表示「可以第一次把线程挂进这颗核的 `Task_Manager`」，**不**表示以后能迁核。这里的 online 是软件侧「该核已经有 `core_tm`」，不是 MADT（ACPI 多 APIC 描述表）里 Local APIC 是否 enabled，也不是 GIC 的 CPU interface 是否起来——硬件侧见 SMP 篇、平台中断篇。图中 SIPI 指 Startup IPI（x86 启动 AP 的方式）。
+这只表示「可以第一次把线程挂进这颗核的 `Task_Manager`」，**不**表示以后能迁核。这里的 online 是软件侧「该核已经有 `core_tm`」，不是 MADT（ACPI 多 APIC 描述表）里 Local APIC 是否 enabled，也不是 GIC 的 CPU interface 是否起来——硬件侧见 SMP 篇（`28`）、平台中断篇（`26`/`27`）。图中 SIPI 指 Startup IPI（x86 启动 AP 的方式）。
 
 软件 online 与硬件 online 对照：
 
@@ -141,7 +141,7 @@ cpu < RENDEZVOS_MAX_CPU_NUMBER
 
 ## 7. 公开 API
 
-本篇涉及的接口就是创建时选核的四个 helper，在 `thread.h` / `thread.c`。说明改写自头文件 Doxygen，并已与 `.c` 核对。调度环 / `add_thread_to_manager` 细节见 `13`；`gen_thread_from_*` 见 `14`；`NR_CPU` / 拓扑见 SMP 篇。
+接口就是创建时选核的四个 helper，在 `thread.h` / `thread.c`。说明改写自头文件 Doxygen，并已与 `.c` 核对。调度环 / `add_thread_to_manager` 细节见 `13`；`gen_thread_from_*` 见 `14`；`NR_CPU` / 拓扑见 SMP 篇（`28`）。
 
 **本篇不涉及：** 运行期迁核（无此 API）；IRQ / GIC / IOAPIC 中断亲和；ACPI「CPU online」语义。
 
@@ -167,18 +167,18 @@ error_t add_thread_to_cpu(Thread_Base *thread, cpu_id_t cpu);
 
 | 接口 | 说明 |
 |------|------|
-| `cpu_id_is_online` | 条件：`cpu < MAX` ∧ `0 ≤ cpu < NR_CPU` ∧ `per_cpu(core_tm,cpu)≠NULL`。只表示「可以首次入队」；不等于 MADT / GIC 硬件 online。 |
+| `cpu_id_is_online` | 软件 online 三条件见 §4.2。只表示「可以首次入队」；不等于 MADT / GIC 硬件 online。 |
 | `task_manager_for_cpu` | 若 online 则返回该核 `core_tm`，否则 NULL。 |
-| `thread_owner_cpu` | 读 `tm->owner_cpu`；无 tm 则返回 `CPU_ID_INVALID`（detach / delete 摘环后失效）。 |
-| `add_thread_to_cpu` | 准入：参数为 NULL 则 `-E_IN_PARAM`；已有 tm 或 status≠init 则 `-E_RENDEZVOS`；offline 则 `-E_IN_PARAM`；否则转调 `add_thread_to_manager`。**没有**运行期迁核。 |
+| `thread_owner_cpu` | 读 `tm->owner_cpu`；无 tm 则返回 `CPU_ID_INVALID`（非终身标签，见 §4.1）。 |
+| `add_thread_to_cpu` | 准入条件与错误码见 §4.3；通过后转调 `add_thread_to_manager`。**没有**运行期迁核。 |
 
-对照：`add_thread_to_manager` 对非 init 只打印 warn 仍挂环——严格的 status 检查只在本 API。`gen_thread_from_elf` **固定挂本核**，没有跨核 helper。
+与 `add_thread_to_manager`（对非 init 只打印 warn 仍挂环）的对照见 §4.3。`gen_thread_from_elf` **固定挂本核**，没有跨核 helper。
 
 ---
 
 ## 8. 多架构
 
-与 ISA 无关；逻辑 `cpu_id` 与 arch affinity / MPIDR / APIC ID 对照见 SMP 篇，勿混入本篇。硬件中断路由（IOAPIC RTE、GICD ITARGETSR / affinity）改的是「中断送达哪颗核」，不会改 `thread->tm`。
+与 ISA 无关；逻辑 `cpu_id` 与 arch affinity / MPIDR / APIC ID 对照见 SMP 篇（`28`），勿混入本篇。硬件中断路由（IOAPIC RTE、GICD ITARGETSR / affinity）改的是「中断送达哪颗核」，不会改 `thread->tm`。
 
 ---
 
@@ -203,6 +203,8 @@ cd core && make ARCH=x86_64 config && make all && make run
 
 ## 11. 变更记录
 
+- 2026-11-20：结构债清理——§7.2 与 §4.2 / §4.3 准入清单重复：完整条件表保留在 §4，§7.2 的 `cpu_id_is_online` / `add_thread_to_cpu` 行及 `add_thread_to_manager` 对照句改交叉引用。技术内容未动。
+- 2026-11-19：底子重评批次——篇首径指 `28`/`26`/`27`；§7 opener；SMP 篇补号。
 - 2026-11-15：Maintainer 复审前可读性通读：§11 一条 10-05 条目原漂在「08-27 初稿」之后，归位到列表顶部；§4.3「只 `pr_warn` 仍链接」改「只打印 `pr_warn`、仍照常挂环」（与 §7.2 用语统一）；§6 测试段 「check / spin」两处中英夹杂改写为中文并补全句子；§7「接口分布在：」句式修正；§8 自称「SMP 拓扑篇」统一为 repo 惯用的「SMP 篇」。门禁顺序、错误码、`owner_cpu` 赋值、测例名均对照 `thread.c` / `task_manager.c` / `thread_affinity_test.c` 核实无误；技术内容未动。
 - 2026-10-05：最终词句顺畅。
 - 2026-10-05：任务 1/3/5 精读——§3/§6「测例」→「测试用例」、「建 probe」→「创建 probe」；§3「混谈」→「混为一谈」；§2「改不了」→「无法修改」；§4.2「GIC: CPU interface 已起」→「已启用」、首次出现 MADT 补全称（ACPI 多 APIC 描述表）、SIPI 补说明（Startup IPI）；§7.2「只 warn」→「只打印 warn」；§8「勿混进」→「勿混入」。
