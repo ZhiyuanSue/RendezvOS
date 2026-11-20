@@ -8,7 +8,17 @@
 #include <rendezvos/mm/allocator.h>
 #include <common/atomic.h>
 #include <common/string.h>
+#include <common/dsa/list.h>
 #include <modules/log/log.h>
+
+static void port_link_owner(Message_Port_t* port, struct list_entry* head)
+{
+        if (!port || !head)
+                return;
+        if (!list_node_is_detached(&port->owner_link))
+                return;
+        list_add_tail(&port->owner_link, head);
+}
 
 error_t message_port_init(Message_Port_t* port, u32 service_id)
 {
@@ -20,19 +30,22 @@ error_t message_port_init(Message_Port_t* port, u32 service_id)
         port->service_id = service_id;
         port_ops_life_init(port);
         port_ops_count_init(port);
+        INIT_LIST_HEAD(&port->owner_link);
         return REND_SUCCESS;
 }
 
-Message_Port_t* create_message_port(u32 service_id)
+Message_Port_t* create_message_port(u32 service_id, struct list_entry* owner_list)
 {
         struct allocator* cpu_kallocator = percpu(kallocator);
-        Message_Port_t* mp = (Message_Port_t*)cpu_kallocator->m_alloc(
+        Message_Port_t* port = (Message_Port_t*)cpu_kallocator->m_alloc(
                 cpu_kallocator, sizeof(Message_Port_t));
-        if (!mp)
+        if (!port)
                 return NULL;
 
-        message_port_init(mp, service_id);
-        return mp;
+        message_port_init(port, service_id);
+        if (owner_list)
+                port_link_owner(port, owner_list);
+        return port;
 }
 
 /*
@@ -164,6 +177,7 @@ void delete_message_port_structure(Message_Port_t* port)
 {
         if (!port)
                 return;
+        list_del_init(&port->owner_link);
         /*
          *         port_clean_thread_queue is just a defensive clean here.
          */

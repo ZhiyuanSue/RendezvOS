@@ -122,12 +122,13 @@ int ipc_test(void)
         Message_Port_t* port;
         Task_Manager* tm = percpu(core_tm);
         error_t e;
+        error_t ret = REND_SUCCESS;
 
         single_ipc_sender_done = 0;
         single_ipc_receiver_done = 0;
         single_ipc_received_type = -1;
         is_print_sche_info = false;
-        port = create_message_port(42);
+        port = create_message_port(42, &get_cpu_current_thread()->owned_anon_ports);
         if (!port) {
                 pr_error("[single_ipc_test] create_message_port failed\n");
                 return -E_REND_TEST;
@@ -137,14 +138,14 @@ int ipc_test(void)
         e = gen_thread_from_func(
                 NULL, ipc_sender_thread, "ipc_sender", tm, port);
         if (e != REND_SUCCESS) {
-                ref_put(&port->refcount, free_message_port_ref);
-                return -E_REND_TEST;
+                ret = -E_REND_TEST;
+                goto err_port;
         }
         e = gen_thread_from_func(
                 NULL, ipc_receiver_thread, "ipc_receiver", tm, port);
         if (e != REND_SUCCESS) {
-                ref_put(&port->refcount, free_message_port_ref);
-                return -E_REND_TEST;
+                ret = -E_REND_TEST;
+                goto err_port;
         }
 
         while (!single_ipc_sender_done || !single_ipc_receiver_done)
@@ -153,9 +154,10 @@ int ipc_test(void)
         e = close_port(port);
         if (e != REND_SUCCESS) {
                 pr_error("[single_ipc_test] close_port failed e=%d\n", (int)e);
-                return -E_REND_TEST;
+                ret = -E_REND_TEST;
+                goto err_port;
         }
-        ref_put(&port->refcount, free_message_port_ref);
+        message_port_put_owner_ref(port);
 
         if (single_ipc_received_type != IPC_TEST_MSG_TYPE) {
                 pr_error(
@@ -173,6 +175,12 @@ int ipc_test(void)
         }
         is_print_sche_info = false;
         return REND_SUCCESS;
+
+err_port:
+        if (port_is_open(port))
+                (void)close_port(port);
+        message_port_put_owner_ref(port);
+        return ret;
 }
 
 #define IPC_MULTI_ROUND_COUNT 50000
@@ -334,6 +342,7 @@ int ipc_multi_round_test(void)
         Message_Port_t* port;
         Task_Manager* tm = percpu(core_tm);
         error_t e;
+        error_t ret = REND_SUCCESS;
 
         multi_round_sender_done = 0;
         multi_round_receiver_done = 0;
@@ -344,7 +353,7 @@ int ipc_multi_round_test(void)
         pr_info("[single_ipc_multi_round_test] starting multi-round IPC test (%u rounds)\n",
                 IPC_MULTI_ROUND_COUNT);
         is_print_sche_info = false;
-        port = create_message_port(42);
+        port = create_message_port(42, &get_cpu_current_thread()->owned_anon_ports);
         if (!port) {
                 pr_error(
                         "[single_ipc_multi_round_test] create_message_port failed\n");
@@ -358,8 +367,8 @@ int ipc_multi_round_test(void)
         if (e != REND_SUCCESS) {
                 pr_error(
                         "[single_ipc_multi_round_test] failed to create sender thread\n");
-                ref_put(&port->refcount, free_message_port_ref);
-                return -E_REND_TEST;
+                ret = -E_REND_TEST;
+                goto err_port;
         }
 
         e = gen_thread_from_func(NULL,
@@ -370,8 +379,8 @@ int ipc_multi_round_test(void)
         if (e != REND_SUCCESS) {
                 pr_error(
                         "[single_ipc_multi_round_test] failed to create receiver thread\n");
-                ref_put(&port->refcount, free_message_port_ref);
-                return -E_REND_TEST;
+                ret = -E_REND_TEST;
+                goto err_port;
         }
 
         while (!multi_round_sender_done || !multi_round_receiver_done)
@@ -382,9 +391,10 @@ int ipc_multi_round_test(void)
                 pr_error(
                         "[single_ipc_multi_round_test] close_port failed e=%d\n",
                         (int)e);
-                return -E_REND_TEST;
+                ret = -E_REND_TEST;
+                goto err_port;
         }
-        ref_put(&port->refcount, free_message_port_ref);
+        message_port_put_owner_ref(port);
 
         pr_info("[single_ipc_multi_round_test] test completed: sent=%llu received=%llu\n",
                 (unsigned long long)multi_round_send_count,
@@ -418,4 +428,10 @@ int ipc_multi_round_test(void)
                 IPC_MULTI_ROUND_COUNT);
         is_print_sche_info = false;
         return REND_SUCCESS;
+
+err_port:
+        if (port_is_open(port))
+                (void)close_port(port);
+        message_port_put_owner_ref(port);
+        return ret;
 }

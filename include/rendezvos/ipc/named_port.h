@@ -8,7 +8,7 @@
  * Named port = directory / discovery shell over an embedded anonymous
  * rendezvous (@c PORT_COMMON at offset 0, same prefix as @c Message_Port_t).
  *
- * Two axes (do not conflate):
+ * Three axes (do not conflate):
  *   1) Rendezvous life — @c PORT_OPS_LIFE_* on COMMON (OPEN / CLOSING /
  * CLOSED).
  *      @c port_ops_begin / @c send_msg / @c recv_msg only care about a OPEN
@@ -18,6 +18,14 @@
  *      name_index. create → not published; register → visible to lookup;
  *      unregister → close embedded anon, then leave the table and drop the
  *      table pin.
+ *   3) Owner-list membership — @c owner_link on a caller-supplied list head
+ *      (any @c list_entry; often @c Thread_Base.owned_named_ports /
+ *      @c owned_anon_ports, but not required to be a thread). Still linked ⇔
+ *      create/ownership ref not dropped. Put that ref via
+ *      @c named_message_port_put_owner_ref (unlink then put). When the list
+ *      owner is a thread using @c owned_*, exit does phase1 close/unregister
+ *      then phase2 put_owner_ref for remaining nodes. @c close_port alone does
+ *      not unlink.
  *
  * Admission (@c ops_allow) is named port-only policy, not anon life:
  *   - LOOKUP / REGISTER: port-table paths.
@@ -189,13 +197,16 @@ extern struct spin_lock_t port_table_spin_lock;
  * @param name Port name / name_index key (non-empty, shorter than
  *        @c PORT_NAME_LEN_MAX).
  * @param hooks Optional append table; NULL for no append and all gates open.
+ * @param owner_list Optional owner list head (any @c list_entry; often
+ *        @c &thread->owned_named_ports). NULL = no link.
  * @return New port with refcount 1, embedded life @c OPEN, not in any table;
  *         or NULL on invalid name, allocation failure, or @c hooks->init
  *         failure (rolls back alloc).
  * @note Sets @c service_id from the name (never 0). Does **not** register.
  */
 Named_Message_Port_t*
-create_named_message_port(const char* name, const port_append_hooks_t* hooks);
+create_named_message_port(const char* name, const port_append_hooks_t* hooks,
+                          struct list_entry* owner_list);
 
 /**
  * @brief Refcount destructor for heap @c Named_Message_Port_t.
@@ -208,6 +219,21 @@ create_named_message_port(const char* name, const port_append_hooks_t* hooks);
  * Do not use @c free_message_port_ref / @c delete_message_port_structure.
  */
 error_t free_named_message_port_ref(ref_count_t* ref_count_ptr);
+
+/**
+ * @brief Put the create / ownership ref from @c create_named_message_port.
+ *
+ * Unlinks @c owner_link, then @c ref_put s. Still linked ⇔ this ref not yet
+ * put. Do **not** use for lookup / table pins (plain @c ref_put).
+ */
+static inline void
+named_message_port_put_owner_ref(Named_Message_Port_t* port)
+{
+        if (!port)
+                return;
+        list_del_init(&port->owner_link);
+        ref_put(&port->refcount, free_named_message_port_ref);
+}
 
 /**
  * @brief Allocate a port table and initialize its name index.
