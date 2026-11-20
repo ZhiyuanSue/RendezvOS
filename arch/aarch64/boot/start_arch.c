@@ -48,10 +48,11 @@ static void arch_inherit_daif_i_from_user(u64 spsr)
  * on return (same pattern as x86 sti/cli around the syscall body).
  * Same-EL SVC (EC 0x18) keeps kernel DAIF policy unchanged.
  */
-static void arch_syscall_helper(struct trap_frame *tf)
+static void arch_syscall_helper(struct trap_info *info)
 {
+        struct trap_frame *tf = info ? info->tf : NULL;
         u64 saved_daif = 0;
-        bool from_user = tf && !arch_int_from_kernel(tf);
+        bool from_user = info && info->is_user;
 
         if (from_user) {
                 mrs("DAIF", saved_daif);

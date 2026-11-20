@@ -125,9 +125,9 @@
 
 /**
  * @brief Fixed-trap ISR type (page fault, breakpoint, …).
- * @param tf Trap frame at entry.
+ * @param info Populated trap info from the fixed wrapper (@c info->tf = frame).
  */
-typedef void (*fixed_trap_handler_t)(struct trap_frame *tf);
+typedef void (*fixed_trap_handler_t)(struct trap_info *info);
 
 /**
  * @brief Register a fixed-trap handler for @p trap_class on every CPU.
