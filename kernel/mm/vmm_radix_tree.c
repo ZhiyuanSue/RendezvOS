@@ -153,8 +153,8 @@ static error_t radix_entry_update(Radix_entry_t* entry, u64 update_flags,
         } else if (update_flags & RADIX_ENTRY_UPDATE_FLAG_COUNT_DELTA) {
                 u64 get_count = entry_get_count(value);
                 if (count_delta > 0) {
-                        if (count_delta > RADIX_COUNT_PER_PAGE
-                            || get_count > RADIX_COUNT_PER_PAGE - count_delta)
+                        if ((u64)count_delta > RADIX_COUNT_PER_PAGE
+                            || get_count > RADIX_COUNT_PER_PAGE - (u64)count_delta)
                                 return -E_REND_OVERFLOW;
                         get_count += count_delta;
                 } else if (count_delta < 0) {
