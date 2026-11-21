@@ -18,7 +18,7 @@ struct bin {
 #define ITER_COUNT     2
 u64 alloc_count = 0;
 u64 free_count = 0;
-static u64 next = 1;
+static u64 rng = 1;
 static void k_chunk_print(struct mem_chunk* tmp_chunk)
 {
         (void)tmp_chunk;
@@ -102,8 +102,10 @@ int kmalloc_test(void)
                 pr_info("kmalloc test iter %d\n", iter);
                 /*alloc and free test*/
                 for (int i = 0; i < PER_ITER_COUNT; i++) {
-                        next = rand64(next);
-                        struct bin* victim_b = &b_array[next % MAX_BIN];
+                        struct bin* victim_b;
+
+                        rng = splitmix64(&rng);
+                        victim_b = &b_array[rng % MAX_BIN];
                         if (victim_b->ptr) {
                                 /*if have alloced ,just check and free it*/
                                 int res = bin_check(victim_b);
@@ -117,8 +119,10 @@ int kmalloc_test(void)
                                 victim_b->ptr = NULL;
                                 victim_b->size = 0;
                         } else {
-                                /*else try to alloc one*/
-                                victim_b->size = rand64(next) % MAX_ALLOC_SIZE;
+                                /*else try to alloc one (probe copy; rng unchanged)*/
+                                u64 probe = rng;
+                                victim_b->size =
+                                        splitmix64(&probe) % MAX_ALLOC_SIZE;
                                 if (victim_b->size == 0) {
                                         continue;
                                 }

@@ -10,7 +10,7 @@
  and it's also an example of the usage of the rb tree*/
 #define max_node_num 128
 #define max_loops    128
-static u64 next = 1;
+static u64 rng = 1;
 struct t_node {
         struct rb_node rb;
         u32 key;
@@ -109,8 +109,8 @@ void rb_tree_test_remove(struct t_node* node, struct rb_root* root)
 void rb_tree_test_init(void)
 {
         for (int i = 0; i < max_node_num; i++) {
-                next = rand64(next);
-                node_list[i].key = next;
+                rng = splitmix64(&rng);
+                node_list[i].key = rng;
                 node_list[i].rb.left_child = node_list[i].rb.right_child = NULL;
                 node_list[i].rb.black_height = 0;
                 node_list[i].rb.rb_parent_color = 0;
