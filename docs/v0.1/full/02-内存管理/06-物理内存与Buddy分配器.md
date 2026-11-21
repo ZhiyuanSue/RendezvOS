@@ -473,7 +473,7 @@ error_t pmm_change_pages_ref(struct pmm *, ppn_t start, size_t n, bool inc);
 | `pmm_free` | 从 `ppn` 起释放 `page_number` 页（调用约定应与当初分配跨度一致）。成功 `0`，失败负错误码。按页降 `Page` 引用计数，减到 0 再并回桶；**不**检查这是不是一次 alloc 的整块。 |
 | `pmm_set_reclaim_hook` | 兼容层安装/清空 reclaim 回调。core 不注册。回调只在 `pmm_alloc` 当时拿不到页时调用，且 **锁已放**。hook 可对本 `pmm` `pmm_free`，**禁止** `pmm_alloc`。最多 64 次。 |
 | `pmm_lock` / `pmm_unlock` | MCS；`me` 必须是**当前核**的 `pmm_spin_lock[zone_id]`。 |
-| `pmm_change_pages_ref` | 对连续页增减 `Page` 引用计数；失败回滚本次已改部分。 |
+| `pmm_change_pages_ref` | 对连续页增减 `Page` 引用计数；首尾 PPN 须同属该 zone；失败按已成功改动的页数回滚（非循环下标）。 |
 | `BUDDY_MAXORDER` | `10`（最大 **4 MiB** / 次 = `2^10`×4 KiB；9 阶盖 2 MiB）。全局默认实例 `buddy_pmm`。 |
 
 ### 7.4 辅助约定
@@ -515,6 +515,7 @@ make ARCH=x86_64 config && make run
 
 ## 11. 变更记录
 
+- 2026-11-21：§7 `pmm_change_pages_ref`——首尾须同 zone；失败按已改动页数回滚。
 - 2026-11-19：底子重评批次——篇首/§6 引用缩号；§4.3 排密说明移出代码块；合成动机与跨洞合并句理顺；`aval_pages` 注释去编者注；§8 多架构句改写。
 - 2026-11-19：§8 与平台启动篇联动——澄清 arm64 DTB 协议无「整树 ≤ 2 MiB」上限（随 `05` 口径修正）。
 - 2026-10-31：`Page.ref` 拆 claim/get；与 rmap 解耦写清；alloc 用 claim，COW/pin 用 get（禁 0→1 复活）。

@@ -227,12 +227,13 @@ typedef enum {
      └──────────────────────┘
      失败 → phase3_clean_prev：释放本阶段已加 L2 锁、回收 L3 页
 
-   Phase 4：L3 叶级校验
+   Phase 4：L3 叶级校验（DELETE 两遍：先全段 undeletable，再全段 clear）
      ┌──────────────────────┐
      │  L3 node（叶子）     │ ← INSERT：检测 overlap（已 VALID/LAZY/owner 则 -E_REND_OVERFLOW）
-     │                       │   DELETE：检测 undeletable（须先 unbind，否则 -E_REND_NOFOUND）
+     │                       │   DELETE：先整段 undeletable（须先 unbind，否则 -E_REND_NOFOUND），
+     │                       │           全部通过后再整段 radix_node_clear（禁止边检边清）
      └──────────────────────┘
-     失败 → phase3_clean_all：回滚 Phase 3 全部 L2 锁
+     失败 → phase3_clean_all：回滚 Phase 3 全部 L2 锁（此时尚未 clear 任何叶子）
 
    Phase 5：计数回填（不可能失败）
      ┌──────────────────────┐
@@ -354,10 +355,11 @@ typedef enum {
 DELETE 不是独立函数，而是 `RADIX_RL_DELETE` 锁路径上的内部行为：
 
 ```text
-   Phase 4（DELETE）：
-     for each l3_node in [start, end):
+   Phase 4（DELETE，两遍式，同 leaf_unbind_range）：
+     pass1: for each l3_node in [start, end):
        if radix_l3_undeletable(l3_node):   ← 仍 VALID（未 unbind）
-         return -E_REND_NOFOUND
+         return -E_REND_NOFOUND            ← 尚未 clear；回滚只放锁/收表
+     pass2: for each l3_node in [start, end):
        radix_node_clear(l3_node)           ← 清叶子（flags/owner/rmap）
 
    Phase 5（DELETE，delta < 0）：
@@ -466,8 +468,9 @@ API 一律带前缀：`vmm_radix_tree_*`、`mm_user_utils_*`。
 | utils | 编排（已持 L0） | 失败回滚 |
 |------|------|------|
 | `set_range_and_fill` | `pmm_alloc` 后取 L2=INSERT，再 `insert_range`；逐页 `map` 后 `leaf_bind_range`，释放 L2，最后 `map_handler_zero_page` | 回滚已 map 前缀 + 删 radix 预约；返回 0 |
-| `fill_page_with_exist_range` | 单页：QUERY 后 `pmm_alloc`、`map`、`leaf_bind`、zero。叶已 VALID 则幂等成功 | 不生长新预约 |
-| `clean_range_and_unfill` | `leaf_unbind_range` 后释放 L2，再 `unmap` + `pmm_free`，最后 L2=DELETE 清预约 | 失败路径仍 `unlock_range_big` |
+| `install_existing_range` | **已有**连续 PPN（每页 `ref>0`）：L2=INSERT → `insert_range` → 逐页 `map` → `leaf_bind_range` → `pmm_change_pages_ref(+1)`；**不** alloc、**不** zero（fork 共享 / shm / 大块装页） | 若已 bind：先 unbind；再 unmap 前缀；DELETE 清预约；**不** `pmm_free` / **不** put 未取得的 ref |
+| `fill_page_with_exist_range` | 单页：QUERY 后 `pmm_alloc`、`map`、`leaf_bind`、zero。叶已 VALID 则幂等成功（「exist」= radix LAZY 已在，不是 existing PPN） | 不生长新预约 |
+| `clean_range_and_unfill` | `leaf_unbind_range` 后释放 L2，再 `unmap` + `pmm_free`，最后 L2=DELETE 清预约；unmap/`pmm_free` 用粘性错误（首败保留） | 任一步失败则不 DELETE；失败路径仍 `unlock_range_big` |
 | `remap_page` | `change_leaf_ppn` 后 `map(REMAP)`，成功则释放旧页 | `map` 失败回滚 radix |
 | `set_range_flags` | ABSOLUTE/DELTA/`DELTA_PTE_ONLY`；先改 PTE 再改 radix | 尝试恢复前缀 |
 
@@ -537,7 +540,7 @@ Radix_node_t *vmm_radix_tree_find_first_occupied_leaf(...);
 | `lock_range_big` | 只获取穿越的 L0 bit-lock（512 GiB 桶）；不生长下层。须配对 `unlock_range_big`。 |
 | `lock_range_small_with_big_locked` | 调用方已持有对应 L0；获取 L2 带锁。`INSERT`/`DELETE`/`QUERY_OR_CHANGE` 语义不同。 |
 | `lock_range_big_and_small` | 一次性获取 L0+L2，返回时**通常只持 L2**（L0 已释放）。 |
-| `find_first_occupied_interval` | 在已持有 L0 下找第一段连续占用；供 clone / `set_range_flags` 选取区间。 |
+| `find_first_occupied_interval` / `find_first_occupied_leaf` | 已持 L0；扫每个 2 Mi band 时另拿该 L2（等可能已放 L0 的旧持有者），返回前放 L2；供 clone / `set_range_flags`。 |
 
 ### 7.3 Radix 变更与生命周期
 
@@ -574,6 +577,8 @@ error_t vmm_radix_tree_destroy(...); /* clean_user + delete */
 
 ```c
 vaddr mm_user_utils_set_range_and_fill(VSpace *, vaddr start, size_t page_count, ENTRY_FLAGS_t);
+error_t mm_user_utils_install_existing_range(VSpace *, vaddr start, size_t page_count,
+                                             ppn_t ppn_first, ENTRY_FLAGS_t);
 error_t mm_user_utils_fill_page_with_exist_range(VSpace *, vaddr page_va, ENTRY_FLAGS_t);
 error_t mm_user_utils_clean_range_and_unfill(VSpace *, vaddr start, size_t page_count, ppn_t ppn_first);
 error_t mm_user_utils_remap_page(VSpace *, vaddr page_va, ppn_t new_ppn, ENTRY_FLAGS_t, ppn_t expect_old);
@@ -586,6 +591,7 @@ error_t mm_user_utils_set_range_flags(VSpace *, vaddr start, u64 length_bytes,
 | 接口 | 说明 |
 |------|------|
 | `set_range_and_fill` | 编排步骤与回滚见 §6.1 表。成功返回 `start`，失败 **0**（回滚前缀）；区间内已有可 INSERT 重叠则整次失败。 |
+| `install_existing_range` | 编排见 §6.1。装入**已有**连续 PPN（须 `ref>0`）；成功 `REND_SUCCESS`；失败回滚 radix/PTE，**不** `pmm_free`。 |
 | `fill_page_with_exist_range` | 单页：叶已 **VALID** 则成功空操作（幂等）；否则须已存在且 **LAZY**；其它情况失败（不隐式生长）。 |
 | `clean_range_and_unfill` | 编排步骤见 §6.1 表。失败路径须仍 `unlock_range_big`。 |
 | `remap_page` | 先改 radix 再 `map(REMAP)`（**不是** unmap+map）；单页原子性见 §4.5.4。 |
@@ -630,6 +636,7 @@ make ARCH=x86_64 config && make all && make run
 - 2026-11-19：底子重评批次——篇首/`09`/`31` 引用缩号；§9 写明由 `arch_vmm_test` 间接覆盖。
 - 2026-11-15：Maintainer 复审前可读性通读：清理 2026-10-04 口语替换的漏网（「到手/握着/开扫/挡/手里」→「拿到/持有/扫描/阻塞」系）；§4.1.1/§4.3 统一「没有下层**表页**时创建新树」表述；§4.3 Phase 4 回滚一句去重复；§4.5.2 与 §4.1.2 的 VALID|LAZY 硬保证改回链；§4.6 修转义方括号并把「INSERT 不在 ≥256 的用户路径上生长」补全因果；§3 `09` 补全文件名；§7「纠正」→「注意」（历史纠错已由变更记录承载）；删 §6.3 末尾面向编者的批注（与 §10 条目重复）；§9 去多余空行。技术内容未动。
 - 2026-10-25：全文语言整理：理顺直译句（「对其他 CPU 变得可见」等）与机械替换遗留的不一致（握/持有、interval/区间），技术内容未动。
+- 2026-11-21：新增 `mm_user_utils_install_existing_range`（已有 PPN 装入空闲 VA；fork/shm 底座）；§6.1 表 / §7.4 同步；与 `fill_page_with_exist_range` 语义区分写清。同日修 `leaf_unbind_range` 缺 `ppn_first`、理顺 L2/`leaf_bound` 回滚；修 `leaf_bind_range` 失败回滚误留 `VALID\|LAZY`；契约写明页须 `ref>0`。同日审阅修：DELETE Phase 4 两遍式（先 undeletable 再 clear，避免中途失败留下已清叶子+未减 count）；`clean_range_and_unfill` 粘性错误（unmap 失败不被后续 `pmm_free` 成功覆盖）并补拒 `root_vspace` / 缺根检查。§7.2 表补 `find_first_*` 扫 band 时持 L2。
 - 2026-10-24：§4.2 写清用户路径握 L0 vs 堆 `big_and_small` 早放 L0 的权衡（interval 发现 / TOCTOU）；`mm_user_utils.h` 同步。
 - 2026-10-24：§3 交叉引用改为 ensure/empty/unmap 三件套命名。
 - 2026-10-24：§3/§5 标明与 `mm_kernel_utils` 同级互斥；`mm_user_utils.h` 去掉 Doxygen `@{` 分组噪音。

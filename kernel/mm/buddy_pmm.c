@@ -356,6 +356,13 @@ error_t pmm_free(struct pmm *pmm, ppn_t ppn, size_t page_number)
                 if (!free_phy_page)
                         goto next_page;
 
+                if (!phy_Page_refed(free_phy_page)) {
+                        pr_error(
+                                "[ BUDDY ]pmm_free ppn=%llx already ref<=0 (double free?)\n",
+                                (unsigned long long)(ppn + (ppn_t)page_count));
+                        free_one_result = -E_RENDEZVOS;
+                        goto out_unlock_return;
+                }
                 phy_Page_ref_put(free_phy_page);
                 if (phy_Page_refed(free_phy_page))
                         goto next_page;

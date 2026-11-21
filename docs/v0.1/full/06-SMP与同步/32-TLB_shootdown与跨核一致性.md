@@ -9,7 +9,7 @@ v0.1 · 2026-09-27
 | | TLB 篇（策略 / mask） | **本篇** |
 |--|------------------|----------------|
 | mask 含义、schedule 里 set / 装根页表 / 刷旧 / clear | 主责 | 一句引用 |
-| new_map 本地 vs remap/unmap all_core | 主责 | 引用 |
+| map 后 all_core（含首次建映射；负向 TLB） | 主责 | 引用 |
 | x86：按 mask 软 IPI + invlpg | 策略层 | **gen/busy/done 握手** |
 | aarch64：`tlbi *is`，**常忽略 mask** | 已写 | **禁止再写「via IPI」** |
 | 门铃 / pending | 见软 IPI 篇（`30`） | 只写 TLB 消息槽如何用 IPI |
@@ -254,12 +254,12 @@ DEFINE_PER_CPU(..., smp_tlb_flush_message);
 
 ### 7.5 不走 shootdown 的本地 API（`tlb.h`）
 
-除 §7.2 的握手三件套外，`tlb.h` 还提供纯本地接口——只刷当前核，供 new_map、schedule 切出等「本核刚改完本核要用」的场合：
+除 §7.2 的握手三件套外，`tlb.h` 还提供纯本地接口——只刷当前核，供 schedule 切出等「本核刚改完本核要用」的场合（`map()` 成功路径已统一走 all_core，见 `11`）：
 
 | 接口 | x86 | aarch64 | 现役调用点 |
 |------|-----|---------|-----------|
-| `arch_tlb_invalidate_page(asid, addr)` | `invlpg`（asid 忽略） | `tlbi vae1` | new_map 本地档（`map_handler.c`） |
-| `arch_tlb_invalidate_kernel_page(addr)` | `invlpg` | `tlbi vaale1` | 内核 new_map / handler 页回收 |
+| `arch_tlb_invalidate_page(asid, addr)` | `invlpg`（asid 忽略） | `tlbi vae1` | 本地辅助；`map()` 不再作首次映射专用档 |
+| `arch_tlb_invalidate_kernel_page(addr)` | `invlpg` | `tlbi vaale1` | handler 页回收等本地内核失效 |
 | `arch_tlb_invalidate_vspace_page(asid, addr)` | CR3 读回写回（两参忽略） | `tlbi aside1`（addr 忽略） | `schedule()` 刷旧 AS（§4.2） |
 | `arch_tlb_invalidate_all` | CR3 读回写回 | `tlbi vmalle1` | IPI handler 的 `flush_all` 档 |
 | `arch_tlb_invalidate_range(asid, start, end)` | 逐页 `invlpg` 循环 | 逐页 `tlbi vae1` 循环 | **全树暂无调用者** |
@@ -295,6 +295,7 @@ DEFINE_PER_CPU(..., smp_tlb_flush_message);
 ---
 
 ## 11. 变更记录
+- 2026-11-21：`map()` 首次建映射也走 all_core；§1 分工表 / §7.5 去掉「new_map 本地档」表述（负向 TLB，见 `11`）。
 - 2026-11-19：底子首评批次——§7 opener；§9 测例口径。事实沿用 11-15。
 - 2026-11-15：Maintainer 复审前可读性通读——修旧目录编号残留：分工表列头与 §2/§3/§5 各处裸「02」「06」实为旧目录号（`02-内存管理/`、`06-SMP与同步/`），易与篇 `02`（启动流程总览）混淆，统一改 `11` / `30` 显式编号；篇名引用长文件名缩为「TLB 篇（`11`）」；「VSpace 所有权篇」按全仓先例归一为「所有权篇（`15`）」；§9 按测例树实况扩写（无直接测例，链路由用户 map/unmap 间接覆盖）。技术内容未动（busy/gen/done 所有权、teardown 门闩、`asid >= 2^16` 静默 return 均按当前代码复验）。
 

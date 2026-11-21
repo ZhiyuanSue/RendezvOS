@@ -72,7 +72,7 @@ cas_lock_t tlb_cpu_mask_lock;
 
 决策条件**不是**「是不是只有本 CPU」，而是 **「是不是第一次把这个 VA 映射上」**：
 
-- 首次 map（`new_map`）：内核 VA 做本地 kernel invalidate；用户 VA 做本地 `invalidate_page(asid, v)`。假定别人还没缓存过这个翻译。
+- 首次 map 与 remap/unmap：用户 VA 一律 `invalidate_page_all_core`（aarch64 的 `tlbi …is` 忽略 mask 全广播；x86 按 mask 软 IPI）。不再对首次 map 只刷本地——aarch64/riscv 可缓存负向翻译，他核若曾 walk 失败可能留着 miss。内核 VA 走 `kernel_page_all_core`（x86 该接口仍只本地，见 `tlb.h`）。
 - remap / unmap：内核走 `*_kernel_page_all_core`；用户走 `*_page_all_core(asid, v, &mask)`。改过、拆过的翻译，跑过这个地址空间的核都得动到。
 
 各 ISA 具体用哪条指令刷 TLB，见 §6.1；cache 相关名词（本仓库尚无通用 API）见 §6.3；函数签名见 §7。
@@ -347,6 +347,7 @@ void arch_smp_flush_tlb_init(void);
 
 ## 11. 变更记录
 
+- 2026-11-21：`map()` 成功路径统一 `*_all_core`（含首次建映射）；§4 去掉「new_map 只刷本地 / 假定无负向缓存」——aarch64 可缓存 miss。
 - 2026-11-19：底子重评批次——篇首/`30`/`32` 引用缩号；§4.3 标题改为「内核页为何不发 IPI」；§7 opener 拼回；AS→地址空间；online→在线。
 - 2026-11-15：Maintainer 复审前可读性通读：§4.3 整节重写——去掉「巨大的bug / 神秘学的bug / 无所谓啊 / 也没啥问题」等口语残留，`percpu`→per-CPU、`map handler`→`map_handler`，并核对 `arch_tlb_invalidate_kernel_page_all_core` 确为本核 `invlpg`；§4.2 标题「新 vs 改」→「首次映射与改 / 拆」；§4.1/§8/§10 裸篇号引用（07、下篇、30 / 32）补全篇名。技术内容未动。
 - 2026-10-31：§6.1 用户页：槽位路径 + `have_mapped(pin)` / `pmm_free` unpin；去掉「待查 ref」TODO。
