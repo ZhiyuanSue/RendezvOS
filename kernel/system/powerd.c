@@ -15,15 +15,17 @@
 static void* powerd_thread(void* arg)
 {
         (void)arg;
-        Named_Message_Port_t* port =
-                create_named_message_port(RENDEZVOS_POWERD_PORT_NAME, NULL);
+        Named_Message_Port_t* port = create_named_message_port(
+                RENDEZVOS_POWERD_PORT_NAME,
+                NULL,
+                &get_cpu_current_thread()->owned_named_ports);
         if (!port) {
                 pr_error("[powerd] create port failed\n");
                 return NULL;
         }
         if (register_named_port(global_port_table, port) != REND_SUCCESS) {
                 pr_error("[powerd] register port failed\n");
-                ref_put(&port->refcount, free_named_message_port_ref);
+                named_message_port_put_owner_ref(port);
                 return NULL;
         }
 

@@ -91,7 +91,7 @@ MSQ 假出队的细节见 `18-支持IPC的无锁MSQ队列实现.md` §1.4–1.5�
 
 兼容层典型编排（**具名 server / 具名 client** 的逐步用法、注销时序、失败时该认哪些返回值）集中在 §6.1 / §6.2，此处不再复列步骤。
 
-**纯匿名**（调用方直接传指针，例如 wait / sleep 一类）：先 `create_message_port(service_id)`，再用 `send_msg` / `recv_msg`，结束时 `close_port`，最后 `ref_put(..., free_message_port_ref)`。没有 hooks，也不进名表。
+**纯匿名**（调用方直接传指针，例如 wait / sleep 一类）：先 `create_message_port(service_id, owner_list)`（`owner_list` 见 §4.1 / §6.4；无归属则 `NULL`），再用 `send_msg` / `recv_msg`，结束时 `close_port`，再放下 create（先 `list_del_init(owner_link)` 再 `ref_put(..., free_message_port_ref)`）。没有 hooks，也不进名表。
 
 关闭 port 时，仍堵在 `thread_queue` 上的等待者必须被叫醒，否则会永远阻塞。发送侧与接收侧**通知方式不同**（因为醒回来时看到的 API 成功形态不同）。这里只记结论：
 
@@ -181,6 +181,7 @@ struct Msg_Port {
         u32 service_id;
         atomic64_t ops_life;
         atomic64_t ops_count;
+        struct list_entry owner_link; /* 可选：挂到调用方提供的 owner 链表头 */
 };
 typedef struct Msg_Port Message_Port_t;
 ```
@@ -195,8 +196,9 @@ typedef struct Msg_Port Message_Port_t;
 | `service_id` | 给 kmsg 的 `module` 一类标签用（例如 `PORT_CLOSED`）；与 `hdr.module` 同为 `u32`；**不是**注册表里的名字。 |
 | `ops_life` | 只有 OPEN 才允许 `port_ops_begin`；关闭时先进入 CLOSING，再落到 CLOSED。 |
 | `ops_count` | 已 begin 尚未 end 的人数；`close_port` 要等它归零，再清会合队列。 |
+| `owner_link` | 可选归属链节点。`create_*(…, owner_list)` 在 `owner_list != NULL` 时 `list_add_tail` 到**任意**调用方提供的 `list_entry` 头上——**不必**是 `Thread_Base`。常见做法是挂到 `&thread->owned_anon_ports` / `owned_named_ports`，由线程退出 walker 两阶段回收；也可以挂到别的宿主链表，由该宿主按同样不变量回收。`close_port` **不**摘链。 |
 
-API 要点：`message_port_init`（可嵌在别的结构里）或 `create_message_port`（堆上分配并 init）之后，`ops_life` 就是 OPEN。`close_port` 把状态从 OPEN 改成 CLOSING，等 `ops_count` 归零、清完队列，再改成 CLOSED；**不会**顺手 `ref_put`。调用方随后自己按需放下引用：堆上 create 出来的，通常再 `ref_put(..., free_message_port_ref)` 才会真正释放；嵌在别的结构里的，只 close，由外层宿主拆掉。
+API 要点：`message_port_init`（可嵌在别的结构里，所以会有这种只初始化不分配的接口，其中不挂链，只初始化链表节点）或 `create_*(…, owner_list)`（堆上分配并 init）之后，`ops_life` 就是 OPEN。`owner_list` 是链表头指针：`NULL` = 不挂链、无「随 owner 死亡自动收」义务；非 `NULL` 则挂上去。**不变量：还挂在某条 owner 链上 ⇔ create/ownership 那枚 ref 尚未放下。** `close_port`：OPEN→CLOSING，等 `ops_count` 归零、清完队列，再 CLOSED；**不**摘 `owner_link`，也**不会** `ref_put`。放下 create/ownership：`message_port_put_owner_ref` / `named_message_port_put_owner_ref`（先摘链再 put）；lookup / 表 pin 用普通 `ref_put`。嵌在别的结构里的 port 只 `message_port_init` + 日后 `close_port`，由外层宿主拆掉。
 
 **`ops_life` 怎么走：**
 
@@ -238,10 +240,10 @@ API 要点：`message_port_init`（可嵌在别的结构里）或 `create_messag
 
 | | 匿名 `Message_Port_t` | 具名 `Named_Message_Port_t` |
 |--|----------------------|------------------------------|
-| 创建 | `create_message_port(service_id)` / `message_port_init` | `create_named_message_port(name, hooks)`（`service_id` 由名字算出，不会是 0） |
+| 创建 | `create_message_port(service_id, owner_list)` / `message_port_init` | `create_named_message_port(name, hooks, owner_list)`（`service_id` 由名字算出，不会是 0） |
 | 收发 | `send_msg` / `recv_msg` 及其 try 变体 | 用 `named_port_send_msg` / `named_port_recv_msg` 等：先问 `ops_allow`，通过后再进内部那份匿名会合 |
 | 关闭会合 | `close_port` | 通常调用 `unregister_named_port`：先关掉内部的匿名会合，再从名表摘掉；若漏了 unregister，末次 `free_named_message_port_ref` 也会尽量保证已经 CLOSED |
-| 释放 | `free_message_port_ref` | **只能**用 `free_named_message_port_ref`；不要拿着内部匿名部分的指针去调 `free_message_port_ref` |
+| 释放 create | `message_port_put_owner_ref` | `named_message_port_put_owner_ref`；**不要**对内部匿名部分调 `free_message_port_ref` |
 
 业务代码也不要把具名 port 强转成 `Message_Port_t*` 再直接 `send_msg` / `recv_msg`，那样会跳过准入检查。
 
@@ -404,10 +406,10 @@ struct thread_port_cache port_cache; /* thread_lookup_port 的本地 cache（条
 
 兼容层里一个「对外服务」的线程，典型长这样：
 
-1. `create_named_message_port(name, hooks)` —— 得到具名 port；内部会合已经是 OPEN，但还没进名表，**别人按名找不到**。
+1. `create_named_message_port(name, hooks, owner_list)` —— 得到具名 port；内部会合已经是 OPEN，但还没进名表，**别人按名找不到**。`owner_list` 可为 `&thread->owned_named_ports`、别的宿主链表头，或 `NULL`（见 §6.4-7）。
 2. `register_named_port(global_port_table, port)` —— 挂进名表；若同名已被别的对象占用会失败。成功后别人才能按名找。
 3. 循环调用 `named_port_recv_msg(port)`；成功则 `dequeue_recv_msg()`，按 opcode / 载荷办事，再用 `ref_put(msg)`。
-4. 不再服务：先 `unregister_named_port(global_port_table, name)`，再对 create 时拿到的那份引用 `ref_put(..., free_named_message_port_ref)`。
+4. 不再服务：先 `unregister_named_port(global_port_table, name)`，再放下 create（`named_message_port_put_owner_ref(port)`，或等价的先摘链再 put）。
 
 接口使用者还要记住：
 
@@ -450,12 +452,13 @@ server 已经 `register_named_port` 之后，客户端：
 
 写调用方代码时可用下面几条自检：
 
-1. **每一份 create / lookup 拿到的具名 port，都要配对 `ref_put(..., free_named_message_port_ref)`。** 挂在名表期间，表自己另持一份；那份由 `unregister_named_port` 放下，不是客户端多 put 一次能代替的。
+1. **每一份 create / lookup 拿到的具名 port，都要配对放下。** lookup / 调用方 pin：`ref_put(..., free_named_message_port_ref)`。create/ownership：先摘 `owner_link` 再 put（`named_message_port_put_owner_ref`，或手写同等两步）。挂在名表期间，表另持一份，由 `unregister_named_port` 放下。
 2. **先 `unregister_named_port`，再 put 自己的引用。** 叫醒等待者发生在 unregister 内部的 `close_port`（见 §6.1）。
 3. **关 port 后的两种收尾形态都要处理**（§3 表；server 见 §6.1，client 见 §6.2）。
 4. **`port_cache` 不延长 port 寿命。** token 失效会回查名表；逻辑上仍以「手里握着的引用」为准。
 5. **线程退出与 port 上残留的 `Ipc_Request`：** request 握着 thread 的引用，避免野指针。会合时若线程已不是对应的 `block_on_*`，或 `port_ptr` 对不上，这条 request 会被丢掉（见 `20-阻塞与非阻塞收发.md`）。不要假设「线程一 exit，队上 request 立刻消失」，也不要为此再发明通用 `cancel_ipc`。
 6. **具名对象不要对内部那份匿名会合调用 `free_message_port_ref`。** 释放只能走 `free_named_message_port_ref`。
+7. **Owner 链表与 create 寿命。** `create_*(…, owner_list)` 的 `owner_list` 是**任意** `struct list_entry *` 链表头，**不**要求一定是 `Thread_Base` 上的字段；`NULL` = 不挂链。常见是 `&thread->owned_anon_ports` / `owned_named_ports`——线程退出时 `thread_close_owned_ports` 两阶段回收：phase1 对链上全部 close（具名用 `np->table` 做 `unregister_named_port`，不是写死 `global_port_table`），**保留** create ref；phase2 对仍在链上的节点 `*_put_owner_ref`。也可挂到别的宿主链表，由该宿主按同一不变量回收。**不变量：还挂在链上 ⇔ create 尚未放过**（自愿放下 create 必须先摘链；末次 `free_*_ref` 也会 `list_del_init` 兜底）。`close_port` **不**摘链。compat 侧 `get_or_create` 在 create+register 成功后另 `ref_get` 给调用方，避免把 create 当 lookup pin 放掉。IRQ / 尚无明确宿主时传 `NULL`。
 
 ---
 
@@ -470,12 +473,12 @@ server 已经 `register_named_port` 之后，客户端：
 | 场景 | 顺序 | 主要动到的结构 |
 |------|------|----------------|
 | 初始化建表 | `global_port_init` | 分配 `global_port_table`，`by_name` 为空索引 |
-| Server 公布具名 port | 先 `create_named_message_port`，再 `register_named_port` | 新的 `Named_Message_Port_t`（内部会合已是 OPEN）；表多持 1 份引用；名字可被查找 |
+| Server 公布具名 port | 先 `create_named_message_port(name, hooks, owner_list)`，再 `register_named_port` | 新的 `Named_Message_Port_t`（内部会合已是 OPEN）；表多持 1 份引用；名字可被查找；可选挂入 `owner_list` |
 | Client 找到 port | `thread_lookup_port` | 可能写入 `port_cache`；返回带引用的 `Named_Message_Port_t*` |
 | 创建消息并发送 | 依次 `create_message_data`、`create_message_with_msg`、`enqueue_msg_for_send`、`named_port_send_msg` | 新的 `Msg_Data_t` 与 `Message_t`；进入 `send_msg_queue`；在内部匿名会合上配对，或挂上 `Ipc_Request` |
 | 接收消息并释放 | 先 `named_port_recv_msg`，再 `dequeue_recv_msg`，用完 `ref_put(msg)` | 从 `recv_msg_queue` 取出 `Message_t`；节点回收经 EBR 推迟 |
-| 关闭 | `unregister_named_port`，各方再 `ref_put(..., free_named_message_port_ref)` | 先关掉内部匿名会合并清 `thread_queue`，再从名表摘掉；引用归零后释放具名对象 |
-| 纯匿名（无名字） | 先 `create_message_port(service_id)`，再用 `send_msg` / `recv_msg`，结束时 `close_port`，最后 `free_message_port_ref` | 不经名表，也没有 hooks |
+| 关闭 | `unregister_named_port`，各方再放下自己的 pin（create 须先摘链） | 先关掉内部匿名会合并清 `thread_queue`，再从名表摘掉；引用归零后释放具名对象 |
+| 纯匿名（无名字） | `create_message_port(service_id, owner_list)` → `send_msg` / `recv_msg` → `close_port` → 摘链 + `ref_put(..., free_message_port_ref)` | 不经名表，也没有 hooks |
 
 ### 7.2 匿名 Port（`port.h`）与具名 Port（`named_port.h`）
 
@@ -483,7 +486,8 @@ server 已经 `register_named_port` 之后，客户端：
 
 ```c
 error_t message_port_init(Message_Port_t *port, u32 service_id);
-Message_Port_t *create_message_port(u32 service_id);
+Message_Port_t *create_message_port(u32 service_id,
+                                    struct list_entry *owner_list);
 error_t close_port(Message_Port_t *port);
 error_t free_message_port_ref(ref_count_t *);
 bool port_ops_begin(Message_Port_t *port); /* ipc 内部：只看是否 OPEN */
@@ -495,7 +499,10 @@ void port_ops_end(Message_Port_t *port);
 ```c
 error_t global_port_init(void);
 Named_Message_Port_t *create_named_message_port(const char *name,
-                                                const port_append_hooks_t *hooks);
+                                                const port_append_hooks_t *hooks,
+                                                struct list_entry *owner_list);
+void message_port_put_owner_ref(Message_Port_t *port);
+void named_message_port_put_owner_ref(Named_Message_Port_t *port);
 error_t register_named_port(struct Port_Table *table, Named_Message_Port_t *port);
 error_t unregister_named_port(struct Port_Table *table, const char *name);
 Named_Message_Port_t *port_table_lookup(struct Port_Table *, const char *name);
@@ -512,8 +519,9 @@ error_t named_port_try_recv_msg(Named_Message_Port_t *port);
 | 接口 | 对数据结构做了什么 |
 |------|-------------------|
 | `global_port_init` | 调用 `port_table_create()`，结果写入 `global_port_table`。得到一张空表，不预注册任何 port。失败则返回 `-E_RENDEZVOS`。 |
-| `create_message_port` | 堆上分配匿名 `Message_Port_t` 并 init，`ops_life` 为 OPEN。没有名字，也没有 hooks。 |
-| `create_named_message_port` | 堆上分配 `Named_Message_Port_t`（可带尾部 `append_info`）；内部匿名会合为 OPEN；`service_id` 由名字算出（不会是 0）；**此时还不在名表里**。若 `hooks->init` 失败则回滚。 |
+| `create_message_port` | 堆上分配匿名 `Message_Port_t` 并 init，`ops_life` 为 OPEN；`owner_list != NULL` 时挂入该链表头。没有名字，也没有 hooks。 |
+| `create_named_message_port` | 堆上分配 `Named_Message_Port_t`（可带尾部 `append_info`）；内部匿名会合为 OPEN；`service_id` 由名字算出（不会是 0）；**此时还不在名表里**；可选挂 `owner_list`。若 `hooks->init` 失败则回滚。 |
+| `message_port_put_owner_ref` / `named_message_port_put_owner_ref` | 先摘 `owner_link`，再 put create/ownership。只用于放下归属引用，不要用于 lookup / 表 pin。 |
 | `register_named_port` | 持表锁：可选地跑 `ops_allow(REGISTER)`，再按 `name` 插入，写上 `table`，表对 port `ref_get` 一次。内部会合必须仍是 OPEN。重名且不是同一对象则失败。 |
 | `unregister_named_port` | 先对内部匿名会合调用 `close_port`（OPEN 经 CLOSING 清队列后到 CLOSED），再从名表摘掉，放下表持有的那份引用。名字本来就不在表中时也返回成功。 |
 | `port_table_lookup*` | 在名表里按名找到 port，给调用方一份引用，再跑 `ops_allow(LOOKUP)`；若拒绝则放下引用并返回 `NULL`。带 token 的变体把（行下标，代际）交给线程缓存用。 |
@@ -563,12 +571,14 @@ Port 的对象模型与 ISA 无关；原子操作相关实现随 arch，语义�
 
 - 具名侧可以用 `port_append_hooks_t` / `ops_allow` 做准入（见 `22-Port-hook与准入.md`）；生产环境也可以一个 hook 都不挂。
 - 按名对外服务的业务，收发请走 `named_port_send_msg` / `named_port_recv_msg` 一类封装，不要把具名 port 强转成匿名指针再直接调用 `send_msg` / `recv_msg`。
+- **Owner 链表与 port 寿命（已接）：** `create_*` 显式 `owner_list`（任意链表头，常见为线程 `owned_*`，**不**绑定必须是 `Thread_Base`；`NULL`=不挂链）。`close_port` 不摘链。挂链⇔欠 create；放下 create 须先摘链再 put。线程若使用自带 `owned_*`，退出两阶段 close/unregister → unlink+put。IRQ / 无明确宿主时传 `NULL`。
 
 ---
 
 ## 11. 变更记录
 
-- 2026-11-20：结构债清理——§3 具名 server / client 步骤清单与 §6.1 / §6.2 近重复，§3 收为交叉引用；§3 关闭通知结论表保留原位（他篇「`19-Port与消息模型.md` §3」锚点不变）。
+- 2026-11-20：文档澄清——`owner_list` 是任意 `list_entry` 头，不必是 `Thread_Base`；线程 `owned_*` 只是常见宿主。对齐 create 签名、摘链再 put create、两阶段 exit、`named_message_port_put_owner_ref`。
+- 2026-11-20：create_* 改为显式 owner（先 `owner_thread` 再改为 `owner_list`）；A3 简化——双链表、无锁、`close_port` 不摘链；退出两阶段；挂链⇔欠 create；get_or_create 成功后额外 `ref_get`。同日结构债清理——§3 具名步骤与 §6.1 / §6.2 近重复，§3 收为交叉引用；§3 关闭通知结论表保留原位。
 - 2026-11-19：底子重评批次——篇首缩号；「在他的」→「它的」；`port_ptr` 衍字；§9 测例口径。
 - 2026-11-19：匿名 / 具名定稿对齐——§3 / §4.0 / §4.1.1 / §4.4 / §5 / §6 / §7 改用具名创建、注册与 `named_port_*_msg`；`service_id` 为 `u32`；去掉 ACTIVE / REGISTERED 与旧 `register_port` 叙事；释放路径分清匿名与具名。同日按审阅意见润色：少用箭头串写步骤，少夹半截英文词。
 - 2026-10-17：§1.2 / §4.3 写清 `Ipc_Request` 对 TCB 的 get/put 与节点自身 refcount；逐步时序指 `20-阻塞与非阻塞收发.md` §4.1。

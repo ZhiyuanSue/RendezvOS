@@ -230,6 +230,10 @@ ARM 二次核一般不走 x86 那种「往低 1 MiB 发 SIPI」。常见是固
 
 aarch64 没有 GS。本仓库把 EL1 的 **`TPIDR_EL1`** 当成 per-CPU 区基址（`arch_enable_percpu` 写入）。访问约定见 per-CPU 篇。
 
+#### RNDR：片上硬件随机数（FEAT_RNG）
+
+ARM 的片上随机数源叫 **RNDR**，属可选特性 **FEAT_RNG**。是否实现读 `ID_AA64ISAR0_EL1`（指令集属性寄存器 0）的 **RNDR 字段 \[63:60\]**：`0b0001` 为实现。实现时 `mrs` **`RNDR_EL1`**（编码 `S3_3_C2_C4_0`）取一个 64 位随机数，这条指令用 **NZCV** 报成败——`NZCV=0000` 有效，置 `Z=1` 表示本次暂无数据，可重试。同编码族还有 **`RNDRRS_EL1`**（`S3_3_C2_C4_1`），每次读前强制再播种（reseed），本仓库暂未用。本内核「现读属性寄存器、不具备绝不执行 MRS、不做软件兜底」的策略与混合器在基础设施篇（`42`）**§4.4**。
+
 #### `svc`：异常进核
 
 低特权用 **`svc` 进 EL1**，CPU 从 **VBAR** 指向的表取处理入口，再进本仓库的 trap 分发。和 x86 `syscall` 直跳一条 MSR 里的地址不同。本篇 `arch_start_core` 只登记「系统调用」那条固定 trap；入口怎么保存、恢复 IRQ 状态，见系统调用入口篇。
@@ -315,8 +319,8 @@ BSP 走到这里时由 `cmain` 调用，AP 则由 `start_secondary_cpu` 调用�
 
 | 调用方 | 和本篇有关的顺序 |
 |--------|------------------|
-| BSP `cmain` | ……经 **`prepare_arch`**、`phy_mm_init`、**`arch_cpu_info`**、`arch_enable_percpu(BSP_ID)`、`virt_mm_init`，再 **`arch_start_platform`**，然后 **`arch_start_core(BSP_ID)`**…… |
-| AP `start_secondary_cpu` | ……到 **`arch_start_core(cpu_id)`**……（不再走 `prepare_arch` / `arch_cpu_info` / `arch_start_platform`） |
+| BSP `cmain` | ……经 **`prepare_arch`**、`phy_mm_init`、**`arch_cpu_info`**、`arch_enable_percpu(BSP_ID)`、`virt_mm_init`，再 **`arch_start_platform`**、**`arch_start_core(BSP_ID)`**、`random_cpu_init`（本核随机数，见 `42` §4.4）…… |
+| AP `start_secondary_cpu` | ……到 **`arch_start_core(cpu_id)`** 后 **`random_cpu_init`**……（不再走 `prepare_arch` / `arch_cpu_info` / `arch_start_platform`） |
 
 GIC：分发器只在 `arch_start_platform`；CPU 接口在每个核的 `arch_start_core`。
 
@@ -378,6 +382,8 @@ make ARCH=aarch64 config && make run
 
 ## 11. 变更记录
 
+- 2026-11-21：随机数改 per-CPU——§7.1 `random_init` 改 `random_cpu_init`，BSP 在 `arch_start_core` 之后、AP 同样每核一次（对齐 `main.c` / `smp.c`）；机制见 `42` §4.4。
+- 2026-11-21：§4.6 新增「RNDR」小节（FEAT_RNG、`ID_AA64ISAR0_EL1[63:60]` 探测字段、`RNDR_EL1` NZCV 成败语义、RNDRRS 备而不用；策略与混合器归 `42` §4.4）；§7.1 编排顺序补 `random_init`（与 `main.c` 一致）；「熵」措辞改「随机数」。
 - 2026-11-19：底子重评批次——纠正 §4.6「协议要求 DTB ≤ 2 MiB」：协议无此上限，2 MiB 为本仓库 early 拷贝/映射约束（对齐 `36-DTB与设备树-aarch64.md`）；`cpu_number` 笔误改为 `cpu_id`；篇首引用补号。
 - 2026-11-15：FP（E13）跟进——§4.6/§6.3/§6.5 写明 `enable_fp` BSP 与 AP 启动链各调一次（`orr` 置 FPEN=0b11）；您的 §4.6 重写（V/Q、FPCR/FPSR、SVE 边界、eager FPSIMD）已对 boot.S / arch_switch.S 逐条核实，无误。
 - 2026-11-13：§4.6 浮点节点明 V/Q、FPCR/FPSR、SVE 边界，并回链线程篇 §6.6；切换已改为 eager FPSIMD。

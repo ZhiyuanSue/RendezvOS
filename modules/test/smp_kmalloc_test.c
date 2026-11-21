@@ -18,7 +18,7 @@ struct bin {
 #define ITER_COUNT     2
 DEFINE_PER_CPU(u64, smp_alloc_count);
 DEFINE_PER_CPU(u64, smp_free_count);
-DEFINE_PER_CPU(u64, smp_next);
+DEFINE_PER_CPU(u64, smp_rng);
 static void k_chunk_print(struct mem_chunk* tmp_chunk)
 {
         (void)tmp_chunk;
@@ -76,7 +76,7 @@ int smp_kmalloc_test(void)
 {
         /*first we try to alloc one 8 Bytes as basic test*/
         kmalloc_print();
-        percpu(smp_next) = 1;
+        percpu(smp_rng) = 1;
         struct allocator* malloc = percpu(kallocator);
         pr_info("[CPU:%d]\t[allocator\t@\t%lx]\n", percpu(cpu_number), malloc);
         void* test_alloc = malloc->m_alloc(malloc, 8);
@@ -99,9 +99,12 @@ int smp_kmalloc_test(void)
                 pr_info("kmalloc test iter %d\n", iter);
                 /*alloc and free test*/
                 for (int i = 0; i < PER_ITER_COUNT; i++) {
-                        percpu(smp_next) = rand64(percpu(smp_next));
-                        struct bin* victim_b =
-                                &b_array[percpu(smp_next) % MAX_BIN];
+                        u64 state = percpu(smp_rng);
+                        u64 probe;
+                        struct bin* victim_b;
+
+                        percpu(smp_rng) = splitmix64(&state);
+                        victim_b = &b_array[percpu(smp_rng) % MAX_BIN];
                         if (victim_b->ptr) {
                                 /*if have alloced ,just check and free it*/
                                 int res = bin_check(victim_b);
@@ -115,9 +118,10 @@ int smp_kmalloc_test(void)
                                 victim_b->ptr = NULL;
                                 victim_b->size = 0;
                         } else {
-                                /*else try to alloc one*/
-                                victim_b->size = rand64(percpu(smp_next))
-                                                 % MAX_ALLOC_SIZE;
+                                /*else try to alloc one (probe copy; smp_rng unchanged)*/
+                                probe = percpu(smp_rng);
+                                victim_b->size =
+                                        splitmix64(&probe) % MAX_ALLOC_SIZE;
                                 if (victim_b->size == 0) {
                                         continue;
                                 }

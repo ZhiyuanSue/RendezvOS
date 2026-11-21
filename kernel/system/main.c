@@ -5,6 +5,7 @@
 #include <rendezvos/task/initcall.h>
 #include <rendezvos/system/panic.h>
 #include <rendezvos/system/powerd.h>
+#include <rendezvos/system/random.h>
 extern int log_level;
 extern char _bss_start, _bss_end;
 extern char _end;
@@ -57,6 +58,7 @@ void cmain(struct setup_info *arch_setup_info)
         if (arch_start_core(BSP_ID)) {
                 kernel_panic("[ERROR]cmain: arch_start_core failed");
         }
+        random_cpu_init();
         init_core_id_system();
         if (global_port_init()) {
                 kernel_panic("[ERROR]cmain: global_port_init failed");

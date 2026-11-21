@@ -4,7 +4,9 @@
 #include <rendezvos/mm/allocator.h>
 #include <rendezvos/smp/percpu.h>
 #include <rendezvos/sync/spin_lock.h>
+#include <rendezvos/task/thread.h>
 #include <common/string.h>
+#include <common/dsa/list.h>
 #include <modules/log/log.h>
 
 DEFINE_PER_CPU(struct spin_lock_t, port_table_spin_lock);
@@ -110,7 +112,8 @@ static u32 service_id_from_name(const char* name)
 }
 
 Named_Message_Port_t*
-create_named_message_port(const char* name, const port_append_hooks_t* hooks)
+create_named_message_port(const char* name, const port_append_hooks_t* hooks,
+                          struct list_entry* owner_list)
 {
         size_t name_len;
         struct allocator* cpu_kallocator;
@@ -149,6 +152,9 @@ create_named_message_port(const char* name, const port_append_hooks_t* hooks)
                         return NULL;
                 }
         }
+
+        if (owner_list)
+                list_add_tail(&named_port->owner_link, owner_list);
 
         return named_port;
 }
@@ -206,6 +212,8 @@ error_t free_named_message_port_ref(ref_count_t* ref_count_ptr)
 
         if (named_port->append_hooks && named_port->append_hooks->fini)
                 named_port->append_hooks->fini(named_port);
+
+        list_del_init(&anon->owner_link);
 
         cpu_kallocator = percpu(kallocator);
         if (cpu_kallocator)

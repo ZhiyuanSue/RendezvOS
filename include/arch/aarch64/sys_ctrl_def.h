@@ -90,6 +90,27 @@
         (((mmfr0)&ID_AA64MMFR0_EL1_ASIDBITS_MASK) \
          >> ID_AA64MMFR0_EL1_ASIDBITS_SHIFT)
 
+/*
+ * ID_AA64ISAR0_EL1.RNDR, bits [63:60]:
+ *   0b0000 — FEAT_RNG not implemented
+ *   0b0001 — RNDR / RNDRRS present (ARMv8.5)
+ * Encoding: S3_0_C0_C6_0
+ */
+#define ID_AA64ISAR0_EL1_RNDR_SHIFT (60)
+#define ID_AA64ISAR0_EL1_RNDR_WIDTH (4)
+#define ID_AA64ISAR0_EL1_RNDR_MASK \
+        (0xFULL << ID_AA64ISAR0_EL1_RNDR_SHIFT)
+
+#define ID_AA64ISAR0_EL1_RNDR_NONE (0)
+#define ID_AA64ISAR0_EL1_RNDR_IMPL (1)
+
+#define ID_AA64ISAR0_EL1_GET_RNDR(isar0)      \
+        (((isar0)&ID_AA64ISAR0_EL1_RNDR_MASK) \
+         >> ID_AA64ISAR0_EL1_RNDR_SHIFT)
+
+#define AARCH64_SYSREG_RNDR   "S3_3_C2_C4_0"
+#define AARCH64_SYSREG_RNDRRS "S3_3_C2_C4_1"
+
 /*MAIR*/
 #define MAIR_EL1_NR     (8)
 #define MAIR_EL1_ATTR_0 (0b00000000) /*nGnRnE Device memory*/

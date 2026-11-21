@@ -6,6 +6,7 @@
 #include <rendezvos/task/thread.h>
 #include <rendezvos/task/initcall.h>
 #include <rendezvos/system/powerd.h>
+#include <rendezvos/system/random.h>
 int NR_CPU = 1;
 DEFINE_PER_CPU(volatile u64, CPU_STATE);
 #define ALL_CPU_ENABLED_FAIL 0
@@ -39,6 +40,7 @@ void start_secondary_cpu(struct setup_info *arch_setup_info)
                 print("[ERROR] start cpu arch fail\n");
                 return;
         }
+        random_cpu_init();
         pr_info("successfully start secondary cpu %d\n", current_cpu_id);
         atomic64_store((volatile u64 *)&per_cpu(CPU_STATE, current_cpu_id),
                        cpu_enable);

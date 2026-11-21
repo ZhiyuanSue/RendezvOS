@@ -75,7 +75,10 @@ error_t kernel_port_register(void)
                 return -E_RENDEZVOS;
         }
 
-        port = create_named_message_port(KERNEL_PORT_NAME, NULL);
+        port = create_named_message_port(
+                KERNEL_PORT_NAME,
+                NULL,
+                &percpu(boot_thread_ptr)->owned_named_ports);
         if (!port) {
                 pr_error("[kernel_port] create_message_port '%s' failed\n",
                          KERNEL_PORT_NAME);
@@ -87,14 +90,14 @@ error_t kernel_port_register(void)
                 pr_error("[kernel_port] register_port '%s' failed e=%d\n",
                          KERNEL_PORT_NAME,
                          (int)err);
-                ref_put(&port->refcount, free_named_message_port_ref);
+                named_message_port_put_owner_ref(port);
                 return err;
         }
 
         pr_info("[kernel_port] registered '%s' service_id=%u\n",
                 KERNEL_PORT_NAME,
                 (unsigned)port->service_id);
-        ref_put(&port->refcount, free_named_message_port_ref);
+        named_message_port_put_owner_ref(port);
         return REND_SUCCESS;
 }
 
@@ -113,8 +116,9 @@ error_t kernel_handle_msg(void)
                 error_t e = named_port_recv_msg(port);
 
                 if (e != REND_SUCCESS) {
-                        pr_error("[boot_thread] named_port_recv_msg failed e=%d\n",
-                                 (int)e);
+                        pr_error(
+                                "[boot_thread] named_port_recv_msg failed e=%d\n",
+                                (int)e);
                         continue;
                 }
 

@@ -92,11 +92,29 @@ vaddr mm_user_utils_set_range_and_fill(struct VSpace* vs, vaddr range_start,
                                        size_t page_count, ENTRY_FLAGS_t flags);
 
 /**
+ * @brief Map already-owned contiguous PPNs into a free VA range (no alloc/zero).
+ *
+ * Opposite of @c set_range_and_fill. Not @c fill_page_with_exist_range (that
+ * fills an existing LAZY leaf with a **new** frame). Each PPN must already
+ * have @c ref_count > 0; bumps ref by 1 per page. On failure rolls back
+ * radix/PTE only — never @c pmm_free.
+ *
+ * Pre: same L0 contract as @c mm_user_utils_set_range_and_fill.
+ *
+ * @return @c REND_SUCCESS or a negative @c error_t.
+ */
+error_t mm_user_utils_install_existing_range(struct VSpace* vs,
+                                             vaddr range_start,
+                                             size_t page_count,
+                                             ppn_t ppn_first,
+                                             ENTRY_FLAGS_t flags);
+
+/**
  * @brief Turn one LAZY radix leaf into a zero-filled mapped page (VALID).
  *
  * Exactly one page. Already-VALID leaf means success and no-op. Otherwise the
  * leaf must already exist and be LAZY (not VALID). No implicit grow of new
- * reservations.
+ * reservations. Allocates a **new** physical page (not an existing PPN).
  *
  * Pre: same L0 contract as @c mm_user_utils_set_range_and_fill.
  */

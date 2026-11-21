@@ -12,7 +12,7 @@
  * Backing kva: upper layer kmalloc → insert(flags=0) → slice m_free on remove.
  * Radix shells: slice internal.  See ps_clear_leaf_entry in page_slice.c.
  *
- * Fixed regression + rand64 fuzz (multiple fixed seeds).
+ * Fixed regression + splitmix64 fuzz (multiple fixed seeds).
  *
  * INDEX3 = a third index radix level (height 4 on slice->root).  Logical max
  * span is ~32M pages (~128 TiB byte cap in header).  Dense INDEX3 fuzz would
@@ -452,9 +452,9 @@ static bool ps_fuzz_pick_pgoff(u64* rng, u64 max_pages, u32 slot,
         if (!pgoff_out || max_pages == 0)
                 return false;
 
-        *rng = rand64(*rng);
+        *rng = splitmix64(rng);
         if (((*rng) >> 40) % 16 == 0) {
-                *rng = rand64(*rng);
+                *rng = splitmix64(rng);
                 pgoff = bounds[(*rng) % (sizeof(bounds) / sizeof(bounds[0]))];
                 if (pgoff < max_pages && !ps_fuzz_pgoff_used(pgoff, slot)) {
                         *pgoff_out = pgoff;
@@ -463,7 +463,7 @@ static bool ps_fuzz_pick_pgoff(u64* rng, u64 max_pages, u32 slot,
         }
 
         for (try = 0; try < 16; try++) {
-                *rng = rand64(*rng);
+                *rng = splitmix64(rng);
                 pgoff = (*rng) % max_pages;
                 if (!ps_fuzz_pgoff_used(pgoff, slot)) {
                         *pgoff_out = pgoff;
@@ -528,9 +528,9 @@ static int ps_fuzz_run(struct page_slice* slice, struct allocator* alloc,
                 u64 pgoff;
                 vaddr kva;
 
-                rng = rand64(rng);
+                rng = splitmix64(&rng);
                 slot = (u32)(rng % PS_FUZZ_SHADOW_MAX);
-                rng = rand64(rng);
+                rng = splitmix64(&rng);
                 kind = (u32)(rng % 10);
 
                 if (kind <= 5) {

@@ -89,8 +89,8 @@ vaddr mm_user_utils_set_range_and_fill(struct VSpace* vs, vaddr range_start,
 {
         struct map_handler* handler = &percpu(Map_Handler);
         if (!vs || vs == &root_vspace || !vs->pmm || page_count == 0
-            || ROUND_DOWN(range_start, PAGE_SIZE) != range_start
-            || !vs->vspace_root_addr || !vs->root_radix) {
+            || !ALIGNED(range_start, PAGE_SIZE) || !vs->vspace_root_addr
+            || !vs->root_radix) {
                 return 0;
         }
 
@@ -220,6 +220,128 @@ out_free_phys:
         return 0;
 }
 
+error_t mm_user_utils_install_existing_range(struct VSpace* vs,
+                                             vaddr range_start,
+                                             size_t page_count, ppn_t ppn_first,
+                                             ENTRY_FLAGS_t flags)
+{
+        struct map_handler* handler = &percpu(Map_Handler);
+        VSpace* owner_vs;
+        tagged_ptr_t owner;
+        ENTRY_FLAGS_t bind_flags;
+        vaddr range_end;
+        ppn_t ppn_last;
+        error_t err;
+        error_t fail = -E_RENDEZVOS;
+        size_t pages_mapped = 0;
+
+        if (!vs || vs == &root_vspace || !vs->pmm || page_count == 0
+            || !ALIGNED(range_start, PAGE_SIZE) || invalid_ppn(ppn_first)
+            || !vs->vspace_root_addr || !vs->root_radix) {
+                return -E_IN_PARAM;
+        }
+        ppn_last = ppn_first + (ppn_t)page_count - 1;
+        if (ppn_last < ppn_first || invalid_ppn(ppn_last) || !vs->pmm->zone
+            || !ppn_in_Zone(vs->pmm->zone, ppn_first)
+            || !ppn_in_Zone(vs->pmm->zone, ppn_last)) {
+                return -E_IN_PARAM;
+        }
+        if (!vmm_radix_tree_calculate_end_check(
+                    range_start, page_count, &range_end)) {
+                return -E_IN_PARAM;
+        }
+
+        owner_vs = vs->root_vs ? vs->root_vs : vs;
+        owner = tp_new((void*)owner_vs, (u16)percpu(cpu_number));
+        bind_flags = entry_flags_rm_sw_flags(
+                flags == PAGE_ENTRY_NONE ? (ENTRY_FLAGS_t)0 : flags);
+        if (!(bind_flags & PAGE_ENTRY_VALID))
+                bind_flags |= (ENTRY_FLAGS_t)PAGE_ENTRY_VALID;
+
+        err = vmm_radix_tree_lock_range_small_with_big_locked(
+                handler, vs, range_start, range_end, RADIX_RL_INSERT);
+        if (err != REND_SUCCESS) {
+                pr_error(
+                        "[MM_USER] install_existing_range: L2 INSERT fail e=%d\n",
+                        (int)err);
+                return err;
+        }
+
+        if (vmm_radix_tree_insert_range(
+                    vs, owner, range_start, bind_flags, range_end)
+            != REND_SUCCESS) {
+                pr_error(
+                        "[MM_USER] install_existing_range: insert_range fail\n");
+                fail = -E_RENDEZVOS;
+                goto out_unlock_l2;
+        }
+
+        while (pages_mapped < page_count) {
+                vaddr page_va = range_start + pages_mapped * PAGE_SIZE;
+
+                err = map(vs,
+                          ppn_first + (ppn_t)pages_mapped,
+                          VPN(page_va),
+                          3,
+                          bind_flags,
+                          handler);
+                if (err != REND_SUCCESS) {
+                        pr_error(
+                                "[MM_USER] install_existing_range: map fail page %lu e=%d\n",
+                                (unsigned long)pages_mapped,
+                                (int)err);
+                        fail = err;
+                        goto out_unmap;
+                }
+                pages_mapped++;
+        }
+
+        if (vmm_radix_tree_leaf_bind_range(
+                    vs, range_start, ppn_first, range_end, bind_flags)
+            != REND_SUCCESS) {
+                pr_error(
+                        "[MM_USER] install_existing_range: leaf_bind_range fail\n");
+                fail = -E_RENDEZVOS;
+                goto out_unmap;
+        }
+
+        err = pmm_change_pages_ref(vs->pmm, ppn_first, page_count, true);
+        if (err != REND_SUCCESS) {
+                pr_error(
+                        "[MM_USER] install_existing_range: pmm_change_pages_ref(+1) fail e=%d\n",
+                        (int)err);
+                fail = err;
+                goto out_unbind;
+        }
+
+        (void)vmm_radix_tree_unlock_range_small(vs, range_start, range_end);
+        return REND_SUCCESS;
+
+out_unbind:
+        (void)vmm_radix_tree_leaf_unbind_range(
+                vs, range_start, ppn_first, range_end);
+out_unmap:
+        while (pages_mapped > 0) {
+                pages_mapped--;
+                (void)unmap(vs,
+                            VPN(range_start + pages_mapped * PAGE_SIZE),
+                            0,
+                            handler);
+        }
+        (void)vmm_radix_tree_unlock_range_small(vs, range_start, range_end);
+        if (vmm_radix_tree_lock_range_small_with_big_locked(
+                    handler, vs, range_start, range_end, RADIX_RL_DELETE)
+            == REND_SUCCESS) {
+                (void)vmm_radix_tree_unlock_range_small(
+                        vs, range_start, range_end);
+        }
+        return fail;
+
+out_unlock_l2:
+        (void)vmm_radix_tree_unlock_range_small(vs, range_start, range_end);
+        return fail;
+}
+
 error_t mm_user_utils_fill_page_with_exist_range(struct VSpace* vs,
                                                  vaddr page_va,
                                                  ENTRY_FLAGS_t leaf_flags)
@@ -233,7 +355,7 @@ error_t mm_user_utils_fill_page_with_exist_range(struct VSpace* vs,
             || !vs->root_radix) {
                 return -E_IN_PARAM;
         }
-        if (ROUND_DOWN(page_va, PAGE_SIZE) != page_va)
+        if (!ALIGNED(page_va, PAGE_SIZE))
                 return -E_IN_PARAM;
         if (!vmm_radix_tree_calculate_end_check(page_va, 1, &page_range_end))
                 return -E_IN_PARAM;
@@ -340,13 +462,14 @@ error_t mm_user_utils_clean_range_and_unfill(struct VSpace* vs,
                                              size_t page_count, ppn_t ppn_first)
 {
         struct map_handler* handler = &percpu(Map_Handler);
-        if (!vs || !vs->pmm || page_count == 0
-            || ROUND_DOWN(range_start, PAGE_SIZE) != range_start
-            || invalid_ppn(ppn_first)) {
+        if (!vs || vs == &root_vspace || !vs->pmm || page_count == 0
+            || !ALIGNED(range_start, PAGE_SIZE) || invalid_ppn(ppn_first)
+            || !vs->vspace_root_addr || !vs->root_radix) {
                 return -E_IN_PARAM;
         }
 
         error_t err;
+        error_t sticky = REND_SUCCESS;
         vaddr range_end;
         if (!vmm_radix_tree_calculate_end_check(
                     range_start, page_count, &range_end)) {
@@ -395,7 +518,8 @@ error_t mm_user_utils_clean_range_and_unfill(struct VSpace* vs,
                                 "[MM_USER] clean_range_and_unfill: unmap fail page %lu ppn=%ld\n",
                                 (unsigned long)page_index,
                                 (long)unmapped_ppn);
-                        err = -E_RENDEZVOS;
+                        if (sticky == REND_SUCCESS)
+                                sticky = -E_RENDEZVOS;
                         continue;
                 }
                 err = vs->pmm->pmm_free(vs->pmm, unmapped_ppn, 1);
@@ -405,9 +529,12 @@ error_t mm_user_utils_clean_range_and_unfill(struct VSpace* vs,
                                 (unsigned long)range_start,
                                 (long)page_va,
                                 (int)err);
+                        if (sticky == REND_SUCCESS)
+                                sticky = err;
                 }
         }
-        if (err != REND_SUCCESS) {
+        if (sticky != REND_SUCCESS) {
+                err = sticky;
                 goto out_fail_hold_l0;
         }
 
@@ -524,14 +651,12 @@ error_t mm_user_utils_remap_page(struct VSpace* vs, vaddr page_va,
                 return err;
         }
 
-        if (old_ppn != new_ppn) {
-                err = vs->pmm->pmm_free(vs->pmm, old_ppn, 1);
-                if (err != REND_SUCCESS) {
-                        pr_error(
-                                "[MM_USER] remap_page: pmm_free old ppn=%ld e=%d\n",
-                                (long)old_ppn,
-                                (int)err);
-                }
+        /* Remap already committed; free failure must not return an error and
+         * just print. */
+        if (old_ppn != new_ppn
+            && vs->pmm->pmm_free(vs->pmm, old_ppn, 1) != REND_SUCCESS) {
+                pr_error("[MM_USER] remap_page: pmm_free old ppn=%ld\n",
+                         (long)old_ppn);
         }
 
         error_t unlock_err = vmm_radix_tree_unlock_range_small(
@@ -541,7 +666,7 @@ error_t mm_user_utils_remap_page(struct VSpace* vs, vaddr page_va,
                          (int)unlock_err);
                 return unlock_err;
         }
-        return err;
+        return REND_SUCCESS;
 }
 
 error_t mm_user_utils_set_range_flags(struct VSpace* vs, vaddr range_start,

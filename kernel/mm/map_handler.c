@@ -293,8 +293,6 @@ error_t map(VSpace *vs, ppn_t ppn, vpn_t vpn, int level, ENTRY_FLAGS_t eflags,
         vaddr v = VADDR(vpn);
         paddr next_level_paddr = 0;
         i64 pmm_res = 0;
-        bool new_alloc = false;
-        bool new_map = false;
         error_t res = REND_SUCCESS;
         size_t alloced_page_number;
         const bool allow_remap = (eflags & PAGE_ENTRY_REMAP) != 0;
@@ -372,20 +370,18 @@ error_t map(VSpace *vs, ppn_t ppn, vpn_t vpn, int level, ENTRY_FLAGS_t eflags,
                 }
                 next_level_paddr = PADDR(handler->ppn_cache[1]);
                 handler->ppn_cache[1] = -E_RENDEZVOS;
-                new_alloc = true;
                 flags = arch_decode_flags(0, nonfinal_must_flags);
+                /* Zero before linking — HW walkers ignore vspace_lock. */
+                util_map(next_level_paddr, handler, 1);
+                memset((char *)(handler->map_vaddr[1]), 0, PAGE_SIZE);
                 arch_set_L0_entry(next_level_paddr,
                                   v,
                                   (union L0_entry *)(handler->map_vaddr[0]),
                                   flags);
+        } else {
+                util_map(next_level_paddr, handler, 1);
         }
         /*=== === === L1 table === === ===*/
-        /*map the L1 table to one L3 table entry*/
-        util_map(next_level_paddr, handler, 1);
-        if (new_alloc) {
-                memset((char *)(handler->map_vaddr[1]), 0, PAGE_SIZE);
-                new_alloc = false;
-        }
         /*use map util table to change the L1 table*/
         union L1_entry L1_E =
                 ((union L1_entry *)(handler->map_vaddr[1]))[L1_INDEX(v)];
@@ -400,20 +396,17 @@ error_t map(VSpace *vs, ppn_t ppn, vpn_t vpn, int level, ENTRY_FLAGS_t eflags,
                 }
                 next_level_paddr = PADDR(handler->ppn_cache[2]);
                 handler->ppn_cache[2] = -E_RENDEZVOS;
-                new_alloc = true;
                 flags = arch_decode_flags(1, nonfinal_must_flags);
+                util_map(next_level_paddr, handler, 2);
+                memset((char *)(handler->map_vaddr[2]), 0, PAGE_SIZE);
                 arch_set_L1_entry(next_level_paddr,
                                   v,
                                   (union L1_entry *)(handler->map_vaddr[1]),
                                   flags);
+        } else {
+                util_map(next_level_paddr, handler, 2);
         }
         /*=== === === L2 table === === ===*/
-        /*map the L1 table to one L3 table entry*/
-        util_map(next_level_paddr, handler, 2);
-        if (new_alloc) {
-                memset((char *)(handler->map_vaddr[2]), 0, PAGE_SIZE);
-                new_alloc = false;
-        }
         /*use map util table to change the L2 table*/
         if (level == 2) {
                 /*ppn and vpn must be 2M aligned*/
@@ -444,7 +437,6 @@ error_t map(VSpace *vs, ppn_t ppn, vpn_t vpn, int level, ENTRY_FLAGS_t eflags,
                                 v,
                                 (union L2_entry *)(handler->map_vaddr[2]),
                                 flags);
-                        new_map = true;
                         goto map_succ;
                 }
                 if (next_level_paddr != p) {
@@ -586,13 +578,16 @@ error_t map(VSpace *vs, ppn_t ppn, vpn_t vpn, int level, ENTRY_FLAGS_t eflags,
                         }
                         next_level_paddr = PADDR(handler->ppn_cache[3]);
                         handler->ppn_cache[3] = -E_RENDEZVOS;
-                        new_alloc = true;
                         flags = arch_decode_flags(2, nonfinal_must_flags);
+                        util_map(next_level_paddr, handler, 3);
+                        memset((char *)(handler->map_vaddr[3]), 0, PAGE_SIZE);
                         arch_set_L2_entry(
                                 next_level_paddr,
                                 v,
                                 (union L2_entry *)(handler->map_vaddr[2]),
                                 flags);
+                } else {
+                        util_map(next_level_paddr, handler, 3);
                 }
         }
         /*=== === === L3 table === === ===*/
@@ -604,10 +599,6 @@ error_t map(VSpace *vs, ppn_t ppn, vpn_t vpn, int level, ENTRY_FLAGS_t eflags,
                 goto map_unlock;
         }
         util_map(next_level_paddr, handler, 3);
-        if (new_alloc) {
-                memset((char *)(handler->map_vaddr[3]), 0, PAGE_SIZE);
-                new_alloc = false;
-        }
         /*use map util table to change the L3 table*/
         union L3_entry L3_E =
                 ((union L3_entry *)(handler->map_vaddr[3]))[L3_INDEX(v)];
@@ -618,7 +609,6 @@ error_t map(VSpace *vs, ppn_t ppn, vpn_t vpn, int level, ENTRY_FLAGS_t eflags,
                 flags = arch_decode_flags(3, eflags);
                 arch_set_L3_entry(
                         p, v, (union L3_entry *)(handler->map_vaddr[3]), flags);
-                new_map = true;
                 goto map_succ;
         }
 
@@ -641,18 +631,11 @@ error_t map(VSpace *vs, ppn_t ppn, vpn_t vpn, int level, ENTRY_FLAGS_t eflags,
         arch_set_L3_entry(
                 p, v, (union L3_entry *)(handler->map_vaddr[3]), flags);
 map_succ:
-        if (new_map) {
-                if (v >= KERNEL_VIRT_OFFSET)
-                        arch_tlb_invalidate_kernel_page(v);
-                else
-                        arch_tlb_invalidate_page(vs->asid, v);
-        } else {
-                if (v >= KERNEL_VIRT_OFFSET)
-                        arch_tlb_invalidate_kernel_page_all_core(v);
-                else
-                        arch_tlb_invalidate_page_all_core(
-                                vs->asid, v, &vs->tlb_cpu_mask);
-        }
+        if (v >= KERNEL_VIRT_OFFSET)
+                arch_tlb_invalidate_kernel_page_all_core(v);
+        else
+                arch_tlb_invalidate_page_all_core(
+                        vs->asid, v, &vs->tlb_cpu_mask);
 map_unlock:
         unlock_mcs(&vs->vspace_lock, &handler->vspace_lock_node);
 map_fail:

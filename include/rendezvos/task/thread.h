@@ -132,6 +132,8 @@ extern u64 thread_kstack_page_num;
         atomic64_t recv_pending_cnt; /*how much msg arrive*/        \
         volatile void* port_ptr; /*expect Message_Port_t*/          \
         struct thread_port_cache port_cache;                        \
+        struct list_entry owned_anon_ports;                         \
+        struct list_entry owned_named_ports;                        \
         THERAD_SCHE_COMMON
 
 #define THREAD_FLAG_NONE               0

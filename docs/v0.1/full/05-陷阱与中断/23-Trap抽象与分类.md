@@ -70,11 +70,31 @@ IRQ 软件编号空间（`irq_space`：两套 id、占有/释放）与分发衔�
 
 ## 3. 分层与调用方
 
-**兼容层** — initcall 后：`arch_register_fixed_trap(TRAP_CLASS_PAGE_FAULT, …)`；handler 内 `arch_populate_trap_info(tf, &info)` 读可移植字段。勿硬编码 14 / 0x24。
+**core** — 提供统一 `trap_handler`、`trap_class` 与 `arch_register_fixed_trap`；**不**内置 Linux 式 `do_page_fault` / COW / 信号。缺页与其它 fixed class 平级：谁注册，谁决定策略。
+
+**兼容层** — initcall 后必须为真实用户程序注册 `TRAP_CLASS_PAGE_FAULT`（及所需的其它 fixed class）；fixed handler 收到已 populate 的 `struct trap_info *`（`info->tf` 为帧），直接读可移植字段。勿硬编码 14 / 0x24。COW、LAZY 补页、向用户投递 SIGSEGV 等**策略**一律在 compat handler 内完成。
 
 **arch boot** — `arch_start_core` 调用 `init_interrupt()`，再经平台 IRQ 初始化后到 `init_syscall`（x86 还要再 `arch_irq_local_enable`）。见 §6.1 开中断时序差异。
 
 **设备** — `irq_global_alloc` + `register_irq_handler(local_irq_id, cpu_id, …, IRQ_NEED_EOI)`（IRQ 篇）。
+
+### 3.1 兼容层上线前置（缺页）
+
+在允许**真实用户线程**跑起来之前，兼容层必须已经：
+
+1. `arch_register_fixed_trap(TRAP_CLASS_PAGE_FAULT, handler, …)`，且 `handler` 非空、能处理用户缺页（合法映射补页 / 非法访问收尾）；
+2. 需要时同样注册其它会进用户的 fixed class（如 `ILLEGAL_INSTR`），不要依赖「忘记注册就靠 panic 发现」。
+
+未满足时的 core 行为（以代码为准，见 §7.3）：
+
+| 状态 | 用户缺页时 |
+|------|------------|
+| 该 `local_irq_id` **完全没有** `irq_handler` | `trap_handler` → unknown → **整机 panic** |
+| 已挂上 fixed **wrapper**，但 class 表项仍为 NULL | wrapper **静默返回**（不 panic）；用户侧往往反复 fault / 空转 |
+
+纯 core、无 compat 的测试环境保留上述 fail-fast / 静默缺口均可接受；**带用户人格的镜像**必须在首个用户线程 runnable 之前完成注册。操作纪律的短条目亦见仓库 `doc/ai/INVARIANTS.md`。
+
+内核路径**不要**为了读用户缓冲而直接解引用用户虚拟地址。跨地址空间拷贝走 `map_handler_user_kernel_copy`（`have_mapped(..., pin=true)` + 物理窗口）；细则见内存篇 `07`。无 SMAP 时这是纪律而非硬件强制。
 
 ---
 
@@ -453,7 +473,7 @@ EC→class 全表见上（含「未列出 EC → default `UNKNOWN`」规则）�
 | 场景 | 顺序 |
 |------|------|
 | 每核装表 | `arch_start_core` 先调 **`init_interrupt`**（`local_irq_vector[]` 是 per-CPU 静态数组，**无预分配步骤**；内部完成 lidt/VBAR，见 `25-IRQ向量分配与处理.md`），之后再 `arch_register_fixed_trap` |
-| 兼容层 fault | initcall 后：`arch_register_fixed_trap(PAGE_FAULT, handler, attr)`；handler 内用 **`arch_populate_trap_info(tf, &info)`** 读 TRAP_COMMON |
+| 兼容层 fault | **用户线程 runnable 之前**：`arch_register_fixed_trap(PAGE_FAULT, handler, attr)`（§3.1）；handler 收 **`struct trap_info *`**（wrapper 已 populate），读 TRAP_COMMON / `info->tf` |
 | aarch64 syscall | `init_interrupt` 之后：`arch_register_fixed_trap(SYSCALL, arch_syscall_helper, …)`（见 `24-系统调用入口.md`/`05-平台启动-aarch64.md`） |
 | 设备 IRQ | **勿** `arch_register_fixed_trap(IRQ)`；用 `irq_global_alloc` + `register_irq_handler(…, cpu_id, …)`（`25-IRQ向量分配与处理.md`） |
 
@@ -475,7 +495,8 @@ enum trap_class {
 |-------------|------|
 | `trap_class` | 跨 arch 语义桶；`UNKNOWN` 必须末项且 ≤255（存 `u8`）。 |
 | `TRAP_COMMON` | 嵌入 `x86_64_trap_info` / `aarch64_trap_info`；`tf` 指针不复制整帧。 |
-| `fixed_trap_handler_t` | `void (*)(struct trap_frame *)`；wrapper 已 populate 后再调。 |
+| `struct trap_info` | 仅含 `TRAP_COMMON` 的可移植视图；arch info 指针可当作它传给 fixed handler。 |
+| `fixed_trap_handler_t` | `void (*)(struct trap_info *)`；wrapper populate 后传入，handler 用 `info->tf` 取帧。 |
 
 ### 7.3 `arch_register_fixed_trap`
 
@@ -489,7 +510,7 @@ void arch_register_fixed_trap(enum trap_class trap_class,
 | 非法 class | `>= TRAP_CLASS_UNKNOWN` 则直接 return |
 | 表项 | 写入 per-arch `fixed_trap_handlers[class]` / `fixed_trap_attrs[class]` |
 | 反向扫描 | x86：`[0, TRAP_ARCH_USED)`；aarch64：EC `[0, 0x40)`；匹配则对各 `cpu_id` 调 `register_irq_handler(id, cpu_id, *_wrapper, attr)` |
-| wrapper | 先 `arch_populate_trap_info`，再调表项 handler；**表项为 NULL 时静默返回**——槽位已被 wrapper 占住，`trap_handler` 不会见空 handler 而 panic，忘注册 fixed handler 的表现是「trap 被悄悄吞掉」 |
+| wrapper | 先 `arch_populate_trap_info`，再以 `(struct trap_info *)&info` 调表项 handler；**表项为 NULL 时静默返回**——槽位已被 wrapper 占住，`trap_handler` 不会见空 handler 而 panic，忘注册 fixed handler 的表现是「trap 被悄悄吞掉」 |
 | 陷阱 | x86 上 `TRAP_CLASS_IRQ` 几乎只绑 **NMI(2)**，不绑 ≥32 设备向量 |
 | attrs | `fixed_trap_attrs[]` 今日只写不读（死存储）；attr 仍传给 `register_irq_handler` |
 
@@ -509,7 +530,7 @@ bool arch_int_from_kernel(struct trap_frame *tf);
 | `arch_get_fault_addr` | x86 读 **CR2**（`tf` 未用）；aarch64 读 **`tf->FAR`**。 |
 | `arch_int_from_kernel` | x86：`cs == kernel CS`；aarch64：`SPSR.M != EL0`。**不要**信 aarch64 `trap_info` 里 OR 的 SRC_EL 位。 |
 
-上层 PF handler：先 populate，再读 `info->fault_addr` / `is_write` / …；勿硬编码向量 14 / EC 0x24。
+上层 PF handler：直接读传入的 `info->fault_addr` / `is_write` / …（wrapper 已 populate）；勿硬编码向量 14 / EC 0x24。
 
 ---
 
@@ -534,15 +555,22 @@ bool arch_int_from_kernel(struct trap_frame *tf);
 - `fixed_trap_attrs[]` 只写不读（死存储）。
 - FIQ / unexpected_trap 缺口。
 - IST 未用。
-- fixed wrapper 吞 trap：fixed 向量被 wrapper 占据，表项未注册时 trap 被静默丢弃（不 panic，见 §7.3）。
+- fixed wrapper 吞 trap：fixed 向量被 wrapper 占据，表项未注册时 trap 被静默丢弃（不 panic，见 §7.3）。**带用户人格时必须先注册真实 PAGE_FAULT handler（§3.1）**，不能把「静默吞」当成可接受的产品行为。
 - aarch64 EC 注释个别标注存疑（§6.4 ⚠ 行），分类行为以代码为准。
 
 ---
 
 ## 11. 变更记录
 
+<<<<<<< HEAD
 - 2026-11-20：§1 补「入口分派总图」——异常/IRQ/`SVC` 经 `trap_handler` vs x86 `syscall` LSTAR 旁路；并标出与 `24-系统调用入口.md`/`25-IRQ向量分配与处理.md` 的接缝（local 表 / `irq_global_find` / EOI / schedule）。
 - 2026-11-19：底子首评跟进——§6.1 纠正：`init_irq` 不做 IOAPIC space 注册（那是 `arch_start_platform` → `ioapic_init`）；`init_irq` 只做 PIC/xAPIC/x2APIC 三选一。同日首评：篇首引用缩号；线程篇/`33-时间与定时器子系统.md` 补号；§7 opener。
+=======
+- 2026-11-20：`fixed_trap_handler_t` 改为收 `struct trap_info *`（wrapper populate 后透传；帧经 `info->tf`）；新增可移植 `struct trap_info`；compat / aarch64 syscall helper 去掉二次 populate。§3 / §7.1–§7.3 / §10 同步。
+- 2026-11-20：§3 / 新增 §3.1——缺页策略归兼容层；用户线程 runnable 前必须注册真实 `PAGE_FAULT` handler；区分「无 irq_handler → panic」与「仅 wrapper、class 空 → 静默」；内核勿裸碰用户指针（交叉 `07` / INVARIANTS）。§7.1 / §10 同步。
+- 2026-11-20：§1 补「入口分派总图」——异常/IRQ/`SVC` 经 `trap_handler` vs x86 `syscall` LSTAR 旁路；并标出与 `24`/`25` 的接缝（local 表 / `irq_global_find` / EOI / schedule）。
+- 2026-11-19：底子首评跟进——§6.1 纠正：`init_irq` 不做 IOAPIC space 注册（那是 `arch_start_platform` → `ioapic_init`）；`init_irq` 只做 PIC/xAPIC/x2APIC 三选一。同日首评：篇首引用缩号；线程篇/`33` 补号；§7 opener。
+>>>>>>> update_docs
 - 2026-11-15：可读性通读。§1 删编者批注「必须讲清这条链」，改为结构导引；「任务篇 §6.6」改既定昵称「线程篇」；§6.4 SError「两层」正文与脚注 ¹ 重复，正文压为回链脚注；FIQ 句补全因果链（空解码 → 查无 handler → unknown + panic，`unexpected_trap` 裸 `bl` 不建 frame）；「⚠ 行提示」改「关于上表的 ⚠ 行」并对齐表头「含义」列名；§7 首句与 §7.1 表格残留「，……之后再」顺手修正。
 - 2026-11-14：对照代码复查。§6.4 EC 表按 `aarch64_ec_to_trap_class` 全量重写——补 `0x02`–`0x06`/`0x08`/`0x0d`/`0x11`/`0x22`/`0x26`/`0x2c`/`0x30`–`0x35`/`0x3c`，明确「未列出 EC → default `UNKNOWN`」；修正三处与代码不符：「HVC/SMC→`SYSCALL`」与「`0b001110`+ SVE/PAC→`ILLEGAL_INSTR`」（实际都走 default `UNKNOWN`）、`0x26` 仅 `ALIGNMENT`（无 `STACK_FAULT`）；补代码注释自带的「`0x09`–`0x0c` 是 DFSC/IFSC，非 EC」与个别注释存疑（⚠）标注，行为以代码为准。§7.1 删除不存在的 `irq_global_vector_alloc`（`local_irq_vector[]` 为静态数组，无预分配）。§6.1 补两 arch 实测调用序；§6.2 补硬件压 error_code 的真实向量集与「`.data.trap.trap_vec_table` 就是 IDT 本体」；§6.3 补 syscall 入口 `sti` / gs scratch 切栈；§6.4 补 aarch64 39×8 现场块槽位布局。§7.3/§10 补「fixed wrapper 静默吞 trap」。变更记录恢复新→旧排序。
 - 2026-11-13：对齐 irq_space——去掉 `global_irq_vector` 表述；EOI 可接 `space->eoi`。

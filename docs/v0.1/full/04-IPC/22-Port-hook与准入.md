@@ -168,8 +168,11 @@ typedef struct port_append_hooks {
 
 ```c
 Named_Message_Port_t *create_named_message_port(const char *name,
-                                                const port_append_hooks_t *hooks);
+                                                const port_append_hooks_t *hooks,
+                                                struct list_entry *owner_list);
 ```
+
+`owner_list` 是可选归属链表头（任意 `list_entry`，常见为线程 `owned_named_ports`；语义见 `19` §4.1 / §6.4），与 hooks 正交。
 
 | 上层填什么 | 说明 |
 |------------|------|

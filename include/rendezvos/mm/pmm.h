@@ -390,14 +390,17 @@ static inline error_t pmm_change_pages_ref(struct pmm* pmm, ppn_t start_ppn,
                 return -E_IN_PARAM;
         if (!ppn_in_Zone(pmm->zone, start_ppn))
                 return -E_IN_PARAM;
+        ppn_t end_ppn = start_ppn + (ppn_t)page_number - 1;
+        if (end_ppn < start_ppn || !ppn_in_Zone(pmm->zone, end_ppn))
+                return -E_IN_PARAM;
 
         ZonePageCursor cur;
         if (!zone_page_cursor_init(&cur, pmm->zone, start_ppn))
                 return -E_IN_PARAM;
 
         pmm_lock(pmm);
-        size_t i;
-        for (i = 0; i < page_number; i++) {
+        size_t modified = 0;
+        for (size_t i = 0; i < page_number; i++) {
                 Page* p = zone_page_cursor_page(&cur);
                 if (!p)
                         goto fail_unroll;
@@ -410,6 +413,7 @@ static inline error_t pmm_change_pages_ref(struct pmm* pmm, ppn_t start_ppn,
                                 goto fail_unroll;
                         phy_Page_ref_put(p);
                 }
+                modified++;
 
                 if (i + 1 < page_number) {
                         if (!zone_page_cursor_next(&cur))
@@ -422,7 +426,7 @@ static inline error_t pmm_change_pages_ref(struct pmm* pmm, ppn_t start_ppn,
 fail_unroll:
         ZonePageCursor unroll_cur;
         if (zone_page_cursor_init(&unroll_cur, pmm->zone, start_ppn)) {
-                for (size_t j = 0; j < i; j++) {
+                for (size_t j = 0; j < modified; j++) {
                         Page* p = zone_page_cursor_page(&unroll_cur);
                         if (p) {
                                 if (increment)
@@ -430,7 +434,7 @@ fail_unroll:
                                 else
                                         (void)phy_Page_ref_get(p);
                         }
-                        if (j + 1 < i)
+                        if (j + 1 < modified)
                                 zone_page_cursor_next(&unroll_cur);
                 }
         }

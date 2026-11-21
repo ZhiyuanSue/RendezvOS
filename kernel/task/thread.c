@@ -1,4 +1,5 @@
 #include <common/string.h>
+#include <common/stdbool.h>
 #include <modules/log/log.h>
 #include <rendezvos/task/thread.h>
 #include <rendezvos/ipc/ipc.h>
@@ -6,8 +7,10 @@
 #include <rendezvos/error.h>
 #include <rendezvos/mm/allocator.h>
 #include <rendezvos/ipc/named_port.h>
+#include <rendezvos/ipc/port.h>
 #include <rendezvos/sync/spin_lock.h>
 #include <rendezvos/limits.h>
+#include <common/dsa/list.h>
 
 /*
 we first generate a context that after the return will goto thread entry（this
@@ -122,6 +125,8 @@ Thread_Base* new_thread_structure(struct allocator* cpu_kallocator,
         thread->recv_pending_cnt.counter = 0;
         atomic64_store((volatile u64*)&thread->port_ptr, (u64)NULL);
         thread_port_cache_init(&thread->port_cache);
+        INIT_LIST_HEAD(&thread->owned_anon_ports);
+        INIT_LIST_HEAD(&thread->owned_named_ports);
         return thread;
 
 alloc_dummy_send_msg_error:
@@ -134,6 +139,60 @@ alloc_thread_error:
         return NULL;
 }
 
+/*
+ * Creator death (two-phase — no owned-list lock).
+ * Phase 1: close all anon; named unregister via named_port->table (not
+ * hard-coded global), or close if not in a table — create/owner ref kept.
+ * Phase 2: *_put_owner_ref for every node still on the list. Still linked ⇔
+ * owner ref not yet put (voluntary put_owner unlinks first; freer also
+ * list_del_init as fallback).
+ */
+static void thread_close_owned_ports(Thread_Base* thread)
+{
+        struct list_entry *pos, *n;
+
+        if (!thread)
+                return;
+
+        list_for_each_safe(pos, n, &thread->owned_anon_ports)
+        {
+                Message_Port_t* port =
+                        list_entry(pos, Message_Port_t, owner_link);
+                if (port_is_open(port))
+                        (void)close_port(port);
+        }
+
+        list_for_each_safe(pos, n, &thread->owned_named_ports)
+        {
+                Named_Message_Port_t* named_port =
+                        list_entry(pos, Named_Message_Port_t, owner_link);
+                Message_Port_t* port = (Message_Port_t*)named_port;
+                if (named_port_is_in_table(named_port)) {
+                        error_t e = unregister_named_port(named_port->table,
+                                                          named_port->name);
+                        if (e != REND_SUCCESS)
+                                pr_error("[thread] exit unregister %s e=%d\n",
+                                         named_port->name,
+                                         (int)e);
+                } else if (port_is_open(port)) {
+                        (void)close_port(port);
+                }
+        }
+
+        list_for_each_safe(pos, n, &thread->owned_anon_ports)
+        {
+                Message_Port_t* port =
+                        list_entry(pos, Message_Port_t, owner_link);
+                message_port_put_owner_ref(port);
+        }
+
+        list_for_each_safe(pos, n, &thread->owned_named_ports)
+        {
+                Named_Message_Port_t* named_port =
+                        list_entry(pos, Named_Message_Port_t, owner_link);
+                named_message_port_put_owner_ref(named_port);
+        }
+}
 /*
  * Drain heap resources owned by the thread.
  *
@@ -161,6 +220,7 @@ static void thread_release_owned_resources(Thread_Base* thread)
         if (!thread || !cpu_kallocator)
                 return;
 
+        thread_close_owned_ports(thread);
         Message_t* pending_msg = (Message_t*)atomic64_exchange(
                 (volatile u64*)(&thread->send_pending_msg), (u64)NULL);
         if (pending_msg) {

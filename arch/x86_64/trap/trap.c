@@ -145,7 +145,7 @@ static void x86_fixed_trap_wrapper(struct trap_frame *tf)
         enum trap_class trap_class = info.trap_class;
         if (trap_class < TRAP_CLASS_UNKNOWN
             && fixed_trap_handlers[trap_class]) {
-                fixed_trap_handlers[trap_class](tf);
+                fixed_trap_handlers[trap_class]((struct trap_info *)&info);
         }
 }
 

@@ -2,6 +2,7 @@
 #define _RENDEZVOS_PORT_H_
 
 #include <common/types.h>
+#include <common/dsa/list.h>
 #include <common/dsa/ms_queue.h>
 #include <common/refcount.h>
 #include <rendezvos/mm/allocator.h>
@@ -61,7 +62,10 @@ typedef struct Msg_Port Message_Port_t;
         atomic64_t ops_life; /* @c PORT_OPS_LIFE_* status */                \
         /* In-flight send/recv (@c port_ops_begin/@c port_ops_end). Gates   \
          * close drain only — does not serialize concurrent send/send. */ \
-        atomic64_t ops_count
+        atomic64_t ops_count;                                               \
+        /* Optional owner-list node (@c create_* owner_list). Any list head; \
+         * often @c Thread_Base.owned_*. @c close_port does not unlink. */  \
+        struct list_entry owner_link
 
 /**
  * @brief Message port: anonymous rendezvous point with a lock-free wait queue.
@@ -179,19 +183,25 @@ static inline u16 ipc_get_queue_state(Message_Port_t* port)
  *        a live port.
  * @param service_id Kmsg / service id for this port.
  * @return @c REND_SUCCESS; @c -E_IN_PARAM if @p port is NULL.
- * @note Sets @c refcount to 1 (owner). @c close_port does **not** drop refs;
- *       after close the owner @c ref_put s as needed. Heap create path
+ * @note Sets @c refcount to 1 (creator). @c close_port does **not** drop refs;
+ *       after close the creator @c ref_put s as needed. Heap create path
  *       typically @c close_port then @c ref_put(..., free_message_port_ref) to
  *       @c m_free.
+ * @note Does **not** link onto an owned list — only @c create_* with a
+ *       non-NULL @p owner_list does.
  */
 error_t message_port_init(Message_Port_t* port, u32 service_id);
 
 /**
  * @brief Heap-allocate and @c message_port_init an anonymous port.
  * @param service_id Kmsg / service id for this port.
+ * @param owner_list Optional owner list head (any @c list_entry, not limited
+ *        to @c Thread_Base; often @c &thread->owned_anon_ports). NULL = no
+ *        link. Still linked ⇔ create ref not yet dropped.
  * @return New port with refcount 1 and life @c OPEN, or NULL on alloc failure.
  */
-Message_Port_t* create_message_port(u32 service_id);
+Message_Port_t* create_message_port(u32 service_id,
+                                    struct list_entry* owner_list);
 
 /**
  * @brief Free a **standalone heap** @c Message_Port_t (defensive queue clean +
@@ -209,6 +219,20 @@ void delete_message_port_structure(Message_Port_t* port);
 error_t free_message_port_ref(ref_count_t* ref_count_ptr);
 
 /**
+ * @brief Put the create / ownership ref from @c create_message_port.
+ *
+ * Unlinks @c owner_link, then @c ref_put s. Still linked ⇔ this ref not yet
+ * put. Do **not** use for lookup pins (plain @c ref_put).
+ */
+static inline void message_port_put_owner_ref(Message_Port_t* port)
+{
+        if (!port)
+                return;
+        list_del_init(&port->owner_link);
+        ref_put(&port->refcount, free_message_port_ref);
+}
+
+/**
  * @brief Close the port: OPEN→CLOSING, drain @c ops_count, clean waiters,
  *        CLOSING→CLOSED. Does **not** @c ref_put; caller drops refs afterward.
  * @param port Port to close.
@@ -222,8 +246,11 @@ error_t free_message_port_ref(ref_count_t* ref_count_ptr);
  *       - blocked receivers: preferably deliver @c KMSG_OP_SYSTEM_PORT_CLOSED
  *         so @c recv_msg returns @c REND_SUCCESS and the caller dequeues that
  *         kmsg; otherwise OR the same flag → @c -E_REND_PORT_CLOSED.
- * @note After close, caller @c ref_put s as needed (e.g.
- *       @c free_message_port_ref for a heap anon port).
+ * @note After close, @c message_port_put_owner_ref (or leave linked for exit
+ *       phase2). Lookup pins: plain @c ref_put.
+ * @note Does **not** unlink @c owner_link; exit phase1 closes/unregisters,
+ *       phase2 @c message_port_put_owner_ref s leftovers. Last @c free_*_ref
+ *       also @c list_del_init s if still linked.
  */
 error_t close_port(Message_Port_t* port);
 

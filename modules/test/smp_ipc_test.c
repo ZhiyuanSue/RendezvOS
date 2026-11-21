@@ -191,11 +191,13 @@ static void smp_ipc_receiver_loop(cpu_id_t cpu_id, int count)
 int smp_ipc_test(void)
 {
         cpu_id_t cpu_id = percpu(cpu_number);
+        error_t ret = REND_SUCCESS;
 
         if (cpu_id == BSP_ID) {
                 is_print_sche_info = false;
                 pr_info("BSP creating message port\n");
-                smp_ipc_port = create_message_port(43);
+                smp_ipc_port = create_message_port(
+                        43, &get_cpu_current_thread()->owned_anon_ports);
                 if (!smp_ipc_port) {
                         pr_error("[smp_ipc_test] create_message_port failed\n");
                         return -E_REND_TEST;
@@ -233,11 +235,8 @@ int smp_ipc_test(void)
          */
         int active_cpus = smp_ipc_active_cpus;
         if (active_cpus < 2) {
-                if (cpu_id == BSP_ID) {
-                        ref_put(&smp_ipc_port->refcount, free_message_port_ref);
-                        smp_ipc_port_ready = false;
-                        is_print_sche_info = false;
-                }
+                if (cpu_id == BSP_ID)
+                        goto err_bsp_port;
                 return REND_SUCCESS;
         }
         if ((int)cpu_id >= active_cpus)
@@ -275,9 +274,11 @@ int smp_ipc_test(void)
                 pr_info("BSP all_done, exiting wait\n");
                 if (close_port(smp_ipc_port) != REND_SUCCESS) {
                         pr_error("[smp_ipc_test] close_port failed\n");
-                        return -E_REND_TEST;
+                        ret = -E_REND_TEST;
+                        goto err_bsp_port;
                 }
-                ref_put(&smp_ipc_port->refcount, free_message_port_ref);
+                message_port_put_owner_ref(smp_ipc_port);
+                smp_ipc_port = NULL;
                 smp_ipc_port_ready = false;
 
                 u64 total_sent = 0;
@@ -296,4 +297,13 @@ int smp_ipc_test(void)
                 is_print_sche_info = false;
         }
         return REND_SUCCESS;
+
+err_bsp_port:
+        if (port_is_open(smp_ipc_port))
+                (void)close_port(smp_ipc_port);
+        message_port_put_owner_ref(smp_ipc_port);
+        smp_ipc_port = NULL;
+        smp_ipc_port_ready = false;
+        is_print_sche_info = false;
+        return ret;
 }

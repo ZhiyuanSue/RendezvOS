@@ -56,6 +56,18 @@ struct trap_frame;
         u64 reserved[4];
 
 /**
+ * @brief Portable trap info view (TRAP_COMMON only).
+ *
+ * Arch @c *_trap_info structs begin with @c TRAP_COMMON, so a pointer to a
+ * populated arch info may be passed as @c struct trap_info * to fixed-class
+ * handlers. Use @c info->tf for the frame; cast back to the arch type only
+ * when arch-specific fields are needed.
+ */
+struct trap_info {
+        TRAP_COMMON
+};
+
+/**
  * @brief Trap classification (architecture-independent)
  *
  * Used for upper layer handlers to process traps by semantic type,
@@ -174,6 +186,7 @@ enum irq_polarity {
  *
  * Recommended usage:
  *   - arch_register_fixed_trap(TRAP_CLASS_PAGE_FAULT, handle_pf, IRQ_NEED_EOI);
+ *     (handle_pf is fixed_trap_handler_t: receives struct trap_info *)
  *   - register_irq_handler(local_irq_id, cpu_id, handler, IRQ_NO_ATTR);
  *
  * Do not mix both for the same local_irq_id on the same cpu_id.
