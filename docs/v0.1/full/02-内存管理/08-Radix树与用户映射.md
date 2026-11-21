@@ -540,7 +540,7 @@ Radix_node_t *vmm_radix_tree_find_first_occupied_leaf(...);
 | `lock_range_big` | 只获取穿越的 L0 bit-lock（512 GiB 桶）；不生长下层。须配对 `unlock_range_big`。 |
 | `lock_range_small_with_big_locked` | 调用方已持有对应 L0；获取 L2 带锁。`INSERT`/`DELETE`/`QUERY_OR_CHANGE` 语义不同。 |
 | `lock_range_big_and_small` | 一次性获取 L0+L2，返回时**通常只持 L2**（L0 已释放）。 |
-| `find_first_occupied_interval` / `find_first_occupied_leaf` | 已持 L0；扫每个 2 Mi band 时另拿该 L2（等可能已放 L0 的旧持有者），返回前放 L2；供 clone / `set_range_flags`。 |
+| `find_first_occupied_interval` / `find_first_occupied_leaf` | 已持 L0；扫每个 2 Mi band 时另拿该 L2（等可能已释放 L0 的旧持有者），flags 在该 L2 锁内快照、经 `flags_out` 带出，返回前释放 L2；新的 L2 获取必先持 L0，故调用方持 L0 期间 band 不再被改，叶指针可用至 `unlock_range_big`，不要释放锁后再读 `leaf->flags`；供 clone。 |
 
 ### 7.3 Radix 变更与生命周期
 
@@ -636,7 +636,7 @@ make ARCH=x86_64 config && make all && make run
 - 2026-11-19：底子重评批次——篇首/`09`/`31` 引用缩号；§9 写明由 `arch_vmm_test` 间接覆盖。
 - 2026-11-15：Maintainer 复审前可读性通读：清理 2026-10-04 口语替换的漏网（「到手/握着/开扫/挡/手里」→「拿到/持有/扫描/阻塞」系）；§4.1.1/§4.3 统一「没有下层**表页**时创建新树」表述；§4.3 Phase 4 回滚一句去重复；§4.5.2 与 §4.1.2 的 VALID|LAZY 硬保证改回链；§4.6 修转义方括号并把「INSERT 不在 ≥256 的用户路径上生长」补全因果；§3 `09` 补全文件名；§7「纠正」→「注意」（历史纠错已由变更记录承载）；删 §6.3 末尾面向编者的批注（与 §10 条目重复）；§9 去多余空行。技术内容未动。
 - 2026-10-25：全文语言整理：理顺直译句（「对其他 CPU 变得可见」等）与机械替换遗留的不一致（握/持有、interval/区间），技术内容未动。
-- 2026-11-21：新增 `mm_user_utils_install_existing_range`（已有 PPN 装入空闲 VA；fork/shm 底座）；§6.1 表 / §7.4 同步；与 `fill_page_with_exist_range` 语义区分写清。同日修 `leaf_unbind_range` 缺 `ppn_first`、理顺 L2/`leaf_bound` 回滚；修 `leaf_bind_range` 失败回滚误留 `VALID\|LAZY`；契约写明页须 `ref>0`。同日审阅修：DELETE Phase 4 两遍式（先 undeletable 再 clear，避免中途失败留下已清叶子+未减 count）；`clean_range_and_unfill` 粘性错误（unmap 失败不被后续 `pmm_free` 成功覆盖）并补拒 `root_vspace` / 缺根检查。§7.2 表补 `find_first_*` 扫 band 时持 L2。
+- 2026-11-21：新增 `mm_user_utils_install_existing_range`（已有 PPN 装入空闲 VA；fork/shm 底座）；§6.1 表 / §7.4 同步；与 `fill_page_with_exist_range` 语义区分写清。同日修 `leaf_unbind_range` 缺 `ppn_first`、理顺 L2/`leaf_bound` 回滚；修 `leaf_bind_range` 失败回滚误留 `VALID\|LAZY`；契约写明页须 `ref>0`。同日审阅修：DELETE Phase 4 两遍式（先 undeletable 再 clear，避免中途失败留下已清叶子+未减 count）；`clean_range_and_unfill` 粘性错误（unmap 失败不被后续 `pmm_free` 成功覆盖）并补拒 `root_vspace` / 缺根检查。§7.2 表补 `find_first_*` 扫 band 时持 L2，consumer 列修正（`set_range_flags` 已改逐页 walk、不再用 interval，现仅 clone 使用）；扫描新增 `flags_out` 出参（flags 锁内快照，契约写明叶指针可用至 big unlock）。`find_first_occupied_leaf` 四层扫描重写：DEC 方向由 for-increment 改为循环体末尾守卫式推进（原写法迭代器贴近下界时先减后查，无符号回绕使 `iter < start` 永不触发，越界失控）。`radix_entry_update` count 溢出校验改为查和（原只查 delta 上界，漏掉 `get_count + delta` 超 `RADIX_COUNT_PER_PAGE` 的情形）。
 - 2026-10-24：§4.2 写清用户路径握 L0 vs 堆 `big_and_small` 早放 L0 的权衡（interval 发现 / TOCTOU）；`mm_user_utils.h` 同步。
 - 2026-10-24：§3 交叉引用改为 ensure/empty/unmap 三件套命名。
 - 2026-10-24：§3/§5 标明与 `mm_kernel_utils` 同级互斥；`mm_user_utils.h` 去掉 Doxygen `@{` 分组噪音。

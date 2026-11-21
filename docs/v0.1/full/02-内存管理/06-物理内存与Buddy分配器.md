@@ -321,7 +321,7 @@ struct buddy_bucket {
 
 #### 释放：一页一页还，能合就合
 
-释放时不会把当初分出去的整块 2ⁿ 一次还清。`pmm_free` 对范围内每一页把 `Page.ref_count` 减一；减到 0，才把**这一页**送进 `pmm_free_one_index`。同一页若还被别人映射着，这块就不能整段收回。
+释放时不会把当初分出去的整块 2ⁿ 一次还清。`pmm_free` 对范围内每一页把 `Page.ref_count` 减一；减到 0，才把**这一页**送进 `pmm_free_one_index`。同一页若还被别人映射着，这块就不能整段收回。减之前若 `ref_count` 已 ≤0，视为重复释放：打印错误并立即中止（返回 `-E_RENDEZVOS`），已送回桶里的页不回收，剩余页不再处理。
 
 从 0 阶往上试：刚还的是下标 0，伙伴是 `0 xor 1 = 1`。若 `pages[1]` 也是空闲的 0 阶，且两个 ppn 相差 1，就合成下标 0 起的 1 阶。再问 1 阶的伙伴 `0 xor 2 = 2`……伙伴越界、阶对不上、或 ppn 差不是 `2^k`，就停，把当前块首挂进这一阶的桶里。
 
@@ -470,7 +470,7 @@ error_t pmm_change_pages_ref(struct pmm *, ppn_t start, size_t n, bool inc);
 | `pmm_init` | 用 `[start, end)` 这块已经 reserve 好的物理区间，填写本 pmm 的私有管理结构。buddy：在其中铺 `buddy_page[]`。 |
 | `pmm_calculate_manage_space` | 按该 zone 的页数回报私有管理区要多少页。core 只按返回值切片，不理解布局。buddy：`ROUND_UP(n * sizeof(buddy_page), PAGE_SIZE) / PAGE_SIZE`。 |
 | `pmm_alloc` | 分配至少 `page_number` 页；成功返回起始 **ppn**（`ppn_t`=`i64`，**含 0**），`*alloced_page_number` 为向上取整到 2ⁿ 的实际页数。`page_number==0` 会返回 `-E_IN_PARAM`（非法参数，不是成功空分配）。其它失败亦为**负** `error_t`：超 `2^BUDDY_MAXORDER` 且总数够，或 buddy 账本不一致，则 `-E_RENDEZVOS`（不 reclaim）；无 hook / 重试耗尽则 `-E_REND_AGAIN`；hook 放弃则 `-E_REND_NO_MEM`。判断失败用 `invalid_ppn`宏。core **不**自动跨 zone 借用。 |
-| `pmm_free` | 从 `ppn` 起释放 `page_number` 页（调用约定应与当初分配跨度一致）。成功 `0`，失败负错误码。按页降 `Page` 引用计数，减到 0 再并回桶；**不**检查这是不是一次 alloc 的整块。 |
+| `pmm_free` | 从 `ppn` 起释放 `page_number` 页（调用约定应与当初分配跨度一致）。成功 `0`，失败负错误码。按页降 `Page` 引用计数，减到 0 再并回桶；减之前 ref 已 ≤0 视为重复释放，报错中止，已释放前缀不回滚；**不**检查这是不是一次 alloc 的整块。 |
 | `pmm_set_reclaim_hook` | 兼容层安装/清空 reclaim 回调。core 不注册。回调只在 `pmm_alloc` 当时拿不到页时调用，且 **锁已放**。hook 可对本 `pmm` `pmm_free`，**禁止** `pmm_alloc`。最多 64 次。 |
 | `pmm_lock` / `pmm_unlock` | MCS；`me` 必须是**当前核**的 `pmm_spin_lock[zone_id]`。 |
 | `pmm_change_pages_ref` | 对连续页增减 `Page` 引用计数；首尾 PPN 须同属该 zone；失败按已成功改动的页数回滚（非循环下标）。 |
@@ -515,7 +515,7 @@ make ARCH=x86_64 config && make run
 
 ## 11. 变更记录
 
-- 2026-11-21：§7 `pmm_change_pages_ref`——首尾须同 zone；失败按已改动页数回滚。
+- 2026-11-21：§7 `pmm_change_pages_ref`——首尾须同 zone；失败按已改动页数回滚。§4.3/§7 `pmm_free`——put 前 ref≤0 视为重复释放，首违即止，已释放前缀不回滚。
 - 2026-11-19：底子重评批次——篇首/§6 引用缩号；§4.3 排密说明移出代码块；合成动机与跨洞合并句理顺；`aval_pages` 注释去编者注；§8 多架构句改写。
 - 2026-11-19：§8 与平台启动篇联动——澄清 arm64 DTB 协议无「整树 ≤ 2 MiB」上限（随 `05` 口径修正）。
 - 2026-10-31：`Page.ref` 拆 claim/get；与 rmap 解耦写清；alloc 用 claim，COW/pin 用 get（禁 0→1 复活）。
