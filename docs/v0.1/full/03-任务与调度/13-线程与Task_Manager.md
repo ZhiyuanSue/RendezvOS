@@ -83,6 +83,8 @@ core 的调度对象是 **线程 + 地址空间**，没有一等公民「进程�
         volatile Message_t *send_pending_msg;                       \
         atomic64_t recv_pending_cnt;                                \
         volatile void *port_ptr;                                    \
+        thread_should_block_hook_t should_block_hook;               \
+        void *should_block_ctx;                                     \
         struct thread_port_cache port_cache;                        \
         THERAD_SCHE_COMMON
 
@@ -96,7 +98,7 @@ struct Thread_Base {
 | 字段 | 为什么要有 |
 |------|-----------|
 | `name` / `tid` | 调试名；全局唯一编号（由 id 管理器发放，用过不回收）。 |
-| `flags` | 位标志，与下面的 `status` 分开记。常见：`USER`（用户线程）、`EXIT_REQUESTED`（想退出）、`IPC_PORT_CLOSED`（port 已关）。IPC 会改 status，但**擦不掉**退出意图。 |
+| `flags` | 位标志，与下面的 `status` 分开记。常见：`USER`（用户线程）、`EXIT_REQUESTED`（想退出）、`IPC_PORT_CLOSED`（port 已关）、`IPC_EMPTY_WAKE`（IPC **空醒**：配对成功后 transfer 失败，见 `20-阻塞与非阻塞收发.md` §6.1.1）。IPC 会改 status，但**擦不掉**退出意图。 |
 | `vs` | 本线程拥有的地址空间；用户线程必须有独立用户地址空间，boot 线程为 NULL。`create_thread` 成功后所有权归线程，调用方不得再放掉这份引用（见 `14-线程创建与ELF加载.md` / `15-VSpace所有权与调度切换.md`）。 |
 | `tm` | 所属的本核调度器；NULL 表示还没入队或已摘环。跑在哪颗核上 = `tm->owner_cpu`，没有单独的「亲和」字段。 |
 | `status` | 调度与 IPC 共用的状态（§4.2）。绕环调度只挑选 `ready`。 |
@@ -105,6 +107,7 @@ struct Thread_Base {
 | `init_parameter` | 入口函数和整型参数（见 `14-线程创建与ELF加载.md`），供 `run_thread` 启动。 |
 | `refcount` | 线程对象寿命；IPC 等待请求等可以额外持有。归零后同步拆除（不走 EBR，见 `17-EBR与线程资源回收.md`）。 |
 | `send_msg_queue` / `recv_msg_queue` / `send_pending_msg` / `recv_pending_cnt` / `port_ptr` / `port_cache` | 每线程消息 MSQ 与 port 查找 cache——**含义见 `19-Port与消息模型.md` §4.5**；本篇只说明它们嵌在线程里。MSQ dummy 在 `new_thread_structure` 分配。 |
+| `should_block_hook` / `should_block_ctx` | 可选睡前重检（`thread_set_should_block_hook`）；**行为与 CAS 契约见 `20-阻塞与非阻塞收发.md` §6.8**。仅本线程读写；装 hook 须在阻塞 IPC 前，返回后清掉。 |
 | `sched_thread_list` | 挂进本核就绪环的链表节。只要还挂在某个 `tm` 上，就应该在环上。 |
 | `append_hooks` / `append_thread_info[]` | 可选 append 区给上层；调度热路径不读。何时调用钩子见 §4.5。 |
 
@@ -694,6 +697,8 @@ cd core && make ARCH=x86_64 config && make all && make run
 
 ## 11. 变更记录
 
+- 2026-11-22：§4.1 flags 表补 `IPC_EMPTY_WAKE`（空醒；概念指 `20` §6.1.1）。
+- 2026-11-22：§4.1 `THREAD_COMMON` / 字段表补 `should_block_hook`·`should_block_ctx`；契约指 `20-阻塞与非阻塞收发.md` §6.8。
 - 2026-11-19：底子重评批次——篇首引用缩号；VSpace/创建/模块入口裸昵称补号；§7 opener；§9「测例」→「测试用例」、厘清 `smp_test[]`。
 - 2026-11-15：§6.6 对齐审定后的 `arch_fp.c`——`fp_cfg`、ALLOWED/DENIED、`EDX:EAX`、leaf `0xD` 字段表；去掉独立 detect/enable 函数与旧 `start_*` 表述。
 - 2026-11-15：§6.6 补 **`xsave64` 说明**（XCR0 / RFBM / legacy 512B / leaf 0xD size）；更正表内「XSAVE 未做」。

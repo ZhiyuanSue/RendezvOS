@@ -36,7 +36,7 @@ full 正文缺口：（当前无；新增篇目或整篇重写需求在此表格
 | E11 | EBR / MSQ slot 扩展 | `03-任务与调度/17-EBR与线程资源回收.md` | 更大 retire 表或 generational 方案 |
 | E13 | ~~线程切换保存浮点 / 向量状态~~ | `03-任务与调度/13-线程与Task_Manager.md`、`01-启动与初始化/04-平台启动-x86_64.md`、`01-启动与初始化/05-平台启动-aarch64.md` | **已做（eager）**：x86 `arch_fp_cpu_init` + FXSAVE 或 XSAVE（CPU 支持则 **AVX**；**不开** AVX-512）；aarch64 Q0–Q31+FPCR/FPSR。**仅 user** `ctx->fp`；`arch_fp_state_size()` 运行时。AVX-512 / SVE 仍不做 |
 | E14 | ~~硬件随机数 / `rand64`~~ | `10-基础设施/42-公共基础库与数据结构.md` §4.3–§4.4 | **已做（best-effort）**：`arch_get_random_long` + per-CPU / `random_cpu_init` / `rand64`·`rand32`；混洗唯一核 `splitmix64`。非 CSPRNG；强化池 / getrandom 归 compat |
-| E15 | 领取后 transfer 失败丢唤醒 | `04-IPC/20-阻塞与非阻塞收发.md` | `try_match` 领取 CAS(port_ptr→NULL) 成功、node 已摘队后，`ipc_transfer_message` 失败（`create_message_structure` / `fill_message_data` OOM 等）时领取方直接返回错误：已领取等待者无消息、未被 ready、无人再扫（node 已出队）→ 永久 block。修复方向：领取失败路径兜底 CAS block→ready（需设计「空醒」语义）或重新入队 |
+| E15 | ~~配对成功后 transfer 失败丢唤醒~~ | `04-IPC/20-阻塞与非阻塞收发.md` | **已做（空醒，maintainer 审定）**：`THREAD_FLAG_IPC_EMPTY_WAKE`；`NO_MEM`/`NO_MSG` 等由配对成功方对 peer flag+ready；已被配对的一侧返回 `-E_REND_AGAIN`。不空醒：send `AGAIN`/`RENDEZVOS`。残余见 `20` §10（fill 失败丢消息） |
 
 新增条目：在此表追加一行，并在对应 full 篇 §10 加一句回链本表 ID。
 
@@ -44,7 +44,8 @@ full 正文缺口：（当前无；新增篇目或整篇重写需求在此表格
 
 ## 变更记录
 
-- 2026-11-22：新增 **E15**——领取成功、transfer 失败时不唤醒已领取等待者（既有问题；should_block_hook 窗口外部审阅期间发现，回链写入 `20` §10）。
+- 2026-11-22：关闭 **E15**——空醒 flag + claim 失败路径唤醒；回链 `20` §6.2–§6.4 / §10。
+- 2026-11-22：新增 **E15**——配对成功后 transfer 失败时不唤醒已配对等待者（既有问题；should_block_hook 窗口外部审阅期间发现，回链写入 `20` §10）。
 - 2026-11-21：E14 行措辞「熵」改「随机数」（全树同步，「熵」字易困惑）。
 - 2026-11-21：E14 命名——混洗 `splitmix64`；内核取数 `rand64`/`rand32`；per-CPU + `random_cpu_init`。
 - 2026-11-20：关闭 **E14**——硬件随机数入口；分界写入 `42` §4.3（后统一命名如上）。

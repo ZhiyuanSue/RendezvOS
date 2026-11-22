@@ -352,6 +352,8 @@ ms_queue_t send_msg_queue;           /* 消息发送队列 */
 volatile Message_t *send_pending_msg;/* 单槽：为了防止消息发送失败的丢失情况，记录下正要发送的消息 */
 atomic64_t recv_pending_cnt;         /* 已到达、尚未 dequeue 的消息条数 */
 volatile void *port_ptr;             /* 当前阻塞在哪个 Message_Port_t；如果没有为 NULL */
+thread_should_block_hook_t should_block_hook; /* 睡前重检；见 20 §6.8 */
+void *should_block_ctx;
 struct thread_port_cache port_cache; /* thread_lookup_port 的本地 cache（条数≤16） */
 ```
 
@@ -363,7 +365,8 @@ struct thread_port_cache port_cache; /* thread_lookup_port 的本地 cache（条
 | `recv_msg_queue` | 存放 `recv_msg` 接收成功的消息队列，调用方必须 `dequeue_recv_msg()` 取出所有权。 |
 | `send_pending_msg` | 单槽。普通路径主要走 `send_msg_queue`；`ipc_system_*` 以及 transfer 中途「receiver 正在退出」等情形会把 `Message_t` 临时存放在这里，避免弄丢，细节见 `20-阻塞与非阻塞收发.md`。 |
 | `recv_pending_cnt` | 有消息到达时增加，`dequeue_recv_msg` 成功时减一。 |
-| `port_ptr` | 线程在 port 上阻塞时记下它阻塞在的 port。清理时 CAS 清掉，避免醒过来还以为挂在一个已经关掉的 port 上。 |
+| `port_ptr` | **会合认领令牌**：enqueue 时 CAS 写成当前 port；对侧 `try_match` / close / `should_block` 取消用 CAS 清成 NULL。谁 CAS 成功谁「领到」这次等待。细节见 `20-阻塞与非阻塞收发.md` §6.1 / §6.8。 |
+| `should_block_hook` / `should_block_ctx` | 可选；入队成功后、`schedule` 前问「还该不该睡」（futex 等）。安装 API 在线程篇；行为在 `20` §6.8。 |
 | `port_cache` | `thread_lookup_port(name)` 的本地加速：缓存 `(row_index, row_gen)` token。命中则 `resolve_token`，未命中再走全局 lookup。cache **不** pin port（不额外长期 `ref_get`）；unregister 后 gen 对不上即失效。最多 `THREAD_MAX_KNOWN_PORTS`（16）个，采用 LRU 淘汰。 |
 
 和 Port 字段的边界再强调一次：
@@ -456,7 +459,7 @@ server 已经 `register_named_port` 之后，客户端：
 2. **先 `unregister_named_port`，再 put 自己的引用。** 叫醒等待者发生在 unregister 内部的 `close_port`（见 §6.1）。
 3. **关 port 后的两种收尾形态都要处理**（§3 表；server 见 §6.1，client 见 §6.2）。
 4. **`port_cache` 不延长 port 寿命。** token 失效会回查名表；逻辑上仍以「手里握着的引用」为准。
-5. **线程退出与 port 上残留的 `Ipc_Request`：** request 握着 thread 的引用，避免野指针。会合时若线程已不是对应的 `block_on_*`，或 `port_ptr` 对不上，这条 request 会被丢掉（见 `20-阻塞与非阻塞收发.md`）。不要假设「线程一 exit，队上 request 立刻消失」，也不要为此再发明通用 `cancel_ipc`。
+5. **线程退出 / `should_block` 取消与 port 上残留的 `Ipc_Request`：** request 握着 thread 的引用，避免野指针。会合时若线程已不是对应的 `block_on_*`，或 `port_ptr` 对不上，这条 request 会被丢掉（见 `20-阻塞与非阻塞收发.md` §6.1）。`should_block` 取消**不**摘队，只清 `port_ptr`（`20` §6.8）。不要假设「线程一 exit / 一取消，队上 request 立刻消失」，也不要为此再发明通用 `cancel_ipc`。
 6. **具名对象不要对内部那份匿名会合调用 `free_message_port_ref`。** 释放只能走 `free_named_message_port_ref`。
 7. **Owner 链表与 create 寿命。** `create_*(…, owner_list)` 的 `owner_list` 是**任意** `struct list_entry *` 链表头，**不**要求一定是 `Thread_Base` 上的字段；`NULL` = 不挂链。常见是 `&thread->owned_anon_ports` / `owned_named_ports`——线程退出时 `thread_close_owned_ports` 两阶段回收：phase1 对链上全部 close（具名用 `np->table` 做 `unregister_named_port`，不是写死 `global_port_table`），**保留** create ref；phase2 对仍在链上的节点 `*_put_owner_ref`。也可挂到别的宿主链表，由该宿主按同一不变量回收。**不变量：还挂在链上 ⇔ create 尚未放过**（自愿放下 create 必须先摘链；末次 `free_*_ref` 也会 `list_del_init` 兜底）。`close_port` **不**摘链。compat 侧 `get_or_create` 在 create+register 成功后另 `ref_get` 给调用方，避免把 create 当 lookup pin 放掉。IRQ / 尚无明确宿主时传 `NULL`。
 
@@ -577,6 +580,7 @@ Port 的对象模型与 ISA 无关；原子操作相关实现随 arch，语义�
 
 ## 11. 变更记录
 
+- 2026-11-22：§4.5 补 `should_block_hook` / `should_block_ctx`；`port_ptr` 改为「会合认领令牌」表述；§6 残留 request 条点明 hook 取消不摘队（行为见 `20` §6.8）。
 - 2026-11-20：文档澄清——`owner_list` 是任意 `list_entry` 头，不必是 `Thread_Base`；线程 `owned_*` 只是常见宿主。对齐 create 签名、摘链再 put create、两阶段 exit、`named_message_port_put_owner_ref`。
 - 2026-11-20：create_* 改为显式 owner（先 `owner_thread` 再改为 `owner_list`）；A3 简化——双链表、无锁、`close_port` 不摘链；退出两阶段；挂链⇔欠 create；get_or_create 成功后额外 `ref_get`。同日结构债清理——§3 具名步骤与 §6.1 / §6.2 近重复，§3 收为交叉引用；§3 关闭通知结论表保留原位。
 - 2026-11-19：底子重评批次——篇首缩号；「在他的」→「它的」；`port_ptr` 衍字；§9 测例口径。

@@ -43,6 +43,20 @@ void delete_ipc_request(Ipc_Request_t* req)
         cpu_kallocator->m_free(cpu_kallocator, req);
 }
 
+/**
+ * The matched oppo request have leave the wait queue with port_ptr cleared; but
+ * transfer failed so nobody else will wake them. Flag + ready to wake them with
+ * transfer fail(Empty Wake) → they return -E_REND_AGAIN.
+ */
+static void ipc_empty_wake_peer(Thread_Base* peer, u64 expect_status)
+{
+        if (!peer)
+                return;
+        thread_or_flags(peer, THREAD_FLAG_IPC_EMPTY_WAKE);
+        (void)thread_set_status_with_expect(
+                peer, expect_status, thread_status_ready);
+}
+
 error_t free_ipc_request(ref_count_t* refcount)
 {
         if (!refcount)
@@ -196,7 +210,7 @@ error_t ipc_transfer_message(Thread_Base* sender, Thread_Base* receiver)
         tagged_ptr_t dequeued_ptr;
         Message_t* send_msg_ptr;
         if (!sender || !receiver)
-                return -E_RENDEZVOS;
+                return -E_IN_PARAM;
 
         if (thread_get_status(receiver) == thread_status_exit) {
                 return -E_REND_AGAIN;
@@ -383,6 +397,9 @@ error_t send_msg(Message_Port_t* port)
                                  * Receiver is exiting. Drop this matched
                                  * request and try_match another RECV waiter.
                                  * Message is back on send_pending_msg.
+                                 * Do not empty-wake: AGAIN may mean the
+                                 * receiver already got a queue copy (exit
+                                 * after enqueue); just continue and retry.
                                  */
                                 ref_put(&receiver_request->ms_queue_node
                                                  .refcount,
@@ -390,11 +407,45 @@ error_t send_msg(Message_Port_t* port)
                                 receiver_request = NULL;
                                 continue;
                         }
-                        default: {
+                        case -E_RENDEZVOS: {
                                 /*
-                                 * no msg error
-                                 * abandon error
+                                 * Impossible on sender-push (pending CAS fail
+                                 * after recv already got a copy). Do not
+                                 * empty-wake: peer may already hold the msg
+                                 * (same reason as AGAIN). Msg was dropped in
+                                 * transfer — return, do not rematch.
                                  */
+                                ref_put(&receiver_request->ms_queue_node
+                                                 .refcount,
+                                        free_ipc_request);
+                                port_ops_end(port);
+                                return -E_RENDEZVOS;
+                        }
+                        default: {
+                                /* DO NOT CHANGE THE FOLLOWING COMMENTS:
+                                 * For the following error code:
+                                 * empty-wake then return.
+                                 *
+                                 * From ipc_transfer_message:
+                                 * -E_REND_NO_MEM
+                                 *     create_message_structure failed(OOM);
+                                 *     untouch send queue/send_pending_ptr (msg
+                                 *     still there). so it's standard empty-wake
+                                 *     case.
+                                 * -E_REND_NO_MSG
+                                 *     send_msg has no NO_MSG branch — it's
+                                 *     here. it should not happen for it's
+                                 *     sender side (if using the correct
+                                 *     protocol). but we have also use
+                                 *     ipc_port_try_match to get a receiver, we
+                                 *     must also empty-wake
+                                 * -E_IN_PARAM
+                                 *     we have checked before, it should not
+                                 *     happen.
+                                 */
+                                ipc_empty_wake_peer(
+                                        receiver_request->thread,
+                                        thread_status_block_on_receive);
                                 ref_put(&receiver_request->ms_queue_node
                                                  .refcount,
                                         free_ipc_request);
@@ -497,6 +548,15 @@ error_t send_msg(Message_Port_t* port)
                                         ipc_drop_one_orphan_send_msg(sender);
                                         return -E_REND_PORT_CLOSED;
                                 }
+                                if (sender->flags
+                                    & THREAD_FLAG_IPC_EMPTY_WAKE) {
+                                        sender->flags = clear_mask_u64(
+                                                sender->flags,
+                                                THREAD_FLAG_IPC_EMPTY_WAKE);
+                                        /* Message still queued; just let caller
+                                         * retries. */
+                                        return -E_REND_AGAIN;
+                                }
                                 return REND_SUCCESS;
                         }
                         case -E_REND_AGAIN: {
@@ -557,9 +617,17 @@ error_t recv_msg(Message_Port_t* port)
                                 return REND_SUCCESS;
                         }
                         case -E_REND_NO_MSG: {
-                                /*the sender have no message to send or
-                                 * is exiting, retry to get another
-                                 * sender*/
+                                /*
+                                 * For -E_REND_NO_MSG, means cannot get a
+                                 * message from sender so we need to wake the
+                                 * sender and let it handle this.
+                                 */
+                                ipc_empty_wake_peer(
+                                        sender_request->thread,
+                                        thread_status_block_on_send);
+                                ref_put(&sender_request->ms_queue_node.refcount,
+                                        free_ipc_request);
+                                sender_request = NULL;
                                 continue;
                         }
                         case -E_REND_AGAIN: {
@@ -571,8 +639,22 @@ error_t recv_msg(Message_Port_t* port)
                                 return -E_RENDEZVOS;
                         }
                         default: {
-                                /*no other case is set now, and seems
-                                 * impossible*/
+                                /* DO NOT CHANGE THE FOLLOWING COMMENTS:
+                                 * Matched sender; empty-wake then return.
+                                 * From ipc_transfer_message:
+                                 * -E_REND_NO_MEM
+                                 *     create_message_structure failed(OOM);
+                                 *     untouch send queue/send_pending_ptr (msg
+                                 *     still there). so it's standard empty-wake
+                                 *     case.
+                                 * -E_IN_PARAM
+                                 *     sender/receiver NULL (should not here).
+                                 * -E_RENDEZVOS
+                                 *     seems also impossible here.
+                                 */
+                                ipc_empty_wake_peer(
+                                        sender_request->thread,
+                                        thread_status_block_on_send);
                                 ref_put(&sender_request->ms_queue_node.refcount,
                                         free_ipc_request);
                                 port_ops_end(port);
@@ -618,6 +700,13 @@ error_t recv_msg(Message_Port_t* port)
                                                 receiver->flags,
                                                 THREAD_FLAG_IPC_PORT_CLOSED);
                                         return -E_REND_PORT_CLOSED;
+                                }
+                                if (receiver->flags
+                                    & THREAD_FLAG_IPC_EMPTY_WAKE) {
+                                        receiver->flags = clear_mask_u64(
+                                                receiver->flags,
+                                                THREAD_FLAG_IPC_EMPTY_WAKE);
+                                        return -E_REND_AGAIN;
                                 }
                                 return REND_SUCCESS;
                         }
@@ -685,13 +774,27 @@ error_t ipc_try_send_msg(Message_Port_t* port)
                         /*
                          * Same as send_msg: receiver exiting. Put this
                          * request and match again (message on pending).
+                         * Do not empty-wake.
                          */
                         ref_put(&receiver_request->ms_queue_node.refcount,
                                 free_ipc_request);
                         receiver_request = NULL;
                         continue;
                 }
+                case -E_RENDEZVOS: {
+                        /* Same as send_msg: no empty-wake (impossible path). */
+                        ref_put(&receiver_request->ms_queue_node.refcount,
+                                free_ipc_request);
+                        port_ops_end(port);
+                        return -E_RENDEZVOS;
+                }
                 default: {
+                        /*
+                         * Empty-wake: same as send_msg default
+                         * (NO_MEM / NO_MSG / unreachable IN_PARAM).
+                         */
+                        ipc_empty_wake_peer(receiver_request->thread,
+                                            thread_status_block_on_receive);
                         ref_put(&receiver_request->ms_queue_node.refcount,
                                 free_ipc_request);
                         port_ops_end(port);
@@ -737,6 +840,14 @@ error_t ipc_try_recv_msg(Message_Port_t* port)
                         return REND_SUCCESS;
                 }
                 case -E_REND_NO_MSG: {
+                        /*
+                         * Same as recv_msg NO_MSG
+                         */
+                        ipc_empty_wake_peer(sender_request->thread,
+                                            thread_status_block_on_send);
+                        ref_put(&sender_request->ms_queue_node.refcount,
+                                free_ipc_request);
+                        sender_request = NULL;
                         continue;
                 }
                 case -E_REND_AGAIN: {
@@ -746,6 +857,11 @@ error_t ipc_try_recv_msg(Message_Port_t* port)
                         return -E_RENDEZVOS;
                 }
                 default: {
+                        /*
+                         * Empty-wake:Same as recv_msg default
+                         */
+                        ipc_empty_wake_peer(sender_request->thread,
+                                            thread_status_block_on_send);
                         ref_put(&sender_request->ms_queue_node.refcount,
                                 free_ipc_request);
                         port_ops_end(port);

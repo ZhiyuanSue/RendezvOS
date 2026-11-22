@@ -46,11 +46,12 @@ error_t free_ipc_request(ref_count_t* refcount);
  * @c send_msg_queue) and places a new @c Message_t on the receiver that shares
  * the same @c Msg_Data. Does not touch port wait queues.
  *
- * @return @c REND_SUCCESS; @c -E_REND_AGAIN if receiver is exiting (message
- *         parked on @c send_pending_msg — sender-push callers must
- *         @c ref_put the matched request, clear the pointer, and
- *         @c try_match another waiter); @c -E_REND_NO_MSG if sender has
- *         no message; other negatives on alloc/param failure.
+ * @return @c REND_SUCCESS; @c -E_IN_PARAM if @p sender or @p receiver is NULL;
+ *         @c -E_REND_AGAIN if receiver is exiting (message parked on
+ *         @c send_pending_msg — sender-push callers must @c ref_put the matched
+ *         request, clear the pointer, and @c try_match another waiter);
+ *         @c -E_REND_NO_MSG if sender has no message; @c -E_REND_NO_MEM on
+ *         alloc failure; @c -E_RENDEZVOS on internal invariant failure.
  */
 error_t ipc_transfer_message(Thread_Base* sender, Thread_Base* receiver);
 
@@ -63,12 +64,14 @@ error_t ipc_transfer_message(Thread_Base* sender, Thread_Base* receiver);
  *
  * @return @c REND_SUCCESS; @c -E_IN_PARAM if @p port is NULL; @c -E_RENDEZVOS
  *         if no current thread; @c -E_REND_PORT_CLOSED on begin fail or
- *         @c THREAD_FLAG_IPC_PORT_CLOSED wake; @c -E_REND_AGAIN only if the
+ *         @c THREAD_FLAG_IPC_PORT_CLOSED wake; @c -E_REND_AGAIN if the
  *         current thread's @c should_block_hook refused to block (see
  *         @c thread_should_block_hook_t; the enqueue claim is rolled back and
  *         the pending message is dropped as an orphan, same cleanup as the
- *         PORT_CLOSED path); other transfer errors from
- *         @c ipc_transfer_message.
+ *         PORT_CLOSED path) **or** after an empty-wake
+ *         (@c THREAD_FLAG_IPC_EMPTY_WAKE: a peer matched us then transfer
+ *         failed — message still queued, caller should retry); other transfer
+ *         errors from @c ipc_transfer_message.
  * @note May block (@c block_on_send) until a receiver is matched. Call
  *       @c port_ops_end **before** @c schedule (unregister waits
  *       @c ops_count==0). Transfer @c -E_REND_AGAIN (receiver exiting)
@@ -119,9 +122,10 @@ error_t ipc_try_send_msg(Message_Port_t* port);
  *         @c KMSG_OP_SYSTEM_PORT_CLOSED — detect via opcode after dequeue);
  *         @c -E_IN_PARAM / @c -E_RENDEZVOS; @c -E_REND_PORT_CLOSED if begin
  *         fails or woken with @c THREAD_FLAG_IPC_PORT_CLOSED;
- *         @c -E_REND_AGAIN only if the current thread's @c should_block_hook
+ *         @c -E_REND_AGAIN if the current thread's @c should_block_hook
  *         refused to block (see @c thread_should_block_hook_t; the enqueue claim
- *         is rolled back, nothing was transferred).
+ *         is rolled back, nothing was transferred) **or** after an empty-wake
+ *         (@c THREAD_FLAG_IPC_EMPTY_WAKE).
  * @note Call @c port_ops_end before @c schedule (same as send). Close-wake is
  *       **not** symmetric with @c send_msg: senders always see the flag;
  *       receivers preferably get the system closed kmsg (see

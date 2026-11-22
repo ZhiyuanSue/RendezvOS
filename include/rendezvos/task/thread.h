@@ -176,6 +176,14 @@ typedef bool (*thread_should_block_hook_t)(void* ctx);
  * and return E_REND_PORT_CLOSED .
  */
 #define THREAD_FLAG_IPC_PORT_CLOSED (0x4ull)
+/*
+ * Empty-wake flag, if the sender/receiver try to send/recv, and blocked on the
+ * queue, then the opposite dequeue the ipc request but translate fail(e.x.
+ * OOM), the opposite must wake this sender/receiver, otherwise will sleep
+ * forever. But it must tell this sender/receiver, it is a empty wake. So just
+ * set this flag.
+ */
+#define THREAD_FLAG_IPC_EMPTY_WAKE (0x8ull)
 /*let the default is kernel thread*/
 
 struct Thread_Base {
