@@ -114,26 +114,50 @@ extern u64 thread_kstack_page_num;
         struct {                                     \
                 struct list_entry sched_thread_list; \
         };
-#define THREAD_COMMON                                               \
-        char* name;                                                 \
-        tid_t tid;                                                  \
-        u64 flags;                                                  \
-        VSpace* vs;                                                 \
-        Task_Manager* tm;                                           \
-        u64 status;                                                 \
-        u64 kstack_bottom; /*for stack,it's high addr*/             \
-        u64 kstack_num;                                             \
-        Arch_Thread_Context ctx;                                    \
-        Thread_Init_Para* init_parameter;                           \
-        ref_count_t refcount;                                       \
-        ms_queue_t recv_msg_queue;                                  \
-        ms_queue_t send_msg_queue;                                  \
-        volatile Message_t* send_pending_msg; /* expect Message_t*/ \
-        atomic64_t recv_pending_cnt; /*how much msg arrive*/        \
-        volatile void* port_ptr; /*expect Message_Port_t*/          \
-        struct thread_port_cache port_cache;                        \
-        struct list_entry owned_anon_ports;                         \
-        struct list_entry owned_named_ports;                        \
+/*
+ * Should-block hook: per-thread answer to "should I keep blocking?", consulted
+ * by send_msg / recv_msg after the blocking enqueue succeeded but before
+ * schedule(). Return true = may block; false = do not block — the primitive
+ * rolls back the enqueue claim and returns -E_REND_AGAIN (see ipc.h).
+ *
+ * Contract for registrants:
+ *  - Call thread_set_should_block_hook() right before a blocking ipc call, and
+ *    again with @c hook == NULL right after to clear.
+ *  - Must be fast and never sleep (status is already block_on_* here; an
+ *    inatomic user read + compare is one expected shape).
+ *  - If the hook reads a value another thread writes (e.g. a futex word),
+ *    it must issue arch_mb() BEFORE that read, paired with the waker's
+ *    arch_mb() between its value update and its try_deliver scan (Dekker).
+ *    Without the pair, a "should block" answer can be stale on weakly-ordered
+ *    arches (aarch64/riscv64; x86 TSO hides the bug).
+ * Only the owner thread touches these fields. Claim races (peer match or
+ * close drain) are resolved by @c port_ptr CAS in the primitives; and the @c
+ * -E_REND_AGAIN returned by a send_msg or recv_msg after a refused block
+ * requires a successful status restore as well.
+ */
+typedef bool (*thread_should_block_hook_t)(void* ctx);
+#define THREAD_COMMON                                                    \
+        char* name;                                                      \
+        tid_t tid;                                                       \
+        u64 flags;                                                       \
+        VSpace* vs;                                                      \
+        Task_Manager* tm;                                                \
+        u64 status;                                                      \
+        u64 kstack_bottom; /*for stack,it's high addr*/                  \
+        u64 kstack_num;                                                  \
+        Arch_Thread_Context ctx;                                         \
+        Thread_Init_Para* init_parameter;                                \
+        ref_count_t refcount;                                            \
+        ms_queue_t recv_msg_queue;                                       \
+        ms_queue_t send_msg_queue;                                       \
+        volatile Message_t* send_pending_msg; /* expect Message_t*/      \
+        atomic64_t recv_pending_cnt; /*how much msg arrive*/             \
+        volatile void* port_ptr; /*expect Message_Port_t*/               \
+        thread_should_block_hook_t should_block_hook; /*contract above*/ \
+        void* should_block_ctx;                                          \
+        struct thread_port_cache port_cache;                             \
+        struct list_entry owned_anon_ports;                              \
+        struct list_entry owned_named_ports;                             \
         THERAD_SCHE_COMMON
 
 #define THREAD_FLAG_NONE               0
@@ -160,6 +184,28 @@ struct Thread_Base {
         u64 append_thread_info[];
 };
 typedef struct Thread_Base Thread_Base;
+
+/*
+ * Install or clear a should-block hook (contract at
+ * thread_should_block_hook_t). Only the owner thread calls this; no cross-CPU
+ * sync. @p hook == NULL clears both slots (ctx ignored). Non-NULL: store ctx
+ * then hook so a reader never sees a hook without its ctx; clear stores hook
+ * NULL first.
+ */
+static inline void thread_set_should_block_hook(Thread_Base* thread,
+                                                thread_should_block_hook_t hook,
+                                                void* ctx)
+{
+        if (!thread)
+                return;
+        if (!hook) {
+                thread->should_block_hook = NULL;
+                thread->should_block_ctx = NULL;
+                return;
+        }
+        thread->should_block_ctx = ctx;
+        thread->should_block_hook = hook;
+}
 
 static inline size_t thread_append_info_len(const Thread_Base* thread)
 {

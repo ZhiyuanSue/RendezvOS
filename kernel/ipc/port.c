@@ -34,7 +34,8 @@ error_t message_port_init(Message_Port_t* port, u32 service_id)
         return REND_SUCCESS;
 }
 
-Message_Port_t* create_message_port(u32 service_id, struct list_entry* owner_list)
+Message_Port_t* create_message_port(u32 service_id,
+                                    struct list_entry* owner_list)
 {
         struct allocator* cpu_kallocator = percpu(kallocator);
         Message_Port_t* port = (Message_Port_t*)cpu_kallocator->m_alloc(
@@ -77,6 +78,13 @@ void port_ops_end(Message_Port_t* port)
 
 /*
  * clean port->thread_queue on close (also a defensive on final free).
+ *
+ * Claim gate: only the winner of port_ptr CAS (port → NULL) may wake the
+ * waiter. A failed CAS means someone else already cleared the claim — reachable
+ * losers here are should_block_hook abort, a stale node after the thread left
+ * this wait, or teardown that nulled port_ptr. (try_match pops the node before
+ * its own claim CAS, so drain never observes a live matcher holding that node.)
+ * On CAS loss: drop the request only — no deliver, no status/flag change.
  *
  * send/recv notification differs:
  * the two waiters resume into different API shapes after schedule.
@@ -122,9 +130,13 @@ static void port_clean_thread_queue(Message_Port_t* port)
                                 Message_t* msg;
                                 error_t err;
 
-                                atomic64_cas((volatile u64*)&thread->port_ptr,
-                                             (u64)port,
-                                             (u64)NULL);
+                                if (atomic64_cas(
+                                            (volatile u64*)&thread->port_ptr,
+                                            (u64)port,
+                                            (u64)NULL)
+                                    != (u64)port) {
+                                        goto put_node;
+                                }
 
                                 msg_data =
                                         kmsg_create(port->service_id,
@@ -158,9 +170,13 @@ static void port_clean_thread_queue(Message_Port_t* port)
                                                 THREAD_FLAG_IPC_PORT_CLOSED);
                                 }
                         } else if (status == thread_status_block_on_send) {
-                                atomic64_cas((volatile u64*)&thread->port_ptr,
-                                             (u64)port,
-                                             (u64)NULL);
+                                if (atomic64_cas(
+                                            (volatile u64*)&thread->port_ptr,
+                                            (u64)port,
+                                            (u64)NULL)
+                                    != (u64)port) {
+                                        goto put_node;
+                                }
                                 thread_or_flags(thread,
                                                 THREAD_FLAG_IPC_PORT_CLOSED);
                                 (void)thread_set_status_with_expect(
@@ -169,6 +185,7 @@ static void port_clean_thread_queue(Message_Port_t* port)
                                         thread_status_ready);
                         }
                 }
+        put_node:
                 ref_put(&node->refcount, free_ipc_request);
         }
 }

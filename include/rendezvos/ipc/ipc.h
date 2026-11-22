@@ -63,13 +63,25 @@ error_t ipc_transfer_message(Thread_Base* sender, Thread_Base* receiver);
  *
  * @return @c REND_SUCCESS; @c -E_IN_PARAM if @p port is NULL; @c -E_RENDEZVOS
  *         if no current thread; @c -E_REND_PORT_CLOSED on begin fail or
- *         @c THREAD_FLAG_IPC_PORT_CLOSED wake; other transfer errors from
+ *         @c THREAD_FLAG_IPC_PORT_CLOSED wake; @c -E_REND_AGAIN only if the
+ *         current thread's @c should_block_hook refused to block (see
+ *         @c thread_should_block_hook_t; the enqueue claim is rolled back and
+ *         the pending message is dropped as an orphan, same cleanup as the
+ *         PORT_CLOSED path); other transfer errors from
  *         @c ipc_transfer_message.
  * @note May block (@c block_on_send) until a receiver is matched. Call
  *       @c port_ops_end **before** @c schedule (unregister waits
  *       @c ops_count==0). Transfer @c -E_REND_AGAIN (receiver exiting)
  *       is internal: @c ref_put that request, set it NULL, @c try_match
  *       again; the message stays on @c send_pending_msg.
+ * @note The @c should_block_hook runs after @c port_ops_end, immediately before
+ *       @c schedule. Refusing sleep CAS-undoes @c thread->port_ptr: winning
+ *       proves no peer/close claimed us yet (transfer only after claim);
+ *       @c -E_REND_AGAIN only if status restore succeeds. If restore fails,
+ *       fall through to the normal wake path (do not report AGAIN). Losing
+ *       the CAS means we were claimed (and woken); schedule as usual.
+ *       Close drain uses the same @c port_ptr claim: CAS losers only drop
+ *       the queue node (no false CLOSED wake).
  */
 error_t send_msg(Message_Port_t* port);
 
@@ -106,11 +118,17 @@ error_t ipc_try_send_msg(Message_Port_t* port);
  * @return @c REND_SUCCESS (including port-close wake that delivered
  *         @c KMSG_OP_SYSTEM_PORT_CLOSED — detect via opcode after dequeue);
  *         @c -E_IN_PARAM / @c -E_RENDEZVOS; @c -E_REND_PORT_CLOSED if begin
- *         fails or woken with @c THREAD_FLAG_IPC_PORT_CLOSED.
+ *         fails or woken with @c THREAD_FLAG_IPC_PORT_CLOSED;
+ *         @c -E_REND_AGAIN only if the current thread's @c should_block_hook
+ *         refused to block (see @c thread_should_block_hook_t; the enqueue claim
+ *         is rolled back, nothing was transferred).
  * @note Call @c port_ops_end before @c schedule (same as send). Close-wake is
  *       **not** symmetric with @c send_msg: senders always see the flag;
  *       receivers preferably get the system closed kmsg (see
  *       @c unregister_named_port).
+ * @note The @c should_block_hook runs after @c port_ops_end, immediately before
+ *       @c schedule, with the same @c port_ptr CAS / restore-gated AGAIN
+ *       rules as @c send_msg (and the same close-drain claim gate).
  */
 error_t recv_msg(Message_Port_t* port);
 

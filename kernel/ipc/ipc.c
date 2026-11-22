@@ -419,6 +419,70 @@ error_t send_msg(Message_Port_t* port)
                                  * while we sleep, we also do it at recv_msg
                                  */
                                 port_ops_end(port);
+                                /**
+                                 * Do not change the following comments:
+                                 * For some cases(like futex),
+                                 * after we enqueue and before schedule,
+                                 * we should add a check, if the check pass,
+                                 * it means the condition of block is not
+                                 * satisify any more.
+                                 * so we should not schedule and blocked.
+                                 * Otherwise it have been waken before, so no
+                                 * more opposite will wake it any more, and it
+                                 * will sleep forever.
+                                 * so we add a should_block_hook for every IPC.
+                                 * The key point is ,it must enqueue first.
+                                 * Then using CAS to change sender's port_ptr.
+                                 *
+                                 * if a match success befor CAS, the CAS will
+                                 * fail, and continue scheule, but no problem,
+                                 * it have been changed to ready, so it check
+                                 * fail but receive a message and will not sleep
+                                 * forever.
+                                 *
+                                 * if a match success after CAS, it also no
+                                 * problem, in ipc_port_try_match also have a
+                                 * CAS, it will fail, and find the port is not
+                                 * the port(it's NULL), which just put an old
+                                 * ipc request into the queue and the opposite
+                                 * thread will retry for next one(if exist).
+                                 *
+                                 * For upper layer, it should check this again
+                                 * error code and retry.
+                                 *
+                                 * Because it's send msg, so it should also drop
+                                 * the orphan send msg. But no need for receive.
+                                 *
+                                 * If you want using lock but don't want sleep
+                                 * with lock hold. You should unlock->
+                                 * send_msg/recv_msg -> lock, and should
+                                 * recheck after we hold the lock. We do not
+                                 * support unlock all the lock in core here and
+                                 * no need.
+                                 */
+                                if (sender->should_block_hook
+                                    && !sender->should_block_hook(
+                                            sender->should_block_ctx)) {
+                                        if (atomic64_cas((volatile u64*)&sender
+                                                                 ->port_ptr,
+                                                         (u64)port,
+                                                         (u64)NULL)
+                                            == (u64)port) {
+                                                ipc_drop_one_orphan_send_msg(
+                                                        sender);
+                                                /* for the following check fail,
+                                                 * current have no case will
+                                                 * happen if our model have no
+                                                 * problem, we just have to let
+                                                 * CAS port first*/
+                                                if (thread_set_status_with_expect(
+                                                            sender,
+                                                            thread_status_block_on_send,
+                                                            old_status)) {
+                                                        return -E_REND_AGAIN;
+                                                }
+                                        }
+                                }
                                 schedule(percpu(core_tm));
                                 if (sender->flags
                                     & THREAD_FLAG_IPC_PORT_CLOSED) {
@@ -527,6 +591,26 @@ error_t recv_msg(Message_Port_t* port)
                                  * has matched us and transferred the
                                  * message*/
                                 port_ops_end(port);
+                                /*
+                                 * The same with the send msg. But no
+                                 * ipc_drop_one_orphan_send_msg here.
+                                 */
+                                if (receiver->should_block_hook
+                                    && !receiver->should_block_hook(
+                                            receiver->should_block_ctx)) {
+                                        if (atomic64_cas((volatile u64*)&receiver
+                                                                 ->port_ptr,
+                                                         (u64)port,
+                                                         (u64)NULL)
+                                            == (u64)port) {
+                                                if (thread_set_status_with_expect(
+                                                            receiver,
+                                                            thread_status_block_on_receive,
+                                                            old_status)) {
+                                                        return -E_REND_AGAIN;
+                                                }
+                                        }
+                                }
                                 schedule(percpu(core_tm));
                                 if (receiver->flags
                                     & THREAD_FLAG_IPC_PORT_CLOSED) {
