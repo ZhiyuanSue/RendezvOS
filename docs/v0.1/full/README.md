@@ -505,7 +505,7 @@ implementation 文件应各归一篇「源码」列表，头文件随对应 `.c`
 - `arch/aarch64/`（约 18）→ 01、03、05–07、09
 - `arch/riscv64/` 仅 `sbi.c` / `sbi.h` → `10-基础设施/42-公共基础库与数据结构.md`（占位）
 
-早期独立中间层 `nexus` 已移除；现行契约见 `08-Radix树与用户映射.md`（`vmm_radix_tree` / `mm_user_utils`）。`tcb.h` 等若仍见历史名，以当前 `thread.h` 等为准，不单独开文。
+虚存现行契约见 `08-Radix树与用户映射.md`（`vmm_radix_tree` / `mm_user_utils`）。`tcb.h` 等若仍见历史名，以当前 `thread.h` 等为准，不单独开文。
 
 ---
 
