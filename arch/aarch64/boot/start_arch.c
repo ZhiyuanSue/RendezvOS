@@ -14,6 +14,7 @@
 #include <rendezvos/smp/cpu_topology.h>
 #include <rendezvos/smp/ipi.h>
 #include <rendezvos/smp/percpu.h>
+#include <rendezvos/smp/smp.h>
 #include <rendezvos/mm/vmm.h>
 #include <rendezvos/mm/allocator.h>
 #include <rendezvos/trap/trap.h>
@@ -24,8 +25,10 @@
 
 extern u64 L2_table;
 extern char *cmdline_ptr;
+extern int NR_CPU;
 cpu_id_t BSP_ID = 0;
 struct cpuinfo cpu_info = {0};
+DEFINE_PER_CPU(struct device_node*, cpu_device_node);
 
 /*
  * Merge user PSTATE I (from SPSR at trap entry) into live DAIF.
@@ -217,6 +220,64 @@ struct device_node *build_device_tree(struct allocator *malloc,
         }
         return curr_node;
 }
+/* This function enumerate the cpus from DTB */
+static void arch_enumerate_cpus(void)
+{
+        for (int i = 0; i < RENDEZVOS_MAX_CPU_NUMBER; i++)
+                per_cpu(CPU_STATE, i) = no_cpu;
+        per_cpu(CPU_STATE, BSP_ID) = cpu_disable;
+        NR_CPU = 1;
+
+#ifdef NR_CPUS
+        if (NR_CPUS == 1)
+                return;
+#endif
+        struct device_node *cpu_node = dev_node_find_by_type(NULL, "cpu");
+        while (cpu_node) {
+                struct property *reg_prop =
+                        dev_node_find_property(cpu_node, "reg", 4);
+                if (!reg_prop) {
+                        pr_error(
+                                "[ SMP ] cannot find reg property in cpu node\n");
+                        goto next_cpu_node;
+                }
+                struct property *method_prop =
+                        dev_node_find_property(cpu_node, "enable-method", 14);
+                if (!method_prop) {
+                        pr_error("[ SMP ] cpu node missing enable-method\n");
+                        goto next_cpu_node;
+                }
+                char *method_str;
+                property_read_string(method_prop, &method_str);
+                if (strcmp_s(method_str, "psci", 5)) {
+                        pr_error(
+                                "[ SMP ] we only support psci smp setup method now\n");
+                        goto next_cpu_node;
+                }
+                u32 reg_val;
+                if (property_read_u32(reg_prop, &reg_val))
+                        goto next_cpu_node;
+
+                cpu_hwid_t hwid = (cpu_hwid_t)reg_val;
+                if (hwid == cpu_hw_id(BSP_ID)) {
+                        per_cpu(cpu_device_node, BSP_ID) = cpu_node;
+                        goto next_cpu_node;
+                }
+                if (NR_CPU >= RENDEZVOS_MAX_CPU_NUMBER)
+                        goto next_cpu_node;
+#ifdef NR_CPUS
+                if (NR_CPU >= NR_CPUS)
+                        goto next_cpu_node;
+#endif
+                set_cpu_hw_id((cpu_id_t)NR_CPU, hwid);
+                per_cpu(CPU_STATE, NR_CPU) = cpu_disable;
+                per_cpu(cpu_device_node, NR_CPU) = cpu_node;
+                NR_CPU++;
+        next_cpu_node:
+                cpu_node = dev_node_find_by_type(dev_tree_get_next(cpu_node),
+                                                 "cpu");
+        }
+}
 /*
  * @brief this function is after the vmm start, so we can use kallocator now,
  in this function, we need to handle all of the platform part, e.g. aarch64 dtb
@@ -254,6 +315,7 @@ error_t arch_start_platform(struct setup_info *arch_setup_info)
                         print("no input cmdline\n");
         }
         psci_init();
+        arch_enumerate_cpus();
         error_t e = gic_probe();
         if (e != REND_SUCCESS)
                 return e;

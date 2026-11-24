@@ -78,6 +78,7 @@ error_t arch_cpu_info(struct setup_info *arch_setup_info);
  * - Parser DTB and build device tree
  * - handle cmdline based on device tree
  * - system psci init
+ * - enumerate CPUs (DT → logical map / NR_CPU)
  * - gic interrupt controller distributor init
  *
  * @param arch_setup_info Must have boot_dtb_header_base_addr from prepare_arch.
