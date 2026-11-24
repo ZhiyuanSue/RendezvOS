@@ -1,7 +1,14 @@
 #ifndef _RENDEZVOS_ENDIAN_H_
 #define _RENDEZVOS_ENDIAN_H_
+
 #include <common/types.h>
-/*In rendezvos we promise we use little endianness*/
+
+/* RendezvOS is little-endian only. */
+#if defined(__BYTE_ORDER__) && defined(__ORDER_LITTLE_ENDIAN__)
+_Static_assert(__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__,
+              "rendezvos requires little-endian");
+#endif
+
 static inline u16 SWAP_ENDIANNESS_16(u16 uint_16)
 {
         return ((uint_16 & 0x00ff) << 8) + ((uint_16 & 0xff00) >> 8);

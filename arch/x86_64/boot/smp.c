@@ -2,6 +2,7 @@
 #include <modules/log/log.h>
 #include <rendezvos/smp/smp.h>
 #include <rendezvos/smp/cpu_id.h>
+#include <rendezvos/smp/cpu_topology.h>
 #include <rendezvos/time.h>
 #include <rendezvos/mm/kmalloc.h>
 extern char ap_start;
@@ -24,9 +25,9 @@ static void clean_ap_start_code(void)
                 (char*)KERNEL_PHY_TO_VIRT(_RENDEZVOS_X86_64_AP_PHY_ADDR_);
         memset(dest_ap_start_ptr, 0x0, (vaddr)&ap_start_end - (vaddr)&ap_start);
 }
-static void send_sipi(cpu_id_t cpu_id, paddr ap_start_addr)
+static void send_sipi(cpu_hwid_t apic_id, paddr ap_start_addr)
 {
-        APIC_send_IPI(cpu_id,
+        APIC_send_IPI((u8)apic_id,
                       APIC_ICR_DEST_SH_NO,
                       APIC_ICR_TRIGGER_EDGE,
                       APIC_ICR_LEVEL_ASSERT,
@@ -34,7 +35,7 @@ static void send_sipi(cpu_id_t cpu_id, paddr ap_start_addr)
                       APIC_ICR_DEL_MODE_START_UP,
                       PPN(ap_start_addr));
         udelay(200);
-        APIC_send_IPI(cpu_id,
+        APIC_send_IPI((u8)apic_id,
                       APIC_ICR_DEST_SH_NO,
                       APIC_ICR_TRIGGER_EDGE,
                       APIC_ICR_LEVEL_ASSERT,
@@ -48,11 +49,6 @@ void arch_start_smp(struct setup_info* arch_setup_info)
         per_cpu(CPU_STATE, BSP_ID) = cpu_enable;
         if (NR_CPU > 1) {
                 arch_irq_local_disable();
-                /*
-                    if we only have one cpu,no need for this,
-                    we only have one single cpu and we needn't mark that this
-                   cpu is on
-                */
                 copy_ap_start_code();
 
                 /*send init ipi to all cores*/
@@ -65,8 +61,11 @@ void arch_start_smp(struct setup_info* arch_setup_info)
                               0);
                 mdelay(10);
 
-                for (int i = 0; i < RENDEZVOS_MAX_CPU_NUMBER; i++) {
+                for (int i = 0; i < NR_CPU; i++) {
+                        if ((cpu_id_t)i == BSP_ID)
+                                continue;
                         if (per_cpu(CPU_STATE, i) == cpu_disable) {
+                                cpu_hwid_t apic_id = cpu_hw_id((cpu_id_t)i);
                                 struct allocator* cpu_kallocator =
                                         per_cpu(kallocator, BSP_ID);
                                 void* ap_stack = NULL;
@@ -84,8 +83,9 @@ void arch_start_smp(struct setup_info* arch_setup_info)
                                         (vaddr)ap_stack + 16 * PAGE_SIZE;
                                 arch_setup_info->ap_boot_stack_ptr =
                                         stack_bottom;
-                                arch_setup_info->cpu_id = i;
-                                send_sipi(i, _RENDEZVOS_X86_64_AP_PHY_ADDR_);
+                                arch_setup_info->cpu_id = (cpu_id_t)i;
+                                send_sipi(apic_id,
+                                          _RENDEZVOS_X86_64_AP_PHY_ADDR_);
                                 for (int j = 0;
                                      j < 1000
                                      && atomic64_load((volatile u64*)&per_cpu(
@@ -96,8 +96,9 @@ void arch_start_smp(struct setup_info* arch_setup_info)
                                 }
                                 if (per_cpu(CPU_STATE, i) == cpu_disable) {
                                         pr_error(
-                                                "[ ERROR ]cpu %d cannot enable after 10s\n",
-                                                i);
+                                                "[ ERROR ]cpu %d (APIC %d) cannot enable after 10s\n",
+                                                i,
+                                                (int)apic_id);
                                 }
                         }
                 }

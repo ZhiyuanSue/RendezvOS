@@ -1,6 +1,7 @@
 #include <arch/x86_64/PIC/IRQ.h>
 #include <arch/x86_64/PIC/LocalAPIC.h>
 #include <rendezvos/error.h>
+#include <rendezvos/smp/cpu_topology.h>
 #include <rendezvos/smp/percpu.h>
 #include <rendezvos/smp/smp.h>
 #include <rendezvos/trap/trap.h>
@@ -18,7 +19,11 @@ error_t arch_smp_ipi_send(cpu_id_t cpu_id)
         if (arch_irq_type != xAPIC_IRQ && arch_irq_type != x2APIC_IRQ)
                 return -E_RENDEZVOS;
 
-        APIC_send_IPI((u8)cpu_id,
+        cpu_hwid_t apic = cpu_hw_id(cpu_id);
+        if (apic == CPU_HWID_INVALID || apic > 0xffu)
+                return -E_IN_PARAM;
+
+        APIC_send_IPI((u8)apic,
                       APIC_ICR_DEST_SH_NO,
                       APIC_ICR_TRIGGER_EDGE,
                       APIC_ICR_LEVEL_ASSERT,

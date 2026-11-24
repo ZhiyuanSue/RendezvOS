@@ -195,6 +195,7 @@ cd core && make ARCH=x86_64 config && make all && make run
 ## 10. 限制与后续
 
 - 无运行期迁移（evolution E3）。
+- x86 APIC id 稀疏时，`cpu_id_is_online` 的 `cpu < NR_CPU` 稠密假设会误判——见 SMP 篇 §7.4 / §10，演进 **E16**。
 - ELF harness 不能跨核创建。
 - `thread_owner_cpu` 摘环后失效。
 - Linux affinity 只能映射到创建时选核。

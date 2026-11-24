@@ -10,8 +10,7 @@
  * @brief This function is used for aarch64 smp boot.
  * we only support enable-method=psci now(and the spin-table is not support)
  * the context_id(psci cpu_on third param) is used for passing cpu id.
- * we just boot other cpu one by one(wait for  each AP
- * CPU_STATE==enable before NR_CPU++), so we can reuse the setup_info
+ * we just boot other cpu one by one, so we can reuse the setup_info
  * struct——only one cpu boot can use this structure at one time
  *
  * @param arch_setup_info the reused setup_info

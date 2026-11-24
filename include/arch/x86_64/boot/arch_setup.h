@@ -76,14 +76,11 @@ GET_MULTIBOOT2_INFO(struct setup_info *setup_info)
 error_t prepare_arch(struct setup_info *arch_setup_info);
 
 /**
- * @brief Fill global cpu_info via CPUID and set BSP_ID = APIC ID.
+ * @brief Fill global cpu_info via CPUID; seed @c cpu_hw_map[BSP_ID].
  *
- * @param arch_setup_info Unused just for the interface is same with other arch.
+ * @param arch_setup_info Unused; kept for the common arch interface.
  * @return Always REND_SUCCESS.
  *
- * @note Called after arch_enable_percpu(BSP_ID) while BSP_ID may still be 0;
- *       this function may then rewrite BSP_ID by APIC ID.
- *       (So we can not always assume BSP ID is 0)
  */
 error_t arch_cpu_info(struct setup_info *arch_setup_info);
 

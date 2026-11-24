@@ -66,9 +66,9 @@ struct setup_info {
 error_t prepare_arch(struct setup_info *arch_setup_info);
 
 /**
- * @brief Parse MPIDR_EL1 and try to get the cpu infomation.
+ * @brief Read MPIDR into cpu_info; seed @c cpu_hw_map[BSP_ID].
  *
- * @param arch_setup_info Unused just for the interface is same with other arch.
+ * @param arch_setup_info Unused; kept for the common arch interface.
  * @return Always REND_SUCCESS.
  */
 error_t arch_cpu_info(struct setup_info *arch_setup_info);

@@ -11,6 +11,7 @@
 #include <modules/log/log.h>
 #include <arch/aarch64/psci/psci.h>
 #include <rendezvos/error.h>
+#include <rendezvos/smp/cpu_topology.h>
 #include <rendezvos/smp/ipi.h>
 #include <rendezvos/smp/percpu.h>
 #include <rendezvos/mm/vmm.h>
@@ -80,18 +81,7 @@ static void init_syscall(void)
  */
 static void get_cpu_info(void)
 {
-        u64 MPIDR_VAL;
-        mrs("MPIDR_EL1", MPIDR_VAL);
-        if (MPIDR_EL1_MT(MPIDR_VAL)) {
-                cpu_info.MT = true;
-        } else {
-                cpu_info.MT = false;
-        }
-        if (MPIDR_EL1_U(MPIDR_VAL)) {
-                cpu_info.MP = false;
-        } else {
-                cpu_info.MP = true;
-        }
+        mrs("MPIDR_EL1", cpu_info.mpidr_el1_val);
 }
 /*
  * @brief mapping the aarch64 dtb
@@ -157,7 +147,8 @@ error_t arch_cpu_info(struct setup_info *arch_setup_info)
         /*read MPIDR to get the cpu affinity*/
         (void)arch_setup_info;
         get_cpu_info();
-        BSP_ID = 0;
+        cpu_hw_map_reset();
+        set_cpu_hw_id(BSP_ID, (cpu_hwid_t)MPIDR_HWID(cpu_info.mpidr_el1_val));
         return REND_SUCCESS;
 }
 /*

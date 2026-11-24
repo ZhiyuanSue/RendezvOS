@@ -2,7 +2,7 @@
 
 v0.1 · 2026-10-04
 
-本篇对应的源码是：`kernel/smp/smp.c`、`include/rendezvos/smp/smp.h`、`include/rendezvos/smp/cpu_id.h`、`include/rendezvos/cpu_topology.h`，以及 `arch/x86_64/boot/smp.c`、`arch/aarch64/boot/smp.c`。
+本篇对应的源码是：`kernel/smp/smp.c`、`include/rendezvos/smp/smp.h`、`include/rendezvos/smp/cpu_id.h`、`include/rendezvos/smp/cpu_topology.h`，以及 `arch/x86_64/boot/smp.c`、`arch/aarch64/boot/smp.c`。
 
 启动总览里，最先起来的核叫 **BSP**，其余后来被叫醒的核叫 **AP**。总览写过：BSP 在 `cmain` 末尾才调 `start_smp`；AP 从汇编入口进 `start_secondary_cpu`。`ap_start` / `ap_entry` 本身怎样从实模式或关着 MMU 走到能跑 C，见平台启动篇（`04-平台启动-x86_64.md`/`05-平台启动-aarch64.md`）。本篇接着讲：**怎样把其它核叫醒，叫醒之后 BSP 与 AP 各自还要补什么，以及 `cpu_id` 在 x86_64 / aarch64 上怎么编号。**
 
@@ -80,7 +80,7 @@ flowchart TB
 | 符号 | 含义 |
 |------|------|
 | `RENDEZVOS_MAX_CPU_NUMBER` | 编译时允许的 `cpu_id` 最大值加一（默认 128，或与 `NR_CPUS` 取较小者）。唤醒时从 0 扫到此上限减一 |
-| `NR_CPU` | 运行时认为有多少个核。初值 1。x86_64 在 `arch_parser_madt` 里改成合法 Local APIC 条目个数——只计带 `Local_APIC_flags_enable` 且 APIC id 不越界的条目，且遇到第一个 disabled 条目即**停止**整个扫描（`break` 而非跳过）。aarch64 在 `arch_start_smp` 里先改回 1，再每处理完一颗加一（`cpu_on` 失败路径也必然加，且会卡在同一设备树节点反复重试，见 §2、§6.5） |
+| `NR_CPU` | 运行时认为有多少个核。初值 1。x86_64 在 `arch_parser_madt` 里改成合法 Local APIC 条目个数——只计带 `Local_APIC_flags_enable` 且 APIC id 不越界的条目；disabled 条目在 `switch` 里 `break`（**只跳出 case，不跳出** `for_each_madt_ctrl_head`），等于跳过并继续扫后续条目。aarch64 在 `arch_start_smp` 里先改回 1，再每处理完一颗加一（`cpu_on` 失败路径也必然加，且会卡在同一设备树节点反复重试，见 §2、§6.5） |
 | `NR_CPUS` | 构建宏，由构建系统注入，见`01-构建与链接.md`。仅为 1 时可以不启 AP |
 | `CPU_STATE` | 每个 `cpu_id` 一份：`no_cpu` / `cpu_disable` / `cpu_enable` |
 | `BSP_ID` | 软件侧认定的 BSP 编号。x86_64 由 `arch_cpu_info` 写成 APIC id；aarch64 固定 0 |
@@ -134,7 +134,7 @@ AP 把自己标成 `cpu_enable` 之后，空转等 `all_enabled`。BSP 必须在
 | `arch/x86_64/boot/boot.S` 的 `ap_start` | AP 入口汇编；步骤见 x86 平台篇 |
 | `arch/aarch64/boot/smp.c` | 实现aarch64架构下的多核心启动，按设备树串行 `cpu_on` |
 | `arch/aarch64/boot/boot.S` 的 `ap_entry` | AP 入口汇编；见 aarch64 平台篇 |
-| `include/rendezvos/cpu_topology.h` | 拓扑占位结构体（§4.4） |
+| `include/rendezvos/smp/cpu_topology.h` | 逻辑↔hw map + 拓扑占位（§4.4） |
 
 ---
 
@@ -341,14 +341,15 @@ enum cpu_status { no_cpu, cpu_disable, cpu_enable };
 
 ## 10. 限制与后续
 
-拓扑结构体仍是空占位。`cpu_is_online` 与 `cpu_id_is_online` 在 APIC id 不连续时不一致（§7.4）。x86_64 缺「APIC id 到数组下标」对照层。aarch64 的缺口比旧版所述更重：`cpu_on` 失败**必然** `NR_CPU++`，且失败后 `continue` 不推进 `cpu_node`，会在同一设备树节点上无限重试；等单核就绪也没有超时（§6.5，疑似代码缺陷，本篇仅如实记录、未改代码）。MADT 侧的 disabled 过滤**已经补上**：`arch_parser_madt` 检查 `Local_APIC_flags_enable`，disabled 条目打印后跳过；但注意其实现是 `break`——遇到第一个 disabled 条目即停止扫描后续所有条目，若固件把靠前的核标为 disabled 而后面还有 enabled 核，会一并漏掉。
+拓扑结构体仍是空占位。`cpu_is_online` 与 `cpu_id_is_online` 在 APIC id 不连续时不一致（§7.4）。x86_64 缺「APIC id 到数组下标」对照层——演进项见 `v0.1/evolution/TODO.md` **E16**（v0.1 不承诺稀疏 APIC 拓扑正确）。aarch64 的缺口比旧版所述更重：`cpu_on` 失败**必然** `NR_CPU++`，且失败后 `continue` 不推进 `cpu_node`，会在同一设备树节点上无限重试；等单核就绪也没有超时（§6.5，疑似代码缺陷，本篇仅如实记录、未改代码）。MADT 侧：`arch_parser_madt` 检查 `Local_APIC_flags_enable`，disabled 打印后 `break` 出 **switch case** 并继续 `for_each`——即跳过该条目，**不会**截断整表扫描（曾误记为整表停止，已更正）。
 
 ---
 
 ## 11. 变更记录
 
+- 2026-11-24：更正 MADT disabled 的 `break` 语义——仅为 `switch` case 出口，**不**截断 `for_each_madt_ctrl_head`（§4.1 / §10）；此前「遇 disabled 停整表」为误读。
 - 2026-11-19：底子首评批次——平台启动篇补号；§7 opener。事实沿用 11-14 核验。
-- 2026-11-14：对照代码逐节校正。x86_64：补单核约十秒超时后放弃、栈分配失败跳过该核、`CPU_STATE` 以 APIC id 为下标、`clean_tmp_page_table` 早退路径也执行（§2/§6.4/§7.3）。aarch64：等待**无超时**；`cpu_on` 失败**必然** `NR_CPU++` 且 `continue` 不推进 `cpu_node`，同一节点无限重试（原「仍可能」低估了严重性；疑似代码缺陷，仅记录不改码，§2/§4.1/§4.3/§6.5/§7.3/§10）。§10 撤销「MADT disabled 未过滤」——现由 `Local_APIC_flags_enable` 过滤，注意其 `break` 语义（§4.1）。§7.4 补 `cpu_is_online` 越界前置检查、`cpu_id_is_online` 完整判定链与 `cpu_enable`→`core_tm` 就绪窗口。§9 明确 `[ CPUx ]` 需 `HELLO` 宏、`smp_test` 为启动后的多核并发用例矩阵而非启动判据。
+- 2026-11-14：对照代码逐节校正。x86_64：补单核约十秒超时后放弃、栈分配失败跳过该核、`CPU_STATE` 以 APIC id 为下标、`clean_tmp_page_table` 早退路径也执行（§2/§6.4/§7.3）。aarch64：等待**无超时**；`cpu_on` 失败**必然** `NR_CPU++` 且 `continue` 不推进 `cpu_node`，同一节点无限重试（原「仍可能」低估了严重性；疑似代码缺陷，仅记录不改码，§2/§4.1/§4.3/§6.5/§7.3/§10）。§10 撤销「MADT disabled 未过滤」——现由 `Local_APIC_flags_enable` 过滤（当时误写 `break` 停整表，已于 11-24 更正）。§7.4 补 `cpu_is_online` 越界前置检查、`cpu_id_is_online` 完整判定链与 `cpu_enable`→`core_tm` 就绪窗口。§9 明确 `[ CPUx ]` 需 `HELLO` 宏、`smp_test` 为启动后的多核并发用例矩阵而非启动判据。
 - 2026-10-24：`NR_CPU` 来源改为 `arch_parser_madt`（原笼统「解析 MADT」）。
 - 2026-10-04：校正 §6.5 误写成「关于 x86_64」；`all_enabled` 统一为「该试的都试过」，不是「每颗都 enable」。
 - 2026-10-04：§6 时间线改为 6.3 `start_smp` → 6.4/6.5 叫醒 → 6.6 AP；`start_secondary_cpu` 不再重复总览的「少做什么」，只写 `CPU_STATE` / `all_enabled` / initcall 同步点。

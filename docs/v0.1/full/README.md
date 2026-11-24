@@ -357,7 +357,7 @@ v0.1/full/
 
 职责：`start_smp` / `start_secondary_cpu`、NR_CPU、两套 cpu_id、INIT-SIPI 与 PSCI `cpu_on`、拓扑头文件现状
 
-源码：`kernel/smp/smp.c` · `include/rendezvos/smp/smp.h` · `include/rendezvos/smp/cpu_id.h` · `include/rendezvos/cpu_topology.h` · `arch/x86_64/boot/smp.c` · `arch/aarch64/boot/smp.c` · `include/arch/x86_64/smp.h` · `include/arch/aarch64/smp.h`
+源码：`kernel/smp/smp.c` · `include/rendezvos/smp/smp.h` · `include/rendezvos/smp/cpu_id.h` · `include/rendezvos/smp/cpu_topology.h` · `arch/x86_64/boot/smp.c` · `arch/aarch64/boot/smp.c` · `include/arch/x86_64/smp.h` · `include/arch/aarch64/smp.h`
 
 ---
 

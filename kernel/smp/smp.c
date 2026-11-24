@@ -1,6 +1,7 @@
 #include <modules/log/log.h>
 #include <modules/test/test.h>
 #include <rendezvos/smp/smp.h>
+#include <rendezvos/smp/cpu_topology.h>
 #include <rendezvos/smp/percpu.h>
 #include <rendezvos/common.h>
 #include <rendezvos/task/thread.h>
@@ -9,6 +10,7 @@
 #include <rendezvos/system/random.h>
 int NR_CPU = 1;
 DEFINE_PER_CPU(volatile u64, CPU_STATE);
+cpu_hwid_t cpu_hw_map[RENDEZVOS_MAX_CPU_NUMBER];
 #define ALL_CPU_ENABLED_FAIL 0
 #define ALL_CPU_ENABLED_SUCC 1
 atomic64_t all_enabled;

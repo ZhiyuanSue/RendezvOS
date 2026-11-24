@@ -54,7 +54,7 @@ extern cpu_id_t cpu_number;
  *
  * After this returns, @c percpu() is valid on this CPU.
  *
- * @param cpu_id Index into @c __per_cpu_offset (APIC id or dense id)
+ * @param cpu_id Index into @c __per_cpu_offset (dense logical id)
  */
 void arch_enable_percpu(cpu_id_t cpu_id);
 

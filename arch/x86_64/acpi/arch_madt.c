@@ -2,10 +2,12 @@
 #include <arch/x86_64/acpi/arch_madt.h>
 #include <arch/x86_64/PIC/IOAPIC.h>
 #include <modules/log/log.h>
+#include <rendezvos/smp/cpu_topology.h>
 #include <rendezvos/smp/smp.h>
 #include <rendezvos/smp/percpu.h>
 #include <rendezvos/mm/allocator.h>
 #include <rendezvos/error.h>
+#include <rendezvos/limits.h>
 
 struct acpi_table_madt *madt_table;
 extern int NR_CPU;
@@ -29,11 +31,13 @@ error_t arch_parser_madt(void)
         struct allocator *cpu_kallocator;
         struct ioapic *ioapic_entry;
 
-        NR_CPU = 0;
+        NR_CPU = 1;
         for (int i = 0; i < RENDEZVOS_MAX_CPU_NUMBER; i++)
                 per_cpu(CPU_STATE, i) = no_cpu;
 
-        /* Pass 1: Local APIC topology + count IOAPIC entries. */
+        per_cpu(CPU_STATE, BSP_ID) = cpu_disable;
+
+        /* Pass 1: Local APIC → logical map + count IOAPIC entries. */
         for_each_madt_ctrl_head(madt_table)
         {
                 print("curr ctrl head type %d\n", curr_ctrl_head->type);
@@ -41,17 +45,25 @@ error_t arch_parser_madt(void)
                 case madt_ctrl_type_Local_APIC: {
                         struct madt_Local_APIC *lapic =
                                 (struct madt_Local_APIC *)curr_ctrl_head;
-                        cpu_id_t cpu_apic_id = lapic->_APIC_ID;
+                        cpu_hwid_t apic_id = (cpu_hwid_t)lapic->_APIC_ID;
+
                         if (!(lapic->flags & Local_APIC_flags_enable)) {
                                 print("Local APIC id %d disabled in MADT, skip\n",
-                                      cpu_apic_id);
+                                      (int)apic_id);
                                 break;
                         }
-                        print("Local APIC id is %d\n", cpu_apic_id);
-                        if (cpu_apic_id < RENDEZVOS_MAX_CPU_NUMBER) {
-                                NR_CPU++;
-                                per_cpu(CPU_STATE, cpu_apic_id) = cpu_disable;
-                        }
+                        print("Local APIC id is %d\n", (int)apic_id);
+                        if (apic_id == cpu_hw_id(BSP_ID))
+                                break;
+                        if (NR_CPU >= RENDEZVOS_MAX_CPU_NUMBER)
+                                break;
+#ifdef NR_CPUS
+                        if (NR_CPU >= NR_CPUS)
+                                break;
+#endif
+                        set_cpu_hw_id((cpu_id_t)NR_CPU, apic_id);
+                        per_cpu(CPU_STATE, NR_CPU) = cpu_disable;
+                        NR_CPU++;
                         break;
                 }
                 case madt_ctrl_type_IO_APIC:

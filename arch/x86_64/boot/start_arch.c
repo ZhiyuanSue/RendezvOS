@@ -14,6 +14,7 @@
 #include <modules/acpi/acpi.h>
 #include <modules/pci/pci_ops.h>
 #include <arch/x86_64/sync/tlb.h>
+#include <rendezvos/smp/cpu_topology.h>
 #include <rendezvos/smp/ipi.h>
 #include <rendezvos/smp/percpu.h>
 #include <rendezvos/error.h>
@@ -147,7 +148,8 @@ error_t arch_cpu_info(struct setup_info *arch_setup_info)
 {
         (void)arch_setup_info;
         get_cpu_info();
-        BSP_ID = (cpu_id_t)cpu_info.APICID;
+        cpu_hw_map_reset();
+        set_cpu_hw_id(BSP_ID, (cpu_hwid_t)cpu_info.APICID);
         return REND_SUCCESS;
 }
 struct pci_node *pci_tree_build_callback(u8 bus, u8 device, u8 func,

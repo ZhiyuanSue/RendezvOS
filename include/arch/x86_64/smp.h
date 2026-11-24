@@ -42,15 +42,15 @@ struct trap_frame;
  * @c IRQ_NEED_EOI.
  *
  * Called from @c smp_ipi_init on each CPU after init_interrupt / init_irq.
- * Destination @c cpu for the register path is this CPU's APIC id.
+ * Destination @c cpu for the register path is this CPU's logical id.
  */
 void arch_smp_ipi_init(void (*handler)(struct trap_frame *tf));
 
 /**
- * @brief Send IPI to @p cpu_id (APIC id) via ICR with vector @c
- * ARCH_IRQ_ID_IPI.
+ * @brief Send IPI to @p cpu_id (logical id) via ICR; dest is @c cpu_hw_id(cpu_id).
  *
- * @return REND_SUCCESS, or -E_RENDEZVOS if arch_irq_type is not xAPIC/x2APIC
+ * @return REND_SUCCESS, -E_IN_PARAM if no APIC id mapping, or -E_RENDEZVOS if
+ *         arch_irq_type is not xAPIC/x2APIC
  */
 error_t arch_smp_ipi_send(cpu_id_t cpu_id);
 #endif

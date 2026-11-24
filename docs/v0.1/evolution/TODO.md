@@ -37,6 +37,7 @@ full 正文缺口：（当前无；新增篇目或整篇重写需求在此表格
 | E13 | ~~线程切换保存浮点 / 向量状态~~ | `03-任务与调度/13-线程与Task_Manager.md`、`01-启动与初始化/04-平台启动-x86_64.md`、`01-启动与初始化/05-平台启动-aarch64.md` | **已做（eager）**：x86 `arch_fp_cpu_init` + FXSAVE 或 XSAVE（CPU 支持则 **AVX**；**不开** AVX-512）；aarch64 Q0–Q31+FPCR/FPSR。**仅 user** `ctx->fp`；`arch_fp_state_size()` 运行时。AVX-512 / SVE 仍不做 |
 | E14 | ~~硬件随机数 / `rand64`~~ | `10-基础设施/42-公共基础库与数据结构.md` §4.3–§4.4 | **已做（best-effort）**：`arch_get_random_long` + per-CPU / `random_cpu_init` / `rand64`·`rand32`；混洗唯一核 `splitmix64`。非 CSPRNG；强化池 / getrandom 归 compat |
 | E15 | ~~配对成功后 transfer 失败丢唤醒~~ | `04-IPC/20-阻塞与非阻塞收发.md` | **已做（空醒，maintainer 审定）**：`THREAD_FLAG_IPC_EMPTY_WAKE`；`NO_MEM`/`NO_MSG` 等由配对成功方对 peer flag+ready；已被配对的一侧返回 `-E_REND_AGAIN`。不空醒：send `AGAIN`/`RENDEZVOS`。残余见 `20` §10（fill 失败丢消息） |
+| E16 | x86 sparse APIC id vs 稠密 `cpu_id` / `NR_CPU` | `06-SMP与同步/28-SMP启动与处理器拓扑.md`、`03-任务与调度/16-CPU亲和性-创建时绑核.md` | x86 以 APIC id 当下标；`cpu_id_is_online` / `task_manager_for_cpu` 用 `cpu < NR_CPU` 稠密假设。QEMU 稠密 id 可瞒过。v0.1 **不承诺**拓扑在稀疏 APIC 下正确。选项：启动时建 APIC→逻辑下标表，或统一稠密编号（改 IPI dest）。与 E3（运行期迁核）正交；中等工程，post-v0.1 |
 
 新增条目：在此表追加一行，并在对应 full 篇 §10 加一句回链本表 ID。
 
@@ -44,6 +45,7 @@ full 正文缺口：（当前无；新增篇目或整篇重写需求在此表格
 
 ## 变更记录
 
+- 2026-11-24：新增 **E16**——x86 sparse APIC id vs 稠密 `NR_CPU` / `cpu_id_is_online`；回链 `28` §10。
 - 2026-11-22：关闭 **E15**——空醒 flag + claim 失败路径唤醒；回链 `20` §6.2–§6.4 / §10。
 - 2026-11-22：新增 **E15**——配对成功后 transfer 失败时不唤醒已配对等待者（既有问题；should_block_hook 窗口外部审阅期间发现，回链写入 `20` §10）。
 - 2026-11-21：E14 行措辞「熵」改「随机数」（全树同步，「熵」字易困惑）。

@@ -18,9 +18,9 @@
  * @brief Per-CPU bring-up state (stored in @c DEFINE_PER_CPU(CPU_STATE)).
  */
 enum cpu_status {
-        no_cpu, /*no this cpu exist*/
-        cpu_disable, /*this cpu is exist but not enable*/
-        cpu_enable, /*cpu is exist and enable*/
+        no_cpu, /* not enumerated */
+        cpu_disable, /* enumerated, not online */
+        cpu_enable, /* online */
 };
 
 /**
